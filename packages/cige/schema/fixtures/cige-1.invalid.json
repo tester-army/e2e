@@ -2,5 +2,6 @@
   "Context": { "system": "Checkout" },
   "Intent": { "statement": "" },
   "Guardrails": [{ "deny": { "actions": [] } }],
-  "Execution": []
+  "Execution": [],
+  "Variants": [{ "id": "bad id", "params": { "nested": { "not": "a primitive" } } }]
 }

@@ -228,6 +228,9 @@ importers:
 
   apps/testbed:
     dependencies:
+      '@e2e-dev/cige':
+        specifier: workspace:*
+        version: link:../../packages/cige
       '@e2e-dev/lightpanda':
         specifier: workspace:*
         version: link:../../packages/lightpanda

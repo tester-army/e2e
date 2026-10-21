@@ -84,7 +84,8 @@ settles, and before the next action. That includes actions the
 [replay cache](/cache) replays. The step waits for it, and its time counts
 toward `timeout`. Use it to observe, never to drive the app. If it throws,
 the step fails with a message that starts with `agent.act onAction failed`.
-A check inside it never confirms the step's recording.
+A check inside it never confirms the step's recording. [CIGE guardrails](/cige#guardrails)
+use it to stop a step on a denied action.
 
 ```ts
 await agent.act('open settings and turn on dark mode', {

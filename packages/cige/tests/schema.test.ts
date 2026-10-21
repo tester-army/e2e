@@ -13,7 +13,7 @@ const schema = json('../schema/cige-1.schema.json');
 const validate = new Ajv2020({ allErrors: true, strict: false }).compile(schema as object);
 
 describe('cige-1.schema.json', () => {
-  it('accepts the valid fixture and the CIGE skills demo case', () => {
+  it('accepts the valid fixture and a case written for another CIGE runner', () => {
     expect(validate(json('../schema/fixtures/cige-1.valid.json')), JSON.stringify(validate.errors)).toBe(true);
     expect(validate(json('./fixtures/checkout-flow.cige.json')), JSON.stringify(validate.errors)).toBe(true);
   });
@@ -30,7 +30,7 @@ describe('cige-1.schema.json', () => {
 });
 
 describe('parseCige', () => {
-  it('normalizes the CIGE skills demo case', () => {
+  it('normalizes a case written for another CIGE runner', () => {
     const testCase = parseCige(json('./fixtures/checkout-flow.cige.json'));
     expect(testCase.id).toBe(slugify(testCase.intent.statement));
     expect(testCase.intent).toMatchObject({ success: [], failure: [], evidence: [], judge: true });
@@ -107,5 +107,36 @@ describe('parseCige', () => {
     expect(() =>
       parseCige({ Context: {}, Intent: 'x', Guardrails: [{ rule: 'no admin', deny: { summary: ['(['] } }], Execution: ['y'] }),
     ).toThrow(/not a valid regular expression/);
+  });
+});
+
+describe('dimensions and variants', () => {
+  const pay = {
+    id: 'pay',
+    Context: {},
+    Intent: 'A shopper can pay by {method}',
+    Execution: ['pay by {method}'],
+  };
+
+  it('reads per-case dimensions, the expected ref, and variants', () => {
+    const testCase = parseCige(json('../schema/fixtures/cige-1.valid.json'));
+    expect(testCase.context).toMatchObject({ platforms: ['web'], session: 'signed-in', expectedRef: 'fixtures/{build}/streaming.json' });
+    expect(testCase.variants).toEqual([
+      { id: 'dev', params: { workspace: 'Dev desktop' } },
+      { id: 'gpu', params: { workspace: 'GPU desktop' }, platforms: ['web'] },
+    ]);
+  });
+
+  it('refuses a variant param that fills no placeholder', () => {
+    expect(() => parseCige({ ...pay, Variants: [{ id: 'card', params: { metod: 'card' } }] })).toThrow(
+      /Variants card: param "metod" fills no \{metod\} placeholder/,
+    );
+  });
+
+  it('refuses two variants with one id, and a value that is not a primitive', () => {
+    expect(() => parseCige({ ...pay, Variants: [{ id: 'card', params: { method: 'card' } }, { id: 'card', params: { method: 'cash' } }] })).toThrow(
+      /Variants: id "card" is used twice/,
+    );
+    expect(() => parseCige({ ...pay, Variants: [{ id: 'card', params: { method: { kind: 'card' } } }] })).toThrow(CigeValidationError);
   });
 });

@@ -66,7 +66,8 @@ const MAX_PARAMS_DEPTH = 32;
 
 function depthOf(value: unknown): number {
   if (typeof value !== 'object' || value === null) return 0;
-  return 1 + Math.max(0, ...Object.values(value).map(depthOf));
+  // reduce, not a spread into Math.max: a wide array would overflow the call stack.
+  return 1 + Object.values(value).reduce<number>((deepest, child) => Math.max(deepest, depthOf(child)), 0);
 }
 
 /**

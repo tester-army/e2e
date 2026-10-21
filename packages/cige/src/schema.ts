@@ -80,11 +80,16 @@ const PreconditionHook = z.strictObject({
 
 // Strict: Context is what the agent reads, so a key the runner would drop is
 // an error rather than a fact that silently never reaches the model.
+const AgentPin = z.union([Id, z.array(Id).min(1)]);
+
 const Context = z.strictObject({
   system: Text.optional(),
   environment: Text.optional(),
   actor: Text.optional(),
-  agent: z.union([Id, z.array(Id).min(1)]).optional(),
+  agent: AgentPin.optional(),
+  platforms: z.array(Text).min(1).optional(),
+  requires: z.array(Text).min(1).optional(),
+  session: Id.optional(),
   open: Text.optional(),
   tools: z.array(Text).optional(),
   preconditions: z.array(z.union([Text, PreconditionHook])).optional(),
@@ -92,6 +97,18 @@ const Context = z.strictObject({
   prompts: z.array(Text).optional(),
   specRef: Text.optional(),
   buildRef: Text.optional(),
+  expectedRef: Text.optional(),
+});
+
+/** A value a variant fills a `{name}` placeholder with: JSON primitives only, so a variant never carries a secret. */
+const VariantValue = z.union([z.string(), z.number(), z.boolean()]);
+
+const Variant = z.strictObject({
+  id: Id,
+  params: z.record(z.string(), VariantValue).optional(),
+  platforms: z.array(Text).min(1).optional(),
+  agent: AgentPin.optional(),
+  session: Id.optional(),
 });
 
 /** The file as written, with its field names already capitalized. */
@@ -103,6 +120,7 @@ const CigeFile = z.strictObject({
   Intent: z.union([Text, IntentObject]),
   Guardrails: z.array(GuardrailEntry).optional(),
   Execution: z.array(ExecutionEntry).min(1),
+  Variants: z.array(Variant).min(1).optional(),
 });
 
 /** A CIGE test case as authored: what a `.cige.json` file holds. */
@@ -132,9 +150,16 @@ export type CigePrecondition =
 
 export interface CigeContext {
   readonly system?: string;
+  /** Prose for the model, and the key of `environments` in the CIGE config that replays the case. */
   readonly environment?: string;
   readonly actor?: string;
   readonly agent?: string | readonly string[];
+  /** The platforms the case runs on; other targets skip it. */
+  readonly platforms?: readonly string[];
+  /** Capabilities a target must have to run the case. */
+  readonly requires?: readonly string[];
+  /** The session a setup test saved, restored before the case runs. */
+  readonly session?: string;
   readonly open?: string;
   readonly tools: readonly string[];
   readonly preconditions: readonly CigePrecondition[];
@@ -145,6 +170,17 @@ export interface CigeContext {
   readonly fragments: readonly string[];
   readonly specRef?: string;
   readonly buildRef?: string;
+  /** A pointer to what this build is expected to produce: mocks, fixtures, or golden data. Never sent to the model. */
+  readonly expectedRef?: string;
+}
+
+/** One combination of a case's dimensions: values for its `{name}` placeholders, and where it runs. */
+export interface CigeVariant {
+  readonly id: string;
+  readonly params: Readonly<Record<string, string | number | boolean>>;
+  readonly platforms?: readonly string[];
+  readonly agent?: string | readonly string[];
+  readonly session?: string;
 }
 
 export interface CigeIntent {
@@ -165,6 +201,12 @@ export interface CigeCase {
   readonly intent: CigeIntent;
   readonly guardrails: readonly CigeGuardrail[];
   readonly execution: readonly CigeExecutionStep[];
+  /** The combinations the case runs as; empty when it runs once. */
+  readonly variants: readonly CigeVariant[];
+  /** The variant this case was resolved for, once `expandVariants` has. */
+  readonly variant?: string;
+  /** That variant's values, so a hook checks the data this run used. */
+  readonly params?: CigeVariant['params'];
 }
 
 /** A CIGE file that does not validate. The message names the file and every problem in it. */
@@ -178,9 +220,9 @@ export class CigeValidationError extends Error {
   }
 }
 
-const FIELDS = ['Context', 'Intent', 'Guardrails', 'Execution'] as const;
+const FIELDS = ['Context', 'Intent', 'Guardrails', 'Execution', 'Variants'] as const;
 
-/** Maps the paper's lowercase field names onto the capitalized ones, refusing a file that spells one field both ways. */
+/** Maps lowercase field names (the paper's spelling) onto the capitalized ones, refusing a file that spells one field both ways. */
 function capitalize(value: unknown, issues: string[]): unknown {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
   const out: Record<string, unknown> = { ...value };
@@ -274,10 +316,35 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       : { kind: 'hook', hook: entry.hook, ...(entry.description === undefined ? {} : { description: entry.description }) },
   );
 
+  const variants: CigeVariant[] = (file.Variants ?? []).map((entry) => ({
+    id: entry.id,
+    params: entry.params ?? {},
+    ...(entry.platforms === undefined ? {} : { platforms: entry.platforms }),
+    ...(entry.agent === undefined ? {} : { agent: entry.agent }),
+    ...(entry.session === undefined ? {} : { session: entry.session }),
+  }));
+
   const judge = intentObject.judge ?? true;
   duplicates('Execution', execution.map((step) => step.id), issues);
   duplicates('Guardrails', guardrails.map((rule) => rule.id), issues);
   duplicates('Intent.evidence', evidence.map((item) => item.id), issues);
+  duplicates('Variants', variants.map((variant) => variant.id), issues);
+  const placeholders = new Set(
+    [
+      intentObject.statement,
+      ...(intentObject.success ?? []),
+      ...(intentObject.failure ?? []),
+      ...execution.map((step) => step.text),
+      ...evidence.flatMap((item) => (item.kind === 'assert' ? [item.text] : [])),
+    ].flatMap(placeholdersIn),
+  );
+  for (const variant of variants) {
+    for (const name of Object.keys(variant.params)) {
+      if (!placeholders.has(name)) {
+        issues.push(`Variants ${variant.id}: param "${name}" fills no {${name}} placeholder in Intent, Execution, or evidence`);
+      }
+    }
+  }
   for (const rule of guardrails) {
     for (const pattern of rule.deny?.summary ?? []) {
       if (!isPattern(pattern)) {
@@ -299,6 +366,9 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       ...(context.environment === undefined ? {} : { environment: context.environment }),
       ...(context.actor === undefined ? {} : { actor: context.actor }),
       ...(context.agent === undefined ? {} : { agent: context.agent }),
+      ...(context.platforms === undefined ? {} : { platforms: context.platforms }),
+      ...(context.requires === undefined ? {} : { requires: context.requires }),
+      ...(context.session === undefined ? {} : { session: context.session }),
       ...(context.open === undefined ? {} : { open: context.open }),
       tools: context.tools ?? [],
       preconditions,
@@ -307,6 +377,7 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       fragments: [],
       ...(context.specRef === undefined ? {} : { specRef: context.specRef }),
       ...(context.buildRef === undefined ? {} : { buildRef: context.buildRef }),
+      ...(context.expectedRef === undefined ? {} : { expectedRef: context.expectedRef }),
     },
     intent: {
       statement: intentObject.statement,
@@ -317,7 +388,15 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
     },
     guardrails,
     execution,
+    variants,
   };
+}
+
+const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/** The `{name}` placeholders a piece of case text refers to. */
+export function placeholdersIn(text: string): string[] {
+  return [...text.matchAll(PLACEHOLDER)].map((match) => match[1]!);
 }
 
 function isPattern(source: string): boolean {

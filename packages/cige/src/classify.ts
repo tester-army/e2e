@@ -5,8 +5,9 @@
  * the verdict: every summary says `confidence: "heuristic"`, names the raw
  * signals it read, and leaves `failureType` out whenever the code alone
  * cannot tell the cases apart (a guardrail violation, an inconclusive
- * judgment). The `cige-failure-classification` skill confirms it against
- * `specRef` and `buildRef` before any repair.
+ * judgment). The `cige` skill's classify step confirms it against `specRef`,
+ * `buildRef`, and `expectedRef` before any repair, and decides whether a
+ * pass was a false positive; this module never calls one.
  */
 
 import type { Report } from 'e2e';
@@ -44,8 +45,13 @@ export function attemptsOf(result: ReportResult, report?: Report): readonly Atte
   });
 }
 
-/** The four outcomes the CIGE standard routes on. */
-export type CigeFailureType = 'infrastructure' | 'outdated-test-logic' | 'product-defect' | 'false-positive';
+/**
+ * The failure types a run summary can carry. The standard's fourth route, a
+ * false positive, is a pass that should not have counted; only the
+ * classifying agent can call one, from the `screen-only-evidence` signal and
+ * the evidence, so it is never set here.
+ */
+export type CigeFailureType = 'infrastructure' | 'outdated-test-logic' | 'product-defect';
 
 /** Where in the case a failure landed. */
 export type CigePhase = 'precondition' | 'execution' | 'evidence' | 'intent';

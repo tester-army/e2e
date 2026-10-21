@@ -2,10 +2,25 @@
  * CIGE test cases on e2e: Context, Intent, Guardrails, and Execution as a
  * portable JSON file, registered as tests by `cigeSuite`, and summarized for
  * the agents that classify and repair them by the `cige()` reporter. The
- * standard: https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard
+ * `e2e-cige` command replays a case in its environment, resolves its refs,
+ * and checks a change against the field rules. The standard:
+ * https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard
  */
 
+export {
+  defineCige,
+  type CigeConfig,
+  type CigeEnvironment,
+  type CigeEnvironmentAction,
+  type CigeRef,
+  type CigeRefContext,
+  type CigeRefResolver,
+  type CigeRefs,
+} from './config.ts';
 export { cigeSuite, cigeTag, CIGE_TAG, type CigeSuiteOptions } from './suite.ts';
+export { expandVariants } from './variants.ts';
+export { writeRefs, type CigeRefsIndex } from './refs.ts';
+export { diffCases, type CigeChange, type CigeChangeKind } from './diff.ts';
 export { runCige, type CigeHook, type CigeHooks, type RunCigeOptions } from './run.ts';
 export { loadCigeCases, loadCigeFile, type CigeRoot, type LoadOptions } from './load.ts';
 export { cige, type CigeReporterOptions, type CigeRunSummary } from './reporter.ts';
@@ -23,4 +38,5 @@ export {
   type CigeIntent,
   type CigePrecondition,
   type CigeTestCase,
+  type CigeVariant,
 } from './schema.ts';

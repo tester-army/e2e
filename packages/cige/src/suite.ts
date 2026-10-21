@@ -1,25 +1,29 @@
 /**
- * Registers CIGE cases as e2e tests. One case is one test: its title is the
- * Intent statement, its tags are `cige` and `cige:<id>` (so `--tag
- * cige:<id>` replays exactly one case), its `agentContext` is the case's
- * Context, and its agent is the one Context names. Call it from an ordinary
- * `*.e2e.ts` file; it runs while the file evaluates, so a broken case or a
- * hook the code does not define fails collection, before any test runs.
+ * Registers CIGE cases as e2e tests. One case is one test, or one per
+ * variant: its title is the Intent statement, its tags are `cige` and
+ * `cige:<id>` (so `--tag cige:<id>` replays exactly one case) plus
+ * `cige:<id>/<variant>` for a variant, its `agentContext` is the case's
+ * Context, and its agent, platforms, capabilities, and session are the ones
+ * Context or the variant names. Call it from an ordinary `*.e2e.ts` file; it
+ * runs while the file evaluates, so a broken case or a hook the code does not
+ * define fails collection, before any test runs.
  */
 
 import { test as baseTest, type TestAPI, type TestFixtures, type TestOptions } from 'e2e';
 
+import { DEFAULT_CASES, type CigeConfig } from './config.ts';
 import { checkCases, loadCigeCases, type CigeRoot } from './load.ts';
 import { renderAgentContext } from './render.ts';
 import { missingHooks, runCige, type CigeHooks } from './run.ts';
 import { CigeValidationError, type CigeCase } from './schema.ts';
+import { expandVariants } from './variants.ts';
 
 /** The tag every CIGE test carries. */
 export const CIGE_TAG = 'cige';
 
-/** The tag that selects one case by its id. */
-export function cigeTag(id: string): string {
-  return `${CIGE_TAG}:${id}`;
+/** The tag that selects one case by its id, or one of its variants. */
+export function cigeTag(id: string, variant?: string): string {
+  return variant === undefined ? `${CIGE_TAG}:${id}` : `${CIGE_TAG}:${id}/${variant}`;
 }
 
 export interface CigeSuiteOptions<Fixtures = TestFixtures> {
@@ -29,18 +33,51 @@ export interface CigeSuiteOptions<Fixtures = TestFixtures> {
   readonly root?: CigeRoot;
   /** The hooks the cases' preconditions and evidence name. */
   readonly hooks?: CigeHooks<Fixtures>;
-  /** Test options every case gets, such as `timeout`, `retries`, or more `tags`. */
+  /** The environments of the CIGE config; once set, every case's `Context.environment` must name one. */
+  readonly environments?: CigeConfig<Fixtures>['environments'];
+  /** Test options every case gets, such as `timeout`, `retries`, or more `tags`. A case's own Context wins. */
   readonly options?: Omit<TestOptions, 'agentContext' | 'only'>;
 }
 
+function isConfig<Fixtures>(cases: unknown): cases is CigeConfig<Fixtures> {
+  return typeof cases === 'object' && cases !== null && !Array.isArray(cases);
+}
+
+/** The test options a resolved case runs with: the suite's, then the case's Context, which wins. */
+function optionsFor(testCase: CigeCase, extra: Omit<TestOptions, 'agentContext' | 'only'>): TestOptions {
+  const { context } = testCase;
+  const agentContext = renderAgentContext(testCase);
+  const tags = [CIGE_TAG, cigeTag(testCase.id), ...(testCase.variant === undefined ? [] : [cigeTag(testCase.id, testCase.variant)]), ...(extra.tags ?? [])];
+  return {
+    ...extra,
+    tags: [...new Set(tags)],
+    ...(agentContext === undefined ? {} : { agentContext }),
+    ...(context.agent === undefined ? {} : { agent: context.agent }),
+    ...(context.platforms === undefined ? {} : { platforms: context.platforms }),
+    ...(context.requires === undefined ? {} : { requires: context.requires }),
+    ...(context.session === undefined ? {} : { session: context.session }),
+  };
+}
+
 /**
- * Registers one test per case. `cases` is a glob or globs of `.cige.json`
- * files, or cases already loaded. Returns the cases it registered.
+ * Registers one test per case and variant. `cases` is a glob or globs of
+ * `.cige.json` files, cases already loaded, or the CIGE config (whose
+ * `cases`, `root`, `hooks`, and `environments` it reads). Returns the cases
+ * it registered, before variants are resolved.
  */
 export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
-  cases: string | readonly string[] | readonly CigeCase[],
+  cases: string | readonly string[] | readonly CigeCase[] | CigeConfig<Fixtures>,
   suiteOptions: CigeSuiteOptions<Fixtures> = {},
 ): readonly CigeCase[] {
+  if (isConfig<Fixtures>(cases)) {
+    const { cases: globs, root, hooks, environments } = cases;
+    return cigeSuite(globs ?? DEFAULT_CASES, {
+      ...suiteOptions,
+      ...(root === undefined ? {} : { root }),
+      ...(hooks === undefined ? {} : { hooks }),
+      ...(environments === undefined ? {} : { environments }),
+    });
+  }
   const globs = typeof cases === 'string' || cases.every((entry) => typeof entry === 'string');
   const loaded = globs
     ? loadCigeCases(cases as string | readonly string[], suiteOptions.root === undefined ? {} : { root: suiteOptions.root })
@@ -55,27 +92,25 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
     const other = titles.get(testCase.intent.statement);
     if (other !== undefined) {
       throw new CigeValidationError(testCase.file ?? testCase.id, [
-        `Intent "${testCase.intent.statement}" is also the Intent of "${other}"; one Intent is one test, so merge the cases or reword one`,
+        `Intent "${testCase.intent.statement}" is also the Intent of "${other}"; one Intent is one test, so merge the cases, reword one, or make them Variants of one case`,
       ]);
     }
     titles.set(testCase.intent.statement, testCase.id);
   }
   const register = (suiteOptions.test ?? baseTest) as TestAPI<Fixtures>;
   const hooks = suiteOptions.hooks ?? {};
+  const { environments } = suiteOptions;
   for (const testCase of loaded) {
-    const missing = missingHooks(testCase, hooks);
-    if (missing.length > 0) {
-      throw new CigeValidationError(testCase.file ?? testCase.id, missing.map((name) => `hook "${name}" is named by the case but not passed in hooks`));
+    const problems = missingHooks(testCase, hooks).map((name) => `hook "${name}" is named by the case but not passed in hooks`);
+    const environment = testCase.context.environment;
+    if (environments !== undefined && environment !== undefined && !Object.hasOwn(environments, environment)) {
+      problems.push(`Context.environment "${environment}" is not one of the config's environments (${Object.keys(environments).join(', ') || 'none'})`);
     }
-    const agentContext = renderAgentContext(testCase);
-    const extra = suiteOptions.options ?? {};
-    const options: TestOptions = {
-      ...extra,
-      tags: [...new Set([CIGE_TAG, cigeTag(testCase.id), ...(extra.tags ?? [])])],
-      ...(agentContext === undefined ? {} : { agentContext }),
-      ...(testCase.context.agent === undefined ? {} : { agent: testCase.context.agent }),
-    };
-    register(testCase.intent.statement, options, (fixtures) => runCige(testCase, fixtures, { hooks }));
+    if (problems.length > 0) throw new CigeValidationError(testCase.file ?? testCase.id, problems);
+    for (const resolved of expandVariants(testCase)) {
+      const title = resolved.variant === undefined ? resolved.intent.statement : `${resolved.intent.statement} [${resolved.variant}]`;
+      register(title, optionsFor(resolved, suiteOptions.options ?? {}), (fixtures) => runCige(resolved, fixtures, { hooks }));
+    }
   }
   return loaded;
 }

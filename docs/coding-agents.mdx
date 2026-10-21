@@ -66,8 +66,8 @@ codex plugin add e2e@e2e
 </CodeGroup>
 
 Start a new session. The plugin adds the `e2e`,
-`create-verification-skill`, and `migrate-to-e2e` skills, not the npm
-package or the MCP server. Invoke the other two under the plugin's name:
+`create-verification-skill`, `migrate-to-e2e`, and `cige` skills, not the
+npm package or the MCP server. Invoke the others under the plugin's name:
 `/e2e:<skill>` in Claude Code, `$e2e:<skill>` in Codex.
 
 The plugin's version follows e2e releases. To update it, run these and
@@ -229,6 +229,28 @@ suites fail on it. The agent deletes an old test only when you confirm. It first
 [Playwright](/migrate/playwright), [Cypress](/migrate/cypress),
 [Selenium](/migrate/selenium), [Detox](/migrate/detox), or
 [Maestro](/migrate/maestro).
+
+## Classify and repair CIGE cases
+
+The `cige` skill works on [CIGE test cases](/cige). After a run it reads
+each run summary, decides whether a failure is the environment, a stale
+path, a product defect, or a pass that should not have counted, and makes
+only the repair that kind allows. It replays the case in its environment
+and runs `e2e-cige diff` to show the Intent held.
+
+<CodeGroup>
+```bash npm
+npx skills add tester-army/e2e --skill cige
+```
+
+```bash pnpm
+pnpm dlx skills add tester-army/e2e --skill cige
+```
+
+```bash bun
+bunx skills add tester-army/e2e --skill cige
+```
+</CodeGroup>
 
 ## Next
 

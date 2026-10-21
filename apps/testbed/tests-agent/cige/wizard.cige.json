@@ -1,0 +1,28 @@
+{
+  "$schema": "../../node_modules/@e2e-dev/cige/schema/cige-1.schema.json",
+  "id": "wizard-workspace",
+  "Context": {
+    "system": "e2e playground workspace wizard",
+    "environment": "local",
+    "actor": "a signed-out visitor",
+    "open": "/wizard"
+  },
+  "Intent": {
+    "statement": "A visitor can create the workspace {name} on the {plan} plan",
+    "success": ["The summary names the workspace {name} and the {plan} plan"],
+    "evidence": [{ "id": "summary-text", "hook": "workspaceCreated", "description": "The summary reads exactly what the wizard created" }]
+  },
+  "Guardrails": [
+    "Stay on the wizard page",
+    { "id": "no-delete", "rule": "Never delete anything", "deny": { "summary": ["delete"] } }
+  ],
+  "Execution": [
+    { "id": "e1", "step": "name the workspace {name}" },
+    { "id": "e2", "step": "choose the {plan} plan" },
+    { "id": "e3", "step": "create the workspace" }
+  ],
+  "Variants": [
+    { "id": "atlas-pro", "params": { "name": "Atlas", "plan": "Pro" } },
+    { "id": "borealis-free", "params": { "name": "Borealis", "plan": "Free" } }
+  ]
+}

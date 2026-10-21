@@ -7,7 +7,8 @@ icon: "clipboard-check"
 ---
 
 [CIGE](https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard)
-is a test case standard for agentic testing. A case has four fields:
+is a test case standard for agentic testing. A case has four fields, and
+each one changes for a different reason:
 
 | Field | Says | Changes |
 | --- | --- | --- |
@@ -16,9 +17,16 @@ is a test case standard for agentic testing. A case has four fields:
 | Guardrails | What the agent must never do | Only to get stricter |
 | Execution | The first path to try | Whenever the product's flow changes |
 
-`@e2e-dev/cige` runs CIGE cases written as `.cige.json` files. Each case
-becomes one e2e test. The `cige()` reporter writes one run summary per case,
-which an agent reads to classify a failure before it repairs anything.
+`@e2e-dev/cige` runs `.cige.json` cases as e2e tests. The `cige()` reporter
+writes one run summary per case. The `cige` agent skill reads it, classifies
+the failure, and makes only the repair that kind of failure allows.
+
+## When to use CIGE
+
+Use CIGE cases when agents run and maintain your tests: the flows change
+often, a coding agent fixes failures and must tell a stale path from a bug,
+or a pass needs proof beyond the screen. Keep exact locator code and
+TypeScript control flow in `*.e2e.ts` files. Both kinds run in one suite.
 
 ## Install
 
@@ -52,7 +60,8 @@ bun add -d @e2e-dev/cige
       { "hook": "seedCart", "description": "The cart holds two of ITEM-100" }
     ],
     "specRef": "docs/specs/checkout.md",
-    "buildRef": "CHANGELOG.md"
+    "buildRef": "releases/{build}.md",
+    "expectedRef": "fixtures/{build}/checkout-order.json"
   },
   "Intent": {
     "statement": "A shopper can check out with a valid discount code",
@@ -73,46 +82,86 @@ bun add -d @e2e-dev/cige
 
 - `id` tags the test `cige:<id>` and names its run summary. Without one, the
   id is the Intent statement in lowercase words joined by dashes.
-- The file is checked against `schema/cige-1.schema.json`, which the package
-  ships. The loader also reads the field names `context`, `intent`,
-  `guardrails`, and `execution` as the capitalized ones; the schema checks
-  the capitalized form only.
+- The package ships `schema/cige-1.schema.json`. The loader also reads
+  lowercase field names; the schema checks the capitalized form only.
 - An unknown key in `Context`, or a `deny` with neither `actions` nor
   `summary`, fails to load rather than being ignored.
 - `Intent` and `Execution` entries may be plain strings. An Execution string
   gets the id `e1`, `e2`, and so on, by position. A guardrail string gets
   `g1`, `g2`, and so on.
+- `specRef`, `buildRef`, and `expectedRef` point to the spec, the build's
+  release notes, and what the build should produce. The model never sees
+  them. `{build}` and `{environment}` are filled in for each run.
 
-## Register the cases
+## Set up the config
 
-Call `cigeSuite` from a test file. It loads the cases while the file
-evaluates. Collection fails before any test runs on a glob that matches no
-file, a case that does not validate, two cases with one id or one Intent,
-or a hook a case names that you did not pass.
+Declare the cases, their hooks, the environments they run in, and the ref
+resolvers one time in `cige.config.ts`. The suite, the reporter, and the
+`e2e-cige` command all read it. The command loads it with Node's type
+stripping, so use only TypeScript that erases to JavaScript: no `enum`.
 
-```ts title="tests/cige.e2e.ts"
-import { cigeSuite } from '@e2e-dev/cige';
+```ts title="cige.config.ts"
+import { defineCige } from '@e2e-dev/cige';
 
-cigeSuite('tests/cige/*.cige.json', {
+export default defineCige({
+  cases: 'tests/cige/*.cige.json',
+  build: process.env.GITHUB_SHA,
   hooks: {
     // Precondition: seed the cart through the test API, not the UI.
     seedCart: async () => {
       const response = await fetch('http://localhost:3000/test-api/cart', { method: 'POST', body: '{"sku":"ITEM-100","qty":2}' });
       if (!response.ok) throw new Error(`seeding the cart returned ${response.status}`);
     },
-    // Evidence: the order exists in the backend, not only on the confirmation page.
+    // Evidence: the order exists in the backend. Only `true` holds.
     orderPersisted: async ({ screen }) => {
       const orderId = await screen.getByTestId('order-id').textContent();
       const response = await fetch(`http://localhost:3000/test-api/orders/${orderId}`);
       return response.ok;
     },
   },
+  environments: {
+    staging: {
+      config: 'e2e.config.ts',
+      reset: async () => {
+        const response = await fetch('http://localhost:3000/test-api/reset', { method: 'POST' });
+        if (!response.ok) throw new Error(`resetting staging returned ${response.status}`);
+      },
+    },
+  },
+  refs: {
+    build: ({ build }) => (build === undefined ? undefined : { url: `https://github.com/acme/shop/commit/${build}` }),
+    expected: ({ pointer }) => (pointer === undefined ? undefined : { files: [pointer] }),
+  },
 });
 ```
 
-Globs resolve from the working directory, or from `root`. Pass `test` to
-register through a `test.extend()` chain, and `options` for the `timeout`,
-`retries`, or extra `tags` every case gets. Run one case by its id:
+Register the cases from a test file, and add the reporter:
+
+```ts title="tests/cige.e2e.ts"
+import { cigeSuite } from '@e2e-dev/cige';
+import cigeConfig from '../cige.config.ts';
+
+cigeSuite(cigeConfig);
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { cige } from '@e2e-dev/cige';
+import { gateway } from 'ai';
+import cigeConfig from './cige.config.ts';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  reporters: ['list', cige(cigeConfig)],
+} satisfies E2EConfig;
+```
+
+Collection fails before any test runs on a glob that matches no file, a
+case that doesn't validate, two cases with one id or one Intent, a hook a
+case names that the config lacks, or a `Context.environment` that isn't a
+key of `environments`. Run one case by its id:
 
 <CodeGroup>
 ```bash npm
@@ -128,29 +177,89 @@ bunx e2e run --tag cige:checkout-discount
 ```
 </CodeGroup>
 
+## Check that every case can be triaged
+
+A failure can be told apart from an intended change only against the spec
+and the build's release notes, and replayed only in an environment that
+resets. `e2e-cige check` lists each case that lacks one of these, before
+anything fails:
+
+<CodeGroup>
+```bash npm
+npx e2e-cige check --resolve
+```
+
+```bash pnpm
+pnpm exec e2e-cige check --resolve
+```
+
+```bash bun
+bunx e2e-cige check --resolve
+```
+</CodeGroup>
+
+| Gap | Fix |
+| --- | --- |
+| `no-spec-ref` | Set `Context.specRef`, or a `refs.spec` resolver in the config |
+| `no-build-ref` | Set `Context.buildRef`, or a `refs.build` resolver |
+| `build-unset` | A ref uses `{build}`. Set `build` from CI, such as `process.env.GITHUB_SHA` or a release tag |
+| `environment-undeclared` | Add the case's `Context.environment` to `environments` |
+| `environment-no-reset` | Give the environment a `reset` action |
+| `resolver-failed` | With `--resolve`, a resolver threw. The message says why |
+
+It exits 1 on any gap. Pass `--warn` to only report, or `--json` for
+scripts. Each run also adds a `CIGE gaps` row under the terminal summary
+while any case it ran has a gap. The [`cige` skill](#classify-and-repair-with-the-cige-skill)
+asks for these inputs when it sets up a project.
+
 ## How a case runs
 
 The test's title is the Intent statement. Its body runs these steps in
 order and fails on the first one that doesn't hold:
 
 1. `app.open(Context.open)`, when the case sets it.
-2. Each precondition hook.
+2. Each precondition hook. It fails only by throwing.
 3. Each Execution entry. A `step` is one [`agent.act`](/reference/agent#agent-act)
    goal, with its `params`. A `verify` is one `agent.assert`.
 4. Each piece of evidence. A string or an `assert` entry is one
-   `agent.assert`. A `hook` entry runs your code: return `false` or throw to
-   fail it. Throw an `AgentError` to keep its code, such as
-   `ENVIRONMENT_UNAVAILABLE` when the backend is down.
+   `agent.assert`. A `hook` entry runs your code and holds only when it
+   returns `true`: `false`, `undefined`, or a throw fails it. Throw an
+   `AgentError` to keep its code, such as `ENVIRONMENT_UNAVAILABLE`.
 5. `agent.assert` of the Intent statement, with its `success` and `failure`
    criteria. Set `"judge": false` to skip this check when the screen can't
-   show the Intent. A case with `"judge": false` needs evidence or a `verify`
-   step, or it fails to load.
+   show the Intent. Such a case needs evidence or a `verify` step, or it
+   fails to load.
 
 Context reaches the model as the test's
-[`agentContext`](/agents#instructions-and-vocabulary). It holds the system,
-environment, actor, preconditions (a hook's `description` included),
-`facts`, and the files `prompts` names, relative to the case file. `specRef`, `buildRef`, and `tools` never reach the model. Context's
-`agent` pins the test to [agents](/agents#pin-an-agent-in-the-suite) by name.
+[`agentContext`](/agents#instructions-and-vocabulary): the system,
+environment, actor, preconditions, `facts`, and the files `prompts` names,
+relative to the case file. The refs and `tools` never reach the model.
+
+## Run a case on several dimensions
+
+Keep dimensions out of Intent's meaning. Set where a case runs in
+`Context`, and its data in `Variants`:
+
+| Dimension | Field |
+| --- | --- |
+| Persona or role | `Context.agent`, an [agent](/agents#pin-an-agent-in-the-suite) by name |
+| Platform | `Context.platforms`, such as `["ios", "android"]` |
+| Signed-in state | `Context.session`, a session a [setup test](/authentication) saved |
+| Required capability | `Context.requires` |
+| Data: codes, amounts, locales | `Variants[].params`, used as `{name}` placeholders |
+
+```json
+"Variants": [
+  { "id": "save10", "params": { "code": "SAVE10" } },
+  { "id": "save20-mobile", "params": { "code": "SAVE20" }, "platforms": ["ios", "android"] }
+]
+```
+
+Each variant runs as its own test, tagged `cige:<id>/<variant>`, with its
+own run summary. It shares the case's Intent, Guardrails, and evidence, and
+may override `platforms`, `agent`, and `session`. An `act` step gets the
+value as a param; a judgment gets it filled into its text. A param that
+fills no placeholder fails to load.
 
 ## Guardrails
 
@@ -177,37 +286,38 @@ the action. It can't prevent the action. Keep tests that could cause
 damage, like real payments, out of environments where that damage counts.
 </Note>
 
-## Run summaries
+## Read a run summary
 
-Add the reporter to the config:
+After the run, the reporter writes `<output>/cige/<id>.run-summary.json`
+for each CIGE result, `<id>.<variant>.run-summary.json` for a variant.
+`<output>` is `.e2e` unless [`output`](/reference/config#output) or
+`--output` sets it, and `outputDir` in the config moves the summaries.
 
-```ts title="e2e.config.ts"
-import type { E2EConfig } from 'e2e';
-import { web } from '@e2e-dev/web';
-import { cige } from '@e2e-dev/cige';
-import { gateway } from 'ai';
-
-export default {
-  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
-  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
-  reporters: ['list', cige({ cases: 'tests/cige/*.cige.json', build: process.env.GITHUB_SHA })],
-} satisfies E2EConfig;
-```
-
-After the run, the reporter writes `<output>/cige/<id>.run-summary.json` for
-each CIGE result the run selected. `<output>` is `.e2e` unless the config's
-[`output`](/reference/config#output) or `--output` sets it, and `outputDir`
-puts the summaries elsewhere.
-
-- It deletes the summaries of the previous run first, and no other file.
-- A `--last-failed` rerun keeps the summaries of the cases it did not run,
-  and writes one for each failure it carried without running, with the
-  signal `carried-from-earlier-run`.
+- It deletes the previous run's summaries and refs first, and no other file.
+- A `--last-failed` rerun keeps the summaries of the cases it didn't run,
+  and writes one for each failure it carried, with the signal
+  `carried-from-earlier-run`.
 - A case that ran on several targets or agents gets one file per result,
   named `<id>.<target>.<agent>.run-summary.json`.
 
-The summary for a case whose path changed:
+`failureType` is a first guess from the error code and where the failure
+landed. It is a hint for the classifying agent, not a verdict:
 
+| Where and what | `failureType` |
+| --- | --- |
+| A precondition failed, or a credential, environment, seed data, or model code such as `ENVIRONMENT_UNAVAILABLE` | `infrastructure` |
+| An Execution `step` failed with `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
+| A `verify`, a piece of evidence, or the Intent was judged false (`ASSERTION_FAILED`) | `product-defect` |
+| A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, or `CONTEXT_OVERFLOW` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
+| A guardrail violation, an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
+
+A pass has no `failureType`. When no evidence hook backs it, its signals
+include `screen-only-evidence`: check it for a false positive. A failure
+without `specRef` or `buildRef` gets `missing-spec-ref` or
+`missing-build-ref`, since a classifier can't tell a bug from a change
+without them.
+
+<Accordion title="Example run summary">
 ```json title=".e2e/cige/checkout-discount.run-summary.json"
 {
   "testId": "checkout-discount",
@@ -226,7 +336,10 @@ The summary for a case whose path changed:
     "signals": ["status:failed", "phase:execution", "code:LOCATOR_NOT_FOUND"]
   },
   "specRef": "docs/specs/checkout.md",
-  "buildRef": "CHANGELOG.md",
+  "buildRef": "releases/4f1c2e9.md",
+  "expectedRef": "fixtures/4f1c2e9/checkout-order.json",
+  "resolveRefs": "npx e2e-cige refs checkout-discount",
+  "replay": { "environment": "staging", "command": "npx e2e-cige replay checkout-discount" },
   "case": "tests/cige/checkout.cige.json",
   "target": "web",
   "agent": "default",
@@ -239,53 +352,101 @@ The summary for a case whose path changed:
   }
 }
 ```
+</Accordion>
 
-`failureType` is a first guess from the error code and where the failure
-landed. It is a hint for the classifying agent, not a verdict:
+## Classify and repair with the cige skill
 
-| Where and what | `failureType` |
-| --- | --- |
-| A precondition failed, or a credential, environment, seed data, or model code such as `ENVIRONMENT_UNAVAILABLE` | `infrastructure` |
-| An Execution `step` failed with `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
-| A `verify`, a piece of evidence, or the Intent was judged false (`ASSERTION_FAILED`) | `product-defect` |
-| A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, or `CONTEXT_OVERFLOW` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
-| A guardrail violation, an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
+The `cige` skill starts from the run summaries. It confirms or corrects
+each `failureType` against the refs, then names the one repair allowed:
 
-A passing summary has no `failureType`. If no evidence hook backs the pass,
-its signals include `screen-only-evidence`. That pass rests on what the
-screen showed, so check it for a false positive.
-
-## Classify and repair
-
-The run summary is where the
-[CIGE agent skills](https://github.com/vivekkrishna/agentic-validation-skills)
-start. `cige-failure-classification` reads a summary and confirms or
-corrects its `failureType` against `specRef` and `buildRef`. It then
-names the one skill that may act, and the field that skill may change:
-
-| Classification | Skill | May change |
+| Classification | The skill | May change |
 | --- | --- | --- |
-| Infrastructure | `cige-environment-recovery` | The environment, never the case |
-| Outdated test logic | `cige-stale-execution-repair` | `Execution` |
-| False positive | `cige-stale-execution-repair` | `Guardrails`, only stricter |
-| Product defect | `cige-product-defect-escalation` | Nothing: it files a defect, or proposes an Intent change for a human |
-
-A repair is a diff to the `.cige.json` file. Replay it on its own with
-`--tag cige:<id>` and `--no-cache` before a human reviews it:
+| Infrastructure | Restores the environment with `e2e-cige env` | Nothing in the case. Context only as a proposal for a human |
+| Outdated test logic | Rewrites the path, after it looks at the live app over [`e2e mcp`](/mcp) | `Execution` |
+| False positive | Makes the case stricter | Adds guardrails, deny patterns, criteria, or evidence |
+| Product defect | Files a bug, or proposes an Intent change when the spec and release notes agree | Nothing on its own |
 
 <CodeGroup>
 ```bash npm
-npx e2e run --tag cige:checkout-discount --no-cache
+npx skills add tester-army/e2e --skill cige
 ```
 
 ```bash pnpm
-pnpm exec e2e run --tag cige:checkout-discount --no-cache
+pnpm dlx skills add tester-army/e2e --skill cige
 ```
 
 ```bash bun
-bunx e2e run --tag cige:checkout-discount --no-cache
+bunx skills add tester-army/e2e --skill cige
 ```
 </CodeGroup>
+
+The [e2e plugin](/coding-agents) for Claude Code and Codex includes it.
+
+## Replay a repair
+
+`e2e-cige replay` runs one case alone in its environment. It runs the
+environment's `reset`, then `e2e run` with the environment's `config`,
+`--tag cige:<id>`, and `--no-cache`, and exits with e2e's code:
+
+<CodeGroup>
+```bash npm
+npx e2e-cige replay checkout-discount
+npx e2e-cige env reset staging
+npx e2e-cige refs checkout-discount
+```
+
+```bash pnpm
+pnpm exec e2e-cige replay checkout-discount
+pnpm exec e2e-cige env reset staging
+pnpm exec e2e-cige refs checkout-discount
+```
+
+```bash bun
+bunx e2e-cige replay checkout-discount
+bunx e2e-cige env reset staging
+bunx e2e-cige refs checkout-discount
+```
+</CodeGroup>
+
+- `--variant <v>` replays one variant. Arguments after `--` go to
+  `e2e run`, such as `-- --target web`.
+- `env <provision|reset|teardown> <name>` runs one environment action and
+  touches no case.
+- `refs <id>` runs the config's `refs` resolvers and writes what they
+  return to `.e2e/cige/<id>.refs/`. Resolvers run only here, never during a
+  run. What they return is written for an agent to read, so never return a
+  secret.
+
+To start every replay from the same state, give the environment a config
+whose target uses [`@e2e-dev/smol`](/integrations/smol), with the app
+[running in the machine](/integrations/smol#run-the-app-in-the-machine).
+
+## Check a change against the field rules
+
+`e2e-cige diff` reads every `.cige.json` that changed since a git ref and
+fails when a change weakens a case. Run it in CI and after every repair:
+
+<CodeGroup>
+```bash npm
+npx e2e-cige diff --base origin/main
+```
+
+```bash pnpm
+pnpm exec e2e-cige diff --base origin/main
+```
+
+```bash bun
+bunx e2e-cige diff --base origin/main
+```
+</CodeGroup>
+
+It exits 1 when Intent's statement changed, or when a criterion, evidence
+item, guardrail, deny pattern, variant, or whole case was removed, a
+judgment was turned off, or an `id` changed. Pass `--allow-intent` once a
+human approved the change. Rewriting Execution, adjusting Context, and
+adding guardrails, deny patterns, criteria, evidence, or variants pass.
+`--json` prints the report, with `intentUnchanged` and the count of
+`blocking` changes.
 
 ## Next
 
@@ -293,7 +454,7 @@ bunx e2e run --tag cige:checkout-discount --no-cache
   <Card title="Agents and personas" icon="users" href="/agents">
     Pin a case to an agent, or run it as several personas.
   </Card>
-  <Card title="Project tools" icon="wrench" href="/tools">
-    Give the agent the test API a case's Context describes.
+  <Card title="Coding agents" icon="robot" href="/coding-agents">
+    Install the e2e plugin with the cige skill.
   </Card>
 </CardGroup>

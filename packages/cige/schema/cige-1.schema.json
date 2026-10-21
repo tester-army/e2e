@@ -25,6 +25,12 @@
       "minItems": 1,
       "description": "The first path to try, one goal per entry. Steps are guidance a repair may change while Intent and Guardrails hold.",
       "items": { "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/act" }, { "$ref": "#/$defs/verify" }] }
+    },
+    "Variants": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Combinations of the case's dimensions. Each variant fills the {name} placeholders in Intent, Execution, and evidence, may pin where it runs, and runs as its own test tagged cige:<id>/<variant>. Intent, Guardrails, and evidence are shared.",
+      "items": { "$ref": "#/$defs/variant" }
     }
   },
   "$defs": {
@@ -32,16 +38,19 @@
     "text": { "type": "string", "minLength": 1, "pattern": "\\S" },
     "context": {
       "type": "object",
-      "description": "The operating ground. Everything but specRef, buildRef, tools, and open becomes the test's agentContext, which every agent step reads, so it holds facts, never instructions.",
+      "description": "The operating ground. system, environment, actor, preconditions, facts, and prompts become the test's agentContext, which every agent step reads, so they hold facts, never instructions. The rest pick where the case runs or point to the ground truth a failure is classified against.",
       "additionalProperties": false,
       "properties": {
         "system": { "$ref": "#/$defs/text", "description": "The app or service under test." },
-        "environment": { "$ref": "#/$defs/text" },
+        "environment": { "$ref": "#/$defs/text", "description": "Where the case runs: prose for the model, and the name of the environment in the CIGE config that replays it." },
         "actor": { "$ref": "#/$defs/text", "description": "Who the agent acts as." },
         "agent": {
           "description": "The configured agent (agents.<name>) or agents the test runs as.",
           "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } }]
         },
+        "platforms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" }, "description": "The platforms the case runs on (web, ios, android); other targets skip it." },
+        "requires": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" }, "description": "Capabilities a target must have to run the case." },
+        "session": { "$ref": "#/$defs/id", "description": "The session a setup test saved, restored before the case runs." },
         "open": { "$ref": "#/$defs/text", "description": "The app path to open before the first step." },
         "tools": { "type": "array", "items": { "$ref": "#/$defs/text" }, "description": "Documentation of the tools the agent has; configure them on the agents entry." },
         "preconditions": {
@@ -63,8 +72,9 @@
         },
         "facts": { "type": "array", "items": { "$ref": "#/$defs/text" } },
         "prompts": { "type": "array", "items": { "$ref": "#/$defs/text" }, "description": "Paths, relative to this file, of reusable context fragments." },
-        "specRef": { "$ref": "#/$defs/text", "description": "A pointer to the spec that defines expected behavior. Never sent to the model; read only to classify a failure." },
-        "buildRef": { "$ref": "#/$defs/text", "description": "A pointer to the build under test and its release notes. Never sent to the model." }
+        "specRef": { "$ref": "#/$defs/text", "description": "A pointer to the spec that defines expected behavior, with {build} and {environment} filled in. Never sent to the model; read only to classify a failure." },
+        "buildRef": { "$ref": "#/$defs/text", "description": "A pointer to the build under test and its release notes, with {build} and {environment} filled in. Never sent to the model." },
+        "expectedRef": { "$ref": "#/$defs/text", "description": "A pointer to what the build is expected to produce (mocks, fixtures, golden data), with {build} and {environment} filled in. Never sent to the model." }
       }
     },
     "intent": {
@@ -126,6 +136,22 @@
         "id": { "$ref": "#/$defs/id" },
         "step": { "$ref": "#/$defs/text" },
         "params": { "type": "object", "description": "Values the step refers to as {name}." }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "params": {
+          "type": "object",
+          "description": "Values for the case's {name} placeholders. Every name must appear as a placeholder.",
+          "additionalProperties": { "type": ["string", "number", "boolean"] }
+        },
+        "platforms": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/text" } },
+        "agent": { "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/id" } }] },
+        "session": { "$ref": "#/$defs/id" }
       }
     },
     "verify": {

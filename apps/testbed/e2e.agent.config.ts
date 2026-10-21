@@ -1,6 +1,8 @@
 import type { E2EConfig } from 'e2e';
+import { cige } from '@e2e-dev/cige';
 import { web } from '@e2e-dev/web';
 import { gateway } from 'ai';
+import cigeConfig from './cige.config.ts';
 
 /**
  * Live trace view: `E2E_DEVTOOLS=1` registers the AI SDK devtools recorder,
@@ -58,6 +60,8 @@ export default {
       ].join(' '),
     },
   },
+  // One run summary per CIGE result under .e2e/cige/ (tests-agent/cige.e2e.ts).
+  reporters: ['list', cige(cigeConfig)],
   credentials: {
     admin: {
       username: 'admin',

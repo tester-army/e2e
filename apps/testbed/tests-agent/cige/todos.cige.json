@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/@e2e-dev/cige/schema/cige-1.schema.json",
+  "id": "todo-done",
+  "Context": {
+    "system": "e2e playground todo list",
+    "environment": "local",
+    "open": "/todos",
+    "preconditions": ["The todo list starts empty"]
+  },
+  "Intent": {
+    "statement": "A user can add a todo and mark it as done",
+    "evidence": [{ "id": "none-remaining", "hook": "todoDone", "description": "The remaining counter reads 0 remaining" }]
+  },
+  "Guardrails": [{ "id": "no-delete", "rule": "Never delete a todo; mark it done instead", "deny": { "summary": ["delete"] } }],
+  "Execution": [
+    { "id": "e1", "step": "add a todo named \"Water the plants\"" },
+    { "id": "e2", "step": "mark \"Water the plants\" as done" },
+    { "id": "e3", "verify": "\"Water the plants\" is shown as done" }
+  ]
+}

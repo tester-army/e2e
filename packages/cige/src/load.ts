@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 
 import { sizeProblems } from './render.ts';
 import { CigeValidationError, parseCige, type CigeCase } from './schema.ts';
+import { expandVariants } from './variants.ts';
 
 /** Where relative globs and paths resolve from: a directory path or a `file:` URL. */
 export type CigeRoot = string | URL;
@@ -67,7 +68,8 @@ export function checkCases(cases: readonly CigeCase[]): void {
   const byId = new Map<string, CigeCase>();
   for (const testCase of cases) {
     const source = display(testCase.file ?? testCase.id);
-    const problems = sizeProblems(testCase);
+    // A variant's values can push a statement over a limit, so every resolved case is measured.
+    const problems = [...new Set(expandVariants(testCase).flatMap((resolved) => sizeProblems(resolved)))];
     if (testCase.context.fragments.length !== testCase.context.prompts.length) {
       problems.push('Context.prompts are not read; load the case with loadCigeFile, or read them into context.fragments');
     }

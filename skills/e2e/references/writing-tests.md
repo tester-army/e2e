@@ -457,3 +457,7 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 - No sleeps or polling loops; a matcher with a longer `timeout` instead.
 - `await` every step call and `expect.poll`, else `STEP_NOT_AWAITED` at the line of the call.
 - Assert the fact a model produced with `toContain`, not its exact sentence.
+- A project with `.cige.json` files or a `cige.config.ts` writes agentic
+  tests as CIGE cases (`@e2e-dev/cige`, docs page `/cige`); the `cige`
+  skill (`npx skills add tester-army/e2e --skill cige`) authors,
+  classifies, and repairs them.

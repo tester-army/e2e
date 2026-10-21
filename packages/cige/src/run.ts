@@ -15,9 +15,12 @@ import type { CigeCase } from './schema.ts';
 
 /**
  * A precondition or evidence hook: your code, named from the CIGE file.
- * Resolve to `false` to fail an evidence item; throw to fail it with your
- * own message. An `AgentError` you throw keeps its code, so a hook that
- * finds the environment down can say so with `ENVIRONMENT_UNAVAILABLE`.
+ * An evidence hook holds only when it resolves to `true`: `false`,
+ * `undefined` (a forgotten `return`), or any other value fails it, so a
+ * hook can't pass a case by accident. Throw to fail it with your own
+ * message. An `AgentError` you throw keeps its code, so a hook that finds
+ * the environment down can say so with `ENVIRONMENT_UNAVAILABLE`. A
+ * precondition hook's return value is ignored; it fails only by throwing.
  */
 export type CigeHook<Fixtures = TestFixtures> = (fixtures: Fixtures, testCase: CigeCase) => unknown;
 
@@ -26,6 +29,15 @@ export type CigeHooks<Fixtures = TestFixtures> = Readonly<Record<string, CigeHoo
 export interface RunCigeOptions<Fixtures = TestFixtures> {
   /** The hooks the case's preconditions and evidence name. */
   readonly hooks?: CigeHooks<Fixtures>;
+}
+
+/** A hook's return value, short enough for an error message; never throws on a circular or BigInt value. */
+function describeValue(value: unknown): string {
+  try {
+    return (JSON.stringify(value) ?? String(value)).slice(0, 120);
+  } catch {
+    return typeof value;
+  }
 }
 
 function messageOf(cause: unknown): string {
@@ -95,8 +107,9 @@ export async function runCige<Fixtures extends TestFixtures>(
       if (isAgentError(cause)) throw cause;
       throw new AgentError('ASSERTION_FAILED', `CIGE evidence ${item.id} not satisfied: ${messageOf(cause)}`, { cause });
     }
-    if (held === false) {
-      throw new AgentError('ASSERTION_FAILED', `CIGE evidence ${item.id} not satisfied: hook ${item.hook} returned false`);
+    if (held !== true) {
+      const returned = held === undefined ? 'nothing; an evidence hook must return true to hold' : describeValue(held);
+      throw new AgentError('ASSERTION_FAILED', `CIGE evidence ${item.id} not satisfied: hook ${item.hook} returned ${returned}`);
     }
   }
 

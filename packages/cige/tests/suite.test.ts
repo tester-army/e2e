@@ -5,7 +5,8 @@
  * summary must say so.
  */
 
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run } from 'e2e/runner';
@@ -16,9 +17,12 @@ import { cige, type CigeRunSummary } from '../src/reporter.ts';
 // Inside the package, so `e2e` and `@e2e-dev/cige` resolve the way they do for a user.
 const PROJECT = fileURLToPath(new URL('./tmp-projects/suite/', import.meta.url));
 
+const BIN = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
+
 const CONFIG = `import type { E2EConfig, StepExecutor } from 'e2e';
 import { defineEngine } from 'e2e/engine';
 import { cige } from '@e2e-dev/cige';
+import cigeConfig from './cige.config.ts';
 
 const root = { ref: { id: 'root', revision: '' }, role: 'window' as const, children: [] };
 
@@ -46,7 +50,7 @@ const scripted: StepExecutor = {
       await ctx.budgets.runTool({ name: 'refund', mutates: true }, async () => 'refunded');
       return { status: 'passed', summary: 'refunded the order' };
     }
-    if (text.startsWith('press the old')) {
+    if (text.startsWith('press the old') || ctx.step.params?.method === 'voucher') {
       return { status: 'failed', errorCode: 'LOCATOR_NOT_FOUND', summary: 'there is no such button any more' };
     }
     if (ctx.step.kind === 'assert' && text.includes('discount')) {
@@ -62,15 +66,19 @@ export default {
   workers: 1,
   retries: 0,
   agents: { default: { executor: scripted } },
-  reporters: [cige({ cases: ['cases/*.cige.json', 'serial-cases/*.cige.json'], build: 'test-build' })],
+  reporters: [cige({ ...cigeConfig, cases: ['cases/*.cige.json', 'serial-cases/*.cige.json'] })],
 } satisfies E2EConfig;
 `;
 
-const SUITE = `import { AgentError } from 'e2e';
-import { cigeSuite } from '@e2e-dev/cige';
+// One config for the suite, the reporter, and the e2e-cige command, the way the docs set it up.
+const CIGE_CONFIG = `import { writeFileSync } from 'node:fs';
+import { AgentError } from 'e2e';
+import { defineCige } from '@e2e-dev/cige';
 
-cigeSuite('cases/*.cige.json', {
-  root: new URL('..', import.meta.url),
+export default defineCige({
+  cases: 'cases/*.cige.json',
+  root: new URL('.', import.meta.url),
+  build: 'test-build',
   hooks: {
     orderExists: () => true,
     orderMissing: () => false,
@@ -78,7 +86,22 @@ cigeSuite('cases/*.cige.json', {
       throw new AgentError('ENVIRONMENT_UNAVAILABLE', 'the staging API is down');
     },
   },
+  environments: {
+    memory: { config: 'e2e.config.ts', reset: () => writeFileSync(new URL('./reset-ran.txt', import.meta.url), 'memory') },
+  },
+  refs: {
+    build: ({ build, pointer }) => ({ text: \`Release notes for \${build} from \${pointer}\` }),
+    spec: () => {
+      throw new Error('the wiki is down');
+    },
+  },
 });
+`;
+
+const SUITE = `import { cigeSuite } from '@e2e-dev/cige';
+import config from '../cige.config.ts';
+
+cigeSuite(config);
 `;
 
 const CASES: Record<string, object> = {
@@ -98,7 +121,7 @@ const CASES: Record<string, object> = {
   },
   stale: {
     id: 'stale',
-    Context: {},
+    Context: { environment: 'memory', buildRef: 'releases/{build}.md' },
     Intent: 'A shopper can open checkout',
     Execution: [{ id: 'e1', step: 'add one item to the cart' }, { id: 'e2', step: 'press the old Checkout button' }],
   },
@@ -113,6 +136,16 @@ const CASES: Record<string, object> = {
     Context: {},
     Intent: { statement: 'An order is persisted', judge: false, evidence: [{ id: 'order-record', hook: 'orderMissing' }] },
     Execution: [{ id: 'e1', step: 'place an order' }],
+  },
+  variants: {
+    id: 'variants',
+    Context: {},
+    Intent: 'A shopper can pay by {method}',
+    Execution: [{ id: 'e1', step: 'pay by {method}' }],
+    Variants: [
+      { id: 'card', params: { method: 'card' } },
+      { id: 'voucher', params: { method: 'voucher' } },
+    ],
   },
   infrastructure: {
     id: 'infrastructure',
@@ -152,6 +185,7 @@ beforeAll(async () => {
   }
   mkdirSync(path.join(PROJECT, 'tests'), { recursive: true });
   writeFileSync(path.join(PROJECT, 'e2e.config.ts'), CONFIG);
+  writeFileSync(path.join(PROJECT, 'cige.config.ts'), CIGE_CONFIG);
   writeFileSync(path.join(PROJECT, 'tests', 'cige.e2e.ts'), SUITE);
   for (const [name, testCase] of Object.entries(CASES)) {
     writeFileSync(path.join(PROJECT, 'cases', `${name}.cige.json`), JSON.stringify(testCase, null, 2));
@@ -168,7 +202,7 @@ beforeAll(async () => {
   summaries = Object.fromEntries(
     readdirSync(dir).filter((file) => file.endsWith('.run-summary.json')).map((file) => {
       const summary = JSON.parse(readFileSync(path.join(dir, file), 'utf8')) as CigeRunSummary;
-      return [summary.testId, summary];
+      return [summary.variant === undefined ? summary.testId : `${summary.testId}.${summary.variant}`, summary];
     }),
   );
 }, 120_000);
@@ -190,7 +224,30 @@ describe('cigeSuite through the runner', () => {
       'serial-cart',
       'serial-checkout',
       'stale',
+      'variants.card',
+      'variants.voucher',
     ]);
+  });
+
+  it('runs a case once per variant, each tagged and titled apart', () => {
+    expect(tags['A shopper can pay by card [card]']).toEqual(['cige', 'cige:variants', 'cige:variants/card']);
+    expect(tags['A shopper can pay by voucher [voucher]']).toEqual(['cige', 'cige:variants', 'cige:variants/voucher']);
+    expect(summaries['variants.card']).toMatchObject({ testId: 'variants', variant: 'card', result: 'pass', intent: 'A shopper can pay by card' });
+    expect(summaries['variants.voucher']).toMatchObject({ variant: 'voucher', result: 'fail', failedStep: 'e1', failureType: 'outdated-test-logic' });
+    expect(written).toContain('variants.voucher.run-summary.json');
+  });
+
+  it('points a failure at its environment, its refs, and the command that replays it', () => {
+    expect(summaries.stale).toMatchObject({
+      buildRef: 'releases/test-build.md',
+      resolveRefs: 'npx e2e-cige refs stale',
+      replay: { environment: 'memory', command: 'npx e2e-cige replay stale' },
+    });
+    // The config's refs.spec resolver covers the missing specRef.
+    expect(summaries.stale?.classification.signals).not.toContain('missing-spec-ref');
+    expect(summaries.stale?.classification.signals).not.toContain('missing-build-ref');
+    expect(summaries['variants.voucher']?.replay.command).toBe('npx e2e-cige replay variants --variant voucher');
+    expect(summaries.pass?.classification.signals).not.toContain('missing-spec-ref');
   });
 
   it('replaces the summaries of an earlier run and leaves other files alone', () => {
@@ -287,10 +344,58 @@ describe('the reporter on a later run', () => {
     expect(summary.classification.signals).toContain('carried-from-earlier-run');
   });
 
+  it('counts the cases that could not be fully triaged, under the run summary', async () => {
+    const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
+    // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.
+    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "6 cases can't be fully classified or replayed: npx e2e-cige check" });
+    const stale = JSON.parse(readFileSync(path.join(dir(), 'stale.run-summary.json'), 'utf8')) as CigeRunSummary;
+    expect(stale.classification.signals).toContain('missing-spec-ref');
+    expect(stale.classification.signals).not.toContain('missing-build-ref');
+  });
+
   it('clears old summaries when a run has no CIGE result to write', async () => {
     const none = { ...outcome.report, run: { ...outcome.report.run, results: [] } };
     await reporter().onRunFinished!(finished(none), new AbortController().signal);
     expect(readdirSync(dir()).filter((file) => file.endsWith('.run-summary.json'))).toEqual([]);
     expect(readdirSync(dir())).toContain('notes.txt');
+  });
+});
+
+describe('the e2e-cige command on the same project', () => {
+  const cli = (...args: string[]) => spawnSync(process.execPath, [BIN, ...args], { cwd: PROJECT, encoding: 'utf8' });
+
+  it('resolves a case refs on request, recording a resolver that failed', () => {
+    const result = cli('refs', 'stale');
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('the spec resolver failed: the wiki is down');
+    const dir = path.join(PROJECT, '.e2e', 'cige', 'stale.refs');
+    expect(readFileSync(path.join(dir, 'build.md'), 'utf8')).toBe('Release notes for test-build from releases/test-build.md\n');
+    const index = JSON.parse(readFileSync(path.join(dir, 'index.json'), 'utf8')) as Record<string, unknown>;
+    expect(index).toMatchObject({
+      testId: 'stale',
+      build: 'test-build',
+      environment: 'memory',
+      refs: { build: { pointer: 'releases/test-build.md', text: 'build.md' }, spec: { error: 'the wiki is down' } },
+    });
+  });
+
+  it('replays one case alone after resetting its environment, and exits as e2e did', () => {
+    rmSync(path.join(PROJECT, 'reset-ran.txt'), { force: true });
+    const result = cli('replay', 'stale');
+    expect(result.stderr).toContain('e2e-cige: resetting memory');
+    expect(result.stderr).toContain('e2e run --config e2e.config.ts --tag cige:stale --no-cache');
+    expect(result.status).toBe(1);
+    expect(existsSync(path.join(PROJECT, 'reset-ran.txt'))).toBe(true);
+    const report = JSON.parse(readFileSync(path.join(PROJECT, '.e2e', 'report.json'), 'utf8')) as typeof outcome.report;
+    expect(report.run.results.filter((entry) => entry.selected).map((entry) => entry.titlePath.at(-1))).toEqual(['A shopper can open checkout']);
+  }, 120_000);
+
+  it('runs an environment action and refuses one the environment lacks', () => {
+    rmSync(path.join(PROJECT, 'reset-ran.txt'), { force: true });
+    expect(cli('env', 'reset', 'memory').status).toBe(0);
+    expect(existsSync(path.join(PROJECT, 'reset-ran.txt'))).toBe(true);
+    const missing = cli('env', 'teardown', 'memory');
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toContain('environment "memory" has no teardown action');
   });
 });

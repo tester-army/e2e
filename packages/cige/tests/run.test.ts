@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { isAgentError, type ActOptions, type AssertOptions, type TestFixtures } from 'e2e';
+import { isAgentError, type ActOptions, type AssertOptions, type TestAPI, type TestFixtures, type TestOptions } from 'e2e';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { breakingGuardrail, createGuardrailMonitor, violatedGuardrail } from '../src/guardrails.ts';
@@ -10,6 +10,7 @@ import { actInstruction, GUARDRAIL_HEADING, intentAssertion, renderAgentContext 
 import { missingHooks, runCige } from '../src/run.ts';
 import { cigeSuite } from '../src/suite.ts';
 import { parseCige, type CigeTestCase } from '../src/schema.ts';
+import { expandVariants } from '../src/variants.ts';
 
 const dirs: string[] = [];
 afterEach(() => {
@@ -246,6 +247,17 @@ describe('runCige', () => {
     expect(calls.at(-1)?.text).not.toContain('A shopper can check out');
   });
 
+  it('fails evidence a hook forgot to return, rather than passing it', async () => {
+    const { fixtures } = fakeFixtures();
+    const run = runCige(testCase, fixtures, { hooks: { seedCart: () => undefined, orderExists: () => undefined } });
+    await expect(run).rejects.toMatchObject({
+      code: 'ASSERTION_FAILED',
+      message: 'CIGE evidence order-record not satisfied: hook orderExists returned nothing; an evidence hook must return true to hold',
+    });
+    const truthy = runCige(testCase, fakeFixtures().fixtures, { hooks: { seedCart: () => undefined, orderExists: () => 'yes' } });
+    await expect(truthy).rejects.toThrow('hook orderExists returned "yes"');
+  });
+
   it('reports a failing precondition as test setup', async () => {
     const { fixtures } = fakeFixtures();
     const run = runCige(testCase, fixtures, {
@@ -261,5 +273,60 @@ describe('runCige', () => {
 
   it('lists the hooks a case names but the suite lacks', () => {
     expect(missingHooks(testCase, { seedCart: () => undefined })).toEqual(['orderExists']);
+  });
+});
+
+describe('variants', () => {
+  const testCase = parseCige({
+    id: 'pay',
+    Context: { environment: 'staging', platforms: ['web'] },
+    Intent: { statement: 'A shopper can pay by {method}', evidence: ['the receipt names {method}'] },
+    Execution: [
+      { id: 'e1', step: 'pay by {method}', params: { note: 'gift' } },
+      { id: 'e2', verify: 'the {method} payment shows' },
+      { id: 'e3', step: 'open the receipt' },
+    ],
+    Variants: [
+      { id: 'card', params: { method: 'card' } },
+      { id: 'cash', params: { method: 'cash' }, platforms: ['ios'], session: 'cashier' },
+    ],
+  });
+
+  it('resolves one case per variant: params for act steps, filled text for judgments', () => {
+    const [card, cash] = expandVariants(testCase);
+    expect(card?.variant).toBe('card');
+    expect(card?.execution[0]).toEqual({ kind: 'act', id: 'e1', text: 'pay by {method}', params: { note: 'gift', method: 'card' } });
+    expect(card?.execution[1]).toMatchObject({ kind: 'verify', text: 'the card payment shows' });
+    expect(card?.execution[2]).toEqual({ kind: 'act', id: 'e3', text: 'open the receipt' });
+    expect(card?.intent.statement).toBe('A shopper can pay by card');
+    expect(card?.intent.evidence[0]).toMatchObject({ text: 'the receipt names card' });
+    expect(card?.context.platforms).toEqual(['web']);
+    expect(cash?.context).toMatchObject({ platforms: ['ios'], session: 'cashier' });
+    expect(expandVariants(card!)).toEqual([card]);
+  });
+
+  function registered(cases: Parameters<typeof cigeSuite>[0], options: Omit<Parameters<typeof cigeSuite>[1] & object, 'test'> = {}): [string, TestOptions][] {
+    const calls: [string, TestOptions][] = [];
+    const test = ((title: string, testOptions: TestOptions) => void calls.push([title, testOptions])) as unknown as TestAPI;
+    cigeSuite(cases, { ...options, test });
+    return calls;
+  }
+
+  it('registers each variant as its own test, with its tags and where it runs', () => {
+    const calls = registered([testCase], { options: { tags: ['payments'], platforms: ['android'] } });
+    expect(calls.map(([title]) => title)).toEqual(['A shopper can pay by card [card]', 'A shopper can pay by cash [cash]']);
+    expect(calls[0]?.[1]).toMatchObject({ tags: ['cige', 'cige:pay', 'cige:pay/card', 'payments'], platforms: ['web'] });
+    expect(calls[1]?.[1]).toMatchObject({ tags: ['cige', 'cige:pay', 'cige:pay/cash', 'payments'], platforms: ['ios'], session: 'cashier' });
+  });
+
+  it('refuses a case whose environment the config does not declare', () => {
+    expect(() => registered([testCase], { environments: { local: {} } })).toThrow(/Context.environment "staging" is not one of the config's environments \(local\)/);
+    expect(() => registered([testCase], { environments: { staging: {} } })).not.toThrow();
+  });
+
+  it('reads cases, hooks, and environments from a CIGE config', () => {
+    const dir = project({ 'tests/cige/pay.cige.json': JSON.stringify({ id: 'pay', Context: { environment: 'staging' }, Intent: 'A shopper can pay', Execution: ['pay'] }) });
+    expect(registered({ cases: 'tests/cige/*.cige.json', root: dir, environments: { staging: {} } }).map(([title]) => title)).toEqual(['A shopper can pay']);
+    expect(() => registered({ cases: 'tests/cige/*.cige.json', root: dir, environments: { local: {} } })).toThrow(/not one of the config's environments/);
   });
 });
