@@ -1,6 +1,7 @@
 /**
- * BrowserStack's App Automate REST API over `fetch`: finds a session by its
- * build and name, with its start time and the URL of its video.
+ * BrowserStack's App Automate REST API over `fetch`: uploads a build from a
+ * URL, and finds a session by its build and name, with its start time and the
+ * URL of its video.
  */
 
 import { ConfigurationError } from 'e2e/engine';
@@ -10,6 +11,9 @@ import type { BrowserStackCredentials } from './credentials.ts';
 const DEFAULT_API_ENDPOINT = 'https://api-cloud.browserstack.com/app-automate';
 
 const REQUEST_TIMEOUT_MS = 15_000;
+
+/** BrowserStack downloads the build before it answers an upload from a URL. */
+const UPLOAD_TIMEOUT_MS = 300_000;
 
 /** Builds or sessions the list asks for at once. */
 const PAGE_SIZE = 50;
@@ -74,6 +78,19 @@ export async function findSession(endpoint: string, credentials: BrowserStackCre
   throw new Error(`BrowserStack has no session named ${JSON.stringify(sessionName)} in build ${JSON.stringify(build)}`);
 }
 
+/**
+ * Has BrowserStack fetch the build at `url` and returns its `bs://` app id:
+ * the session's `app` capability takes only an uploaded app, never a URL.
+ */
+export async function uploadAppFromUrl(endpoint: string, credentials: BrowserStackCredentials, url: string, signal: AbortSignal): Promise<string> {
+  const form = new FormData();
+  form.set('url', url);
+  const body = asRecord(await request(new URL(`${endpoint}/upload`), basicAuth(credentials), signal, 'BrowserStack app upload from a URL', { method: 'POST', body: form }));
+  const appUrl = body?.['app_url'];
+  if (typeof appUrl !== 'string' || !appUrl.startsWith('bs://')) throw new Error('BrowserStack app upload from a URL failed: no bs:// app id in the response');
+  return appUrl;
+}
+
 /** The `hashed_id` of the newest build named `build`. */
 async function findBuild(endpoint: string, auth: string, build: string, signal: AbortSignal): Promise<string> {
   const what = `BrowserStack build lookup for ${JSON.stringify(build)}`;
@@ -113,16 +130,23 @@ function basicAuth({ username, accessKey }: BrowserStackCredentials): string {
 
 /** One authenticated GET answered with a JSON array; anything else throws, as `what`, with the HTTP status and the API's message. */
 async function getRows(url: URL, auth: string, signal: AbortSignal, what: string): Promise<unknown[]> {
+  const body = await request(url, auth, signal, what);
+  if (!Array.isArray(body)) throw new Error(`${what} failed: no list in the response`);
+  return body;
+}
+
+/** One authenticated request answered with JSON; anything else throws, as `what`, with the HTTP status and the API's message. */
+async function request(url: URL, auth: string, signal: AbortSignal, what: string, init: { method: 'POST'; body: FormData } | undefined = undefined): Promise<unknown> {
   const timeout = new AbortController();
-  const timer = setTimeout(() => timeout.abort(), REQUEST_TIMEOUT_MS);
+  const timer = setTimeout(() => timeout.abort(), init === undefined ? REQUEST_TIMEOUT_MS : UPLOAD_TIMEOUT_MS);
   let response: Response;
   let text: string;
   try {
-    response = await fetch(url, { headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.any([signal, timeout.signal]) });
+    response = await fetch(url, { ...init, headers: { Authorization: auth, Accept: 'application/json' }, signal: AbortSignal.any([signal, timeout.signal]) });
     text = await response.text();
   } catch (cause) {
     if (signal.aborted) throw new Error(`${what} cancelled`, { cause });
-    if (timeout.signal.aborted) throw new Error(`${what} got no answer within ${REQUEST_TIMEOUT_MS / 1000} s`, { cause });
+    if (timeout.signal.aborted) throw new Error(`${what} got no answer within ${(init === undefined ? REQUEST_TIMEOUT_MS : UPLOAD_TIMEOUT_MS) / 1000} s`, { cause });
     throw new Error(`${what} failed: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
   } finally {
     clearTimeout(timer);
@@ -137,7 +161,6 @@ async function getRows(url: URL, auth: string, signal: AbortSignal, what: string
     const message = asRecord(body)?.['message'] ?? asRecord(body)?.['error'];
     throw new Error(`${what} failed: HTTP ${response.status}${typeof message === 'string' && message !== '' ? ` (${message.slice(0, 200)})` : ''}`);
   }
-  if (!Array.isArray(body)) throw new Error(`${what} failed: no list in the response`);
   return body;
 }
 

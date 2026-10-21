@@ -16,14 +16,16 @@ const mocks = vi.hoisted(() => ({
   start: vi.fn(),
   stop: vi.fn(async (_stateDir: string, _env: NodeJS.ProcessEnv, _signal: AbortSignal) => {}),
   heartbeat: vi.fn(),
+  upload: vi.fn(async (_endpoint: string, _credentials: unknown, _url: string, _signal: AbortSignal) => 'bs://UPLOADED'),
   stopHeartbeat: vi.fn(async () => {}),
 }));
 vi.mock('../../src/daemon.ts', () => ({ assertDriverVersion: mocks.version, startDriver: mocks.start, stopDriver: mocks.stop }));
+vi.mock('../../src/sessions.ts', async (original) => ({ ...(await original<typeof import('../../src/sessions.ts')>()), uploadAppFromUrl: mocks.upload }));
 vi.mock('../../src/heartbeat.ts', () => ({ LEASE_TTL_MS: 60_000, startHeartbeat: mocks.heartbeat }));
 
 const ROOT = '/project';
 const env = { BROWSERSTACK_USERNAME: 'ada', BROWSERSTACK_ACCESS_KEY: 'bs-key', PATH: '/bin' };
-const options: BrowserStackOptions = { device: 'Google Pixel 9', osVersion: '16.0', app: 'https://example.com/app.apk' };
+const options: BrowserStackOptions = { device: 'Google Pixel 9', osVersion: '16.0', app: 'bs://APP0' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -89,7 +91,7 @@ describe('browserstack()', () => {
       target: 'mobile',
       device: 'Google Pixel 9',
       providerOsVersion: '16.0',
-      providerApp: 'https://example.com/app.apk',
+      providerApp: 'bs://APP0',
       providerProject: 'e2e',
       providerBuild: 'run-1',
       providerSessionName: 'e2e-run-1-android-2',
@@ -160,7 +162,7 @@ describe('browserstack()', () => {
         target: 'mobile',
         device: 'Google Pixel 9',
         providerOsVersion: '16.0',
-        providerApp: 'https://example.com/app.apk',
+        providerApp: 'bs://APP0',
           providerProject: 'e2e',
         providerBuild: 'run-1',
         providerSessionName: 'e2e-run-1-android-1',
@@ -319,5 +321,31 @@ describe('browserstack()', () => {
     expect(() => browserstack({ ...options, noResignApp: 'yes' } as unknown as BrowserStackOptions)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'browserstack: `noResignApp` must be a boolean, not "yes"' }),
     );
+  });
+
+  it('has BrowserStack fetch an https build once per run and leases every slot with its bs:// id', async () => {
+    const provider = browserstack({ ...options, app: 'https://example.com/app.apk' });
+    const req = request();
+    await Promise.all([provider.acquire(req), provider.acquire(request({ slot: 1 }))]);
+    expect(mocks.upload).toHaveBeenCalledTimes(1);
+    expect(mocks.upload).toHaveBeenCalledWith('https://api-cloud.browserstack.com/app-automate', { username: 'ada', accessKey: 'bs-key' }, 'https://example.com/app.apk', req.signal);
+    expect([driver(0).allocate.providerApp, driver(1).allocate.providerApp]).toEqual(['bs://UPLOADED', 'bs://UPLOADED']);
+    expect(req.lines).toContain('uploaded https://example.com/app.apk as bs://UPLOADED');
+  });
+
+  it('starts no daemon when the upload fails, and uploads again on the next lease', async () => {
+    const provider = browserstack({ ...options, app: 'https://example.com/app.apk' });
+    mocks.upload.mockRejectedValueOnce(new Error('BrowserStack app upload from a URL failed: HTTP 422 (Invalid file)'));
+    await expect(provider.acquire(request())).rejects.toThrow('HTTP 422 (Invalid file)');
+    expect(mocks.start).not.toHaveBeenCalled();
+    await provider.acquire(request());
+    expect(mocks.upload).toHaveBeenCalledTimes(2);
+    expect(driver().allocate.providerApp).toBe('bs://UPLOADED');
+  });
+
+  it('passes a bs:// id or a local path through without uploading', async () => {
+    await browserstack(options).acquire(request());
+    await browserstack({ ...options, app: 'build/app.apk' }).acquire(request());
+    expect(mocks.upload).not.toHaveBeenCalled();
   });
 });

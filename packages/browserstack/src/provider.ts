@@ -13,7 +13,7 @@ import { ConfigurationError, rejectUnknownKeys, type ProviderRecordContext, type
 import { browserstackCredentials, type BrowserStackCredentials } from './credentials.ts';
 import { assertDriverVersion, startDriver, stopDriver } from './daemon.ts';
 import { LEASE_TTL_MS, startHeartbeat } from './heartbeat.ts';
-import { browserstackApiEndpoint, findSession, type SessionRef } from './sessions.ts';
+import { browserstackApiEndpoint, findSession, uploadAppFromUrl, type SessionRef } from './sessions.ts';
 
 /** agent-device's name for BrowserStack, as the lease provider and the tenant. */
 const PROVIDER = 'browserstack';
@@ -64,9 +64,9 @@ export interface BrowserStackOptions {
   /** OS version exactly as the catalog lists it for that device: `16.0` on Android, `18` on iOS. */
   readonly osVersion: string;
   /**
-   * The build BrowserStack installs on every session: a `bs://` app id, an
-   * `https` URL, or a local path, resolved against the project root and
-   * uploaded when the session starts.
+   * The build BrowserStack installs on every session: a `bs://` app id; an
+   * `https` URL, which BrowserStack fetches once per run; or a local path,
+   * resolved against the project root and uploaded when the session starts.
    */
   readonly app: string;
   /** Dashboard project the sessions are grouped under. Defaults to `e2e`. */
@@ -161,6 +161,18 @@ export function browserstack(options: BrowserStackOptions): DeviceProvider {
   if (noResignApp === true) deviceFeatures['providerNoResignApp'] = true;
   const { device, osVersion, app, project, build, sessionName } = options;
   const held = new Map<string, Held>();
+  /** An `https` build is uploaded once and its `bs://` id shared by every slot; a failed upload may be tried again. */
+  let uploaded: Promise<string> | undefined;
+
+  function providerApp(request: DeviceRequest, credentials: BrowserStackCredentials): Promise<string> {
+    if (!/^https?:\/\//i.test(app)) return Promise.resolve(appSource(app, request.projectRoot));
+    if (uploaded === undefined) {
+      const upload = uploadAppFromUrl(browserstackApiEndpoint(request.env), credentials, app, request.signal);
+      uploaded = upload;
+      upload.then((id) => request.log(`uploaded ${app} as ${id}`), () => { if (uploaded === upload) uploaded = undefined; });
+    }
+    return uploaded;
+  }
 
   /** One release per lease, shared by every caller; a failed one may be tried again. */
   function release(id: string | undefined, resource: Held, signal: AbortSignal): Promise<void> {
@@ -182,6 +194,8 @@ export function browserstack(options: BrowserStackOptions): DeviceProvider {
       if (noResignApp === true && request.platform !== 'ios') throw new ConfigurationError('INVALID_CONFIG', 'browserstack: `noResignApp` applies to iOS only');
       const credentials = browserstackCredentials(request.env);
       request.signal.throwIfAborted();
+      const appId = await providerApp(request, credentials);
+      request.signal.throwIfAborted();
       const dir = await mkdtemp(join(tmpdir(), 'e2e-browserstack-'));
       const resource: Held = { dir, stateDir: join(dir, 'state'), env: driverEnv(request.env, join(dir, 'home'), credentials) };
       const leaseBackend: LeaseBackend = request.platform === 'ios' ? 'ios-instance' : 'android-instance';
@@ -190,7 +204,7 @@ export function browserstack(options: BrowserStackOptions): DeviceProvider {
         target: 'mobile' as const,
         device,
         providerOsVersion: osVersion,
-        providerApp: appSource(app, request.projectRoot),
+        providerApp: appId,
         providerProject: project ?? DEFAULT_PROJECT,
         providerBuild: build ?? request.runId,
         providerSessionName: slotSessionName(sessionName, request),
@@ -265,7 +279,7 @@ function slotSessionName(sessionName: string | undefined, { runId, targetName, s
   return slots > 1 ? `${sessionName}-${slot + 1}` : sessionName;
 }
 
-/** `app` as the daemon reads it: a `bs://` id or URL as written, a local path resolved against the project root, never the daemon's working directory. */
+/** `app` as the daemon reads it: a `bs://` id as written, a local path resolved against the project root, never the daemon's working directory. */
 function appSource(app: string, projectRoot: string): string {
   if (isAbsolute(app) || /^[a-z][a-z0-9+.-]*:\/\//i.test(app)) return app;
   return resolve(projectRoot, app);

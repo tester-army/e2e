@@ -176,3 +176,24 @@ describe('browserstack().record()', () => {
     await expect(record(lease, context({ signal: controller.signal }))).rejects.toThrow('BrowserStack build lookup for "run-1" cancelled');
   });
 });
+
+describe('uploadAppFromUrl()', () => {
+  it('posts the URL as a form to the upload endpoint and returns the bs:// id', async () => {
+    const { uploadAppFromUrl } = await import('../../src/sessions.ts');
+    const seen: { url: string; method: string | undefined; field: unknown }[] = [];
+    vi.stubGlobal('fetch', async (input: string | URL, init: RequestInit = {}) => {
+      seen.push({ url: String(input), method: init.method, field: (init.body as FormData).get('url') });
+      return Response.json({ app_url: 'bs://NEW' });
+    });
+    await expect(uploadAppFromUrl(API, { username: 'ada', accessKey: 'bs-key' }, 'https://example.com/app.apk', new AbortController().signal)).resolves.toBe('bs://NEW');
+    expect(seen).toEqual([{ url: `${API}/upload`, method: 'POST', field: 'https://example.com/app.apk' }]);
+  });
+
+  it('reports a rejected upload with its message, and an answer without a bs:// id', async () => {
+    const { uploadAppFromUrl } = await import('../../src/sessions.ts');
+    vi.stubGlobal('fetch', async () => Response.json({ error: 'Invalid file format' }, { status: 422 }));
+    await expect(uploadAppFromUrl(API, { username: 'ada', accessKey: 'bs-key' }, 'https://example.com/x', new AbortController().signal)).rejects.toThrow('BrowserStack app upload from a URL failed: HTTP 422 (Invalid file format)');
+    vi.stubGlobal('fetch', async () => Response.json({ app_url: 'https://nope' }));
+    await expect(uploadAppFromUrl(API, { username: 'ada', accessKey: 'bs-key' }, 'https://example.com/x', new AbortController().signal)).rejects.toThrow('BrowserStack app upload from a URL failed: no bs:// app id in the response');
+  });
+});
