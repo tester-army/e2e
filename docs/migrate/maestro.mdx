@@ -12,7 +12,7 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 
 1. Read the migration guide above. It maps every Maestro config option and command to e2e and marks what e2e does not have yet. The mobile guide covers devices and app builds.
 2. e2e tests are TypeScript. If the project has no \`package.json\`, as in a native iOS or Android project, create the test project in an \`e2e/\` folder beside the app.
-3. If the test project has no e2e config (\`e2e.config.ts\` or \`e2e.config.mts\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent) there. It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
+3. If the test project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent) there. It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into the e2e config: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
@@ -60,7 +60,7 @@ The reference pages hold the details: [screen](/reference/screen),
 | `properties` (JUnit `<property>`) | Not yet |
 | `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) |
 | `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config |
-| `maestro test -c`, Maestro Studio | Not yet. `npx e2e mcp` gives a coding agent a live session on the device, see [MCP server](/mcp) |
+| `maestro test -c`, Maestro Studio | Not yet. `npx e2e mcp` gives a coding agent a live session on the device, see [MCP server](/mcp-server) |
 | `maestro hierarchy` | Not yet. `device.locator` takes agent-device selectors for nodes `screen` cannot name |
 | Maestro Cloud | your CI, see [Continuous integration](/ci) |
 

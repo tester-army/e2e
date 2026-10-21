@@ -536,7 +536,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .description(
       'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add --scope project e2e -- npx e2e mcp.',
     )
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
     .option('--headed', 'show the UI in sessions whose open_session does not set headed, when the engine supports it')
     // Sessions were headed by default before 0.18 and took --headless; a client config that still passes it
@@ -568,7 +568,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'));
   selectionOptions(runCommand)
     .optionsGroup('Execution:')
@@ -722,7 +722,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .argument('[goal]', 'what to explore, in a sentence (default: "Explore the app and find bugs")')
     .optionsGroup('Selection:')
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <id>', 'the target to explore (default: the first configured target)')
     .option('--agent <name>', 'the configured agent to explore with (default: agents.default)')
     .option('--session <name>', 'start signed in: run the setup test that saves this session, then explore with it restored')
@@ -816,7 +816,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'));
   selectionOptions(listCommand)
     .optionsGroup('Output:')

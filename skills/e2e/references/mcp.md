@@ -41,7 +41,7 @@ Or declare it in the client's project config (`.mcp.json` for Claude Code,
 { "mcpServers": { "e2e": { "command": "npx", "args": ["e2e", "mcp"] } } }
 ```
 
-Sessions run on the project's config (`e2e.config.ts` or `e2e.config.mts`):
+Sessions run on the project's config (`e2e.config.ts`, `.mts`, `.js`, or `.mjs`):
 in a project without one, `open_session` fails with `CONFIG_NOT_FOUND`, so
 set it up first (topic `setup`). No model is needed: without the optional `ai` package, sessions
 open and the deterministic tools work.
@@ -112,8 +112,12 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
    or `getByText`.
 3. Write `tests/<feature>.e2e.ts` (topic `writing-tests`). Deterministic steps
    where you saw exact names; `agent.act` where the flow varies.
-4. Run it from the shell: `npx e2e run tests/<feature>.e2e.ts`, read the
-   failure (topic `debugging`), fix, repeat.
+4. Run it from the shell: `npx e2e run tests/<feature>.e2e.ts`. On a
+   failure, fix from the terminal's failure block and the trace page (topic
+   `debugging`), then rerun. To see a screen the evidence leaves out, go
+   straight to it instead of walking the flow again from the start: on the
+   web, `navigate` to its path; on a device, the shortest path from the
+   launch screen. Then `observe` and `locate`.
 5. `close_session` when you are done; an idle session closes on its own after
    30 minutes and never outlives 4 hours. When the client exits, every session
    closes and the app commands stop. To look at another project or config,

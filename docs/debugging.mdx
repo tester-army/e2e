@@ -325,6 +325,7 @@ to trace the whole flow or rule out a stale [recording](/cache).
 | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of actions, model calls, or time | Scope the goal to one step. Raise the agent entry's `maxSteps` or `maxModelCalls` for the budget, the config `timeout` for an `act` step, or the agent's `judgmentTimeout` for `assert`, `waitFor`, and `extract` |
 | `MODEL_UNAVAILABLE` | No model constructed in the config, or GitHub Copilot doesn't serve the configured model to your account | See [Models](/models); for Copilot, [Pick a model](/subscriptions#pick-a-model) |
 | `MODEL_PROVIDER_FAILED` | Bad key, rate limit, no credits, or every try of one request went 120 s without an answer | Check the key the provider reads and the quota; for a slow local model, a smaller screen (`agents.<name>.maxObservationBytes`) or a faster model |
+| `MODEL_REFUSED` | The model refused the prompt (finish reason `content-filter`). Exit 1 | Rephrase the instruction, or switch to another model |
 
 The [errors reference](/reference/errors) lists every code, its class, and
 its exit code.

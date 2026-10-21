@@ -92,17 +92,17 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.26",
+    "@ai-sdk/provider": "4.0.28",
     "@clack/prompts": "1.8.1",
     "@jridgewell/remapping": "2.3.5",
     "@modelcontextprotocol/server": "2.3.1",
-    "@oxc-project/runtime": "0.153.0",
-    "@vitest/expect": "5.0.3",
+    "@oxc-project/runtime": "0.154.0",
+    "@vitest/expect": "5.0.5",
     "commander": "15.0.0",
     "fast-png": "8.0.0",
     "get-tsconfig": "4.14.3",
-    "oxc-parser": "0.153.0",
-    "oxc-transform": "0.153.0",
+    "oxc-parser": "0.154.0",
+    "oxc-transform": "0.154.0",
     "picocolors": "1.1.1",
     "pixelmatch": "8.0.0",
     "zod": "4.6.1"

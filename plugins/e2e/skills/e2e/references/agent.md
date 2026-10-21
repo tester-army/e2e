@@ -113,7 +113,8 @@ why: `ACTION_FAILED` (product failure); `STEP_BUDGET_EXHAUSTED`,
 `SECRET_UNAVAILABLE`, `ENVIRONMENT_UNAVAILABLE`, `SEED_DATA_MISSING`,
 `TEST_SETUP_FAILED`, `AUTOMATION_UNSUPPORTED`, `POLICY_DENIED` (blocked
 from outside);
-`MODEL_OUTPUT_INVALID` (unusable answer). Full list: topic debugging.
+`MODEL_OUTPUT_INVALID` (unusable answer), `MODEL_REFUSED` (the model refused
+the prompt). Full list: topic debugging.
 
 Options:
 

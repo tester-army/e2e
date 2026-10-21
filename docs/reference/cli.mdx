@@ -362,7 +362,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts` or `e2e.config.mts`. |
+| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs`. |
 | `--target <name>` | The target every session opens on. Default: the only target, or the one `open_session` names. |
 | `--headed` | Shows the UI in sessions whose `open_session` does not set `headed`, when the engine supports it. |
 | `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. |
@@ -486,7 +486,7 @@ Test files, directories, or globs relative to the project root:
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). A missing file is `CONFIG_NOT_FOUND`. |
+| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs` (see [Loading](/reference/config#loading)). A missing file is `CONFIG_NOT_FOUND`. |
 | `--target <ids>` | Targets by name, comma-separated or repeated. Default: every configured target. Only selected targets' app commands start. An unknown ID is `UNKNOWN_TARGET`. |
 | `--tag <tags>` | Only tests with the tags, comma-separated or repeated: any of them, or every one with `--tag-mode all`. |
 | `--tag-mode <mode>` | How several tags combine: `any` or `all`. Default: `any`. |
@@ -935,7 +935,7 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). |
+| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs` (see [Loading](/reference/config#loading)). |
 | `--cache-dir <dir>` | The store directory. Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache/`. |
 
 ```text

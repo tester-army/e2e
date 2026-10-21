@@ -90,7 +90,7 @@ codex plugin marketplace upgrade e2e
 
 `e2e mcp` gives the agent a live session on your app. It checks each
 locator against the screen before it writes the test, and checks its own UI
-changes. `init` registers the server. See [MCP server](/mcp) for setup and
+changes. `init` registers the server. See [MCP server](/mcp-server) for setup and
 prompts.
 
 ## How an agent writes and runs a test
@@ -159,6 +159,14 @@ facts for [scripts](/debugging). The page has the failing line and every
 step with what it did: the node an action hit, the values an assertion
 read, the cache's decision, console errors, and failed requests. It also
 has the agent's last turns and the screen at the failure.
+
+The agent fixes the test from that evidence. It fixes every line the
+evidence covers, not only the failing one. A test stops at its first failed
+step, so the agent also checks the lines after it before the next run.
+
+To see a screen the page doesn't show, the agent opens it in an MCP session
+by the shortest way, such as its URL on the web. It doesn't walk the flow
+again from the start.
 
 For model-call details, the agent adds `--ai-trace` and reads the trace
 with [unbox-ai](/debugging#agent-steps). Pair it with `--no-cache` to

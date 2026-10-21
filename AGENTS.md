@@ -35,8 +35,11 @@ suites that consume the built packages the way a user would.
 
 - `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
   `e2e/engine` contract. Core knows the contract and never an engine's
-  internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
-  `src/` (grep for them; zero hits is the invariant). The one exception is the
+  internals: no engine package is imported from `src/` (grep for
+  `from '@e2e-dev/` and `import('@e2e-dev/`; the presets below are the only
+  hits). Engine words still appear as platform labels, capability names, and in
+  error text that names a factory, such as `config/targets.ts` telling you to
+  call `web()`; no path through them reaches engine code. The one exception is the
   `e2e init` scaffold presets in `src/cli/init/engines.ts`, which write the
   user's config and so name engine packages as text; the package build records
   the sibling packages' versions in `dist/cli/init/sibling-versions.json` for the
@@ -88,7 +91,10 @@ suites that consume the built packages the way a user would.
   vendor SDK and the engine it plugs into as peers. It implements that
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
-  exists.
+  exists. A service with providers for both engines ships them in that one
+  package, each engine an optional peer and each provider on its own entry
+  that never imports the other engine (`@e2e-dev/testmu` and
+  `@e2e-dev/testmu/web`).
   Its docs page under `docs/integrations/` ships with the vendor's logo as
   the sidebar icon and on its overview card (`authoring-docs`, "Page
   icons"); `scripts/check-docs-logos.ts` fails `pnpm docs:check` without
@@ -144,7 +150,8 @@ suites that consume the built packages the way a user would.
 - `packages/testmu` — the published `@e2e-dev/testmu` package: TestMu AI
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's
-  `@agent-device/testmu` plugin.
+  `@agent-device/testmu` plugin, and hosted Chrome and Edge for the web
+  engine (`BrowserProvider`) from `@e2e-dev/testmu/web`.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -271,7 +278,7 @@ suites that consume the built packages the way a user would.
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> plugins:check -> mcp-server:check -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:changeset-bumps -> check:install-scripts -> plugins:check -> mcp-server:check -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios
@@ -595,7 +602,7 @@ trees, on both platforms, without a device.
   checks the docs. All four run on pull requests and in the merge queue
   (`merge_group`), which is the merge gate: auto-merge enqueues, and the
   queue merges only when every check is green on the queued tree. Each
-  workflow ends in a `<workflow> gate` job, the only checks the `Main`
+  of the four ends in a `<workflow> gate` job, the only checks the `Main`
   ruleset requires (`spec gate`, `benchmark gate`, `mobile gate`, `docs
   gate`); it fails when any job it needs failed or was cancelled and passes
   over a skipped one, so a new job gates merges once it is in its gate's

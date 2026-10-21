@@ -424,10 +424,16 @@ describe('snapshot projection', () => {
     const field = project([{ ref: 'e1', type: 'TextField', label: 'Kind', value: 'checkbox, unchecked' }]);
     expect(field.index[0]?.node).toMatchObject({ role: 'textbox', value: 'checkbox, unchecked' });
     expect(field.index[0]?.node.states?.checked).toBeUndefined();
-    // An empty field shows its placeholder, which XCTest reports as the value; the hint flag says it is empty.
-    const empty = project([{ ref: 'e1', type: 'TextField', label: 'Name field', value: 'Type your name', hintShowing: true }]);
-    expect(empty.index[0]?.node.role).toBe('textbox');
+    // An empty iOS field reports its placeholder as its value, with no flag saying so (examples/with-expo's TextInput, agent-device 0.21.28, iOS 26.5).
+    const empty = project([{ ref: 'e1', type: 'TextField', label: 'Name', value: 'Ada Lovelace', placeholder: 'Ada Lovelace', identifier: 'name', editable: true }]);
+    expect(empty.index[0]?.node).toMatchObject({ role: 'textbox', name: 'Name', attributes: { placeholder: 'Ada Lovelace' } });
     expect(empty.index[0]?.node.value).toBeUndefined();
+    // Typed text that differs from the placeholder is the value.
+    const typed = project([{ ref: 'e1', type: 'TextField', label: 'Name', value: 'Ada', placeholder: 'Ada Lovelace', editable: true }]);
+    expect(typed.index[0]?.node.value).toBe('Ada');
+    // A static text whose value matches some placeholder is not a field showing its hint.
+    const text = project([{ ref: 'e1', type: 'StaticText', label: 'Hint', value: 'Ada Lovelace', placeholder: 'Ada Lovelace' }]);
+    expect(text.index[0]?.node.value).toBe('Ada Lovelace');
     expect(android.index[0]?.node.states).toBeUndefined();
   });
 

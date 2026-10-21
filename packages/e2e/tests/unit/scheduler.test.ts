@@ -132,6 +132,7 @@ function makeSelection(perTarget: readonly { target: ResolvedTarget; pairs: Test
 
 interface FakeBehaviour {
   readonly shutdownUntil?: 'final' | 'terminate';
+  readonly disposal?: { readonly delayMs: number; readonly runErrors?: readonly RunError[] };
   readonly onControl?: (message: MainToWorker) => void;
   /** Statuses to report per test id; defaults to passed. */
   readonly status?: Record<string, ResultRecord['status']>;
@@ -210,6 +211,8 @@ const SLOW_TEARDOWN_MS = 12_000;
 
 class FakeFleet {
   readonly spawned: { targetName: string; workerSlot: number }[] = [];
+  readonly killed: number[] = [];
+  readonly completedDisposals: number[] = [];
   readonly unitsByWorker: RunUnitMessage[][] = [];
   /** Control messages every worker received, in order. */
   readonly controlMessages: MainToWorker['type'][] = [];
@@ -247,6 +250,7 @@ class FakeRunner implements UnitRunner {
   private finish!: () => void;
   private exited = false;
   private blocked = false;
+  private disposing = false;
 
   constructor(
     private readonly index: number,
@@ -290,6 +294,18 @@ class FakeRunner implements UnitRunner {
     if (message.type === 'shutdown') {
       if (this.behaviour.shutdownUntil === 'terminate') return;
       if (this.behaviour.shutdownUntil === 'final' && 'preserveResources' in message) return;
+      const disposal = this.behaviour.disposal;
+      if (disposal !== undefined) {
+        if (this.disposing) return;
+        this.disposing = true;
+        setTimeout(() => {
+          if (this.exited) return;
+          this.fleet.completedDisposals.push(this.index);
+          this.events.onMessage({ type: 'shutdown-done', runErrors: disposal.runErrors ?? [] });
+          this.end('shut down');
+        }, disposal.delayMs);
+        return;
+      }
       setTimeout(() => this.end('shut down'), 0);
       return;
     }
@@ -342,6 +358,7 @@ class FakeRunner implements UnitRunner {
   }
 
   kill(): void {
+    this.fleet.killed.push(this.index);
     this.end('killed');
   }
 
@@ -573,6 +590,81 @@ describe('time limit', () => {
       ['fails', undefined],
       ['hangs', 'failure-limit'],
     ]);
+  });
+});
+
+describe('scheduler disposal', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each(['retirement', 'final drain'] as const)('lets a worker finish a 12 s disposal within its configured budget during %s', async (path) => {
+    const target = makeTarget('web', 0);
+    const pairs = (path === 'retirement' ? ['first', 'next'] : ['first']).map((name) =>
+      makePair(makeTest(`tests/${name}.e2e.ts`, name), target),
+    );
+    const fleet = new FakeFleet({
+      disposal: { delayMs: 12_000 },
+      ...(path === 'retirement' ? { status: { [pairs[0]!.test.id]: 'failed' as const } } : {}),
+    });
+
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1, forceGraceMs: 31_000,
+    });
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    expect(fleet.killed).toEqual([]);
+    expect(fleet.completedDisposals).toEqual([]);
+    expect(fleet.live).toBe(1);
+    expect(fleet.spawned).toHaveLength(1);
+
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(fleet.killed).toEqual([]);
+    expect(fleet.completedDisposals).toEqual(path === 'retirement' ? [0, 1] : [0]);
+    expect(fleet.live).toBe(0);
+    expect(collected.results.map((result) => result.status)).toEqual(path === 'retirement' ? ['failed', 'passed'] : ['passed']);
+    expect(collected.runErrors).toEqual([]);
+  });
+
+  it('reports cleanup errors from a worker that finishes disposal after 12 s', async () => {
+    const target = makeTarget('web', 0);
+    const pair = makePair(makeTest('tests/a.e2e.ts', 'a'), target);
+    const cleanupError = { error: serializeError(classifyError(new Error('engine disposal failed'))) };
+    const fleet = new FakeFleet({ disposal: { delayMs: 12_000, runErrors: [cleanupError] } });
+
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs: [pair] }]), makeCollection([pair.test.file], [pair]), fleet, {
+      workers: 1, forceGraceMs: 31_000,
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+
+    expect(collected.runErrors).toEqual([cleanupError]);
+    expect(collected.results.map((result) => result.status)).toEqual(['passed']);
+    expect(fleet.killed).toEqual([]);
+    expect(fleet.completedDisposals).toEqual([0]);
+  });
+
+  it('kills a worker whose disposal outlasts its configured shutdown budget', async () => {
+    const target = makeTarget('web', 0);
+    const pair = makePair(makeTest('tests/a.e2e.ts', 'a'), target);
+    const fleet = new FakeFleet({ disposal: { delayMs: 12_000 } });
+
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs: [pair] }]), makeCollection([pair.test.file], [pair]), fleet, {
+      workers: 1, forceGraceMs: 7_000,
+    });
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(fleet.live).toBe(1);
+    expect(fleet.killed).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fleet.killed).toEqual([0]);
+    expect(fleet.live).toBe(0);
+    expect(fleet.completedDisposals).toEqual([]);
+    await running;
   });
 });
 

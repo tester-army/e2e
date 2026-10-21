@@ -659,6 +659,12 @@ void (expect.poll(() => 1).toMatchSchema(userSchema) satisfies Promise<{ id: num
 void (expect.poll(() => 1).not.toMatchSchema(userSchema) satisfies Promise<void>);
 // @ts-expect-error a schema is a Standard Schema, not a plain object
 expect(1).toMatchSchema({ id: 'number' });
+// A return-only generic (an engine's `response.json<T>()`) infers no locator or screen from `expect`, and `any` (a DOM `Response.json()`) is a value.
+declare function readBody<T = unknown>(): Promise<T>;
+void (expect(await readBody()).toMatchSchema(userSchema) satisfies { id: number });
+void (expect.soft(await readBody()).toMatchSchema(userSchema) satisfies { id: number } | undefined);
+void (expect(JSON.parse('{}')).toMatchSchema(userSchema) satisfies { id: number });
+void (expect.soft(JSON.parse('{}')).toMatchSchema(userSchema) satisfies { id: number } | undefined);
 
 // describe and the hooks are top-level imports too, typed as their test.* forms.
 describe('group', { tags: ['smoke'] }, () => {

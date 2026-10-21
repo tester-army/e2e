@@ -475,7 +475,7 @@ export class SessionHost {
         'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
-        config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts"),
+        config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
         headed: z
           .boolean()
           .optional()

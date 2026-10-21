@@ -11,7 +11,7 @@ describe('exampleFiles', () => {
     assert.ok(files.length > 0, 'expected at least one example under docs/examples');
     for (const file of files) {
       assert.ok(file.startsWith('docs/examples/'), `not an example path: ${file}`);
-      assert.ok(file.endsWith('.ts'), `not a .ts file: ${file}`);
+      assert.ok(file.endsWith('.ts') || file.endsWith('.js'), `not a .ts or .js file: ${file}`);
       assert.ok(existsSync(join(REPO_ROOT, file)), `example does not exist: ${file}`);
     }
     assert.deepEqual(files, [...files].toSorted());
@@ -23,6 +23,7 @@ describe('exampleFiles', () => {
     // check-docs-examples.ts must cover them.
     assert.ok(files.includes('docs/examples/web/browser-provider.ts'), files.join(', '));
     assert.ok(files.includes('docs/examples/skill/e2e.setup.config.ts'), files.join(', '));
+    assert.ok(files.includes('docs/examples/javascript/e2e.config.js'), files.join(', '));
   });
 });
 

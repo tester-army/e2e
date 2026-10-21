@@ -136,6 +136,25 @@ test('Settings opens', async ({ app, screen }) => {
     See [Mobile](/mobile) to use your own app.
     </Tab>
   </Tabs>
+
+  <Accordion title="Use JavaScript instead of TypeScript">
+  Rename `e2e.config.ts` to `e2e.config.js` and `tests/example.e2e.ts` to
+  `tests/example.e2e.js`. In the config, delete the
+  `import type { E2EConfig } from 'e2e';` line and `satisfies E2EConfig`.
+  Then add a JSDoc type and set `tests`:
+
+```js title="e2e.config.js"
+/** @type {import('e2e').E2EConfig} */
+export default {
+  tests: 'tests/**/*.e2e.js',
+  // ...the rest of the config, unchanged
+};
+```
+
+  The example test has no types to remove. Name later tests `*.e2e.js`. See
+  [JavaScript](/reference/config#javascript) for type checks and mixing
+  JavaScript with TypeScript.
+  </Accordion>
   </Step>
   <Step title="Run the example">
   <CodeGroup>

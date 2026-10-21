@@ -29,7 +29,7 @@ export const CACHE_DIR_DESCRIPTION =
   'replay cache directory, relative to the project root (default: E2E_CACHE_DIR, else cache.dir in the config, else .e2e/cache)';
 
 interface CacheOptions {
-  /** Explicit config path; the nearest `e2e.config.ts` when absent. */
+  /** Explicit config path; the nearest config file when absent. */
   readonly config?: string;
   /** `--cache-dir`: the store directory, over `E2E_CACHE_DIR` and `cache.dir`. */
   readonly cacheDir?: string;
@@ -113,7 +113,7 @@ export function registerCacheCommand(program: Command): void {
       .command(name)
       .summary(summary)
       .description(description)
-      .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+      .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
       .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
       .action(async (options: { config?: string; cacheDir?: string }) => {
         process.exitCode = await cache(name, options);

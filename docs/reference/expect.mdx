@@ -756,18 +756,21 @@ outcome of the fill, not the field.
 ### `ExpectCall`, `SoftExpectCall`, and `Expect`
 
 ```ts
+/** `T`, or `never` when `T` is `any`, so an `any` argument skips an overload. */
+type NotAny<T> = 0 extends 1 & T ? never : T;
+
 /** The `expect(actual)` call: a locator, `screen`, an engine fixture, or a value, told apart by the argument. */
 export interface ExpectCall {
-  (actual: Locator): AsyncExpectation;
-  (actual: Screen): ScreenExpectation;
+  <L extends Locator>(actual: NotAny<L>): AsyncExpectation;
+  <S extends Screen>(actual: NotAny<S>): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   <T>(actual: T, message?: string): ValueExpectation<T>;
 }
 
 /** The `expect.soft(actual)` call: `expect(actual)` whose failures are kept instead of thrown. */
 export interface SoftExpectCall {
-  (actual: Locator): AsyncExpectation;
-  (actual: Screen): ScreenExpectation;
+  <L extends Locator>(actual: NotAny<L>): AsyncExpectation;
+  <S extends Screen>(actual: NotAny<S>): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   <T>(actual: T, message?: string): SoftValueExpectation<T>;
 }

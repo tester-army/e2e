@@ -582,13 +582,17 @@ describe('e2e init', () => {
     expect(output()).toContain('retry with npm install');
   });
 
-  it.each(['e2e.config.ts', 'e2e.config.mts'])('never overwrites an existing %s or assumes its optional packages', async (config) => {
+  it.each(['e2e.config.ts', 'e2e.config.mts', 'e2e.config.js', 'e2e.config.mjs'])('never overwrites an existing %s or assumes its optional packages', async (config) => {
     writeFileSync(path.join(dir, config), '// custom config\n');
     await init(dir, { yes: true });
     expect(read(config)).toBe('// custom config\n');
     expect(Object.keys(JSON.parse(read('package.json')).devDependencies)).toEqual(['e2e']);
     expect(JSON.parse(read('package.json')).scripts).toEqual({ 'test:e2e': 'e2e run' });
-    if (config.endsWith('.mts')) expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(false);
+    if (config !== 'e2e.config.ts') expect(existsSync(path.join(dir, 'e2e.config.ts'))).toBe(false);
+    const javascript = config.endsWith('js');
+    expect(existsSync(path.join(dir, 'tests/example.e2e.js'))).toBe(javascript);
+    expect(existsSync(path.join(dir, 'tests/example.e2e.ts'))).toBe(!javascript);
+    expect(output().includes('No tsconfig.json')).toBe(!javascript);
   });
 
   it('reconciles new .gitignore entries without replacing existing source files', async () => {
