@@ -400,8 +400,9 @@ test as close to its screen as the app allows:
   you reached.
 - Create the data the screen needs through the app's API in a `test.extend`
   fixture. Click through a creation flow only in the test that covers it.
-  A declared session is restored before fixtures run, so `browser.cookies()`
-  signs the fixture's requests in. Check the response in the fixture: a
+  A declared session is restored before fixtures run, so when the app signs
+  in with a cookie, `browser.cookies()` signs the fixture's requests in.
+  Check the response in the fixture: a
   failed seed then fails there, not 30 s later on a locator. While exploring
   over MCP, a project tool that seeds data (topic `agent`) gets there in one
   `call`.
@@ -440,7 +441,10 @@ not checked its steps live: write up to the next screen you have not seen
 pass, run it, then add the next. A passing locator step takes milliseconds,
 and an `agent.act` that a later check confirmed replays from the cache with
 no model call. The cache keeps those entries when a later line fails, so
-each run pays model calls only for its new part. Keep the title and the
+each run pays model calls only for its new part. That holds for a first
+attempt with a read-write cache: a retry never replays, and with `CI` set
+the cache records nothing by default, so grow the test outside `CI` and
+pass `--retries 0` when the config retries. Keep the title and the
 goals already written as they are while the test grows: a cache entry
 belongs to the test's file and title path and the goal's instruction and
 params. A fixture's run-unique value in a goal's params goes in as
