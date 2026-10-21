@@ -22,13 +22,18 @@ needs them.
 ## Decide, in this order
 
 1. **Did the case reach the system?** A failed precondition, `phase:
-   precondition`, or an auth, environment, seed-data, or model code means
-   no. Classify `infrastructure` and read `recover.md`.
+   precondition`, or an auth, environment, or seed-data code, or
+   `MODEL_UNAVAILABLE` or `MODEL_PROVIDER_FAILED`, means no. Classify
+   `infrastructure` and read `recover.md`. (`MODEL_REFUSED` is an
+   automation limit: step 5.)
 2. **Did the path stop working?** An Execution `step` that failed with
    `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or
-   `REPLAY_STALE`. A control that is gone (`LOCATOR_NOT_FOUND`) or that is
-   there but fails or is ambiguous (`ACTION_FAILED`, `LOCATOR_AMBIGUOUS`)
-   is either a changed flow or a defect, so get the ground truth: run the
+   `REPLAY_STALE`. First read the error and the trace: an `ACTION_FAILED`
+   that timed out or hit an unresponsive or unloaded page is the
+   environment, so go back to step 1. Otherwise a control that is gone
+   (`LOCATOR_NOT_FOUND`) or that is there but fails or is ambiguous
+   (`ACTION_FAILED`, `LOCATOR_AMBIGUOUS`) is either a changed flow or a
+   defect, so get the ground truth: run the
    summary's `resolveRefs` command when it has one; otherwise read the
    summary's `specRef` and `buildRef` pointers directly. Stop if either is
    unavailable. Then compare the spec with the release notes for this
