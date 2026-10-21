@@ -2,6 +2,7 @@ import { defineCige } from '@e2e-dev/cige';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
+  root: new URL('.', import.meta.url),
   build: process.env.GITHUB_SHA,
   hooks: {
     // Precondition: seed the cart through the test API, not the UI.

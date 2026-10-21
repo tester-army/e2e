@@ -7,13 +7,7 @@
  * placeholders are filled here, where the judge reads the concrete value.
  */
 
-import { placeholdersIn, type CigeCase, type CigeExecutionStep, type CigeVariant } from './schema.ts';
-
-function fill(text: string, params: CigeVariant['params']): string {
-  return text.replace(/\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (whole, name: string) =>
-    Object.hasOwn(params, name) ? String(params[name]) : whole,
-  );
-}
+import { fillPlaceholders as fill, placeholdersIn, type CigeCase, type CigeExecutionStep, type CigeVariant } from './schema.ts';
 
 /** One step with the variant's values: params for an `act`, filled text for a `verify`. */
 function resolveStep(step: CigeExecutionStep, params: CigeVariant['params']): CigeExecutionStep {

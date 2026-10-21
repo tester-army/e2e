@@ -1,10 +1,11 @@
 /**
  * The CIGE field rules, checked mechanically. A repair may rewrite
  * Execution, adjust Context, and add variants, guardrails, deny patterns,
- * criteria, or evidence; anything that weakens what a pass means (the
- * Intent statement, a removed criterion or evidence item, a judgment turned
- * off, a guardrail or deny pattern dropped, a case or variant removed, an id
- * that moves its history) blocks until a human approves it. `e2e-cige diff`
+ * criteria, or evidence; anything that weakens or redirects what a pass
+ * means (the Intent statement, a removed criterion or evidence item, a
+ * judgment turned off, a guardrail or deny pattern dropped, a case or
+ * variant removed, a variant's data changed, an id that moves its history)
+ * blocks until a human approves it. `e2e-cige diff`
  * runs this over every `.cige.json` that changed since a git ref, so CI and
  * the `cige` skill read the same verdict.
  */
@@ -49,6 +50,7 @@ const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'guardrail-removed',
   'deny-removed',
   'variant-removed',
+  'variant-changed',
 ]);
 
 export interface CigeChange {
@@ -173,37 +175,47 @@ function git(args: readonly string[], cwd: string): string {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
-function parseAt(text: string, source: string): CigeCase | CigeChange {
+/** NUL-separated fields of `git ... -z` output: paths arrive unquoted, whatever characters they hold. */
+function fields(output: string): string[] {
+  return output.split('\0').filter((field) => field !== '');
+}
+
+/** One side of a file's diff: the parsed case, or the change that says it doesn't parse. */
+type Side = { readonly testCase: CigeCase } | { readonly invalid: CigeChange };
+
+function parseAt(text: string, source: string): Side {
   try {
-    return parseCige(JSON.parse(text), source);
+    return { testCase: parseCige(JSON.parse(text), source) };
   } catch (cause) {
-    return change('invalid', `${source}: ${cause instanceof Error ? cause.message.split('\n').join(' ') : String(cause)}`);
+    return { invalid: change('invalid', `${source}: ${cause instanceof Error ? cause.message.split('\n').join(' ') : String(cause)}`) };
   }
 }
 
 /**
- * Diffs every `.cige.json` that changed between `base` and the working
- * tree, untracked files included, in the repository that holds `cwd`.
+ * Diffs every `.cige.json` that changed since this branch left `base` (their
+ * merge base) up to the working tree, untracked files included, in the
+ * repository that holds `cwd`.
  */
 export function diffSince(base: string, cwd: string): CigeDiffReport {
   const top = git(['rev-parse', '--show-toplevel'], cwd).trim();
-  const lines = git(['diff', '--name-status', '--no-renames', base, '--', '*.cige.json'], top).split('\n').filter((line) => line !== '');
-  const untracked = git(['ls-files', '--others', '--exclude-standard', '--full-name', '--', '*.cige.json'], top)
-    .split('\n')
-    .filter((line) => line !== '')
-    .map((file) => `A\t${file}`);
+  // From where this branch left the base, not its tip: a change that landed there since is not this branch's.
+  const mergeBase = git(['merge-base', base, 'HEAD'], top).trim();
+  // `--name-status -z` alternates status and path.
+  const changed = fields(git(['diff', '--name-status', '--no-renames', '-z', mergeBase, '--', '*.cige.json'], top));
+  const entries: [string, string][] = [];
+  for (let index = 0; index + 1 < changed.length; index += 2) entries.push([changed[index]!, changed[index + 1]!]);
+  for (const file of fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', '*.cige.json'], top))) {
+    entries.push(['A', file]);
+  }
   const files: CigeFileDiff[] = [];
-  const entries = [...lines, ...untracked].map((line) => line.split('\t') as [string, string]).toSorted((a, b) => a[1].localeCompare(b[1]));
-  for (const [status, file] of entries) {
-    const before = status === 'A' ? undefined : parseAt(git(['show', `${base}:${file}`], top), `${base}:${file}`);
+  for (const [status, file] of entries.toSorted((a, b) => a[1].localeCompare(b[1]))) {
+    const before = status === 'A' ? undefined : parseAt(git(['show', `${mergeBase}:${file}`], top), `${base}:${file}`);
     const absolute = path.join(top, file);
     const after = status === 'D' || !existsSync(absolute) ? undefined : parseAt(readFileSync(absolute, 'utf8'), file);
-    const invalid = [before, after].filter((side): side is CigeChange => side !== undefined && 'kind' in side);
-    const changes =
-      invalid.length > 0
-        ? invalid
-        : diffCases(before as CigeCase | undefined, after as CigeCase | undefined);
-    const id = (after as CigeCase | undefined)?.id ?? (before as CigeCase | undefined)?.id;
+    const invalid = [before, after].flatMap((side) => (side !== undefined && 'invalid' in side ? [side.invalid] : []));
+    const caseOf = (side: Side | undefined): CigeCase | undefined => (side !== undefined && 'testCase' in side ? side.testCase : undefined);
+    const changes = invalid.length > 0 ? invalid : diffCases(caseOf(before), caseOf(after));
+    const id = caseOf(after)?.id ?? caseOf(before)?.id;
     if (changes.length > 0) files.push({ file, ...(id === undefined || invalid.length > 0 ? {} : { id }), changes });
   }
   const all = files.flatMap((entry) => entry.changes);

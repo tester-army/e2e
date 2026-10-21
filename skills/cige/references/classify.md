@@ -15,7 +15,7 @@ needs them.
 | `failureType` | The reporter's first guess from the error code. Absent when the code can't decide |
 | `classification.signals` | What it read: `guardrail-violation:<id>`, `automation-limit`, `screen-only-evidence`, `missing-spec-ref` |
 | `specRef`, `buildRef`, `expectedRef` | Pointers to the ground truth |
-| `resolveRefs` | The command that fetches them into `.e2e/cige/<id>.refs/` |
+| `resolveRefs` | The command that fetches them into `.e2e/cige/<id>.refs/`; present only when the config has resolvers |
 | `evidence.trace` | The trace page: every step, action, and judgment |
 | `replay.command` | How to rerun this result once a repair is in |
 
@@ -26,9 +26,18 @@ needs them.
    no. Classify `infrastructure` and read `recover.md`.
 2. **Did the path stop working?** An Execution `step` that failed with
    `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or
-   `REPLAY_STALE`. Run the `resolveRefs` command and read the spec: if the
-   spec still asks for the Intent, classify `outdated-test-logic` and read
-   `repair.md`. If the spec dropped it, it is `product-defect`.
+   `REPLAY_STALE`. A missing control is either a changed flow or a defect
+   that removed it, so fetch the refs: the summary's `resolveRefs` command
+   when it has one, else `npx e2e-cige refs <id>` (add `--variant <v>`).
+   Then compare the spec with the release notes for this build:
+   - The release notes change this flow, and the spec still asks for the
+     Intent: `outdated-test-logic`. Read `repair.md`.
+   - The spec still asks for the missing control or step, and the release
+     notes don't change it: the app lost it. `product-defect`. Read
+     `escalate.md`.
+   - The spec dropped the Intent: a changed requirement. Read
+     `escalate.md`, which decides whether to propose an Intent change.
+   - Neither ref settles it: stop, as below.
 3. **Did the app do the wrong thing?** A `verify`, evidence item, or the
    Intent judged false (`ASSERTION_FAILED`) on a healthy environment with a
    current path. Classify `product-defect` and read `escalate.md`.

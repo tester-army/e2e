@@ -71,7 +71,12 @@ export interface CigeRefs {
 export interface CigeConfig<Fixtures = TestFixtures> {
   /** Globs of the `.cige.json` files; default every `*.cige.json` under `tests/`. */
   readonly cases?: string | readonly string[];
-  /** Directory the globs resolve against; default the working directory. */
+  /**
+   * Directory the globs resolve against. Unset, each reader uses its own:
+   * `cigeSuite` the working directory, the reporter the project root, and
+   * `e2e-cige` the config file's directory. Set it to
+   * `new URL('.', import.meta.url)` so all three agree.
+   */
   readonly root?: CigeRoot;
   /** The hooks the cases' preconditions and evidence name. They run inside a test, with its fixtures. */
   readonly hooks?: CigeHooks<Fixtures>;
@@ -79,6 +84,8 @@ export interface CigeConfig<Fixtures = TestFixtures> {
   readonly environments?: Readonly<Record<string, CigeEnvironment>>;
   /** Resolvers for a case's spec, release notes, and expected output. */
   readonly refs?: CigeRefs;
+  /** The e2e config the cases run under, when it isn't the nearest `e2e.config.ts`; a replay passes it as `--config` unless the case's environment names its own. */
+  readonly e2eConfig?: string;
   /** The build under test, such as a version or a commit: the summaries' `build`, and `{build}` in a ref. */
   readonly build?: string | undefined;
   /** The directory run summaries go to; default `cige` beside `report.json`. */

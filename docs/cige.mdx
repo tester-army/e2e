@@ -99,12 +99,16 @@ Declare the cases, their hooks, the environments they run in, and the ref
 resolvers one time in `cige.config.ts`. The suite, the reporter, and the
 `e2e-cige` command all read it. The command loads it with Node's type
 stripping, so use only TypeScript that erases to JavaScript: no `enum`.
+Set `root` so all three find the same files, and `e2eConfig` when the
+cases run under a config other than the nearest `e2e.config.ts`, so a
+replay uses it.
 
 ```ts title="cige.config.ts"
 import { defineCige } from '@e2e-dev/cige';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
+  root: new URL('.', import.meta.url),
   build: process.env.GITHUB_SHA,
   hooks: {
     // Precondition: seed the cart through the test API, not the UI.
@@ -160,8 +164,9 @@ export default {
 
 Collection fails before any test runs on a glob that matches no file, a
 case that doesn't validate, two cases with one id or one Intent, a hook a
-case names that the config lacks, or a `Context.environment` that isn't a
-key of `environments`. Run one case by its id:
+case names that the config lacks, a variant that leaves a placeholder
+unfilled, or a `Context.environment` that isn't a key of a declared
+`environments` map. Run one case by its id:
 
 <CodeGroup>
 ```bash npm
@@ -203,6 +208,7 @@ bunx e2e-cige check --resolve
 | `no-spec-ref` | Set `Context.specRef`, or a `refs.spec` resolver in the config |
 | `no-build-ref` | Set `Context.buildRef`, or a `refs.build` resolver |
 | `build-unset` | A ref uses `{build}`. Set `build` from CI, such as `process.env.GITHUB_SHA` or a release tag |
+| `environment-unset` | Set `Context.environment`: the config declares environments, or a ref uses `{environment}` |
 | `environment-undeclared` | Add the case's `Context.environment` to `environments` |
 | `environment-no-reset` | Give the environment a `reset` action |
 | `resolver-failed` | With `--resolve`, a resolver threw. The message says why |
@@ -217,14 +223,17 @@ asks for these inputs when it sets up a project.
 The test's title is the Intent statement. Its body runs these steps in
 order and fails on the first one that doesn't hold:
 
-1. `app.open(Context.open)`, when the case sets it.
-2. Each precondition hook. It fails only by throwing.
+1. Each precondition hook, such as seeding data. It fails only by throwing.
+2. `app.open(Context.open)`, when the case sets it, so the page loads what
+   the hooks seeded.
 3. Each Execution entry. A `step` is one [`agent.act`](/reference/agent#agent-act)
    goal, with its `params`. A `verify` is one `agent.assert`.
 4. Each piece of evidence. A string or an `assert` entry is one
    `agent.assert`. A `hook` entry runs your code and holds only when it
-   returns `true`: `false`, `undefined`, or a throw fails it. Throw an
-   `AgentError` to keep its code, such as `ENVIRONMENT_UNAVAILABLE`.
+   returns `true`. Any other value, `undefined` included, is
+   `ASSERTION_FAILED`. A throw means the check couldn't run: an error with a
+   code keeps it (an `AgentError` such as `ENVIRONMENT_UNAVAILABLE`, a
+   locator's `LOCATOR_NOT_FOUND`), and any other is `ASSERTION_INCONCLUSIVE`.
 5. `agent.assert` of the Intent statement, with its `success` and `failure`
    criteria. Set `"judge": false` to skip this check when the screen can't
    show the Intent. Such a case needs evidence or a `verify` step, or it
@@ -293,10 +302,14 @@ for each CIGE result, `<id>.<variant>.run-summary.json` for a variant.
 `<output>` is `.e2e` unless [`output`](/reference/config#output) or
 `--output` sets it, and `outputDir` in the config moves the summaries.
 
-- It deletes the previous run's summaries and refs first, and no other file.
-- A `--last-failed` rerun keeps the summaries of the cases it didn't run,
-  and writes one for each failure it carried, with the signal
-  `carried-from-earlier-run`.
+- A full run deletes the previous run's summaries and refs first, and no
+  other file.
+- A run that leaves cases out (a tag or file filter, `e2e-cige replay`,
+  `--last-failed`) replaces only the summaries of the cases it ran, and
+  keeps every refs directory. A `--last-failed` rerun also writes one for
+  each failure it carried, with the signal `carried-from-earlier-run`.
+- A test the run stopped before its verdict (`--max-failures`, Ctrl-C) gets
+  `result: "interrupted"`, never a failure to triage.
 - A case that ran on several targets or agents gets one file per result,
   named `<id>.<target>.<agent>.run-summary.json`.
 
@@ -386,7 +399,9 @@ The [e2e plugin](/coding-agents) for Claude Code and Codex includes it.
 
 `e2e-cige replay` runs one case alone in its environment. It runs the
 environment's `reset`, then `e2e run` with the environment's `config`,
-`--tag cige:<id>`, and `--no-cache`, and exits with e2e's code:
+`--tag cige:<id>` (`cige:<id>/<variant>` with `--variant`), and
+`--no-cache`, and exits with e2e's code. It refuses an environment with no
+`reset`; declare a no-op one when the environment keeps no state:
 
 <CodeGroup>
 ```bash npm
@@ -423,8 +438,9 @@ whose target uses [`@e2e-dev/smol`](/integrations/smol), with the app
 
 ## Check a change against the field rules
 
-`e2e-cige diff` reads every `.cige.json` that changed since a git ref and
-fails when a change weakens a case. Run it in CI and after every repair:
+`e2e-cige diff` reads every `.cige.json` that changed since the branch
+left a git ref (their merge base) and fails when a change weakens a case.
+Run it in CI and after every repair:
 
 <CodeGroup>
 ```bash npm
@@ -440,11 +456,13 @@ bunx e2e-cige diff --base origin/main
 ```
 </CodeGroup>
 
-It exits 1 when Intent's statement changed, or when a criterion, evidence
-item, guardrail, deny pattern, variant, or whole case was removed, a
-judgment was turned off, or an `id` changed. Pass `--allow-intent` once a
-human approved the change. Rewriting Execution, adjusting Context, and
-adding guardrails, deny patterns, criteria, evidence, or variants pass.
+It exits 1 when Intent's statement changed, when a criterion, evidence
+item, guardrail, deny pattern, variant, or whole case was removed, when a
+variant's data changed, when a judgment was turned off, or when an `id`
+changed. Rewriting Execution, adjusting Context, and adding guardrails,
+deny patterns, criteria, evidence, or variants pass. `--allow-intent` exits
+0 anyway and records nothing, so gate it on a human's approval in CI, such
+as a pull request label; an agent never passes it.
 `--json` prints the report, with `intentUnchanged` and the count of
 `blocking` changes.
 

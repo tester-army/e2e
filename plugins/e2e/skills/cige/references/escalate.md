@@ -11,10 +11,12 @@ requirement, using the refs.
 npx e2e-cige refs <id>     # add --variant <v> for a variant
 ```
 
-Read `.e2e/cige/<id>.refs/index.json`, then the files it names:
-`spec.md`, `build.md` (release notes for the build under test), and
-`expected.md` or the `files` listed for `expected` (what the build should
-produce). A resolver that failed is listed with its `error`.
+Read `.e2e/cige/<id>.refs/index.json` (`<id>.<variant>.refs/` for a
+variant). Each of `spec`, `build` (release notes for the build under
+test), and `expected` (what the build should produce) has some of: a
+`pointer` from the case, a `url`, `files`, or `text`, the name of a file
+beside the index. Follow whichever it has. A resolver that failed has an
+`error` instead.
 
 ## Decide
 

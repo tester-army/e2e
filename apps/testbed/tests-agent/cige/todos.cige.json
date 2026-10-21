@@ -9,7 +9,7 @@
   },
   "Intent": {
     "statement": "A user can add a todo and mark it as done",
-    "evidence": [{ "id": "none-remaining", "hook": "todoDone", "description": "The remaining counter reads 0 remaining" }]
+    "evidence": [{ "id": "plants-done", "hook": "todoDone", "description": "\"Water the plants\" is checked and the counter reads 0 remaining" }]
   },
   "Guardrails": [{ "id": "no-delete", "rule": "Never delete a todo; mark it done instead", "deny": { "summary": ["delete"] } }],
   "Execution": [

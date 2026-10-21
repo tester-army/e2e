@@ -35,10 +35,15 @@ export interface CigeRefsIndex {
   readonly refs: Readonly<Partial<Record<RefKind, RefEntry>>>;
 }
 
+/** A case id or summary name as one safe path component. */
+export function fileSafe(name: string): string {
+  return name.replace(/[^A-Za-z0-9._-]+/g, '_');
+}
+
 /** The directory one case's refs go to, beside its run summary. */
 function refsDirectory(outputDir: string, testCase: CigeCase): string {
   const name = testCase.variant === undefined ? testCase.id : `${testCase.id}.${testCase.variant}`;
-  return path.join(outputDir, `${name.replace(/[^A-Za-z0-9._-]+/g, '_')}.refs`);
+  return path.join(outputDir, `${fileSafe(name)}.refs`);
 }
 
 function pointerOf(testCase: CigeCase, kind: RefKind): string | undefined {

@@ -1,6 +1,7 @@
 /**
  * Runs one CIGE case inside a test body, in the order the standard reveals
- * it: preconditions, then each Execution step as its own `agent.act` goal
+ * it: preconditions, then `Context.open`, so the page loads the state the
+ * hooks seeded, then each Execution step as its own `agent.act` goal
  * (or `agent.assert` check) with the guardrails on its instruction and the
  * structured ones checked after every action, then every piece of evidence
  * the Intent requires, then the Intent itself, judged on the screen. A pass
@@ -16,11 +17,13 @@ import type { CigeCase } from './schema.ts';
 /**
  * A precondition or evidence hook: your code, named from the CIGE file.
  * An evidence hook holds only when it resolves to `true`: `false`,
- * `undefined` (a forgotten `return`), or any other value fails it, so a
- * hook can't pass a case by accident. Throw to fail it with your own
- * message. An `AgentError` you throw keeps its code, so a hook that finds
- * the environment down can say so with `ENVIRONMENT_UNAVAILABLE`. A
- * precondition hook's return value is ignored; it fails only by throwing.
+ * `undefined` (a forgotten `return`), or any other value fails it as
+ * `ASSERTION_FAILED`, so a hook can't pass a case by accident. A throw means
+ * the check could not run, not that it failed: an error with a code (an
+ * `AgentError` such as `ENVIRONMENT_UNAVAILABLE`, a locator's
+ * `LOCATOR_NOT_FOUND`, a Node `ECONNREFUSED`) keeps it, and any other
+ * throw is `ASSERTION_INCONCLUSIVE`. A precondition hook's return value is
+ * ignored; it fails only by throwing.
  */
 export type CigeHook<Fixtures = TestFixtures> = (fixtures: Fixtures, testCase: CigeCase) => unknown;
 
@@ -38,6 +41,11 @@ function describeValue(value: unknown): string {
   } catch {
     return typeof value;
   }
+}
+
+/** Whether an error carries its own code, which a classifier reads and a wrapper would hide. */
+function hasCode(cause: unknown): boolean {
+  return cause instanceof Error && 'code' in cause && typeof cause.code === 'string' && /^[A-Z][A-Z0-9_]*$/.test(cause.code);
 }
 
 function messageOf(cause: unknown): string {
@@ -68,8 +76,6 @@ export async function runCige<Fixtures extends TestFixtures>(
   const hooks = options.hooks ?? {};
   const { agent, app } = fixtures;
 
-  if (testCase.context.open !== undefined) await app.open(testCase.context.open);
-
   for (const precondition of testCase.context.preconditions) {
     if (precondition.kind !== 'hook') continue;
     const hook = hookOf(hooks, precondition.hook);
@@ -80,6 +86,8 @@ export async function runCige<Fixtures extends TestFixtures>(
       throw new AgentError('TEST_SETUP_FAILED', `CIGE precondition ${precondition.hook} failed: ${messageOf(cause)}`, { cause });
     }
   }
+
+  if (testCase.context.open !== undefined) await app.open(testCase.context.open);
 
   const onAction = createGuardrailMonitor(testCase.guardrails);
   for (const step of testCase.execution) {
@@ -104,8 +112,9 @@ export async function runCige<Fixtures extends TestFixtures>(
     try {
       held = await hook(fixtures, testCase);
     } catch (cause) {
-      if (isAgentError(cause)) throw cause;
-      throw new AgentError('ASSERTION_FAILED', `CIGE evidence ${item.id} not satisfied: ${messageOf(cause)}`, { cause });
+      // A backend that is down is not a product defect: only a hook's own verdict is ASSERTION_FAILED.
+      if (hasCode(cause)) throw cause;
+      throw new AgentError('ASSERTION_INCONCLUSIVE', `CIGE evidence ${item.id} could not be checked: ${messageOf(cause)}`, { cause });
     }
     if (held !== true) {
       const returned = held === undefined ? 'nothing; an evidence hook must return true to hold' : describeValue(held);

@@ -15,7 +15,10 @@ export default defineCige({
       const summary = await screen.getByRole('status', { name: 'Summary' }).textContent();
       return summary === `Created "${testCase.params?.name}" on the ${testCase.params?.plan} plan`;
     },
-    todoDone: async ({ screen }) => (await screen.getByRole('status', { name: 'Remaining' }).textContent()) === '0 remaining',
+    // "0 remaining" alone is also the empty list's state: the todo itself must exist and be checked.
+    todoDone: async ({ screen }) =>
+      (await screen.getByRole('checkbox', { name: 'Water the plants' }).isChecked()) &&
+      (await screen.getByRole('status', { name: 'Remaining' }).textContent()) === '0 remaining',
   },
   environments: {
     // The playground keeps no server state: every page load starts clean, so a reset has nothing to do.

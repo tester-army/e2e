@@ -51,11 +51,13 @@ hidden: a failing check rewritten until it passes.
 - Never put a secret in a case, a ref resolver's output, or a summary you
   write. Secrets come from e2e's `secrets` config.
 - Replay every repair alone before you hand it over:
-  `npx e2e-cige replay <id>`. It resets the environment and runs the case
-  with the replay cache off.
+  `npx e2e-cige replay <id>`, once per variant with `--variant <v>` when
+  the case has variants. It resets the environment and runs the case with
+  the replay cache off.
 - End every repair with `npx e2e-cige diff --base origin/main --json` and
   put its result in the hand-off: `intentUnchanged`, `blocking`, and each
-  change. A blocking change needs a human, whoever made it.
+  change. A blocking change needs a human, whoever made it. Never pass
+  `--allow-intent`: it is the human's override, and it records nothing.
 
 ## Commands
 

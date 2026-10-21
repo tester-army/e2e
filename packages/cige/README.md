@@ -32,9 +32,10 @@ import { defineCige } from '@e2e-dev/cige';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
+  root: new URL('.', import.meta.url),
   build: process.env.GITHUB_SHA,
   hooks: { orderPersisted: async () => (await fetch('http://localhost:3000/test-api/orders/latest')).ok },
-  environments: { staging: { config: 'e2e.config.ts', reset: resetStaging } },
+  environments: { staging: { config: 'e2e.config.ts', reset: async () => void (await fetch('http://localhost:3000/test-api/reset', { method: 'POST' })) } },
 });
 ```
 

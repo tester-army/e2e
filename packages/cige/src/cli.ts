@@ -40,8 +40,9 @@ Commands:
       --resolve also runs the ref resolvers. Exits 1 on any gap unless --warn.
   diff [--base <git ref>] [--json] [--allow-intent]
       Check every .cige.json changed since the base (default origin/main)
-      against the field rules. Exits 1 when a change weakens a case, unless
-      --allow-intent records that a human approved it.
+      against the field rules. Exits 1 when a change weakens a case.
+      --allow-intent exits 0 anyway and records nothing: pass it only once
+      a human approved the change, never from an agent.
 
 Options:
   --config <file>   The CIGE config (default: cige.config.ts, .mts, .js, or .mjs
@@ -155,13 +156,18 @@ async function replay(io: CliIo, args: readonly string[]): Promise<number> {
   // A case's environment is prose until the config declares environments; only a declared one is acted on.
   const environment =
     name === undefined || (values.env === undefined && loaded.config.environments === undefined) ? undefined : environmentOf(loaded.config, name);
-  if (environment?.reset !== undefined) {
+  if (environment !== undefined) {
+    // A replay on state the last run left behind proves nothing about the repair.
+    if (environment.reset === undefined) {
+      throw new UsageError(`environment "${name}" has no reset action; declare one (a no-op when the environment keeps no state)`);
+    }
     io.stderr(`e2e-cige: resetting ${name}\n`);
     await environment.reset();
   }
+  const e2eConfig = environment?.config ?? loaded.config.e2eConfig;
   const e2eArgs = [
     'run',
-    ...(environment?.config === undefined ? [] : ['--config', environment.config]),
+    ...(e2eConfig === undefined ? [] : ['--config', e2eConfig]),
     '--tag',
     cigeTag(testCase.id, testCase.variant),
     '--no-cache',

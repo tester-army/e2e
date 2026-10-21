@@ -133,6 +133,12 @@ describe('dimensions and variants', () => {
     );
   });
 
+  it('refuses a variant that leaves a placeholder unfilled', () => {
+    expect(() => parseCige({ ...pay, Variants: [{ id: 'none' }] })).toThrow(/Variants none: no value for the \{method\} placeholder/);
+    const stepParam = { ...pay, Intent: 'A shopper can pay', Execution: [{ id: 'e1', step: 'pay by {method}', params: { method: 'card' } }] };
+    expect(() => parseCige({ ...stepParam, Variants: [{ id: 'default' }] })).not.toThrow();
+  });
+
   it('refuses two variants with one id, and a value that is not a primitive', () => {
     expect(() => parseCige({ ...pay, Variants: [{ id: 'card', params: { method: 'card' } }, { id: 'card', params: { method: 'cash' } }] })).toThrow(
       /Variants: id "card" is used twice/,

@@ -19,6 +19,7 @@ import { readinessGaps } from './check.ts';
 import { attemptsOf, classifyResult, type CigeClassification, type CigeFailureType } from './classify.ts';
 import { DEFAULT_CASES, fillRef, type CigeConfig } from './config.ts';
 import { loadCigeCases } from './load.ts';
+import { fileSafe } from './refs.ts';
 import type { CigeCase } from './schema.ts';
 import { CIGE_TAG, cigeTag } from './suite.ts';
 import { caseForVariant } from './variants.ts';
@@ -32,7 +33,8 @@ export interface CigeRunSummary {
   readonly variant?: string;
   readonly runDate: string;
   readonly build?: string;
-  readonly result: 'pass' | 'fail' | 'skipped';
+  /** `interrupted`: the run stopped before the test reached a verdict (`--max-failures`, a signal); never triaged. */
+  readonly result: 'pass' | 'fail' | 'skipped' | 'interrupted';
   readonly intent: string;
   readonly failedStep?: string;
   readonly failureType?: CigeFailureType;
@@ -86,9 +88,6 @@ function shellArg(value: string): string {
   return /^[A-Za-z0-9._:/=@-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function fileSafe(name: string): string {
-  return name.replace(/[^A-Za-z0-9._-]+/g, '_');
-}
 
 /** Builds the summary of one result; `testCase` is undefined when its file is no longer among the globs. */
 function summarize<Fixtures>(
@@ -99,13 +98,14 @@ function summarize<Fixtures>(
   options: CigeReporterOptions<Fixtures>,
   carried: boolean,
   shared: boolean,
+  outputDir: string,
 ): CigeRunSummary {
   const { id, variant } = key;
   const { build } = options;
   const fromRoot = (file: string): string => path.relative(run.projectRoot, file).split(path.sep).join('/');
   const classification: CigeClassification =
     testCase === undefined
-      ? { result: result.status === 'passed' || result.status === 'flaky' ? 'pass' : result.status === 'skipped' ? 'skipped' : 'fail', signals: ['case-not-found'] }
+      ? { result: result.status === 'passed' || result.status === 'flaky' ? 'pass' : result.status === 'skipped' || result.status === 'interrupted' ? result.status : 'fail', signals: ['case-not-found'] }
       : classifyResult(testCase, result, run.report);
   const context = testCase?.context;
   const environment = context?.environment;
@@ -127,11 +127,18 @@ function summarize<Fixtures>(
   const environments = options.environments;
   const replay =
     environments === undefined
-      ? { command: ['npx', 'e2e', 'run', '--tag', cigeTag(id, variant), '--no-cache', ...narrow].map(shellArg).join(' ') }
+      ? {
+          command: ['npx', 'e2e', 'run', ...(options.e2eConfig === undefined ? [] : ['--config', options.e2eConfig]), '--tag', cigeTag(id, variant), '--no-cache', ...narrow]
+            .map(shellArg)
+            .join(' '),
+        }
       : {
           ...(environment === undefined ? {} : { environment }),
           command: ['npx', 'e2e-cige', 'replay', id, ...variantArgs, ...(narrow.length === 0 ? [] : ['--', ...narrow])].map(shellArg).join(' '),
         };
+  // The refs go beside the summary; name the directory when it isn't the command's default.
+  const summaries = fromRoot(outputDir);
+  const outputArgs = summaries === '.e2e/cige' ? [] : ['--output', summaries];
   const hasResolvers = options.refs !== undefined && Object.values(options.refs).some((resolver) => resolver !== undefined);
   const attempts = attemptsOf(result, run.report);
   const attempt = attempts.at(-1);
@@ -159,7 +166,7 @@ function summarize<Fixtures>(
     ...(refs.specRef === undefined ? {} : { specRef: refs.specRef }),
     ...(refs.buildRef === undefined ? {} : { buildRef: refs.buildRef }),
     ...(refs.expectedRef === undefined ? {} : { expectedRef: refs.expectedRef }),
-    ...(hasResolvers ? { resolveRefs: ['npx', 'e2e-cige', 'refs', id, ...variantArgs].map(shellArg).join(' ') } : {}),
+    ...(hasResolvers ? { resolveRefs: ['npx', 'e2e-cige', 'refs', id, ...variantArgs, ...outputArgs].map(shellArg).join(' ') } : {}),
     replay,
     ...(testCase?.file === undefined ? {} : { case: fromRoot(testCase.file) }),
     target: result.targetId,
@@ -172,6 +179,39 @@ function summarize<Fixtures>(
       artifacts,
     },
   };
+}
+
+/**
+ * Removes what an earlier run left in the summary directory before this run
+ * writes its own, and nothing else: the directory may hold other files.
+ * After a full run every summary and every resolved refs directory goes, so
+ * an old verdict never passes for this run's. A run that left CIGE cases out
+ * (a tag or file filter, `e2e-cige replay`, `--last-failed`) removes only
+ * the summaries of the cases it ran, under either naming, and keeps the
+ * rest, refs included: the cases it skipped still stand as last reported.
+ */
+function clearEarlier(outputDir: string, run: Pick<FinishedRun, 'report' | 'lastRun'>, ran: readonly string[]): void {
+  if (!existsSync(outputDir)) return;
+  const ranIds = new Set(ran);
+  const leftOut = run.report.run.results.some((result) => {
+    const id = caseOf(result)?.id;
+    return id !== undefined && !ranIds.has(id);
+  });
+  const partial = run.lastRun !== undefined || leftOut;
+  // Every known case, longest id first, so a file of case `a.b` is never taken for case `a`.
+  const known = new Set([...ranIds, ...run.report.run.results.flatMap((result) => caseOf(result)?.id ?? [])]);
+  const stems = [...known].map((id) => ({ id, stem: fileSafe(id) })).toSorted((a, b) => b.stem.length - a.stem.length);
+  for (const file of readdirSync(outputDir)) {
+    const target = path.join(outputDir, file);
+    if (file.endsWith(REFS_SUFFIX)) {
+      if (!partial) rmSync(target, { recursive: true, force: true });
+      continue;
+    }
+    if (!file.endsWith(SUMMARY_SUFFIX)) continue;
+    const stem = file.slice(0, -SUMMARY_SUFFIX.length);
+    const owner = stems.find((entry) => stem === entry.stem || stem.startsWith(`${entry.stem}.`));
+    if (!partial || (owner !== undefined && ranIds.has(owner.id))) rmSync(target, { force: true });
+  }
 }
 
 /**
@@ -190,20 +230,11 @@ export function cige<Fixtures extends TestFixtures = TestFixtures>(options: Cige
     async onRunFinished(run): Promise<ReporterSummary | void> {
       if (run.reportPath === undefined) return;
       const outputDir = path.resolve(run.projectRoot, options.outputDir ?? path.join(path.dirname(run.reportPath), 'cige'));
-      // A summary from an earlier run must not pass for this one's, even when
-      // this run has none to write, and neither may the refs resolved for it.
-      // Only those go: the directory may be one the project keeps other files
-      // in. A `--last-failed` rerun keeps them, since the cases it did not
-      // select still stand as last reported.
-      if (run.lastRun === undefined && existsSync(outputDir)) {
-        for (const file of readdirSync(outputDir)) {
-          if (file.endsWith(SUMMARY_SUFFIX) || file.endsWith(REFS_SUFFIX)) rmSync(path.join(outputDir, file), { recursive: true, force: true });
-        }
-      }
       const isCige = (result: ReportResult): boolean => caseOf(result) !== undefined;
       const selected = run.report.run.results.filter((result) => result.selected && isCige(result));
       const carried = (run.report.run.carried?.results ?? []).filter(isCige);
       const results = [...selected.map((result) => ({ result, carried: false })), ...carried.map((result) => ({ result, carried: true }))];
+      clearEarlier(outputDir, run, results.map(({ result }) => caseOf(result)!.id));
       if (results.length === 0) return;
       const cases = new Map(
         loadCigeCases(options.cases ?? DEFAULT_CASES, { root: options.root ?? run.projectRoot }).map((testCase) => [testCase.id, testCase]),
@@ -213,20 +244,21 @@ export function cige<Fixtures extends TestFixtures = TestFixtures>(options: Cige
       const nameOf = (key: { readonly id: string; readonly variant?: string }): string => (key.variant === undefined ? key.id : `${key.id}.${key.variant}`);
       const perCase = new Map<string, number>();
       for (const { result } of results) perCase.set(nameOf(keyOf(result)), (perCase.get(nameOf(keyOf(result))) ?? 0) + 1);
-      const counts = { pass: 0, fail: 0, skipped: 0 };
+      const counts = { pass: 0, fail: 0, skipped: 0, interrupted: 0 };
       for (const { result, carried: wasCarried } of results) {
         const key = keyOf(result);
         const base = nameOf(key);
         const loaded = cases.get(key.id);
         const testCase = loaded === undefined ? undefined : caseForVariant(loaded, key.variant);
         const shared = perCase.get(base) !== 1;
-        const summary = summarize(run, result, key, testCase, options, wasCarried, shared);
+        const summary = summarize(run, result, key, testCase, options, wasCarried, shared, outputDir);
         counts[summary.result] += 1;
         const name = shared ? [base, result.targetId, result.agent, ...(result.repeat === 0 ? [] : [String(result.repeat)])].join('.') : base;
         writeFileSync(path.join(outputDir, `${fileSafe(name)}${SUMMARY_SUFFIX}`), `${JSON.stringify(summary, null, 2)}\n`);
       }
       const shown = path.relative(run.projectRoot, outputDir) || '.';
-      const rows = [{ label: 'CIGE', text: `${counts.pass} passed, ${counts.fail} failed, ${counts.skipped} skipped: ${shown}` }];
+      const interrupted = counts.interrupted === 0 ? '' : `, ${counts.interrupted} interrupted`;
+      const rows = [{ label: 'CIGE', text: `${counts.pass} passed, ${counts.fail} failed, ${counts.skipped} skipped${interrupted}: ${shown}` }];
       // Said on every run, not only at the first failure: a case without refs can't be triaged when it matters.
       const ran = [...new Set(results.map(({ result }) => keyOf(result).id))].flatMap((id) => {
         const testCase = cases.get(id);

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { isAgentError, type ActOptions, type AssertOptions, type TestAPI, type TestFixtures, type TestOptions } from 'e2e';
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { classifyResult } from '../src/classify.ts';
 import { breakingGuardrail, createGuardrailMonitor, violatedGuardrail } from '../src/guardrails.ts';
 import { loadCigeCases, loadCigeFile } from '../src/load.ts';
 import { actInstruction, GUARDRAIL_HEADING, intentAssertion, renderAgentContext } from '../src/render.ts';
@@ -196,7 +197,7 @@ describe('guardrails', () => {
 describe('runCige', () => {
   const testCase = parseCige(CHECKOUT);
 
-  it('runs preconditions, Execution, evidence, then Intent, in order', async () => {
+  it('runs preconditions, opens the page they seeded, then Execution, evidence, and Intent, in order', async () => {
     const { fixtures, calls } = fakeFixtures();
     // Hooks log into the same sequence as the fixtures, so the interleaving is checked, not just each order.
     await runCige(testCase, fixtures, {
@@ -209,8 +210,8 @@ describe('runCige', () => {
       },
     });
     expect(calls.map((call) => `${call.api} ${call.text.split('\n')[0]}`)).toEqual([
-      'app.open /cart',
       'hook seedCart',
+      'app.open /cart',
       'agent.act apply the code {code}',
       'agent.assert the discount is applied',
       'agent.act pay with the test card',
@@ -256,6 +257,27 @@ describe('runCige', () => {
     });
     const truthy = runCige(testCase, fakeFixtures().fixtures, { hooks: { seedCart: () => undefined, orderExists: () => 'yes' } });
     await expect(truthy).rejects.toThrow('hook orderExists returned "yes"');
+  });
+
+  it('reports a hook that could not check as inconclusive, and keeps an error code it threw', async () => {
+    const down = runCige(testCase, fakeFixtures().fixtures, {
+      hooks: {
+        seedCart: () => undefined,
+        orderExists: () => {
+          throw new TypeError('fetch failed');
+        },
+      },
+    });
+    await expect(down).rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE', message: 'CIGE evidence order-record could not be checked: fetch failed' });
+    const located = runCige(testCase, fakeFixtures().fixtures, {
+      hooks: {
+        seedCart: () => undefined,
+        orderExists: () => {
+          throw Object.assign(new Error('no element matches'), { code: 'LOCATOR_NOT_FOUND' });
+        },
+      },
+    });
+    await expect(located).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND', message: 'no element matches' });
   });
 
   it('reports a failing precondition as test setup', async () => {
@@ -328,5 +350,12 @@ describe('variants', () => {
     const dir = project({ 'tests/cige/pay.cige.json': JSON.stringify({ id: 'pay', Context: { environment: 'staging' }, Intent: 'A shopper can pay', Execution: ['pay'] }) });
     expect(registered({ cases: 'tests/cige/*.cige.json', root: dir, environments: { staging: {} } }).map(([title]) => title)).toEqual(['A shopper can pay']);
     expect(() => registered({ cases: 'tests/cige/*.cige.json', root: dir, environments: { local: {} } })).toThrow(/not one of the config's environments/);
+  });
+});
+
+describe('classifyResult', () => {
+  it('summarizes an interrupted test as interrupted, never as a failure to triage', () => {
+    const result = { status: 'interrupted', attempts: [] } as unknown as Parameters<typeof classifyResult>[1];
+    expect(classifyResult(parseCige(CHECKOUT), result)).toEqual({ result: 'interrupted', signals: ['status:interrupted'] });
   });
 });

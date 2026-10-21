@@ -85,12 +85,13 @@ that one pointer. Don't invent a path.
 
 ## Where each thing goes
 
-- **Intent** is the case's identity: its test title and `cige:<id>` tag.
-  One Intent is one case. Put the outcome in it, never the path ("can check
+- **Intent** is the case's identity: its statement is the test title, and
+  the top-level `id` gives the `cige:<id>` tag. One Intent is one case. Put the outcome in it, never the path ("can check
   out with a discount", not "clicks Apply").
 - **Evidence** is what a pass needs beyond the screen. A UI message alone
   is weak: when the Intent claims a record exists, add a hook that checks
-  the backend. A hook holds only when it returns `true`.
+  the backend. A hook holds only when it returns `true`; return `false` for
+  "not there", and throw only when the check itself can't run.
 - **Guardrails** are prose the acting agent reads on every step. Add `deny`
   when the runner must stop the step on an action: an action name
   (`tool:refund`, `navigate`), a prefix ending in `*`, or a regular
@@ -133,6 +134,7 @@ import { defineCige } from '@e2e-dev/cige';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
+  root: new URL('.', import.meta.url), // the suite, reporter, and e2e-cige then read the same files
   build: process.env.GITHUB_SHA,
   hooks: { seedCart, orderPersisted },
   environments: {
@@ -145,8 +147,13 @@ export default defineCige({
 });
 ```
 
-Once `environments` is set, every case's `Context.environment` must name
-one. Register the cases with `cigeSuite(config)` in a `*.e2e.ts` file and
+Set `e2eConfig` to the e2e config file when the cases don't run under
+the nearest `e2e.config.ts`; a replay without an environment config uses
+it.
+
+Once `environments` is set, a case whose `Context.environment` names none
+of them fails to load, and a case with no `Context.environment` shows as
+`environment-unset` in `e2e-cige check`: set it on every case. Register the cases with `cigeSuite(config)` in a `*.e2e.ts` file and
 add `cige(config)` to the e2e config's `reporters`.
 
 ## Before you hand a new case over

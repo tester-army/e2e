@@ -329,19 +329,30 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
   duplicates('Guardrails', guardrails.map((rule) => rule.id), issues);
   duplicates('Intent.evidence', evidence.map((item) => item.id), issues);
   duplicates('Variants', variants.map((variant) => variant.id), issues);
-  const placeholders = new Set(
+  // A judgment takes no params, so a variant must fill every placeholder in one; an act
+  // step's placeholder may also be filled by the step's own params.
+  const judged = new Set(
     [
       intentObject.statement,
       ...(intentObject.success ?? []),
       ...(intentObject.failure ?? []),
-      ...execution.map((step) => step.text),
+      ...execution.flatMap((step) => (step.kind === 'verify' ? [step.text] : [])),
       ...evidence.flatMap((item) => (item.kind === 'assert' ? [item.text] : [])),
     ].flatMap(placeholdersIn),
   );
+  const acted = execution.flatMap((step) =>
+    step.kind === 'act' ? placeholdersIn(step.text).filter((name) => !Object.hasOwn(step.params ?? {}, name)) : [],
+  );
+  const placeholders = new Set([...judged, ...execution.flatMap((step) => placeholdersIn(step.text))]);
   for (const variant of variants) {
     for (const name of Object.keys(variant.params)) {
       if (!placeholders.has(name)) {
         issues.push(`Variants ${variant.id}: param "${name}" fills no {${name}} placeholder in Intent, Execution, or evidence`);
+      }
+    }
+    for (const name of new Set([...judged, ...acted])) {
+      if (!Object.hasOwn(variant.params, name)) {
+        issues.push(`Variants ${variant.id}: no value for the {${name}} placeholder; the test would run on the literal text`);
       }
     }
   }
@@ -397,6 +408,11 @@ const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 /** The `{name}` placeholders a piece of case text refers to. */
 export function placeholdersIn(text: string): string[] {
   return [...text.matchAll(PLACEHOLDER)].map((match) => match[1]!);
+}
+
+/** `text` with each `{name}` that `values` has filled in; any other placeholder stays as written. */
+export function fillPlaceholders(text: string, values: Readonly<Record<string, string | number | boolean>>): string {
+  return text.replace(PLACEHOLDER, (whole, name: string) => (Object.hasOwn(values, name) ? String(values[name]) : whole));
 }
 
 function isPattern(source: string): boolean {

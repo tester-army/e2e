@@ -57,7 +57,7 @@ export type CigeFailureType = 'infrastructure' | 'outdated-test-logic' | 'produc
 export type CigePhase = 'precondition' | 'execution' | 'evidence' | 'intent';
 
 export interface CigeClassification {
-  readonly result: 'pass' | 'fail' | 'skipped';
+  readonly result: 'pass' | 'fail' | 'skipped' | 'interrupted';
   /** The Execution step, evidence item, or `intent` the failure landed in. */
   readonly failedStep?: string;
   readonly phase?: CigePhase;
@@ -151,7 +151,7 @@ function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; i
   }
   const error = attempt.error;
   const located = error === undefined ? {} : { code: error.code, message: error.message };
-  const evidence = /CIGE evidence ([A-Za-z0-9][A-Za-z0-9._-]*) not satisfied/.exec(error?.message ?? '')?.[1];
+  const evidence = /CIGE evidence ([A-Za-z0-9][A-Za-z0-9._-]*) (?:not satisfied|could not be checked)/.exec(error?.message ?? '')?.[1];
   if (evidence !== undefined) return { phase: 'evidence', id: evidence, ...located };
   if (/CIGE (precondition|hook)/.test(error?.message ?? '') || error?.phase === 'beforeEach' || error?.phase === 'beforeAll') {
     return { phase: 'precondition', ...located };
@@ -172,6 +172,8 @@ function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; i
  */
 export function classifyResult(testCase: CigeCase, result: ReportResult, report?: Report): CigeClassification {
   if (result.status === 'skipped') return { result: 'skipped', signals: ['status:skipped'] };
+  // Stopped before a verdict: core never counts it as failed, so neither does a summary.
+  if (result.status === 'interrupted') return { result: 'interrupted', signals: ['status:interrupted'] };
   const attempt = attemptsOf(result, report).at(-1);
   if (result.status === 'passed' || result.status === 'flaky') {
     const signals: string[] = [`status:${result.status}`];
@@ -206,6 +208,6 @@ export function classifyResult(testCase: CigeCase, result: ReportResult, report?
   })();
   if (code === 'ASSERTION_INCONCLUSIVE') signals.push('inconclusive-evidence');
   if (AUTOMATION_CODES.has(code)) signals.push('automation-limit');
-  if (result.status === 'timed-out' || result.status === 'interrupted') signals.push('run-stopped');
+  if (result.status === 'timed-out') signals.push('run-stopped');
   return { ...base, ...(failureType === undefined ? {} : { failureType }), signals };
 }

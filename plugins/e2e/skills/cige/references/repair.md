@@ -1,6 +1,7 @@
 # Repairing a case
 
-Two modes, each with one field it may write. Use the mode the
+Two modes, each with a fixed set of fields it may write: Mode A rewrites
+Execution, Mode B only adds to Guardrails and Intent. Use the mode the
 classification named; do not mix them in one change.
 
 ## Mode A: the path is stale (`outdated-test-logic`)
@@ -10,15 +11,17 @@ You may rewrite `Execution` only.
 
 1. Read Intent and Guardrails. The new path must reach the same Intent
    without breaking a guardrail.
-2. Run the summary's `resolveRefs` command and read the spec and the
-   release notes for what changed.
+2. Fetch the refs: the summary's `resolveRefs` command when it has one,
+   else `npx e2e-cige refs <id>`. Read the spec and the release notes for
+   what changed.
 3. Look at the live app before you write a step: start `e2e mcp` (the e2e
    skill's `mcp` topic) in the case's environment, open `Context.open`, and
    walk the flow. Don't guess at a UI from the old steps.
 4. Edit the steps. Keep the ids of the steps that still mean the same
    thing; give a new step a new id. A step is one goal, not a click
    sequence.
-5. Replay: `npx e2e-cige replay <id>` (add `--variant <v>` for a variant).
+5. Replay: `npx e2e-cige replay <id>`, once per variant with
+   `--variant <v>` when the case has variants.
    Repeat until it passes. If no path reaches the Intent within the
    guardrails, stop: it is probably a `product-defect`. Read
    `escalate.md`.
@@ -46,7 +49,9 @@ npx e2e-cige diff --base origin/main --json
 
 Mode A should show only `execution-changed`, with `intentUnchanged: true`.
 Mode B shows only additions (`guardrail-added`, `deny-added`,
-`criteria-added`, `evidence-added`) and `blocking: 0`. Any blocking change
+`criteria-added`, `evidence-added`) and `blocking: 0`. Its
+`intentUnchanged` is `false` when it added criteria or evidence; that is
+expected, since the Intent got stricter, and `blocking: 0` is what counts. Any blocking change
 means the repair went past its mode: undo that part, or hand it to a human
 as a proposal.
 

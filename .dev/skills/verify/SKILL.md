@@ -49,7 +49,7 @@ cd apps/testbed && node node_modules/e2e/dist/cli/bin.js run tests/todos.e2e.ts
 cd apps/web-benchmark && pnpm run build     # the Next.js app, once per scenario change
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run tests/<scenario>.e2e.ts
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts
-cd apps/testbed && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts --tag cige --no-cache
+cd apps/testbed && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts --tag cige --no-cache   # live: a CIGE change also spends model calls
 cd apps/testbed && node node_modules/@e2e-dev/cige/dist/bin.js check --resolve   # also refs <id>, replay <id>, diff --base origin/main
 pnpm test:testbed && pnpm test:web-benchmark          # the whole gate, as CI runs it
 ```
@@ -63,7 +63,7 @@ its first consumer.
 Agentic runs need `AI_GATEWAY_API_KEY`. The benchmark agent suites replay
 their committed recordings and call the model only for a step with none, as
 CI does; a step that spends a model call there means its recording went
-stale. Go live with `--no-cache --ai-trace` only when the change is to the agent, and
+stale. Go live with `--no-cache --ai-trace` only when the change is to the agent or to `@e2e-dev/cige`, whose classification needs real failures, and
 read the trace with [unbox-ai](../../../.claude/skills/unbox-ai/SKILL.md) (`compare` main against
 the branch), never by opening it. Re-recorded entries are committed in the
 same PR ("Committed recordings" in `AGENTS.md`).

@@ -22,7 +22,7 @@ const CASE = {
 const CONFIG = `export default {
   cases: 'tests/cige/*.cige.json',
   environments: {
-    staging: { config: 'e2e.staging.config.ts', reset() { globalThis.cigeResets = (globalThis.cigeResets ?? 0) + 1; } },
+    staging: { config: 'e2e.staging.config.ts', reset() { globalThis.cigeEvents?.push('reset'); } },
     bare: {},
   },
 };
@@ -47,6 +47,7 @@ function io(cwd: string): CliIo & { out: string; err: string; runs: { args: read
     stdout: (text: string) => void (state.out += text),
     stderr: (text: string) => void (state.err += text),
     runE2e: async (args: readonly string[], at: string) => {
+      (globalThis as { cigeEvents?: string[] }).cigeEvents?.push('e2e');
       state.runs.push({ args, cwd: at });
       return 1;
     },
@@ -68,9 +69,10 @@ describe('e2e-cige', () => {
   it('replays one variant in its environment: reset, then e2e with its config, and its exit code', async () => {
     const dir = project();
     const state = io(dir);
-    const before = (globalThis as { cigeResets?: number }).cigeResets ?? 0;
+    const events: string[] = [];
+    (globalThis as { cigeEvents?: string[] }).cigeEvents = events;
     expect(await main(['replay', 'checkout', '--variant', 'card', '--', '--target', 'web'], state)).toBe(1);
-    expect((globalThis as { cigeResets?: number }).cigeResets).toBe(before + 1);
+    expect(events).toEqual(['reset', 'e2e']);
     expect(state.runs).toEqual([
       { args: ['run', '--config', 'e2e.staging.config.ts', '--tag', 'cige:checkout/card', '--no-cache', '--target', 'web'], cwd: dir },
     ]);
@@ -84,6 +86,19 @@ describe('e2e-cige', () => {
     expect(await main(['replay', 'checkout', '--variant', 'card', '--env', 'prod'], env)).toBe(2);
     expect(env.err).toContain('no environment "prod"; known: staging, bare');
     expect(env.runs).toEqual([]);
+    const bare = io(project());
+    expect(await main(['replay', 'checkout', '--variant', 'card', '--env', 'bare'], bare)).toBe(2);
+    expect(bare.err).toContain('environment "bare" has no reset action');
+    expect(bare.runs).toEqual([]);
+  });
+
+  it('replays a case with no environment under the config e2eConfig names', async () => {
+    const dir = project(false);
+    writeFileSync(path.join(dir, 'cige.config.mjs'), "export default { e2eConfig: 'e2e.agent.config.ts' };\n");
+    writeFileSync(path.join(dir, 'tests', 'cige', 'checkout.cige.json'), JSON.stringify({ ...CASE, Context: {} }));
+    const state = io(dir);
+    await main(['replay', 'checkout', '--variant', 'card'], state);
+    expect(state.runs[0]?.args).toEqual(['run', '--config', 'e2e.agent.config.ts', '--tag', 'cige:checkout/card', '--no-cache']);
   });
 
   it('replays without a config, treating the environment as prose', async () => {
@@ -123,7 +138,7 @@ describe('e2e-cige check', () => {
     const dir = project();
     writeFileSync(
       path.join(dir, 'tests', 'cige', 'ready.cige.json'),
-      JSON.stringify({ id: 'ready', Context: { specRef: 'docs/specs/pay.md', buildRef: 'CHANGELOG.md' }, Intent: 'A ready case', Execution: ['x'] }),
+      JSON.stringify({ id: 'ready', Context: { environment: 'staging', specRef: 'docs/specs/pay.md', buildRef: 'CHANGELOG.md' }, Intent: 'A ready case', Execution: ['x'] }),
     );
     writeFileSync(
       path.join(dir, 'tests', 'cige', 'bare.cige.json'),
@@ -142,6 +157,14 @@ describe('e2e-cige check', () => {
     const report = JSON.parse(json.out) as { cases: number; ready: number; results: { id: string; gaps: { kind: string }[] }[] };
     expect(report).toMatchObject({ cases: 3, ready: 1 });
     expect(report.results.find((result) => result.id === 'bare')?.gaps.map((gap) => gap.kind)).toEqual(['no-build-ref', 'environment-no-reset']);
+  });
+
+  it('flags a case that names no environment once the config declares some', async () => {
+    const dir = project();
+    writeFileSync(path.join(dir, 'tests', 'cige', 'checkout.cige.json'), JSON.stringify({ ...CASE, Context: { specRef: 'a.md', buildRef: 'b.md' } }));
+    const state = io(dir);
+    expect(await main(['check'], state)).toBe(1);
+    expect(state.out).toContain('environment-unset: no Context.environment: a replay runs with the default config and resets nothing');
   });
 
   it('flags an environment the config does not declare', async () => {

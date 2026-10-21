@@ -4,7 +4,8 @@
 
 Add `@e2e-dev/cige`, which runs CIGE test cases: Context, Intent, Guardrails,
 and Execution as a portable `.cige.json` file. `cigeSuite` registers one test
-per case and variant, tagged `cige:<id>` and titled by its Intent, with the
+per case and variant, tagged `cige:<id>` (and `cige:<id>/<variant>` for a
+variant) and titled by its Intent, with the
 platforms, session, capabilities, and agent the case's Context names. It runs
 each Execution step as an `agent.act` goal with the guardrails on its
 instruction, stops the step with `POLICY_DENIED` on an action a guardrail

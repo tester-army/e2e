@@ -86,6 +86,10 @@ describe('diffCases', () => {
     ]);
   });
 
+  it('blocks a change to an existing variant data: it changes what the case tests', () => {
+    expect(kinds(edited((file) => void (file.Variants[0].platforms = ['ios'])))).toEqual(['!variant-changed']);
+  });
+
   it('reads an edited guardrail as one removed and one added, so it needs approval', () => {
     expect(kinds(edited((file) => void (file.Guardrails[0] = 'Use the test card')))).toEqual(['!guardrail-removed', 'guardrail-added']);
   });
@@ -135,6 +139,20 @@ describe('diffSince', () => {
     ]);
     expect(report).toMatchObject({ base: 'HEAD', blocking: 1, intentUnchanged: false });
     expect(formatDiff(report)).toContain('needs approval  case-removed: old');
+  });
+
+  it('diffs from where the branch left the base, so a change that landed there since is not blamed on it', () => {
+    const dir = repo({ 'checkout.cige.json': BASE });
+    const git = (...args: string[]) =>
+      execFileSync('git', ['-c', 'user.email=cige@example.test', '-c', 'user.name=cige', ...args], { cwd: dir, encoding: 'utf8', stdio: 'pipe' }).trim();
+    const main = git('rev-parse', '--abbrev-ref', 'HEAD');
+    git('checkout', '-q', '-b', 'repair');
+    git('checkout', '-q', main);
+    write(dir, { 'checkout.cige.json': edited((file) => void file.Intent.success.push('The total is 10% below the subtotal')) });
+    git('commit', '-q', '-am', 'tighten on main');
+    git('checkout', '-q', 'repair');
+    write(dir, { 'checkout.cige.json': edited((file) => void (file.Execution[1].step = 'pay')) });
+    expect(diffSince(main, dir).files[0]?.changes.map((item) => item.kind)).toEqual(['execution-changed']);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

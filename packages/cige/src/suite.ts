@@ -39,6 +39,10 @@ export interface CigeSuiteOptions<Fixtures = TestFixtures> {
   readonly options?: Omit<TestOptions, 'agentContext' | 'only'>;
 }
 
+function isGlobs(cases: string | readonly string[] | readonly CigeCase[]): cases is string | readonly string[] {
+  return typeof cases === 'string' || cases.every((entry) => typeof entry === 'string');
+}
+
 function isConfig<Fixtures>(cases: unknown): cases is CigeConfig<Fixtures> {
   return typeof cases === 'object' && cases !== null && !Array.isArray(cases);
 }
@@ -78,10 +82,8 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
       ...(environments === undefined ? {} : { environments }),
     });
   }
-  const globs = typeof cases === 'string' || cases.every((entry) => typeof entry === 'string');
-  const loaded = globs
-    ? loadCigeCases(cases as string | readonly string[], suiteOptions.root === undefined ? {} : { root: suiteOptions.root })
-    : (cases as readonly CigeCase[]);
+  const globs = isGlobs(cases);
+  const loaded = globs ? loadCigeCases(cases, suiteOptions.root === undefined ? {} : { root: suiteOptions.root }) : cases;
   if (globs && loaded.length === 0) {
     // A mistyped glob must not turn a suite green by registering nothing.
     throw new CigeValidationError(JSON.stringify(cases), ['matches no file; check the glob and root']);

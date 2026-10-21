@@ -69,7 +69,13 @@ export function checkCases(cases: readonly CigeCase[]): void {
   for (const testCase of cases) {
     const source = display(testCase.file ?? testCase.id);
     // A variant's values can push a statement over a limit, so every resolved case is measured.
-    const problems = [...new Set(expandVariants(testCase).flatMap((resolved) => sizeProblems(resolved)))];
+    const problems = [
+      ...new Set(
+        expandVariants(testCase).flatMap((resolved) =>
+          sizeProblems(resolved).map((problem) => (resolved.variant === undefined ? problem : `${problem} (variant ${resolved.variant})`)),
+        ),
+      ),
+    ];
     if (testCase.context.fragments.length !== testCase.context.prompts.length) {
       problems.push('Context.prompts are not read; load the case with loadCigeFile, or read them into context.fragments');
     }

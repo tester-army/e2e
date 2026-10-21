@@ -344,6 +344,19 @@ describe('the reporter on a later run', () => {
     expect(summary.classification.signals).toContain('carried-from-earlier-run');
   });
 
+  it('keeps the other cases and every refs directory when a run left cases out, as e2e-cige replay does', async () => {
+    writeFileSync(path.join(dir(), 'pass.run-summary.json'), '{}');
+    writeFileSync(path.join(dir(), 'stale.memory.default.run-summary.json'), '{"result":"fail"}');
+    mkdirSync(path.join(dir(), 'pass.refs'), { recursive: true });
+    const only = outcome.report.run.results.map((result) => (result.tags.includes('cige:stale') ? result : { ...result, selected: false }));
+    await reporter().onRunFinished!(finished({ ...outcome.report, run: { ...outcome.report.run, results: only } }), new AbortController().signal);
+    expect(readdirSync(dir())).toContain('pass.run-summary.json');
+    expect(readdirSync(dir())).toContain('pass.refs');
+    // The other naming of the case it ran goes, so no stale verdict contradicts the new one.
+    expect(readdirSync(dir())).not.toContain('stale.memory.default.run-summary.json');
+    expect(readdirSync(dir())).toContain('stale.run-summary.json');
+  });
+
   it('counts the cases that could not be fully triaged, under the run summary', async () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.
