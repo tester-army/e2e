@@ -357,6 +357,16 @@ describe('the reporter on a later run', () => {
     expect(readdirSync(dir())).toContain('stale.run-summary.json');
   });
 
+  it('keeps a sibling variant when a run replays only one variant of a case', async () => {
+    writeFileSync(path.join(dir(), 'variants.voucher.run-summary.json'), '{"result":"fail"}');
+    const variants = outcome.report.run.results
+      .filter((result) => result.tags.includes('cige:variants'))
+      .map((result) => (result.tags.includes('cige:variants/card') ? result : { ...result, selected: false }));
+    await reporter().onRunFinished!(finished({ ...outcome.report, run: { ...outcome.report.run, results: variants } }), new AbortController().signal);
+    expect(readdirSync(dir())).toContain('variants.voucher.run-summary.json');
+    expect(readdirSync(dir())).toContain('variants.card.run-summary.json');
+  });
+
   it('counts the cases that could not be fully triaged, under the run summary', async () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.

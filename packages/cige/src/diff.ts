@@ -75,8 +75,17 @@ function evidenceKey(item: CigeEvidence): string {
   return item.kind === 'hook' ? `hook ${item.hook}` : `assert${item.vision === true ? ' (vision)' : ''} ${JSON.stringify(item.text)}`;
 }
 
+/** `value` as JSON with object keys sorted, so reordering keys is no change. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, entry: unknown) =>
+    typeof entry === 'object' && entry !== null && !Array.isArray(entry)
+      ? Object.fromEntries(Object.entries(entry).toSorted(([a], [b]) => a.localeCompare(b)))
+      : entry,
+  );
+}
+
 function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return canonical(a) === canonical(b);
 }
 
 /**

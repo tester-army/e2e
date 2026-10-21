@@ -49,7 +49,7 @@ cd apps/testbed && node node_modules/e2e/dist/cli/bin.js run tests/todos.e2e.ts
 cd apps/web-benchmark && pnpm run build     # the Next.js app, once per scenario change
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run tests/<scenario>.e2e.ts
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts
-cd apps/testbed && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts --tag cige --no-cache   # live: a CIGE change also spends model calls
+cd apps/testbed && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts --tag cige --no-cache --ai-trace   # live: a CIGE change also spends model calls
 cd apps/testbed && node node_modules/@e2e-dev/cige/dist/bin.js check --resolve   # also refs <id>, replay <id>, diff --base origin/main
 pnpm test:testbed && pnpm test:web-benchmark          # the whole gate, as CI runs it
 ```

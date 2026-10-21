@@ -93,7 +93,7 @@ const PATH_CODES = new Set(['ACTION_FAILED', 'LOCATOR_NOT_FOUND', 'LOCATOR_AMBIG
  * concluded. A changed flow can cause them, and so can a slow environment
  * or a weak model, so they leave the type to the classifier.
  */
-const AUTOMATION_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'AUTOMATION_UNSUPPORTED', 'STEP_NO_CONCLUSION', 'CONTEXT_OVERFLOW']);
+const AUTOMATION_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'AUTOMATION_UNSUPPORTED', 'STEP_NO_CONCLUSION', 'CONTEXT_OVERFLOW', 'MODEL_REFUSED']);
 
 interface PlannedStep {
   readonly phase: CigePhase;

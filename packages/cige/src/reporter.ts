@@ -83,6 +83,12 @@ function caseOf(result: ReportResult): { readonly id: string; readonly variant?:
   return variant === undefined ? { id } : { id, variant };
 }
 
+/** What a result's summary files are named after: the case id, and its variant when it has one. */
+function summaryNameOf(result: ReportResult): string | undefined {
+  const key = caseOf(result);
+  return key === undefined ? undefined : key.variant === undefined ? key.id : `${key.id}.${key.variant}`;
+}
+
 /** Shell-quotes one argument when it needs it, so a command in a summary pastes as is. */
 function shellArg(value: string): string {
   return /^[A-Za-z0-9._:/=@-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
@@ -192,15 +198,12 @@ function summarize<Fixtures>(
  */
 function clearEarlier(outputDir: string, run: Pick<FinishedRun, 'report' | 'lastRun'>, ran: readonly string[]): void {
   if (!existsSync(outputDir)) return;
-  const ranIds = new Set(ran);
-  const leftOut = run.report.run.results.some((result) => {
-    const id = caseOf(result)?.id;
-    return id !== undefined && !ranIds.has(id);
-  });
-  const partial = run.lastRun !== undefined || leftOut;
-  // Every known case, longest id first, so a file of case `a.b` is never taken for case `a`.
-  const known = new Set([...ranIds, ...run.report.run.results.flatMap((result) => caseOf(result)?.id ?? [])]);
-  const stems = [...known].map((id) => ({ id, stem: fileSafe(id) })).toSorted((a, b) => b.stem.length - a.stem.length);
+  const ranNames = new Set(ran);
+  // By summary name, not case id: a run of one variant leaves its siblings out.
+  const known = new Set([...ranNames, ...run.report.run.results.flatMap((result) => summaryNameOf(result) ?? [])]);
+  const partial = run.lastRun !== undefined || [...known].some((name) => !ranNames.has(name));
+  // Longest name first, so a file of `a.b` is never taken for `a`.
+  const stems = [...known].map((name) => ({ name, stem: fileSafe(name) })).toSorted((a, b) => b.stem.length - a.stem.length);
   for (const file of readdirSync(outputDir)) {
     const target = path.join(outputDir, file);
     if (file.endsWith(REFS_SUFFIX)) {
@@ -210,7 +213,7 @@ function clearEarlier(outputDir: string, run: Pick<FinishedRun, 'report' | 'last
     if (!file.endsWith(SUMMARY_SUFFIX)) continue;
     const stem = file.slice(0, -SUMMARY_SUFFIX.length);
     const owner = stems.find((entry) => stem === entry.stem || stem.startsWith(`${entry.stem}.`));
-    if (!partial || (owner !== undefined && ranIds.has(owner.id))) rmSync(target, { force: true });
+    if (!partial || (owner !== undefined && ranNames.has(owner.name))) rmSync(target, { force: true });
   }
 }
 
@@ -234,20 +237,19 @@ export function cige<Fixtures extends TestFixtures = TestFixtures>(options: Cige
       const selected = run.report.run.results.filter((result) => result.selected && isCige(result));
       const carried = (run.report.run.carried?.results ?? []).filter(isCige);
       const results = [...selected.map((result) => ({ result, carried: false })), ...carried.map((result) => ({ result, carried: true }))];
-      clearEarlier(outputDir, run, results.map(({ result }) => caseOf(result)!.id));
+      clearEarlier(outputDir, run, results.map(({ result }) => summaryNameOf(result)!));
       if (results.length === 0) return;
       const cases = new Map(
         loadCigeCases(options.cases ?? DEFAULT_CASES, { root: options.root ?? run.projectRoot }).map((testCase) => [testCase.id, testCase]),
       );
       mkdirSync(outputDir, { recursive: true });
       const keyOf = (result: ReportResult): { readonly id: string; readonly variant?: string } => caseOf(result)!;
-      const nameOf = (key: { readonly id: string; readonly variant?: string }): string => (key.variant === undefined ? key.id : `${key.id}.${key.variant}`);
       const perCase = new Map<string, number>();
-      for (const { result } of results) perCase.set(nameOf(keyOf(result)), (perCase.get(nameOf(keyOf(result))) ?? 0) + 1);
+      for (const { result } of results) perCase.set(summaryNameOf(result)!, (perCase.get(summaryNameOf(result)!) ?? 0) + 1);
       const counts = { pass: 0, fail: 0, skipped: 0, interrupted: 0 };
       for (const { result, carried: wasCarried } of results) {
         const key = keyOf(result);
-        const base = nameOf(key);
+        const base = summaryNameOf(result)!;
         const loaded = cases.get(key.id);
         const testCase = loaded === undefined ? undefined : caseForVariant(loaded, key.variant);
         const shared = perCase.get(base) !== 1;

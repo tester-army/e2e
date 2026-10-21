@@ -9,6 +9,7 @@
  */
 
 import { AgentError, isAgentError, type ActOptions, type AgentParams, type TestFixtures } from 'e2e';
+import { isE2EError } from 'e2e/runner';
 
 import { createGuardrailMonitor } from './guardrails.ts';
 import { actInstruction, intentAssertion } from './render.ts';
@@ -19,10 +20,10 @@ import type { CigeCase } from './schema.ts';
  * An evidence hook holds only when it resolves to `true`: `false`,
  * `undefined` (a forgotten `return`), or any other value fails it as
  * `ASSERTION_FAILED`, so a hook can't pass a case by accident. A throw means
- * the check could not run, not that it failed: an error with a code (an
- * `AgentError` such as `ENVIRONMENT_UNAVAILABLE`, a locator's
- * `LOCATOR_NOT_FOUND`, a Node `ECONNREFUSED`) keeps it, and any other
- * throw is `ASSERTION_INCONCLUSIVE`. A precondition hook's return value is
+ * the check could not run, not that it failed: an e2e error keeps its code
+ * (an `AgentError` such as `ENVIRONMENT_UNAVAILABLE`, a locator's
+ * `LOCATOR_NOT_FOUND`), and any other throw, a Node `ECONNREFUSED`
+ * included, is `ASSERTION_INCONCLUSIVE` with its message. A precondition hook's return value is
  * ignored; it fails only by throwing.
  */
 export type CigeHook<Fixtures = TestFixtures> = (fixtures: Fixtures, testCase: CigeCase) => unknown;
@@ -41,11 +42,6 @@ function describeValue(value: unknown): string {
   } catch {
     return typeof value;
   }
-}
-
-/** Whether an error carries its own code, which a classifier reads and a wrapper would hide. */
-function hasCode(cause: unknown): boolean {
-  return cause instanceof Error && 'code' in cause && typeof cause.code === 'string' && /^[A-Z][A-Z0-9_]*$/.test(cause.code);
 }
 
 function messageOf(cause: unknown): string {
@@ -113,7 +109,8 @@ export async function runCige<Fixtures extends TestFixtures>(
       held = await hook(fixtures, testCase);
     } catch (cause) {
       // A backend that is down is not a product defect: only a hook's own verdict is ASSERTION_FAILED.
-      if (hasCode(cause)) throw cause;
+      // The runner reports an e2e error's code; any other error reaches the report as a bare ERROR.
+      if (isE2EError(cause)) throw cause;
       throw new AgentError('ASSERTION_INCONCLUSIVE', `CIGE evidence ${item.id} could not be checked: ${messageOf(cause)}`, { cause });
     }
     if (held !== true) {

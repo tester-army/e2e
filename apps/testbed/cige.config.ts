@@ -16,7 +16,9 @@ export default defineCige({
       return summary === `Created "${testCase.params?.name}" on the ${testCase.params?.plan} plan`;
     },
     // "0 remaining" alone is also the empty list's state: the todo itself must exist and be checked.
+    // count() doesn't wait, so a missing todo fails the evidence instead of timing out as LOCATOR_NOT_FOUND.
     todoDone: async ({ screen }) =>
+      (await screen.getByRole('checkbox', { name: 'Water the plants' }).count()) === 1 &&
       (await screen.getByRole('checkbox', { name: 'Water the plants' }).isChecked()) &&
       (await screen.getByRole('status', { name: 'Remaining' }).textContent()) === '0 remaining',
   },

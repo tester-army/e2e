@@ -15,8 +15,9 @@ Read `.e2e/cige/<id>.refs/index.json` (`<id>.<variant>.refs/` for a
 variant). Each of `spec`, `build` (release notes for the build under
 test), and `expected` (what the build should produce) has some of: a
 `pointer` from the case, a `url`, `files`, or `text`, the name of a file
-beside the index. Follow whichever it has. A resolver that failed has an
-`error` instead.
+beside the index. Follow whichever of `url`, `files`, or `text` it has. A
+`pointer` alone, a missing key, or an `error` means the ref is unresolved:
+name it as a gap and use the Unclear row.
 
 ## Decide
 

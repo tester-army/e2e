@@ -133,6 +133,13 @@ describe('dimensions and variants', () => {
     );
   });
 
+  it('refuses a placeholder nothing fills when the case has no variants', () => {
+    expect(() => parseCige({ Context: {}, Intent: 'A shopper can pay by {method}', Execution: ['pay'] })).toThrow(
+      /\{method\} has no value: give it in Variants/,
+    );
+    expect(() => parseCige({ Context: {}, Intent: 'A shopper can pay', Execution: [{ id: 'e1', step: 'pay by {method}', params: { method: 'card' } }] })).not.toThrow();
+  });
+
   it('refuses a variant that leaves a placeholder unfilled', () => {
     expect(() => parseCige({ ...pay, Variants: [{ id: 'none' }] })).toThrow(/Variants none: no value for the \{method\} placeholder/);
     const stepParam = { ...pay, Intent: 'A shopper can pay', Execution: [{ id: 'e1', step: 'pay by {method}', params: { method: 'card' } }] };

@@ -164,7 +164,7 @@ describe('e2e-cige check', () => {
     writeFileSync(path.join(dir, 'tests', 'cige', 'checkout.cige.json'), JSON.stringify({ ...CASE, Context: { specRef: 'a.md', buildRef: 'b.md' } }));
     const state = io(dir);
     expect(await main(['check'], state)).toBe(1);
-    expect(state.out).toContain('environment-unset: no Context.environment: a replay runs with the default config and resets nothing');
+    expect(state.out).toContain('environment-unset: no Context.environment: a replay has no environment to reset');
   });
 
   it('flags an environment the config does not declare', async () => {

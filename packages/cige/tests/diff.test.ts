@@ -86,6 +86,10 @@ describe('diffCases', () => {
     ]);
   });
 
+  it('reads reordered keys as no change', () => {
+    expect(kinds(edited((file) => void (file.Variants[0] = { platforms: ['web'], id: 'web' })))).toEqual([]);
+  });
+
   it('blocks a change to an existing variant data: it changes what the case tests', () => {
     expect(kinds(edited((file) => void (file.Variants[0].platforms = ['ios'])))).toEqual(['!variant-changed']);
   });

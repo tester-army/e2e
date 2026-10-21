@@ -13,7 +13,9 @@ export default defineCige({
     // Evidence: the order exists in the backend. Only `true` holds.
     orderPersisted: async ({ screen }) => {
       const orderId = await screen.getByTestId('order-id').textContent();
-      const response = await fetch(`http://localhost:3000/test-api/orders/${orderId}`);
+      // No order number on the page is no evidence: fail it, don't look up "null".
+      if (orderId === null || orderId.trim() === '') return false;
+      const response = await fetch(`http://localhost:3000/test-api/orders/${encodeURIComponent(orderId.trim())}`);
       return response.ok;
     },
   },

@@ -12,8 +12,8 @@ You may rewrite `Execution` only.
 1. Read Intent and Guardrails. The new path must reach the same Intent
    without breaking a guardrail.
 2. Fetch the refs: the summary's `resolveRefs` command when it has one,
-   else `npx e2e-cige refs <id>`. Read the spec and the release notes for
-   what changed.
+   else `npx e2e-cige refs <id>` (add `--variant <v>` for a variant). Read
+   the spec and the release notes for what changed.
 3. Look at the live app before you write a step: start `e2e mcp` (the e2e
    skill's `mcp` topic) in the case's environment, open `Context.open`, and
    walk the flow. Don't guess at a UI from the old steps.

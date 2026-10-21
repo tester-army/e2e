@@ -40,7 +40,7 @@ export function readinessGaps(testCase: CigeCase, config: Pick<CigeConfig, 'buil
     if (refs.some((ref) => ENVIRONMENT_PLACEHOLDER.test(ref))) {
       gaps.push({ kind: 'environment-unset', detail: 'a ref uses {environment}, but the case sets no Context.environment' });
     } else if (config.environments !== undefined) {
-      gaps.push({ kind: 'environment-unset', detail: 'no Context.environment: a replay runs with the default config and resets nothing' });
+      gaps.push({ kind: 'environment-unset', detail: 'no Context.environment: a replay has no environment to reset' });
     }
   } else {
     const declared = config.environments === undefined || !Object.hasOwn(config.environments, environment) ? undefined : config.environments[environment];

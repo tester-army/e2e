@@ -119,7 +119,9 @@ export default defineCige({
     // Evidence: the order exists in the backend. Only `true` holds.
     orderPersisted: async ({ screen }) => {
       const orderId = await screen.getByTestId('order-id').textContent();
-      const response = await fetch(`http://localhost:3000/test-api/orders/${orderId}`);
+      // No order number on the page is no evidence: fail it, don't look up "null".
+      if (orderId === null || orderId.trim() === '') return false;
+      const response = await fetch(`http://localhost:3000/test-api/orders/${encodeURIComponent(orderId.trim())}`);
       return response.ok;
     },
   },
@@ -215,7 +217,8 @@ bunx e2e-cige check --resolve
 
 It exits 1 on any gap. Pass `--warn` to only report, or `--json` for
 scripts. Each run also adds a `CIGE gaps` row under the terminal summary
-while any case it ran has a gap. The [`cige` skill](#classify-and-repair-with-the-cige-skill)
+while any case it ran has a readiness gap; a failing resolver shows only in
+`check --resolve`, since a run never resolves refs. The [`cige` skill](#classify-and-repair-with-the-cige-skill)
 asks for these inputs when it sets up a project.
 
 ## How a case runs
@@ -321,14 +324,14 @@ landed. It is a hint for the classifying agent, not a verdict:
 | A precondition failed, or a credential, environment, seed data, or model code such as `ENVIRONMENT_UNAVAILABLE` | `infrastructure` |
 | An Execution `step` failed with `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
 | A `verify`, a piece of evidence, or the Intent was judged false (`ASSERTION_FAILED`) | `product-defect` |
-| A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, or `CONTEXT_OVERFLOW` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
+| A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, `CONTEXT_OVERFLOW`, or `MODEL_REFUSED` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
 | A guardrail violation, an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
 
 A pass has no `failureType`. When no evidence hook backs it, its signals
 include `screen-only-evidence`: check it for a false positive. A failure
-without `specRef` or `buildRef` gets `missing-spec-ref` or
-`missing-build-ref`, since a classifier can't tell a bug from a change
-without them.
+without `specRef` or `buildRef`, and without a `refs.spec` or `refs.build`
+resolver standing in, gets `missing-spec-ref` or `missing-build-ref`,
+since a classifier can't tell a bug from a change without them.
 
 <Accordion title="Example run summary">
 ```json title=".e2e/cige/checkout-discount.run-summary.json"
@@ -375,7 +378,7 @@ each `failureType` against the refs, then names the one repair allowed:
 | Classification | The skill | May change |
 | --- | --- | --- |
 | Infrastructure | Restores the environment with `e2e-cige env` | Nothing in the case. Context only as a proposal for a human |
-| Outdated test logic | Rewrites the path, after it looks at the live app over [`e2e mcp`](/mcp) | `Execution` |
+| Outdated test logic | Rewrites the path, after it looks at the live app over [`e2e mcp`](/mcp-server) | `Execution` |
 | False positive | Makes the case stricter | Adds guardrails, deny patterns, criteria, or evidence |
 | Product defect | Files a bug, or proposes an Intent change when the spec and release notes agree | Nothing on its own |
 
@@ -400,8 +403,9 @@ The [e2e plugin](/coding-agents) for Claude Code and Codex includes it.
 `e2e-cige replay` runs one case alone in its environment. It runs the
 environment's `reset`, then `e2e run` with the environment's `config`,
 `--tag cige:<id>` (`cige:<id>/<variant>` with `--variant`), and
-`--no-cache`, and exits with e2e's code. It refuses an environment with no
-`reset`; declare a no-op one when the environment keeps no state:
+`--no-cache`, and exits with e2e's code. It resets only an environment
+the config declares, and refuses one with no `reset` (declare a no-op one
+when it keeps no state). A case whose environment is prose runs as is:
 
 <CodeGroup>
 ```bash npm

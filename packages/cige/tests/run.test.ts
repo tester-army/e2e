@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { isAgentError, type ActOptions, type AssertOptions, type TestAPI, type TestFixtures, type TestOptions } from 'e2e';
+import { AgentError, isAgentError, type ActOptions, type AssertOptions, type TestAPI, type TestFixtures, type TestOptions } from 'e2e';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { classifyResult } from '../src/classify.ts';
@@ -148,9 +148,33 @@ describe('limits and guards', () => {
     expect(() => loadCigeFile(path.join(dir, 'params.cige.json'))).toThrow(/params are \d+ bytes of JSON/);
   });
 
-  it('fails collection on a glob that matches nothing', () => {
+  it('fails collection on a glob that matches nothing, and says so apart from an empty case list', () => {
     const dir = project({});
     expect(() => cigeSuite('tests/cige/*.cige.jsn', { root: dir })).toThrow(/matches no file/);
+    expect(() => cigeSuite([])).toThrow(/was given no cases/);
+  });
+
+  it('names a size problem every variant shares one time, with the variants that hit it', () => {
+    const dir = project({
+      'wide.cige.json': JSON.stringify({
+        Context: {},
+        Intent: 'A shopper can pay by {method}',
+        Guardrails: ['z'.repeat(9000)],
+        Execution: ['pay by {method}'],
+        Variants: [
+          { id: 'card', params: { method: 'card' } },
+          { id: 'cash', params: { method: 'card' } },
+        ],
+      }),
+    });
+    try {
+      loadCigeFile(path.join(dir, 'wide.cige.json'));
+      expect.unreachable();
+    } catch (error) {
+      const issues = (error as { issues: readonly string[] }).issues;
+      expect(issues).toHaveLength(1);
+      expect(issues[0]).toMatch(/^Execution e1 renders to \d+ bytes with its guardrails; the limit is 8192 \(variants card, cash\)$/);
+    }
   });
 
   it('holds pre-loaded cases to the same checks as files', () => {
@@ -269,15 +293,25 @@ describe('runCige', () => {
       },
     });
     await expect(down).rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE', message: 'CIGE evidence order-record could not be checked: fetch failed' });
-    const located = runCige(testCase, fakeFixtures().fixtures, {
+    // A Node code would reach the report as a bare ERROR, so it is wrapped too, message kept.
+    const refused = runCige(testCase, fakeFixtures().fixtures, {
       hooks: {
         seedCart: () => undefined,
         orderExists: () => {
-          throw Object.assign(new Error('no element matches'), { code: 'LOCATOR_NOT_FOUND' });
+          throw Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:3000'), { code: 'ECONNREFUSED' });
         },
       },
     });
-    await expect(located).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND', message: 'no element matches' });
+    await expect(refused).rejects.toMatchObject({ code: 'ASSERTION_INCONCLUSIVE', message: 'CIGE evidence order-record could not be checked: connect ECONNREFUSED 127.0.0.1:3000' });
+    const down2 = runCige(testCase, fakeFixtures().fixtures, {
+      hooks: {
+        seedCart: () => undefined,
+        orderExists: () => {
+          throw new AgentError('ENVIRONMENT_UNAVAILABLE', 'the orders API returned 503');
+        },
+      },
+    });
+    await expect(down2).rejects.toMatchObject({ code: 'ENVIRONMENT_UNAVAILABLE', message: 'the orders API returned 503' });
   });
 
   it('reports a failing precondition as test setup', async () => {

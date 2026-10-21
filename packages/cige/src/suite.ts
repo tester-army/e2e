@@ -73,6 +73,10 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
   cases: string | readonly string[] | readonly CigeCase[] | CigeConfig<Fixtures>,
   suiteOptions: CigeSuiteOptions<Fixtures> = {},
 ): readonly CigeCase[] {
+  if (Array.isArray(cases) && cases.length === 0) {
+    // Without this, an empty list would pass for globs and report "matches no file".
+    throw new CigeValidationError('cigeSuite', ['was given no cases; pass globs, loaded cases, or the CIGE config']);
+  }
   if (isConfig<Fixtures>(cases)) {
     const { cases: globs, root, hooks, environments } = cases;
     return cigeSuite(globs ?? DEFAULT_CASES, {

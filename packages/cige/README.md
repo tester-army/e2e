@@ -35,7 +35,15 @@ export default defineCige({
   root: new URL('.', import.meta.url),
   build: process.env.GITHUB_SHA,
   hooks: { orderPersisted: async () => (await fetch('http://localhost:3000/test-api/orders/latest')).ok },
-  environments: { staging: { config: 'e2e.config.ts', reset: async () => void (await fetch('http://localhost:3000/test-api/reset', { method: 'POST' })) } },
+  environments: {
+    staging: {
+      config: 'e2e.config.ts',
+      reset: async () => {
+        const response = await fetch('http://localhost:3000/test-api/reset', { method: 'POST' });
+        if (!response.ok) throw new Error(`resetting staging returned ${response.status}`);
+      },
+    },
+  },
 });
 ```
 

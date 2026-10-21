@@ -100,7 +100,7 @@ const Context = z.strictObject({
   expectedRef: Text.optional(),
 });
 
-/** A value a variant fills a `{name}` placeholder with: JSON primitives only, so a variant never carries a secret. */
+/** A value a variant fills a `{name}` placeholder with: JSON primitives only. Values live in the committed case file, so keep secrets out of them. */
 const VariantValue = z.union([z.string(), z.number(), z.boolean()]);
 
 const Variant = z.strictObject({
@@ -354,6 +354,12 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       if (!Object.hasOwn(variant.params, name)) {
         issues.push(`Variants ${variant.id}: no value for the {${name}} placeholder; the test would run on the literal text`);
       }
+    }
+  }
+  // Without variants the case runs once, with no values but its steps' own params.
+  if (variants.length === 0) {
+    for (const name of new Set([...judged, ...acted])) {
+      issues.push(`{${name}} has no value: give it in Variants, or, in an Execution step, in that step's params`);
     }
   }
   for (const rule of guardrails) {
