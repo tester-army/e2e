@@ -302,9 +302,8 @@ same layout as its own rows. The `json` reporter does not carry them.
   not called and has no record.
 - Once the filters have decided, `run.changes` holds the change they
   judged, by counts: `base` (the merge base), `files`, `pinned` (the tests
-  that ran without filters because their test file, the setup file of
-  their session, or either one's stored screenshots changed), and `skipped`
-  (why no filter ran, such as `not a pull request`). It is absent with
+  that [always ran](/filters#what-always-runs) because their files
+  changed), and `skipped` (why no filter ran, such as `not a pull request`). It is absent with
   `--no-filter`, under `e2e explore`, on `--watch` reruns, and when the run
   ends before the filters decide.
 - A failure while the filters decide, such as `INVALID_CHANGED_SINCE`, is

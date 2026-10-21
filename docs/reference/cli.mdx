@@ -536,10 +536,10 @@ Test files, directories, or globs relative to the project root:
 | `--exclude-tag <tags>` | Leaves out tests with any of the tags, comma-separated or repeated, whatever `--tag` or a positional selected. A serial group still runs whole when any member is selected; tag the serial `describe` to exclude the flow. |
 | `--grep <pattern>` | Only tests whose title matches one of the regular expressions; repeatable. The title is the describe titles and the test title joined by one space (`checkout pays`), without the file or the tags. A bare pattern is case-sensitive; `'/pattern/i'` adds flags. A pattern that does not compile is a usage error, exit 2. |
 | `--grep-invert <pattern>` | Leaves out tests whose title matches one of the regular expressions; repeatable, with the text and forms of `--grep`. With both, the run keeps what `--grep` matches minus what `--grep-invert` matches. |
-| `--no-filter` | Runs without the configured [test filters](/filters): every test the other flags select. Without it, when there is a change to judge, the filters in `filters` run in config order and leave out the tests they name; a filter left with no tests is not called. When the filters leave nothing to run, the run passes. |
-| `--changed-since <ref>` | The [test filters](/filters#what-always-runs) judge every file that differs from the merge base of the ref and `HEAD`, uncommitted and untracked files included, over a detected pull or merge request, but not on `pull_request_target`, which runs every test. Without it, filters run only on a GitHub pull request or a GitLab merge request. When the run calls test filters, a ref that names no commit, or shares no history with `HEAD` (fetch more history in a shallow clone), is `INVALID_CHANGED_SINCE`, exit 2. |
+| `--no-filter` | Runs without the configured [test filters](/filters): every test the other flags select. |
+| `--changed-since <ref>` | The change the [test filters](/filters) judge: every file that differs from the merge base of the ref and `HEAD`, uncommitted and untracked files included. |
 | `--last-failed` | Only the tests the previous run did not pass; the list after these tables says which. |
-| `--shard <index/total>` | Runs one contiguous slice of the selected tests, such as `2/3`, cut after every other flag. Slices differ by at most one test. A serial group counts as one and is never split. Each shard brings only the setup tests its own tests need. Skipped tests are not cut: the shard that runs the nearest test before one reports it, else the first shard, so only one shard does. Every shard runs the same command with a different index. The order is the report order, so a suite shards the same way on every machine. A shard with no test is `NO_TESTS` unless `--pass-with-no-tests`. The [test filters](/filters) then judge only this slice, so shards may run uneven numbers of tests. See [Sharding](/ci#sharding). |
+| `--shard <index/total>` | Runs one contiguous slice of the selected tests, such as `2/3`, cut after every other flag. Slices differ by at most one test. A serial group counts as one and is never split. Each shard brings only the setup tests its own tests need. Skipped tests are not cut: the shard that runs the nearest test before one reports it, else the first shard, so only one shard does. Every shard runs the same command with a different index. The order is the report order, so a suite shards the same way on every machine. A shard with no test is `NO_TESTS` unless `--pass-with-no-tests`. See [Sharding](/ci#sharding). |
 | `--pass-with-no-tests` | Exits 0 instead of `NO_TESTS` when nothing is selected. A run with nothing to run prepares no engine and starts no app or service command. |
 
 **Execution**
@@ -604,8 +604,6 @@ else the config's [`output`](/reference/config#output)):
 - The rerun keeps the artifacts the previous report names and writes its own
   under each test's `rerun-<n>/`, so no attempt overwrites an earlier one's
   files.
-- The [test filters](/filters) never judge the tests it owes: a
-  `--last-failed` run calls none.
 - A test is named per target and agent.
 - No report is `NO_LAST_RUN`. When nothing failed in the previous run, it
   selects nothing: `NO_TESTS` unless `--pass-with-no-tests`.
@@ -621,9 +619,7 @@ Filters only narrow, and each applies after the one before: positionals, then
 then the platform and capability rules, then `--shard`. When they leave
 nothing to run, `NO_TESTS` counts the tests each filter removed and names the
 tags and patterns. It marks each tag no test declares and names the nearest
-declared one. The configured [test filters](/filters) run last, on what
-`--shard` kept, when there is a change to judge. When they leave nothing to
-run, the run passes.
+declared one. The configured [test filters](/filters) run last.
 
 <a id="debug-output" />
 
@@ -946,7 +942,7 @@ bunx e2e list --changed-since origin/main
 | Option | Description |
 | --- | --- |
 | `[files...]` | As for [`run`](#positional-arguments). |
-| `--config`, `--target`, `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`, `--no-filter`, `--changed-since`, `--last-failed`, `--shard`, `--pass-with-no-tests` | As for [`run`](#flags). `--last-failed` reads `report.json` under the config's [`output`](/reference/config#output). The configured [test filters](/filters) run as they do for `run` and may call a model; the change line, their progress, and one summary line per filter go to stderr. |
+| `--config`, `--target`, `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`, `--no-filter`, `--changed-since`, `--last-failed`, `--shard`, `--pass-with-no-tests` | As for [`run`](#flags). `--last-failed` reads `report.json` under the config's [`output`](/reference/config#output). The configured [test filters](/filters) run as for `run`, and their lines go to stderr. |
 | `--reporter <id>` | `list` or `json`. Default: `list`. |
 
 | Reporter | Writes |

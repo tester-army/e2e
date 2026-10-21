@@ -102,7 +102,8 @@ no app, and makes the same model calls as a run. To run every test, add
   lockfile changes anywhere in the repository. Lockfiles are known by name,
   such as `pnpm-lock.yaml`, `Podfile.lock`, `gradle.lockfile`,
   `Gemfile.lock`, `go.sum`, or `Cargo.lock`; the model judges any other.
-- A `--last-failed` rerun, so `e2e run || e2e run --last-failed` is safe.
+- A `--last-failed` rerun, so `e2e run || e2e run --last-failed` is safe,
+  and every `--watch` rerun after the first run.
 - Every test, when git can't measure a pull or merge request's change,
   such as in a shallow checkout. A warning says why.
 
@@ -229,9 +230,10 @@ export default {
 - Each filter judges only the tests the one before it kept, and is not
   called when none are left.
 - Pass `signal` to every call, and `redact` what you send to a model.
+- Do the work inside `filter`: workers load the config too, and only the
+  runner calls `filter`.
 
-See [`filters`](/reference/config#filters) in the config reference for the
-types and rules.
+See [`TestFilter`](/reference/config#testfilter) for the types.
 
 ## Next
 

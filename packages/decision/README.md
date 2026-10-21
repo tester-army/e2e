@@ -56,7 +56,5 @@ export default {
 } satisfies E2EConfig;
 ```
 
-The model must answer `boolean` questions. In CI, check out with
-`fetch-depth: 2` and pass `AI_GATEWAY_API_KEY` to the step that runs `e2e`.
-When the model can't answer, the tests it didn't judge run. See
-[Test filters](https://e2e.tester.army/docs/filters).
+The model must answer `boolean` questions. See
+[Test filters](https://e2e.tester.army/docs/filters) for CI setup.

@@ -1492,18 +1492,11 @@ export interface Reporter {
 }
 
 /**
- * Leaves collected tests out of a run before anything starts. The filters in
- * `filters` run, in order, on `run` and `list` unless `--no-filter`, and only
- * when there is a change to judge: a GitHub pull request, a GitLab merge
- * request, or `--changed-since <ref>`. Without one, no filter is called and
- * every test runs; a `--last-failed` rerun calls none, and under `--watch`
- * they judge the first run only. A filter is called once, in the runner
- * process, and not at all when the filters before it left no test. Workers
- * load the config too and never call it, so constructing one must have no
- * side effects: read git, the environment, or the network inside `filter`.
- * A call that throws, returns an invalid result, or runs past 5 minutes
- * leaves nothing out: the run warns, and the next filter judges every test
- * this one was given.
+ * Leaves collected tests out of a run before anything starts. Called at most
+ * once, in the runner process; workers load the config too and never call
+ * it, so constructing one must have no side effects: read git, the
+ * environment, or the network inside `filter`. A call that throws, returns
+ * an invalid result, or runs past 5 minutes leaves nothing out.
  */
 export interface TestFilter {
   /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */
@@ -1640,12 +1633,7 @@ export interface E2EConfig {
    * construct their own, exactly like model instances.
    */
   agents?: Readonly<Record<string, AgentConfig>>;
-  /**
-   * Test filters, in order: each leaves out tests the selection flags and the
-   * filters before it kept. They run only when there is a change to judge (a
-   * pull or merge request, or `--changed-since`), never with `--no-filter` or
-   * on a `--last-failed` rerun, and under `--watch` on the first run only.
-   */
+  /** Test filters, in order: each judges the tests the one before it kept, on a pull or merge request or with `--changed-since`. */
   filters?: readonly TestFilter[];
   /**
    * The adaptive replay cache. Opt-out: unset means

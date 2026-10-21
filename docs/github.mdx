@@ -153,8 +153,7 @@ covering the whole suite:
 | interrupted | passed | passed |
 | any other result | not run | the first-pass result |
 
-The rerun calls no test filter, and the comment keeps the first pass's
-filter lines and left-out tests.
+The comment keeps the first pass's filter lines and left-out tests.
 
 The comment stays red while the rerun left out something it owed: a failed
 test, a test that `--max-failures` or `--max-duration` stopped before it ran, or a failed

@@ -1086,26 +1086,9 @@ export default {
 } satisfies E2EConfig;
 ```
 
-- `e2e run` and `e2e list` apply them only on a GitHub pull request, a
-  GitLab merge request, or with `--changed-since <ref>`, and some tests
-  always run; see [What always runs](/filters#what-always-runs).
-  `--no-filter` skips them, and `--watch` applies them to the first run
-  only.
-- A `name` follows the target name rules, is at most 256 characters, and is
-  unique among `filters`.
-- Every test the result doesn't name runs. An `exclude` id of a collected
-  test the filter wasn't given, such as one `--shard` or an earlier filter
-  left out, is ignored. A test of a serial group still runs when another
-  test of its group does.
-- Each filter gets only the tests the one before it kept, and is not
-  called when none are left.
-- A filter that throws, runs past 5 minutes, or returns an invalid result
-  (not `{ exclude, note? }`, an `exclude` key that is no collected test's
-  `id`, or an empty reason) leaves nothing out, and the run warns. Past 5
-  minutes, `signal` aborts with a `TimeoutError` and the run stops
-  waiting.
-- Do the work inside `filter`. Workers load the config too, and only the
-  runner calls `filter`.
+When they run, and which tests always run, is on
+[Test filters](/filters#what-always-runs). A `name` follows the target name
+rules, is at most 256 characters, and is unique among `filters`.
 
 | Throws | When |
 | --- | --- |
@@ -1780,7 +1763,7 @@ interface TestFilterChanges {
 }
 
 interface TestFilterResult {
-  /** The tests to leave out, by `id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
+  /** The tests to leave out, by `id`, each with a non-empty reason the report shows. An `id` of a collected test this filter wasn't given is ignored; any other fails the filter. */
   readonly exclude: Readonly<Record<string, string>>;
   /** One line about the whole decision. */
   readonly note?: string;
