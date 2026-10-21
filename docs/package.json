@@ -15,6 +15,7 @@
     "@e2e-dev/limrun": "workspace:*",
     "@e2e-dev/mobile": "workspace:*",
     "@e2e-dev/testmu": "workspace:*",
+    "@e2e-dev/browserstack": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.2",
