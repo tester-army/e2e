@@ -11,7 +11,8 @@
  * - model-call accounting and a step transcript for `--debug`.
  */
 
-import type { StepTurn } from '../run/steps.ts';
+import { captureStepTurnText, type StepTurn, type StepTurnRecord, type StepTurnSources } from '../run/steps.ts';
+import { attachStepTurnRecords } from './turn-records.ts';
 import type { AssistantModelMessage, ModelMessage, StepResult, ToolCallPart, ToolSet } from 'ai';
 import { asSdkLanguageModel, loadAiSdk, type AiSdk, type SdkLanguageModel } from './ai-sdk.ts';
 import { MODEL_REQUEST_HEADERS } from '../internal/client-identity.ts';
@@ -83,6 +84,8 @@ const MAX_REPORTED_NOTES_CHARS = 1_000;
 interface LoopTurn extends StepTurn {
   /** Loop events after the turn (a resent request, a shrunk history), each prefixed with `LOOP_NOTE`. */
   notes: string[];
+  /** Bounded source text for the report, retained separately from the transcript display. */
+  reportSources: StepTurnSources;
 }
 
 /**
@@ -438,9 +441,9 @@ class LoopRun {
     }));
     this.recordThrownTurn(
       tracker,
-      reply.calls.map((call) => `${call.toolName}(${truncate(safeJson(call.input), MAX_TURN_CALL_CHARS)})`),
+      reply.calls.map((call) => `${call.toolName}(${safeJson(call.input)})`),
       [
-        skippedReplyText(cause.content),
+        skippedReplyText(cause.content, false),
         ...results.map((result) => `[${result.toolName}] error: ${result.output.value}`),
       ].filter((line) => line !== '').join('\n'),
     );
@@ -457,7 +460,16 @@ class LoopRun {
   private recordThrownTurn(tracker: ModelCallTracker, calls: string[], outcome: string): void {
     tracker.onStepEnd({ usage: UNREPORTED_USAGE, providerMetadata: undefined, reasoningText: undefined });
     this.turnsUsed += 1;
-    this.turns.push({ index: this.turnsUsed, calls, outcome, notes: [] });
+    this.turns.push({
+      index: this.turnsUsed,
+      calls: calls.map((call) => truncate(call, MAX_TURN_CALL_CHARS)),
+      outcome: truncate(outcome, MAX_TURN_TEXT_CHARS),
+      notes: [],
+      reportSources: {
+        calls: calls.slice(0, MAX_REPORTED_CALLS).map((call) => captureStepTurnText(call, MAX_REPORTED_CALL_CHARS)),
+        outcome: captureStepTurnText(outcome, MAX_REPORTED_OUTCOME_CHARS),
+      },
+    });
     this.attachTranscript();
   }
 
@@ -474,7 +486,7 @@ class LoopRun {
     if (this.toolChoice === 'auto' || this.lastRequest === undefined) return undefined;
     if (this.context.signal.aborted || this.hardStop !== undefined) return undefined;
     if (isForcedToolCallSkipped(cause)) {
-      this.recordThrownTurn(tracker, [], skippedReplyText(cause.content));
+      this.recordThrownTurn(tracker, [], skippedReplyText(cause.content, false));
       this.note(`turn ${String(this.turnsUsed)} answered without the forced tool call: retrying with auto`);
     } else if (isForcedToolChoiceRejected(cause)) {
       this.note(`the model rejected a forced tool choice before turn ${String(this.turnsUsed + 1)}: retrying with auto`);
@@ -699,18 +711,27 @@ class LoopRun {
   private recordTurn(step: StepResult<ToolSet>): void {
     this.turnsUsed += 1;
     const text = step.text.trim();
+    const calls = step.toolCalls.map((call) => `${call.toolName}(${safeJson(call.input)})`);
+    const outcomes = [
+      ...(text === '' ? [] : [`assistant: ${text}`]),
+      ...step.content.flatMap((part) => {
+        if (part.type === 'tool-result') return [`[${part.toolName}] ${describeOutput(part.output)}`];
+        if (part.type === 'tool-error') return [`[${part.toolName}] error: ${String(part.error)}`];
+        return [];
+      }),
+    ];
+    const outcome = outcomes.join('\n');
     this.turns.push({
       index: this.turnsUsed,
-      calls: step.toolCalls.map((call) => `${call.toolName}(${truncate(safeJson(call.input), MAX_TURN_CALL_CHARS)})`),
-      outcome: [
-        ...(text === '' ? [] : [`assistant: ${truncate(text, MAX_TURN_TEXT_CHARS)}`]),
-        ...step.content.flatMap((part) => {
-          if (part.type === 'tool-result') return [`[${part.toolName}] ${truncate(describeOutput(part.output), MAX_TURN_RESULT_CHARS)}`];
-          if (part.type === 'tool-error') return [`[${part.toolName}] error: ${truncate(String(part.error), MAX_TURN_RESULT_CHARS)}`];
-          return [];
-        }),
-      ].join('\n'),
+      calls: calls.map((call) => truncate(call, MAX_TURN_CALL_CHARS)),
+      outcome: outcomes
+        .map((part) => truncate(part, part.startsWith('assistant: ') ? MAX_TURN_TEXT_CHARS : MAX_TURN_RESULT_CHARS))
+        .join('\n'),
       notes: [],
+      reportSources: {
+        calls: calls.slice(0, MAX_REPORTED_CALLS).map((call) => captureStepTurnText(call, MAX_REPORTED_CALL_CHARS)),
+        outcome: captureStepTurnText(outcome, MAX_REPORTED_OUTCOME_CHARS),
+      },
     });
     // Attached as each turn ends, not only once the loop returns: a step the
     // clock ends settles without waiting for the loop, and keeps its turns.
@@ -731,13 +752,18 @@ class LoopRun {
   /** Hands the step its turns: the tail for the report, and every turn as the debug transcript. */
   private attachTranscript(): void {
     if (this.turns.length === 0 && this.preamble.length === 0) return;
-    this.context.attachTurns(
-      this.turns.slice(-MAX_REPORTED_TURNS).map((turn) => ({
+    const reportTurns: StepTurnRecord[] = this.turns.slice(-MAX_REPORTED_TURNS).map((turn) => ({
+      turn: {
         index: turn.index,
         calls: turn.calls.slice(0, MAX_REPORTED_CALLS).map((call) => truncate(call, MAX_REPORTED_CALL_CHARS)),
         outcome: reportedOutcome(turn),
-      })),
-    );
+      },
+      sources: {
+        ...turn.reportSources,
+        ...(turn.notes.length === 0 ? {} : { notes: captureStepTurnText(turn.notes.join('\n'), MAX_REPORTED_NOTES_CHARS) }),
+      },
+    }));
+    if (!attachStepTurnRecords(this.context, reportTurns)) this.context.attachTurns(reportTurns.map(({ turn }) => turn));
     const transcript = [
       ...this.preamble,
       ...this.turns.map((turn) => [`--- turn ${turn.index} ---`, ...turn.calls.map((call) => `tool call: ${call}`), turn.outcome, ...turn.notes].join('\n')),
@@ -825,7 +851,7 @@ function truncate(text: string, max: number): string {
 
 /** A tool result for the transcript: a screenshot-carrying result reads as its text plus the image size, never the bytes. */
 /** The prose of a reply the SDK refused for lacking the forced tool call, as a turn outcome. */
-function skippedReplyText(content: readonly unknown[] | undefined): string {
+function skippedReplyText(content: readonly unknown[] | undefined, shouldClip = true): string {
   const text = (content ?? [])
     .flatMap((part) => {
       const record = part as { type?: unknown; text?: unknown };
@@ -833,7 +859,8 @@ function skippedReplyText(content: readonly unknown[] | undefined): string {
     })
     .join('')
     .trim();
-  return text === '' ? '' : `assistant: ${truncate(text, MAX_TURN_TEXT_CHARS)}`;
+  const reply = text === '' ? '' : `assistant: ${text}`;
+  return shouldClip ? truncate(reply, MAX_TURN_TEXT_CHARS) : reply;
 }
 
 /** One part of a provider reply as the SDK hands it on a `ToolChoiceViolationError`. */

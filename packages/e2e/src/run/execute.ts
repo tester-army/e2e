@@ -54,7 +54,7 @@ import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
-import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
+import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, resolveSecretValue, sessionSecrecy, staticSecretLedger, stepRedactorForSession } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -818,12 +818,13 @@ export class TargetExecutor implements SerialHost {
     // Secret values the session has seen never enter an error record or a
     // step label; the ledger is live, so a value resolved mid-attempt is
     // covered too. Before a session opens, the static values still are.
-    const redact = (text: string): string => redactForSession(openSession ?? undefined, this.config.allSecrets, text);
+    const redactor = stepRedactorForSession(() => openSession ?? undefined, this.config.allSecrets);
+    const redact = redactor.redact;
     const steps = new StepRecorder(attemptId, {
       attempt: { id: shared?.attemptId ?? attemptId, index: attemptIndex },
       maxEventsPerStep: this.config.limits.maxEventsPerStep,
       projectRoot: this.config.projectRoot,
-      redact,
+      redactor,
       ...(onProgress === undefined
         ? {}
         : { onProgress: (progress: StepProgress) => onProgress(pair, progress) }),

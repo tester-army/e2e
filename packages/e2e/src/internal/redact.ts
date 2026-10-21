@@ -568,6 +568,7 @@ export class SecretLedger {
    */
   private readonly values: [string, string][] = [];
   private compiled: Compiled | undefined;
+  private versionValue = 0;
 
   constructor(initial: Iterable<readonly [string, string]> = []) {
     for (const [name, value] of initial) this.register(name, value);
@@ -577,7 +578,13 @@ export class SecretLedger {
   register(name: string, value: string): void {
     if (this.values.some(([n, v]) => n === name && v === value)) return;
     this.values.push([name, value]);
+    this.versionValue += 1;
     this.compiled = undefined;
+  }
+
+  /** Changes whenever a new value joins the ledger. */
+  get version(): number {
+    return this.versionValue;
   }
 
   /** Bound so it can be handed out as a plain function. */

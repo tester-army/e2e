@@ -5,6 +5,7 @@ import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
 import type { TargetSession } from '../engine/surface.ts';
 import { ConfigurationError, setErrorRedactor } from '../internal/errors.ts';
 import { SecretLedger } from '../internal/redact.ts';
+import type { StepTextRedactor } from './steps.ts';
 import { unavailableCode } from '../secrets.ts';
 import type { Secret } from '../types.ts';
 
@@ -90,7 +91,7 @@ const staticLedgers = new WeakMap<ResolvedConfig['allSecrets'], SecretLedger>();
  * provider-backed value is not known yet and is not in it. Shared, so it is
  * handed out read-only: nothing registers into it.
  */
-export function staticSecretLedger(secrets: ResolvedConfig['allSecrets']): Pick<SecretLedger, 'redact' | 'entries'> {
+export function staticSecretLedger(secrets: ResolvedConfig['allSecrets']): Pick<SecretLedger, 'redact' | 'entries' | 'version' | 'maxFormLength'> {
   let ledger = staticLedgers.get(secrets);
   if (ledger === undefined) {
     ledger = new SecretLedger(
@@ -187,6 +188,23 @@ export function redactForSession(
   text: string,
 ): string {
   return (session === undefined ? staticSecretLedger(secrets) : sessionSecrecy(session, secrets).ledger).redact(text);
+}
+
+/** Supplies one live redactor object to the step recorder. */
+export function stepRedactorForSession(
+  session: () => TargetSession | undefined,
+  secrets: ResolvedConfig['allSecrets'],
+): StepTextRedactor {
+  const ledger = (): Pick<SecretLedger, 'redact' | 'version' | 'maxFormLength'> => {
+    const current = session();
+    // Session ledgers are seeded from this same static ledger before provider values are added.
+    return current === undefined ? staticSecretLedger(secrets) : sessionSecrecy(current, secrets).ledger;
+  };
+  return {
+    redact: (text) => ledger().redact(text),
+    revision: () => ledger().version,
+    maxFormLength: () => ledger().maxFormLength,
+  };
 }
 
 /** What a saved session carries of the secrecy of the attempt that saved it. */

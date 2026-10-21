@@ -324,6 +324,11 @@ line2  </textarea>
   <p id="control"></p>
   <script>
     const filler = (length) => '0123456789'.repeat(60).slice(0, length);
+    const lateValue = new URLSearchParams(location.search).get('value');
+    if (lateValue !== null) {
+      console.info('late provider value: ' + lateValue);
+      console.info(filler(291) + lateValue + filler(80));
+    }
     const echo = (value) => {
       document.getElementById('echo').textContent = filler(512 - value.length + 1) + value;
       document.getElementById('echo-upper').textContent = filler(512 - value.length + 1) + value;
