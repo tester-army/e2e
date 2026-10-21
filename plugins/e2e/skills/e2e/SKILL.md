@@ -117,13 +117,13 @@ recorded; never walk the flow again from the start just to see a screen.
 2. Fix every line that evidence covers, not only the one that failed: the
    screen at failure shows the names the rest of that screen's lines need.
    Fix the locator, the expectation, or the app. Never add a sleep.
-3. A run stops at its first failure. Before rerunning, check the lines after
-   it against what you already know: the screen at failure, the app source,
-   or `locate` in a live session already on that screen.
-4. Look live only when none of that shows what a line needs (topic `mcp`):
-   open or reuse a session and go straight to that screen (on the web,
-   `navigate` to the `❯ at` URL or the screen's route), then `observe` and
-   `locate`. Tap only to reach a state that no URL opens.
+3. A run stops at its first failure, and every wrong line after it costs
+   another run. Before rerunning, check the lines after it as far as you
+   can: against the screen at failure, the app source, or a live session.
+4. For a screen the evidence and the source leave out, look live (topic
+   `mcp`): open or reuse a session and go straight to that screen (on the
+   web, `navigate` to the `❯ at` URL or the screen's route), then `observe`
+   and `locate`. Tap only to reach a state that no URL opens.
 5. Rerun the file. Repeat with the next failure.
 
 ## Rules

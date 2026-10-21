@@ -51,10 +51,11 @@ default.
      locator meant; the screen at failure (also
      `attempt-<n>/screen-at-failure.txt`) holds the names the rest of that
      screen's lines need.
-   - A run stops at its first failure. Before rerunning, check the lines
-     after it against what you already know: the screen at failure, the
-     app source, or `locate` in a live session already on that screen.
-   - Look live only when none of that shows what a line needs (topic
+   - A run stops at its first failure, and every wrong line after it
+     costs another run. Before rerunning, check the lines after it as far
+     as you can: against the screen at failure, the app source, or a live
+     session.
+   - For a screen the evidence and the source leave out, look live (topic
      `mcp`): open or reuse a session and go straight to that screen (on the
      web, `navigate` to the `❯ at` URL or the screen's route), then
      `observe` and `locate`. Tap only to reach a state that no URL opens.
