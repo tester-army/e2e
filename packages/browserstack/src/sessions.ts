@@ -85,10 +85,19 @@ export async function findSession(endpoint: string, credentials: BrowserStackCre
 export async function uploadAppFromUrl(endpoint: string, credentials: BrowserStackCredentials, url: string, signal: AbortSignal): Promise<string> {
   const form = new FormData();
   form.set('url', url);
-  const body = asRecord(await request(new URL(`${endpoint}/upload`), basicAuth(credentials), signal, 'BrowserStack app upload from a URL', { method: 'POST', body: form }));
+  // The API may echo the URL, which can carry a signed token: `request` hides it in every error.
+  const body = asRecord(await request(new URL(`${endpoint}/upload`), basicAuth(credentials), signal, 'BrowserStack app upload from a URL', { method: 'POST', body: form, hide: url }));
   const appUrl = body?.['app_url'];
   if (typeof appUrl !== 'string' || !appUrl.startsWith('bs://')) throw new Error('BrowserStack app upload from a URL failed: no bs:// app id in the response');
   return appUrl;
+}
+
+/** `message` with `url`, raw or encoded, and its query string replaced, so a signed token never reaches a log. */
+function redact(message: string, url: string): string {
+  const query = URL.canParse(url) ? new URL(url).search.slice(1) : '';
+  return [url, encodeURIComponent(url), query, encodeURIComponent(query)]
+    .filter((secret) => secret !== '')
+    .reduce((text, secret) => text.split(secret).join('<app URL>'), message);
 }
 
 /** The `hashed_id` of the newest build named `build`. */
@@ -135,8 +144,10 @@ async function getRows(url: URL, auth: string, signal: AbortSignal, what: string
   return body;
 }
 
-/** One authenticated request answered with JSON; anything else throws, as `what`, with the HTTP status and the API's message. */
-async function request(url: URL, auth: string, signal: AbortSignal, what: string, init: { method: 'POST'; body: FormData } | undefined = undefined): Promise<unknown> {
+/** One authenticated request answered with JSON; anything else throws, as `what`, with the HTTP status and the API's message, an upload's URL hidden in both. */
+async function request(url: URL, auth: string, signal: AbortSignal, what: string, upload: { method: 'POST'; body: FormData; hide: string } | undefined = undefined): Promise<unknown> {
+  const init = upload === undefined ? undefined : { method: upload.method, body: upload.body };
+  const clean = (text: string) => (upload === undefined ? text : redact(text, upload.hide));
   const timeout = new AbortController();
   const timer = setTimeout(() => timeout.abort(), init === undefined ? REQUEST_TIMEOUT_MS : UPLOAD_TIMEOUT_MS);
   let response: Response;
@@ -147,7 +158,7 @@ async function request(url: URL, auth: string, signal: AbortSignal, what: string
   } catch (cause) {
     if (signal.aborted) throw new Error(`${what} cancelled`, { cause });
     if (timeout.signal.aborted) throw new Error(`${what} got no answer within ${(init === undefined ? REQUEST_TIMEOUT_MS : UPLOAD_TIMEOUT_MS) / 1000} s`, { cause });
-    throw new Error(`${what} failed: ${cause instanceof Error ? cause.message : String(cause)}`, { cause });
+    throw new Error(`${what} failed: ${clean(cause instanceof Error ? cause.message : String(cause))}`, { cause });
   } finally {
     clearTimeout(timer);
   }
@@ -159,7 +170,7 @@ async function request(url: URL, auth: string, signal: AbortSignal, what: string
   }
   if (!response.ok) {
     const message = asRecord(body)?.['message'] ?? asRecord(body)?.['error'];
-    throw new Error(`${what} failed: HTTP ${response.status}${typeof message === 'string' && message !== '' ? ` (${message.slice(0, 200)})` : ''}`);
+    throw new Error(`${what} failed: HTTP ${response.status}${typeof message === 'string' && message !== '' ? ` (${clean(message).slice(0, 200)})` : ''}`);
   }
   return body;
 }

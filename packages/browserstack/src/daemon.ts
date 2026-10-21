@@ -63,6 +63,28 @@ export async function stopDriver(stateDir: string, env: NodeJS.ProcessEnv, signa
   const bin = field(cli.bin, 'agent-device');
   if (typeof bin !== 'string') throw new Error('The installed agent-device package has no agent-device bin');
   const { stdout } = await exec(process.execPath, [path.join(cli.directory, bin), 'daemon', 'stop', '--state-dir', stateDir, '--clean', '--json'], { env, signal });
-  const pending = field(field(field(JSON.parse(stdout), 'data'), 'providerReleases'), 'pending');
+  assertSessionsEnded(stdout);
+}
+
+/**
+ * Throws unless `daemon stop --json` reports every BrowserStack session ended.
+ * A forced stop or a lost shutdown report comes back as `status: 'unknown'`
+ * with `pending: null`: the session may still be running, and billed.
+ */
+export function assertSessionsEnded(stdout: string): void {
+  let report: unknown;
+  try {
+    report = JSON.parse(stdout);
+  } catch {
+    throw new Error('agent-device stopped without a readable shutdown report; BrowserStack sessions may still be running');
+  }
+  const data = field(report, 'data');
+  const releases = field(data, 'providerReleases');
+  const pending = field(releases, 'pending');
   if (Array.isArray(pending) && pending.length > 0) throw new Error(`agent-device stopped without ending ${pending.length} BrowserStack session(s)`);
+  if (field(releases, 'status') !== 'completed' || !Array.isArray(pending)) {
+    const warnings = field(data, 'warnings');
+    const detail = Array.isArray(warnings) ? warnings.filter((warning): warning is string => typeof warning === 'string').join(' ') : '';
+    throw new Error(`agent-device could not confirm its BrowserStack sessions ended${detail === '' ? '' : `: ${detail}`}`);
+  }
 }

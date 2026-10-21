@@ -196,4 +196,14 @@ describe('uploadAppFromUrl()', () => {
     vi.stubGlobal('fetch', async () => Response.json({ app_url: 'https://nope' }));
     await expect(uploadAppFromUrl(API, { username: 'ada', accessKey: 'bs-key' }, 'https://example.com/x', new AbortController().signal)).rejects.toThrow('BrowserStack app upload from a URL failed: no bs:// app id in the response');
   });
+
+  it('never repeats a signed app URL the API echoes in an error', async () => {
+    const { uploadAppFromUrl } = await import('../../src/sessions.ts');
+    const signed = 'https://bucket.example.com/app.apk?X-Amz-Signature=secret-signature&X-Amz-Expires=600';
+    vi.stubGlobal('fetch', async () => Response.json({ error: `Could not download ${signed} (${encodeURIComponent(signed)})` }, { status: 422 }));
+    const error = await uploadAppFromUrl(API, { username: 'ada', accessKey: 'bs-key' }, signed, new AbortController().signal).then(() => new Error('resolved'), (cause: unknown) => cause as Error);
+    expect(error.message).toBe('BrowserStack app upload from a URL failed: HTTP 422 (Could not download <app URL> (<app URL>))');
+    expect(error.message).not.toContain('secret-signature');
+  });
 });
+

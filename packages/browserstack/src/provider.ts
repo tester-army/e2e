@@ -169,7 +169,8 @@ export function browserstack(options: BrowserStackOptions): DeviceProvider {
     if (uploaded === undefined) {
       const upload = uploadAppFromUrl(browserstackApiEndpoint(request.env), credentials, app, request.signal);
       uploaded = upload;
-      upload.then((id) => request.log(`uploaded ${app} as ${id}`), () => { if (uploaded === upload) uploaded = undefined; });
+      // The URL may carry a signed token, so the log names the upload by its id only.
+      upload.then((id) => request.log(`uploaded the app URL as ${id}`), () => { if (uploaded === upload) uploaded = undefined; });
     }
     return uploaded;
   }

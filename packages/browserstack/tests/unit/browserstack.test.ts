@@ -330,7 +330,8 @@ describe('browserstack()', () => {
     expect(mocks.upload).toHaveBeenCalledTimes(1);
     expect(mocks.upload).toHaveBeenCalledWith('https://api-cloud.browserstack.com/app-automate', { username: 'ada', accessKey: 'bs-key' }, 'https://example.com/app.apk', req.signal);
     expect([driver(0).allocate.providerApp, driver(1).allocate.providerApp]).toEqual(['bs://UPLOADED', 'bs://UPLOADED']);
-    expect(req.lines).toContain('uploaded https://example.com/app.apk as bs://UPLOADED');
+    expect(req.lines).toContain('uploaded the app URL as bs://UPLOADED');
+    expect(req.lines.join('\n')).not.toContain('example.com');
   });
 
   it('starts no daemon when the upload fails, and uploads again on the next lease', async () => {
