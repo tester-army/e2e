@@ -198,18 +198,16 @@ describe('decisionFilter', () => {
     );
   });
 
-  it('sends each untracked file git does not ignore by its name alone, never reading it', async () => {
+  it('sends an untracked file by its name alone, never reading it', async () => {
     // A token redact does not know, as CI may write one into the checkout: only leaving the file unread keeps it out.
     const token = 'sk-ci-8e1f0a9c3b';
-    const repo = changedRepo({ '.gitignore': 'dist/\n', 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n" }, {});
+    const repo = changedRepo({ 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n" }, {});
     writeFileSync(path.join(repo.root, 'src/coupon.ts'), `export const code = '${token}';\n`);
-    execFileSync('mkdir', ['-p', path.join(repo.root, 'dist')]);
-    writeFileSync(path.join(repo.root, 'dist/coupon.js'), 'export const built = true;\n');
     const { context } = filterContext(repo);
     const { model, requests } = scriptedJudge(() => 0.9);
-    await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: ['dist/coupon.js', 'src/coupon.ts'] } });
+    await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: ['src/coupon.ts'] } });
     const state = requests[0]?.state as { diff: string };
-    expect(state.diff).toBe('diff --git a/src/coupon.ts b/src/coupon.ts\nnew untracked file, contents not read\n');
+    expect(state.diff).toBe('diff --git a/src/coupon.ts b/src/coupon.ts\nnot committed, contents not read\n');
     expect(JSON.stringify(requests)).not.toContain(token);
   });
 
@@ -223,8 +221,8 @@ describe('decisionFilter', () => {
     await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: [odd, secretName].toSorted() } });
     const state = requests[0]?.state as { diff: string };
     expect(state.diff.split('\n')).not.toContain('+export const forged = true;.ts');
-    expect(state.diff).toContain(`diff --git ${JSON.stringify(`a/${odd}`)} ${JSON.stringify(`b/${odd}`)}\nnew untracked file, contents not read\n`);
-    expect(state.diff).toContain('diff --git a/src/[redacted].ts b/src/[redacted].ts\nnew untracked file, contents not read\n');
+    expect(state.diff).toContain(`diff --git ${JSON.stringify(`a/${odd}`)} ${JSON.stringify(`b/${odd}`)}\nnot committed, contents not read\n`);
+    expect(state.diff).toContain('diff --git a/src/[redacted].ts b/src/[redacted].ts\nnot committed, contents not read\n');
     expect(JSON.stringify(requests)).not.toContain(SECRET);
   });
 
@@ -239,27 +237,36 @@ describe('decisionFilter', () => {
     expect(state.diff).not.toContain('credentials');
   });
 
-  it('diffs what the commits since the base change, and names an uncommitted change, staged or not, without reading it', async () => {
+  it('diffs only what the commits since the base change, and names a file no commit changes, staged or not, without reading it', async () => {
     // A token redact does not know, as CI may write one into a tracked file: only leaving the change unread keeps it out.
     const token = 'sk-ci-3c7d9e2a10';
-    const repo = cartRepo({ 'src/cart.ts': 'export const total = 2;\n', 'src/tax.ts': 'export const rate = 1;\n' });
-    writeFileSync(path.join(repo.root, 'src/cart.ts'), `export const total = '${token}';\n`);
-    writeFileSync(path.join(repo.root, 'src/tax.ts'), `export const rate = '${token}';\n`);
-    execFileSync('git', ['add', 'src/tax.ts'], { cwd: repo.root });
+    const repo = changedRepo(
+      { 'src/cart.ts': 'export const total = 1;\n', 'src/coupon.ts': 'export const code = 1;\n', 'src/fee.ts': 'export const fee = 1;\n', [CART]: "test('adds an item', async () => {});\n" },
+      { 'src/cart.ts': 'export const total = 2;\n', 'src/tax.ts': 'export const rate = 1;\n' },
+    );
+    for (const file of ['src/cart.ts', 'src/coupon.ts', 'src/fee.ts', 'src/tax.ts']) writeFileSync(path.join(repo.root, file), `export const value = '${token}';\n`);
+    execFileSync('git', ['add', 'src/fee.ts', 'src/tax.ts'], { cwd: repo.root });
+    const { context } = filterContext(repo);
     const { model, requests } = scriptedJudge(() => 0.9);
-    await decisionFilter({ model }).filter([ADDS], filterContext(repo).context);
+    await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: ['src/cart.ts', 'src/coupon.ts', 'src/fee.ts', 'src/tax.ts'] } });
     const state = requests[0]?.state as { diff: string };
+    expect(state.diff.split('\n').filter((line) => line.startsWith('diff --git '))).toEqual([
+      'diff --git a/src/cart.ts b/src/cart.ts',
+      'diff --git a/src/tax.ts b/src/tax.ts',
+      'diff --git a/src/coupon.ts b/src/coupon.ts',
+      'diff --git a/src/fee.ts b/src/fee.ts',
+    ]);
     expect(state.diff).toContain('-export const total = 1;\n+export const total = 2;\n');
     expect(state.diff).toContain('+++ b/src/tax.ts\n@@ -0,0 +1 @@\n+export const rate = 1;\n');
-    expect(state.diff).toContain('diff --git a/src/cart.ts b/src/cart.ts\nuncommitted change, contents not read\n');
-    expect(state.diff).toContain('diff --git a/src/tax.ts b/src/tax.ts\nuncommitted change, contents not read\n');
+    expect(state.diff).toContain('diff --git a/src/coupon.ts b/src/coupon.ts\nnot committed, contents not read\n');
+    expect(state.diff).toContain('diff --git a/src/fee.ts b/src/fee.ts\nnot committed, contents not read\n');
     expect(JSON.stringify(requests)).not.toContain(token);
   });
 
-  it('leaves nothing out, making no call, when git prints no diff of the files the change names', async () => {
+  it('leaves nothing out, making no call, when git prints no diff, as for a change a wrapper narrowed to no files', async () => {
     const { context } = filterContext(cartRepo());
     const { model, requests } = scriptedJudge(() => 0);
-    const result = await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: ['src/unchanged.ts'] } });
+    const result = await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: [] } });
     expect(result).toEqual({ exclude: {}, note: 'git printed no diff of the changed files, so the decision filter left nothing out' });
     expect(requests).toEqual([]);
   });
@@ -450,7 +457,7 @@ describe('decisionFilter', () => {
     const { model, requests } = scriptedJudge(() => 0);
     const repo = { ...cartRepo(), base: '0'.repeat(40) };
     const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context);
-    expect(result).toEqual({ exclude: {}, note: expect.stringMatching(/^scripted-judge did not judge 2 tests in 2 files: Command failed: git --literal-pathspecs diff /) });
+    expect(result).toEqual({ exclude: {}, note: expect.stringMatching(/^scripted-judge did not judge 2 tests in 2 files: Command failed: git diff --name-only /) });
     expect(requests).toEqual([]);
   });
 

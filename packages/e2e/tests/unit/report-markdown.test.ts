@@ -851,20 +851,25 @@ describe('a run test filters narrowed', () => {
     );
   });
 
-  it('counts per test and target on a run of several targets, as the passed count does, naming the target of each row, while the filter line counts tests', () => {
+  it('counts the tests left out once on a run of several targets or repeats, as the filter line does, with a row per result naming its target', () => {
     /** A test titled `title` that passed on `target`. */
     const ran = (title: string, target: string): ReportResult => named({ title, file: 'tests/billing.e2e.ts', target, status: 'passed' });
     const results = ['web', 'web-2'].flatMap((target) => [ran('alpha', target), leftOut('beta', 'areas', 'unaffected', target), leftOut('gamma', 'areas', 'unaffected', target)]);
     const body = renderMarkdownReport(page({ results, targets: [reportTarget(), reportTarget({ id: 'web-2', index: 1 })], filters: [record({ candidates: 3, excluded: 2 })] }));
-    expect(body.startsWith('### 🟢 e2e: 2 passed, 4 left out by filters\n')).toBe(true);
+    expect(body.startsWith('### 🟢 e2e: 2 passed, 2 left out by filters\n')).toBe(true);
     expect(body).toContain('**Filter** `areas` kept 1 of 3 tests, left out 2\n');
-    expect(body).toContain('<summary>4 tests left out by filters</summary>');
+    expect(body).toContain('<summary>2 tests left out by filters</summary>');
     expect(body).toContain('| tests/billing.e2e.ts (web) › beta | `areas` | unaffected |\n| tests/billing.e2e.ts (web) › gamma |');
     expect(body).toContain('| tests/billing.e2e.ts (web-2) › gamma | `areas` | unaffected |');
+
+    const repeated = renderMarkdownReport(page({ results: [0, 1].map((repeat) => ({ ...leftOut('beta', 'areas', 'unaffected'), repeat })), filters: [record({ candidates: 1, excluded: 1 })] }));
+    expect(repeated).toContain('### 🟢 e2e: no tests selected, 1 left out by filters\n');
+    expect(repeated).toContain('<summary>1 test left out by filters</summary>');
+    expect(repeated).toContain('| tests/billing.e2e.ts › beta | `areas` | unaffected |\n| tests/billing.e2e.ts › beta (repeat #1) | `areas` | unaffected |');
   });
 
   it('reads a filter that kept every test or left every test out, and one that failed and so left nothing out, by its note', () => {
-    const failed = record({ name: 'owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: CODEOWNERS not found', failed: true });
+    const failed = record({ name: 'owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: CODEOWNERS not found', outcome: 'failed' });
     const kept = renderMarkdownReport(page({ results: [passing], filters: [record({ candidates: 1, excluded: 0, note: 'every test reaches src/app.ts' }), failed] }));
     expect(kept).toContain('### 🟢 e2e: 1 passed\n');
     expect(kept).toContain('**Filter** `areas` kept all 1 test (every test reaches src/app.ts)  \n**Filter** `owners` kept all 1 test (failed, so it leaves nothing out: CODEOWNERS not found)\n');
@@ -897,7 +902,7 @@ describe('a run test filters narrowed', () => {
 
   it('says why no filter ran, whatever the reason', () => {
     const base = '0123456789abcdef0123456789abcdef01234567';
-    for (const changes of [{ files: 0, skipped: 'pull_request_target runs every test' }, { base, files: 2, skipped: 'pnpm-lock.yaml changed' }]) {
+    for (const changes of [{ skipped: 'pull_request_target runs every test' }, { base, files: 2, skipped: 'pnpm-lock.yaml changed' }]) {
       expect(renderMarkdownReport(page({ results: [passing], changes })), changes.skipped).toContain(`\n**Filters** none ran: ${changes.skipped}\n`);
     }
     // A change that edits only test files says why every test ran.

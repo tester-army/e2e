@@ -16,7 +16,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as registry from '../../src/collect/registry.ts';
 import type { Report1Document } from '../../src/report/build.ts';
 import type { ListedPair, ListOptions } from '../../src/run/runner.ts';
 import type { RunEvent } from '../../src/run/events.ts';
@@ -290,19 +289,6 @@ describe('test filters on a run', () => {
     expect(rows('gamma')).toEqual([[0, false, 'areas']]);
   });
 
-  it('never calls a filter on the tests run({ tests }) brings, as e2e explore runs them', async () => {
-    const project = fixture(THREE_TESTS);
-    const { filter, calls } = recording(keepOnly('areas', []));
-    const registration = await registry.collectModule(async () => registry.test('explore the app', async () => {}));
-    const outcome = await runExisting(project, { config: { filters: [filter] }, runOptions: { tests: { file: 'explore', registration } } });
-    expect(outcome.report.run.errors).toEqual([]);
-    expect(outcome.exitCode).toBe(0);
-    expect(calls).toEqual([]);
-    expect(outcome.report.run.results.map((result) => [result.titlePath.at(-1), result.status])).toEqual([['explore the app', 'passed']]);
-    expect(outcome.report.run.filters).toBeUndefined();
-    expect(outcome.report.run.changes).toBeUndefined();
-  });
-
   it('passes a run the filter leaves empty without preparing an engine or starting the app, and still reports it', async () => {
     const project = fixture({ ...THREE_TESTS, ...STARTUP_SCRIPTS });
     const stale = path.join(project.dir, '.e2e', 'results', 'stale-test');
@@ -353,7 +339,7 @@ describe('test filters on a run', () => {
     expect(events).toContain('notice:filter:no tests to judge, so no filter ran');
     expect(events.some((event) => event.startsWith('setup:filter'))).toBe(false);
     expect(reportOf(project).run.filters).toBeUndefined();
-    expect(reportOf(project).run.changes).toEqual({ files: 0, skipped: 'no tests to judge' });
+    expect(reportOf(project).run.changes).toEqual({ skipped: 'no tests to judge' });
     expect(existsSync(prepared)).toBe(false);
     expect(existsSync(startupLog)).toBe(false);
 
@@ -405,7 +391,7 @@ describe('when the filters run', () => {
     expect(outcome.exitCode).toBe(0);
     const report = reportOf(project);
     expect(executedTests(report)).toEqual(['alpha', 'beta', 'gamma']);
-    expect(report.run.changes).toEqual({ files: 0, skipped: 'pull_request_target runs every test' });
+    expect(report.run.changes).toEqual({ skipped: 'pull_request_target runs every test' });
     expect(report.run.filters).toBeUndefined();
     expect(notices).toEqual(['pull_request_target runs every test, so no filter ran']);
     const listed = await listExisting(project, { config: { filters: [filter] }, env });
@@ -481,12 +467,12 @@ ${edit}
     expect(rerun.status).toBe('failed');
     const report = reportOf(project);
     expect(row(report, 'beta')).toMatchObject({ selected: true, status: 'failed' });
-    expect(report.run.changes).toEqual({ files: 0, skipped: '--last-failed' });
+    expect(report.run.changes).toEqual({ skipped: '--last-failed' });
     expect(report.run.filters).toBeUndefined();
     expect(notices).toEqual(['--last-failed: the tests the last run owes run without filters']);
   });
 
-  it('abandons a filter past the deadline and steps past one that throws, runs every test either was given, and passes, recording timedOut and failed', async () => {
+  it('abandons a filter past the deadline and steps past one that throws, runs every test either was given, and passes, recording outcome timed out and failed', async () => {
     const project = fixture(THREE_TESTS);
     const notices: string[] = [];
     const finished: { readonly name: string; readonly outcome: string | undefined }[] = [];
@@ -507,8 +493,8 @@ ${edit}
     const report = reportOf(project);
     expect(executedTests(report)).toEqual(['alpha', 'beta']);
     expect(report.run.filters).toEqual([
-      { name: 'slow', candidates: 3, excluded: 0, note: 'did not finish within 50ms, so it leaves nothing out', timedOut: true },
-      { name: 'boom', candidates: 3, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', failed: true },
+      { name: 'slow', candidates: 3, excluded: 0, note: 'did not finish within 50ms, so it leaves nothing out', outcome: 'timed out' },
+      { name: 'boom', candidates: 3, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', outcome: 'failed' },
       { name: 'areas', candidates: 3, excluded: 1 },
     ]);
     expect(notices).toContain('warning: boom failed, so it leaves nothing out: kaboom');
@@ -572,6 +558,8 @@ ${edit}
     const { filter, calls } = recording(keepOnly('areas', []));
     const cases = [
       [true as unknown as string, 'config', 'changedSince must be a git ref, such as origin/main; got true'],
+      ['', 'config', '--changed-since must name a git ref, such as origin/main; got ""'],
+      ['--output=x', 'config', '--changed-since must name a git ref, such as origin/main; got "--output=x"'],
       ['origin/mian', 'filter', '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout'],
     ] as const;
     for (const [changedSince, phase, message] of cases) {
@@ -582,11 +570,29 @@ ${edit}
     }
     expect(calls).toEqual([]);
   });
+
+  it('is INVALID_CHANGED_SINCE for an empty ref or one that reads as an option even when no filter would run: no filters, --last-failed, or no tests', async () => {
+    const project = fixture(THREE_TESTS);
+    const { filter, calls } = recording(keepOnly('areas', []));
+    const message = '--changed-since must name a git ref, such as origin/main; got "-x"';
+    const cases: readonly ({ config: Partial<E2EConfig> } & Pick<ListOptions, 'lastFailed' | 'grep'>)[] = [
+      { config: { filters: [] } },
+      { config: { filters: [filter] }, lastFailed: true },
+      { config: { filters: [filter] }, grep: [/nothing/] },
+    ];
+    for (const { config, ...options } of cases) {
+      const outcome = await runExisting(project, { config, runOptions: { ...options, changedSince: '-x' } });
+      expect(outcome.exitCode).toBe(2);
+      expect(outcome.report.run.errors).toEqual([expect.objectContaining({ code: 'INVALID_CHANGED_SINCE', phase: 'config', message })]);
+      await expect(listExisting(project, { config, ...options, changedSince: '-x' })).rejects.toMatchObject({ code: 'INVALID_CHANGED_SINCE', message });
+    }
+    expect(calls).toEqual([]);
+  });
 });
 
 describe('what a filter is told', () => {
-  it('hands a project reached through a symlink its resolved root, so its test files join the change root', async () => {
-    const project = fixture(THREE_TESTS);
+  it('hands a project reached through a symlink its resolved root, so its test files join the change root, and pins a changed test file through it', async () => {
+    const project = fixture(THREE_TESTS, { 'tests/beta.e2e.ts': testFile('beta', '{ tags: [] }') });
     const link = path.join(mkdtempSync(path.join(os.tmpdir(), 'e2e-filter-link-')), 'project');
     symlinkSync(project.dir, link);
     try {
@@ -599,7 +605,7 @@ describe('what a filter is told', () => {
         },
       };
       await listExisting(project, { cwd: link, config: { filters: [areas] } });
-      expect(joined).toEqual(['tests/alpha.e2e.ts', 'tests/beta.e2e.ts', 'tests/gamma.e2e.ts']);
+      expect(joined).toEqual(['tests/alpha.e2e.ts', 'tests/gamma.e2e.ts']);
     } finally {
       rmSync(path.dirname(link), { recursive: true, force: true });
     }

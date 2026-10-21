@@ -18,6 +18,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
+import { leftOutTotal } from '../report/left-out.ts';
 import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import { failureKind } from './failure-kind.ts';
@@ -455,12 +456,12 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
       filters_run: run.filters?.length ?? 0,
-      filters_timed_out: run.filters?.filter((record) => record.timedOut === true).length ?? 0,
-      filters_failed: run.filters?.filter((record) => record.failed === true).length ?? 0,
+      filters_timed_out: run.filters?.filter((record) => record.outcome === 'timed out').length ?? 0,
+      filters_failed: run.filters?.filter((record) => record.outcome === 'failed').length ?? 0,
       filters_skipped: run.changes?.skipped !== undefined,
       filters_changed_files: run.changes?.files ?? 0,
       tests_pinned_by_change: run.changes?.pinned ?? 0,
-      tests_left_out_by_filters: new Set(run.results.flatMap((result) => (result.skip?.filter === undefined ? [] : [result.testId]))).size,
+      tests_left_out_by_filters: leftOutTotal(run.results),
       attempts_total: attempts.reduce((total, count) => total + count, 0),
       tests_retried: attempts.filter((count) => count > 1).length,
       targets: run.targets.length,

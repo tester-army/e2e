@@ -128,8 +128,7 @@ describe.each(schemas)('%s schema', (name) => {
       const skip = report.run.results.find((result) => result.skip?.['filter'] !== undefined)!.skip!;
       expect(skip).toMatchObject({ cause: 'filtered', filter: 'areas' });
       const filter = report.run.filters![0]!;
-      const timedOut = report.run.filters!.find((record) => record['timedOut'] === true)!;
-      const failed = report.run.filters!.find((record) => record['failed'] === true)!;
+      const timedOut = report.run.filters!.find((record) => record['outcome'] === 'timed out')!;
       const changes = report.run.changes!;
       const error = report.run.errors[0]!;
       expect(validate(report)).toBe(true);
@@ -146,11 +145,12 @@ describe.each(schemas)('%s schema', (name) => {
         [() => (filter['excluded'] = -1), () => (filter['excluded'] = 0)],
         [() => (filter['candidates'] = 1.5), () => (filter['candidates'] = 2)],
         [() => (filter['note'] = 'x'.repeat(1025)), () => (filter['note'] = 'x'.repeat(1024))],
-        [() => (timedOut['timedOut'] = false), () => (timedOut['timedOut'] = true)],
-        [() => (failed['failed'] = false), () => (failed['failed'] = true)],
+        [() => (timedOut['outcome'] = 'answered'), () => (timedOut['outcome'] = 'timed out')],
+        [() => (timedOut['timedOut'] = true), () => delete timedOut['timedOut']],
         [() => (changes['base'] = 'main'), () => (changes['base'] = 'a'.repeat(40))],
         [() => (changes['base'] = 'A'.repeat(40)), () => (changes['base'] = 'a'.repeat(64))],
         [() => delete changes['files'], () => (changes['files'] = 0)],
+        [() => delete changes['base'], () => (changes['base'] = 'a'.repeat(40))],
         [() => (changes['files'] = -1), () => (changes['files'] = 3)],
         [() => (changes['pinned'] = 0), () => (changes['pinned'] = 1)],
         [() => (changes['skipped'] = ''), () => (changes['skipped'] = 'pnpm-lock.yaml changed')],
@@ -164,6 +164,15 @@ describe.each(schemas)('%s schema', (name) => {
         fixIt();
         expect(validate(report)).toBe(true);
       }
+      // A run that called no filter before git was asked says why, and nothing about a change.
+      report.run.changes = { skipped: '--last-failed' };
+      expect(validate(report)).toBe(true);
+      for (const counted of [{ files: 0 }, { pinned: 1 }, { base: 'a'.repeat(40) }]) {
+        report.run.changes = { skipped: '--last-failed', ...counted };
+        expect(validate(report), JSON.stringify(counted)).toBe(false);
+      }
+      report.run.changes = {};
+      expect(validate(report)).toBe(false);
       delete report.run.filters;
       delete report.run.changes;
       expect(validate(report)).toBe(true);

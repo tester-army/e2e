@@ -23,7 +23,8 @@ import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportChanges, ReportError, ReportExplore, ReportExploreFinding, ReportFilter, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import { filterDecision, formatCost, formatTokens, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
+import { filterDecision, formatCost, formatTokens, pinnedTests, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
+import { leftOutTotal } from './left-out.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
   attemptsLine,
@@ -140,20 +141,16 @@ function runIcon(run: ReportRun, results: readonly ReportResult[]): string {
 }
 
 /**
- * The headline: the counts, and how many the test filters left out, in the
- * same unit, so a filtered pull request run never reads as the whole suite
- * passing.
+ * The headline: the counts, and how many tests the test filters left out,
+ * so a filtered pull request run never reads as the whole suite passing.
  */
 function headline(run: ReportRun, results: readonly ReportResult[], options: MarkdownReportOptions): string {
   const summary = countText(tally(results)) || (run.errors.length > 0 ? 'no tests ran' : 'no tests selected');
-  const leftOut = leftOutResults(run).length;
+  const leftOut = leftOutTotal(run.results);
   return `### ${runIcon(run, results)} ${pageName(options)}: ${summary}${leftOut === 0 ? '' : `, ${leftOut} left out by filters`}`;
 }
 
-/**
- * Every result a test filter left out, in report order: one per test,
- * target, and agent, the unit the headline's other counts are in.
- */
+/** Every result a test filter left out, in report order: one per test, target, agent, and repeat, a row each. */
 function leftOutResults(run: ReportRun): ReportResult[] {
   return run.results.filter((result) => result.skip?.filter !== undefined);
 }
@@ -170,11 +167,10 @@ function filterLine(record: ReportFilter): string {
  */
 function changesLine(changes: ReportChanges | undefined): string | undefined {
   if (changes === undefined) return undefined;
-  const pinned = changes.pinned === undefined ? '' : `; ${plural(changes.pinned, 'test')} ran without filters: ${changes.pinned === 1 ? 'its' : 'their'} test file, screenshots, or setup file changed`;
-  if (changes.skipped === undefined) {
-    return changes.base === undefined ? undefined : `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}${pinned}`;
-  }
-  return `**Filters** none ran: ${cell(changes.skipped)}${pinned}`;
+  if (changes.base === undefined) return `**Filters** none ran: ${cell(changes.skipped)}`;
+  const pinned = changes.pinned === undefined ? '' : `; ${pinnedTests(changes.pinned, 'past')}`;
+  if (changes.skipped !== undefined) return `**Filters** none ran: ${cell(changes.skipped)}${pinned}`;
+  return `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}${pinned}`;
 }
 
 /**
@@ -197,7 +193,7 @@ function filtersSection(run: ReportRun, manyTargets: boolean): string[] {
     lines.push(row([`${fileLabel(result.file, result.targetId, withTarget)} › ${testName(result)}`, code(result.skip?.filter ?? '', MAX_ID_CHARS), cell(result.skip?.reason ?? '')]));
   }
   if (leftOut.length > MAX_LEFT_OUT_ROWS) lines.push(row([`and ${leftOut.length - MAX_LEFT_OUT_ROWS} more in report.json`, '', '']));
-  const summary = `${plural(leftOut.length, 'test')} left out by filters`;
+  const summary = `${plural(leftOutTotal(run.results), 'test')} left out by filters`;
   return [...parts, ...(parts.length === 0 ? [] : ['']), ['<details>', `<summary>${summary}</summary>`, '', lines.join('\n'), '</details>'].join('\n')];
 }
 

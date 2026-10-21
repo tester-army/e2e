@@ -62,8 +62,9 @@ The change is every file that differs from the merge base of the ref and
 `HEAD`, uncommitted and untracked files included. The model reads the diff
 of what the commits change, the test files, and the setup files that save
 their sessions, with secrets redacted, except a value a secret provider
-returns. It gets an uncommitted or untracked file by name only, never its
-contents, so a file a CI step writes doesn't reach it. The filter
+returns. It gets a file only the working tree changes, uncommitted or
+untracked, by name alone, never its contents, so a file a CI step writes
+doesn't reach it. The filter
 leaves out a test when the model rates both the test and its setup under
 20% likely affected. When the model can't answer, the tests it didn't judge
 run, and the filter's note says why. This happens without a key, as on a

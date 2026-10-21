@@ -377,9 +377,9 @@ describe('telemetry events', () => {
     });
     report.run.filters = [
       { name: 'acme-areas', candidates: 3, excluded: 2, note: 'acme note' },
-      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m, so it leaves nothing out', timedOut: true },
-      { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: acme CODEOWNERS not found', failed: true },
-      { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, so it leaves nothing out: unknown key "acme"', failed: true },
+      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m, so it leaves nothing out', outcome: 'timed out' },
+      { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: acme CODEOWNERS not found', outcome: 'failed' },
+      { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, so it leaves nothing out: unknown key "acme"', outcome: 'failed' },
     ];
     report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 12, pinned: 2 };
     const event = runCompletedEvent(report, RUN);
@@ -394,10 +394,13 @@ describe('telemetry events', () => {
     });
     expect(JSON.stringify(event)).not.toMatch(/acme|acac|a\.e2e\.ts/u);
 
-    report.run.changes = { files: 0, skipped: 'acme/pnpm-lock.yaml changed' };
+    report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 3, skipped: 'acme/pnpm-lock.yaml changed' };
     const skipped = runCompletedEvent(report, RUN);
-    expect(skipped.properties).toMatchObject({ filters_skipped: true, filters_changed_files: 0, tests_pinned_by_change: 0 });
-    expect(JSON.stringify(skipped)).not.toMatch(/acme|lock/u);
+    expect(skipped.properties).toMatchObject({ filters_skipped: true, filters_changed_files: 3, tests_pinned_by_change: 0 });
+    expect(JSON.stringify(skipped)).not.toMatch(/acme|acac|lock/u);
+
+    report.run.changes = { skipped: '--last-failed' };
+    expect(runCompletedEvent(report, RUN).properties).toMatchObject({ filters_skipped: true, filters_changed_files: 0, tests_pinned_by_change: 0 });
   });
 
   it('counts the units that needed more than one attempt', () => {

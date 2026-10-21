@@ -1,9 +1,10 @@
 /**
- * Test filters (`filters`): the candidates a filter is handed and the setup
- * file each one's session comes from, filters composed in order, what a
- * result may name and every way one is refused, redaction and bounds on what
- * a filter writes, how a throw, an interrupt, or the deadline surfaces, and
- * the record and summary line of what each one decided.
+ * Test filters (`filters`): the selection kept when no filter is called, the
+ * candidates a filter is handed and the setup file each one's session comes
+ * from, filters composed in order, what a result may name and every way one
+ * is refused, redaction and bounds on what a filter writes, how a throw, an
+ * interrupt, or the deadline surfaces, and the record and summary line of
+ * what each one decided.
  */
 
 import path from 'node:path';
@@ -16,7 +17,16 @@ import { select } from '../../src/collect/select.ts';
 import { resolveConfig, type ResolvedConfig } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import { ConfigurationError, type E2EError } from '../../src/internal/errors.ts';
-import { applyTestFilters, FILTER_TIMEOUT_MS, filterCandidates, filterRecords, filterSummary, type TestFilterScope } from '../../src/run/test-filters.ts';
+import {
+  applyTestFilters,
+  FILTER_TIMEOUT_MS,
+  filterCandidates,
+  filterRecords,
+  filterSelection,
+  filterSummary,
+  type FilterSelectionOptions,
+  type TestFilterScope,
+} from '../../src/run/test-filters.ts';
 import type { E2EConfig, TestFilter, TestFilterCandidate, TestFilterContext, TestFilterResult } from '../../src/types.ts';
 import { invalid } from '../helpers/invalid.ts';
 
@@ -122,6 +132,55 @@ function hanging(name: string) {
   });
   return { filter, seen };
 }
+
+describe('filterSelection', () => {
+  /** What `filterSelection` is handed for `col` under `cfg`, judging a ref git cannot measure from, so a lookup would throw; and the notices it wrote. */
+  function options(col: Collection, cfg: ResolvedConfig, overrides: Partial<FilterSelectionOptions> = {}) {
+    const notices: string[] = [];
+    const value: FilterSelectionOptions = {
+      config: cfg,
+      collection: col,
+      selectionFilters: {},
+      changedSince: 'no-such-ref',
+      env: ENV,
+      signal: new AbortController().signal,
+      notice: (message) => notices.push(message),
+      ...overrides,
+    };
+    return { value, notices };
+  }
+
+  it('keeps the selection it was handed when the config has no filter, warning unless interrupted, and asks no git', async () => {
+    const col = await collection(() => test('a', noop));
+    const cfg = config();
+    const first = select(col, cfg);
+    const { value, notices } = options(col, cfg);
+    const kept = await filterSelection(first, value);
+    expect(kept).toEqual({ selection: first, records: [], changes: undefined });
+    expect(kept.selection).toBe(first);
+    expect(notices).toEqual(['warning: --changed-since: the config has no filters, so every test runs']);
+
+    const controller = new AbortController();
+    controller.abort();
+    const interrupted = options(col, cfg, { signal: controller.signal });
+    expect((await filterSelection(first, interrupted.value)).selection).toBe(first);
+    expect(interrupted.notices).toEqual([]);
+  });
+
+  it('keeps the selection it was handed when the gate calls no filter, recording why', async () => {
+    const col = await collection(() => test('a', noop));
+    const never = vi.fn(() => ({ exclude: {} }));
+    const cfg = config({ filters: [filterOf('areas', never)] });
+    const first = select(col, cfg);
+    const env = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
+    const { value, notices } = options(col, cfg, { env });
+    const kept = await filterSelection(first, value);
+    expect(kept).toEqual({ selection: first, records: [], changes: { skipped: 'pull_request_target runs every test' } });
+    expect(kept.selection).toBe(first);
+    expect(notices).toEqual(['pull_request_target runs every test, so no filter ran']);
+    expect(never).not.toHaveBeenCalled();
+  });
+});
 
 describe('filterCandidates', () => {
   it('hands over each test the selection runs once, in report order, frozen, by id, file, title path, and tags', async () => {
@@ -378,7 +437,7 @@ describe('applyTestFilters', () => {
       const { scope: value, notices } = scope(overrides);
       const applied = await applyTestFilters([filter], candidates, value);
       const note = applied.decisions[0]?.note ?? '';
-      expect(applied.decisions).toEqual([{ name: 'areas', candidates: 3, note, failed: true }]);
+      expect(applied.decisions).toEqual([{ name: 'areas', candidates: 3, note, outcome: 'failed' }]);
       expect(applied.excluded.size).toBe(0);
       expect(notices).toEqual([`warning: areas ${note}`]);
       return note;
@@ -493,7 +552,7 @@ describe('applyTestFilters', () => {
       expect([...note]).toHaveLength(1024);
       expect(notices).toEqual([`warning: areas ${note}`]);
       expect(applied.decisions).toEqual([
-        { name: 'areas', candidates: 2, note, failed: true },
+        { name: 'areas', candidates: 2, note, outcome: 'failed' },
         { name: 'later', candidates: 2 },
       ]);
       expect(later).toHaveBeenCalledWith(candidates, expect.anything());
@@ -559,7 +618,7 @@ describe('a filter past the deadline', () => {
       expect(steps).toEqual(['slow', 'later']);
       expect(ended).toEqual(['slow: timed out', 'later: answered']);
       expect(notices).toEqual(['warning: slow did not finish within 50ms, so it leaves nothing out']);
-      expect(applied.decisions[0]).toEqual({ name: 'slow', candidates: 2, note: 'did not finish within 50ms, so it leaves nothing out', timedOut: true });
+      expect(applied.decisions[0]).toEqual({ name: 'slow', candidates: 2, note: 'did not finish within 50ms, so it leaves nothing out', outcome: 'timed out' });
       expect([...applied.excluded.keys()]).toEqual([idOf(candidates, 'a')]);
     } finally {
       vi.useRealTimers();
@@ -577,7 +636,7 @@ describe('a filter past the deadline', () => {
     );
     const { scope: value, notices } = scope({ timeoutMs: 20 });
     const applied = await applyTestFilters([obedient], candidates, value);
-    expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms, so it leaves nothing out', timedOut: true }]);
+    expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms, so it leaves nothing out', outcome: 'timed out' }]);
     expect(notices).toEqual(['warning: jev did not finish within 20ms, so it leaves nothing out']);
   });
 
@@ -632,9 +691,9 @@ describe('filterRecords and filterSummary', () => {
     expect(records).toEqual([
       { name: 'areas', candidates: 4, excluded: 1, note: 'src/todos changed' },
       { name: 'jev', candidates: 2, excluded: 1 },
-      { name: 'boom', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', failed: true },
+      { name: 'boom', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', outcome: 'failed' },
     ]);
     expect(summaries).toEqual(['areas kept 3 of 4 tests, left out 1 (src/todos changed)', 'jev kept 1 of 2 tests, left out 1', undefined]);
-    expect(filterSummary({ name: 'slow', candidates: 2, excluded: 0, timedOut: true })).toBeUndefined();
+    expect(filterSummary({ name: 'slow', candidates: 2, excluded: 0, outcome: 'timed out' })).toBeUndefined();
   });
 });

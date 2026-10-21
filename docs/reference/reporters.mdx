@@ -247,8 +247,9 @@ type ReporterSummary = readonly { label: string; text: string }[];
   calls `onRunFinished`.
 
 <Note>
-Hand `signal` to every request and timer, or an abandoned reporter keeps the
-CLI alive after the run has ended.
+Hand `signal` to every request and timer. The CLI exits without waiting for
+a reporter it abandoned, cutting off what it still does; under
+[`e2e/runner`](/reference/runner), that work keeps your process alive.
 </Note>
 
 ##### Summary rows
@@ -296,9 +297,9 @@ same layout as its own rows. The `json` reporter does not carry them.
 - `run.filters` holds one record per filter that was called, in order:
   `name`, `candidates`, `excluded` (the tests left out once serial groups
   took back their members), `note` (cut to 1024 characters; for a filter
-  that failed, the warning saying why), `failed: true` when the filter
-  threw or returned an invalid result, and `timedOut: true` when the filter
-  ran past 5 minutes and left nothing out. A filter left with no tests is
+  that failed, the warning saying why), and `outcome`, set when the filter
+  left nothing out: `failed` when it threw or returned an invalid result,
+  `timed out` when it ran past 5 minutes. A filter left with no tests is
   not called and has no record.
 - Once the filters have decided, `run.changes` holds the change they
   judged, by counts: `base` (the merge base), `files`, `pinned` (the tests
@@ -306,9 +307,12 @@ same layout as its own rows. The `json` reporter does not carry them.
   changed), and `skipped` (why no filter ran, such as
   `pnpm-lock.yaml changed`). It is present when filters are configured and
   the run passed `--changed-since`, except under `e2e explore`, on
-  `--watch` reruns, and when the run ends before the filters decide.
-- A failure while the filters decide, such as `INVALID_CHANGED_SINCE`, is
-  in `run.errors` with `phase` `filter`.
+  `--watch` reruns, and when the run ends before the filters decide. On
+  `--last-failed`, with no tests to judge, or on `pull_request_target`, it
+  holds `skipped` alone.
+- A failure while the filters decide, such as `INVALID_CHANGED_SINCE` for a
+  ref that names no commit, is in `run.errors` with `phase` `filter`. A
+  malformed `changedSince` has `phase` `config`.
 
 ## Events
 

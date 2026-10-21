@@ -301,7 +301,7 @@ describe('foldLastRun', () => {
         result({ title: 'beta', status: 'skipped', selected: false, skip: leftOut }),
         result({ title: 'gamma', status: 'skipped', selected: false, skip: leftOut }),
       ],
-      changes: { files: 0, skipped: '--last-failed' },
+      changes: { skipped: '--last-failed' },
     });
     const folded = foldLastRun(lastFailed, before);
     expect(folded.run.filters).toEqual(before.run.filters);
@@ -331,7 +331,7 @@ describe('foldLastRun', () => {
         result({ title: 'member b', status: 'passed', attempts: [attempt()] }),
         result({ title: 'guest page', status: 'skipped', selected: false, skip: leftOut }),
       ],
-      changes: { files: 0, skipped: '--last-failed' },
+      changes: { skipped: '--last-failed' },
     });
     const folded = foldLastRun(lastFailed, before);
     expect(byTitle(folded).get('member b#0')).toMatchObject({ selected: true, status: 'passed' });

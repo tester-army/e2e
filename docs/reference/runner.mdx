@@ -205,7 +205,7 @@ try {
 | --- | --- |
 | `NO_TESTS` | The selection is empty and `passWithNoTests` is not set. A `ConfigurationError`. When the test filters leave nothing to run, `list` resolves instead, with every pair `filtered` or `skip`. |
 | `UNKNOWN_TARGET` | A name in `targets` is not a configured target. |
-| `INVALID_CHANGED_SINCE` | The test filters run, and `changedSince` names a ref git can't measure a change from. |
+| `INVALID_CHANGED_SINCE` | `changedSince` is empty or starts with `-`, or the test filters run and it names a ref git can't measure a change from. |
 | The codes `run` records | The config is missing, the loader refused it, or collection failed. |
 
 #### `openHost`

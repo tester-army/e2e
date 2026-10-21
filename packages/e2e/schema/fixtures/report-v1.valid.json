@@ -482,14 +482,14 @@
         "candidates": 1,
         "excluded": 0,
         "note": "did not finish within 5m, so it leaves nothing out",
-        "timedOut": true
+        "outcome": "timed out"
       },
       {
         "name": "owners",
         "candidates": 1,
         "excluded": 0,
         "note": "failed, so it leaves nothing out: CODEOWNERS not found",
-        "failed": true
+        "outcome": "failed"
       }
     ],
     "carried": {

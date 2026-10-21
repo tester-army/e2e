@@ -20,7 +20,6 @@ import {
   type SelectionFilters,
   type Shard,
   type TagMode,
-  type TestExclusion,
   type TestTargetPair,
 } from '../collect/select.ts';
 import {
@@ -35,10 +34,10 @@ import {
   type ErrorPhase,
 } from '../internal/errors.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { leaveWorkBehind } from '../internal/abandoned.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
 import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
-import { onDiskPath } from '../internal/paths.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, projectSource, type Report1Document, type ReportChanges, type ReportExplore, type ReportFilter, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
@@ -61,15 +60,14 @@ import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, re
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { budgetText, withAbort } from '../internal/time.ts';
-import type { BuiltinReporter, E2EConfig, FinishedRun, RecordingMode, Reporter, ReporterSummary, TestFilter } from '../types.ts';
+import type { BuiltinReporter, E2EConfig, FinishedRun, RecordingMode, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
 import { boundedInt, describeValue, positiveInt, timerMs } from '../config/validate.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
-import { gateTestFilters } from './filter-gate.ts';
-import { applyTestFilters, FILTER_TIMEOUT_MS, filterCandidates, filterRecords, filterSummary, type TestFilterScope } from './test-filters.ts';
+import { filterSelection } from './test-filters.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -368,90 +366,15 @@ export async function listSelection(options: ListOptions, notice: (message: stri
   const collection = await collect(config, runOptions.files);
   const inputs = await selectionInputs(runOptions, config);
   const first = select(collection, config, inputs.filters, runOptions.passWithNoTests !== undefined ? { passWithNoTests: runOptions.passWithNoTests } : {});
-  if (changedSince !== undefined && config.filters.length === 0) notice(NO_FILTERS);
   const selection =
-    changedSince === undefined || config.filters.length === 0
+    changedSince === undefined
       ? first
-      : (
-          await filteredSelection(config.filters, collection, config, inputs.filters, first, {
-            env,
-            signal: new AbortController().signal,
-            notice,
-            step: (_name, work) => work(),
-            changedSince,
-            timeoutMs: FILTER_TIMEOUT_MS,
-          })
-        ).selection;
+      : (await filterSelection(first, { config, collection, selectionFilters: inputs.filters, changedSince, env, signal: new AbortController().signal, notice })).selection;
   return {
     pairs: selection.pairs.map((pair) => toListedPair(config.projectRoot, pair)),
     unmatched: collection.unmatchedPositionals,
     targets: selection.perTarget.map((entry) => entry.target.name),
   };
-}
-
-/** A selection once the test filters had their say, the report's record of them, and the change they judged. */
-interface FilteredSelection {
-  readonly selection: Selection;
-  readonly records: readonly ReportFilter[];
-  readonly changes: ReportChanges;
-}
-
-/** Where a filtered selection's lines go, how a filter call is wrapped and how long it may take, the run's environment, and the `--changed-since` ref. */
-type FilterHooks = Pick<TestFilterScope, 'signal' | 'notice' | 'step' | 'timeoutMs'> & {
-  readonly env: NodeJS.ProcessEnv;
-  readonly changedSince: string;
-};
-
-/** What `--changed-since` says when the config has no test filter for it to run. */
-const NO_FILTERS = 'warning: --changed-since: the config has no filters, so every test runs';
-
-/**
- * The second selection pass of a run with test filters. `first` is the
- * selection every flag made, `--shard` included, so each shard machine hands
- * the filters its own slice and the cut never depends on what they answer.
- * The gate then decides whether any filter is called, on which tests, and
- * on what change. The exclusions go into a selection with the same flags,
- * which serial groups and sessions settle like any other filter; an empty
- * result is the filters' doing, or pass 1's under `passWithNoTests`, and
- * passes. Each decision's line goes to `hooks.notice`.
- */
-async function filteredSelection(
-  testFilters: readonly TestFilter[],
-  collection: Collection,
-  config: ResolvedConfig,
-  filters: SelectionFilters,
-  first: Selection,
-  hooks: FilterHooks,
-): Promise<FilteredSelection> {
-  const { env, changedSince, ...scopeHooks } = hooks;
-  const gate = await gateTestFilters({
-    candidates: filterCandidates(first),
-    lastFailed: filters.lastFailed !== undefined,
-    changedSince,
-    projectRoot: config.projectRoot,
-    configPath: config.configPath,
-    env,
-    signal: scopeHooks.signal,
-    notice: scopeHooks.notice,
-  });
-  const applied =
-    gate.changes === undefined
-      ? { excluded: new Map<string, TestExclusion>(), decisions: [] }
-      : await applyTestFilters(testFilters, gate.candidates, {
-          ...scopeHooks,
-          // Spelled as on disk, as `changes.root` is, so a filter can join the two.
-          projectRoot: onDiskPath(config.projectRoot),
-          changes: gate.changes,
-          secrets: config.allSecrets,
-          collectedIds: new Set(collection.tests.map((test) => test.id)),
-        });
-  const selection = select(collection, config, { ...filters, excluded: applied.excluded }, { passWithNoTests: true });
-  const records = filterRecords(applied.decisions, selection);
-  for (const record of records) {
-    const summary = filterSummary(record);
-    if (summary !== undefined) scopeHooks.notice(summary);
-  }
-  return { selection, records, changes: gate.record };
 }
 
 export interface RunOutcome {
@@ -866,10 +789,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       return result;
     };
 
-    // `explore` runs its own tests, which no test filter judges.
-    const changedSince = options.tests === undefined ? options.changedSince : undefined;
-    const testFilters = changedSince === undefined ? [] : config.filters;
-
     // Collection comes first and starts no process: a collection failure or
     // NO_TESTS is reported before any dev server boots or browser downloads.
     let planned: { collection: Collection; filters: SelectionFilters; selection: Selection };
@@ -892,11 +811,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             uncollectedFiles: new Set(collection.uncollected.map((skipped) => skipped.file)),
           };
           const flags = options.passWithNoTests !== undefined ? { passWithNoTests: options.passWithNoTests } : {};
-          // With filters this is pass 1, what they judge. The run's own
-          // flag still decides an empty one, so a mistyped --tag fails
-          // before any filter calls a model.
-          const selection = select(collection, config, inputs.filters, flags);
-          return { collection, filters: inputs.filters, selection: testFilters.length === 0 ? repeatEach(selection, options.repeatEach ?? 1) : selection };
+          // Pass 1, what any test filter judges. The run's own flag still
+          // decides an empty one, so a mistyped --tag fails before any
+          // filter calls a model.
+          return { collection, filters: inputs.filters, selection: select(collection, config, inputs.filters, flags) };
         }),
       );
     } catch (cause) {
@@ -915,18 +833,20 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // The filters decide before any engine prepares or app starts, so a run
     // they leave empty boots nothing. An interrupt records nothing: the run
     // ends interrupted, like one cut short in `prepare`.
-    if (changedSince !== undefined && testFilters.length === 0 && !interrupted.aborted) notice('filter', NO_FILTERS);
-    if (changedSince !== undefined && testFilters.length > 0) {
+    if (options.changedSince !== undefined) {
       try {
-        const filtered = await filteredSelection(testFilters, collection, config, planned.filters, selection, {
+        const filtered = await filterSelection(selection, {
+          config,
+          collection,
+          selectionFilters: planned.filters,
+          changedSince: options.changedSince,
           env,
           signal: interrupted,
           notice: (message) => notice('filter', message),
           step: (name, work) => setupStep({ kind: 'filter', name }, () => debug.time('filter', work), (call) => (call.outcome === 'answered' ? undefined : call.outcome)),
-          changedSince,
-          timeoutMs: options.filterTimeout ?? FILTER_TIMEOUT_MS,
+          timeoutMs: options.filterTimeout,
         });
-        selection = repeatEach(filtered.selection, options.repeatEach ?? 1);
+        selection = filtered.selection;
         filterReport = filtered.records;
         changesReport = filtered.changes;
       } catch (cause) {
@@ -934,6 +854,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         return;
       }
     }
+    selection = repeatEach(selection, options.repeatEach ?? 1);
 
     // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the
@@ -1354,7 +1275,9 @@ async function selectionInputs(options: SelectionRunOptions, config: ResolvedCon
  * The run options the CLI parser already bounds, checked again for the SDK
  * path so `run({ maxFailures: 0 })` or `run({ repeatEach: 0 })` is
  * `INVALID_CONFIG` rather than a run that stops at its first failure or
- * runs each test once.
+ * runs each test once. A `changedSince` that is not a string, is empty, or
+ * reads as a git option is `INVALID_CHANGED_SINCE` whether or not a filter
+ * would run.
  */
 function validateRunOptions(options: SelectionRunOptions): void {
   positiveInt(options.maxFailures, 'maxFailures');
@@ -1373,8 +1296,12 @@ function validateRunOptions(options: SelectionRunOptions): void {
     const total = positiveInt(options.shard.total, 'shard.total');
     boundedInt(options.shard.index, 'shard.index', 1, total!);
   }
-  if (options.changedSince !== undefined && typeof options.changedSince !== 'string') {
-    throw new ConfigurationError('INVALID_CHANGED_SINCE', `changedSince must be a git ref, such as origin/main; got ${describeValue(options.changedSince)}`);
+  const ref = options.changedSince;
+  if (ref !== undefined && typeof ref !== 'string') {
+    throw new ConfigurationError('INVALID_CHANGED_SINCE', `changedSince must be a git ref, such as origin/main; got ${describeValue(ref)}`);
+  }
+  if (ref !== undefined && (ref === '' || ref.startsWith('-'))) {
+    throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${JSON.stringify(ref)}`);
   }
 }
 
@@ -1472,9 +1399,10 @@ const FILE_REPORTERS: ReadonlySet<Reporter> = new Set([STATELESS_REPORTERS.junit
  * and, except the built-in file reporters, until a forced interrupt, and
  * collects the summary rows they resolve with. Each reporter gets a signal
  * that aborts on either, so a well-behaved one cancels its own work and
- * leaves no handle holding the process. A reporter that throws, runs out of
- * time, or returns something other than rows is one line on stderr; it can
- * never change the run's outcome.
+ * leaves no handle holding the process; one given up on is work left behind,
+ * which the CLI does not wait for. A reporter that throws, runs out of time,
+ * or returns something other than rows is one line on stderr; it can never
+ * change the run's outcome.
  */
 async function runReporters(
   reporters: readonly Reporter[],
@@ -1486,20 +1414,22 @@ async function runReporters(
     process.stderr.write(`e2e: reporter "${reporter.name}" ${detail}\n`);
   };
   const budget = budgetText(timeoutMs);
+  const forced = 'abandoned: the run was forced to stop';
   const outcomes = await Promise.all(
     reporters.map(async (reporter): Promise<ReporterSummary> => {
       const { onRunFinished } = reporter;
       if (onRunFinished === undefined) return [];
+      if (!FILE_REPORTERS.has(reporter) && force.aborted) {
+        warn(reporter, forced);
+        return [];
+      }
       const abandon = new AbortController();
       const timer = setTimeout(
         () => abandon.abort(new ReporterAbandoned(`did not finish within ${budget}`)),
         timeoutMs,
       );
-      const onForce = (): void => abandon.abort(new ReporterAbandoned('abandoned: the run was forced to stop'));
-      if (!FILE_REPORTERS.has(reporter)) {
-        if (force.aborted) onForce();
-        else force.addEventListener('abort', onForce, { once: true });
-      }
+      const onForce = (): void => abandon.abort(new ReporterAbandoned(forced));
+      if (!FILE_REPORTERS.has(reporter)) force.addEventListener('abort', onForce, { once: true });
       try {
         const result = await withAbort(
           () => Promise.resolve(onRunFinished.call(reporter, finished, abandon.signal)),
@@ -1516,6 +1446,7 @@ async function runReporters(
         if (dropped > 0) warn(reporter, `returned ${dropped} row(s) without a label and text; dropped`);
         return rows;
       } catch (cause) {
+        if (cause instanceof ReporterAbandoned) leaveWorkBehind();
         warn(reporter, cause instanceof ReporterAbandoned ? cause.message : `failed: ${errorMessage(cause)}`);
         return [];
       } finally {

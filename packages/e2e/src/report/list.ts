@@ -8,6 +8,7 @@
 
 import path from 'node:path';
 import picocolors from 'picocolors';
+import type { SkipInfo } from '../collect/select.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -53,6 +54,7 @@ import {
   type Counters,
   type ModelTally,
 } from './format.ts';
+import { leftOutTests } from './left-out.ts';
 import { ExploreView } from './list-explore.ts';
 import { isShownEvent, type ConfiguredModel, type FileGroup, type ReplayNotice, type RunningTest, type TestLine } from './list-model.ts';
 import { replayLine, replayNotices, stepLine } from './list-steps.ts';
@@ -256,8 +258,8 @@ export class ListReporter implements Reporter {
   private readonly live: boolean;
   private readonly failures: Failure[] = [];
   private readonly skippedFailures: Failure[] = [];
-  /** What each test filter left out, by its name, in the order they arrived: one key per test, target, and agent, the unit `Tests` counts. */
-  private readonly leftOut = new Map<string, Set<string>>();
+  /** Every result a test filter left out, in the order they arrived, for the `Left out` row. */
+  private readonly leftOut: { readonly testId: string; readonly skip: SkipInfo | undefined }[] = [];
   /** Every finished test's run, for the `Repeats` summary of a `--repeat-each` run. */
   private readonly runs: { key: string; label: string; run: RepeatRun }[] = [];
   /**
@@ -706,14 +708,9 @@ export class ListReporter implements Reporter {
   private testFinished(result: RunEventResult): void {
     // Unselected pairs are report-only: they never print and the plan never
     // counted them. The ones a filter left out are counted for the summary.
-    const key = pairKey(result.test.id, result.agent, result.target.name, result.repeat);
-    const filter = result.skip?.filter;
-    if (filter !== undefined) {
-      const pairs = this.leftOut.get(filter) ?? new Set<string>();
-      pairs.add(key);
-      this.leftOut.set(filter, pairs);
-    }
+    if (result.skip?.filter !== undefined) this.leftOut.push({ testId: result.test.id, skip: result.skip });
     if (!result.selected) return;
+    const key = pairKey(result.test.id, result.agent, result.target.name, result.repeat);
     this.flushOutput(key);
     const steps = this.pairs.get(key)?.steps ?? [];
     this.pairs.delete(key);
@@ -915,12 +912,12 @@ export class ListReporter implements Reporter {
   }
 
   /**
-   * The `Left out` row: how many each test filter left out, counted per
-   * test, target, and agent as the `Tests` row counts (`35 tests by
-   * affected`, `35 by affected, 3 by areas`); undefined when none did.
+   * The `Left out` row: how many tests each test filter left out, as its
+   * line counts them (`35 tests by affected`, `35 by affected, 3 by
+   * areas`); undefined when none did.
    */
   private leftOutText(): string | undefined {
-    const counts = [...this.leftOut].map(([name, pairs]) => ({ name: bounded(name), count: pairs.size }));
+    const counts = [...leftOutTests(this.leftOut)].map(([name, count]) => ({ name: bounded(name), count }));
     if (counts.length === 0) return undefined;
     if (counts.length === 1) {
       const { name, count } = counts[0]!;

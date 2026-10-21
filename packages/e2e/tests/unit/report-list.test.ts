@@ -485,7 +485,7 @@ describe('ListReporter', () => {
       expect(interrupted.lines).toContain('      Tests  1 interrupted | 2 passed (3)');
     });
 
-    it('counts what each filter left out on a Left out row per test and target, the unit the Tests row counts', () => {
+    it('counts the tests each filter left out on a Left out row, a test once across targets and repeats, as the filter line counts them', () => {
       /** An unselected result `filter` left out. */
       const leftOut = (id: string, target: string, filter: string): RunEventResult =>
         ({ ...result({ status: 'skipped', id, target, selected: false, attempts: [] }), skip: { cause: 'filtered', reason: 'unaffected', filter } }) as RunEventResult;
@@ -495,12 +495,13 @@ describe('ListReporter', () => {
       reporter.handle(finished(result({ status: 'passed', id: 'kept' })));
       reporter.handle(finished(leftOut('pays', 'chromium', 'areas')));
       reporter.handle(finished(leftOut('pays', 'webkit', 'areas')));
+      reporter.handle(finished({ ...leftOut('pays', 'chromium', 'areas'), repeat: 1 }));
       reporter.handle(finished(leftOut('refunds', 'chromium', 'areas')));
       reporter.handle(finished(leftOut('export', 'chromium', 'jev')));
       reporter.handle(finished(result({ status: 'skipped', id: 'slow', selected: false, attempts: [], skipReason: 'carries an excluded tag' })));
       reporter.handle(runFinished({ reportPath: '.e2e/report.json' }));
       expect(lines).toContain('      Tests  1 passed (1)');
-      expect(lines).toContain('   Left out  3 by areas, 1 by jev');
+      expect(lines).toContain('   Left out  2 by areas, 1 by jev');
 
       const one = capture();
       const single = plainReporter(one.output);

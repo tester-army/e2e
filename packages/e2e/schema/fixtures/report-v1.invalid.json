@@ -114,8 +114,7 @@
         "version": "1",
         "candidates": 2,
         "excluded": 1,
-        "timedOut": false,
-        "failed": false
+        "outcome": "answered"
       }
     ]
   }

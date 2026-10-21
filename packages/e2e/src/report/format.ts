@@ -509,3 +509,13 @@ export function filterDecision(candidates: number, excluded: number): string {
   if (excluded === candidates) return `left out all ${tests}`;
   return `kept ${candidates - excluded} of ${tests}, left out ${excluded}`;
 }
+
+/**
+ * Why tests ran without the filters: `2 tests run without filters: their
+ * test file, screenshots, or setup file changed`, with `ran` in the past
+ * tense. The run's notice and the markdown page say it the same way.
+ */
+export function pinnedTests(pinned: number, tense: 'present' | 'past'): string {
+  const verb = tense === 'past' ? 'ran' : pinned === 1 ? 'runs' : 'run';
+  return `${pinned} test${pinned === 1 ? '' : 's'} ${verb} without filters: ${pinned === 1 ? 'its' : 'their'} test file, screenshots, or setup file changed`;
+}

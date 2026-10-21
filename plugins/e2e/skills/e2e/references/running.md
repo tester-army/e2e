@@ -267,6 +267,6 @@ jobs:
   changed. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
   on merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. Preview
   with `npx e2e list --changed-since origin/main`, after committing: the
-  decision filter reads what the commits change, and an uncommitted or
-  untracked file by name only.
+  decision filter reads what the commits change, and a file only the
+  working tree changes by name alone.
   Reference: https://e2e.tester.army/docs/filters

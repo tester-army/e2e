@@ -1,8 +1,7 @@
 /**
  * The change test filters judge with `--changed-since`, read from real
  * throwaway git repositories: what the file list holds, what git it needs,
- * no change on `pull_request_target`, and every way a lookup fails, each
- * `INVALID_CHANGED_SINCE`.
+ * and every way a lookup fails, each `INVALID_CHANGED_SINCE`.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -32,9 +31,9 @@ function featureRepo() {
   return { dir, base };
 }
 
-/** `findChanges` in `cwd` with `options` over the change since `main`, an empty environment, and a live signal. */
+/** `findChanges` in `cwd` with `options` over the change since `main` and a live signal. */
 function lookUp(cwd: string, options: Partial<ChangeOptions> = {}): Promise<ChangeLookup> {
-  return findChanges({ cwd, changedSince: 'main', env: {}, signal: new AbortController().signal, ...options });
+  return findChanges({ cwd, changedSince: 'main', signal: new AbortController().signal, ...options });
 }
 
 /** The files a lookup found, failing the test when it found none. */
@@ -111,32 +110,13 @@ describe('findChanges with --changed-since', () => {
     expect(await lookUp(dir, { changedSince: 'HEAD' })).toEqual({ kind: 'none', reason: `no files changed since ${head.slice(0, 7)}`, base: head });
   });
 
-  it("judges nothing on GitHub Actions' pull_request_target, which may hold a fork's change beside the repository's secrets, asking no git", async () => {
-    const { dir } = featureRepo();
-    const target = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
-    const none = { kind: 'none', reason: 'pull_request_target runs every test' };
-    expect(await lookUp(dir, { env: target })).toEqual(none);
-    // No git is asked: a directory outside any repository says the same.
-    expect(await lookUp(tempDir(), { env: target })).toEqual(none);
-    // Any other event, or the event name outside GitHub Actions, measures the change.
-    for (const env of [{ GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_EVENT_NAME: 'pull_request_target' }]) {
-      expect(filesOf(await lookUp(dir, { env })), JSON.stringify(env)).toEqual(['src/app.ts', 'tests/new.e2e.ts']);
-    }
-  });
-
-  it('is INVALID_CHANGED_SINCE for a ref that names no commit, an option, or one with unrelated history', async () => {
+  it('is INVALID_CHANGED_SINCE for a ref that names no commit, or one with unrelated history', async () => {
     const { dir } = featureRepo();
     await expect(lookUp(dir, { changedSince: 'origin/mian' })).rejects.toMatchObject({
       category: 'configuration',
       code: 'INVALID_CHANGED_SINCE',
       message: '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout',
     });
-    for (const ref of ['', '--output=x']) {
-      await expect(lookUp(dir, { changedSince: ref })).rejects.toMatchObject({
-        code: 'INVALID_CHANGED_SINCE',
-        message: `--changed-since must name a git ref, such as origin/main; got ${JSON.stringify(ref)}`,
-      });
-    }
     runGit(dir, 'checkout', '--quiet', '--orphan', 'unrelated');
     commitFiles(dir, { 'other.txt': 'x\n' }, 'unrelated');
     runGit(dir, 'checkout', '--quiet', 'feature');

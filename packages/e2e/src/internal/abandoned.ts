@@ -1,7 +1,8 @@
 /**
  * Work left running that nobody awaits: a test's steps and polls once its
- * phase returned, and a test filter's call once its timeout passed or an
- * interrupt cut it short.
+ * phase returned, a test filter's call once its timeout passed or an
+ * interrupt cut it short, and a reporter's `onRunFinished` once its timeout
+ * passed or the run was forced to stop.
  */
 
 /** Whether the process stopped waiting for work that may still hold it open. */
@@ -33,9 +34,9 @@ export function relocateStack(error: Error, stack: string | undefined): void {
 
 /**
  * Records that the process stopped waiting for work that may ignore its
- * signal, such as a test filter's call past its timeout or one a watch key
- * cancelled, so the CLI exits once its output is out instead of waiting for
- * that work to settle.
+ * signal, such as a test filter's call or a reporter's `onRunFinished` past
+ * its timeout or one a watch key cancelled, so the CLI exits once its output
+ * is out instead of waiting for that work to settle.
  */
 export function leaveWorkBehind(): void {
   workLeftBehind = true;

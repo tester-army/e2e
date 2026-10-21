@@ -94,17 +94,29 @@ export interface BuildReportOptions {
   filters?: readonly ReportFilter[] | undefined;
 }
 
-/** The change a run's test filters judged, by counts only, or why no filter ran. */
-export interface ReportChanges {
-  /** The merge base the change is measured from, when one was found. */
-  base?: string | undefined;
-  /** How many files changed since `base`; 0 when there is no change. */
-  files: number;
-  /** How many tests ran without filters because their test file, the setup file of their session, or either one's stored screenshots changed; omitted when none. */
-  pinned?: number | undefined;
-  /** Why no filter ran, such as `pnpm-lock.yaml changed`; omitted when they ran. */
-  skipped?: string | undefined;
-}
+/**
+ * The change a run's test filters judged, by counts only, or why no filter
+ * ran: `base` and `files` once git measured the change, `skipped` alone
+ * when no filter ran before git was asked.
+ */
+export type ReportChanges =
+  | {
+      /** The merge base the change is measured from. */
+      base: string;
+      /** How many files changed since `base`; 0 when there is no change. */
+      files: number;
+      /** How many tests ran without filters because their test file, the setup file of their session, or either one's stored screenshots changed; omitted when none. */
+      pinned?: number | undefined;
+      /** Why no filter ran, such as `pnpm-lock.yaml changed`; omitted when they ran. */
+      skipped?: string | undefined;
+    }
+  | {
+      /** Why no filter ran before git was asked: `--last-failed`, `no tests to judge`, or `pull_request_target runs every test`. */
+      skipped: string;
+      base?: undefined;
+      files?: undefined;
+      pinned?: undefined;
+    };
 
 /** One test filter the run applied, in order. */
 export interface ReportFilter {
@@ -116,10 +128,13 @@ export interface ReportFilter {
   excluded: number;
   /** The filter's note, redacted and cut to one line of 1024 characters; for a filter that failed or timed out, the warning saying why. */
   note?: string | undefined;
-  /** Set when the filter ran past 5 minutes: the run stopped waiting and left nothing out on its word. */
-  timedOut?: true | undefined;
-  /** Set when the filter threw or answered with something other than `{ exclude, note? }`: it left nothing out. */
-  failed?: true | undefined;
+  /**
+   * Set when the filter left nothing out because the call did not answer:
+   * `failed` when it threw or answered with something other than
+   * `{ exclude, note? }`, `timed out` when it ran past 5 minutes and the run
+   * stopped waiting. Absent when it answered.
+   */
+  outcome?: 'failed' | 'timed out' | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */

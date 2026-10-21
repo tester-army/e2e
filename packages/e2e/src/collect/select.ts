@@ -35,22 +35,31 @@ export interface ResolvedTestOptions {
   readonly video: RecordingMode | undefined;
 }
 
-export interface SkipInfo {
-  readonly cause:
-    | 'explicit'
-    | 'filtered'
-    | 'platform-unavailable'
-    | 'capability-unavailable'
-    | 'setup-failed'
-    | 'serial-predecessor-failed'
-    | 'hook-failed'
-    | 'infrastructure-unavailable'
-    | 'failure-limit'
-    | 'time-limit';
+/** Why a pair did not run; only a `filtered` one can name the test filter that left it out. */
+export type SkipInfo =
+  | (SkipDetail & {
+      readonly cause: 'filtered';
+      /** The name of the test filter that left the test out; absent when the selection did, as with `--tag`. */
+      readonly filter?: string;
+    })
+  | (SkipDetail & {
+      readonly cause:
+        | 'explicit'
+        | 'platform-unavailable'
+        | 'capability-unavailable'
+        | 'setup-failed'
+        | 'serial-predecessor-failed'
+        | 'hook-failed'
+        | 'infrastructure-unavailable'
+        | 'failure-limit'
+        | 'time-limit';
+      readonly filter?: never;
+    });
+
+/** What a skip says whatever its cause: why, and the id of a related test, such as the setup that failed. */
+interface SkipDetail {
   readonly reason: string;
   readonly relatedId?: string;
-  /** The name of the test filter that left the test out; only with cause `filtered`. */
-  readonly filter?: string;
 }
 
 export interface TestTargetPair {

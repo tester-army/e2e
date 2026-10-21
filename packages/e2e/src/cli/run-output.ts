@@ -41,10 +41,11 @@ async function drainRunnerOutput(): Promise<void> {
 
 /**
  * Exits once the output is out when the command was stopped by Ctrl-C
- * (exit 130), or stopped waiting for a test filter past its timeout or
- * cancelled by a watch key: the work it left behind may ignore its signal,
- * such as the filter's request or a reporter's upload, and nothing it does
- * can change the run. Otherwise the process ends when its work does.
+ * (exit 130), or stopped waiting for a test filter or a reporter past its
+ * timeout or cancelled by a watch key: the work it left behind may ignore
+ * its signal, such as the filter's request or the reporter's upload, and
+ * nothing it does can change the run. Otherwise the process ends when its
+ * work does, so a timer or exit hook user code left still runs.
  */
 export async function exitIfStopped(exit: () => void = () => process.exit()): Promise<void> {
   if (process.exitCode !== 130 && !leftWorkBehind()) return;
