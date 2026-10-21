@@ -100,10 +100,31 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    model in the config and that provider's authentication (a saved
    subscription login, an API key); a local endpoint may need none. Tests
    without agent steps need no model.
-5. Read the trace page the terminal names under each failed test
-   (`.e2e/results/<test>/trace.md`): every step with what it did, the cache's
-   decision, what the app logged, the agent's turns, and the screen at
-   failure. Fix the locator, the expectation, or the app. Never add a sleep.
+5. When it fails, fix it from what the run recorded (next section).
+
+## Workflow: fixing a failed test
+
+The run already saw every screen up to the failure. Fix from what it
+recorded; never walk the flow again from the start just to see a screen.
+
+1. Read the failure block in the terminal: the failing line with its code
+   frame, the message (an assertion's `expected` and `observed`), the URL
+   (`❯ at`), and the nodes nearest a locator that matched nothing
+   (`❯ on screen`). Then read the trace page it names
+   (`❯ trace .e2e/results/<test>/trace.md`): every step with what it did,
+   what the app logged, the agent's turns, and `## Screen at failure`, the
+   whole screen one node per line (topic `debugging`).
+2. Fix every line that evidence covers, not only the one that failed: the
+   screen at failure shows the names the rest of that screen's lines need.
+   Fix the locator, the expectation, or the app. Never add a sleep.
+3. A run stops at its first failure. Before rerunning, check the lines after
+   it against what you already know: the screen at failure, the app source,
+   or `locate` in a live session already on that screen.
+4. Look live only when none of that shows what a line needs (topic `mcp`):
+   open or reuse a session and go straight to that screen (on the web,
+   `navigate` to the `❯ at` URL or the screen's route), then `observe` and
+   `locate`. Tap only to reach a state that no URL opens.
+5. Rerun the file. Repeat with the next failure.
 
 ## Rules
 

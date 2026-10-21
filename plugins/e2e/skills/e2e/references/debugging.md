@@ -13,7 +13,9 @@ default.
 
 ## Read the failure
 
-1. Every failure in the `list` output ends with `❯ trace
+1. Every failure in the `list` output names the failing line with a code
+   frame, the URL (`❯ at`), the nodes nearest a locator that matched
+   nothing (`❯ on screen`), and ends with `❯ trace
    .e2e/results/<test>/trace.md`. Open that trace page: `Look at:` (the line it unwound
    through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
    `Waited:` (a locator), whether every attempt failed alike (a bug, not a
@@ -37,15 +39,31 @@ default.
    - the cache's decision for an agent step: replayed, handed off and where
      (`at action 2 of 3, tap button "Apply": ...`), what became of the
      recording, and the entry file;
-   - the agent's last turns, loop-guard notes included, and the
-     accessibility tree at failure, one node per line.
-   Fix from what was there. `trace` (default `retain-on-failure`) chooses
-   which tests keep a page; `--trace` keeps one for every test of a run.
-2. `.e2e/report.json` holds the same facts for scripts, not for reading:
+   - the agent's last turns, loop-guard notes included, and under
+     `## Screen at failure` the nodes closest to what a failed locator
+     asked for and the whole screen, one node per line.
+   `trace` (default `retain-on-failure`) chooses which tests keep a page;
+   `--trace` keeps one for every test of a run.
+2. Fix from that evidence, never by walking the flow again from the start
+   over MCP: the run already saw every screen up to the failure.
+   - Fix every line it covers, not only the failing one. `observed` is what
+     the screen showed; a `❯ on screen` node is most likely what a failed
+     locator meant; the screen at failure (also
+     `attempt-<n>/screen-at-failure.txt`) holds the names the rest of that
+     screen's lines need.
+   - A run stops at its first failure. Before rerunning, check the lines
+     after it against what you already know: the screen at failure, the
+     app source, or `locate` in a live session already on that screen.
+   - Look live only when none of that shows what a line needs (topic
+     `mcp`): open or reuse a session and go straight to that screen (on the
+     web, `navigate` to the `❯ at` URL or the screen's route), then
+     `observe` and `locate`. Tap only to reach a state that no URL opens.
+   - Then rerun the file.
+3. `.e2e/report.json` holds the same facts for scripts, not for reading:
    each step's `events` (`engine`, `poll`, `navigation`) and the attempt's
    `appLog` (each line's `step` is a step `index`) are what the page's step
    lines are rendered from, before it filters and caps them.
-3. When a script needs them:
+4. When a script needs them:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
@@ -58,7 +76,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
    failed agent step has `turns`; `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
+5. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
    for a `--last-failed` rerun), beside the
    trace page: `screen-at-failure.txt`
    and the engine's screenshot per failed attempt; downloads; with

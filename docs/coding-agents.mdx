@@ -160,6 +160,12 @@ step with what it did: the node an action hit, the values an assertion
 read, the cache's decision, console errors, and failed requests. It also
 has the agent's last turns and the screen at the failure.
 
+The agent fixes the test from that evidence, not by walking the flow again
+from the start over MCP. A run stops at the first failure. So before the
+next run, the agent fixes every line the evidence covers and checks the
+lines after the failure. To see a screen the page doesn't show, it takes
+an MCP session straight to that screen, by its URL on the web.
+
 For model-call details, the agent adds `--ai-trace` and reads the trace
 with [unbox-ai](/debugging#agent-steps). Pair it with `--no-cache` to
 capture every model call in the flow. Don't open the raw trace in an
