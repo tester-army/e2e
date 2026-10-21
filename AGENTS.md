@@ -238,11 +238,13 @@ suites that consume the built packages the way a user would.
   `core.symlinks=true` (CONTRIBUTING.md). The vendored third-party skills in `.claude/skills/` (`unbox-ai`,
   `unslop`, tracked by `skills-lock.json`) stay where they are: the CLI
   skips them as installed project skills.
-- `plugins/e2e/` — one skills-only package for Codex and Claude Code. The
-  root `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`
-  both point here. Edit skill Markdown in `skills/`, then run
-  `pnpm plugins:sync`; `pnpm plugins:check` checks the generated copies,
-  license, Claude manifest, and both manifests' `version`, which is the
+- `plugins/e2e/` — one skills-only package for Codex, Claude Code, and
+  Cursor; Grok Build reads the Claude files. The root
+  `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, and
+  `.cursor-plugin/marketplace.json` all point here. Edit skill Markdown in
+  `skills/`, then run `pnpm plugins:sync`; `pnpm plugins:check` checks the
+  generated copies, license, the Claude and Cursor manifests (generated from
+  Codex's), and every manifest's `version`, which is the
   runner's (`version-packages` syncs it, so plugin
   installs update once per release; it does the same for
   `packages/e2e/server.json`, the MCP Registry entry). The Codex manifest's other fields,

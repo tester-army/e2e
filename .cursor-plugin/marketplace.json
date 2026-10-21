@@ -1,0 +1,14 @@
+{
+  "name": "e2e",
+  "owner": { "name": "TesterArmy", "url": "https://tester.army" },
+  "metadata": {
+    "description": "Skills for writing, running, and debugging e2e tests with Cursor."
+  },
+  "plugins": [
+    {
+      "name": "e2e",
+      "source": "./plugins/e2e",
+      "description": "Write, run, and debug end-to-end tests for web and mobile apps with e2e."
+    }
+  ]
+}

@@ -35,8 +35,8 @@ The copy holds `SKILL.md` and topic references. After you upgrade e2e, with
 [`e2e upgrade`](/reference/cli#e2e-upgrade) or your package manager, run
 `init` again to update it. Without `init`, `npx skills add tester-army/e2e`
 installs the skill, and `npx e2e guide [topic]` prints it from the
-installed package. The Claude Code and Codex plugin below installs all
-three e2e skills for every project.
+installed package. The plugin below installs all three e2e skills for
+every project.
 
 `init` leaves your project instructions unchanged. For agents that need a
 pointer, add this line:
@@ -49,9 +49,11 @@ The package also ships these docs as `.mdx` pages for offline reading, in
 `node_modules/e2e/docs` in a single-package project. A link such as
 `/reference/cli` is `docs/reference/cli.mdx`.
 
-<Accordion title="Install the Claude Code or Codex plugin">
+<Accordion title="Install the Claude Code, Codex, or Cursor plugin">
 
-The e2e repository is a plugin marketplace for both clients:
+The e2e repository is a plugin marketplace for Claude Code and Codex, and
+for Grok Build, which reads the Claude Code files. Cursor loads the plugin
+from its local plugins folder:
 
 <CodeGroup>
 ```bash Claude
@@ -63,15 +65,27 @@ claude plugin install e2e@e2e
 codex plugin marketplace add tester-army/e2e
 codex plugin add e2e@e2e
 ```
+
+```bash Cursor
+repo=$(mktemp -d)
+git clone --depth 1 https://github.com/tester-army/e2e "$repo"
+mkdir -p ~/.cursor/plugins/local
+rm -rf ~/.cursor/plugins/local/e2e
+cp -R "$repo/plugins/e2e" ~/.cursor/plugins/local/
+```
 </CodeGroup>
 
-Start a new session. The plugin adds the `e2e`,
-`create-verification-skill`, and `migrate-to-e2e` skills, not the npm
-package or the MCP server. Invoke the other two under the plugin's name:
-`/e2e:<skill>` in Claude Code, `$e2e:<skill>` in Codex.
+Start a new session. In Cursor, run **Developer: Reload Window**. On Cursor
+Teams and Enterprise, local plugins need the admin setting **Allow Local
+Plugin Imports**, or an admin imports `tester-army/e2e` as a team
+marketplace. The plugin adds the
+`e2e`, `create-verification-skill`, and `migrate-to-e2e` skills, not the
+npm package or the MCP server. Invoke the other two under the plugin's
+name, `/e2e:<skill>` in Claude Code and `$e2e:<skill>` in Codex, and as
+`/<skill>` in Cursor.
 
 The plugin's version follows e2e releases. To update it, run these and
-start a new session:
+start a new session. In Cursor, run the commands above again.
 
 <CodeGroup>
 ```bash Claude
