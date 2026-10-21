@@ -38,6 +38,7 @@ export function browserstackApiEndpoint(env: Readonly<Record<string, string | un
   if (override === undefined || override === '') return DEFAULT_API_ENDPOINT;
   if (!URL.canParse(override) || !/^https?:$/.test(new URL(override).protocol)) throw new ConfigurationError('INVALID_CONFIG', 'BROWSERSTACK_API_ENDPOINT is not an http(s) URL');
   const url = new URL(override);
+  if (url.search !== '' || url.hash !== '') throw new ConfigurationError('INVALID_CONFIG', 'BROWSERSTACK_API_ENDPOINT must not carry a query or fragment');
   if (url.username !== '' || url.password !== '') {
     throw new ConfigurationError('INVALID_CONFIG', 'BROWSERSTACK_API_ENDPOINT must not carry a username or password; set BROWSERSTACK_USERNAME and BROWSERSTACK_ACCESS_KEY instead');
   }

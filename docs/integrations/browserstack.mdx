@@ -112,8 +112,9 @@ anything starts. Your plan needs App Automate.
 | `noResignApp`    | `false`         | iOS only: keep the uploaded app's signature instead of BrowserStack's re-signing, which strips entitlements such as push notifications. |
 
 Device features are set when the session starts and hold for the whole
-session. An unknown option or an invalid value fails the config load with
-`INVALID_CONFIG`.
+session. Unknown options and invalid option types fail config load with
+`INVALID_CONFIG`; catalog values and platform-specific constraints are
+checked when the device lease starts.
 
 An attempt that records [video](/reference/config#video) links BrowserStack's
 recording of the session, found by its `build` and `sessionName`. The
@@ -123,9 +124,10 @@ the same video. Runs that overlap and share a fixed `build` and
 
 ## Limits
 
-- Each session starts when its slot is leased, which takes about 20 to 50
-  seconds, and is billed until the run releases it, even when no test runs
-  on it. Keep `workers` times the number of BrowserStack targets within your
+- Each session starts on its slot's first device command, which e2e sends
+  while preparing the target; provisioning takes about 20 to 50 seconds,
+  and the session is billed until the run releases it, even when no test
+  runs on it. Keep `workers` times the number of BrowserStack targets within your
   plan's parallel sessions.
 - BrowserStack keeps an upload for 30 days after its last use. A run with an
   `https` `app` uploads it again; reuse a `bs://` id to skip that.

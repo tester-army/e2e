@@ -130,6 +130,9 @@ function driverEnv(env: DeviceRequest['env'], home: string, credentials: Browser
  * releasing the lease stops the daemon, which ends the session.
  */
 export function browserstack(options: BrowserStackOptions): DeviceProvider {
+  if (typeof options !== 'object' || options === null || Array.isArray(options)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'browserstack: options must be an object with `device`, `osVersion`, and `app`');
+  }
   rejectUnknownKeys('browserstack()', options, OPTION_KEYS);
   for (const key of ['device', 'osVersion', 'app'] as const) {
     const value: unknown = options[key];
@@ -145,6 +148,9 @@ export function browserstack(options: BrowserStackOptions): DeviceProvider {
   }
   if (options.orientation !== undefined && !ORIENTATIONS.has(options.orientation)) {
     throw new ConfigurationError('INVALID_CONFIG', `browserstack: \`orientation\` must be 'portrait' or 'landscape', not ${JSON.stringify(options.orientation)}`);
+  }
+  if (/^http:\/\//i.test(options.app)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'browserstack: `app` must be an https URL, a `bs://` id, or a local path, not a plain http URL');
   }
   if (options.networkProfile !== undefined && options.customNetwork !== undefined) {
     throw new ConfigurationError('INVALID_CONFIG', 'browserstack: set `networkProfile` or `customNetwork`, not both');
@@ -165,7 +171,7 @@ export function browserstack(options: BrowserStackOptions): DeviceProvider {
   let uploaded: Promise<string> | undefined;
 
   function providerApp(request: DeviceRequest, credentials: BrowserStackCredentials): Promise<string> {
-    if (!/^https?:\/\//i.test(app)) return Promise.resolve(appSource(app, request.projectRoot));
+    if (!/^https:\/\//i.test(app)) return Promise.resolve(appSource(app, request.projectRoot));
     if (uploaded === undefined) {
       const upload = uploadAppFromUrl(browserstackApiEndpoint(request.env), credentials, app, request.signal);
       uploaded = upload;

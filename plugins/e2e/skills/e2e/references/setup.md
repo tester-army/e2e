@@ -376,8 +376,8 @@ export default {
   `https` URL uploaded once per run, or a local path; omit `app.appPath`),
   and it reads `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY`. Set
   `appiumVersion` (such as `'3.2.0'`): BrowserStack's default Appium 1.x
-  lacks `mobile:` commands. An attempt's video links BrowserStack's
-  recording of the whole session.
+  lacks `mobile:` commands. An attempt that records video links
+  BrowserStack's recording of the whole session.
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
