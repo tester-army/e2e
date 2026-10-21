@@ -1391,15 +1391,23 @@ describe('device fixture', () => {
         'Unable to dismiss the iOS keyboard: the keyboard exposes no dismiss key, and background taps are never attempted',
       );
     };
-    const KEYBOARD_UP = { ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible', frame: { x: 0, y: 583, width: 390, height: 261 } } };
-    const KEYBOARD_GONE = { ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } };
+    const KEYBOARD_FRAME = { x: 0, y: 583, width: 390, height: 261 };
+    /** A form in a scroll view with a checkbox row across the centre of the screen, where a drag from the centre would toggle it. */
+    const FORM_NODES = [
+      { ref: '@e1', index: 0, depth: 0, type: 'application', label: 'Order', rect: { x: 0, y: 0, width: 390, height: 844 } },
+      { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'scroll-view', rect: { x: 0, y: 100, width: 390, height: 744 } },
+      { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'text-field', label: 'Notes', rect: { x: 20, y: 150, width: 350, height: 44 } },
+      { ref: '@e4', index: 3, parentIndex: 1, depth: 2, type: 'other', value: 'checkbox, unchecked', label: 'Cheese', rect: { x: 20, y: 400, width: 350, height: 44 } },
+    ];
+    const KEYBOARD_UP = { ...SETTINGS_SNAPSHOT, nodes: FORM_NODES, keyboard: { kind: 'visible', frame: KEYBOARD_FRAME } };
+    const KEYBOARD_GONE = { ...SETTINGS_SNAPSHOT, nodes: FORM_NODES, keyboard: { kind: 'absent' } };
     /** Answers the captures the dismissal takes, in order, then the last one forever. */
     const captures = (h: Harness, snapshots: readonly unknown[]) => {
       let taken = 0;
       h.fake.respond('capture.snapshot', () => snapshots[Math.min(taken++, snapshots.length - 1)]);
     };
 
-    it('drags at the centre of the screen the way a user does, and stops once the keyboard is gone', async () => {
+    it('drags from the point nearest the centre that no control covers, and stops once the keyboard is gone', async () => {
       const h = harness();
       await openAttempt(h);
       await observed(h, 'Back');
@@ -1414,10 +1422,10 @@ describe('device fixture', () => {
         'interactions.swipe',
         'capture.snapshot',
       ]);
-      // The viewport is 390 by 844: a short horizontal drag from the centre, 3 percent of the width.
+      // The centre (195, 422) is on the checkbox, so the drag starts on the nearest row of the grid clear of it, and runs 3 percent of the width.
       expect(h.fake.lastArgs('interactions.swipe')).toEqual({
-        from: { x: 195, y: 422 },
-        to: { x: expect.closeTo(183.3, 2), y: 422 },
+        from: { x: 195, y: 383 },
+        to: { x: expect.closeTo(183.3, 2), y: 383 },
       });
     });
 
@@ -1431,9 +1439,86 @@ describe('device fixture', () => {
       await device.dismissKeyboard();
       const swipes = h.fake.calls.filter((call) => call.method === 'interactions.swipe').map((call) => call.args);
       expect(swipes).toEqual([
-        { from: { x: 195, y: 422 }, to: { x: expect.closeTo(183.3, 2), y: 422 } },
-        { from: { x: 195, y: 422 }, to: { x: 195, y: expect.closeTo(396.68, 2) } },
+        { from: { x: 195, y: 383 }, to: { x: expect.closeTo(183.3, 2), y: 383 } },
+        { from: { x: 195, y: 383 }, to: { x: 195, y: expect.closeTo(357.68, 2) } },
       ]);
+    });
+
+    it('starts only inside a scroll view when the screen has one', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const header = {
+        ...KEYBOARD_UP,
+        nodes: [
+          FORM_NODES[0],
+          { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'scroll-view', rect: { x: 0, y: 100, width: 390, height: 200 } },
+          { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'text-field', label: 'Notes', rect: { x: 20, y: 150, width: 350, height: 44 } },
+        ],
+      };
+      captures(h, [header, KEYBOARD_GONE]);
+      await device.dismissKeyboard();
+      // The centre is clear but outside the scroll view, which ends at y 300: the drag starts on its lowest row of the grid instead.
+      expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 195, y: expect.closeTo(295.25, 2) } });
+    });
+
+    it('starts on plain text, which a touch does nothing to', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const paragraphs = {
+        ...KEYBOARD_UP,
+        nodes: [
+          ...FORM_NODES.slice(0, 2),
+          { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'static-text', label: 'Terms', rect: { x: 16, y: 120, width: 370, height: 460 } },
+        ],
+      };
+      captures(h, [paragraphs, KEYBOARD_GONE]);
+      await device.dismissKeyboard();
+      expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 195, y: 422 } });
+    });
+
+    it('drags at the centre of a flattened tree, which shows no control to steer clear of', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const flattened = {
+        ...KEYBOARD_UP,
+        nodes: [
+          ...FORM_NODES.slice(0, 2),
+          { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'other', rect: { x: 0, y: 100, width: 390, height: 744 } },
+        ],
+      };
+      captures(h, [flattened, KEYBOARD_GONE]);
+      await device.dismissKeyboard();
+      expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 195, y: 422 } });
+    });
+
+    it('refuses to drag when every point above the keyboard is on a control', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const covered = {
+        ...KEYBOARD_UP,
+        nodes: [
+          FORM_NODES[0],
+          { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'button', label: 'Canvas', rect: { x: 0, y: 0, width: 390, height: 583 } },
+        ],
+      };
+      captures(h, [covered]);
+      await expect(device.dismissKeyboard()).rejects.toMatchObject({
+        code: 'UNSUPPORTED_CAPABILITY',
+        message: expect.stringMatching(/every point above it .*is on a control.*Done or close control/s),
+      });
+      expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(0);
     });
 
     it('fails naming the alternatives when both drags leave the keyboard up', async () => {

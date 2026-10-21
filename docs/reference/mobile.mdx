@@ -795,10 +795,13 @@ await device.alert('accept');
 /**
  * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
  * one (Android, iPad), else the way a user does it on an iPhone, a short
- * drag at the centre of the screen that a scroll view turns into a
- * dismissal, horizontal first and vertical second, stopping as soon as the
- * keyboard is gone. The simulator's "Speed up your typing" tip goes through
- * its Continue button first. A keyboard that outlives both drags fails with
+ * drag that a scroll view turns into a dismissal, horizontal first and
+ * vertical second, stopping as soon as the keyboard is gone. Each drag
+ * starts at the point nearest the centre of the screen that no control
+ * covers, inside a scroll view when the screen has one, so it never presses
+ * a button or toggles a checkbox. The simulator's "Speed up your typing" tip
+ * goes through its Continue button first. A screen with no clear point
+ * above the keyboard, or a keyboard that outlives both drags, fails with
  * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
  * own Done or close control, or pressing Enter on the field).
  */
@@ -811,7 +814,7 @@ await device.dismissKeyboard();
 
 | Throws | When |
 | --- | --- |
-| `UNSUPPORTED_CAPABILITY` | The keyboard outlives both drags. |
+| `UNSUPPORTED_CAPABILITY` | Every point above the keyboard (in a scroll view, when the screen has one) is on a control, or the keyboard outlives both drags. |
 
 #### `clipboard`
 

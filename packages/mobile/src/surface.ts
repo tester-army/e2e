@@ -57,6 +57,7 @@ import {
   type ProjectedNode,
   type ProjectedSnapshot,
 } from './nodes.ts';
+import { keyboardDragStart } from './keyboard.ts';
 import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
@@ -74,7 +75,6 @@ import {
   swipeWithin,
   unsupported,
   type Rect,
-  type Point,
   InputBudget,
 } from './support.ts';
 
@@ -144,6 +144,20 @@ const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
  * Maestro's `hideKeyboard` uses.
  */
 const KEYBOARD_DRAG_RATIO = 0.03;
+
+/** What a test does instead when the engine cannot send the keyboard away. */
+const KEYBOARD_ALTERNATIVES = 'Tap the app\'s own Done or close control, or press Enter on the field when submitting is what you want.';
+
+/**
+ * The top edge of the soft keyboard: the band the capture's producer
+ * measured, else the highest keyboard or key element, else the bottom of the
+ * screen.
+ */
+function keyboardTop(raw: RawSnapshot, viewport: ViewportSize): number {
+  if (raw.keyboard?.kind === 'visible' || raw.keyboard?.kind === 'derived') return raw.keyboard.frame.y;
+  const keys = (raw.nodes ?? []).filter((node) => node.rect !== undefined && KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+  return Math.min(viewport.height, ...keys.map((node) => node.rect!.y));
+}
 
 /**
  * Whether the capture's producer measured the soft keyboard on screen:
@@ -1376,40 +1390,50 @@ export class AgentDeviceSurface {
 
   /**
    * A keyboard with no dismiss key goes the way a user sends it away: a short
-   * drag at the centre of the screen, which a scroll view turns into a
-   * dismissal, each followed by a fresh look at whether the keyboard is still
-   * there. Horizontal first: on a vertical scroll view it is no scroll, so
-   * React Native's scroll view takes it as the touch outside the keyboard
-   * that dismisses by default, where a vertical drag scrolls the content and
+   * drag on the screen, which a scroll view turns into a dismissal, each
+   * followed by a fresh look at whether the keyboard is still there.
+   * Horizontal first: on a vertical scroll view it is no scroll, so React
+   * Native's scroll view takes it as the touch outside the keyboard that
+   * dismisses by default, where a vertical drag scrolls the content and
    * dismisses only under `keyboardDismissMode="on-drag"`. Vertical second,
    * for the scroll views that dismiss on a drag alone. Maestro's
    * `hideKeyboard` drags in the other order, and on a React Native screen
    * that costs a drag plus the settle after it. The simulator's "Speed up
    * your typing" tip, which sits over a keyboard the first time it appears,
-   * goes through its Continue button first. A drag is a guess about what sits
-   * at the centre, so the sequence stops the moment the keyboard is gone, and
-   * a keyboard that outlives both drags fails naming what does work. Each
-   * look is the observation's own capture, sparse-tree retries included: a
-   * one-node tree has no keys and would pass for a dismissed keyboard.
+   * goes through its Continue button first. A drag that starts on a control
+   * presses it (a horizontal one is no scroll, so the control keeps the
+   * touch), so each drag starts where the latest capture shows none, inside
+   * a scroll view when the screen has one, see {@link keyboardDragStart}, and
+   * a screen with no such point is refused rather than touched. The sequence stops the moment the keyboard is gone,
+   * and a keyboard that outlives both drags fails naming what does work.
+   * Each look is the observation's own capture, sparse-tree retries
+   * included: a one-node tree has no keys and would pass for a dismissed
+   * keyboard.
    */
   private async dismissKeyboardByGesture(signal: AbortSignal, input: InputBudget | undefined): Promise<void> {
     let raw = await this.dismissKeyboardTip(await this.snapshot(signal, false), signal, input);
     if (!keyboardShowing(raw)) return;
-    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
-    const viewport = await this.viewportFor(projected, signal);
-    const centre = { x: viewport.width / 2, y: viewport.height / 2 };
-    const drags: readonly Point[] = [
-      { x: centre.x - viewport.width * KEYBOARD_DRAG_RATIO, y: centre.y },
-      { x: centre.x, y: centre.y - viewport.height * KEYBOARD_DRAG_RATIO },
-    ];
-    for (const to of drags) {
-      await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.interactions.swipe({ from: centre, to })), signal);
+    for (const axis of ['horizontal', 'vertical'] as const) {
+      const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
+      const viewport = await this.viewportFor(projected, signal);
+      const from = keyboardDragStart(projected, viewport, keyboardTop(raw, viewport));
+      if (from === undefined) {
+        throw new EngineError(
+          'UNSUPPORTED_CAPABILITY',
+          `keyboard dismissal failed: the keyboard has no dismiss key, and every point above it (in a scroll view, when the screen has one) is on a control, so a drag would press one. ${KEYBOARD_ALTERNATIVES}`,
+          { retryable: false },
+        );
+      }
+      const to = axis === 'horizontal'
+        ? { x: from.x - viewport.width * KEYBOARD_DRAG_RATIO, y: from.y }
+        : { x: from.x, y: from.y - viewport.height * KEYBOARD_DRAG_RATIO };
+      await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.interactions.swipe({ from, to })), signal);
       raw = await this.snapshot(signal, false);
       if (!keyboardShowing(raw)) return;
     }
     throw new EngineError(
       'UNSUPPORTED_CAPABILITY',
-      'keyboard dismissal failed: the keyboard has no dismiss key and stayed up through a horizontal and a vertical drag at the centre of the screen. Tap the app\'s own Done or close control, or press Enter on the field when submitting is what you want.',
+      `keyboard dismissal failed: the keyboard has no dismiss key and stayed up through a horizontal and a vertical drag. ${KEYBOARD_ALTERNATIVES}`,
       { retryable: false },
     );
   }

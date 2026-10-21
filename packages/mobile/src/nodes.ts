@@ -98,7 +98,8 @@ const TEXT_INPUT_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
 const CHECKABLE_ROLES = new Set(['switch', 'checkbox']);
 const CHECKED_VALUES = new Set(['1', 'on', 'true', 'checked', 'selected']);
 const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
-const SCREEN_KINDS = new Set(['application', 'app', 'window']);
+/** Kinds that span the screen and hold everything else. */
+export const SCREEN_KINDS: ReadonlySet<string> = new Set(['application', 'app', 'window']);
 
 /**
  * The role descriptions React Native writes into an iOS view's accessibility
