@@ -9,9 +9,11 @@ import {
   EVENT_INIT_COMPLETED,
   EVENT_MCP_SESSION,
   EVENT_RUN_COMPLETED,
+  EVENT_UPGRADE_COMPLETED,
   initCompletedEvent,
   mcpSessionEvent,
   runCompletedEvent,
+  upgradeCompletedEvent,
   type RunContext,
 } from '../../src/telemetry/events.ts';
 import type { StepEvent } from '../../src/run/steps.ts';
@@ -61,6 +63,7 @@ describe('telemetry events', () => {
       initCompletedEvent({
         result: 'scaffolded',
         yes: false,
+        example: 'with-vite',
         existingConfig: false,
         engine: 'playwright',
         gateway: 'openai-compatible',
@@ -73,6 +76,7 @@ describe('telemetry events', () => {
       properties: {
         result: 'scaffolded',
         yes: false,
+        example: 'with-vite',
         existing_config: false,
         engine: 'playwright',
         gateway: 'openai-compatible',
@@ -81,6 +85,42 @@ describe('telemetry events', () => {
         install: true,
       },
     });
+  });
+
+  it('the upgrade event carries the result, e2e versions, and sibling names inside the scope', () => {
+    const outcome = {
+      result: 'upgraded',
+      target: { kind: 'tag', tag: 'nightly' },
+      fromVersion: '0.21.2',
+      toVersion: '0.21.3-nightly-20261019081103',
+      manager: 'pnpm',
+      siblings: ['@e2e-dev/web', '@e2e-dev/kernel'],
+      moved: 3,
+      linked: 1,
+    } as const;
+    expect(upgradeCompletedEvent(outcome)).toEqual({
+      name: EVENT_UPGRADE_COMPLETED,
+      properties: {
+        result: 'upgraded',
+        target: 'nightly',
+        from_version: '0.21.2',
+        to_version: '0.21.3-nightly-20261019081103',
+        prerelease: true,
+        manager: 'pnpm',
+        siblings: ['kernel', 'web'],
+        packages_moved: 3,
+        packages_linked: 1,
+      },
+    });
+    // A tag e2e does not publish, a version that is not one, and a name outside the scope fold.
+    expect(
+      upgradeCompletedEvent({ ...outcome, result: 'unknown-target', target: { kind: 'tag', tag: 'my-team/secret' }, fromVersion: 'workspace:*', toVersion: null, siblings: ['@acme/web'] }).properties,
+    ).toMatchObject({ target: 'other', from_version: null, to_version: null, prerelease: null, siblings: ['other'] });
+    expect(upgradeCompletedEvent({ ...outcome, target: { kind: 'version' }, toVersion: '0.21.2' }).properties).toMatchObject({ target: 'version', prerelease: false });
+    // A dist-tag spelled like the version sentinel is still a tag, and not one e2e publishes.
+    expect(upgradeCompletedEvent({ ...outcome, target: { kind: 'tag', tag: 'version' } }).properties).toMatchObject({ target: 'other' });
+    // Build metadata after `+` is not a prerelease, hyphens and all.
+    expect(upgradeCompletedEvent({ ...outcome, toVersion: '0.22.0+ci-build' }).properties).toMatchObject({ prerelease: false });
   });
 
   it("the run event is the report's numbers, with project vocabulary folded", () => {
@@ -123,12 +163,23 @@ describe('telemetry events', () => {
       agent_steps_replayed: 1,
       agent_steps_partial: 0,
       agent_steps_missed: 1,
+      agent_steps_uncached: 0,
+      agent_miss_reasons: { 'no-entry': 1 },
+      agent_handoff_reasons: {},
+      tests_code_only: 1,
+      tests_replayed: 0,
+      tests_assisted: 1,
+      tests_live: 0,
       agent_steps_vision: 1,
       agent_actions: {},
       model_gateway: 'anthropic',
       model_provider: 'anthropic',
       model_id: 'claude-sonnet-4-5',
       model_calls: 4,
+      model_calls_act: 4,
+      model_calls_assert: 0,
+      model_calls_extract: 0,
+      model_calls_waitfor: 0,
       model_tokens: 2850,
       model_cached_tokens: null,
       estimated_cost_usd: 0.01,
@@ -220,6 +271,75 @@ describe('telemetry events', () => {
       steps_agent_waitfor: 0,
       tests_with_agent_steps: 3,
       tests_with_act: 2,
+    });
+  });
+
+  it('puts each test in one cache tier across its attempts, so the tiers add up to the tests executed', () => {
+    const replayed = reportStep({ kind: 'agent', api: 'agent.act', cache: { mode: 'self-finalized', replayedActions: 2, totalActions: 2 } });
+    const handedOff = reportStep({
+      kind: 'agent',
+      api: 'agent.act',
+      cache: { mode: 'agent-concluded', reason: 'target-not-found', replayedActions: 1, totalActions: 3 },
+    });
+    const missed = reportStep({ kind: 'agent', api: 'agent.act', cache: { mode: 'missed', reason: 'retry', replayedActions: 0, totalActions: 0 } });
+    const uncached = reportStep({ kind: 'agent', api: 'agent.act' });
+    const judge = reportStep({ kind: 'agent', api: 'agent.assert' });
+    const test = (id: string, ...attempts: ReturnType<typeof reportStep>[][]) =>
+      reportResult({ id, attempts: attempts.map((steps, index) => reportAttempt({ index, steps })) });
+    const serial = sampleReport().run.serialGroups[0]!;
+    const member = (index: number, status: 'passed' | 'skipped', steps: readonly ReturnType<typeof reportStep>[]) => ({
+      id: `member-${index}`,
+      index,
+      testId: `tests/flow.e2e.ts::flow::${index}`,
+      status,
+      startedAt: REPORT_AT,
+      durationMs: 10,
+      steps,
+      secondaryErrors: [],
+    });
+    const report = reportDocument({
+      results: [
+        test('code', [reportStep()]),
+        test('replayed', [replayed, replayed]),
+        test('judged', [replayed, judge]),
+        test('handed-off', [handedOff]),
+        test('retried', [replayed], [missed]),
+        test('live', [uncached, judge]),
+        reportResult({ id: 'unselected', selected: false, status: 'skipped', attempts: [] }),
+        reportResult({ id: 'serial-member', serialGroupId: serial.id, attempts: [] }),
+      ],
+      serialGroups: [{ ...serial, attempts: [{ ...serial.attempts[0]!, members: [member(0, 'passed', [replayed]), member(1, 'skipped', [])] }] }],
+      summary: { discovered: 8, selected: 7, executed: 7, passed: 7, failed: 0, interrupted: 0, flaky: 0, skipped: 0 },
+    });
+    const { properties } = runCompletedEvent(report, RUN);
+    const tiers = ['tests_code_only', 'tests_replayed', 'tests_assisted', 'tests_live'].map((key) => properties[key] as number);
+    expect(tiers.reduce((total, count) => total + count, 0)).toBe(properties['tests_executed']);
+    expect(properties).toMatchObject({
+      tests_code_only: 1,
+      tests_replayed: 2,
+      tests_assisted: 3,
+      tests_live: 1,
+      agent_steps_uncached: 1,
+      agent_miss_reasons: { retry: 1 },
+      agent_handoff_reasons: { 'target-not-found': 1 },
+    });
+  });
+
+  it('counts the model calls by agent api', () => {
+    const model = sampleReport().run.results[0]!.attempts[0]!.steps[0]!.model!;
+    const report = reportWithAttempts({
+      steps: [
+        reportStep({ kind: 'agent', api: 'agent.act', model: { ...model, calls: 3 } }),
+        reportStep({ kind: 'agent', api: 'agent.assert', model: { ...model, calls: 2 } }),
+        reportStep({ kind: 'agent', api: 'agent.assert', model: { ...model, calls: 1 } }),
+      ],
+    });
+    expect(runCompletedEvent(report, RUN).properties).toMatchObject({
+      model_calls: 6,
+      model_calls_act: 3,
+      model_calls_assert: 3,
+      model_calls_extract: 0,
+      model_calls_waitfor: 0,
     });
   });
 
@@ -429,5 +549,15 @@ describe('the MCP session event', () => {
     });
     expect(JSON.stringify(event)).not.toContain('acme');
     expect(mcpSessionEvent(summary(), undefined).properties).toMatchObject({ client: null, client_version: null });
+  });
+
+  it("counts the session's own tools under their names", () => {
+    const calls = new Map([['locate', 2], ['test_lines', 1], ['start_recording', 1], ['stop_recording', 1]]);
+    expect(mcpSessionEvent(summary({ toolCalls: calls, projectToolCalls: 0 }), undefined).properties['calls']).toEqual({
+      locate: 2,
+      test_lines: 1,
+      start_recording: 1,
+      stop_recording: 1,
+    });
   });
 });

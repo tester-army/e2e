@@ -18,6 +18,7 @@ import {
   type OperationContext,
   type SemanticNode,
 } from '../../src/engine/index.ts';
+import { prepareObservation } from '../../src/agent/observation.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { LocatorEngine } from '../../src/locator/engine.ts';
@@ -76,6 +77,8 @@ export function screenOver(options: ScreenOverOptions): { screen: Screen; steps:
     }),
     steps,
     secrets: { resolve: async () => 'plaintext' },
+    renderTree: (observation) =>
+      prepareObservation(observation, { redact: (text) => text, redactCut: (text) => text, maxBytes: 64_000 }).text,
   });
   return { screen, steps };
 }

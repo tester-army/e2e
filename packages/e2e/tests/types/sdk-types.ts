@@ -49,7 +49,7 @@ import {
   beforeEach,
   describe,
 } from '../../src/index.ts';
-import type { Engine, EngineAttemptContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
+import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
 import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
@@ -114,6 +114,30 @@ declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
 declare const targets: readonly Target[];
+
+void (screen.tree() satisfies Promise<string>);
+void (screen.debug({ timeout: 1000 }) satisfies Promise<void>);
+// @ts-expect-error tree reads the whole screen; a locator does not scope it
+void screen.getByRole('list').tree();
+
+declare const cleanupContext: EngineCleanupContext;
+declare const disposeContext: EngineDisposeContext;
+cleanupContext satisfies EngineDisposeContext;
+disposeContext.reuseSignal satisfies AbortSignal | undefined;
+({ signal: cleanupContext.signal, timeoutMs: 100, reuseSignal: cleanupContext.signal }) satisfies EngineDisposeContext;
+// @ts-expect-error Reuse permission is an AbortSignal, not a worker message.
+({ signal: cleanupContext.signal, timeoutMs: 100, reuseSignal: 'shutdown' }) satisfies EngineDisposeContext;
+// @ts-expect-error Reuse permission cannot be reassigned by an engine.
+disposeContext.reuseSignal = cleanupContext.signal;
+// @ts-expect-error Attempt cleanup does not receive worker reuse permission.
+cleanupContext.reuseSignal;
+declare const attemptCleanupContext: Parameters<NonNullable<Engine['endAttempt']>>[0];
+// @ts-expect-error Only disposal receives worker reuse permission.
+attemptCleanupContext.reuseSignal;
+({
+  name: 'legacy-cleanup', version: '1.0.0', spiVersion: 1,
+  async dispose(_context: EngineCleanupContext) {},
+}) satisfies Engine;
 
 ({ pixels: false, pixelFallback: true }) satisfies EngineObserveOptions;
 interface CustomSnapshot extends EngineSnapshot { readonly projectMetadata?: string }
@@ -635,6 +659,12 @@ void (expect.poll(() => 1).toMatchSchema(userSchema) satisfies Promise<{ id: num
 void (expect.poll(() => 1).not.toMatchSchema(userSchema) satisfies Promise<void>);
 // @ts-expect-error a schema is a Standard Schema, not a plain object
 expect(1).toMatchSchema({ id: 'number' });
+// A return-only generic (an engine's `response.json<T>()`) infers no locator or screen from `expect`, and `any` (a DOM `Response.json()`) is a value.
+declare function readBody<T = unknown>(): Promise<T>;
+void (expect(await readBody()).toMatchSchema(userSchema) satisfies { id: number });
+void (expect.soft(await readBody()).toMatchSchema(userSchema) satisfies { id: number } | undefined);
+void (expect(JSON.parse('{}')).toMatchSchema(userSchema) satisfies { id: number });
+void (expect.soft(JSON.parse('{}')).toMatchSchema(userSchema) satisfies { id: number } | undefined);
 
 // describe and the hooks are top-level imports too, typed as their test.* forms.
 describe('group', { tags: ['smoke'] }, () => {
@@ -763,6 +793,8 @@ void (session.fixtures.device.tap satisfies () => void);
 void (session.artifactsDir satisfies string);
 void (session.tracePath satisfies string);
 void (session.steps() satisfies readonly StepRecord[]);
+declare const stepRecord: StepRecord;
+void (stepRecord.observationTruncated satisfies boolean | undefined);
 void (session.report() satisfies Report | undefined);
 void (session.close() satisfies Promise<readonly SerializedError[]>);
 void (session satisfies AsyncDisposable);

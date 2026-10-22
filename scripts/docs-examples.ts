@@ -21,7 +21,7 @@ const EXAMPLES_DIR = 'docs/examples';
 
 /**
  * Every example file, project-relative with `/` separators, sorted: the
- * `.ts` files under `docs/examples/`, nested folders included. The
+ * `.ts` and `.js` files under `docs/examples/`, nested folders included. The
  * `tsconfig.json` beside them is not an example.
  */
 export function exampleFiles(): string[] {
@@ -30,7 +30,7 @@ export function exampleFiles(): string[] {
     for (const entry of readdirSync(join(REPO_ROOT, dir), { withFileTypes: true })) {
       const path = `${dir}/${entry.name}`;
       if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith('.ts')) files.push(path);
+      else if (entry.name.endsWith('.ts') || entry.name.endsWith('.js')) files.push(path);
     }
   };
   walk(EXAMPLES_DIR);

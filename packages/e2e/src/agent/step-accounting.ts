@@ -118,8 +118,9 @@ export class StepAccounting {
     return error;
   }
 
-  /** Fails when the step is cancelled or out of time; records the hard stop. */
+  /** Fails when the step is cancelled, out of time, or already hard-stopped; records the hard stop. */
   checkpoint(cause?: unknown): void {
+    if (this.firstHardStop !== undefined && this.stepAbort.signal.aborted) throw this.firstHardStop;
     try {
       checkStepClock({
         signal: this.runtime.engine.signal,

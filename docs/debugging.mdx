@@ -146,7 +146,7 @@ attempts under each test's `rerun-<n>/`.
 
 | Artifact | When |
 | --- | --- |
-| Screenshots | A failed attempt captures one when the engine can and pixels are allowed. The built-in `agent.assert` captures one after either verdict, unless `screenshot: false`. `app.screenshot('label')` captures one on request. After a secret fill, the runner takes [none](/reference/security#screenshots-after-a-secret-fill) for the rest of the attempt. |
+| Screenshots | A failed attempt captures one when the engine can. The built-in `agent.assert` captures one after either verdict, unless `screenshot: false`. `app.screenshot('label')` captures one on request. They mask secure fields only. See [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill). |
 | Downloads | Files saved through `browser.waitForDownload`, kind `download`, as the app served them. [Downloads](/reference/security#downloads) says when the runner masks secrets in them. |
 | Videos | When you [record them](#watch-it-happen). Videos mask nothing. See [where redaction stops](/reference/security#where-redaction-stops). |
 | Agent transcripts | With [`--debug`](#agent-steps). |
@@ -171,7 +171,7 @@ result holds:
 | --- | --- |
 | `error` | The code, message, source line, and assertion details |
 | `failure` | The screen and screenshot artifacts, and any locator candidates |
-| `steps` | The calls that led to the failure. Each step's `events` hold what it did (`engine`), what it polled (`poll`), and where the app went (`navigation`). Agent steps add `cache` and recent model turns. |
+| `steps` | The calls that led to the failure. Each step's `events` hold what it did (`engine`), what it polled (`poll`), and where the app went (`navigation`). Agent steps add `cache` and recent model turns. `observationTruncated: true` means at least one semantic observation was incomplete. |
 | `appLog` | What the app logged. Each line's `step` is the `index` of its step, absent before the first step. |
 | `artifacts` | The captured files |
 
@@ -241,8 +241,10 @@ hello from the test
 Output from outside a test, such as a file's top level or a reporter,
 prints under `stdout | runner` or `stderr | runner`. Both streams print on
 stdout. Without the `list` reporter, output goes to its own stream as
-written. Output from the config load prints before the run header, or a
-warning replaces it if the load fails.
+written, except with the `json` reporter (`--reporter json` or in
+`reporters`), which keeps stdout for the report and prints output on
+stderr. Output from the config load prints before the
+run header, or a warning replaces it if the load fails.
 
 The runner [redacts](/reference/security#redaction) secret values. The
 report doesn't include console output, so use `expect` or an artifact for
@@ -323,6 +325,7 @@ to trace the whole flow or rule out a stale [recording](/cache).
 | `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT` | The agent ran out of actions, model calls, or time | Scope the goal to one step. Raise the agent entry's `maxSteps` or `maxModelCalls` for the budget, the config `timeout` for an `act` step, or the agent's `judgmentTimeout` for `assert`, `waitFor`, and `extract` |
 | `MODEL_UNAVAILABLE` | No model constructed in the config, or GitHub Copilot doesn't serve the configured model to your account | See [Models](/models); for Copilot, [Pick a model](/subscriptions#pick-a-model) |
 | `MODEL_PROVIDER_FAILED` | Bad key, rate limit, no credits, or every try of one request went 120 s without an answer | Check the key the provider reads and the quota; for a slow local model, a smaller screen (`agents.<name>.maxObservationBytes`) or a faster model |
+| `MODEL_REFUSED` | The model refused the prompt (finish reason `content-filter`). Exit 1 | Rephrase the instruction, or switch to another model |
 
 The [errors reference](/reference/errors) lists every code, its class, and
 its exit code.

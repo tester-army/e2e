@@ -1,7 +1,9 @@
 /** Attempt-scoped fixture graph. */
 
+import path from 'node:path';
 import { BUILT_IN_AGENT } from '../agent/agent-brand.ts';
 import { createAgentFixture } from '../agent/index.ts';
+import { prepareObservation } from '../agent/observation.ts';
 import type { AgentContext, AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
@@ -14,7 +16,7 @@ import { ConfigurationError, errorMessage, InfrastructureError, TestError } from
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { createScreenshotContext, type WrittenScreenshots } from './screenshots.ts';
-import { resolveSecretValue, sessionSecrecy, type SecretExposure } from './secrecy.ts';
+import { resolveSecretValue, sessionSecrecy } from './secrecy.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
 import type { AttemptBudget } from './budget.ts';
@@ -119,6 +121,13 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     steps: environment.steps,
     secrets,
     projectRoot: environment.config.projectRoot,
+    renderTree: (observation) =>
+      prepareObservation(observation, {
+        redact: ledger.redact,
+        redactCut: ledger.redactCut,
+        maxBytes: environment.config.limits.maxObservationBytes,
+        appOrigin: environment.target.app.base?.origin,
+      }).text,
     ...(environment.test === undefined
       ? {}
       : {
@@ -131,12 +140,11 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
             titlePath: environment.test.titlePath,
             written: environment.test.writtenScreenshots,
             artifacts: environment.artifacts,
-            withholdsPixels: () => exposure.withholdsPixels,
           }),
         }),
   };
   const screen = createScreen(screenContext);
-  const app = createApp(environment, engine, exposure);
+  const app = createApp(environment, engine);
 
   let agent: Agent | undefined;
 
@@ -424,7 +432,7 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
 }
 
 /** Builds the portable app fixture with the session's shared screenshot policy. */
-function createApp(environment: AttemptEnvironment, engine: LocatorEngine, exposure: SecretExposure): App {
+function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App {
   const { config, steps, target } = environment;
 
   /** Opens one resolved URL; a refused connection is reported as the app being down. */
@@ -500,15 +508,9 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine, expos
     },
     async screenshot(label?: string): Promise<string> {
       return steps.run('app', 'app.screenshot', label ?? '', async () => {
-        if (exposure.withholdsPixels) {
-          throw new ConfigurationError(
-            'POLICY_DENIED',
-            'app.screenshot() is denied after a secret fill because the app may display the secret outside a secure field',
-          );
-        }
         const relative = await engine.session.artifacts.screenshot(label, engine.operation());
         environment.steps.attachArtifact(environment.artifacts.register('screenshot', relative));
-        return relative;
+        return path.join(environment.artifacts.dir, relative);
       });
     },
   };

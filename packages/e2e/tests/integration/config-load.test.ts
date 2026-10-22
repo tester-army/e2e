@@ -33,6 +33,18 @@ describe('loadConfigModule', () => {
     });
   });
 
+  it('suggests satisfies E2EConfig for a missing default export only in a TypeScript config', async () => {
+    for (const name of ['e2e.config.ts', 'e2e.config.mjs']) writeFileSync(path.join(dir, name), 'export const targets = [];\n');
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.ts'))).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: expect.stringMatching(/has no default export; write export default \{ targets: \[\.\.\.\] \} satisfies E2EConfig$/),
+    });
+    await expect(loadConfigModule(path.join(dir, 'e2e.config.mjs'))).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: expect.stringMatching(/has no default export; write export default \{ targets: \[\.\.\.\] \}$/),
+    });
+  });
+
   it('keeps INVALID_CONFIG for a secrets.get() reference turned into a string while the config evaluates', async () => {
     writeFileSync(
       path.join(dir, 'e2e.config.ts'),

@@ -245,16 +245,30 @@ describe('initializing standalone projects', () => {
     await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
       code: 2,
       stdout: expect.stringMatching(
-        /CONFIG_NOT_FOUND[\s\S]*no e2e\.config\.ts or e2e\.config\.mts found in .* or its parent directories; run e2e init to create one, or pass --config <path>/,
+        /CONFIG_NOT_FOUND[\s\S]*no e2e\.config\.ts, e2e\.config\.mts, e2e\.config\.js, or e2e\.config\.mjs found in .* or its parent directories; run e2e init to create one, or pass --config <path>/,
       ),
     });
-    writeFileSync(path.join(dir, 'e2e.config.js'), CONFIG);
+    writeFileSync(path.join(dir, 'e2e.config.cjs'), CONFIG);
     await expect(execFileAsync(process.execPath, [CLI, 'run'], { cwd: dir })).rejects.toMatchObject({
       code: 2,
       stdout: expect.stringContaining(
-        'found e2e.config.js, but only e2e.config.ts and e2e.config.mts are loaded: rename it and keep it an ES module',
+        'found e2e.config.cjs, but only e2e.config.ts, e2e.config.mts, e2e.config.js, or e2e.config.mjs is loaded: rename it and keep it an ES module',
       ),
     });
+  });
+
+  it.each(['e2e.config.js', 'e2e.config.mjs'])('discovers a JavaScript %s and runs JavaScript tests', async (config) => {
+    writeFileSync(path.join(dir, 'package.json'), '{}');
+    writeFileSync(
+      path.join(dir, config),
+      "/** @type {import('e2e').E2EConfig} */\nexport default { tests: 'tests/**/*.e2e.js', targets: [{ name: 'local', platform: 'test' }] };\n",
+    );
+    mkdirSync(path.join(dir, 'tests'));
+    writeFileSync(path.join(dir, 'tests', 'example.e2e.js'), "import { expect, test } from 'e2e';\n\ntest('plain JavaScript', () => {\n  expect(1 + 1).toBe(2);\n});\n");
+    linkPackages('e2e');
+
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--workers', '1', '--no-cache'], { cwd: dir });
+    expect(stdout).toContain('1 passed');
   });
 
   it('names look-alike test files when the globs match nothing', async () => {

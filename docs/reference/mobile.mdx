@@ -119,12 +119,19 @@ mobile({ platform: 'android' });
  * Device to use: a simulator or emulator by name, simulator UDID, or
  * emulator serial (`emulator-5554`), or a connected phone by name. A list
  * is a pool: the engine declares one worker per entry and worker slot `n`
- * drives the `n`th, so `workers` at or above the pool size runs the
- * target's files across every device at once. Omitted, the pool is every booted device of
- * the platform at `prepare`, as many as the run has slots; with none booted,
- * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
- * one per worker slot at `prepare`, each driven through the daemon and
- * client configuration the lease names, all released when the run ends.
+ * drives the `n`th, so `workers` at or above the pool size runs the target's
+ * files across every device at once. Omitted, the pool is every booted device
+ * of the platform at `prepare`, as many as the run has slots; with none
+ * booted, agent-device boots one. A `DeviceProvider` leases hosted devices
+ * instead: one per worker slot at `prepare`, each driven through the daemon
+ * and client configuration the lease names. A replacement worker resumes a
+ * healthy agent-device session on the same lease. Forced worker shutdown
+ * can close the session. `device.closeApp()` ends the agent-device session,
+ * allowing another session to take the device. If agent-device has not
+ * confirmed a recording stop, the engine resets the recording before the
+ * next attempt. This reset also ends the session. The provider lease stays
+ * held until run end. At run end, the engine closes its sessions and the
+ * provider releases its leases.
  */
 readonly device?: string | readonly string[] | DeviceProvider | undefined;
 ```
@@ -336,7 +343,7 @@ running on the device. The next attempt waits for it to settle.
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles and `RadioButton` is `radio`, each with the `checked` state the device reports, layouts are `group`, `RecyclerView` and `AbsListView` (React Native's `FlatList`) are `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. An Android node is named by the content description its app set (React Native's `accessibilityLabel`), else by its text, and its `text` is what it shows, so a labeled text view or a filled field answers `getByLabel` by its label and `getByText` by its text; a view flagged as a heading is a `heading`, and the role description React Native writes for a role Android has no class for (`Tab`, `Tab List`, `Radio Group`) gives the node that role. A field's hint is its `placeholder` attribute, showing or not. One Android fact is agent-device's, not the platform's: `rect` and every point are the screen's physical pixels; the display density it reports is not applied yet. Android's status bar and navigation bar, the full-width `com.android.systemui` windows along the screen's edges and the narrow status icons (clock, signal, battery) agent-device reports on their own inside that edge band, are left out; the notification shade, system dialogs, and a heads-up notification or other popup inset from the sides stay. Pixels on request, with every secure node's bounds painted black. |
+| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles and `RadioButton` is `radio`, each with the `checked` state the device reports, layouts are `group`, `RecyclerView` and `AbsListView` (React Native's `FlatList`) are `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. An Android node is named by the content description its app set (React Native's `accessibilityLabel`), else by its text, and its `text` is what it shows, so a labeled text view or a filled field answers `getByLabel` by its label and `getByText` by its text; a view flagged as a heading is a `heading`, and the role description React Native writes for a role Android has no class for (`Tab`, `Tab List`, `Radio Group`) gives the node that role. A field's hint is its `placeholder` attribute, showing or not. An empty field has no value: Android flags a showing hint, and XCTest reports an empty iOS field's placeholder as its value, so an iOS field whose value equals its placeholder (trimmed) reads empty, text typed to match the placeholder exactly included. One Android fact is agent-device's, not the platform's: `rect` and every point are the screen's physical pixels; the display density it reports is not applied yet. Android's status bar and navigation bar, the full-width `com.android.systemui` windows along the screen's edges and the narrow status icons (clock, signal, battery) agent-device reports on their own inside that edge band, are left out; the notification shade, system dialogs, and a heads-up notification or other popup inset from the sides stay. Pixels on request, with every secure node's bounds painted black. |
 | `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter`, `Space`, or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack and a React Native checkbox or radio on iOS has. `doubleTap` is two presses, 284 to 285 ms apart on iOS (the cadence of agent-device's XCTest tap): agent-device's own double-tap gesture reaches a React Native `Pressable` as one press. A detector with a window of 300 ms or less can read the pair as two single taps. `longPress` holds for one second unless the test passes `duration`, past a React Native `Pressable`'s `delayLongPress` of 500 ms and the longer thresholds apps set; agent-device's own default hold is shorter and registers as a tap on those. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared, and neither is `tapModifiers`, so `tap` or `doubleTap` with `modifiers` is `UNSUPPORTED_CAPABILITY`. |
 | `performAt` | `tap`, `doubleTap`, `longPress`, and `swipeTo` at a bare screen point, so `screen.tapAt`, `tap({ position })`, `screen.swipe({ from, to })`, and the agent's `tap_at` reach a control the tree does not list. No `hover`, `secondaryTap`, or `dragTo` at a point: touch has none without a node, so `hover_at` needs a listed control. |
 | `keyboard` | `type` and `press` into the focused field, the agent's `type` and `press` without a target and the fallback of `type_at` and `press_at`, and `dismiss`, the agent's `dismiss_keyboard`. |
@@ -788,10 +795,13 @@ await device.alert('accept');
 /**
  * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
  * one (Android, iPad), else the way a user does it on an iPhone, a short
- * drag at the centre of the screen that a scroll view turns into a
- * dismissal, horizontal first and vertical second, stopping as soon as the
- * keyboard is gone. The simulator's "Speed up your typing" tip goes through
- * its Continue button first. A keyboard that outlives both drags fails with
+ * drag that a scroll view turns into a dismissal, horizontal first and
+ * vertical second, stopping as soon as the keyboard is gone. Each drag
+ * starts at the point nearest the centre of the screen that no control
+ * covers, inside a scroll view when the screen has one, so it never presses
+ * a button or toggles a checkbox. The simulator's "Speed up your typing" tip
+ * goes through its Continue button first. A screen with no clear point
+ * above the keyboard, or a keyboard that outlives both drags, fails with
  * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
  * own Done or close control, or pressing Enter on the field).
  */
@@ -804,7 +814,7 @@ await device.dismissKeyboard();
 
 | Throws | When |
 | --- | --- |
-| `UNSUPPORTED_CAPABILITY` | The keyboard outlives both drags. |
+| `UNSUPPORTED_CAPABILITY` | Every point above the keyboard (in a scroll view, when the screen has one) is on a control, or the keyboard outlives both drags. |
 
 #### `clipboard`
 
@@ -868,6 +878,30 @@ capture failure still stops the observation. Device screenshot masks depend
 on secure-field bounds from that capture, so without them the engine cannot
 prove a fallback screenshot safe.
 </Note>
+
+## Video recording cleanup
+
+A provider recording that fails to stop stays owned by its worker. The
+engine retries its stop at attempt end, before another attempt on that
+worker, and during worker disposal. A pending stop is shared. Each retry
+uses the original attempt's video directory.
+
+The next attempt starts only after the provider confirms the stop. A
+failed or cancelled stop wait prevents that attempt from starting.
+Confirmed stops are not repeated if the returned artifact is invalid.
+A failed provider stop alone does not close a healthy agent-device session
+during worker replacement.
+
+A recording recovered by a retry is not added to the report: its file can
+stay in the original attempt's video directory, and a returned URL is
+dropped. A required video whose first stop failed stays a cleanup failure.
+
+These recording handles do not survive worker exit. At run end, the engine
+closes its agent-device sessions and the provider releases its leases.
+Providers must clean up any remaining external recordings when releasing a
+lease. Closing an agent-device session cannot guarantee that an arbitrary
+cloud recording stops. A failed provider stop callback does not confirm that
+the recording stopped.
 
 ## Replay cache on a device
 

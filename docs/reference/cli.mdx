@@ -6,9 +6,9 @@ icon: "terminal"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/cli.png?v=e0e03be674"
 ---
 
-The `e2e` command scaffolds a project, runs, lists, and explores tests, and
-manages the replay cache, subscription logins, and telemetry. Every command
-takes `--help`.
+The `e2e` command scaffolds a project, runs, lists, and explores tests,
+manages the replay cache, subscription logins, and telemetry, and upgrades
+itself. Every command takes `--help`.
 
 <CodeGroup>
 ```bash npm
@@ -59,6 +59,13 @@ $ npx e2e --version
 - On a terminal 55 or more columns wide, `e2e --help` opens with the e2e
   wordmark: the site's lettering in block characters. Piped output and
   narrower terminals get the text alone.
+- When a newer `e2e` is on npm, a command run on a terminal ends with the
+  version and the [`e2e upgrade`](#e2e-upgrade) command for the project's
+  package manager. The
+  registry is checked once a day. Nothing prints in CI, when stderr is not a
+  terminal, for `e2e mcp` and `e2e upgrade`, or with
+  `E2E_UPDATE_CHECK_DISABLED=1`, `NO_UPDATE_NOTIFIER=1`,
+  `E2E_TELEMETRY_DISABLED=1`, or `DO_NOT_TRACK=1` set.
 
 ### Commands
 
@@ -74,6 +81,7 @@ $ npx e2e --version
 | [`e2e explore`](#e2e-explore) | Explores the app toward a goal |
 | [`e2e list`](#e2e-list) | Prints the tests a run selects |
 | [`e2e cache`](#e2e-cache) | Inspects or clears the replay cache |
+| [`e2e upgrade`](#e2e-upgrade) | Upgrades e2e and its packages |
 | [`e2e feedback`](#e2e-feedback) | Sends feedback to the e2e team |
 | [`e2e telemetry`](#e2e-telemetry) | Shows or switches usage telemetry |
 
@@ -105,6 +113,7 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | --- | --- |
 | `[directory]` | Where to scaffold; created when missing. Default: the working directory. |
 | `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no install. |
+| `--example <name>` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. See [Starting from an example](#starting-from-an-example). |
 | `--engine <id>` | The engine for a new config: `web`, `mobile`, or `none`. Default: asked. |
 | `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
 | `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
@@ -113,16 +122,18 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | `--install`, `--no-install` | Whether to install dependencies. Default: asked; `--no-install` with `--yes`. |
 
 - A flag answers its question and skips that prompt.
-- `--engine`, `--gateway`, and `--endpoint` apply only to a new config.
+- `--engine`, `--gateway`, and `--endpoint` apply only to a new config. With
+  `--example` they are a usage error.
 
 | Exit code | When |
 | --- | --- |
-| 0 | The scaffold finished, or the wizard was cancelled. Cancelling leaves files untouched. |
+| 0 | The scaffold finished, or the wizard was cancelled. Cancelling leaves files untouched and removes a copied example. |
 | 2 | An unknown flag value. Exits before any write and lists the valid values. |
 | 2 | An invalid `package.json`. Exits before any write. |
 | 2 | No terminal on stdin and stdout, and no `--yes`. The message names the flag. |
+| 2 | `--example` with a directory that has files in it, or the example download failed. Nothing stays behind. |
 | 2 | The dependency installation failed. |
-| 130 | Ctrl-C or SIGTERM while the wordmark is written, or SIGINT during the dependency installation. |
+| 130 | Ctrl-C or SIGTERM while the wordmark is written or the example downloads, or SIGINT during the dependency installation. A partial example is removed. |
 
 ##### Prompts
 
@@ -162,6 +173,43 @@ field or lockfile, then the invoking package manager, then npm.
 | `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
 | `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
+
+<a id="starting-from-an-example" />
+##### Starting from an example
+
+`--example` copies one of the
+[example apps](https://github.com/tester-army/e2e/tree/main/examples) into a
+new or empty directory, then runs the wizard in its e2e project. That is
+the directory itself for a web or Expo app, and its `e2e/` folder for a
+native app.
+
+<CodeGroup>
+```bash npm
+npx e2e init my-app --example with-expo
+```
+
+```bash pnpm
+pnpm dlx e2e init my-app --example with-expo
+```
+
+```bash bun
+bunx e2e init my-app --example with-expo
+```
+</CodeGroup>
+
+- The CLI downloads the example from GitHub, from the `e2e@<version>` tag
+  of the running CLI. When that tag doesn't exist, it uses `main` and warns.
+- A directory that holds only `.git`, `.DS_Store`, or `Thumbs.db` counts as
+  empty.
+- The example's config, tests, and scripts stay as they are. The wizard
+  asks only for the skill, the MCP server, and the install, and adds missing
+  `.gitignore` entries. For a native app these files go in `e2e/`, so open
+  your coding agent there.
+- The e2e project's `package.json` takes the directory's name (with `-e2e`
+  beside a native app). `e2e`, `@e2e-dev/web`, and `@e2e-dev/mobile` get the
+  ranges `init` writes for a new project.
+- The closing `Next:` line names the example's test script. A native app
+  needs a build first; its `README.md` says how.
 
 ##### Re-running init
 
@@ -354,7 +402,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts` or `e2e.config.mts`. |
+| `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs`. |
 | `--target <name>` | The target every session opens on. Default: the only target, or the one `open_session` names. |
 | `--headed` | Shows the UI in sessions whose `open_session` does not set `headed`, when the engine supports it. |
 | `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. |
@@ -478,7 +526,7 @@ Test files, directories, or globs relative to the project root:
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). A missing file is `CONFIG_NOT_FOUND`. |
+| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs` (see [Loading](/reference/config#loading)). A missing file is `CONFIG_NOT_FOUND`. |
 | `--target <ids>` | Targets by name, comma-separated or repeated. Default: every configured target. Only selected targets' app commands start. An unknown ID is `UNKNOWN_TARGET`. |
 | `--tag <tags>` | Only tests with the tags, comma-separated or repeated: any of them, or every one with `--tag-mode all`. |
 | `--tag-mode <mode>` | How several tags combine: `any` or `all`. Default: `any`. |
@@ -497,6 +545,8 @@ Test files, directories, or globs relative to the project root:
 | `--agent <names>` | Runs unpinned tests once per selected agent, comma-separated or repeated. Default: `default`. For a test with `{ agent }`, it selects the shared names when they overlap, else keeps the test's own. An unknown name is `INVALID_CONFIG`. |
 | `--retries <n>` | Replaces `config.retries`; an integer 0-10. Default: the config. |
 | `--workers <n>` | Replaces `config.workers`; an integer 1-1024. Default: the config. |
+| `--action-timeout <ms>` | Replaces [`actionTimeout`](/reference/config#actiontimeout) for this run; an integer 1-2147483647, anything else is a usage error, exit 2. Default: the config, else `30000`. A call's own `timeout` still wins. While you write a test, a low value such as `5000` makes a wrong locator fail with `LOCATOR_NOT_FOUND` after 5 s instead of 30 s. |
+| `--assertion-timeout <ms>` | Replaces [`assertionTimeout`](/reference/config#assertiontimeout) for this run; an integer 1-2147483647, anything else is a usage error, exit 2. Default: the config, else `5000`. A matcher's own `timeout` still wins. |
 | `--max-failures <n>` | Stops the run once this many tests (at least 1) have failed or timed out. Nothing more is dispatched, and tests running on other workers end `interrupted`. Tests not started, including the rest of the file whose test reached the limit, are skipped with cause `failure-limit` and the reason `run stopped after 3 failures (--max-failures 3)`. Exits 1, the failures' own code, not 130. |
 | `--max-duration <ms>` | Overrides [`maxDuration`](/reference/config#maxduration) for one run; an integer 1-2147483647. Default: the config. Exits 1, not 130. |
 | `--repeat-each <n>` | Runs every selected test this many times, at least 1. Default: `1`. Each run is its own result, with `repeat` 0 through `n - 1` and its own `id`. The list reporter titles later runs `(repeat #1)`, `(repeat #2)`, and puts their artifacts under a `repeat-<n>` directory. Setup tests run once. With the replay cache on, the first run records and the rest replay; add `--no-cache` to call the model each time. The `list` summary adds a `Repeats` row (`1 of 2 tests passed all 5 runs`) and one line per test that did not pass every run, naming the failed runs. The `markdown` page has the same tally. |
@@ -798,7 +848,9 @@ flag, or write `--trace=<mode>` or `--video=<mode>`.
 
 - The run has one result, under the virtual file `explore`, titled by the
   goal.
-- The exploration opens the app first when the target declares `app.url`.
+- The exploration opens the app first: the target's `app.url`, or on a device
+  the [pinned app](/mobile#point-at-your-app), launched fresh. It installs no
+  build, so a local device target needs `app.bundleId`.
 - With `--session`, the report also holds the setup test's result. It lists
   the project's other tests as skipped with cause `filtered`, as `run` lists
   the tests of a file no positional named.
@@ -925,7 +977,7 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 
 | Option | Description |
 | --- | --- |
-| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts` or `e2e.config.mts` (see [Loading](/reference/config#loading)). |
+| `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs` (see [Loading](/reference/config#loading)). |
 | `--cache-dir <dir>` | The store directory. Default: `E2E_CACHE_DIR`, else `cache.dir`, else `.e2e/cache/`. |
 
 ```text
@@ -945,6 +997,99 @@ tests/signup.e2e.ts::signs%20up  web     9ab7715ce004  3d   7 (truncated)
 These commands read the file store only. With a custom `cache.store` they
 exit 2 and say so.
 </Note>
+
+#### `e2e upgrade`
+
+Upgrades `e2e` to the latest release, a dist-tag, or one version. It also
+moves the `@e2e-dev/*` packages in the same `package.json`, and installs
+them with the project's package manager. `e2e update` is the same command.
+
+<Note>
+`npx e2e` runs the installed version. When that version has no `upgrade`
+command yet, run `npx e2e@latest upgrade` one time.
+</Note>
+
+<CodeGroup>
+```bash npm
+npx e2e upgrade             # the latest release
+npx e2e upgrade 0.21.0      # one version
+npx e2e upgrade nightly     # a dist-tag
+npx e2e update --dry-run    # show the plan, change nothing
+```
+
+```bash pnpm
+pnpm exec e2e upgrade             # the latest release
+pnpm exec e2e upgrade 0.21.0      # one version
+pnpm exec e2e upgrade nightly     # a dist-tag
+pnpm exec e2e update --dry-run    # show the plan, change nothing
+```
+
+```bash bun
+bunx e2e upgrade             # the latest release
+bunx e2e upgrade 0.21.0      # one version
+bunx e2e upgrade nightly     # a dist-tag
+bunx e2e update --dry-run    # show the plan, change nothing
+```
+</CodeGroup>
+
+```console
+$ npx e2e upgrade
+Upgrading with npm:
+  e2e              0.19.0 → 0.21.2
+  @e2e-dev/web     0.13.0 → 0.15.2
+  @e2e-dev/kernel  0.1.2 → 0.2.1
+package.json: "e2e": "^0.21.2", "@e2e-dev/web": "^0.15.2", "@e2e-dev/kernel": "^0.2.1"
+$ npm install
+...
+Upgraded: e2e 0.21.2, @e2e-dev/web 0.15.2, @e2e-dev/kernel 0.2.1
+Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
+```
+
+| Option | Description |
+| --- | --- |
+| `[version]` | A version such as `0.22.0`, or a dist-tag such as `latest` or `nightly`. Ranges are refused. Default: `latest`. |
+| `--dry-run` | Prints the versions, the new specs, and the install command, and changes nothing. |
+
+- **The project.** The nearest `package.json` from the working directory up
+  that lists `e2e`.
+- **Sibling versions.** Each `@e2e-dev/*` package gets its release under the
+  same dist-tag (`latest` for a named version), when that release's peer
+  ranges accept the new versions. Otherwise it gets its newest release that
+  does. When none does, the command exits 2. A deprecated release is
+  never picked, and a prerelease only when `e2e` gets one. An integration
+  follows the engine it plugs into.
+- **The package manager.** The one the project's lockfile or
+  `packageManager` field names, or pnpm at a pnpm workspace root. A
+  workspace member with neither uses its workspace root's. A lockfile above
+  a project that no workspace lists doesn't count.
+- **The install.** The new specs go into `package.json`, each in the
+  section it was in, then one `install` resolves them together. pnpm gets
+  `--no-frozen-lockfile`, and Yarn `YARN_ENABLE_IMMUTABLE_INSTALLS=false`,
+  so the lockfile can change in CI too. Ctrl-C reaches the package manager;
+  the command waits for it to stop.
+- **A failed install.** `package.json` and any lockfile the install changed
+  go back as they were. `node_modules` can keep some new versions until the
+  next install.
+- **The saved range.** A named version or a prerelease is pinned exactly. A
+  dist-tag keeps the `^` or `~` of the old spec.
+- **Left alone.** A package linked with `workspace:`, `file:`, `link:`,
+  `catalog:`, a path, or a git URL, and an `@e2e-dev/*` package the registry
+  doesn't have. When `e2e` itself is linked, the command exits 2.
+- **Nothing to do.** When every installed version already matches, the
+  command installs nothing. Without `node_modules`, as under Yarn
+  Plug'n'Play, it compares the specs in `package.json` instead.
+- **The registry.** `npm_config_registry` when the package manager sets it,
+  else `https://registry.npmjs.org/`.
+- **The agent skill.** A copy in `.agents/skills/e2e` or `.claude/skills/e2e`
+  stays at the old version. The command says so; run `e2e init` to refresh
+  it.
+
+| Exit code | When |
+| --- | --- |
+| 0 | The packages were installed, were already at the target, or `--dry-run` printed the plan. |
+| 2 | A range, an unknown version or dist-tag, no `package.json` that lists `e2e`, a linked `e2e`, a sibling with no release that fits, or a failed install. |
+| 3 | A registry request failed or answered with an error status, or sent metadata the command could not read. |
+| 130 | Ctrl-C or SIGTERM during the install. `package.json` and the lockfile go back as they were. |
 
 #### `e2e feedback`
 
@@ -1001,8 +1146,9 @@ bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --
   and submit it yourself.
 - **Outdated releases are refused.** Before sending, the command asks the npm
   registry for the latest e2e release. When yours is older, it exits 2 and
-  sends nothing, since the problem may be fixed already. Upgrade, check that
-  it still happens, and send it again, or pass `--allow-outdated`.
+  sends nothing, since the problem may be fixed already. Upgrade with
+  [`e2e upgrade`](#e2e-upgrade), check that it still happens, and send it
+  again, or pass `--allow-outdated`.
 - **Where it goes.** One `e2e_feedback` event, to the same PostHog project as
   [telemetry](/telemetry#feedback), with the anonymous machine facts every
   telemetry event carries.
@@ -1073,7 +1219,7 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
 | 0 | All selected tests passed, were flaky, or were explicitly skipped |
 | 1 | Final test or setup failure, or test timeout |
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
-| 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure; `e2e feedback` that could not be delivered |
+| 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure; `e2e feedback` that could not be delivered; `e2e upgrade` that could not reach the registry |
 | 4 | Internal runner invariant or unhandled runner error |
 | 130 | Interrupted by a user or CI signal |
 

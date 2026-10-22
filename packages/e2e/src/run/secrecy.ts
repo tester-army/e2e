@@ -24,13 +24,13 @@ export type SecretExposureLevel = 'none' | 'filled';
 
 /**
  * One session's exposure level, and the one place that maps it to what each
- * consumer withholds. Only a fill withholds pixels (failure screenshots,
- * `app.screenshot()`, assert evidence, and model input): a value that
- * reached the app otherwise (an engine option, a URL or a `fill` the test
- * spelled it into) is protected as text only, so a page that renders it on
- * screen is not masked. Only a fill
- * carries into a saved session too: the value then lives in the app's
- * state. Text is not decided here: see `redactsDownloads`.
+ * consumer withholds. Only a fill withholds pixels, and only from a model:
+ * the app may show the value outside its masked field, and a model's input
+ * leaves the machine. Screenshots, evidence, and video are the project's own
+ * artifacts and stay on. A value that reached the app otherwise (an engine
+ * option, a URL or a `fill` the test spelled it into) is protected as text
+ * only. Only a fill carries into a saved session too: the value then lives
+ * in the app's state. Text is not decided here: see `redactsDownloads`.
  */
 export class SecretExposure {
   private current: SecretExposureLevel = 'none';
@@ -40,8 +40,8 @@ export class SecretExposure {
     this.current = level;
   }
 
-  /** Whether no pixels may leave the session: no screenshot or screencast frame is taken, kept, or handed to a model. */
-  get withholdsPixels(): boolean {
+  /** Whether no pixels may reach a model: no screenshot goes into model input, pixel tools, or an MCP client. */
+  get withholdsModelPixels(): boolean {
     return this.current === 'filled';
   }
 

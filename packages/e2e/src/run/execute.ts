@@ -2,7 +2,7 @@
 
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
-import type { EngineSnapshot, ResolveSecretOptions } from '../engine/index.ts';
+import type { EngineDisposeContext, EngineSnapshot, ResolveSecretOptions } from '../engine/index.ts';
 import type { TargetSession, OperationContext, VideoSegment } from '../engine/surface.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import {
@@ -352,7 +352,7 @@ export class TargetExecutor implements SerialHost {
    * Runs whether or not `init` did: an engine may hold resources it acquired
    * lazily, and the contract makes `dispose` safe to call on a cold engine.
    */
-  async dispose(): Promise<void> {
+  async dispose(options: Pick<EngineDisposeContext, 'reuseSignal'> = {}): Promise<void> {
     const disposeEngine = this.target.engine?.dispose?.bind(this.target.engine);
     if (disposeEngine === undefined) return;
     try {
@@ -361,7 +361,7 @@ export class TargetExecutor implements SerialHost {
         this.config.cleanupTimeout,
         'CLEANUP_TIMEOUT',
         NEVER_ABORTS,
-        (signal) => disposeEngine({ signal, timeoutMs: this.config.cleanupTimeout }),
+        (signal) => disposeEngine({ signal, timeoutMs: this.config.cleanupTimeout, ...options }),
       );
     } catch (cause) {
       this.runErrors.push({ error: serializeError(classifyError(cause), { phase: 'cleanup' }) });

@@ -7,8 +7,8 @@ icon: "display"
 ---
 
 The `screen` fixture builds locators. A `Locator` stores a query and resolves
-it when an action, read, or assertion runs. `Locator` extends `Screen`, so
-every query also runs on a locator, scoped to its subtree.
+it when an action, read, or assertion runs. Every query also runs on a
+locator, scoped to its subtree.
 
 ```ts title="tests/invoices.e2e.ts"
 import { expect, test } from 'e2e';
@@ -463,6 +463,59 @@ await screen.getByTestId('feed').scrollUntilVisible(row);
 | `INVALID_LOCATOR` | `target` is not a runner locator, or was made by another target's screen. |
 | `INVALID_ARGUMENT` | An option it does not take. |
 | `LOCATOR_NOT_FOUND` | The deadline expires first, a swipe it cut short included. |
+
+### Screen reads
+
+| Method | Returns |
+| --- | --- |
+| [`screen.tree`](#screen-tree) | `Promise<string>` |
+| [`screen.debug`](#screen-debug) | `Promise<void>` |
+
+Both read the whole screen once, without waiting, and work on every engine.
+They run as a step. A locator does not have them, and a frame throws
+`INVALID_ARGUMENT`.
+
+#### `screen.tree`
+
+Returns the screen as the agent reads it. Use it to write a locator.
+
+```ts
+/**
+ * Reads the whole screen once, without waiting, as the agent reads it: one
+ * node per line, `#id role "name" text="…" [states]`, children indented,
+ * secrets redacted.
+ */
+tree(options?: ActionOptions): Promise<string>;
+```
+
+```text
+#n29 textbox "New todo"
+#n30 button "Add"
+ #n35 listitem "Milk Delete Milk" testid="todo"
+  #n36 checkbox "Milk" [checked]
+```
+
+- Uses `config.actionTimeout`.
+- The text has the same format and size limit as the trace's
+  [screen at failure](/debugging#traces).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Called on a frame, or with an option it does not take. |
+
+#### `screen.debug`
+
+Prints [`screen.tree()`](#screen-tree) to the test's
+[console output](/debugging#console-output).
+
+```ts
+/** Prints `tree()` to the test's output. */
+debug(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.debug();
+```
 
 ### Locator actions
 

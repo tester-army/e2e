@@ -345,20 +345,17 @@ describe('assert evidence under a custom executor', () => {
     expect(outcome.exitCode).toBe(2);
   });
 
-  it('denies the screenshot as PIXEL_TAINTED after a secret fill, on both verdicts, and the failure capture keeps no pixels either', () => {
+  it('keeps the screenshot after a secret fill, on both verdicts, and the failure capture keeps one too', () => {
     const attempt = lastAttempt('assert evidence after a secret fill');
     expect(attempt.error?.code).toBe('ASSERTION_FAILED');
     expect(attempt.steps.find((step) => step.api === 'agent.act')?.status).toBe('passed');
     const asserts = attempt.steps.filter((step) => step.api === 'agent.assert');
     expect(asserts.map((step) => step.status)).toEqual(['passed', 'failed']);
     for (const step of asserts) {
-      expect(screenshotsOf(attempt, step)).toEqual([]);
-      expect(step.events.filter((event) => event.kind === 'policy')).toEqual([
-        expect.objectContaining({ name: 'assert.screenshot', decision: 'denied', code: 'PIXEL_TAINTED', status: 'failed' }),
-      ]);
+      expect(screenshotsOf(attempt, step)).toHaveLength(1);
+      expect(step.events.filter((event) => event.kind === 'policy')).toEqual([]);
     }
-    expect(attempt.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toEqual([]);
     expect(attempt.failure?.screen).toBeDefined();
-    expect(attempt.failure?.screenshot).toBeUndefined();
+    expect(attempt.failure?.screenshot).toBeDefined();
   });
 });

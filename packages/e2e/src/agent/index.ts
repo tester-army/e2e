@@ -79,7 +79,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
    * earlier step's pixel request was already degraded.
    */
   const visionHint = (): string | undefined => {
-    if (runtime.exposure.withholdsPixels || !runtime.engineCapabilities.has('artifacts')) return undefined;
+    if (runtime.exposure.withholdsModelPixels || !runtime.engineCapabilities.has('artifacts')) return undefined;
     const steps = runtime.steps.completed();
     if (steps.some((step) => step.visionDegraded !== undefined)) return undefined;
     return steps.some((step) => step.visionInput === true) ? VISION_HINT : VISION_HINT_UNPROVEN;
@@ -266,9 +266,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           invocation.note({ explanation: judgment.explanation });
           // The report keeps the redacted screenshot
           // whenever `screenshot` allows it, on a passing judgment too.
-          const screenshot = evidenceAllowed(invocation, options?.screenshot)
-            ? await captureEvidence(invocation)
-            : undefined;
+          const screenshot = options?.screenshot === false ? undefined : await captureEvidence(invocation);
           if (judgment.verdict === 'holds') return;
           // Both other verdicts fail the test. `inconclusive` gets its own code
           // so a reader can tell "the screen contradicted the assertion" from
@@ -284,20 +282,6 @@ export function createAgentFixture(runtime: AgentContext): Agent {
     },
   };
 
-  /**
-   * Whether judgment evidence may be captured. Pixel evidence is omitted for
-   * the rest of the attempt once any secret has been filled: an untrusted app
-   * may mirror a secret anywhere on screen, so rectangle masking cannot prove
-   * redaction. The denial is recorded whether or not a capture follows.
-   */
-  function evidenceAllowed(invocation: Invocation, requested: boolean | undefined): boolean {
-    if (requested === false) return false;
-    if (runtime.exposure.withholdsPixels) {
-      invocation.recordPolicy('assert.screenshot', 'denied', 'PIXEL_TAINTED');
-      return false;
-    }
-    return true;
-  }
 
   /** Captures redacted judgment evidence; best-effort, never fails the step. */
   async function captureEvidence(invocation: Invocation): Promise<string | undefined> {

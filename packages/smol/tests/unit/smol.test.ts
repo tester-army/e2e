@@ -134,7 +134,7 @@ describe('smol()', () => {
     const { config, conn } = sdk.state.created[0]!;
     expect(conn).toEqual({ target: 'local', handleSignals: false });
     expect(config).toMatchObject({
-      image: 'mcr.microsoft.com/playwright:v1.64.0-noble',
+      image: 'mcr.microsoft.com/playwright:v1.64.1-noble',
       network: true,
       branchable: true,
       waitForPorts: false,

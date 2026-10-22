@@ -41,6 +41,7 @@ export const AGENT_CODE_TABLE: Readonly<
   STEP_BUDGET_EXHAUSTED: { category: 'test', blockedCategory: 'automation' },
   STEP_TIMEOUT: { category: 'test', blockedCategory: 'automation' },
   CONTEXT_OVERFLOW: { category: 'test', blockedCategory: 'automation' },
+  MODEL_REFUSED: { category: 'test', blockedCategory: 'automation' },
   MODEL_PROVIDER_FAILED: { category: 'infrastructure', modelUnreachable: true },
   CANCELLED: { category: 'infrastructure' },
   AUTHENTICATION_FAILED: { category: 'test' },
@@ -75,7 +76,8 @@ const MODEL_UNREACHABLE_CODES: ReadonlySet<string> = new Set(
  * 5xx), or the stall guard cut off a request that got no response. Such a
  * failure is a verdict on the model's reachability, never on the app, so it
  * implicates no recorded flow. A model that answered with something unusable
- * (`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`) or a step that ran out of time
+ * (`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`), refused the request
+ * (`MODEL_REFUSED`), or a step that ran out of time
  * (`STEP_TIMEOUT`, even while a request was open) is not this: the screen the
  * model was shown may be what went wrong.
  */
@@ -116,6 +118,13 @@ export class AgentError extends E2EError {
     if (options.screenshot !== undefined) this.screenshot = options.screenshot;
   }
 }
+
+/**
+ * A throw from a test's `onAction` hook. It fails the step, but it is the
+ * test's own failure: it says nothing about the actions, so the step's
+ * recording is neither kept nor evicted for it.
+ */
+export class ActionHookError extends AgentError {}
 
 /** The closed agent code set, derived from the one classification table. */
 const AGENT_CODES = new Set<string>(Object.keys(CATEGORY_BY_CODE));

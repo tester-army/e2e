@@ -13,10 +13,14 @@ Every app uses the same demo: enter a name and press Greet.
 | [with-compose](with-compose) | Jetpack Compose | Android emulator |
 | [with-kotlin-multiplatform](with-kotlin-multiplatform) | Kotlin Multiplatform + Compose Multiplatform | Android emulator, iOS simulator |
 | [with-flutter](with-flutter) | Flutter | Android emulator, iOS simulator |
+| [with-maui](with-maui) | .NET MAUI | Android emulator, iOS simulator |
 
 Each folder installs published packages from npm and works outside this
 repository. See its README for run commands. Agent tests need
 `AI_GATEWAY_API_KEY`; without it, they skip.
+
+Start a new project from one with `npx e2e init my-app --example with-expo`.
+`init` downloads the folder from the tag of the CLI's version.
 
 ## Hosted mobile devices
 
@@ -27,5 +31,8 @@ forms, validation, updated results, and restart. No AI key is needed.
 ## For contributors
 
 Run the suite locally after changes. Update the README's "Last checked"
-versions. CI does not run these examples. Oxlint and fallow exclude them.
+versions. Every example but with-limrun runs nightly on GitHub against the
+packages built from main (`.github/workflows/examples.yml`), and a new
+example needs an entry there. Pull requests never run them. Oxlint and
+fallow exclude them.
 Do not commit lockfiles. Keep the demo and tests consistent across examples.

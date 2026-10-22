@@ -23,11 +23,16 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
         runId: request.runId,
         leaseBackend,
         leaseProvider: options.provider,
+        retainOnClose: true,
         platform: request.platform,
         target: 'mobile',
       });
-      request.log(`leased ${lease.leaseId}`);
       const scope = { tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId, leaseBackend, leaseProvider: options.provider };
+      if (lease.retainOnClose !== true) {
+        await client.leases.release(scope);
+        throw new Error(`Device cloud did not grant retainOnClose for lease ${lease.leaseId}`);
+      }
+      request.log(`leased ${lease.leaseId}`);
       scopes.set(lease.leaseId, scope);
       // The worker's client is created with these fields; the daemon resolves the device from them.
       return { id: lease.leaseId, client: { stateDir, ...scope } };

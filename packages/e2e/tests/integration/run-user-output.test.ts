@@ -66,10 +66,10 @@ afterEach(() => {
   for (const project of projects.splice(0)) project.cleanup();
 });
 
-function runCli(files: Record<string, string>) {
+function runCli(files: Record<string, string>, args: readonly string[] = []) {
   const project = createProject(files);
   projects.push(project);
-  const cli = spawnSync(process.execPath, [CLI, 'run'], {
+  const cli = spawnSync(process.execPath, [CLI, 'run', ...args], {
     cwd: project.dir,
     env: { ...process.env, CI: '', E2E_TELEMETRY_DISABLED: '1', NO_COLOR: '1' },
     encoding: 'utf8',
@@ -101,6 +101,24 @@ describe('e2e run redacts what user code prints outside a test', () => {
     ]) {
       expect(lines).toContain(line);
     }
+  });
+
+  it('prints a test body on its own stream without the list reporter', () => {
+    const cli = runCli({ 'e2e.config.ts': CONFIG, 'tests/print.e2e.ts': TEST }, ['--reporter', 'junit']);
+    expect(cli.status, cli.stdout + cli.stderr).toBe(0);
+    expect(cli.stdout.split('\n')).toContain('test body: <secret:apiToken>');
+    expect(`${cli.stdout}\n${cli.stderr}`).not.toContain(TOKEN);
+  });
+
+  it('keeps stdout for the json report and prints user output on stderr', () => {
+    const cli = runCli({ 'e2e.config.ts': CONFIG, 'tests/print.e2e.ts': TEST }, ['--reporter', 'json']);
+    expect(cli.status, cli.stdout + cli.stderr).toBe(0);
+    expect(JSON.parse(cli.stdout)).toMatchObject({ schemaVersion: 'report-1' });
+    const lines = cli.stderr.split('\n');
+    for (const line of ['config console.log: <secret:apiToken>', 'test file top level: <secret:apiToken>', 'test body: <secret:apiToken>']) {
+      expect(lines).toContain(line);
+    }
+    expect(cli.stderr).not.toContain(TOKEN);
   });
 
   it('withholds what a config printed before it failed to load', () => {

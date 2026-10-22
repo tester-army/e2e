@@ -71,12 +71,26 @@ const { summary, cache } = await agent.act('Sign in', {
 | `maxSteps` | `number` | `agents.<name>.maxSteps`, 25 |
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
 | `agent` | `string` | the test's agent |
+| `onAction` | [`ActionHook`](#types) | none |
 
 `params` values come from your code, never from the model. Wrap a value that
 differs on every run in [`unique()`](#unique). The model sees a `Secret` as
 its name and purpose only. Before the runner fills it, it checks the field
 the model picked: an enabled editable input, and a password field for a
 password. `locator.fill` runs no such check, since your code chose the field.
+
+`onAction` runs after each action the step completes, once the screen
+settles, and before the next action. That includes actions the
+[replay cache](/cache) replays. The step waits for it, and its time counts
+toward `timeout`. Use it to observe, never to drive the app. If it throws,
+the step fails with a message that starts with `agent.act onAction failed`.
+A check inside it never confirms the step's recording.
+
+```ts
+await agent.act('open settings and turn on dark mode', {
+  onAction: ({ index, action }) => app.screenshot(`${index} ${action}`),
+});
+```
 
 A failed verdict is `ACTION_FAILED` unless the executor names a more specific
 code, such as `LOCATOR_NOT_FOUND` or `AUTHENTICATION_FAILED`. A blocked
@@ -89,7 +103,7 @@ these codes:
 | environment | `ENVIRONMENT_UNAVAILABLE`, `APP_UNREACHABLE`, `APP_ALREADY_RUNNING` |
 | seed data | `SEED_DATA_MISSING` |
 | test setup | `TEST_SETUP_FAILED`, `APP_NOT_OPEN`, `POLICY_DENIED` |
-| automation | `MODEL_UNAVAILABLE`, `AUTOMATION_UNSUPPORTED`, `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `CONTEXT_OVERFLOW` |
+| automation | `MODEL_UNAVAILABLE`, `AUTOMATION_UNSUPPORTED`, `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, `CONTEXT_OVERFLOW`, `MODEL_REFUSED` |
 
 The runner's own stops, and the checks on the call itself:
 
@@ -99,10 +113,11 @@ The runner's own stops, and the checks on the call itself:
 | `CANCELLED` | The runner cancelled the step. |
 | `STEP_NO_CONCLUSION` | The turns ran out without a conclusion. |
 | `CONTEXT_OVERFLOW` | A request exceeded the model's context window. |
+| `MODEL_REFUSED` | The model refused the request. |
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
 | `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take. |
 
 ### agent.assert
@@ -132,7 +147,7 @@ await agent.assert('the dashboard shows a trial badge');
 `screenshot` controls the evidence attached after the judgment, passing or
 failing.
 `vision` controls what the model is shown before it. No evidence is captured
-with `screenshot: false`, or once a secret has been filled in the attempt.
+with `screenshot: false`.
 
 | Throws | When |
 | --- | --- |
@@ -369,8 +384,8 @@ The built-in agent offers these tools while no secret has been filled:
 - A step that sent pixels records `visionInput: true` and
   `metrics.pixelBytes`.
 
-A secret filled during the step withholds every later screenshot
-(`PIXEL_TAINTED`). A step that opens on a tainted viewport offers none of the
+A secret filled during the step withholds every later screenshot from the
+model (`PIXEL_TAINTED`). A step that opens on a tainted viewport offers none of the
 six pixel tools.
 
 If semantic capture times out, an engine that proves masking independently
@@ -464,7 +479,16 @@ export interface ActOptions extends AgentOption {
   maxSteps?: number;
   /** Model-call budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
+  /**
+   * Runs after each action the step completes, once the screen settles, and
+   * before the next one. Awaited, and its time counts toward `timeout`.
+   * Observe only: drive nothing from it. A throw fails the step.
+   */
+  onAction?: ActionHook;
 }
+
+/** The `onAction` hook of an `act` call. */
+export type ActionHook = (event: ActionEvent) => void | Promise<void>;
 
 /** The configured agent (`agents.<name>`) one call runs with, in place of the test's. */
 export interface AgentOption {
@@ -475,7 +499,7 @@ export interface AgentOption {
 export interface AssertOptions extends VisionOption, AgentOption {
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
-  /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
+  /** Attach a redacted screenshot to the step; on by default. */
   screenshot?: boolean;
 }
 
@@ -524,6 +548,18 @@ export interface ActResult {
   readonly modelCalls: number;
   /** Grammar actions and mutating tool calls the step performed. */
   readonly actions: number;
+}
+
+/** One completed action of an `act` step, as `onAction` receives it. */
+export interface ActionEvent {
+  /** 1-based position in the step's action budget; a failed attempt uses a number too. */
+  readonly index: number;
+  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
+  readonly action: string;
+  /** What the action did, secrets redacted. */
+  readonly summary: string;
+  /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
 }
 
 /**

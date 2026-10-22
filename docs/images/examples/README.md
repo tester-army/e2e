@@ -10,5 +10,6 @@ These assets identify the technologies used by the example projects.
   with the viewBox cropped to the mark
 - `kotlin.svg`: https://kotlinlang.org/images/favicon/favicon.svg
 - `flutter.svg`: https://docs.flutter.dev/assets/images/branding/flutter/logo/default.svg
+- `dotnet.svg`: https://github.com/dotnet/brand/blob/main/logo/dotnet-logo.svg
 
 The Expo card reuses `../integrations/expo.svg`.

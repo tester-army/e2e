@@ -16,14 +16,14 @@ import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import type { ActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
-import { AgentError } from './error.ts';
-import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
+import { ActionHookError, AgentError, toAgentError } from './error.ts';
+import { RUNTIME_CODES, type ExecutorActions, type ExecutorTarget, type PointHit, type PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed, Resolved } from './observation-feed.ts';
 import { resolveScrollTarget } from './scroll-target.ts';
@@ -109,6 +109,8 @@ export interface ActionDispatcherOptions {
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The step's trace-cache session, read at commit time; undefined when caching is off. */
   readonly trace: () => StepTraceSession | undefined;
+  /** The test's `onAction` hook, handed each completed action. */
+  readonly onAction?: ActionHook | undefined;
 }
 
 export class ActionDispatcher {
@@ -272,12 +274,12 @@ export class ActionDispatcher {
         this.accounting.reserveAction();
         this.options.trace()?.recordGap(call.name);
       }
-      const value = await instrumentPhase(
-        this.runtime,
-        { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}` },
-        body,
-      );
-      if (call.mutates) this.armAfter('tool');
+      const name = `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`;
+      const value = await instrumentPhase(this.runtime, { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name }, body);
+      if (call.mutates) {
+        this.armAfter('tool');
+        await this.notify('tool', name, () => `ran ${call.name}`);
+      }
       return value;
     };
     return call.mutates ? this.queue.run(run) : run();
@@ -582,6 +584,12 @@ export class ActionDispatcher {
       throw cause;
     }
     this.armAfter(action.name);
+    this.recordTrace(action);
+    await this.notify(action.name, action.name, () => describeAction(action, redaction).summary);
+  }
+
+  /** Writes a committed action to the step's trace cache, when caching is on. */
+  private recordTrace(action: RecordableAction): void {
     const trace = this.options.trace();
     if (trace === undefined) return;
     // A typed value the step read off the screen (its tree, or a screenshot
@@ -601,6 +609,34 @@ export class ActionDispatcher {
       }
     }
     trace.record(action);
+  }
+
+  /**
+   * Hands one completed action to the test's `onAction` hook once the screen
+   * it left settles as the action's policy asks, so what the hook captures is
+   * the action's effect. The action already happened, so a failure from here
+   * on, the settle's or the hook's, hard-stops the step instead of reaching
+   * the executor as a failed action to retry, or the replay as a divergence.
+   */
+  private async notify(kind: RecordedAction['name'], action: string, summary: () => string): Promise<void> {
+    const hook = this.options.onAction;
+    if (hook === undefined || this.accounting.closed) return;
+    try {
+      await this.feed.settleNow(SETTLE_AFTER[kind].look);
+      await hook({
+        index: this.accounting.metrics.actionSteps,
+        action,
+        summary: summary(),
+        source: this.accounting.replayingTrace ? 'replay' : 'model',
+      });
+    } catch (cause) {
+      if (cause === this.accounting.hardStop || this.accounting.signal.aborted) throw cause;
+      const error = toAgentError(cause);
+      // A nested step's own budget or deadline is not this step's: the
+      // runtime vouches only for the stops it recorded itself.
+      const code = RUNTIME_CODES.has(error.code) ? 'ACTION_FAILED' : error.code;
+      throw this.accounting.fatalize(new ActionHookError(code, `${this.accounting.api} onAction failed: ${error.message}`, { cause }));
+    }
   }
 
   /**

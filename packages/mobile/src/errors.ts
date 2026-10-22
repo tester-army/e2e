@@ -248,6 +248,16 @@ export function isUnreadableCapture(error: unknown): boolean {
 }
 
 /**
+ * True for a translated read the iOS runner refused because XCTest sees the
+ * app as not running. A physical device answers `devicectl` launch before
+ * that state catches up, so this follows an `open` or `restart` for a
+ * moment; any other time the app has exited.
+ */
+export function isAppNotRunning(error: unknown): boolean {
+  return error instanceof Error && details(error.cause).runnerErrorCode === 'APP_NOT_RUNNING';
+}
+
+/**
  * Runs one agent-device command under an abort signal and translates its
  * failure onto the engine taxonomy: the one boundary every command crosses.
  */

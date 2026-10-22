@@ -108,6 +108,8 @@ export interface InterruptMessage {
 
 export interface ShutdownMessage {
   readonly type: 'shutdown';
+  /** Permission to retain run-owned resources for a replacement. Missing means final cleanup. */
+  readonly preserveResources?: true;
 }
 
 /**

@@ -12,14 +12,12 @@ import type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest }
 import { ConfigurationError, rejectUnknownKeys, type ProviderRecordContext, type ProviderRecording } from 'e2e/engine';
 import { testmuCredentials, type TestmuCredentials } from './credentials.ts';
 import { assertDriverVersion, installPlugin, startDriver, stopDriver } from './daemon.ts';
+import { DEFAULT_PROJECT, defaultSessionName } from './dashboard.ts';
 import { LEASE_TTL_MS, startHeartbeat } from './heartbeat.ts';
 import { findSession, sessionVideoUrl, testmuApiEndpoint, type SessionRef } from './sessions.ts';
 
 /** agent-device's name for TestMu AI, as the lease provider and the tenant. */
 const PROVIDER = 'testmu';
-
-/** The dashboard project sessions are grouped under when `project` is absent. */
-const DEFAULT_PROJECT = 'e2e';
 
 const DEVICE_TYPES: ReadonlySet<string> = new Set(['virtual', 'real']);
 
@@ -193,7 +191,8 @@ export function testmu(options: TestmuOptions): DeviceProvider {
             leaseBackend,
             leaseProvider: PROVIDER,
             ttlMs: LEASE_TTL_MS,
-            // The engine closes a worker's session when it retires the worker; without this, closing it ends the TestMu AI session mid-run.
+            // Retain the provider lease when closeApp or cleanup closes the engine session.
+            // The provider releases the lease at run end.
             retainOnClose: true,
             ...selectors,
           },
@@ -201,7 +200,7 @@ export function testmu(options: TestmuOptions): DeviceProvider {
         id = grant.leaseId;
         held.set(id, resource);
         if (request.signal.aborted) throw new Error('cancelled');
-        if (!grant.retainOnClose) throw new Error('agent-device did not keep the lease through session close, so the session would end when a worker retires');
+        if (!grant.retainOnClose) throw new Error('agent-device did not acknowledge retainOnClose. Closing the engine session could end the TestMu AI lease before run-end release');
         const scope = { tenant: grant.tenantId, runId: grant.runId, leaseId: grant.leaseId, leaseBackend, leaseProvider: PROVIDER };
         resource.stopHeartbeat = await startHeartbeat(resource.stateDir, scope, request.log);
         request.log(`lease ${id}: ${device}, ${request.platform} ${osVersion} (${deviceType}); session ${selectors.providerSessionName} started`);
@@ -242,9 +241,9 @@ export function testmu(options: TestmuOptions): DeviceProvider {
  * The dashboard name of a slot's session, unique among the run's slots of the
  * target so `record` can find the session by it within its build.
  */
-function slotSessionName(sessionName: string | undefined, { runId, targetName, slot, slots }: DeviceRequest): string {
-  if (sessionName === undefined) return `e2e-${runId}-${targetName}-${slot + 1}`;
-  return slots > 1 ? `${sessionName}-${slot + 1}` : sessionName;
+function slotSessionName(sessionName: string | undefined, request: DeviceRequest): string {
+  if (sessionName === undefined) return defaultSessionName(request);
+  return request.slots > 1 ? `${sessionName}-${request.slot + 1}` : sessionName;
 }
 
 /** `app` as the daemon reads it: an `lt://` id or URL as written, a local path resolved against the project root, never the daemon's working directory. */

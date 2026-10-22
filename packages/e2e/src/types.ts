@@ -151,7 +151,7 @@ export interface AgentOption {
 export interface AssertOptions extends VisionOption, AgentOption {
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
-  /** Attach a redacted screenshot to the step; on by default, denied after a secret fill. */
+  /** Attach a redacted screenshot to the step; on by default. */
   screenshot?: boolean;
 }
 
@@ -192,6 +192,27 @@ export interface ActOptions extends AgentOption {
   maxSteps?: number;
   /** Model-call budget; defaults to `agents.<name>.maxModelCalls` and can only lower it. */
   maxModelCalls?: number;
+  /**
+   * Runs after each action the step completes, once the screen settles, and
+   * before the next one. Awaited, and its time counts toward `timeout`.
+   * Observe only: drive nothing from it. A throw fails the step.
+   */
+  onAction?: ActionHook;
+}
+
+/** The `onAction` hook of an `act` call. */
+export type ActionHook = (event: ActionEvent) => void | Promise<void>;
+
+/** One completed action of an `act` step, as `onAction` receives it. */
+export interface ActionEvent {
+  /** 1-based position in the step's action budget; a failed attempt uses a number too. */
+  readonly index: number;
+  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
+  readonly action: string;
+  /** What the action did, secrets redacted. */
+  readonly summary: string;
+  /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
 }
 
 /** What one passing `act` step did, as the report records it. */
@@ -215,6 +236,7 @@ export type AgentErrorCode =
   | 'SEED_DATA_MISSING'
   | 'TEST_SETUP_FAILED'
   | 'MODEL_UNAVAILABLE'
+  | 'MODEL_REFUSED'
   | 'MODEL_PROVIDER_FAILED'
   | 'CONTEXT_OVERFLOW'
   | 'MODEL_OUTPUT_INVALID'
@@ -452,9 +474,17 @@ export interface Screen {
     target: Locator,
     options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
   ): Promise<void>;
+  /**
+   * Reads the whole screen once, without waiting, as the agent reads it: one
+   * node per line, `#id role "name" text="…" [states]`, children indented,
+   * secrets redacted.
+   */
+  tree(options?: ActionOptions): Promise<string>;
+  /** Prints `tree()` to the test's output. */
+  debug(options?: ActionOptions): Promise<void>;
 }
 
-export interface Locator extends Screen {
+export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   /** Taps exactly one matching actionable node; with `position`, taps that point of its box once it is in view, with no other actionability check. */
   tap(options?: TapOptions): Promise<void>;
   /** Alias of tap. */
@@ -562,7 +592,7 @@ export interface App {
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
-  /** Captures a redacted evidence screenshot. */
+  /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
 }
 
@@ -969,10 +999,19 @@ export type NegatedPollExpectation<T> = {
   readonly [K in ValueMatcherName]: (...args: Parameters<ValueExpectation<T>[K]>) => Promise<void>;
 };
 
-/** The `expect(actual)` call: a locator, `screen`, an engine fixture, or a value, told apart by the argument. */
+/** `T`, or `never` when `T` is `any`, so an `any` argument skips an overload. */
+type NotAny<T> = 0 extends 1 & T ? never : T;
+
+/**
+ * The `expect(actual)` call: a locator, `screen`, an engine fixture, or a
+ * value, told apart by the argument. The locator and screen overloads are
+ * generic so a return-only generic such as `response.json<T>()` infers
+ * nothing from them, and refuse `any` (a DOM `Response.json()`), so both
+ * land on the value overload.
+ */
 export interface ExpectCall {
-  (actual: Locator): AsyncExpectation;
-  (actual: Screen): ScreenExpectation;
+  <L extends Locator>(actual: NotAny<L>): AsyncExpectation;
+  <S extends Screen>(actual: NotAny<S>): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
   <T>(actual: T, message?: string): ValueExpectation<T>;
@@ -980,8 +1019,8 @@ export interface ExpectCall {
 
 /** The `expect.soft(actual)` call: `expect(actual)` whose failures are kept instead of thrown. */
 export interface SoftExpectCall {
-  (actual: Locator): AsyncExpectation;
-  (actual: Screen): ScreenExpectation;
+  <L extends Locator>(actual: NotAny<L>): AsyncExpectation;
+  <S extends Screen>(actual: NotAny<S>): ScreenExpectation;
   <E extends object>(actual: Expectable<E>): E;
   /** `message` opens the failure text, so a bare `expected false to be true` says which check it was. */
   <T>(actual: T, message?: string): SoftValueExpectation<T>;

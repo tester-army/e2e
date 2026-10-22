@@ -17,7 +17,7 @@ export const setupPrompt = `Add a GitHub Actions workflow that runs this project
 5. After I push, read the job log and fix errors until the job passes.`;
 
 These two workflows run web targets, and iOS and Android targets. For CI
-defaults, model keys, and exit codes, see the [CI overview](/ci).
+defaults, model keys, and exit codes, see [Continuous integration](/ci).
 
 <SetupPrompt>
 
@@ -165,7 +165,7 @@ jobs:
         with:
           node-version: 26
           cache: npm
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: 17
@@ -227,7 +227,7 @@ env; the workflows above are read-only. See [Setup](/github#setup). A fork's
   <Card title="Pull request comments" icon="code-pull-request" href="/github">
     One comment per run, edited in place on a rerun.
   </Card>
-  <Card title="CI overview" icon="rotate" href="/ci">
+  <Card title="Continuous integration" icon="rotate" href="/ci">
     CI defaults, sharding, reruns, and exit codes.
   </Card>
 </CardGroup>

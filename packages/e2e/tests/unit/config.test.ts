@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { discoverConfig } from '../../src/config/load.ts';
-import { isCiMode, resolveConfig } from '../../src/config/resolve.ts';
+import { isCiMode, resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 import { ConfigurationError, defineEngine } from '../../src/engine/index.ts';
 import { secrets } from '../../src/secrets.ts';
 import type { CommandConfig, E2EConfig, Target, TargetApp } from '../../src/types.ts';
@@ -157,6 +157,37 @@ describe('resolveConfig', () => {
     expect(
       resolveConfig({ targets: TARGETS }, { projectRoot: ROOT, env: BASE_ENV, cli: { workers: 3 } }).workers,
     ).toBe(3);
+  });
+
+  it('replaces actionTimeout and assertionTimeout with the flags, bounded by what a timer can wait, the config value still checked', () => {
+    const resolveWith = (raw: Partial<E2EConfig>, cli: CliOverrides) =>
+      resolveConfig({ targets: TARGETS, ...raw }, { projectRoot: ROOT, env: BASE_ENV, cli });
+    expect(resolveWith({}, { actionTimeout: 3_000, assertionTimeout: 1_000 })).toMatchObject({ actionTimeout: 3_000, assertionTimeout: 1_000 });
+    expect(resolveWith({ actionTimeout: 20_000, assertionTimeout: 8_000 }, { actionTimeout: 3_000 })).toMatchObject({
+      actionTimeout: 3_000,
+      assertionTimeout: 8_000,
+    });
+    expect(resolveWith({ actionTimeout: 20_000, assertionTimeout: 8_000 }, { assertionTimeout: 500 })).toMatchObject({
+      actionTimeout: 20_000,
+      assertionTimeout: 500,
+    });
+    for (const value of [0, -1, 2.5, Number.NaN]) {
+      expect(() => resolveWith({}, { actionTimeout: value })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: `--action-timeout must be a positive safe integer of milliseconds, got ${value}` }),
+      );
+      expect(() => resolveWith({}, { assertionTimeout: value })).toThrow(
+        expect.objectContaining({ code: 'INVALID_CONFIG', message: `--assertion-timeout must be a positive safe integer of milliseconds, got ${value}` }),
+      );
+    }
+    expect(resolveWith({}, { actionTimeout: 2 ** 31 - 1 }).actionTimeout).toBe(2 ** 31 - 1);
+    expect(() => resolveWith({}, { actionTimeout: 2 ** 31 })).toThrow('--action-timeout must be at most 2147483647 milliseconds, got 2147483648');
+    expect(() => resolveWith({}, { assertionTimeout: 2 ** 31 })).toThrow('--assertion-timeout must be at most 2147483647 milliseconds, got 2147483648');
+    expect(() => resolveWith({ actionTimeout: '30s' as never }, { actionTimeout: 3_000 })).toThrow(
+      'actionTimeout must be a positive safe integer of milliseconds, got "30s"',
+    );
+    expect(() => resolveWith({ assertionTimeout: 0 }, { assertionTimeout: 1_000 })).toThrow(
+      'assertionTimeout must be a positive safe integer of milliseconds, got 0',
+    );
   });
 
   it('uses CI defaults for retries and workers, and the same trace and video as locally', () => {
@@ -1160,9 +1191,27 @@ describe('discoverConfig', () => {
     });
   });
 
-  it('refuses both spellings side by side, and an explicit path that does not exist', () => {
+  it('discovers a JavaScript config', () => {
+    inTree(['.git/', 'e2e.config.js', 'web/e2e.config.mjs'], (root) => {
+      expect(discoverConfig(root).configPath).toBe(path.join(root, 'e2e.config.js'));
+      expect(discoverConfig(path.join(root, 'web')).configPath).toBe(path.join(root, 'web/e2e.config.mjs'));
+    });
+  });
+
+  it('prefers a TypeScript config over the JavaScript tsc emits beside it', () => {
+    inTree(['.git/', 'e2e.config.ts', 'e2e.config.js'], (root) => {
+      expect(discoverConfig(root).configPath).toBe(path.join(root, 'e2e.config.ts'));
+    });
+  });
+
+  it('refuses two spellings side by side, and an explicit path that does not exist', () => {
     inTree(['.git/', 'e2e.config.ts', 'e2e.config.mts', 'custom/my.config.ts'], (root) => {
       expect(() => discoverConfig(root)).toThrow(expect.objectContaining({ code: 'CONFIG_AMBIGUOUS' }));
+    });
+    inTree(['.git/', 'e2e.config.js', 'e2e.config.mjs', 'custom/my.config.ts'], (root) => {
+      expect(() => discoverConfig(root)).toThrow(
+        expect.objectContaining({ code: 'CONFIG_AMBIGUOUS', message: expect.stringContaining('e2e.config.js and e2e.config.mjs') }),
+      );
       expect(discoverConfig(root, 'custom/my.config.ts')).toEqual({
         configPath: path.join(root, 'custom/my.config.ts'),
         projectRoot: path.join(root, 'custom'),

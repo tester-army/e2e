@@ -107,6 +107,17 @@ export function bindTargets(targets: readonly ResolvedTarget[], projectRoot: str
 }
 
 /**
+ * Whether `app.open()` on the target launches a pinned app instead of
+ * opening a URL: the target has no app URL, and its engine has no `open` but
+ * relaunches an app in `restart`, as a device does. Explore and an MCP
+ * session launch it before their first observation, the way a test does.
+ */
+export function launchesPinnedApp(target: ResolvedTarget): boolean {
+  const session = target.engine?.session;
+  return target.app.base === undefined && session?.open === undefined && session?.restart !== undefined;
+}
+
+/**
  * The targets as they enter the config digest. An engine handle holds live
  * functions; its digest identity is the declaration - name, version,
  * contract version, the platform it drives (a named target inherits it, so

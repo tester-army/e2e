@@ -173,6 +173,7 @@ export interface ReportStep {
   startedAt: string;
   durationMs: number;
   observationRevision?: string | undefined;
+  observationTruncated?: boolean | undefined;
   explanation?: string | undefined;
   visionInput?: boolean | undefined;
   visionDegraded?: VisionDegradation | undefined;

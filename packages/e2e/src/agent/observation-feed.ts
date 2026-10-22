@@ -99,6 +99,8 @@ export class ObservationFeed {
   private visionDegraded: VisionDegradation | undefined;
   /** True once pixels this feed cleared were handed to the executor as model input. */
   private pixelsSent = false;
+  /** Whether any semantic observation in this step stopped at a capture or byte limit. */
+  private observationTruncated = false;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -147,6 +149,16 @@ export class ObservationFeed {
       if (this.accounting.metrics.actionSteps === 0) this.opening = observation;
       return observation;
     });
+  }
+
+  /**
+   * Settles the screen the last action left as far as `mode` asks, for a
+   * caller already holding the queue. The capture becomes the newest
+   * observation, so the executor's next look does not wait out the change
+   * again.
+   */
+  async settleNow(mode: SettleMode): Promise<void> {
+    await this.observeNow(mode, false);
   }
 
   /** The executor-facing observe: the options checked before anything is captured, then one settled look, viewed. */
@@ -283,9 +295,10 @@ export class ObservationFeed {
     return observation;
   }
 
-  /** The step's pixel record for the report. */
-  visionReport(): Pick<StepAgentDetails, 'visionInput' | 'visionDegraded'> {
+  /** The step's observation and pixel record for the report. */
+  reportDetails(): Pick<StepAgentDetails, 'observationTruncated' | 'visionInput' | 'visionDegraded'> {
     return {
+      ...(this.observationTruncated ? { observationTruncated: true } : {}),
       ...(this.pixelsSent ? { visionInput: true } : {}),
       ...(this.visionDegraded === undefined ? {} : { visionDegraded: this.visionDegraded }),
     };
@@ -297,7 +310,7 @@ export class ObservationFeed {
     this.accounting.checkpoint();
     // A tainted viewport never captures pixels: the engine would mask what it
     // knows about, and the secret may be anywhere on screen by now.
-    const capturePixels = pixels && !this.runtime.exposure.withholdsPixels;
+    const capturePixels = pixels && !this.runtime.exposure.withholdsModelPixels;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe' },
@@ -342,6 +355,9 @@ export class ObservationFeed {
   /** Makes an observation the newest, remembers it among the recent ones, and books its size. */
   private publish(observation: AgentObservation): void {
     this.newest = observation;
+    if (observation.kind === 'semantic' && observation.truncated) {
+      this.observationTruncated = true;
+    }
     if (observation.kind === 'pixels') this.recent.length = 0;
     else this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
@@ -379,7 +395,7 @@ export class ObservationFeed {
       signal: this.runtime.engine.signal,
       api: this.accounting.api,
       fallback: true,
-      tainted: () => this.runtime.exposure.withholdsPixels,
+      tainted: () => this.runtime.exposure.withholdsModelPixels,
     });
     if (raw.kind === 'pixels') {
       this.semanticHistory = false;
@@ -390,7 +406,7 @@ export class ObservationFeed {
       redact: this.runtime.redact,
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
-      pixelsAllowed: !this.runtime.exposure.withholdsPixels,
+      pixelsAllowed: !this.runtime.exposure.withholdsModelPixels,
       appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;
@@ -419,7 +435,7 @@ export class ObservationFeed {
    * whenever it changes within the step.
    */
   private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
-    const outcome = pixelsForModel(observation, this.runtime.exposure.withholdsPixels);
+    const outcome = pixelsForModel(observation, this.runtime.exposure.withholdsModelPixels);
     if ('withheld' in outcome) {
       this.recordPixelDecision('denied', outcome.withheld);
       this.visionDegraded = outcome.withheld;

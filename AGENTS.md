@@ -35,8 +35,11 @@ suites that consume the built packages the way a user would.
 
 - `packages/e2e` — the published `e2e` package: SDK surface, runner, CLI,
   `e2e/engine` contract. Core knows the contract and never an engine's
-  internals: no `Web`, `browser`, `page`, `route`, or `playwright` noun lives in
-  `src/` (grep for them; zero hits is the invariant). The one exception is the
+  internals: no engine package is imported from `src/` (grep for
+  `from '@e2e-dev/` and `import('@e2e-dev/`; the presets below are the only
+  hits). Engine words still appear as platform labels, capability names, and in
+  error text that names a factory, such as `config/targets.ts` telling you to
+  call `web()`; no path through them reaches engine code. The one exception is the
   `e2e init` scaffold presets in `src/cli/init/engines.ts`, which write the
   user's config and so name engine packages as text; the package build records
   the sibling packages' versions in `dist/cli/init/sibling-versions.json` for the
@@ -88,7 +91,10 @@ suites that consume the built packages the way a user would.
   vendor SDK and the engine it plugs into as peers. It implements that
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
-  exists.
+  exists. A service with providers for both engines ships them in that one
+  package, each engine an optional peer and each provider on its own entry
+  that never imports the other engine (`@e2e-dev/testmu` and
+  `@e2e-dev/testmu/web`).
   Its docs page under `docs/integrations/` ships with the vendor's logo as
   the sidebar icon and on its overview card (`authoring-docs`, "Page
   icons"); `scripts/check-docs-logos.ts` fails `pnpm docs:check` without
@@ -131,7 +137,8 @@ suites that consume the built packages the way a user would.
 - `packages/testmu` — the published `@e2e-dev/testmu` package: TestMu AI
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's
-  `@agent-device/testmu` plugin.
+  `@agent-device/testmu` plugin, and hosted Chrome and Edge for the web
+  engine (`BrowserProvider`) from `@e2e-dev/testmu/web`.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -164,14 +171,19 @@ suites that consume the built packages the way a user would.
   distilled from.
 - `examples/` — standalone user-facing projects, one per technology
   (`with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`,
-  `with-compose`, `with-kotlin-multiplatform`, `with-flutter`), each the same
+  `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, `with-maui`), each the same
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
-  lockfile, and run in no CI; oxlint and fallow ignore them. A change runs
-  the example's suite by hand and updates the "Last checked" line in its
-  README. A native or Flutter example (SwiftUI, Compose, Kotlin
-  Multiplatform, Flutter) keeps its tests in an `e2e/` folder beside the
-  native project, as a user would.
+  lockfile, and gate no pull request; oxlint and fallow ignore them.
+  `.github/workflows/examples.yml` runs every one but `with-limrun` nightly
+  (23:00 Europe/Warsaw) on each platform it supports, with the packages
+  packed from main swapped in for the npm ones, agent tests included, and
+  posts one Slack message for the run (`scripts/examples-nightly/`, the
+  `SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL` secret). A new example or platform
+  gets a matrix entry there. A change still runs the example's suite by hand and updates the
+  "Last checked" line in its README. A native, Flutter, or .NET MAUI example (SwiftUI, Compose, Kotlin
+  Multiplatform, Flutter, .NET MAUI) keeps its tests in an `e2e/` folder
+  beside the native project, as a user would.
 - `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
   navigation, theme, and redirects in `docs/docs.json`, extra CSS in
   `docs/style.css`, the table of contents scroll in
@@ -226,11 +238,13 @@ suites that consume the built packages the way a user would.
   `core.symlinks=true` (CONTRIBUTING.md). The vendored third-party skills in `.claude/skills/` (`unbox-ai`,
   `unslop`, tracked by `skills-lock.json`) stay where they are: the CLI
   skips them as installed project skills.
-- `plugins/e2e/` — one skills-only package for Codex and Claude Code. The
-  root `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`
-  both point here. Edit skill Markdown in `skills/`, then run
-  `pnpm plugins:sync`; `pnpm plugins:check` checks the generated copies,
-  license, Claude manifest, and both manifests' `version`, which is the
+- `plugins/e2e/` — one skills-only package for Codex, Claude Code, and
+  Cursor; Grok Build reads the Claude files. The root
+  `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, and
+  `.cursor-plugin/marketplace.json` all point here. Edit skill Markdown in
+  `skills/`, then run `pnpm plugins:sync`; `pnpm plugins:check` checks the
+  generated copies, license, the Claude and Cursor manifests (generated from
+  Codex's), and every manifest's `version`, which is the
   runner's (`version-packages` syncs it, so plugin
   installs update once per release; it does the same for
   `packages/e2e/server.json`, the MCP Registry entry). The Codex manifest's other fields,
@@ -245,7 +259,7 @@ suites that consume the built packages the way a user would.
 Build first — nearly everything downstream consumes `dist`.
 
 ```bash
-pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:install-scripts -> plugins:check -> mcp-server:check -> docs:check (full gate)
+pnpm check          # lint -> check:dead-code -> typecheck -> docs:check-errors -> check:peer-ranges -> check:changeset-bumps -> check:install-scripts -> plugins:check -> mcp-server:check -> docs:check (full gate)
 pnpm test           # builds, then vitest unit + integration
 pnpm test:testbed   # builds, then runs the real CLI against the playground app
 pnpm test:web-benchmark   # builds, then runs the real CLI against the benchmark scenarios
@@ -569,7 +583,7 @@ trees, on both platforms, without a device.
   checks the docs. All four run on pull requests and in the merge queue
   (`merge_group`), which is the merge gate: auto-merge enqueues, and the
   queue merges only when every check is green on the queued tree. Each
-  workflow ends in a `<workflow> gate` job, the only checks the `Main`
+  of the four ends in a `<workflow> gate` job, the only checks the `Main`
   ruleset requires (`spec gate`, `benchmark gate`, `mobile gate`, `docs
   gate`); it fails when any job it needs failed or was cancelled and passes
   over a skipped one, so a new job gates merges once it is in its gate's

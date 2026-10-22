@@ -1,0 +1,47 @@
+name: Example packages
+description: >-
+  Installs an example's dependencies with e2e, @e2e-dev/web, and
+  @e2e-dev/mobile swapped for the tarballs the examples workflow packed from
+  main, so the example runs this checkout's packages instead of the npm
+  releases its package.json names.
+
+inputs:
+  working-directory:
+    description: The directory with the example's test package.json.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        # The examples' READMEs are checked on Node 22.
+        node-version: 22
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: packed
+        path: ${{ runner.temp }}/packed
+    # The example commits no lockfile, so everything else resolves the way a
+    # fresh install would: the newest release in its ranges.
+    - name: Install with the packed packages
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PACKED: ${{ runner.temp }}/packed
+      run: |
+        set -euo pipefail
+        node -e '
+          const fs = require("node:fs");
+          const manifest = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const tarballs = { "e2e": "e2e.tgz", "@e2e-dev/web": "web.tgz", "@e2e-dev/mobile": "mobile.tgz" };
+          for (const field of ["dependencies", "devDependencies"]) {
+            for (const [name, file] of Object.entries(tarballs)) {
+              if (manifest[field]?.[name] === undefined) continue;
+              manifest[field][name] = `file:${process.env.PACKED}/${file}`;
+              console.log(`${name}: ${manifest[field][name]}`);
+            }
+          }
+          fs.writeFileSync("package.json", `${JSON.stringify(manifest, null, 2)}\n`);
+        '
+        npm install --no-audit --no-fund
+        npx e2e --version

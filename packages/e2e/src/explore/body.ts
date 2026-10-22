@@ -36,10 +36,10 @@ export interface ExploreBodyOptions {
   /** Each step's own deadline, before the run's remaining time caps it. */
   readonly stepTimeoutMs: number;
   /**
-   * Whether to open the app first. `app.open()` needs a target with a declared
-   * URL; a device target without one is explored where the last test, or the
-   * run's warm-up, left the app. A restored session leaves no page open, so
-   * the app is opened with one too.
+   * Whether to open the app first: the target's URL, or the pinned app a
+   * device launches fresh. A target with neither is explored where the
+   * engine left it. A restored session leaves no page open, so the app is
+   * opened with one too.
    */
   readonly openApp: boolean;
   /** The saved session the attempt restored, which the planner is told it starts signed in with. */

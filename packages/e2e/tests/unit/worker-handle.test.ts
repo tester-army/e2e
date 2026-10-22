@@ -9,7 +9,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { resolveConfig } from '../../src/config/resolve.ts';
+import { defineEngine, type EngineCleanupContext } from '../../src/engine/index.ts';
+import { SessionStore } from '../../src/run/sessions.ts';
+import { TargetWorker } from '../../src/run/worker/session.ts';
 import { childProcessSpawner } from '../../src/run/worker/handle.ts';
+
+/** A promise the test releases after observing a lifecycle event. */
+function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 /** The worker runs from the package like the runner's own do. */
 const PACKAGE_ROOT = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..');
@@ -87,5 +98,82 @@ describe('ChildProcessRunner', () => {
       process.off('uncaughtException', onUncaught);
     }
     expect(uncaught).toEqual([]);
+  });
+});
+
+describe('TargetWorker disposal', () => {
+  it.each(['terminate', 'shutdown'] as const)('revokes pending retirement on %s and disposes once', async (escalation) => {
+    const ready = deferred<void>();
+    const disposing = deferred<void>();
+    const finishDisposal = deferred<void>();
+    const finished = deferred<void>();
+    const events: string[] = [];
+    const engine = defineEngine({
+      name: 'cleanup', version: '1.0.0', spiVersion: 1,
+      async dispose(context: EngineCleanupContext & { readonly reuseSignal?: AbortSignal }) {
+        events.push(context.reuseSignal !== undefined && !context.reuseSignal.aborted ? 'dispose-reusable' : 'dispose-final');
+        context.reuseSignal?.addEventListener('abort', () => events.push('close'), { once: true });
+        disposing.resolve();
+        await finishDisposal.promise;
+        events.push('disposed');
+      },
+    });
+    const config = resolveConfig({ targets: [{ name: 'fake', platform: 'ios', engine }], cache: 'off' }, { projectRoot: PACKAGE_ROOT, env: {} });
+    const worker = new TargetWorker({
+      emit: (message) => {
+        if (message.type === 'ready') ready.resolve();
+        else if (message.type === 'shutdown-done') events.push('shutdown-done');
+      },
+      fatal: (cause) => { throw cause; },
+      finished: () => { events.push('finished'); finished.resolve(); },
+    }, async () => ({
+      config, target: config.targets[0]!, sessionStore: SessionStore.create('run', tmpdir()),
+      runId: 'run', artifactsRoot: tmpdir(), rerunDir: undefined, headed: false,
+      workerSlot: 0, env: {}, isolated: true, resolvePairs: async () => ({ pairs: [], missing: [] }),
+    }));
+    worker.start();
+    await ready.promise;
+    const retirement = { type: 'shutdown', preserveResources: true } as const;
+    worker.handle(retirement);
+    await disposing.promise;
+    try {
+      expect(events).toEqual(['dispose-reusable']);
+      worker.handle({ type: escalation });
+      expect(events).toEqual(['dispose-reusable', 'close']);
+      worker.handle({ type: 'terminate' });
+    } finally {
+      finishDisposal.resolve();
+      await finished.promise;
+    }
+    expect(events).toEqual(['dispose-reusable', 'close', 'disposed', 'shutdown-done', 'finished']);
+  });
+
+  it.each([
+    { messages: [{ type: 'shutdown' }] as const },
+    { messages: [{ type: 'shutdown', preserveResources: true }, { type: 'shutdown' }] as const },
+  ])('defaults to final cleanup and revokes before queued disposal starts %#', async ({ messages }) => {
+    const ready = deferred<void>();
+    const finished = deferred<void>();
+    const events: string[] = [];
+    const engine = defineEngine({
+      name: 'cleanup', version: '1.0.0', spiVersion: 1,
+      async dispose(context: EngineCleanupContext & { readonly reuseSignal?: AbortSignal }) {
+        events.push(context.reuseSignal !== undefined && !context.reuseSignal.aborted ? 'reusable' : 'final');
+      },
+    });
+    const config = resolveConfig({ targets: [{ name: 'fake', platform: 'ios', engine }], cache: 'off' }, { projectRoot: PACKAGE_ROOT, env: {} });
+    const worker = new TargetWorker({
+      emit: (message) => { if (message.type === 'ready') ready.resolve(); },
+      fatal: (cause) => { throw cause; }, finished: () => finished.resolve(),
+    }, async () => ({
+      config, target: config.targets[0]!, sessionStore: SessionStore.create('run', tmpdir()),
+      runId: 'run', artifactsRoot: tmpdir(), rerunDir: undefined, headed: false,
+      workerSlot: 0, env: {}, isolated: true, resolvePairs: async () => ({ pairs: [], missing: [] }),
+    }));
+    worker.start();
+    await ready.promise;
+    for (const message of messages) worker.handle(message);
+    await finished.promise;
+    expect(events).toEqual(['final']);
   });
 });

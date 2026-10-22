@@ -1,10 +1,11 @@
 import { defineRule, type ESTree, type Scope } from '@oxlint/plugins';
 
-/** The expression under parentheses, `await`, `!`, and optional chaining. */
+/** The expression under parentheses, `await`, `!`, `satisfies`, and optional chaining. */
 function unwrap(expression: ESTree.Expression): ESTree.Expression {
   let current = expression;
   while (true) {
     if (current.type === 'AwaitExpression') current = current.argument;
+    else if (current.type === 'TSSatisfiesExpression') current = current.expression;
     else if (current.type === 'ParenthesizedExpression' || current.type === 'TSNonNullExpression' || current.type === 'ChainExpression') {
       current = current.expression;
     } else return current;

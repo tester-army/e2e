@@ -64,6 +64,6 @@
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "agent-device": "0.21.28"
+    "agent-device": "0.21.29"
   }
 }

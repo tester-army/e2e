@@ -14,6 +14,7 @@ import { selectTargets } from '../collect/select.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { missingModelError, resolveAgentConfig } from '../config/agent.ts';
 import { resolveConfig, type ResolvedConfig, type ResolvedCredential, type ResolvedTarget } from '../config/resolve.ts';
+import { launchesPinnedApp } from '../config/targets.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
 import type { RunEventSink } from '../run/events.ts';
@@ -142,7 +143,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     env,
     tests: {
       file: EXPLORE_FILE,
-      registration: exploreRegistration(state, { openApp: target.app.base !== undefined, accounts, session: options.session }),
+      registration: exploreRegistration(state, { openApp: target.app.base !== undefined || launchesPinnedApp(target), accounts, session: options.session }),
       agents: explorerAgents,
       explore: state,
     },

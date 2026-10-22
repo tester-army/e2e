@@ -123,8 +123,9 @@ export type RunEventFact =
        * Text a test wrote to stdout or stderr (`console.log` and friends),
        * as one write of a worker process on `target`. `pair` is the test
        * executing at the time, or undefined for output between tests (a
-       * module's top level while its file loads). Reporters print it above
-       * the live window; the runner never lets it reach the terminal itself.
+       * module's top level while its file loads). The list reporter prints
+       * it above its live window; without it, the runner prints it
+       * as written unless the run is quiet.
        */
       readonly type: 'output';
       readonly target: string;

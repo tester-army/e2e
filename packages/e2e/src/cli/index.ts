@@ -2,7 +2,7 @@
 
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, normalize, resolve as resolvePath, sep } from 'node:path';
-import { Argument, Command, CommanderError, InvalidArgumentError, Option } from 'commander';
+import { Argument, Command, CommanderError, Help, InvalidArgumentError, Option } from 'commander';
 import picocolors from 'picocolors';
 import { detectPackageManager, execCommand, runScriptCommand } from '../internal/package-manager.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -19,7 +19,7 @@ import type { BuiltinReporter, RecordingMode } from '../types.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { isCiMode } from '../config/resolve.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
-import { initCompletedEvent, runCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
+import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
@@ -35,7 +35,9 @@ import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
 import { watchSession } from './watch.ts';
+import { UpdateCheck } from './update-check.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
+import { parseUpgradeTarget, upgrade, type UpgradeTarget } from './upgrade.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
 /** An integer of at least one, for `--max-failures` and `--repeat-each`. */
@@ -81,7 +83,7 @@ function parseShard(value: string): Shard {
   return { index, total };
 }
 
-/** An integer inside a closed range, for the explore budgets and `--max-duration`. */
+/** An integer inside a closed range, for the explore budgets, `--max-duration`, and the timeout overrides. */
 function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
   return (value) => {
     const parsed = Number(value);
@@ -379,7 +381,7 @@ function withSubcommands(command: Command): Command[] {
 }
 
 /** Builds the commander program. */
-function createProgram(version: string, telemetry: Telemetry): Command {
+function createProgram(version: string, telemetry: Telemetry, updateCheck: UpdateCheck): Command {
   const program = new Command('e2e');
   // The help option, the error hint, and the help styles are copied into each
   // subcommand as it is created, so they are set before any `.command()`.
@@ -395,6 +397,13 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       styleOptionTerm: pc.cyan,
       styleSubcommandTerm: pc.cyan,
       styleArgumentTerm: pc.cyan,
+      // An alias in the command list widens the column every summary wraps
+      // to; the summary and the command's own usage line name it instead.
+      subcommandTerm: (command) => {
+        const term = new Help().subcommandTerm(command);
+        const alias = command.alias();
+        return alias === undefined ? term : term.replace(`${command.name()}|${alias}`, command.name());
+      },
     })
     .addHelpText(
       'before',
@@ -414,6 +423,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e list --tag smoke',
           'e2e cache ls',
           'e2e guide',
+          'e2e upgrade',
           'e2e mcp',
           'e2e feedback --type bug -m "e2e list ignores --grep"',
           'e2e telemetry disable',
@@ -435,6 +445,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     const command = commandPath(actionCommand);
     if (command !== 'init' && command !== 'telemetry') telemetry.notice();
     telemetry.session(command, usedFlags(actionCommand));
+    updateCheck.start(command);
   });
 
   const initCommand = program
@@ -450,7 +461,13 @@ function createProgram(version: string, telemetry: Telemetry): Command {
       'after',
       [
         '',
-        examples(['e2e init', 'e2e init my-app', 'e2e init --yes', 'e2e init --yes --gateway openrouter --skills .agents/skills --mcp none --install']),
+        examples([
+          'e2e init',
+          'e2e init my-app',
+          'e2e init my-app --example with-expo',
+          'e2e init --yes',
+          'e2e init --yes --gateway openrouter --skills .agents/skills --mcp none --install',
+        ]),
         '',
         docsLine('/reference/cli'),
       ].join('\n'),
@@ -525,7 +542,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     .description(
       'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add --scope project e2e -- npx e2e mcp.',
     )
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
     .option('--headed', 'show the UI in sessions whose open_session does not set headed, when the engine supports it')
     // Sessions were headed by default before 0.18 and took --headless; a client config that still passes it
@@ -557,7 +574,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'));
   selectionOptions(runCommand)
     .optionsGroup('Execution:')
@@ -569,6 +586,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
+    .option('--action-timeout <ms>', 'budget of every engine operation, such as a locator waiting for its element; a call\'s own timeout still wins (default: actionTimeout in the config, else 30000)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
+    .option('--assertion-timeout <ms>', 'default expect deadline; a matcher\'s own timeout still wins (default: assertionTimeout in the config, else 5000)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--max-duration <ms>', 'stop the run once it has spent this many milliseconds running tests; the rest are skipped (default: maxDuration in the config)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)
@@ -600,6 +619,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           'e2e run --last-failed',
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
+          'e2e run tests/signup.e2e.ts --action-timeout 5000',
           'e2e run --max-failures 3',
           'e2e run --max-duration 900000',
           'e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts',
@@ -627,6 +647,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           agent?: string[];
           retries?: number;
           workers?: number;
+          actionTimeout?: number;
+          assertionTimeout?: number;
           maxFailures?: number;
           maxDuration?: number;
           repeatEach?: number;
@@ -655,6 +677,8 @@ function createProgram(version: string, telemetry: Telemetry): Command {
           agent: options.agent,
           retries: options.retries,
           workers: options.workers,
+          actionTimeout: options.actionTimeout,
+          assertionTimeout: options.assertionTimeout,
           maxFailures: options.maxFailures,
           maxDuration: options.maxDuration,
           repeatEach: options.repeatEach,
@@ -711,7 +735,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .argument('[goal]', 'what to explore, in a sentence (default: "Explore the app and find bugs")')
     .optionsGroup('Selection:')
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <id>', 'the target to explore (default: the first configured target)')
     .option('--agent <name>', 'the configured agent to explore with (default: agents.default)')
     .option('--session <name>', 'start signed in: run the setup test that saves this session, then explore with it restored')
@@ -805,7 +829,7 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     )
     .argument('[files...]', FILES_DESCRIPTION)
     .optionsGroup('Selection:')
-    .option('--config <path>', 'config file (default: the nearest e2e.config.ts)')
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'));
   selectionOptions(listCommand)
     .optionsGroup('Output:')
@@ -865,6 +889,33 @@ function createProgram(version: string, telemetry: Telemetry): Command {
     );
 
   registerCacheCommand(program);
+
+  program
+    .command('upgrade')
+    .alias('update')
+    .summary('upgrade e2e and its @e2e-dev packages to the latest or a given version (alias: update)')
+    .description(
+      'Upgrade the e2e of the nearest package.json that lists it, to the latest release, a dist-tag such as nightly, or one version, and every @e2e-dev/* package that package.json lists to its newest release whose peer ranges accept the new versions. The new specs go into package.json, each in the section it was in, and one install with the project\'s package manager resolves them; a failed install puts package.json and the lockfile back. A named version or a prerelease is pinned exactly; a dist-tag keeps the ^ or ~ of the old spec. Packages linked from a workspace, a path, or git are left alone.',
+    )
+    .argument('[version]', 'a version such as 0.22.0, or a dist-tag such as latest or nightly (default: latest)', parseUpgradeTarget)
+    .option('--dry-run', 'print the versions, the new specs, and the install command, and change nothing')
+    .addHelpText(
+      'after',
+      [
+        '',
+        examples(['e2e upgrade', 'e2e upgrade 0.21.0', 'e2e upgrade nightly', 'e2e update --dry-run']),
+        '',
+        docsLine('/reference/cli#e2e-upgrade'),
+      ].join('\n'),
+    )
+    .action(async (target: UpgradeTarget | undefined, options: { dryRun?: boolean }) => {
+      const { exitCode, ...outcome } = await upgrade({
+        target: target ?? { kind: 'tag', tag: 'latest' },
+        ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),
+      });
+      telemetry.record(upgradeCompletedEvent(outcome));
+      process.exitCode = exitCode;
+    });
 
   program
     .command('feedback')
@@ -943,8 +994,10 @@ function createProgram(version: string, telemetry: Telemetry): Command {
 export async function main(argv: readonly string[]): Promise<void> {
   const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
   // Working on e2e itself is not usage: the CLI run from the repository sends nothing.
-  const telemetry = new Telemetry({ version, checkout: runsFromCheckout(import.meta.url) });
-  const program = createProgram(version, telemetry);
+  const checkout = runsFromCheckout(import.meta.url);
+  const telemetry = new Telemetry({ version, checkout });
+  const updateCheck = new UpdateCheck({ version, checkout });
+  const program = createProgram(version, telemetry, updateCheck);
   try {
     await program.parseAsync([...argv]);
   } catch (cause) {
@@ -962,7 +1015,7 @@ export async function main(argv: readonly string[]): Promise<void> {
     }
   } finally {
     telemetry.endSession(typeof process.exitCode === 'number' ? process.exitCode : 0);
-    // One bounded request; the deadline, not the network, decides when the CLI is done.
-    await telemetry.flush();
+    // Bounded requests; the deadlines, not the network, decide when the CLI is done.
+    await Promise.all([telemetry.flush(), updateCheck.notify()]);
   }
 }

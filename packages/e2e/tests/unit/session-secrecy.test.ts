@@ -46,10 +46,10 @@ describe('session secrecy carried across save and restore', () => {
 describe('session exposure', () => {
   it('withholds pixels and carries the taint into a saved session only after a fill', () => {
     const secrecy = sessionSecrecy(newSession(), secrets);
-    expect(secrecy.exposure).toMatchObject({ withholdsPixels: false, carriesTaint: false });
+    expect(secrecy.exposure).toMatchObject({ withholdsModelPixels: false, carriesTaint: false });
     expect(carriedSecrecy(secrecy, secrets).tainted).toBe(false);
     secrecy.exposure.raise('filled');
-    expect(secrecy.exposure).toMatchObject({ withholdsPixels: true, carriesTaint: true });
+    expect(secrecy.exposure).toMatchObject({ withholdsModelPixels: true, carriesTaint: true });
     expect(carriedSecrecy(secrecy, secrets).tainted).toBe(true);
   });
 

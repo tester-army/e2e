@@ -83,6 +83,17 @@ export async function withProcessOutput<T>(ledger: SecretLedger, run: (output: R
   }
 }
 
+/**
+ * Writes a reporter's own document straight to the terminal's `stream`, past
+ * the routing of user output: `--reporter json` keeps stdout for its report
+ * while what user code prints moves to stderr.
+ */
+export function writeTerminal(stream: OutputStream, text: string): void {
+  const terminal = routingSlot.get(process)?.terminal;
+  if (terminal === undefined) process[stream].write(text);
+  else terminal[stream](text);
+}
+
 /** Where runner output goes instead of the terminal while the list reporter shows the run. */
 export interface OutputView {
   /** Prints redacted text from `stream`. */
@@ -150,6 +161,8 @@ export class RunnerOutput {
   private readonly redactors: Readonly<Record<OutputStream, StreamRedactor>>;
   private readonly loadHold = new ConfigLoadHold();
   private view: OutputView | undefined;
+  /** The terminal stream user stdout lands on: stderr once a reporter keeps stdout for its document. */
+  private stdoutTo: OutputStream = 'stdout';
   /** The terminal's stdout for the list reporter: its own lines and live window go straight there. */
   readonly listOutput: Required<ListReporterOutput>;
 
@@ -204,6 +217,16 @@ export class RunnerOutput {
     this.view = view;
   }
 
+  /** Prints what user code writes to stdout on stderr from now on: a reporter prints a document on stdout (`--reporter json`). */
+  keepStdoutForReport(): void {
+    this.stdoutTo = 'stderr';
+  }
+
+  /** Prints a test's output, which its worker already redacted, to the terminal or the view. */
+  testOutput(stream: OutputStream, text: string): void {
+    this.emit(stream, text);
+  }
+
   /** Releases what is still held, redacted, to the terminal. Later writes stay redacted; only a tail a later write could complete into a value is held. */
   end(): void {
     this.showThrough(undefined);
@@ -221,6 +244,6 @@ export class RunnerOutput {
       if (callback !== undefined) process.nextTick(callback);
       return true;
     }
-    return this.terminal[stream](text, callback);
+    return this.terminal[stream === 'stdout' ? this.stdoutTo : stream](text, callback);
   }
 }

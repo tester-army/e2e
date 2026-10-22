@@ -206,14 +206,11 @@ export class DevicePool {
   }
 
   /**
-   * Closes every session `warm` opened for the target and releases what the
-   * source acquired. A worker closes its own session in `dispose`, but a run
-   * that failed in `prepare` never had one, and an agent-device session
-   * outlives the process: left open, the next run resumes it by name with
-   * the runner state that failed this one. The closes are best-effort under
-   * the hook's budget and run beside the release, so a close that hangs or
-   * fails never keeps a leased device billed; a local pool has nothing to
-   * release.
+   * Closes every engine session `warm` opened for the target and releases
+   * what the source acquired. This is the normal run-end close for leased
+   * slots and a fallback for local sessions or a failed `prepare`. Session
+   * closes and source release run concurrently under the hook's cleanup
+   * budget, so a hung close does not delay lease release.
    */
   async finish(info: EngineFinishInfo): Promise<void> {
     const clients = this.warmed.get(info.targetName) ?? [];

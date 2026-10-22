@@ -229,9 +229,9 @@ describe('testmu()', () => {
     expect(req.lines).toEqual([]);
   });
 
-  it('stops the daemon of a lease that would end when the worker closes its session', async () => {
+  it('stops the daemon when agent-device does not acknowledge retainOnClose', async () => {
     mocks.start.mockResolvedValueOnce({ leaseId: 'lease-1', tenantId: 'testmu', runId: 'run-1', retainOnClose: false });
-    await expect(testmu(options).acquire(request())).rejects.toThrow('agent-device did not keep the lease through session close');
+    await expect(testmu(options).acquire(request())).rejects.toThrow('agent-device did not acknowledge retainOnClose. Closing the engine session could end the TestMu AI lease before run-end release');
     expect(mocks.stop).toHaveBeenCalledTimes(1);
   });
 

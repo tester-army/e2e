@@ -121,11 +121,14 @@ Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
-| `E2E_TELEMETRY_DISABLED` | `E2E_TELEMETRY_DISABLED=1` | flag | Turns anonymous usage telemetry off. `e2e telemetry disable` saves the same choice in the preferences file |
+| `E2E_TELEMETRY_DISABLED` | `E2E_TELEMETRY_DISABLED=1` | flag | Turns anonymous usage telemetry and the [update check](/reference/cli#help-and-version) off. `e2e telemetry disable` saves the same choice for telemetry in the preferences file |
 | `DO_NOT_TRACK` | `DO_NOT_TRACK=1` | flag | Same as `E2E_TELEMETRY_DISABLED` |
+| `E2E_UPDATE_CHECK_DISABLED` | `E2E_UPDATE_CHECK_DISABLED=1` | flag | Turns the daily check for a newer e2e release off |
+| `NO_UPDATE_NOTIFIER` | `NO_UPDATE_NOTIFIER=1` | flag | Same as `E2E_UPDATE_CHECK_DISABLED` |
+| `npm_config_registry` | `npm_config_registry=https://npm.example.com/` | value | The registry [`e2e upgrade`](/reference/cli#e2e-upgrade) reads versions from; default `https://registry.npmjs.org/`. Package managers set it for the commands they run |
 | `E2E_TELEMETRY_DEBUG` | `E2E_TELEMETRY_DEBUG=1` | flag | Prints every telemetry event to stderr instead of sending it |
 | [`E2E_TELEMETRY_FLEET`](#e2e_telemetry_fleet) | `E2E_TELEMETRY_FLEET=acme` | value | Names the platform running e2e for its users |
-| `XDG_CONFIG_HOME` | `XDG_CONFIG_HOME=~/.config` | value | Directory of the preferences file, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
+| `XDG_CONFIG_HOME` | `XDG_CONFIG_HOME=~/.config` | value | Directory of the preferences file and the update check's `update-check.json`, `$XDG_CONFIG_HOME/e2e`; default `~/.config/e2e` |
 | `APPDATA` | `APPDATA=C:\Users\ada\AppData\Roaming` | value | The same on Windows, `%APPDATA%\e2e`; default `~/AppData/Roaming/e2e` |
 
 #### `E2E_TELEMETRY_FLEET`
@@ -177,7 +180,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | `HOME`, `USERPROFILE` | `HOME=/home/ada` | value | Where `easSimulators()` finds the eas-cli login without `EXPO_TOKEN`: `USERPROFILE` on Windows, `HOME` elsewhere, the OS user's home when unset |
 | `LIMRUN_API_KEY` | `LIMRUN_API_KEY=<key>` | value | The API key `limrun()` from `@e2e-dev/limrun` leases devices with. Unset, the lease fails with `INVALID_CONFIG`. See [Limrun](/integrations/limrun) |
 | `LIMRUN_BASE_URL` | `LIMRUN_BASE_URL=<url>` | value | The Limrun API host. Default `https://api.limrun.com` |
-| `LT_USERNAME`, `LT_ACCESS_KEY` | `LT_USERNAME=acme` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with. With either unset, the device lease fails. See [TestMu AI](/integrations/testmu) |
+| `LT_USERNAME`, `LT_ACCESS_KEY` | `LT_USERNAME=acme` | value | The TestMu AI username and access key `testmu()` from `@e2e-dev/testmu` leases devices with. With either unset, the device lease fails. `testmuBrowsers()` from `@e2e-dev/testmu/web` puts them only in the CDP URL of each browser session, and with either unset the browser lease fails. See [TestMu AI](/integrations/testmu) |
 | `TESTMU_API_ENDPOINT` | `TESTMU_API_ENDPOINT=<url>` | value | The TestMu AI sessions API base URL `testmu()` looks up session recordings at. Default `https://mobile-api.lambdatest.com/mobile-automation/api/v1`. A value that is not an http(s) URL, or carries a username or password, fails the lookup with `INVALID_CONFIG`. agent-device's TestMu AI plugin reads it too |
 | `E2E_WEB_BROWSERS_<TARGET>_<digest>` | - | value | `@e2e-dev/web` writes it in `prepare`; each worker reads it to find its leased browser. Don't set it by hand |
 | `E2E_AGENT_DEVICE_POOL_<TARGET>_<digest>` | - | value | `@e2e-dev/mobile` writes it in `prepare`; each worker reads it to find its booted device. Don't set it by hand |

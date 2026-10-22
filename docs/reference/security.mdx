@@ -19,7 +19,7 @@ lists the rules behind it, as the code enforces them.
 | [Navigation](#navigation) | URL schemes per entry point |
 | [Site check](#site-check) | Headers, child frames, `basicAuth` |
 | [Secret fills](#secret-fills) | `type_secret`, `fill(secret)` |
-| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Screenshots, pixel tools, restored sessions |
+| [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Model pixels, pixel tools, restored sessions |
 | [Secrets in engine options](#secrets-in-engine-options) | `basicAuth` and other engine options |
 | [Redaction](#redaction) | Model input, reports, downloads, output |
 | [Where redaction stops](#where-redaction-stops) | Transformed values, video, `command.log` |
@@ -79,7 +79,6 @@ These calls fail with `POLICY_DENIED`.
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
 | `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
-| `app.screenshot()` or `toHaveScreenshot()` after a secret fill | See [Screenshots after a secret fill](#screenshots-after-a-secret-fill). |
 | `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
 | An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
 | An `act` or `vision: true` step whose semantic capture times out after a secret fill | It can't fall back to a screenshot. |
@@ -140,20 +139,27 @@ model never sees or picks it.
 
 ### Screenshots after a secret fill
 
-After any secret fill, for the rest of the attempt:
+After any secret fill, no pixels reach a model for the rest of the attempt:
 
 - screenshot and pixel tools are unavailable,
-- `app.screenshot()` and `toHaveScreenshot()` fail with `POLICY_DENIED`,
-- the runner leaves out assertion and failure screenshots,
 - an `act` or `vision: true` step whose semantic capture times out before the
   step does fails with `POLICY_DENIED`.
 
 The app could show the value anywhere, not only in the field's masked
-rectangle.
+rectangle, and model input leaves your computer.
+
+Screenshots the runner keeps as artifacts stay on: `app.screenshot()`,
+`toHaveScreenshot()`, and assertion and failure screenshots.
+
+<Warning>
+An artifact screenshot masks secure fields only. If the app shows the value
+anywhere else, the image has it. Treat screenshots like
+[videos](#where-redaction-stops).
+</Warning>
 
 A test that restores a [session](#sessions) whose setup filled a secret keeps
 this rule. A setup that signs in without a secret fill, for example by
-setting a session cookie with `browser.setCookies`, leaves screenshots on for
+setting a session cookie with `browser.setCookies`, leaves model pixels on for
 the tests that restore it. A value it uses is redacted only if it's a
 configured secret.
 
@@ -333,16 +339,17 @@ after download redaction, with the `redaction` label the report records.
 | Playwright's browser download | One time, when the browser is missing. |
 | The DevTools endpoint in `web({ connect })` | Every run of that target. |
 | The GitHub API | Only from the `@e2e-dev/github` reporter. |
-| `registry.npmjs.org` | One request per `e2e feedback` you run, to check for a newer e2e release. Skipped with `--allow-outdated` and under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
+| `registry.npmjs.org` | At most one request a day from a CLI command run on a terminal, to check for a newer e2e release. Skipped in CI, when stderr is piped, for `e2e mcp` and `e2e upgrade`, and under `E2E_UPDATE_CHECK_DISABLED`, `NO_UPDATE_NOTIFIER`, `E2E_TELEMETRY_DISABLED`, or `DO_NOT_TRACK`. One request per `e2e feedback` you run, skipped with `--allow-outdated` and under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. One request per `e2e` or `@e2e-dev/*` package the project lists with a registry version, each time you run `e2e upgrade`, to `npm_config_registry` instead when the package manager sets it; then the package manager installs from its own registry. |
 | `api.limrun.com` (or `LIMRUN_BASE_URL`) and its devices | Only from [`limrun()`](/integrations/limrun). It signs in with `LIMRUN_API_KEY`. |
 | The Kernel API and its hosted browsers | Only from [`kernel()`](/integrations/kernel). |
+| TestMu AI's CDP hub and its hosted browsers | Only from [`testmuBrowsers()`](/integrations/testmu#run-web-targets-in-browsers). The username and access key travel only in the CDP URL, never in a log line. |
 | The Expo API and the simulators' agent-device daemons | Only from [`easSimulators()`](/integrations/eas). It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
 | `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright image. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |
 | The package registry | When `e2e init` installs dependencies. |
 | The app under test | Every run, plus whatever the app itself loads. |
 
 <Note>
-There is no crash reporting, and no update check outside `e2e feedback`.
+There is no crash reporting.
 `--ai-trace` writes a local file and doesn't upload it. Your test code,
 plugins, and app can make more connections.
 </Note>

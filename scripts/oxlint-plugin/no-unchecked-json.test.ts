@@ -11,6 +11,8 @@ const unchecked = { messageId: 'unchecked' };
 tester.run('e2e/no-unchecked-json', noUncheckedJson, {
   valid: [
     'const value: unknown = JSON.parse(text);',
+    'const value: unknown = JSON.parse(text) satisfies User;',
+    'function load(): unknown { return JSON.parse(text) satisfies User; }',
     'const value = JSON.parse(text) as unknown;',
     'const value: unknown = await response.json();',
     'const value: Promise<unknown> = response.json();',
@@ -27,6 +29,11 @@ tester.run('e2e/no-unchecked-json', noUncheckedJson, {
   invalid: [
     { code: 'const value = JSON.parse(text) as User;', errors: [unchecked] },
     { code: 'const value = <User>JSON.parse(text);', errors: [unchecked] },
+    { code: 'const value = JSON.parse(text) satisfies User;', errors: [unchecked] },
+    { code: 'const value = JSON.parse(text) satisfies unknown;', errors: [unchecked] },
+    { code: 'const value = (await response.json()) satisfies User;', errors: [unchecked] },
+    { code: 'let value: User; value = JSON.parse(text) satisfies User;', errors: [unchecked] },
+    { code: 'function load(): User { return JSON.parse(text) satisfies User; }', errors: [unchecked] },
     { code: 'const value = JSON.parse(text, reviver) as User;', errors: [unchecked] },
     { code: 'const value = JSON.parse(text)! as User;', errors: [unchecked] },
     { code: 'const value: User = JSON.parse(text);', errors: [unchecked] },

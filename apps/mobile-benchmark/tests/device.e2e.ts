@@ -73,3 +73,21 @@ test('onboarding rejects a malformed email before advancing', async ({ app, devi
   await expect(screen.getByTestId('step-error')).toHaveText('Enter a valid email address');
   await expect(screen.getByTestId('onboarding-step-email')).toBeVisible();
 });
+
+// The notes field's scroll view lets a tap through to its controls
+// (`keyboardShouldPersistTaps="handled"`), and with the keyboard up the
+// checkboxes and the switch sit across the middle of an iPhone screen. A
+// dismissing drag that starts on one toggles it, the order goes invalid, and
+// Place order stays disabled.
+test('dismissing the keyboard over choice controls leaves them as they were', async ({ app, device, screen }) => {
+  await openScenario({ app, device, screen }, 'Choice Controls');
+  await screen.getByTestId('size-medium').tap();
+  await screen.getByTestId('topping-cheese').tap();
+  await screen.getByTestId('topping-olives').tap();
+  await screen.getByTestId('rush-delivery').tap();
+  await screen.getByTestId('delivery-notes').fill('Ring twice');
+  await device.dismissKeyboard();
+  await expect(screen.getByTestId('keyboard-warning')).toBeHidden();
+  await screen.getByTestId('place-order').tap();
+  await expect(screen.getByTestId('success-message')).toHaveText('Order placed: Medium with Cheese, Olives (rush)');
+});

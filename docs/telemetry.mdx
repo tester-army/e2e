@@ -65,8 +65,9 @@ sends nothing.
 ## What is sent
 
 Each command sends one `e2e_cli_session` event. `run` and `explore` also
-send `e2e_run_completed`, `init` sends `e2e_init_completed`, and `mcp` sends
-one `e2e_mcp_session` per MCP session. `--help` and `--version` send
+send `e2e_run_completed`, `init` sends `e2e_init_completed`, `upgrade` sends
+`e2e_upgrade_completed`, and `mcp` sends one `e2e_mcp_session` per MCP
+session. `--help` and `--version` send
 nothing, on any command. `run()` from `e2e/runner` sends no session event,
 only one `e2e_run_completed` per run that returns a report.
 
@@ -114,10 +115,23 @@ own tools count together as `tool`, and any other name as `other`.
 
 | Property | Value |
 | --- | --- |
-| `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, or `invalid-project` |
+| `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, `invalid-project`, or `example-failed` |
 | `yes`, `existing_config` | Whether `--yes` was given, and whether a config already existed, so no engine or gateway was asked |
+| `example` | The `--example` name (`with-vite`, `with-expo`, ...), `null` without the flag |
 | `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`web`, `mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
+
+</Accordion>
+<Accordion title="e2e_upgrade_completed, once per e2e upgrade">
+
+| Property | Value |
+| --- | --- |
+| `result` | `upgraded`, `up-to-date`, `dry-run`, `no-project`, `invalid-project`, `linked`, `unknown-target`, `incompatible`, `registry-failed`, or `install-failed` |
+| `target` | `version` for a named version, else the dist-tag: `latest`, `nightly`, `canary`, `beta`, or `other` |
+| `from_version`, `to_version`, `prerelease` | The `e2e` version installed before, the one the target resolved to, and whether that one is a prerelease. `null` when unknown |
+| `manager` | The package manager the command picked for the project: `npm`, `pnpm`, `yarn`, or `bun`. It installs only on `upgraded`. `null` when the command stopped before picking one |
+| `siblings` | The `@e2e-dev` packages in the upgrade plan, without the scope: `["web", "kernel"]`. Linked packages and ones the registry doesn't have are left out |
+| `packages_moved`, `packages_linked` | How many `e2e` and `@e2e-dev` entries in `package.json` the upgrade rewrote, and how many it left alone because they aren't registry versions (`workspace:`, `file:`, `catalog:`, a path, git, an alias). Not the lockfile's package count |
 
 </Accordion>
 <Accordion title="e2e_run_completed, once per e2e run, e2e explore, or completed run()">
@@ -133,9 +147,12 @@ own tools count together as `tool`, and any other name as `other`.
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `steps_agent_act`, `steps_agent_assert`, `steps_agent_extract`, `steps_agent_waitfor` | The agent steps by entry point |
 | `tests_with_agent_steps`, `tests_with_act` | How many executed tests ran any agent step, and how many ran `agent.act` |
-| `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_vision` | How the replay cache served the agent steps, and how many used pixel evidence |
+| `agent_steps_replayed`, `agent_steps_partial`, `agent_steps_missed`, `agent_steps_uncached`, `agent_steps_vision` | How the replay cache served the agent steps, how many `agent.act` steps ran with the cache off, and how many used pixel evidence |
+| `agent_miss_reasons`, `agent_handoff_reasons` | Why steps missed the cache and why replays handed off to the agent, by the runner's own reason names: `{"no-entry": 3, "retry": 1}` |
+| `tests_code_only`, `tests_replayed`, `tests_assisted`, `tests_live` | The executed tests by how the cache carried them: no agent step, every agent step replayed from the cache, the agent ran but the cache carried part of a step, the agent ran every agent step |
 | `agent_actions` | How often the agent took each action, by the runner's own names: `{"tap": 12, "typeText": 3, "scroll": 2}` |
 | `model_gateway`, `model_provider`, `model_id`, `model_calls`, `model_tokens`, `model_cached_tokens`, `estimated_cost_usd` | For the first model-backed step: the AI SDK provider that served it (`gateway` for the Vercel AI Gateway, `openrouter.chat`, `openai.chat`, ...), the vendor (the first segment of a `vendor/model` id, else the provider), and the public model id. Then the run's totals |
+| `model_calls_act`, `model_calls_assert`, `model_calls_extract`, `model_calls_waitfor` | The model calls by agent entry point |
 | `cost_source` | `provider` when the provider priced the calls, `none` when nobody priced them, `null` for a run without model calls |
 | `artifact_bytes` | The size of the artifacts the run wrote |
 | `errors`, `error_codes` | How many run-level errors, and the distinct error codes seen anywhere in the run (`LOCATOR_NOT_FOUND`, `APP_UNREACHABLE`, ...), at most 20 |

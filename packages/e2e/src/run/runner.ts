@@ -102,6 +102,16 @@ export interface RunOptions {
   retries?: number | undefined;
   workers?: number | undefined;
   /**
+   * The budget of every engine operation (`--action-timeout`), over the
+   * config's `actionTimeout`; a call's own `timeout` still wins.
+   */
+  actionTimeout?: number | undefined;
+  /**
+   * The default `expect` deadline (`--assertion-timeout`), over the config's
+   * `assertionTimeout`; a matcher's own `timeout` still wins.
+   */
+  assertionTimeout?: number | undefined;
+  /**
    * Stops the run once this many tests have failed (`--max-failures`): the
    * tests running end as interrupted, the rest are skipped with cause
    * `failure-limit`, and the exit code is the failures' own.
@@ -399,6 +409,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const cli: CliOverrides = {};
   if (options.retries !== undefined) cli.retries = options.retries;
   if (options.workers !== undefined) cli.workers = options.workers;
+  if (options.actionTimeout !== undefined) cli.actionTimeout = options.actionTimeout;
+  if (options.assertionTimeout !== undefined) cli.assertionTimeout = options.assertionTimeout;
   if (options.reporters !== undefined) cli.reporters = options.reporters;
   if (options.noCache === true) cli.cache = 'off';
   if (options.strictCache === true) cli.cacheStrict = true;
@@ -420,12 +432,18 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   //
   // The config's secrets are known to the process before what its top-level
   // code printed is released, so that output is redacted like any other.
+  // `--reporter json` keeps stdout for the report, so user output moves to
+  // stderr before what the config printed while it loaded is released.
+  const processOutput = options.processOutput;
+  const keepStdoutFor = (reporters: readonly BuiltinReporter[] | undefined): void => {
+    if (reporters?.includes('json') === true) processOutput?.keepStdoutForReport();
+  };
   const loadConfig = async (): Promise<ResolvedConfig> => {
     const config = await loadRunConfig(options, cwd, env, cli, graph);
     registerStaticSecrets(config.allSecrets);
+    keepStdoutFor(config.reporters);
     return allocateAppPorts(config);
   };
-  const processOutput = options.processOutput;
   const loaded = await debug
     .time('config.load', () => (processOutput === undefined ? loadConfig() : processOutput.withholdDuring(loadConfig)))
     .then(
@@ -437,8 +455,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // the ids name the shipped ones, and a config failure still leaves the ids
   // the CLI asked for, so the failure renders through them.
   const reporterIds = loaded.config?.reporters ?? options.reporters ?? ['list'];
+  keepStdoutFor(reporterIds);
   const listReporter =
     options.quiet === true || !reporterIds.includes('list') ? undefined : new ListReporter(processOutput?.listOutput);
+  // Without the list reporter to print it under a heading, a test's output
+  // goes to the terminal as written.
+  const printsTestOutput = options.quiet !== true && listReporter === undefined;
   // Until the run is over, what user code prints lands above the live window.
   processOutput?.showThrough(
     listReporter === undefined
@@ -964,7 +986,10 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             emit({ type: 'test-started', ...start, target: targetName }),
           onProgress: (pair, targetName, progress) =>
             emit({ type: 'step', testId: pair.testId, agent: pair.agent, repeat: pair.repeat, target: targetName, progress }),
-          onOutput: (output, targetName) => emit({ type: 'output', target: targetName, ...output }),
+          onOutput: (output, targetName) => {
+            emit({ type: 'output', target: targetName, ...output });
+            if (printsTestOutput) processOutput?.testOutput(output.stream, output.text);
+          },
           onNotice: (message, targetName) => notice(targetName, message),
           onDebug: (snapshot) => debug.merge(snapshot),
           onAiTrace: (snapshot) => aiTrace?.merge(snapshot),

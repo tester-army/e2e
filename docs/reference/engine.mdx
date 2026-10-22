@@ -292,9 +292,11 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine.
+   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * `reuseSignal` permits preserving run-owned resources for a replacement,
+   * until that permission is revoked or this hook settles.
    */
-  dispose?(context: EngineCleanupContext): Promise<void>;
+  dispose?(context: EngineDisposeContext): Promise<void>;
 }
 ```
 
@@ -820,7 +822,16 @@ async endAttempt(context) {
 
 #### `dispose`
 
-Shuts the worker down.
+Runs one time per worker, including when `init` never ran.
+
+Missing or aborted `context.reuseSignal` requires final cleanup. A live
+signal permits keeping run-owned resources for a replacement worker.
+An engine that keeps resources must observe revocation until its hook settles.
+Final shutdown, a forced interrupt, or parent disconnect revokes that permission.
+The cleanup budget still uses `context.signal` and `context.timeoutMs`.
+
+Cleanup is best effort within that budget. The runner does not guarantee
+cleanup after a worker exits or after disposal settles with reuse permission.
 
 ```ts
 async dispose(context) {
@@ -839,6 +850,17 @@ export interface EngineCleanupContext {
   readonly signal: AbortSignal;
   /** Remaining cleanup budget when the call starts. */
   readonly timeoutMs: number;
+}
+
+/** Cleanup of one worker, with optional permission to leave run-owned resources for a replacement. */
+export interface EngineDisposeContext extends EngineCleanupContext {
+  /**
+   * A live signal permits reusable resources owned by `prepare` and `finish`
+   * to survive this worker. Missing or aborted permission requires final
+   * cleanup. Observe revocation until disposal settles. This signal does
+   * not cancel cleanup, which remains bounded by `signal` and `timeoutMs`.
+   */
+  readonly reuseSignal?: AbortSignal;
 }
 ```
 
@@ -2091,7 +2113,8 @@ return context.fixture('printer', printer, { print: { kind: 'resource' } });
 
 ### Exported names
 
-`OperationContext`, `TextPattern`, `SemanticQuery`, `LocatorExpression`,
+`EngineCleanupContext`, `EngineDisposeContext`, `OperationContext`,
+`TextPattern`, `SemanticQuery`, `LocatorExpression`,
 `NodeRef`, `SemanticNode`, `ViewportPoint`, `ViewportSize`,
 `ObservationPixels`, `LocatorAction`, `LocatorActionKind`, `PointerAction`,
 `PointerActionKind`, `ScrollDirection`, `Momentum`, `SelectOption`, `Key`,

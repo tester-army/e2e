@@ -17,6 +17,7 @@ import { loadAiSdkIfInstalled } from '../agent/ai-sdk.ts';
 import { openInteractiveStep, type InteractiveStep } from '../agent/interactive-step.ts';
 import { ScreenPresenter } from '../agent/screen-update.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
+import { launchesPinnedApp } from '../config/targets.ts';
 import { secretHandle } from '../secrets.ts';
 import { classifyError, ConfigurationError, errorMessage, InfrastructureError, type SerializedError } from '../internal/errors.ts';
 import { LocatorEngine } from '../locator/engine.ts';
@@ -277,6 +278,10 @@ export class SessionHost {
         processes: this.apps,
         notice: (scope, message) => this.log('info', `${scope}: ${message}`),
       });
+      // A device has no URL for the first screen to navigate to, so its
+      // pinned app launches here, as a test's `app.open()` launches it, or
+      // the first observation finds no app open.
+      if (launchesPinnedApp(target)) await attempt.fixtures.app.open();
       // The coding agent is the brain: the step is driven from here, and the
       // configured model stays out of the way.
       const params = this.secretParams(config);
@@ -295,6 +300,11 @@ export class SessionHost {
         tools: config.agent.tools,
         redaction: { redact: attempt.agentRuntime.redact, redactCut: attempt.agentRuntime.redactCut },
         recorder,
+        appBase: target.app.base,
+        fills: {
+          credentials: [...config.credentials.values()].map((credential) => ({ name: credential.name, username: credential.username, password: credential.password.name })),
+          secrets: [...config.secrets.keys()],
+        },
         locator: new LocatorEngine({
           session: attempt.session,
           budget: attempt.budget,
@@ -364,7 +374,7 @@ export class SessionHost {
         origin: 'test',
       }),
       timeoutMs: config.cleanupTimeout,
-      tainted: () => sessionSecrecy(attempt.session, config.allSecrets).exposure.withholdsPixels,
+      tainted: () => sessionSecrecy(attempt.session, config.allSecrets).exposure.withholdsModelPixels,
     });
   }
 
@@ -383,7 +393,11 @@ export class SessionHost {
     }
   }
 
-  /** Opens the app when the engine can navigate, then observes. */
+  /**
+   * Opens the app URL when the engine can navigate, then observes; a device's
+   * pinned app launched before the step opened. Either opening is the test's
+   * `app.open()`, the session's first test line.
+   */
   private async firstScreen(live: LiveSession): Promise<string> {
     const base = live.target.app.base?.href;
     if (base !== undefined && live.step.context.target.verbs.has('navigate')) {
@@ -392,8 +406,11 @@ export class SessionHost {
       } catch (cause) {
         return `Opening ${base} failed: ${errorMessage(cause)}\nUse navigate once the app is reachable.`;
       }
+      live.catalog.lines.opened();
+    } else if (launchesPinnedApp(live.target)) {
+      live.catalog.lines.opened();
     }
-    const observation = await live.step.run((context) => context.observe());
+    const observation = await live.step.run(() => live.catalog.context.observe());
     return live.screen.initial(observation);
   }
 
@@ -402,8 +419,11 @@ export class SessionHost {
     const lines = [
       `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
     ];
+    const pinned = launchesPinnedApp(live.target) ? (live.target.app.bundleId ?? live.target.app.appPath) : undefined;
     if (live.target.app.base !== undefined) {
       lines.push(`App: ${live.target.app.base.href}.`);
+    } else if (pinned !== undefined) {
+      lines.push(`App: ${pinned}, launched fresh.`);
     }
     if (config.credentials.size > 0) {
       const described = [...config.credentials.values()].map(
@@ -419,7 +439,7 @@ export class SessionHost {
     );
     lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
-      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen, and observe shows the whole screen. Call close_session when you are done.',
+      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen and the test line that repeats it (test_lines returns them all), and observe shows the whole screen. Call close_session when you are done.',
     );
     return `${lines.join('\n')}\n\n${screen}`;
   }
@@ -464,10 +484,10 @@ export class SessionHost {
     return defineMcpTool({
       name: 'open_session',
       description:
-        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app URL, and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
+        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
-        config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts"),
+        config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
         headed: z
           .boolean()
           .optional()
@@ -482,7 +502,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, test_lines (the test line each action printed, as a draft test body), start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id from open_session; may be omitted only while one session is open'),
@@ -496,7 +516,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'call',
       description:
-        "Run one tool of a session by name, with its arguments as an object: call {tool: \"tap\", args: {target: \"n42\"}, session: \"<id>\"}. The session's catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen; node ids are valid only for the newest observation.",
+        "Run one tool of a session by name, with its arguments as an object: call {tool: \"tap\", args: {target: \"n42\"}, session: \"<id>\"}. The session's catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen and the test line that repeats them; node ids are valid only for the newest observation.",
       inputSchema: z.object({
         tool: z.string().min(1).describe('A catalog tool name, e.g. "observe", "tap", "locate", "screenshot"'),
         args: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments; omit for a tool without any"),

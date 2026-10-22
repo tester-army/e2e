@@ -1,0 +1,470 @@
+name: examples
+
+# Every example under examples/ on every platform it supports, each night,
+# against the packages built from main rather than the npm releases its
+# package.json names: a change that breaks a user's first project shows up
+# the next morning, before a release ships it. with-limrun is left out: it
+# leases paid hosted devices.
+#
+# The examples commit no lockfile, so every dependency besides ours resolves
+# the way a fresh project's would; a new Vite, Expo, Gradle plugin, or Flutter
+# release that breaks a demo fails here too. The deterministic tests and the
+# agent tests both run, the agent tests with real model calls (nothing is
+# recorded for them), and every test gets one retry: a test that needed it
+# reads as flaky instead of failing the night.
+#
+# The `summary` job posts one Slack message for the whole run: a line per
+# example and platform saying how far it got (setup, app build, tests) and
+# what its report counted. It needs the SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL
+# secret, an incoming webhook. Nothing here gates a pull request: no
+# pull_request or merge_group trigger, and no gate job.
+on:
+  schedule:
+    - cron: '0 23 * * *'
+      timezone: Europe/Warsaw
+  workflow_dispatch:
+
+env:
+  # The repository's own runs are not usage: the CLI sends no telemetry from CI here.
+  E2E_TELEMETRY_DISABLED: '1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Builds the packages once and packs the three an example installs, so every
+  # job below installs the same main build. Only this repository runs it:
+  # GitHub turns a fork's schedules off, but a fork's owner can still
+  # dispatch the workflow, and it would spend their runners and model key.
+  # Every example job needs this one, so on a fork they all skip with it.
+  pack:
+    if: ${{ github.repository == 'tester-army/e2e' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    outputs:
+      # `missing` tells the summary a missing key, not the build, stopped the night.
+      credential: ${{ steps.credential.outputs.credential }}
+    steps:
+      # Without a key the agent tests skip, and a night of skips reads as green.
+      - name: Require model credential
+        id: credential
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          if [ -z "$AI_GATEWAY_API_KEY" ]; then
+            echo "credential=missing" >> "$GITHUB_OUTPUT"
+            echo "::error::AI_GATEWAY_API_KEY is not set for this repository. The examples' agent tests need it."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Pack
+        run: |
+          pnpm --filter e2e pack --out "$RUNNER_TEMP/packed/e2e.tgz"
+          pnpm --filter @e2e-dev/web pack --out "$RUNNER_TEMP/packed/web.tgz"
+          pnpm --filter @e2e-dev/mobile pack --out "$RUNNER_TEMP/packed/mobile.tgz"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: packed
+          path: ${{ runner.temp }}/packed
+          if-no-files-found: error
+          retention-days: 3
+
+  # The runner starts each app's dev server; Expo's is `expo start --web`.
+  web:
+    name: web ${{ matrix.id }}
+    needs: pack
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { id: vite, name: Vite, tests: examples/with-vite, target: '' }
+          - { id: next, name: Next.js, tests: examples/with-next, target: '' }
+          - { id: astro, name: Astro, tests: examples/with-astro, target: '' }
+          - { id: expo, name: Expo, tests: examples/with-expo, target: web }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install the packages
+        id: setup
+        uses: ./.github/actions/example-packages
+        with:
+          working-directory: ${{ matrix.tests }}
+      # The runner downloads its own Chromium on first use; the system
+      # libraries it links against need root.
+      - name: Chromium system dependencies
+        working-directory: ${{ matrix.tests }}
+        run: npx playwright-core install-deps chromium
+      - name: Run the tests
+        id: test
+        working-directory: ${{ matrix.tests }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          TARGET: ${{ matrix.target }}
+        run: npx e2e run --retries 1 ${TARGET:+--target "$TARGET"}
+      - name: Record the outcome
+        if: ${{ always() }}
+        env: &outcome-env
+          OUTCOME_ID: ${{ matrix.id }}
+          OUTCOME_NAME: ${{ matrix.name }}
+          # The setup, build, and test steps' outcomes; web jobs have no build step.
+          STEPS: ${{ toJSON(steps) }}
+          TESTS_DIR: ${{ matrix.tests }}
+          # The job id: web, android, or ios.
+          PLATFORM: ${{ github.job }}
+        run: &record-outcome |
+          mkdir -p "$RUNNER_TEMP/outcome"
+          node -e '
+            const env = process.env;
+            const steps = JSON.parse(env.STEPS);
+            const step = (id) => steps[id]?.outcome ?? "";
+            const outcome = {
+              id: env.OUTCOME_ID, name: env.OUTCOME_NAME, platform: env.PLATFORM,
+              job: `${env.PLATFORM} ${env.OUTCOME_ID}`,
+              setup: step("setup"), build: step("build"), test: step("test"),
+            };
+            require("node:fs").writeFileSync(`${env.RUNNER_TEMP}/outcome/outcome.json`, JSON.stringify(outcome));
+          '
+          if [ -f "$TESTS_DIR/.e2e/report.json" ]; then cp "$TESTS_DIR/.e2e/report.json" "$RUNNER_TEMP/outcome/"; fi
+      - name: Upload the outcome
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: outcome-web-${{ matrix.id }}
+          path: ${{ runner.temp }}/outcome
+          retention-days: 14
+      - name: Upload the results
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-web-${{ matrix.id }}
+          path: ${{ matrix.tests }}/.e2e/results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Each app builds before the emulator starts, then installs on it. Every
+  # Android toolchain here (Gradle, Flutter, .NET) needs a JDK 17.
+  android:
+    name: android ${{ matrix.id }}
+    needs: pack
+    # x64 Blacksmith runners expose KVM, which the emulator needs.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: compose
+            name: Jetpack Compose
+            project: examples/with-compose
+            tests: examples/with-compose/e2e
+            build: ./gradlew --no-daemon :app:assembleDebug
+            app: app/build/outputs/apk/debug/app-debug.apk
+          - id: kmp
+            name: Kotlin Multiplatform
+            project: examples/with-kotlin-multiplatform
+            tests: examples/with-kotlin-multiplatform/e2e
+            build: ./gradlew --no-daemon :androidApp:assembleDebug
+            app: androidApp/build/outputs/apk/debug/androidApp-debug.apk
+          - id: flutter
+            name: Flutter
+            project: examples/with-flutter
+            tests: examples/with-flutter/e2e
+            toolchain: flutter
+            build: flutter build apk
+            app: build/app/outputs/flutter-apk/app-release.apk
+          # A Debug build keeps its assemblies outside the APK unless told
+          # otherwise, and an app whose data is cleared then exits at start.
+          - id: maui
+            name: .NET MAUI
+            project: examples/with-maui
+            tests: examples/with-maui/e2e
+            toolchain: dotnet
+            build: dotnet build -f net10.0-android -p:EmbedAssembliesIntoApk=true
+            app: bin/Debug/net10.0-android/*-Signed.apk
+          - id: expo
+            name: Expo
+            project: examples/with-expo
+            tests: examples/with-expo
+            # The default 2 GB Gradle heap runs out on React Native's release build.
+            build: npx expo prebuild --platform android --no-install && (cd android && ./gradlew --no-daemon -Dorg.gradle.jvmargs=-Xmx4g assembleRelease)
+            app: android/app/build/outputs/apk/release/app-release.apk
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: ${{ matrix.toolchain == 'flutter' }}
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: ${{ matrix.toolchain == 'dotnet' }}
+        with:
+          dotnet-version: 10.0.x
+      - name: MAUI workload
+        if: ${{ matrix.toolchain == 'dotnet' }}
+        run: dotnet workload install maui-android
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Install the packages
+        id: setup
+        uses: ./.github/actions/example-packages
+        with:
+          working-directory: ${{ matrix.tests }}
+      - name: Build the app
+        id: build
+        working-directory: ${{ matrix.project }}
+        env:
+          BUILD: ${{ matrix.build }}
+          APP: ${{ matrix.app }}
+        run: &build-app |
+          set -euo pipefail
+          eval "$BUILD"
+          # A glob in APP names the one file the build wrote.
+          set -- $APP
+          if [ "$#" -ne 1 ] || [ ! -e "$1" ]; then
+            echo "::error::expected one app at $APP, found: $*"
+            exit 1
+          fi
+          echo "APP_PATH=$PWD/$1" >> "$GITHUB_ENV"
+      # The emulator lives for this step only and runs each `script` line in
+      # its own shell.
+      - name: Run the tests
+        id: test
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 36
+          arch: x86_64
+          target: google_apis
+          profile: pixel_7
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
+          disable-animations: true
+          working-directory: ${{ matrix.tests }}
+          script: |
+            adb install -r "$APP_PATH"
+            npx e2e run --target android --retries 1
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      - name: Record the outcome
+        if: ${{ always() }}
+        env: *outcome-env
+        run: *record-outcome
+      - name: Upload the outcome
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: outcome-android-${{ matrix.id }}
+          path: ${{ runner.temp }}/outcome
+          retention-days: 14
+      - name: Upload the results
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-android-${{ matrix.id }}
+          path: ${{ matrix.tests }}/.e2e/results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # One simulator per job, on the newest iOS runtime the runner image has.
+  # The Mac runner is Apple silicon, so each app builds for arm64 alone: the
+  # Kotlin Multiplatform framework has no x86_64 simulator slice to link.
+  ios:
+    name: ios ${{ matrix.id }}
+    needs: pack
+    runs-on: blacksmith-6vcpu-macos-26
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: swiftui
+            name: SwiftUI
+            project: examples/with-swiftui
+            tests: examples/with-swiftui/e2e
+            build: >-
+              xcodebuild build -project HelloApp.xcodeproj -scheme HelloApp -configuration Debug
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO ARCHS=arm64
+            app: build/Build/Products/Debug-iphonesimulator/HelloApp.app
+          # The Xcode build runs Gradle for the shared Kotlin code, so it needs the JDK.
+          - id: kmp
+            name: Kotlin Multiplatform
+            project: examples/with-kotlin-multiplatform
+            tests: examples/with-kotlin-multiplatform/e2e
+            toolchain: java
+            build: >-
+              xcodebuild build -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO ARCHS=arm64
+            app: build/Build/Products/Debug-iphonesimulator/iosApp.app
+          - id: flutter
+            name: Flutter
+            project: examples/with-flutter
+            tests: examples/with-flutter/e2e
+            toolchain: flutter
+            build: flutter build ios --simulator
+            app: build/ios/iphonesimulator/Runner.app
+          # The MAUI iOS workload pins the Xcode it was built against; the
+          # runner image's newer Xcode builds the app fine.
+          - id: maui
+            name: .NET MAUI
+            project: examples/with-maui
+            tests: examples/with-maui/e2e
+            toolchain: dotnet
+            build: dotnet build -f net10.0-ios -p:RuntimeIdentifier=iossimulator-arm64 -p:ValidateXcodeVersion=false
+            app: bin/Debug/net10.0-ios/iossimulator-arm64/WithMaui.app
+          # The prebuild names the workspace and scheme after the app's slug.
+          - id: expo
+            name: Expo
+            project: examples/with-expo
+            tests: examples/with-expo
+            build: >-
+              npx expo prebuild --platform ios &&
+              xcodebuild build -workspace ios/withexpo.xcworkspace -scheme withexpo -configuration Release
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGNING_ALLOWED=NO ARCHS=arm64
+            app: build/Build/Products/Release-iphonesimulator/withexpo.app
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      # Booting takes a minute or two; it runs while the app builds.
+      - name: Boot a simulator
+        run: |
+          set -euo pipefail
+          PICK="$(xcrun simctl list devices available -j | node -e '
+            const payload = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+            const runtimes = Object.entries(payload.devices)
+              .filter(([runtime]) => runtime.includes("SimRuntime.iOS-"))
+              .sort(([a], [b]) => b.localeCompare(a, undefined, { numeric: true }));
+            for (const [runtime, list] of runtimes) {
+              const pick = list.find((d) => d.name === "iPhone 17 Pro") ?? list.find((d) => d.name.startsWith("iPhone"));
+              if (pick) { process.stdout.write(`${pick.udid} ${runtime} ${pick.name}`); process.exit(0); }
+            }
+            process.exit(1);
+          ')"
+          UDID="${PICK%% *}"
+          echo "booting ${PICK#* } ($UDID)"
+          xcrun simctl boot "$UDID"
+          echo "SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: ${{ matrix.toolchain == 'java' }}
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: ${{ matrix.toolchain == 'flutter' }}
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        if: ${{ matrix.toolchain == 'dotnet' }}
+        with:
+          dotnet-version: 10.0.x
+      # Restore reads every target framework in the project, so an iOS build
+      # still needs the Android workload on macOS (NETSDK1147 without it).
+      # Workload set 10.0.402.1 binds iOS 27.1 and needs Xcode 27.1, which the
+      # runner image does not have yet (MT0180); 10.0.401 builds with its
+      # default Xcode. Drop the pin once the image ships Xcode 27.1.
+      - name: MAUI workload
+        if: ${{ matrix.toolchain == 'dotnet' }}
+        run: dotnet workload install maui-ios maui-android --version 10.0.401
+      - name: Install the packages
+        id: setup
+        uses: ./.github/actions/example-packages
+        with:
+          working-directory: ${{ matrix.tests }}
+      # agent-device compiles its XCUITest runner on first use; keep it between runs.
+      - name: Restore the agent-device runner
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.agent-device
+          key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
+      - name: Build the app
+        id: build
+        working-directory: ${{ matrix.project }}
+        env:
+          BUILD: ${{ matrix.build }}
+          APP: ${{ matrix.app }}
+        run: *build-app
+      - name: Run the tests
+        id: test
+        working-directory: ${{ matrix.tests }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+        run: |
+          set -euo pipefail
+          xcrun simctl bootstatus "$SIMULATOR_UDID"
+          xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
+          npx e2e run --target ios --retries 1
+      - name: Record the outcome
+        if: ${{ always() }}
+        env: *outcome-env
+        run: *record-outcome
+      - name: Upload the outcome
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: outcome-ios-${{ matrix.id }}
+          path: ${{ runner.temp }}/outcome
+          retention-days: 14
+      - name: Upload the results
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: results-ios-${{ matrix.id }}
+          path: ${{ matrix.tests }}/.e2e/results
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # One Slack message for the whole night, whatever failed.
+  summary:
+    needs: [pack, web, android, ios]
+    if: ${{ always() && github.repository == 'tester-army/e2e' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      # Lists the run's jobs to link each line to its log.
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/examples-nightly
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: outcome-*
+          path: ${{ runner.temp }}/outcomes
+      - name: Post to Slack
+        env:
+          SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL: ${{ secrets.SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL }}
+          GITHUB_TOKEN: ${{ github.token }}
+          PACK_RESULT: ${{ needs.pack.result }}
+          PACK_CREDENTIAL: ${{ needs.pack.outputs.credential }}
+        run: node scripts/examples-nightly/post.ts "$RUNNER_TEMP/outcomes"

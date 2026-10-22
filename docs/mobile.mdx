@@ -168,6 +168,7 @@ on Android. Each UI framework sets them its own way:
 | Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/tester-army/e2e/tree/main/examples/with-compose) |
 | Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform) |
 | Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/tester-army/e2e/tree/main/examples/with-flutter) |
+| .NET MAUI | `AutomationId` | [with-maui](https://github.com/tester-army/e2e/tree/main/examples/with-maui) |
 
 - On Android, a native `android:id` and a .NET MAUI `AutomationId` read as
   `<package>:id/<id>`. `getByTestId('greet')` finds them without the app's
@@ -596,11 +597,16 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
         runId: request.runId,
         leaseBackend,
         leaseProvider: options.provider,
+        retainOnClose: true,
         platform: request.platform,
         target: 'mobile',
       });
-      request.log(`leased ${lease.leaseId}`);
       const scope = { tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId, leaseBackend, leaseProvider: options.provider };
+      if (lease.retainOnClose !== true) {
+        await client.leases.release(scope);
+        throw new Error(`Device cloud did not grant retainOnClose for lease ${lease.leaseId}`);
+      }
+      request.log(`leased ${lease.leaseId}`);
       scopes.set(lease.leaseId, scope);
       // The worker's client is created with these fields; the daemon resolves the device from them.
       return { id: lease.leaseId, client: { stateDir, ...scope } };
@@ -669,14 +675,18 @@ the Android SDK's `aapt`, found under `ANDROID_SDK_ROOT`, `ANDROID_HOME`,
 `app.bundleId`. Or export `ANDROID_HOME`, then stop the agent-device daemon
 so the next run starts it with the variable.
 
-**Android reports insufficient foreground app content.** agent-device
-couldn't read the screen yet, often an app still loading after a cold
-start. A waiting locator action or `expect` waits through it, as for an
-element not there yet. If the screen is still unreadable when the wait runs
-out, the step fails with this message. Immediate reads like `count()` and
-`isVisible()` see no matches instead, so `not.toBeVisible()` can pass while
-the screen is unreadable. An observation, such as the agent's next turn,
-fails on it at once.
+**Android reports insufficient foreground app content, or iOS reports the
+app is not running.** agent-device couldn't read the screen yet, often an
+app still loading after a cold start. On iOS this only counts until the
+first readable screen after `app.open()`, `app.restart()`, or
+`device.openLink()`, as on a physical iPhone that is still launching the
+app; an app that exits later fails at once. A waiting locator action or
+`expect` waits through it, as for an element not there yet. If the screen
+is still unreadable when the wait runs out, the step fails with this
+message. Immediate reads like `count()` and `isVisible()` see no matches
+instead, so `not.toBeVisible()` can pass while the screen is unreadable,
+including on an app that crashed before it rendered. An observation, such
+as the agent's next turn, fails on it at once.
 
 **A timeout on the device.** A simulator boot, runner connection, or app
 launch that times out on the device is `ENGINE_FAILURE` with agent-device's
