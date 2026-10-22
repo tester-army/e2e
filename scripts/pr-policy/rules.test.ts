@@ -97,6 +97,11 @@ test('a description without the template heading counts', () => {
   assert.equal(problems({ title: 'fix: x', body: body.replace('- Keeps the cursor after a reload.', ''), closingIssues: 0 }).length, 1);
 });
 
+test('an unclosed HTML comment hides the rest of the body', () => {
+  assert.equal(section('## Verified\n\nyes <!-- note\n## Issue\n#1', 'Verified'), 'yes');
+  assert.equal(section('## Verified\n\na <!-- x --> b', 'Verified'), 'a  b');
+});
+
 test('section stops at the next heading and drops comments', () => {
   assert.equal(section(template, 'Issue'), '');
   assert.equal(section(filled, 'what and why'), '- Keeps the cursor after a reload.');

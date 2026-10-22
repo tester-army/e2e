@@ -55,9 +55,22 @@ export function isCommunity(author: Author): boolean {
   return author.fromFork && !author.bot && !isMaintainer(author.association);
 }
 
+/** The body without HTML comments; an unclosed one hides the rest, as GitHub renders it. */
+function withoutComments(body: string): string {
+  let result = '';
+  let from = 0;
+  for (let start = body.indexOf('<!--'); start !== -1; start = body.indexOf('<!--', from)) {
+    result += body.slice(from, start);
+    const end = body.indexOf('-->', start + 4);
+    if (end === -1) return result;
+    from = end + 3;
+  }
+  return result + body.slice(from);
+}
+
 /** The text under a `## heading` of the PR body, HTML comments stripped. */
 export function section(body: string, heading: string): string | undefined {
-  const lines = body.replaceAll(/<!--[\s\S]*?-->/g, '').split(/\r?\n/);
+  const lines = withoutComments(body).split(/\r?\n/);
   const start = lines.findIndex((line) => line.trim().toLowerCase() === `## ${heading}`.toLowerCase());
   if (start === -1) return undefined;
   const end = lines.findIndex((line, index) => index > start && /^##\s/.test(line));
@@ -75,8 +88,7 @@ function filled(text: string | undefined): boolean {
 
 /** Text outside the template's `## Issue`, `## Verified`, and `## Checklist`, under any heading or none. */
 function described(body: string): boolean {
-  const outside = body
-    .replaceAll(/<!--[\s\S]*?-->/g, '')
+  const outside = withoutComments(body)
     .split(/^(?=##\s)/m)
     .filter((part) => !/^##\s+(issue|verified|checklist)\s*$/im.test(part.split(/\r?\n/, 1)[0] ?? ''))
     .map((part) => part.replace(/^##\s.*$/m, ''))
