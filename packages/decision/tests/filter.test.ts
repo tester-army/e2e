@@ -4,7 +4,7 @@ import path from 'node:path';
 import { APICallError, gateway } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { decisionFilter } from '../src/index.ts';
-import { candidate, changedRepo, commitAll, filterContext, PRIVATE_KEY, scriptedJudge, SECRET, withSetup, type DecideRequest } from './filter-helpers.ts';
+import { candidate, changedRepo, commitAll, filterContext, scriptedJudge, SECRET, withSetup, type DecideRequest } from './filter-helpers.ts';
 import { scriptedDecision } from './helpers.ts';
 
 const CART = 'tests/cart.e2e.ts';
@@ -131,6 +131,17 @@ describe('decisionFilter', () => {
     expect(requests.map((request) => Object.keys(sent(request)))).toEqual([[LOGIN]]);
   });
 
+  it('leaves every test in, making no call, when every file is too large to send with the diff', async () => {
+    const huge = 'tests/huge.e2e.ts';
+    const repo = changedRepo({ 'src/cart.ts': 'export const total = 1;\n', [huge]: sized('scrolls', 90_000) }, { 'src/cart.ts': 'export const total = 2;\n' });
+    const { model, requests } = scriptedJudge(() => 0);
+    expect(await decisionFilter({ model }).filter([candidate(huge, 'scrolls')], filterContext(repo).context)).toEqual({
+      exclude: {},
+      note: 'scripted-judge did not judge 1 test in 1 file: tests/huge.e2e.ts is too large to send with the diff',
+    });
+    expect(requests).toEqual([]);
+  });
+
   it('sends the redacted diff and the redacted test file under its redacted path', async () => {
     const file = `tests/${SECRET}.e2e.ts`;
     const repo = changedRepo(
@@ -162,26 +173,22 @@ describe('decisionFilter', () => {
     ]);
   });
 
-  it('redacts a secret spanning lines where the diff removes it, adds it, or rewrites it line by line', async () => {
-    const hardCoded = `export const key = \`${PRIVATE_KEY}\`;\n`;
-    const oldBody = ['MIIEowIBAAKCAQEAu1SU1LfVLPHCozMx', 'H2Mo4lgOEePzNm0tRgeLezV6ffAt0gun'];
-    const oldKey = ['-----BEGIN PRIVATE KEY-----', ...oldBody, '-----END PRIVATE KEY-----'].join('\n');
-    const repo = changedRepo(
-      {
-        [LOGIN]: "test('signs in', async () => {});\n",
-        'src/client.ts': hardCoded,
-        'src/server.ts': 'export const key = process.env.SERVER_KEY;\n',
-        'src/rotated.ts': `export const key = \`${oldKey}\`;\n`,
-      },
-      { 'src/client.ts': 'export const key = process.env.CLIENT_KEY;\n', 'src/server.ts': hardCoded, 'src/rotated.ts': hardCoded },
-    );
+  it('sends the diff as redact returns it, given the whole diff at once', async () => {
+    const repo = cartRepo({ 'src/cart.ts': 'export const total = 2;\n', 'src/tax.ts': 'export const rate = 1;\n' });
+    const { context } = filterContext(repo);
+    const given: string[] = [];
+    const redact = (text: string): string => {
+      given.push(text);
+      return text.replaceAll('export', '[redacted]');
+    };
     const { model, requests } = scriptedJudge(() => 0.9);
-    await decisionFilter({ model }).filter([SIGNS_IN], filterContext(repo).context);
+    await decisionFilter({ model }).filter([SIGNS_IN], { ...context, redact });
+    const diffs = given.filter((text) => text.startsWith('diff --git '));
+    expect(diffs).toHaveLength(1);
+    expect(diffs[0]).toContain('-export const total = 1;\n+export const total = 2;\n');
+    expect(diffs[0]).toContain('+export const rate = 1;\n');
     const state = requests[0]?.state as { diff: string };
-    for (const line of PRIVATE_KEY.split('\n').slice(1, -1)) expect(state.diff).not.toContain(line);
-    expect(state.diff).toContain('-export const key = `[redacted]`;\n+export const key = process.env.CLIENT_KEY;\n');
-    expect(state.diff).toContain('-export const key = process.env.SERVER_KEY;\n+export const key = `[redacted]`;\n');
-    expect(state.diff).toContain(`-${oldBody.join('\n-')}\n------END PRIVATE KEY-----\`;\n+export const key = \`[redacted]\`;\n`);
+    expect(state.diff).toBe(diffs[0]?.replaceAll('export', '[redacted]'));
   });
 
   it("sends git's plain unified diff whatever the repository's diff config says", async () => {
@@ -410,7 +417,7 @@ describe('decisionFilter', () => {
     expect(requests).toHaveLength(4);
   });
 
-  it('makes no more calls once 3 have failed, and stops the ones in flight', async () => {
+  it("makes no more calls once 3 have failed, stops the ones in flight, and throws the first failure's first line when none answered", async () => {
     const files = Array.from({ length: 12 }, (_, i) => `tests/t${i}.e2e.ts`);
     const repo = changedRepo(
       { 'src/cart.ts': 'export const total = 1;\n', ...Object.fromEntries(files.map((file) => [file, sized('runs', 45_000)])) },
@@ -419,15 +426,17 @@ describe('decisionFilter', () => {
     const { model, requests } = scriptedJudge(
       () => 0,
       async (_call, request) => {
-        if (files.slice(0, 3).includes(Object.keys(sent(request))[0] ?? '')) throw new Error('Unauthorized: no AI Gateway key');
+        const file = Object.keys(sent(request))[0] ?? '';
+        if (files.slice(0, 3).includes(file)) throw new Error(`Unauthorized: no AI Gateway key for ${file}\nsee the docs`);
         await new Promise((_resolve, reject) => request.abortSignal?.addEventListener('abort', () => reject(new Error('aborted'))));
       },
     );
-    const result = await decisionFilter({ model }).filter(
-      files.map((file) => candidate(file, 'runs')),
-      filterContext(repo).context,
-    );
-    expect(result).toEqual({ exclude: {}, note: 'scripted-judge did not judge 12 tests in 12 files: Unauthorized: no AI Gateway key' });
+    await expect(
+      decisionFilter({ model }).filter(
+        files.map((file) => candidate(file, 'runs')),
+        filterContext(repo).context,
+      ),
+    ).rejects.toThrow(new Error('Unauthorized: no AI Gateway key for tests/t0.e2e.ts'));
     expect(requests).toHaveLength(8);
   });
 
@@ -445,19 +454,38 @@ describe('decisionFilter', () => {
         throw busy;
       },
     );
-    const result = await decisionFilter({ model }).filter([ADDS, REMOVES, SIGNS_IN], filterContext(cartRepo()).context);
-    expect(result).toEqual({
-      exclude: {},
-      note: 'scripted-judge did not judge 3 tests in 2 files: Failed after 4 attempts. Last error: AI_APICallError: Too many requests',
-    });
+    await expect(decisionFilter({ model }).filter([ADDS, REMOVES, SIGNS_IN], filterContext(cartRepo()).context)).rejects.toThrow(
+      'Failed after 4 attempts. Last error: AI_APICallError: Too many requests',
+    );
     expect(requests).toHaveLength(4);
   });
 
-  it('leaves nothing out when git cannot diff against the base', async () => {
+  it('throws, making no call, when git cannot diff against the base', async () => {
     const { model, requests } = scriptedJudge(() => 0);
     const repo = { ...cartRepo(), base: '0'.repeat(40) };
-    const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context);
-    expect(result).toEqual({ exclude: {}, note: expect.stringMatching(/^scripted-judge did not judge 2 tests in 2 files: Command failed: git diff --name-only /) });
+    await expect(decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context)).rejects.toThrow(/^Command failed: git diff --name-only /);
+    expect(requests).toEqual([]);
+  });
+
+  it('ends with the abort when the run stops waiting for it', async () => {
+    const run = new AbortController();
+    const reason = new DOMException('filter "decision" did not finish within 5 minutes', 'TimeoutError');
+    const { model } = scriptedJudge(
+      () => 0,
+      () => {
+        run.abort(reason);
+        throw new Error('This operation was aborted');
+      },
+    );
+    const { context } = filterContext(cartRepo());
+    await expect(decisionFilter({ model }).filter([ADDS, SIGNS_IN], { ...context, signal: run.signal })).rejects.toBe(reason);
+  });
+
+  it('ends with the abort, making no call, when the run stopped waiting before git answered', async () => {
+    const reason = new DOMException('filter "decision" did not finish within 5 minutes', 'TimeoutError');
+    const { model, requests } = scriptedJudge(() => 0);
+    const { context } = filterContext(cartRepo());
+    await expect(decisionFilter({ model }).filter([ADDS, SIGNS_IN], { ...context, signal: AbortSignal.abort(reason) })).rejects.toBe(reason);
     expect(requests).toEqual([]);
   });
 

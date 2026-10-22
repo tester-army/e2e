@@ -64,12 +64,14 @@ of what the commits change, the test files, and the setup files that save
 their sessions, with secrets redacted, except a value a secret provider
 returns. It gets a file only the working tree changes, uncommitted or
 untracked, by name alone, never its contents, so a file a CI step writes
-doesn't reach it. The filter
-leaves out a test when the model rates both the test and its setup under
-20% likely affected. When the model can't answer, the tests it didn't judge
-run, and the filter's note says why. This happens without a key, as on a
-pull request from a fork, for a diff over 60 kB, and for a test or setup
-file too large to send with the diff. The filter needs `ai` 7.0.134 or
+doesn't reach it.
+
+The filter leaves out a test when the model rates both the test and its
+setup under 20% likely affected. Tests the model can't judge run, and the
+filter's note says why: a diff over 60 kB, a test or setup file too large
+to send with the diff, or some calls failing. When every call fails, as
+without a key on a pull request from a fork, or when git fails, the filter
+fails: the run warns and runs every test. The filter needs `ai` 7.0.134 or
 later.
 
 Any [decision model](/decision-models) that answers `boolean` questions
@@ -234,7 +236,11 @@ export default {
   group another of its tests runs in.
 - Each filter judges only the tests the one before it kept, and is not
   called when none are left.
-- Pass `signal` to every call, and `redact` what you send to a model.
+- Pass `signal` to every call, and `redact` what you send to a model. It
+  replaces each fixed-value secret and credential password, and any run of 8
+  or more of its characters, so text that shares 8 characters with one, such
+  as `Password` when a password is `Password123!`, is masked too. A value a
+  secret provider returns passes through.
 - Do the work inside `filter`: workers load the config too, and only the
   runner calls `filter`.
 

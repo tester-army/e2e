@@ -7,6 +7,7 @@
  * what each one decided.
  */
 
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -362,6 +363,30 @@ describe('applyTestFilters', () => {
     expect(applied.decisions[0]!.note).toMatch(/^signed in with <secret:[^>]+>$/);
   });
 
+  it('hands a filter a redact that also masks every run of 8 or more characters of a value, so no part of a key survives a diff that shows its lines only in part', async () => {
+    const keyLines = Array.from({ length: 12 }, (_, line) => createHash('sha512').update(String(line)).digest('base64').slice(0, 64));
+    const pem = ['-----BEGIN PRIVATE KEY-----', ...keyLines, '-----END PRIVATE KEY-----'].join('\n');
+    const diff = [
+      `@@ -13,4 +13,4 @@ ${keyLines[0]!.slice(0, 30)}`,
+      ...pem.split('\n').map((line, index) => `${' +-'[index % 3]}${index % 2 === 0 ? line.slice(3) : line.slice(0, -3)}`),
+    ].join('\n');
+    let redacted = '';
+    const { scope: value } = scope({ secrets: config({ secrets: { pem } }).allSecrets });
+    await applyTestFilters(
+      [
+        filterOf('jev', (_tests, { redact }) => {
+          redacted = redact(diff);
+          return { exclude: {} };
+        }),
+      ],
+      await candidatesOf('a'),
+      value,
+    );
+    const runs = pem.split('\n').flatMap((line) => Array.from({ length: line.length - 7 }, (_, start) => line.slice(start, start + 8)));
+    expect(runs.filter((run) => redacted.includes(run))).toEqual([]);
+    expect(redacted.split('\n')[0]).toBe('@@ -13,4 +13,4 @@ <secret:pem>');
+  });
+
   it('keeps a reason, a note, and a log line on one line, cut to 1024 code points, never through an emoji', async () => {
     const candidates = await candidatesOf('a', 'b');
     const long = `Gateway failed:\n\n  no key\n\t${'😀'.repeat(2000)}`;
@@ -616,9 +641,9 @@ describe('a filter past the deadline', () => {
       expect(slow.seen[0]!.signal.reason).toMatchObject({ name: 'TimeoutError', message: 'filter "slow" did not finish within 50ms' });
       expect(later).toHaveBeenCalledWith(candidates, expect.anything());
       expect(steps).toEqual(['slow', 'later']);
-      expect(ended).toEqual(['slow: timed out', 'later: answered']);
+      expect(ended).toEqual(['slow: timed-out', 'later: answered']);
       expect(notices).toEqual(['warning: slow did not finish within 50ms, so it leaves nothing out']);
-      expect(applied.decisions[0]).toEqual({ name: 'slow', candidates: 2, note: 'did not finish within 50ms, so it leaves nothing out', outcome: 'timed out' });
+      expect(applied.decisions[0]).toEqual({ name: 'slow', candidates: 2, note: 'did not finish within 50ms, so it leaves nothing out', outcome: 'timed-out' });
       expect([...applied.excluded.keys()]).toEqual([idOf(candidates, 'a')]);
     } finally {
       vi.useRealTimers();
@@ -636,7 +661,7 @@ describe('a filter past the deadline', () => {
     );
     const { scope: value, notices } = scope({ timeoutMs: 20 });
     const applied = await applyTestFilters([obedient], candidates, value);
-    expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms, so it leaves nothing out', outcome: 'timed out' }]);
+    expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms, so it leaves nothing out', outcome: 'timed-out' }]);
     expect(notices).toEqual(['warning: jev did not finish within 20ms, so it leaves nothing out']);
   });
 
@@ -694,6 +719,6 @@ describe('filterRecords and filterSummary', () => {
       { name: 'boom', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', outcome: 'failed' },
     ]);
     expect(summaries).toEqual(['areas kept 3 of 4 tests, left out 1 (src/todos changed)', 'jev kept 1 of 2 tests, left out 1', undefined]);
-    expect(filterSummary({ name: 'slow', candidates: 2, excluded: 0, outcome: 'timed out' })).toBeUndefined();
+    expect(filterSummary({ name: 'slow', candidates: 2, excluded: 0, outcome: 'timed-out' })).toBeUndefined();
   });
 });

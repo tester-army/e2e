@@ -131,8 +131,10 @@ suites that consume the built packages the way a user would.
   secret, or assertion verdict. It also exports `decisionFilter()`, a
   `TestFilter` that asks a decision model whether the pull request's diff
   can affect each test, packing test files into calls under the model's
-  size limit, 8 calls at a time, and leaves out the unlikely ones. On any error but an abort it stops asking and runs every test it
-  has not judged.
+  size limit, 8 calls at a time, and leaves out the unlikely ones. A failed
+  call leaves its tests in and the rest are still judged; after 3 failed
+  calls it stops asking. When every call fails, or git or a file read
+  fails, it throws, and the run warns and runs every test.
 - `packages/github` — the published `@e2e-dev/github` package: the reporter
   that posts the run as one pull request comment from GitHub Actions and
   keeps it current on reruns, writing the same text to the job summary. It

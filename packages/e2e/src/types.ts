@@ -1546,7 +1546,7 @@ export interface TestFilterContext {
   readonly signal: AbortSignal;
   /** Prints one progress line as a run notice. */
   log(line: string): void;
-  /** Replaces every fixed-value secret and credential password in `text`. */
+  /** Replaces every fixed-value secret and credential password in `text`, and any run of 8 or more consecutive characters of one. */
   redact(text: string): string;
 }
 

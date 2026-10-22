@@ -131,10 +131,10 @@ export interface ReportFilter {
   /**
    * Set when the filter left nothing out because the call did not answer:
    * `failed` when it threw or answered with something other than
-   * `{ exclude, note? }`, `timed out` when it ran past 5 minutes and the run
+   * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
    * stopped waiting. Absent when it answered.
    */
-  outcome?: 'failed' | 'timed out' | undefined;
+  outcome?: 'failed' | 'timed-out' | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */
@@ -334,7 +334,10 @@ export interface ReportResult {
    * than the positionals named, a tag filter, a platform it does not declare)
    * is still here as `skipped` for the record, but it is report-only: the
    * summary's `selected` does not count it, and the page and JUnit renderers
-   * leave it out, as the terminal does.
+   * leave it out, as the terminal does. A result a test filter left out
+   * (`skip.filter` set) is unselected too, yet JUnit lists it as a skipped
+   * case, the terminal counts it in its `Left out` row, and the page counts
+   * it in its headline and lists it under the filters fold.
    */
   selected: boolean;
   serialGroupId?: string | undefined;

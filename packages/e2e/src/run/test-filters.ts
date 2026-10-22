@@ -52,14 +52,14 @@ export interface TestFilterScope {
   readonly signal: AbortSignal;
   /** One line, already prefixed and redacted. */
   readonly notice: (message: string) => void;
-  /** `run` wraps each call in the `filter` setup step, which ends `failed` or `timed out` for a call that left nothing out; `list` calls it bare. */
+  /** `run` wraps each call in the `filter` setup step, which ends `failed` or `timed-out` for a call that left nothing out; `list` calls it bare. */
   readonly step: (name: string, work: () => Promise<FilterCall>) => Promise<FilterCall>;
 }
 
 /** How one filter call ended: with its answer, checked; or thrown, refused, or abandoned past the deadline, with the note that says so. */
 export type FilterCall =
   | { readonly outcome: 'answered'; readonly result: CheckedResult }
-  | { readonly outcome: 'failed' | 'timed out'; readonly note: string };
+  | { readonly outcome: NonNullable<ReportFilter['outcome']>; readonly note: string };
 
 /** What the filters decided: every test they left out, by test id, and one decision per filter that ran. */
 interface AppliedTestFilters {
@@ -181,7 +181,6 @@ export async function applyTestFilters(
   candidates: readonly TestFilterCandidate[],
   scope: TestFilterScope,
 ): Promise<AppliedTestFilters> {
-  const { redact } = staticSecretLedger(scope.secrets);
   const excluded = new Map<string, TestExclusion>();
   const decisions: FilterDecision[] = [];
   let remaining = candidates;
@@ -192,7 +191,7 @@ export async function applyTestFilters(
       continue;
     }
     const input = Object.freeze([...remaining]);
-    const call = await callFilter(filter, input, scope, redact);
+    const call = await callFilter(filter, input, scope);
     if (call.outcome !== 'answered') {
       // Said now, not with the summaries: an interrupt during a later filter would drop them.
       scope.notice(`warning: ${name} ${call.note}`);
@@ -215,8 +214,9 @@ export async function applyTestFilters(
  * interrupt abandons the call and is `INTERRUPTED`, whatever the filter does
  * next. The filter's `log` does nothing once the call has ended.
  */
-async function callFilter(filter: TestFilter, input: readonly TestFilterCandidate[], scope: TestFilterScope, redact: (text: string) => string): Promise<FilterCall> {
+async function callFilter(filter: TestFilter, input: readonly TestFilterCandidate[], scope: TestFilterScope): Promise<FilterCall> {
   const { name } = filter;
+  const { redact, redactFragments } = staticSecretLedger(scope.secrets);
   const interrupted = new E2EError('interrupted', 'INTERRUPTED', `interrupted while filter ${JSON.stringify(name)} ran`);
   if (scope.signal.aborted) throw interrupted;
   const budget = budgetText(scope.timeoutMs);
@@ -232,7 +232,7 @@ async function callFilter(filter: TestFilter, input: readonly TestFilterCandidat
     log: (line: string) => {
       if (live) scope.notice(`${name}: ${cut(redact(String(line)))}`);
     },
-    redact: (text: string) => redact(String(text)),
+    redact: (text: string) => redactFragments(String(text)),
   });
   /** A call that leaves nothing out, its note ending in `detail`, so a long one is what the cut shortens. */
   const failed = (problem: string, detail: unknown): FilterCall => ({ outcome: 'failed', note: cut(`${problem}, so it leaves nothing out: ${redact(errorMessage(detail))}`) });
@@ -245,7 +245,7 @@ async function callFilter(filter: TestFilter, input: readonly TestFilterCandidat
         if (scope.signal.aborted) throw cause;
         if (!deadline.signal.aborted) return failed('failed', cause);
         leaveWorkBehind();
-        return { outcome: 'timed out', note: cut(`did not finish within ${budget}, so it leaves nothing out`) };
+        return { outcome: 'timed-out', note: cut(`did not finish within ${budget}, so it leaves nothing out`) };
       }
       try {
         return { outcome: 'answered', result: checkedResult(raw, input, scope.collectedIds, redact) };

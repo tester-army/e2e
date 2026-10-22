@@ -748,7 +748,7 @@
         "candidates": { "type": "integer", "minimum": 0 },
         "excluded": { "type": "integer", "minimum": 0 },
         "note": { "type": "string", "maxLength": 1024 },
-        "outcome": { "description": "Set when the filter left nothing out because the call did not answer: failed when it threw or answered with something other than { exclude, note? }, timed out when it ran past 5 minutes and the run stopped waiting. Absent when it answered.", "enum": ["failed", "timed out"] }
+        "outcome": { "description": "Set when the filter left nothing out because the call did not answer: failed when it threw or answered with something other than { exclude, note? }, timed-out when it ran past 5 minutes and the run stopped waiting. Absent when it answered.", "enum": ["failed", "timed-out"] }
       }
     },
     "changes": {

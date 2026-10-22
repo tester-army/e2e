@@ -26,16 +26,15 @@ const MAX_DIFF_BUFFER = 64 * 1024 * 1024;
 const MAX_PATHSPEC_CHARS = 16_000;
 /** Plain `git diff` output whatever the repository's config says. */
 const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-textconv', '-U3'];
-/** A line inside a hunk: context, removed, added, or the marker of a missing newline at the end of a file. */
-const HUNK_LINE = /^[ +\-\\]/;
 /** How a valid model reads, for every model error. */
 const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })";
-type Redact = TestFilterContext['redact'];
 /**
  * A test filter named `decision` that asks the decision model, test by
  * test, whether the change can affect what it checks, and whether it can
  * break the setup that saves the test's session, and leaves out the tests
- * unlikely on both counts.
+ * unlikely on both counts. A test the model does not judge runs, and the
+ * note says why. When every call fails, as without a key, or git fails,
+ * the filter throws, so the run warns and runs every test.
  */
 export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   if (typeof options !== 'object' || options === null) {
@@ -48,7 +47,12 @@ export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   const settings: DecisionFilterOptions = { model, ...(providerOptions === undefined ? {} : { providerOptions }) };
   return {
     name: 'decision',
-    filter: (tests, context) => judge(tests, context, settings),
+    filter: (tests, context) =>
+      judge(tests, context, settings).catch((error: unknown) => {
+        // An abort ends with its reason, not the AbortError of a git or file read it cut short.
+        context.signal.throwIfAborted();
+        throw error;
+      }),
   };
 }
 /** One question to the model, redacted: whether the change can affect a test, or break a setup file and the session it saves. */
@@ -82,7 +86,9 @@ interface Answers {
  * at most `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when
  * both it and its setup are unlikely to be affected. A failed call leaves
  * its tests in, and after `MAX_FAILURES` no more calls are made. The note
- * names what the model did not judge, and what the calls spent.
+ * names what the model did not judge, and what the calls spent. Throws
+ * when git or a file read fails, the first failure's first line when calls
+ * fail and none answers, and on an abort.
  */
 async function judge(tests: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
   // A wrapper may hand on no tests: nothing to ask, and no diff to read.
@@ -90,30 +96,25 @@ async function judge(tests: readonly TestFilterCandidate[], context: TestFilterC
   const { changes, signal, log, redact } = context;
   const { modelId } = options.model;
   log(`asking ${modelId} about ${testsIn(tests)}`);
-  try {
-    const raw = await changeDiff(changes, signal);
-    if (raw === '') return { exclude: {}, note: 'git printed no diff of the changed files, so the decision filter left nothing out' };
-    if (Buffer.byteLength(raw) > MAX_DIFF_BYTES) return { exclude: {}, note: `the diff is over ${MAX_DIFF_BYTES / 1000} kB, so the decision filter left nothing out` };
-    const diff = redactDiff(raw, redact);
-    const { batches, tooLarge } = pack(await subjects(tests, context), Buffer.byteLength(diff));
-    const { answers, spend, failures } = await askAll(batches, diff, options, signal);
-    const exclude: Record<string, string> = {};
-    const missed: TestFilterCandidate[] = [];
-    for (const test of tests) {
-      const own = answers.tests.get(test.id);
-      const setup = test.setupFile === undefined ? 0 : answers.setups.get(test.setupFile);
-      if (own === undefined || setup === undefined) missed.push(test);
-      else if (Math.max(own, setup) < MIN_PROBABILITY) exclude[test.id] = `${Math.round(Math.max(own, setup) * 100)}% likely affected`;
-    }
-    if (missed.length === 0) return answered(exclude, undefined, spend);
-    const what = tooLarge.length === 1 ? `${tooLarge[0]?.key} is` : `${counted(tooLarge.length, 'file')} are`;
-    const why = [failures.length === 0 ? undefined : firstLine(failures[0]), tooLarge.length === 0 ? undefined : `${what} too large to send with the diff`];
-    return answered(exclude, `${modelId} did not judge ${testsIn(missed)}: ${why.filter((part) => part !== undefined).join('; ')}`, spend);
-  } catch (error) {
-    // An aborted call is one the run already stopped waiting for: it ends with the abort, not a note.
-    if (signal.aborted) throw signal.reason;
-    return { exclude: {}, note: `${modelId} did not judge ${testsIn(tests)}: ${firstLine(error)}` };
+  const raw = await changeDiff(changes, signal);
+  if (raw === '') return { exclude: {}, note: 'git printed no diff of the changed files, so the decision filter left nothing out' };
+  if (Buffer.byteLength(raw) > MAX_DIFF_BYTES) return { exclude: {}, note: `the diff is over ${MAX_DIFF_BYTES / 1000} kB, so the decision filter left nothing out` };
+  const diff = redact(raw);
+  const { batches, tooLarge } = pack(await subjects(tests, context), Buffer.byteLength(diff));
+  const { answers, spend, failures } = await askAll(batches, diff, options, signal);
+  if (spend.calls === 0 && failures.length > 0) throw new Error(firstLine(failures[0]), { cause: failures[0] });
+  const exclude: Record<string, string> = {};
+  const missed: TestFilterCandidate[] = [];
+  for (const test of tests) {
+    const own = answers.tests.get(test.id);
+    const setup = test.setupFile === undefined ? 0 : answers.setups.get(test.setupFile);
+    if (own === undefined || setup === undefined) missed.push(test);
+    else if (Math.max(own, setup) < MIN_PROBABILITY) exclude[test.id] = `${Math.round(Math.max(own, setup) * 100)}% likely affected`;
   }
+  if (missed.length === 0) return answered(exclude, undefined, spend);
+  const what = tooLarge.length === 1 ? `${tooLarge[0]?.key} is` : `${counted(tooLarge.length, 'file')} are`;
+  const why = [failures.length === 0 ? undefined : firstLine(failures[0]), tooLarge.length === 0 ? undefined : `${what} too large to send with the diff`];
+  return answered(exclude, `${modelId} did not judge ${testsIn(missed)}: ${why.filter((part) => part !== undefined).join('; ')}`, spend);
 }
 /**
  * The files the model reads: each test file, then each setup file that
@@ -304,61 +305,6 @@ function pathspecs(files: readonly string[]): string[][] {
 /** What `git` prints in `cwd`. */
 async function git(cwd: string, args: readonly string[], signal: AbortSignal): Promise<string> {
   return (await exec('git', args, { cwd, signal, maxBuffer: MAX_DIFF_BUFFER, windowsHide: true })).stdout;
-}
-/**
- * `diff` with every secret `redact` finds replaced. A unified diff starts
- * each line of a hunk with ` `, `-`, or `+`, so a value spanning lines
- * never reads whole in it: each hunk is redacted side by side
- * (`redactHunk`), and the file headers between hunks as written.
- */
-function redactDiff(diff: string, redact: Redact): string {
-  const runs: { hunk: boolean; lines: string[] }[] = [];
-  let inHunk = false;
-  for (const line of diff.split('\n')) {
-    if (line.startsWith('diff ')) inHunk = false;
-    else if (line.startsWith('@@ ')) inHunk = true;
-    const hunk = inHunk && HUNK_LINE.test(line);
-    const last = runs.at(-1);
-    if (last?.hunk === hunk) last.lines.push(line);
-    else runs.push({ hunk, lines: [line] });
-  }
-  return runs.map(({ hunk, lines }) => (hunk ? redactHunk(lines, redact) : redact(lines.join('\n')))).join('\n');
-}
-/**
- * One hunk's lines, redacted. Its old side (context and removed lines) and
- * its new side (context and added lines) are each redacted as the text
- * they are. When that matches redacting line by line, the lines keep their
- * places; otherwise a value spans lines, and the hunk becomes its redacted
- * old side removed, then its redacted new side added.
- */
-function redactHunk(lines: readonly string[], redact: Redact): string {
-  const sides = [hunkSide(lines, '-'), hunkSide(lines, '+')];
-  if (sides.every(({ text }) => redact(text.join('\n')) === text.map(redact).join('\n'))) {
-    return lines.map((line) => (line.startsWith('\\') ? line : `${line.charAt(0)}${redact(line.slice(1))}`)).join('\n');
-  }
-  return sides
-    .flatMap(({ prefix, text, ending }) => (text.length === 0 ? [] : [...redact(text.join('\n')).split('\n').map((line) => `${prefix}${line}`), ...ending]))
-    .join('\n');
-}
-/**
- * One side of a hunk: `-` for the old file, `+` for the new. Its text is
- * the context lines and the lines of its own prefix, without the prefixes;
- * its ending is the `\ No newline at end of file` line after its last line,
- * when the hunk has one.
- */
-function hunkSide(lines: readonly string[], prefix: '-' | '+'): { prefix: '-' | '+'; text: string[]; ending: string[] } {
-  const text: string[] = [];
-  const ending: string[] = [];
-  let mine = false;
-  for (const line of lines) {
-    if (line.startsWith('\\')) {
-      if (mine) ending.push(line);
-      continue;
-    }
-    mine = line.startsWith(' ') || line.startsWith(prefix);
-    if (mine) text.push(line.slice(1));
-  }
-  return { prefix, text, ending };
 }
 /** `count` and `noun`, plural unless the count is 1. */
 function counted(count: number, noun: string): string {

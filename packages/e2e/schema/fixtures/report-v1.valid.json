@@ -482,7 +482,7 @@
         "candidates": 1,
         "excluded": 0,
         "note": "did not finish within 5m, so it leaves nothing out",
-        "outcome": "timed out"
+        "outcome": "timed-out"
       },
       {
         "name": "owners",

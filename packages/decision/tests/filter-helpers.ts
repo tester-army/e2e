@@ -118,14 +118,6 @@ export function commitAll(repo: ChangedRepo): void {
 /** A secret every context's `redact` replaces. */
 export const SECRET = 'sk-test-4f9c2b7e1d';
 
-/** A secret spanning lines, as a private key does, that every context's `redact` replaces. */
-export const PRIVATE_KEY = [
-  '-----BEGIN PRIVATE KEY-----',
-  'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC',
-  'BKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj',
-  '-----END PRIVATE KEY-----',
-].join('\n');
-
 /** A filter context for `repo`; `log` lines land in `logs`. */
 export function filterContext(repo: ChangedRepo): { context: TestFilterContext; logs: string[] } {
   const logs: string[] = [];
@@ -136,7 +128,7 @@ export function filterContext(repo: ChangedRepo): { context: TestFilterContext; 
     log: (line) => {
       logs.push(line);
     },
-    redact: (text) => text.replaceAll(PRIVATE_KEY, '[redacted]').replaceAll(SECRET, '[redacted]'),
+    redact: (text) => text.replaceAll(SECRET, '[redacted]'),
   };
   return { context, logs };
 }

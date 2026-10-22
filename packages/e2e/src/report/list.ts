@@ -40,6 +40,7 @@ import {
   rule,
   stateString,
   statusBucket,
+  STATUS_WORD,
   stepsCacheTally,
   repeatSuffix,
   stepsModelTally,
@@ -562,8 +563,8 @@ export class ListReporter implements Reporter {
       this.window.redraw();
       return;
     }
-    if (event.outcome === 'failed' || event.outcome === 'timed out') {
-      this.print(` ${pc.yellow(F_CROSS)} ${subject} ${pc.yellow(`${event.outcome} ${formatTime(event.durationMs)}`)}`);
+    if (event.outcome !== undefined && event.outcome !== 'reused') {
+      this.print(` ${pc.yellow(F_CROSS)} ${subject} ${pc.yellow(`${STATUS_WORD[event.outcome]} ${formatTime(event.durationMs)}`)}`);
       return;
     }
     const outcome = event.outcome ?? done;

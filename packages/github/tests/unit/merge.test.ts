@@ -307,6 +307,9 @@ describe('foldLastRun', () => {
     expect(folded.run.filters).toEqual(before.run.filters);
     expect(folded.run.changes).toEqual(before.run.changes);
     expect(byTitle(folded).get('gamma#0')).toMatchObject({ selected: false, skip: { filter: 'jev' } });
+    const page = renderMarkdownReport(folded);
+    expect(page).toContain(', 1 left out by filters\n');
+    expect(page).toContain('**Filter** `jev` kept 2 of 3 tests, left out 1\n');
 
     // A first pass that ran no filter folds to no run.filters and no run.changes, not even the rerun's `--last-failed` record.
     const unfiltered = foldLastRun(lastFailed, report({ status: 'failed', results: before.run.results.slice(0, 2) }));
@@ -314,7 +317,7 @@ describe('foldLastRun', () => {
     expect(unfiltered.run.changes).toBeUndefined();
   });
 
-  it('counts only the tests still left out when the rerun ran one the run before\'s filter left out', () => {
+  it('counts only the tests still left out on the page when the rerun ran one the run before\'s filter left out', () => {
     const before = report({
       status: 'failed',
       results: [
@@ -335,7 +338,9 @@ describe('foldLastRun', () => {
     });
     const folded = foldLastRun(lastFailed, before);
     expect(byTitle(folded).get('member b#0')).toMatchObject({ selected: true, status: 'passed' });
-    expect(folded.run.filters).toEqual([{ name: 'pages', candidates: 2, excluded: 0 }]);
+    const page = renderMarkdownReport(folded);
+    expect(page).toContain('**Filter** `pages` kept all 2 tests\n');
+    expect(page).not.toContain('left out by filters');
   });
 
   it('leaves the rerun alone when the run before is another project\'s', () => {

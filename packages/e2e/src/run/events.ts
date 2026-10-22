@@ -21,6 +21,7 @@
 import type { ExploreProgress } from '../explore/progress.ts';
 import { errorMessage, type SerializedError } from '../internal/errors.ts';
 import { timestamp } from '../internal/ids.ts';
+import type { ReportFilter } from '../report/build.ts';
 import { encodeResult, type ResultRecord, type SerialGroupRecord, type WireResultRecord } from './records.ts';
 import type { StepProgress } from './steps.ts';
 
@@ -62,10 +63,10 @@ export type SetupStep =
  * How a setup step ended other than plainly done: `reused` when a service
  * or app command attached to a process already serving its URL instead of
  * spawning; `failed` when a test filter threw or answered with something
- * other than `{ exclude, note? }`, and `timed out` when one ran past 5
+ * other than `{ exclude, note? }`, and `timed-out` when one ran past 5
  * minutes and the run stopped waiting for it. Either way it left nothing out.
  */
-export type SetupOutcome = 'reused' | 'failed' | 'timed out';
+export type SetupOutcome = 'reused' | NonNullable<ReportFilter['outcome']>;
 
 /** One fact about the run; the emitter wraps it in the envelope. */
 export type RunEventFact =

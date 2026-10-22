@@ -128,7 +128,7 @@ describe.each(schemas)('%s schema', (name) => {
       const skip = report.run.results.find((result) => result.skip?.['filter'] !== undefined)!.skip!;
       expect(skip).toMatchObject({ cause: 'filtered', filter: 'areas' });
       const filter = report.run.filters![0]!;
-      const timedOut = report.run.filters!.find((record) => record['outcome'] === 'timed out')!;
+      const timedOut = report.run.filters!.find((record) => record['outcome'] === 'timed-out')!;
       const changes = report.run.changes!;
       const error = report.run.errors[0]!;
       expect(validate(report)).toBe(true);
@@ -145,7 +145,7 @@ describe.each(schemas)('%s schema', (name) => {
         [() => (filter['excluded'] = -1), () => (filter['excluded'] = 0)],
         [() => (filter['candidates'] = 1.5), () => (filter['candidates'] = 2)],
         [() => (filter['note'] = 'x'.repeat(1025)), () => (filter['note'] = 'x'.repeat(1024))],
-        [() => (timedOut['outcome'] = 'answered'), () => (timedOut['outcome'] = 'timed out')],
+        [() => (timedOut['outcome'] = 'answered'), () => (timedOut['outcome'] = 'timed-out')],
         [() => (timedOut['timedOut'] = true), () => delete timedOut['timedOut']],
         [() => (changes['base'] = 'main'), () => (changes['base'] = 'a'.repeat(40))],
         [() => (changes['base'] = 'A'.repeat(40)), () => (changes['base'] = 'a'.repeat(64))],

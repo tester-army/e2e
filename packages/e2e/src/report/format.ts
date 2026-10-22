@@ -134,6 +134,16 @@ export function statusBucket(status: ResultStatus): 'passed' | 'failed' | 'inter
   return status === 'timed-out' ? 'failed' : status;
 }
 
+/** A result status, or a filter step's outcome, as a line of text says it: `timed out` for `timed-out`. */
+export const STATUS_WORD: Record<ResultStatus, string> = {
+  passed: 'passed',
+  flaky: 'flaky',
+  failed: 'failed',
+  'timed-out': 'timed out',
+  interrupted: 'interrupted',
+  skipped: 'skipped',
+};
+
 /** Counts results by bucket; `total` is the number of items. */
 export function tally(items: readonly { readonly status: ResultStatus }[]): Counters {
   const counters = emptyCounters();

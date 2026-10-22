@@ -877,6 +877,12 @@ describe('a run test filters narrowed', () => {
     expect(renderMarkdownReport(page({ results: [leftOut('pays', 'areas', 'unaffected')], filters: [record({ candidates: 1, excluded: 1 })] }))).toContain('**Filter** `areas` left out all 1 test\n');
   });
 
+  it('counts what a filter left out from the results, so a test its record counts that ran anyway reads as kept', () => {
+    const body = renderMarkdownReport(page({ results: [passing], filters: [record({ candidates: 2, excluded: 1 })] }));
+    expect(body).toContain('**Filter** `areas` kept all 2 tests\n');
+    expect(body).not.toContain('left out by filters');
+  });
+
   it('escapes what a filter wrote, so a reason or a note cannot break the table or open a block', () => {
     const body = renderMarkdownReport(
       page({ results: [leftOut('pays', 'areas', 'a | b\n# heading <img src=x>')], filters: [record({ candidates: 1, excluded: 1, note: 'note | with pipe' })] }),

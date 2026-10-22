@@ -362,35 +362,30 @@ describe('telemetry events', () => {
     expect(JSON.stringify(runCompletedEvent(report, RUN))).not.toContain('acme');
   });
 
-  it('counts the filters a run applied, the change they judged, and the distinct tests they left out, never names, reasons, paths, or commits', () => {
-    /** An unselected result a filter left out, test `testId` on `targetId`. */
-    const leftOut = (id: string, testId: string, targetId: string) =>
-      reportResult({ id, testId, targetId, selected: false, status: 'skipped', attempts: [], skip: { cause: 'filtered', reason: 'acme diff misses it', filter: 'acme-areas' } });
+  it('counts the filters a run applied, the change they judged, and the tests their records left out, never names, reasons, paths, or commits', () => {
     const report = reportDocument({
       results: [
         reportResult(),
-        leftOut('r2', 'tests/a.e2e.ts::pays', 'web'),
-        leftOut('r3', 'tests/a.e2e.ts::pays', 'web-2'),
-        leftOut('r4', 'tests/a.e2e.ts::refunds', 'web'),
-        reportResult({ id: 'r5', testId: 'tests/a.e2e.ts::slow', selected: false, status: 'skipped', attempts: [], skip: { cause: 'filtered', reason: 'carries an excluded tag' } }),
+        reportResult({ id: 'r2', testId: 'tests/a.e2e.ts::pays', selected: false, status: 'skipped', attempts: [], skip: { cause: 'filtered', reason: 'acme diff misses it', filter: 'acme-areas' } }),
       ],
     });
     report.run.filters = [
       { name: 'acme-areas', candidates: 3, excluded: 2, note: 'acme note' },
-      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m, so it leaves nothing out', outcome: 'timed out' },
+      { name: 'acme-zones', candidates: 1, excluded: 1 },
+      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m, so it leaves nothing out', outcome: 'timed-out' },
       { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: acme CODEOWNERS not found', outcome: 'failed' },
       { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, so it leaves nothing out: unknown key "acme"', outcome: 'failed' },
     ];
     report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 12, pinned: 2 };
     const event = runCompletedEvent(report, RUN);
     expect(event.properties).toMatchObject({
-      filters_run: 4,
+      filters_run: 5,
       filters_timed_out: 1,
       filters_failed: 2,
       filters_skipped: false,
       filters_changed_files: 12,
       tests_pinned_by_change: 2,
-      tests_left_out_by_filters: 2,
+      tests_left_out_by_filters: 3,
     });
     expect(JSON.stringify(event)).not.toMatch(/acme|acac|a\.e2e\.ts/u);
 

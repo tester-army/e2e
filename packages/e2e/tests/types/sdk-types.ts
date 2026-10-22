@@ -655,7 +655,7 @@ report.run.carried satisfies
 // A run test filters narrowed records each filter by name, and every row one left out names it.
 report.run.filters satisfies readonly { name: string; candidates: number; excluded: number; note?: string | undefined }[] | undefined;
 report.run.results[0]!.skip?.filter satisfies string | undefined;
-report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed out' | undefined;
+report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed-out' | undefined;
 // @ts-expect-error only a filtered skip names the test filter that left the test out
 ({ cause: 'explicit', reason: 'not on CI', filter: 'jev' }) satisfies NonNullable<Report['run']['results'][number]['skip']>;
 // The change the filters judged is counts only, never a file list: base and files together once git measured it, else why no filter ran.

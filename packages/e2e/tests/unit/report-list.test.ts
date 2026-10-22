@@ -689,7 +689,10 @@ describe('ListReporter', () => {
       expect(lines.find((line) => line.includes('Duration'))).toMatch(/^   Duration  \S+ \(startup 43\.00s\)$/);
     });
 
-    it.each(['timed out', 'failed'] as const)('prints a filter step once it narrated, never checks off one that %s, and names the one an interrupt cuts', (outcome) => {
+    it.each([
+      { outcome: 'timed-out', word: 'timed out' },
+      { outcome: 'failed', word: 'failed' },
+    ] as const)('prints a filter step once it narrated, never checks off one that $word, and names the one an interrupt cuts', ({ outcome, word }) => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(runStarted());
@@ -711,7 +714,7 @@ describe('ListReporter', () => {
         'ℹ jev: asking Jev about 4 tests in tests/todos.e2e.ts',
         ' ✓ filter "jev" done 1.20s',
         'ℹ areas: asking the model about 3 tests',
-        ` × filter "areas" ${outcome} 302ms`,
+        ` × filter "areas" ${word} 302ms`,
         'interrupted while running filter "slow": tearing down (interrupt again to force)',
       ]);
 
@@ -721,7 +724,7 @@ describe('ListReporter', () => {
       colored.handle({ type: 'setup', step: areas, state: 'started' });
       colored.handle({ type: 'notice', target: 'filter', message: 'areas: asking the model about 3 tests' });
       colored.handle({ type: 'setup', step: areas, state: 'finished', durationMs: 302, outcome });
-      expect(chunks.at(-1)).toBe(` \u001b[33m×\u001b[39m filter "areas" \u001b[33m${outcome} 302ms\u001b[39m`);
+      expect(chunks.at(-1)).toBe(` \u001b[33m×\u001b[39m filter "areas" \u001b[33m${word} 302ms\u001b[39m`);
     });
 
     it('prints a provisioning step only when it narrated, and never the collection', () => {

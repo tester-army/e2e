@@ -24,7 +24,7 @@ import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportChanges, ReportError, ReportExplore, ReportExploreFinding, ReportFilter, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
 import { filterDecision, formatCost, formatTokens, pinnedTests, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
-import { leftOutTotal } from './left-out.ts';
+import { leftOutTests } from './left-out.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
   attemptsLine,
@@ -144,21 +144,21 @@ function runIcon(run: ReportRun, results: readonly ReportResult[]): string {
  * The headline: the counts, and how many tests the test filters left out,
  * so a filtered pull request run never reads as the whole suite passing.
  */
-function headline(run: ReportRun, results: readonly ReportResult[], options: MarkdownReportOptions): string {
+function headline(run: ReportRun, results: readonly ReportResult[], counts: ReadonlyMap<string, number>, options: MarkdownReportOptions): string {
   const summary = countText(tally(results)) || (run.errors.length > 0 ? 'no tests ran' : 'no tests selected');
-  const leftOut = leftOutTotal(run.results);
+  const leftOut = totalLeftOut(counts);
   return `### ${runIcon(run, results)} ${pageName(options)}: ${summary}${leftOut === 0 ? '' : `, ${leftOut} left out by filters`}`;
 }
 
-/** Every result a test filter left out, in report order: one per test, target, agent, and repeat, a row each. */
-function leftOutResults(run: ReportRun): ReportResult[] {
-  return run.results.filter((result) => result.skip?.filter !== undefined);
+/** How many tests the test filters left out in all, from `leftOutTests`' counts: a test is left out by one filter. */
+function totalLeftOut(counts: ReadonlyMap<string, number>): number {
+  return [...counts.values()].reduce((total, count) => total + count, 0);
 }
 
-/** `` `affected` kept 7 of 42 tests, left out 35 (note) ``: what one filter decided. */
-function filterLine(record: ReportFilter): string {
+/** `` `affected` kept 7 of 42 tests, left out 35 (note) ``: what one filter decided, its tests left out from `counts`. */
+function filterLine(record: ReportFilter, counts: ReadonlyMap<string, number>): string {
   const note = record.note === undefined ? '' : ` (${cell(record.note)})`;
-  return `**Filter** ${code(record.name, MAX_ID_CHARS)} ${filterDecision(record.candidates, record.excluded)}${note}`;
+  return `**Filter** ${code(record.name, MAX_ID_CHARS)} ${filterDecision(record.candidates, counts.get(record.name) ?? 0)}${note}`;
 }
 
 /**
@@ -176,16 +176,16 @@ function changesLine(changes: ReportChanges | undefined): string | undefined {
 /**
  * What the run's test filters decided: the change they judged, a line per
  * filter, then what they left out folded away as one table with each
- * reason, capped, the target named when there is more than one. Nothing
- * when the run named no filter.
+ * reason, capped, the target named when there is more than one. Every count
+ * of tests left out comes from `counts`, read off the results. Nothing when
+ * the run named no filter.
  */
-function filtersSection(run: ReportRun, manyTargets: boolean): string[] {
+function filtersSection(run: ReportRun, manyTargets: boolean, counts: ReadonlyMap<string, number>): string[] {
   const records = run.filters ?? [];
-  const leftOut = leftOutResults(run);
+  const leftOut = run.results.filter((result) => result.skip?.filter !== undefined);
   const withTarget = manyTargets || new Set(leftOut.map((result) => result.targetId)).size > 1;
   const changes = changesLine(run.changes);
-  if (changes === undefined && records.length === 0 && leftOut.length === 0) return [];
-  const said = [...(changes === undefined ? [] : [changes]), ...records.map((record) => filterLine(record))];
+  const said = [...(changes === undefined ? [] : [changes]), ...records.map((record) => filterLine(record, counts))];
   const parts = said.length === 0 ? [] : [said.join('  \n')];
   if (leftOut.length === 0) return parts;
   const lines = [row(['Test', 'Filter', 'Reason']), row(['---', '---', '---'])];
@@ -193,7 +193,7 @@ function filtersSection(run: ReportRun, manyTargets: boolean): string[] {
     lines.push(row([`${fileLabel(result.file, result.targetId, withTarget)} › ${testName(result)}`, code(result.skip?.filter ?? '', MAX_ID_CHARS), cell(result.skip?.reason ?? '')]));
   }
   if (leftOut.length > MAX_LEFT_OUT_ROWS) lines.push(row([`and ${leftOut.length - MAX_LEFT_OUT_ROWS} more in report.json`, '', '']));
-  const summary = `${plural(leftOutTotal(run.results), 'test')} left out by filters`;
+  const summary = `${plural(totalLeftOut(counts), 'test')} left out by filters`;
   return [...parts, ...(parts.length === 0 ? [] : ['']), ['<details>', `<summary>${summary}</summary>`, '', lines.join('\n'), '</details>'].join('\n')];
 }
 
@@ -573,12 +573,14 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   const explore = run.explore;
   const serialGroups = new Map(run.serialGroups.map((group) => [group.id, group]));
   // A result the selection left out (another suite's file, a tag filter) is
-  // report-only: the JSON keeps it, the page never counts or lists it. A
-  // document written before results carried the flag is all selected.
+  // report-only: the JSON keeps it, and the page counts or lists it only
+  // when a test filter left it out, in the headline and the filters section.
+  // A document written before results carried the flag is all selected.
   const selected = run.results.filter((result) => result.selected !== false);
   const entries: Entry[] = selected.map((result) => ({ result, final: outcome(result, serialGroups) }));
   const targets = ranTargets(run, selected);
   const manyTargets = targets.length > 1;
+  const leftOut = leftOutTests(run.results);
 
   const errors = run.errors.slice(0, MAX_RUN_ERRORS).map(runErrorLine);
   if (run.errors.length > errors.length) errors.push(`> and ${run.errors.length - errors.length} more`);
@@ -595,11 +597,11 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
   );
 
   const spend = spendLine(run, entries);
-  const head = [explore === undefined ? headline(run, selected, options) : exploreHeadline(run, selected, explore, options), ...(spend === undefined ? [] : [spend]), ''];
+  const head = [explore === undefined ? headline(run, selected, leftOut, options) : exploreHeadline(run, selected, explore, options), ...(spend === undefined ? [] : [spend]), ''];
   const groups = fileGroups(entries);
   const sections =
     explore === undefined
-      ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), filtersSection(run, manyTargets), allTests(groups, selected.length, manyTargets)]
+      ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), filtersSection(run, manyTargets, leftOut), allTests(groups, selected.length, manyTargets)]
       : [
           [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
           errors,

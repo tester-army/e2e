@@ -16,12 +16,3 @@ export function leftOutTests(results: Iterable<{ readonly testId: string; readon
   }
   return new Map([...tests].map(([filter, ids]) => [filter, ids.size]));
 }
-
-/** How many tests the test filters left out of `results` in all. */
-export function leftOutTotal(results: Iterable<{ readonly testId: string; readonly skip?: SkipInfo | undefined }>): number {
-  const ids = new Set<string>();
-  for (const result of results) {
-    if (result.skip?.filter !== undefined) ids.add(result.testId);
-  }
-  return ids.size;
-}

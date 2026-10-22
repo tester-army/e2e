@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Report1Document } from '../../src/report/build.ts';
+import { renderMarkdownReport } from '../../src/report/markdown.ts';
 import type { ListedPair, ListOptions } from '../../src/run/runner.ts';
 import type { RunEvent } from '../../src/run/events.ts';
 import type { E2EConfig, TestFilter, TestFilterCandidate, TestFilterContext } from '../../src/types.ts';
@@ -314,6 +315,38 @@ describe('test filters on a run', () => {
     expect(report.run.results.every((result) => result.skip?.filter === 'areas')).toBe(true);
   });
 
+  it('records what the filters left out when the run stops before its tests, so the events and the page count it', async () => {
+    const project = fixture(THREE_TESTS);
+    const fake = createFakeEngine().engine;
+    const target: Target = {
+      name: 'fake',
+      platform: 'fake',
+      engine: {
+        ...fake,
+        prepare() {
+          throw new Error('no simulator');
+        },
+      },
+      app: FAKE_APP,
+    };
+    const finished: string[] = [];
+    const outcome = await runExisting(project, {
+      config: { targets: [target], filters: [keepOnly('areas', ['alpha'])] },
+      runOptions: { onEvent: (event) => { if (event.type === 'test-finished') finished.push(event.result.test.titlePath.at(-1)!); } },
+    });
+    expect(outcome.report.run.errors).toEqual([expect.objectContaining({ phase: 'launch' })]);
+    expect(outcome.report.run.results.map((result) => [result.titlePath.at(-1), result.selected, result.skip?.filter])).toEqual([
+      ['beta', false, 'areas'],
+      ['gamma', false, 'areas'],
+    ]);
+    expect(finished).toEqual(['beta', 'gamma']);
+    expect(outcome.results.map((result) => result.test.titlePath.at(-1))).toEqual(['beta', 'gamma']);
+    assertValidReport(outcome.report);
+    const page = renderMarkdownReport(outcome.report);
+    expect(page).toContain(', 2 left out by filters\n');
+    expect(page).toContain('**Filter** `areas` kept 1 of 3 tests, left out 2\n');
+  });
+
   it('passes an empty selection under passWithNoTests, with or without filters, calling none and preparing and starting nothing', async () => {
     const project = fixture({ ...THREE_TESTS, ...STARTUP_SCRIPTS });
     const prepared = path.join(project.dir, 'prepared');
@@ -472,7 +505,7 @@ ${edit}
     expect(notices).toEqual(['--last-failed: the tests the last run owes run without filters']);
   });
 
-  it('abandons a filter past the deadline and steps past one that throws, runs every test either was given, and passes, recording outcome timed out and failed', async () => {
+  it('abandons a filter past the deadline and steps past one that throws, runs every test either was given, and passes, recording outcome timed-out and failed', async () => {
     const project = fixture(THREE_TESTS);
     const notices: string[] = [];
     const finished: { readonly name: string; readonly outcome: string | undefined }[] = [];
@@ -493,13 +526,13 @@ ${edit}
     const report = reportOf(project);
     expect(executedTests(report)).toEqual(['alpha', 'beta']);
     expect(report.run.filters).toEqual([
-      { name: 'slow', candidates: 3, excluded: 0, note: 'did not finish within 50ms, so it leaves nothing out', outcome: 'timed out' },
+      { name: 'slow', candidates: 3, excluded: 0, note: 'did not finish within 50ms, so it leaves nothing out', outcome: 'timed-out' },
       { name: 'boom', candidates: 3, excluded: 0, note: 'failed, so it leaves nothing out: kaboom', outcome: 'failed' },
       { name: 'areas', candidates: 3, excluded: 1 },
     ]);
     expect(notices).toContain('warning: boom failed, so it leaves nothing out: kaboom');
     // A step that left nothing out never reads as done.
-    expect(finished).toEqual([{ name: 'slow', outcome: 'timed out' }, { name: 'boom', outcome: 'failed' }, { name: 'areas', outcome: undefined }]);
+    expect(finished).toEqual([{ name: 'slow', outcome: 'timed-out' }, { name: 'boom', outcome: 'failed' }, { name: 'areas', outcome: undefined }]);
   });
 
   it('fails an empty selection with NO_TESTS before asking git or calling a filter, on run and list', async () => {
@@ -659,7 +692,7 @@ describe('interrupting a filter that ignores its signal', () => {
       expect(stdout).toContain(`diff line 19999 ${'x'.repeat(40)}`);
       expect(stdout).toContain('interrupted while running filter "slow"');
       expect(stdout.trimEnd().split('\n').at(-1)).toMatch(/Report\s+\(not written\)/);
-      expect(stdout + stderr).not.toContain('failed, running every test');
+      expect(stdout + stderr).not.toContain('warning: slow');
       expect(existsSync(path.join(project.dir, '.e2e', 'report.json'))).toBe(false);
     } finally {
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');

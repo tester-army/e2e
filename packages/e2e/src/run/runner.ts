@@ -50,7 +50,7 @@ import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
-import { buildWorkPlans, longestFirst, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
+import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
@@ -514,6 +514,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     recordRunError({ error: serializeError(classifyError(cause), phase === undefined ? {} : { phase }) });
   };
 
+  /** Records one result: into the report and onto the stream. */
+  const recordResult = (result: ResultRecord): void => {
+    results.push(result);
+    emit({ type: 'test-finished', result: toEventResult(result) });
+  };
+
   /**
    * A worker's run-level configuration failure stops the run through the
    * interrupt signal, recorded once: workers that meet the same failure in
@@ -570,6 +576,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // What each test filter decided, once they ran, and the change they judged.
   let filterReport: readonly ReportFilter[] = [];
   let changesReport: ReportChanges | undefined;
+  // The results the filters left out, from when they decide until the
+  // scheduler starts and records them with the rest. A run that stops in
+  // between records them once it has stopped, so the report, the events, and
+  // the outcome still show what the filters left out.
+  let pendingLeftOut: readonly ResultRecord[] = [];
   const buildRunReport = (exitCode: RunExitCode): Report1Document => {
     const document = buildReport({
       runId,
@@ -855,6 +866,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       }
     }
     selection = repeatEach(selection, options.repeatEach ?? 1);
+    pendingLeftOut = selection.pairs.filter((pair) => pair.skip?.filter !== undefined).map(nonRunResult);
 
     // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the
@@ -1015,6 +1027,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             envFor: workerEnvFor(plans, env),
           });
 
+    pendingLeftOut = [];
     await debug.time('scheduler', () =>
       runUnits({
         plans,
@@ -1027,10 +1040,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         forceSignal: forceController.signal,
         forceGraceMs: config.cleanupTimeout + FORCE_KILL_MARGIN_MS,
         events: {
-          onResult: (result) => {
-            results.push(result);
-            emit({ type: 'test-finished', result: toEventResult(result) });
-          },
+          onResult: recordResult,
           onSerialGroup: (group) => {
             serialGroups.push(group);
             emit({ type: 'serial-group', group });
@@ -1090,6 +1100,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       recordFailure(cause);
     }
+    for (const result of pendingLeftOut) recordResult(result);
     // Engines finish first: every worker is gone, and what `prepare` leased
     // (a cloud device billed by the minute) should not wait on the app's
     // shutdown. Services go down after the apps that depended on them; a
