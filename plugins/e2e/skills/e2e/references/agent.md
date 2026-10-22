@@ -260,7 +260,10 @@ most changed. Pixels arrive through `vision` on a judgment or the act loop's
 `screenshot` and point tools, masked and withheld after a secret fill. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred
-absent nor old node ids reused. Nothing the model returns runs as code or
+absent nor old node ids reused. A frame from another site (a hosted card
+field) shows as its `iframe` node with none of its content: script steps
+there with `browser.frameLocator`, and judge it with `vision`. Nothing the
+model returns runs as code or
 selectors: the runner validates and authorizes every tool call first.
 
 ## Budgets and cost
@@ -313,9 +316,12 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
 - A step recording no actions, or changing nothing on screen or in the
-  route, creates no entry; one whose `unique()` value
-  equals, is spelled inside, or is the encoded form of another param's value
-  is not recorded either (`step.cache.notRecorded`: `param-collision`).
+  route, creates no entry (`step.cache.write`: `no-change`) and runs live
+  every run, strict included. A change only inside a frame from another
+  site counts as nothing, since the agent doesn't see it. A step whose
+  `unique()` value equals, is spelled inside, or is the encoded form of
+  another param's value is not recorded either (`step.cache.notRecorded`:
+  `param-collision`).
 - `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries
   and share replays with CI and teammates (CI stays `read-only` unless
   `cache: 'read-write'` is set).
