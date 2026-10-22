@@ -1,0 +1,240 @@
+---
+title: Configuration
+description: Set the options most projects change in e2e.config.ts, from the app URL to timeouts, workers, and reports.
+icon: "gear"
+"og:image": "https://e2e.tester.army/docs/images/og/configuration.png?v=e53ad4e6d6"
+"twitter:image": "https://e2e.tester.army/docs/images/og/configuration.png?v=e53ad4e6d6"
+---
+
+`e2e.config.ts` tells the runner what to test and how. `npx e2e init` writes
+one with a target and, if you chose one, a model. This page covers the
+options most projects change next. Every option is in the
+[config reference](/reference/config).
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+
+const app = {
+  url: process.env.APP_URL ?? 'http://localhost:3000',
+  command: { executable: 'npm', args: ['run', 'dev'], reuseExisting: true },
+};
+
+export default {
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  targets: [
+    { name: 'chromium', engine: web({ viewport: { width: 1440, height: 900 } }), app },
+    { name: 'firefox', engine: web({ browser: 'firefox' }), app },
+  ],
+  timeout: 180_000,
+  workers: 4,
+  reporters: ['list', 'junit'],
+  video: 'retain-on-failure',
+} satisfies E2EConfig;
+```
+
+`satisfies E2EConfig` type-checks the object. The runner checks it again at
+load, and an unknown key fails with `INVALID_CONFIG`.
+
+## Point at your app
+
+Each target declares the app it tests in `app`. There is no top-level `app`
+key.
+
+<Tabs>
+  <Tab title="Web">
+  Set `app.url`. `app.open('/path')` resolves against it.
+
+```ts
+app: { url: process.env.APP_URL ?? 'http://localhost:3000' },
+```
+
+  Read the URL from an environment variable to run the same config against
+  a preview deploy. The runner reads no `APP_URL` itself.
+  </Tab>
+  <Tab title="Mobile">
+  Set `app.bundleId` to the app's bundle id or package name. Add
+  `app.appPath` to name a build. The engine installs nothing on its own: call
+  `device.installApp()` in a fixture.
+
+```ts
+app: { bundleId: 'com.example.app', appPath: './build/App.app' },
+```
+
+  See [Point at your app](/mobile#point-at-your-app) for launch arguments,
+  permissions, and Expo builds.
+  </Tab>
+</Tabs>
+
+## Start the app with the run
+
+Add `app.command` and the runner starts your dev server before the first
+test and stops it after the last.
+
+```ts
+command: { executable: 'npm', args: ['run', 'dev'], reuseExisting: true },
+```
+
+`reuseExisting: true` uses a server that already answers at `url`. CI
+ignores it and always starts the command. See
+[Starting your app](/web#starting-your-app) for health checks, logs, and free
+ports.
+
+## Choose a model
+
+Agent steps (`agent.act`, `agent.assert`) use the model of the `default`
+agent. Tests with only locators and `expect` need no model.
+
+```ts
+agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+```
+
+The value is an AI SDK model instance, not a string. See [Models](/models)
+for providers, or [Subscriptions](/subscriptions) to use a ChatGPT, Copilot,
+or other plan. To add personas, see [Agents](/agents).
+
+## Test several browsers or devices
+
+Add one target per browser, viewport, or device. Two targets on one platform
+need a `name`.
+
+```ts
+targets: [
+  { name: 'chromium', engine: web(), app },
+  { name: 'firefox', engine: web({ browser: 'firefox' }), app },
+  { name: 'mobile-web', engine: web({ viewport: { width: 390, height: 844 } }), app },
+],
+```
+
+Every test runs on every target. Run one with `npx e2e run --target firefox`.
+Targets that share one `command` share one server process.
+
+## Change timeouts and retries
+
+Timeouts are in milliseconds. `actionTimeout`, `assertionTimeout`,
+`maxDuration`, and `retries` also have a CLI flag for one run.
+
+| Option | Default | Bounds |
+| --- | --- | --- |
+| [`timeout`](/reference/config#timeout) | `120000` | one test attempt |
+| [`actionTimeout`](/reference/config#actiontimeout) | `30000` | one click, fill, or navigation |
+| [`assertionTimeout`](/reference/config#assertiontimeout) | `5000` | one `expect` |
+| [`launchTimeout`](/reference/config#launchtimeout) | `60000` | engine start |
+| [`maxDuration`](/reference/config#maxduration) | none | the whole run |
+| [`retries`](/reference/config#retries) | `0`, `1` in CI | retries per test, 0-10 |
+
+While you write a test, run with `--action-timeout 5000`. A wrong locator
+then fails after 5 s, not 30 s.
+
+## Run tests in parallel
+
+`workers` sets how many tests run at the same time.
+
+```ts
+workers: 4, // default: half the CPU cores, 1 in CI
+```
+
+An engine can cap the number. On mobile, each worker drives its own device,
+so start with `workers: 1`. See [Several devices](/mobile#several-devices).
+
+## Pick the test files
+
+`tests` takes globs relative to the project root. A `!` entry excludes.
+
+```ts
+tests: ['tests/**/*.e2e.ts', '!tests/wip/**'], // default: 'tests/**/*.e2e.ts'
+```
+
+For JavaScript tests, set `'tests/**/*.e2e.js'`. See
+[JavaScript](/reference/config#javascript).
+
+## Keep traces and videos
+
+`trace` keeps a markdown trace page per test. `video` records the screen.
+Both take the same modes.
+
+```ts
+trace: 'retain-on-failure', // default
+video: 'retain-on-failure', // default: 'off'
+```
+
+| Mode | Keeps |
+| --- | --- |
+| `'off'` | nothing |
+| `'on'` | every test |
+| `'retain-on-failure'` | tests that did not pass |
+| `'on-first-retry'` | the first retry |
+| `'on-all-retries'` | every retry |
+
+A target or a single test can set its own mode. `--trace` and `--video` set
+it for one run. See [Debugging](/debugging#traces) to read a trace.
+
+<Warning>
+A video masks nothing. It shows every value typed on screen, secrets
+included.
+</Warning>
+
+## Write reports for CI
+
+`reporters` picks the output. Files go under `output`, `.e2e` by default.
+
+```ts
+reporters: ['list', 'junit'], // writes .e2e/junit.xml
+```
+
+| Reporter | Writes |
+| --- | --- |
+| `'list'` | terminal progress and a summary, the default |
+| `'junit'` | `<output>/junit.xml` |
+| `'markdown'` | `<output>/summary.md` |
+| `'json'` | the report on stdout, not with `'list'` |
+
+Each run also writes `<output>/report.json`. See [Reporters](/reference/reporters)
+for custom reporters.
+
+## Sign in and use secrets
+
+`credentials` holds accounts. `secrets` holds API keys and tokens. The model
+never sees a password or a secret value. Reports show
+`<secret:admin.password>` or `<secret:apiKey>` instead.
+
+```ts
+credentials: {
+  admin: { username: 'admin@example.com', password: () => readFile('.secrets/admin', 'utf8') },
+},
+secrets: {
+  apiKey: () => readFile('.secrets/api-key', 'utf8'),
+},
+```
+
+`E2E_USER_<NAME>_PASSWORD` and `E2E_SECRET_<NAME>` override the values for
+one run, for example in CI. See [Signing in](/authentication).
+
+## Set the replay cache
+
+The replay cache records an `agent.act` step once a later check passes, then
+replays it without a model call. The default needs no config: `'read-write'`
+locally, `'read-only'` in CI.
+
+```ts
+cache: 'read-write', // also write the cache in CI
+```
+
+See [Caching](/cache) to commit or share the cache.
+
+## What changes in CI
+
+When `CI` is set, `test.only` fails the run. The other CI changes are noted
+beside each option above. See [CI](/reference/config#ci) for the full list.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Config reference" icon="sliders" href="/reference/config">
+    Every option, default, range, and error.
+  </Card>
+  <Card title="Run in CI" icon="circle-play" href="/ci">
+    Run the suite on every pull request.
+  </Card>
+</CardGroup>
