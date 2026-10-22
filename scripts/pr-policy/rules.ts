@@ -15,6 +15,11 @@ export const STALE_LABEL = 'stale-cleanup';
 /** Hidden marker that finds the check's own comment. */
 export const COMPLIANCE_MARKER = '<!-- pr-policy -->';
 
+/** The account `GITHUB_TOKEN` comments as; only its marker comments count. */
+export const BOT_LOGIN = 'github-actions[bot]';
+
+const GUIDELINES = 'https://github.com/tester-army/e2e/blob/main/CONTRIBUTING.md#pull-requests';
+
 export const GRACE_MS = 72 * 60 * 60 * 1000;
 
 /** Stale sweep: open longer than a month with fewer than this many positive reactions. */
@@ -40,9 +45,14 @@ export interface Author {
   fromFork: boolean;
 }
 
+/** An owner, org member, or collaborator, from an `author_association`. */
+export function isMaintainer(association: string): boolean {
+  return MAINTAINER_ASSOCIATIONS.has(association);
+}
+
 /** Maintainers and bots are outside the policy. */
 export function isCommunity(author: Author): boolean {
-  return author.fromFork && !author.bot && !MAINTAINER_ASSOCIATIONS.has(author.association);
+  return author.fromFork && !author.bot && !isMaintainer(author.association);
 }
 
 /** The text under a `## heading` of the PR body, HTML comments stripped. */
@@ -112,7 +122,7 @@ export function problems(pr: PullRequest): string[] {
 export function complianceComment(found: readonly string[]): string {
   return [
     COMPLIANCE_MARKER,
-    'Thanks for the PR. It does not meet the [contributing guidelines](../blob/main/CONTRIBUTING.md#pull-requests) yet:',
+    `Thanks for the PR. It does not meet the [contributing guidelines](${GUIDELINES}) yet:`,
     '',
     ...found.map((problem) => `- ${problem}`),
     '',
@@ -121,7 +131,7 @@ export function complianceComment(found: readonly string[]): string {
 }
 
 export const COMPLIANCE_CLOSE_MESSAGE =
-  'Closed because it was not updated to meet the [contributing guidelines](../blob/main/CONTRIBUTING.md#pull-requests) within 72 hours. You are welcome to open a new PR that follows them.';
+  `Closed because it was not updated to meet the [contributing guidelines](${GUIDELINES}) within 72 hours. You are welcome to open a new PR that follows them.`;
 
 export const STALE_CLOSE_MESSAGE = [
   'Closed by the automated stale sweep: this PR has been open for more than a month with fewer than 2 positive reactions (👍 ❤️ 🎉 🚀).',
@@ -151,6 +161,7 @@ export interface OpenPullRequest {
   labels: readonly string[];
   /** GraphQL `reactionGroups`: content and how many users reacted with it. */
   reactions: readonly { content: string; count: number }[];
+  /** A maintainer approved it. */
   approved: boolean;
 }
 

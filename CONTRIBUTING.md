@@ -44,8 +44,8 @@ A bot checks every community PR:
 A PR that fails the check gets the `needs:compliance` label and a comment
 listing what to fix. If it is still failing 72 hours later, it is closed.
 Once a day, community PRs open for more than a month with fewer than 2
-positive reactions (👍 ❤️ 🎉 🚀) are closed too. If one was closed by
-mistake, say so on the PR.
+positive reactions (👍 ❤️ 🎉 🚀) and no maintainer approval are closed too.
+If one was closed by mistake, say so on the PR.
 
 Keep PRs small, and write the description yourself, briefly. Long
 AI-generated descriptions may be ignored. If you can't explain the change in

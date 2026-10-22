@@ -6,26 +6,24 @@
  * listing what to fix, edited in place as the PR changes; `sweep.ts` closes it
  * once the grace period ends. A PR that is fixed loses both.
  *
- * Reads the `pull_request_target` payload from `GITHUB_EVENT_PATH`. Never
+ * Reads the author from the `pull_request_target` payload at
+ * `GITHUB_EVENT_PATH` and the title, body, and labels live. Never
  * checks out or runs the PR's code. `--dry-run` prints the verdict and
  * changes nothing.
  */
 
 import { readFileSync } from 'node:fs';
-import { addLabel, comments, graphql, removeLabel, rest } from './github.ts';
-import { COMPLIANCE_LABEL, COMPLIANCE_MARKER, POLICY_START, complianceComment, isCommunity, problems } from './rules.ts';
+import { clear, flag, livePullRequest, policyComment } from './github.ts';
+import { COMPLIANCE_LABEL, POLICY_START, isCommunity, problems } from './rules.ts';
 
 interface Payload {
   pull_request: {
     number: number;
-    title: string;
-    body: string | null;
     created_at: string;
     author_association: string;
     user: { login: string; type: string };
     head: { repo: { full_name: string } | null };
     base: { repo: { full_name: string } };
-    labels: { name: string }[];
   };
 }
 
@@ -52,29 +50,11 @@ if (Date.parse(pr.created_at) < POLICY_START) {
   process.exit(0);
 }
 
-const { repository } = await graphql<{ repository: { pullRequest: { closingIssuesReferences: { totalCount: number } } } }>(
-  `query($owner: String!, $name: String!, $number: Int!) {
-    repository(owner: $owner, name: $name) {
-      pullRequest(number: $number) { closingIssuesReferences(first: 1) { totalCount } }
-    }
-  }`,
-  { number: pr.number },
-);
-const found = problems({
-  title: pr.title,
-  body: pr.body ?? '',
-  closingIssues: repository.pullRequest.closingIssuesReferences.totalCount,
-});
+const live = await livePullRequest(pr.number);
+const found = problems(live);
 console.log(found.length === 0 ? `#${pr.number}: compliant` : `#${pr.number}: ${found.length} problem(s)\n- ${found.join('\n- ')}`);
 if (dryRun) process.exit(0);
 
-const existing = (await comments(pr.number)).find(({ body }) => body.includes(COMPLIANCE_MARKER));
-if (found.length > 0) {
-  const body = complianceComment(found);
-  if (existing === undefined) await rest(`/issues/${pr.number}/comments`, { method: 'POST', body: { body } });
-  else if (existing.body !== body) await rest(`/issues/comments/${existing.id}`, { method: 'PATCH', body: { body } });
-  await addLabel(pr.number, COMPLIANCE_LABEL);
-} else {
-  if (existing !== undefined) await rest(`/issues/comments/${existing.id}`, { method: 'DELETE' });
-  await removeLabel(pr.number, COMPLIANCE_LABEL);
-}
+const existing = await policyComment(pr.number);
+if (found.length > 0) await flag(pr.number, found, live.labels.includes(COMPLIANCE_LABEL), existing);
+else await clear(pr.number, existing);
