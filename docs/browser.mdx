@@ -113,10 +113,11 @@ await expect(editor.frameLocator('#preview').getByRole('heading', 'Uploaded')).t
 only when role, label, and test-id queries can't find the element. For a
 match made ambiguous by a hidden duplicate, try `{ visible: true }` first.
 
-Agent steps don't see inside a frame from another site, such as a hosted
-card field. The agent sees the `iframe` element and none of its content
-([site check](/reference/security#site-check)). Use `frameLocator` for
-steps in that frame. To judge its content with `agent.assert`, pass
+The agent's semantic tree shows a frame from another site, such as a hosted
+card field, as an `iframe` element with none of its content
+([site check](/reference/security#site-check)). The agent reaches that
+content only through screenshots. Use `frameLocator` for steps in that
+frame. To judge its content with `agent.assert`, pass
 [`vision`](/reference/agent#vision). An `agent.act` whose only change is in
 that frame never records a [replay](/cache#when-a-recording-is-written).
 

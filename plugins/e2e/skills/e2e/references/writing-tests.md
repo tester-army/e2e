@@ -466,8 +466,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `locator(css)`: raw CSS or XPath; not portable, a last resort.
 - `frameLocator(css)`: a `Screen` scoped to one iframe
   (`browser.frameLocator('#payment').getByLabel('Card number')`); keeps
-  `locator(css)` and `frameLocator(css)` for nesting. Agent steps don't see
-  inside a frame from another site, so script steps there with it.
+  `locator(css)` and `frameLocator(css)` for nesting. The agent's tree
+  leaves out a frame from another site, so script steps there with it.
 - `evaluate(fn | source, arg?)`: runs a function or source string in the
   page, JSON in and out, no closures; a throw in the page is
   `EVALUATE_FAILED`.
