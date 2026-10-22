@@ -134,7 +134,6 @@
               "index",
               "quickstart",
               "core-concepts",
-              "configuration",
               "coding-agents",
               "mcp-server",
               "ci"
@@ -309,6 +308,10 @@
     {
       "source": "/running-tests",
       "destination": "/reference/cli"
+    },
+    {
+      "source": "/configuration",
+      "destination": "/quickstart#configure-the-project"
     },
     {
       "source": "/from-playwright",
