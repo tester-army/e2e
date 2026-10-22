@@ -185,8 +185,7 @@
               "integrations/eas",
               "integrations/smol",
               "integrations/limrun",
-              "integrations/testmu",
-              "integrations/testmu-browsers"
+              "integrations/testmu"
             ]
           },
           {
@@ -282,6 +281,10 @@
     }
   },
   "redirects": [
+    {
+      "source": "/integrations/testmu-browsers",
+      "destination": "/integrations/testmu#run-web-targets-in-browsers"
+    },
     {
       "source": "/mobile-ci",
       "destination": "/ci#mobile-jobs"

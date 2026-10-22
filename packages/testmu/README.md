@@ -61,7 +61,7 @@ export default {
 It reads the same `LT_USERNAME` and `LT_ACCESS_KEY`. `browserName` is `Chrome` (default)
 or `MicrosoftEdge`, and `capabilities` takes `browserVersion` and `LT:Options` fields such
 as `platform`, `geoLocation`, and `video`. See the
-[browsers guide](https://e2e.tester.army/docs/integrations/testmu-browsers) for the
+[integration guide](https://e2e.tester.army/docs/integrations/testmu) for the
 defaults and the limits.
 
 ## License
