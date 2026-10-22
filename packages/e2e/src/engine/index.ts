@@ -843,7 +843,8 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * once `init` was called, even when it failed, so it MUST tolerate a
+   * partly initialized engine. A live
    * `reuseSignal` permits preserving run-owned resources for a replacement,
    * until that permission is revoked or this hook settles.
    */
@@ -857,3 +858,18 @@ export interface EngineHandle extends Engine {
 }
 
 export { defineEngine, isEngineHandle } from './manifest.ts';
+
+export { connectEngine, type ConnectEngineOptions } from './protocol/client.ts';
+export { describeEngine, serveEngine } from './protocol/server.ts';
+export {
+  loopbackTransport,
+  socketTransport,
+  spawnTransport,
+  type EngineTransport,
+  type SocketTransportOptions,
+  type SpawnTransportOptions,
+  type TransportConnection,
+  type TransportContext,
+} from './protocol/transport.ts';
+export { ENGINE_METHODS, ENGINE_PROTOCOL_VERSION, type EngineManifest, type EngineMethod } from './protocol/protocol.ts';
+export type { MessageStreams } from './protocol/connection.ts';

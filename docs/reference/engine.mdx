@@ -292,7 +292,8 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * once `init` was called, even when it failed, so it MUST tolerate a
+   * partly initialized engine. A live
    * `reuseSignal` permits preserving run-owned resources for a replacement,
    * until that permission is revoked or this hook settles.
    */
@@ -2119,7 +2120,10 @@ return context.fixture('printer', printer, { print: { kind: 'resource' } });
 `Secret`, `isSecret`, `TextMatch`, `JsonValue`, `JsonValueRules`,
 `ResolveExpressionOptions`, `PollConditionOptions`, `WithoutUndefined`,
 `FixtureOperation`, `OBSERVED_NAME_LIMIT`, and `OBSERVED_TEXT_LIMIT` are
-exported from `e2e/engine`.
+exported from `e2e/engine`. So are the [engine protocol](/reference/engine-protocol)'s
+`connectEngine`, `serveEngine`, `describeEngine`, `spawnTransport`,
+`socketTransport`, `loopbackTransport`, `ENGINE_METHODS`,
+`ENGINE_PROTOCOL_VERSION`, and their types.
 
 ### `SemanticNode`
 
@@ -2237,6 +2241,8 @@ scope, filter, or index too.
 
 ## Related
 
+[Engine protocol](/reference/engine-protocol) runs an engine in another
+process, on another machine, or in another language.
 [Writing an engine](/writing-an-engine) walks through building one.
 `@e2e-dev/web` ([reference](/reference/web)) and `@e2e-dev/mobile`
 ([reference](/reference/mobile)) implement this contract with the same

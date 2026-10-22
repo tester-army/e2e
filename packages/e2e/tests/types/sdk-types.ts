@@ -50,6 +50,7 @@ import {
   describe,
 } from '../../src/index.ts';
 import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
+import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
@@ -805,3 +806,11 @@ session.steps().push({} as StepRecord);
 session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
+
+// The engine protocol: a connected server is an engine handle like any other.
+const protocolManifest = { name: 'kiosk', version: '1.0.0', spiVersion: 1, methods: ['engine/observe'] } satisfies EngineManifest;
+void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }) }) satisfies EngineHandle);
+// @ts-expect-error a manifest names only protocol methods
+void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
+// @ts-expect-error initialization options cross the wire, so they are JSON
+void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });

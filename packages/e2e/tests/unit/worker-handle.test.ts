@@ -127,7 +127,9 @@ describe('TargetWorker disposal', () => {
       fatal: (cause) => { throw cause; },
       finished: () => { events.push('finished'); finished.resolve(); },
     }, async () => ({
-      config, target: config.targets[0]!, sessionStore: SessionStore.create('run', tmpdir()),
+      // The worker disposes a cold engine itself; over the protocol a worker
+      // that never ran init has no connection to dispose.
+      config, target: { ...config.targets[0]!, engine }, sessionStore: SessionStore.create('run', tmpdir()),
       runId: 'run', artifactsRoot: tmpdir(), rerunDir: undefined, headed: false,
       workerSlot: 0, env: {}, isolated: true, resolvePairs: async () => ({ pairs: [], missing: [] }),
     }));
@@ -166,7 +168,9 @@ describe('TargetWorker disposal', () => {
       emit: (message) => { if (message.type === 'ready') ready.resolve(); },
       fatal: (cause) => { throw cause; }, finished: () => finished.resolve(),
     }, async () => ({
-      config, target: config.targets[0]!, sessionStore: SessionStore.create('run', tmpdir()),
+      // The worker disposes a cold engine itself; over the protocol a worker
+      // that never ran init has no connection to dispose.
+      config, target: { ...config.targets[0]!, engine }, sessionStore: SessionStore.create('run', tmpdir()),
       runId: 'run', artifactsRoot: tmpdir(), rerunDir: undefined, headed: false,
       workerSlot: 0, env: {}, isolated: true, resolvePairs: async () => ({ pairs: [], missing: [] }),
     }));
