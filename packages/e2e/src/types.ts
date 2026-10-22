@@ -1206,7 +1206,7 @@ export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry
 /**
  * A live AI SDK language model instance: `gateway('openai/gpt-6-luna-fast')`
  * from `ai`, `openrouter(...)` from `@openrouter/ai-sdk-provider`,
- * `openai('gpt-4o')` from `@ai-sdk/openai`, or any other provider
+ * `openai('gpt-6-luna-fast')` from `@ai-sdk/openai`, or any other provider
  * implementing the AI SDK `LanguageModelV2+` specification. The instance owns
  * its own transport and credentials; the runner knows no gateway or provider
  * of its own. Detection is structural, so any AI SDK provider package works

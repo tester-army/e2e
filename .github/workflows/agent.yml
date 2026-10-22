@@ -17,7 +17,7 @@ on:
         type: choice
         options: [all, agent, dogfood]
       model:
-        description: 'Override the testbed model id (E2E_MODEL, e.g. openai/gpt-5.4-mini, served by the Vercel AI Gateway)'
+        description: 'Override the testbed model id (E2E_MODEL, e.g. openai/gpt-6-luna-fast, served by the Vercel AI Gateway)'
         required: false
         type: string
 

@@ -323,7 +323,7 @@ export function stepsModelTally(stepLists: readonly (readonly StepRecord[])[]): 
 /**
  * The models that answered, most calls first: one model by its label alone,
  * since the row's call total is its count, several as
- * `gateway/openai/gpt-5.6-luna (22 calls) · typesafe-ai/jev (1 call)`;
+ * `gateway/openai/gpt-6-luna-fast (22 calls) · typesafe-ai/jev (1 call)`;
  * undefined when no step reported a model.
  */
 export function modelsText(counts: ModelTally): string | undefined {
