@@ -57,6 +57,22 @@ that breaks a rule, such as a navigation to `file:`, fails with
 `POLICY_DENIED`. There is no origin allowlist: the agent can follow the app
 to another site and use the step's secrets there.
 
+## OCR evidence
+
+Opt-in [OCR](/ocr) uses the same permitted screenshots as other tools and
+executors. It cannot read withheld pixels, act inside an assertion, or
+override known disabled or secure semantic controls. Its matching region
+filters results after recognition; the provider still receives the full
+permitted screenshot.
+
+`tesseractOcr` runs a local executable without downloading data or sending
+images to an OCR service. Custom OCR providers are trusted project code
+and can transmit images. With `ocrTools`, recognized text is sent to the
+agent's configured model as tool evidence. Screenshot masking is not a
+general PII filter: sensitive text drawn outside protected fields can
+remain visible and be recognized. OCR confidence does not make that text
+trusted or grant it authority over the test.
+
 ## What runs with your permissions
 
 Your tests, config, engines, tools, reporters, stores, secret providers, and
