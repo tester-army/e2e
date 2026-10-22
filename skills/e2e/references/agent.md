@@ -16,6 +16,7 @@ model-call budget, no shared transcript. No agent step, no model calls.
 - Inspect what the model did
 - Make the agent yours
 - Beyond the built-in agent
+- Opt-in screenshot OCR
 - In CI
 
 ## Configure a model
@@ -372,6 +373,86 @@ make no model calls.
   report, and `system` or `tools` beside `executor` is `INVALID_CONFIG`.
 
 Reference: https://e2e.tester.army/docs/agents
+
+## Opt-in screenshot OCR
+
+Prefer semantic locators. For drawn labels the tree cannot read, import
+`ocrTools` and `tesseractOcr` from `e2e/ocr` and add read-only evidence to the
+normal agent:
+
+```ts
+import type { E2EConfig } from 'e2e';
+import { ocrTools, tesseractOcr } from 'e2e/ocr';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: {
+    default: {
+      model: gateway('openai/gpt-6-luna-fast'),
+      tools: { ...ocrTools({ provider: tesseractOcr() }) },
+    },
+  },
+} satisfies E2EConfig;
+```
+
+Install Tesseract 5 and local `eng` language data independently on the runner
+and CI worker. The adapter downloads nothing; it defaults to English and
+PSM 11. For Simplified Chinese, independently install `chi_sim` and set
+`language: 'chi_sim'` or `'eng+chi_sim'`. Local executable, data-directory,
+and segmentation overrides are `executable`, `tessdata`, and
+`pageSegmentation`. Official setup:
+https://tesseract-ocr.github.io/tessdoc/Installation.html and
+https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html.
+
+- `screenshot_ocr` is read-only and offered during `agent.act`. The normal
+  agent still calls its model; local OCR adds no AI call of its own.
+  Recognized text becomes model input, and normal agent caching is unchanged.
+- For a model-free fixed flow, use
+  `executor: ocrExecutor({ provider: tesseractOcr(), async runStep(context, ocr) { ... } })`.
+  The callback explicitly handles instructions and returns a verdict; block
+  unsupported instructions instead of claiming a pass. Do not put `tools`
+  or `system` beside `executor`. `waitFor` and `extract` still need a model.
+  Its `OcrExecutorContext` contains only `step`, `signal`, `target`, and
+  `attempt`; callback UI operations use the shared OCR queue, with no raw
+  actions, observations, or budgets exposed. Use ordinary test fixtures or
+  a separate agent step for other UI actions, always awaiting them before
+  OCR. Never drive the same target concurrently with an OCR workflow.
+- `ocr.read()` returns fresh uncertain text evidence, including low-confidence
+  lines. `ocr.locate(query)` returns one match, `ocr.assertText(query)` is a
+  read-only assertion, and `ocr.tapText(query)` is allowed only in act steps.
+  These do not add nodes to the semantic tree or change semantic locators.
+- Queries match a whole normalized line by default, case-insensitively,
+  with collapsed whitespace and `minConfidence: 0.8`. `exact: false` allows
+  a substring, not fuzzy or cross-line matching. More than one qualifying
+  line is `LOCATOR_AMBIGUOUS`; narrow the text or `region` in logical
+  viewport pixels. The whole line box must fit the region. Missing matches
+  fail rather than guessing; assertions do not poll.
+- A tap recaptures and compares image bytes and geometry, and rejects
+  changes or evidence older than `maxAgeMs` (default 2 seconds). It routes
+  through checked `tapAt`; it is not atomic with UI changes. Verify the
+  outcome, and do not blindly retry uncertain consequential actions.
+  `timeoutMs` defaults to 10 seconds per capture/recognition.
+- Only the OCR executor sets its own `cache: 'off'`; other agents retain
+  their replay policy. OCR coordinates are never replayed by this executor.
+- Full-viewport PNGs are required. Cropped or rotated geometry mismatches
+  are rejected. Coordinate conversion uses `pixels.scale` rather than an
+  inferred device DPR.
+- Android and iOS use the same pipeline via `mobile({ platform })` with
+  `app.bundleId`, not `app.url`; launch with `app.open()` without a web path.
+  Tesseract and language data live on the e2e worker, not the device.
+  The engine still needs permitted PNG captures and point taps; rotation,
+  animations, and keyboard changes may invalidate a tap. See the mobile
+  examples in the OCR guide; they are typechecked, not device verification.
+- Screenshot masking and secret-taint rules still apply. Masking is not
+  general PII removal: sensitive drawn text may survive. Region filtering
+  does not crop provider input. The built-in adapter is local-only; a
+  custom provider is trusted code and may transmit permitted screenshots.
+
+See the shipped `docs/ocr.mdx` or
+https://e2e.tester.army/docs/ocr for the complete callback, provider contract,
+coordinate rules, and privacy limits.
 
 ## In CI
 
