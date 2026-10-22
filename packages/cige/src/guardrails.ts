@@ -12,7 +12,7 @@
 import { AgentError, type ActionEvent, type ActionHook } from 'e2e';
 
 import type { CigeGuardrailViolation } from './plugins.ts';
-import type { CigeGuardrail } from './schema.ts';
+import { ID_PATTERN, type CigeGuardrail } from './schema.ts';
 
 const VIOLATION = /CIGE guardrail ([A-Za-z0-9][A-Za-z0-9._-]*) violated/;
 
@@ -56,6 +56,10 @@ export function createGuardrailMonitor(
     }
     const violation = check?.(event);
     if (violation === undefined) return;
+    if (!ID_PATTERN.test(violation.guardrail)) {
+      // The summary reads the guardrail back by id; one it can't parse would lose the violation.
+      throw new Error(`a plugin's onAction named guardrail ${JSON.stringify(violation.guardrail)}, which is not an id (letters, digits, dots, dashes, underscores)`);
+    }
     throw new AgentError('POLICY_DENIED', `CIGE guardrail ${violation.guardrail} violated by ${event.action} (${event.source}): ${event.summary}. ${violation.reason}`);
   };
 }

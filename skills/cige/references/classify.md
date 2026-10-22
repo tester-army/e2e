@@ -69,10 +69,17 @@ gaps in your hand-off, so the user fixes them before the next triage.
 
 A summary whose `classification.adjustedBy` names plugins was changed by
 the project's own rules: read those plugins in `cige.config.ts` before you
-overrule them, and treat their signals as evidence. `plugin-error:<name>`
-means a plugin failed, not the case. A failing `use` step (a plugin's
-step kind, `CIGE step <id> (<kind>) failed`) is the project's code checking
-the system: its message says what it saw.
+overrule them, and treat their signals as evidence.
+
+A `plugin-error:<name>` signal means a plugin's `classify` failed, not the
+case; the classification is the reporter's own.
+
+A failed `use` step runs a plugin's step kind. When the plugin threw an e2e
+error, the summary keeps its code and message: classify by them as usual.
+A plain throw shows as `CIGE step <id> (<kind>) failed: ...` with the signal
+`plugin-step-failed:<id>` and no failure type: read the message and the
+plugin's code, since a step kind may set up data or call an API as well as
+check.
 
 When two answers fit and the refs can't separate them, stop. Write what
 you saw and what would decide it, and hand it to a human. Do not guess and

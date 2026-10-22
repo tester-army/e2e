@@ -55,7 +55,8 @@ export function readinessGaps<Fixtures>(testCase: CigeCase, config: Pick<CigeCon
   for (const plugin of config.plugins ?? []) {
     if (plugin.readiness === undefined) continue;
     try {
-      for (const detail of plugin.readiness(testCase)) gaps.push({ kind: 'plugin', plugin: plugin.name, detail });
+      const details = plugin.readiness(testCase) ?? [];
+      for (const detail of typeof details === 'string' ? [details] : details) gaps.push({ kind: 'plugin', plugin: plugin.name, detail });
     } catch (cause) {
       gaps.push({ kind: 'plugin', plugin: plugin.name, detail: `the readiness check failed: ${cause instanceof Error ? cause.message : String(cause)}` });
     }

@@ -159,11 +159,16 @@ add `cige(config)` to the e2e config's `reporters`.
 
 ## Extending
 
-- **Your own fields:** any object takes keys that start with `x-` (for example
-  `"x-owner"`, `"x-ticket"`, or `"x-deny-host"` on a guardrail). Never invent a key
-  without the prefix: it fails to load. The model never sees `x-` keys
-  unless a plugin's `context` adds them, and they are copied into
-  summaries, so no secrets.
+- **Your own fields:** the case, Context, a precondition hook, Intent, an
+  evidence item, a guardrail and its `deny`, an Execution entry, and a
+  variant each take keys that start with `x-` (for example `"x-owner"`,
+  `"x-ticket"`, or `"x-deny-host"` on a guardrail). Never invent a key
+  without the prefix there: it fails to load. A step's `params` and `with`
+  are data and take any key. The model never sees `x-` keys unless a
+  plugin's `context` adds them. Only the case's top-level `x-` keys are
+  copied into run summaries, as written, so no secrets anywhere. Put data a
+  plugin enforces on the guardrail, never at the top level: `diff` blocks a
+  guardrail `x-` change and lets a top-level one through.
 - **Your own checks:** if the project's `cige.config.ts` has `plugins`, read
   them before writing a case. A plugin's `onAction` may enforce a
   guardrail's `x-` data, its `readiness` may require an `x-` field, and its

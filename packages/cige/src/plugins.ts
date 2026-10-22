@@ -12,7 +12,7 @@ import type { ActionEvent, Report, TestFixtures } from 'e2e';
 
 import type { CigeClassification, CigeFailureType } from './classify.ts';
 import type { CigeRunSummary } from './reporter.ts';
-import { CigeValidationError, type CigeCase, type CigeExecutionStep } from './schema.ts';
+import { CigeValidationError, ID_PATTERN, type CigeCase, type CigeExecutionStep } from './schema.ts';
 
 /** A step a plugin runs, as the case resolved it: `with` has the variant's values filled in. */
 export type CigeUseStep = Extract<CigeExecutionStep, { readonly kind: 'use' }>;
@@ -58,8 +58,8 @@ export interface CigePlugin<Fixtures = TestFixtures> {
   }) => CigeClassificationChange | undefined;
   /** Fields added to a run summary, under `extensions.<plugin name>`. */
   readonly summarize?: (input: { readonly testCase: CigeCase; readonly summary: CigeRunSummary }) => Readonly<Record<string, unknown>> | undefined;
-  /** Readiness gaps for `e2e-cige check` and the `CIGE gaps` row, one message each. */
-  readonly readiness?: (testCase: CigeCase) => readonly string[];
+  /** Readiness gaps for `e2e-cige check` and the `CIGE gaps` row: a message, a list of them, or none. */
+  readonly readiness?: (testCase: CigeCase) => string | readonly string[] | undefined;
   /** Step kinds an Execution entry runs with `{ "use": "<kind>", "with": {...} }`. */
   readonly steps?: Readonly<Record<string, CigeStepRunner<Fixtures>>>;
 }
@@ -76,6 +76,7 @@ export function pluginProblems(plugins: readonly CigePlugin<never>[]): string[] 
     if (names.has(plugin.name)) problems.push(`plugin "${plugin.name}" is listed twice`);
     names.add(plugin.name);
     for (const kind of Object.keys(plugin.steps ?? {})) {
+      if (!ID_PATTERN.test(kind)) problems.push(`plugin "${plugin.name}": step kind ${JSON.stringify(kind)} is not an id a case's "use" can name`);
       const other = kinds.get(kind);
       if (other !== undefined) problems.push(`step kind "${kind}" is registered by both "${other}" and "${plugin.name}"`);
       kinds.set(kind, plugin.name);

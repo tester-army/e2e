@@ -12,10 +12,11 @@ import { z } from 'zod';
 
 import { extractExtensions, type CigeExtensions } from './extensions.ts';
 
+/** What every id in a case matches: a case, a step, a guardrail, a step kind. Plugins are held to it too. */
+export const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
 /** A stable id: what a run summary names a step, a guardrail, or an evidence item by. */
-const Id = z
-  .string()
-  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, 'an id is 1 through 64 letters, digits, dots, dashes, or underscores, starting with a letter or digit');
+const Id = z.string().regex(ID_PATTERN, 'an id is 1 through 64 letters, digits, dots, dashes, or underscores, starting with a letter or digit');
 
 const Text = z.string().trim().min(1);
 
@@ -132,8 +133,20 @@ const CigeFile = z.strictObject({
   Variants: z.array(Variant).min(1).optional(),
 });
 
-/** A CIGE test case as authored: what a `.cige.json` file holds. */
-export type CigeTestCase = z.input<typeof CigeFile>;
+/**
+ * `T` with `x-` keys allowed on every object, as the loader allows them; a
+ * step's `params` and `with` are data and stay as they are.
+ */
+type WithExtensions<T> = T extends string | number | boolean | null | undefined
+  ? T
+  : T extends readonly (infer Item)[]
+    ? WithExtensions<Item>[]
+    : T extends object
+      ? { [Key in keyof T]: Key extends 'params' | 'with' ? T[Key] : WithExtensions<T[Key]> } & { readonly [key: `x-${string}`]: unknown }
+      : T;
+
+/** A CIGE test case as authored: what a `.cige.json` file holds, `x-` keys included. */
+export type CigeTestCase = WithExtensions<z.input<typeof CigeFile>>;
 
 /** What every object a case defines may carry: its `x-` keys, when it has any. */
 interface Extended {
@@ -395,7 +408,7 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
   // Without variants the case runs once, with no values but its steps' own params.
   if (variants.length === 0) {
     for (const name of new Set([...judged, ...acted])) {
-      issues.push(`{${name}} has no value: give it in Variants, or, in an Execution step, in that step's params`);
+      issues.push(`{${name}} has no value: give it in Variants (for an act step, its params also work)`);
     }
   }
   for (const rule of guardrails) {

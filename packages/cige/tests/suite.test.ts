@@ -101,6 +101,8 @@ export default defineCige({
         classification.result === 'fail' && testCase.extensions?.['x-ticket'] !== undefined ? { signals: ['ticketed'] } : undefined,
       summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? null }),
     },
+    // Repeats a signal the result already has: a no-op, which must not count as an adjustment.
+    { name: 'echo', classify: ({ classification }) => ({ signals: classification.signals.slice(0, 1) }) },
   ],
   refs: {
     build: ({ build, pointer }) => ({ text: \`Release notes for \${build} from \${pointer}\` }),
@@ -271,6 +273,11 @@ describe('cigeSuite through the runner', () => {
     });
     expect(summaries.api?.classification.message).toContain('CIGE step e2 (order-api) failed: the orders API answered 500');
     expect(summaries.api?.classification.signals).toContain('ticketed');
+    // A plain throw from a plugin step says nothing about the flow, so the type is left to the classifier.
+    expect(summaries.api).not.toHaveProperty('failureType');
+    expect(summaries.api?.classification.signals).toContain('plugin-step-failed:e2');
+    expect(summaries.api?.classification.adjustedBy).toEqual(['orders']);
+    expect(summaries.api?.classification.signals.filter((signal) => signal === 'status:failed')).toHaveLength(1);
     expect(summaries.pass?.extensions).toEqual({ orders: { owner: null } });
   });
 

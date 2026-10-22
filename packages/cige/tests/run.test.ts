@@ -415,10 +415,35 @@ describe('plugins', () => {
     const seen: unknown[] = [];
     await runCige(notebook!, fixtures, {
       hooks: { orderExists: () => true },
-      plugins: [{ name: 'orders', steps: { 'order-api': ({ step }) => void seen.push(step.with) } }],
+      plugins: [
+        {
+          name: 'orders',
+          steps: {
+            'order-api': ({ step }) => {
+              seen.push(step.with);
+              calls.push({ api: 'use', text: step.id });
+            },
+          },
+        },
+      ],
     });
     expect(seen).toEqual([{ path: '/orders/NB-1', nested: ['NB-1'] }]);
-    expect(calls.map((call) => call.api)).toEqual(['agent.act']);
+    expect(calls.map((call) => call.api)).toEqual(['agent.act', 'use']);
+  });
+
+  it('hands a with value that is one whole placeholder over with the variant value type', async () => {
+    const typed = parseCige({
+      Context: {},
+      Intent: { statement: 'The API answers {status}', judge: false, evidence: [{ hook: 'ok' }] },
+      Execution: [{ id: 'e1', use: 'probe', with: { expect: '{status}', note: 'got {status}' } }],
+      Variants: [{ id: 'error', params: { status: 500 } }],
+    });
+    const seen: unknown[] = [];
+    await runCige(expandVariants(typed)[0]!, fakeFixtures().fixtures, {
+      hooks: { ok: () => true },
+      plugins: [{ name: 'probe', steps: { probe: ({ step }) => void seen.push(step.with) } }],
+    });
+    expect(seen).toEqual([{ expect: 500, note: 'got 500' }]);
   });
 
   it('fails a use step that throws as ACTION_FAILED naming it, and keeps an e2e error code', async () => {
@@ -464,12 +489,19 @@ describe('plugins', () => {
     expect(violatedGuardrail(isAgentError(thrown) ? thrown.message : undefined)).toBe('no-admin');
   });
 
+  it('fails the step when a plugin names a guardrail by something that is not an id', () => {
+    const monitor = createGuardrailMonitor([], () => ({ guardrail: 'no admin', reason: 'off limits' }))!;
+    expect(() => monitor({ index: 1, action: 'navigate', summary: 'navigate /admin', source: 'model' })).toThrow(/named guardrail "no admin", which is not an id/);
+  });
+
   function registered(cases: Parameters<typeof cigeSuite>[0], options: Omit<Parameters<typeof cigeSuite>[1] & object, 'test'> = {}): [string, TestOptions][] {
     const calls: [string, TestOptions][] = [];
     const test = ((title: string, testOptions: TestOptions) => void calls.push([title, testOptions])) as unknown as TestAPI;
     cigeSuite(cases, { ...options, test });
     return calls;
   }
+
+  const withNoUse = () => parseCige({ id: 'plain', Context: {}, Intent: 'A plain case holds', Execution: ['do it'] });
 
   it('adds a plugin context line to agentContext, the only way an x- field reaches the model', () => {
     const withFlags = parseCige({ id: 'flags', Context: { system: 'Shop', 'x-flags': ['new-cart'] }, Intent: 'A shopper can open the cart', Execution: ['open the cart'] });
@@ -492,6 +524,7 @@ describe('plugins', () => {
         ],
       }),
     ).toThrow(/plugin name "Orders"[\s\S]*registered by both "Orders" and "more"/);
+    expect(() => registered([withNoUse()], { plugins: [{ name: 'orders', steps: { 'order api': step } }] })).toThrow(/step kind "order api" is not an id/);
   });
 });
 

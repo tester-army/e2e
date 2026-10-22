@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import type { CigeExtensions } from './extensions.ts';
 import { parseCige, type CigeCase, type CigeEvidence } from './schema.ts';
 
 /** What changed in one case, from the field rules' point of view. */
@@ -94,6 +95,29 @@ function same(a: unknown, b: unknown): boolean {
   return canonical(a) === canonical(b);
 }
 
+/** The `x-` keys whose values differ between two versions of one object. */
+function changedKeys(before: CigeExtensions | undefined, after: CigeExtensions | undefined): string[] {
+  return Object.keys({ ...before, ...after }).filter((key) => !same(before?.[key], after?.[key]));
+}
+
+/**
+ * Entries of `before` and `after` that are the same entry, one to one: equal
+ * by `key`, the same id first, so a second guardrail or evidence item with
+ * the same text is compared with its own counterpart, not the first one.
+ */
+function pair<T extends { readonly id: string }>(before: readonly T[], after: readonly T[], key: (item: T) => string): [T, T][] {
+  const used = new Set<T>();
+  const pairs: [T, T][] = [];
+  for (const was of before) {
+    const candidates = after.filter((item) => !used.has(item) && key(item) === key(was));
+    const now = candidates.find((item) => item.id === was.id) ?? candidates[0];
+    if (now === undefined) continue;
+    used.add(now);
+    pairs.push([was, now]);
+  }
+  return pairs;
+}
+
 /**
  * The changes from one version of a case to the next. `undefined` on one
  * side is a case added or removed.
@@ -116,10 +140,11 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
   for (const item of evidence.removed) changes.push(change('evidence-removed', `${item.id}: ${evidenceKey(item)}`));
   for (const item of evidence.added) changes.push(change('evidence-added', `${item.id}: ${evidenceKey(item)}`));
   if (before.intent.judge && !after.intent.judge) changes.push(change('judge-dropped', 'the Intent is no longer judged on screen'));
-  if (!same(before.intent.extensions, after.intent.extensions)) changes.push(change('intent-extension-changed', 'Intent x- keys'));
-  for (const was of before.intent.evidence) {
-    const now = after.intent.evidence.find((item) => evidenceKey(item) === evidenceKey(was));
-    if (now !== undefined && !same(was.extensions, now.extensions)) changes.push(change('intent-extension-changed', `${now.id}: evidence x- keys`));
+  const intentKeys = changedKeys(before.intent.extensions, after.intent.extensions);
+  if (intentKeys.length > 0) changes.push(change('intent-extension-changed', `Intent ${intentKeys.join(', ')}`));
+  for (const [was, now] of pair(before.intent.evidence, after.intent.evidence, evidenceKey)) {
+    const keys = changedKeys(was.extensions, now.extensions);
+    if (keys.length > 0) changes.push(change('intent-extension-changed', `${now.id}: ${keys.join(', ')}`));
   }
   if (!before.intent.judge && after.intent.judge) changes.push(change('judge-added', 'the Intent is now judged on screen'));
 
@@ -127,12 +152,9 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
   const rules = setDiff(before.guardrails, after.guardrails, (rule) => rule.rule);
   for (const rule of rules.removed) changes.push(change('guardrail-removed', `${rule.id}: ${JSON.stringify(rule.rule)}`));
   for (const rule of rules.added) changes.push(change('guardrail-added', `${rule.id}: ${JSON.stringify(rule.rule)}`));
-  for (const was of before.guardrails) {
-    const now = after.guardrails.find((rule) => rule.rule === was.rule);
-    if (now === undefined) continue;
-    if (!same(was.extensions, now.extensions) || !same(was.deny?.extensions, now.deny?.extensions)) {
-      changes.push(change('guardrail-extension-changed', `${now.id}: x- keys`));
-    }
+  for (const [was, now] of pair(before.guardrails, after.guardrails, (rule) => rule.rule)) {
+    const keys = [...changedKeys(was.extensions, now.extensions), ...changedKeys(was.deny?.extensions, now.deny?.extensions).map((key) => `deny.${key}`)];
+    if (keys.length > 0) changes.push(change('guardrail-extension-changed', `${now.id}: ${keys.join(', ')}`));
     for (const field of ['actions', 'summary'] as const) {
       const { removed, added } = setDiff(was.deny?.[field] ?? [], now.deny?.[field] ?? [], (entry) => entry);
       for (const entry of removed) changes.push(change('deny-removed', `${now.id}: deny.${field} ${JSON.stringify(entry)}`));
@@ -153,10 +175,9 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
     );
     changes.push(change('context-changed', keys.join(', ')));
   }
-  if (!same(before.extensions, after.extensions)) {
-    const keys = Object.keys({ ...before.extensions, ...after.extensions }).filter((key) => !same(before.extensions?.[key], after.extensions?.[key]));
-    changes.push(change('case-extension-changed', keys.join(', ')));
-  }
+  // Top-level x- keys are triage data (an owner, a ticket); enforced data belongs on a guardrail, whose x- changes block.
+  const caseKeys = changedKeys(before.extensions, after.extensions);
+  if (caseKeys.length > 0) changes.push(change('case-extension-changed', caseKeys.join(', ')));
   const variants = setDiff(before.variants, after.variants, (variant) => variant.id);
   for (const variant of variants.removed) changes.push(change('variant-removed', variant.id));
   for (const variant of variants.added) changes.push(change('variant-added', variant.id));

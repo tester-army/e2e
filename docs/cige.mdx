@@ -499,9 +499,11 @@ Every object in a case accepts keys that start with `x-`, at any level:
 - The case's top-level `x-` keys are copied into each run summary's
   `extensions`, for triage data such as an owner or a ticket.
 - `e2e-cige diff` blocks a changed `x-` key under Intent or on a guardrail,
-  since a plugin may enforce it. A top-level one passes.
-- They are committed in the case file and copied into summaries, so keep
-  secrets out.
+  since a plugin may enforce it. A top-level one passes: it is triage data,
+  so put anything a plugin enforces on the guardrail instead.
+- A step's `params` and `with` are data and take any key, `x-` or not.
+- They are committed in the case file, and the top-level ones are copied
+  into summaries as written, so keep secrets out.
 
 ### Add behavior with plugins
 
@@ -513,7 +515,7 @@ A plugin is an object in the config's `plugins` list, each hook optional:
 | `onAction` | After every action of an `act` step | A returned violation stops the step with `POLICY_DENIED`, named as that guardrail in the summary |
 | `classify` | In the reporter, after the first classification | Sets or clears (`null`) `failureType` on a failure and adds signals; `classification.adjustedBy` names the plugin |
 | `summarize` | In the reporter | Its fields land under `extensions.<plugin name>` |
-| `readiness` | In `e2e-cige check` and the `CIGE gaps` row | Each message is a `plugin` gap |
+| `readiness` | In `e2e-cige check` and the `CIGE gaps` row | Each message it returns, one or a list, is a `plugin` gap |
 | `steps` | When an Execution entry says `use` | Runs a step kind; see below |
 
 Plugin names are lowercase letters, digits, and dashes, unique in the
@@ -544,10 +546,16 @@ export const shop: CigePlugin = {
   // A step kind: { "id": "e4", "use": "order-api", "with": { "path": "/test-api/orders/{order}", "expect": 200 } }
   steps: {
     'order-api': async ({ step }) => {
-      const response = await fetch(new URL(String(step.with.path), 'http://localhost:3000'));
-      if (response.status !== step.with.expect) {
-        throw new AgentError('ASSERTION_FAILED', `GET ${String(step.with.path)} answered ${response.status}`);
+      const path = String(step.with.path);
+      let response: Response;
+      try {
+        response = await fetch(new URL(path, 'http://localhost:3000'));
+      } catch (cause) {
+        // A backend that isn't there is the environment, not the product or the path.
+        throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} failed: ${cause instanceof Error ? cause.message : String(cause)}`);
       }
+      if (response.status >= 500) throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} answered ${response.status}`);
+      if (response.status !== step.with.expect) throw new AgentError('ASSERTION_FAILED', `GET ${path} answered ${response.status}`);
     },
   },
   summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? 'unowned' }),
@@ -566,9 +574,12 @@ order with the agent's steps:
 ```
 
 - A variant fills `{name}` placeholders in every string inside `with`.
-- Return to pass. Throw an `AgentError`, such as `ASSERTION_FAILED` for a
-  check that failed, to keep its code. Any other throw fails the step as
-  `ACTION_FAILED`, naming it, so the summary's `failedStep` is its id.
+- Return to pass. Throw an `AgentError` to keep its code:
+  `ASSERTION_FAILED` for a check that failed, `ENVIRONMENT_UNAVAILABLE` for
+  a backend that is down. Any other throw fails the step as
+  `ACTION_FAILED`, naming it. The summary's `failedStep` is its id, and
+  `plugin-step-failed:<id>` leaves the failure type to the classifier,
+  since a plain throw says nothing about the flow.
 - Guardrails don't apply: the step is your code, not the model.
 - A step kind no plugin registers fails collection. A repair may rewrite a
   `use` step, since it is Execution, but never the plugin's code.

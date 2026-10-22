@@ -9,15 +9,23 @@
 
 import { fillPlaceholders as fill, placeholdersIn, type CigeCase, type CigeExecutionStep, type CigeVariant } from './schema.ts';
 
-/** One step with the variant's values: params for an `act`, filled text for a `verify`. */
-/** A JSON value with `{name}` filled in each string inside it. */
+/**
+ * A JSON value with `{name}` filled in each string inside it. A string that
+ * is exactly one placeholder takes the variant's value with its type, so
+ * `"{status}"` with `status: 500` is the number 500, as an act param would be.
+ */
 function fillDeep(value: unknown, params: CigeVariant['params']): unknown {
-  if (typeof value === 'string') return fill(value, params);
+  if (typeof value === 'string') {
+    const whole = /^\{([A-Za-z_][A-Za-z0-9_]*)\}$/.exec(value)?.[1];
+    if (whole !== undefined && Object.hasOwn(params, whole)) return params[whole];
+    return fill(value, params);
+  }
   if (Array.isArray(value)) return value.map((entry) => fillDeep(entry, params));
   if (typeof value === 'object' && value !== null) return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, fillDeep(entry, params)]));
   return value;
 }
 
+/** One step with the variant's values: params for an `act`, filled text for a `verify`, filled `with` for a `use`. */
 function resolveStep(step: CigeExecutionStep, params: CigeVariant['params']): CigeExecutionStep {
   if (step.kind === 'verify') return { ...step, text: fill(step.text, params) };
   if (step.kind === 'use') return { ...step, with: Object.fromEntries(Object.entries(step.with).map(([key, value]) => [key, fillDeep(value, params)])) };

@@ -244,12 +244,20 @@ function adjust<Fixtures>(
     if (change.failureType === null && failureType !== undefined) {
       failureType = undefined;
       changed = true;
-    } else if (change.failureType !== undefined && change.failureType !== null && first.result === 'fail' && FAILURE_TYPES.has(change.failureType)) {
+    } else if (
+      change.failureType !== undefined &&
+      change.failureType !== null &&
+      change.failureType !== failureType &&
+      first.result === 'fail' &&
+      FAILURE_TYPES.has(change.failureType)
+    ) {
       failureType = change.failureType;
       changed = true;
     }
-    if (change.signals !== undefined && change.signals.length > 0) {
-      signals.push(...change.signals);
+    // A plugin that only repeats what is there changed nothing, and must not read as a verdict.
+    for (const signal of change.signals ?? []) {
+      if (signals.includes(signal)) continue;
+      signals.push(signal);
       changed = true;
     }
     if (changed) adjustedBy.push(plugin.name);

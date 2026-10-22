@@ -23,7 +23,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  */
 function split(value: unknown): { readonly rest: unknown; readonly extensions?: CigeExtensions } {
   if (!isRecord(value)) return { rest: value };
-  const rest: Record<string, unknown> = {};
+  // No prototype, so a `__proto__` key stays an own property the strict schema reports, not a silent no-op.
+  const rest = Object.create(null) as Record<string, unknown>;
   const extensions: Record<string, unknown> = {};
   for (const [key, entry] of Object.entries(value)) {
     if (EXTENSION_KEY.test(key)) extensions[key] = entry;

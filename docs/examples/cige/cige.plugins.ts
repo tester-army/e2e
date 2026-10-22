@@ -19,10 +19,16 @@ export const shop: CigePlugin = {
   // A step kind: { "id": "e4", "use": "order-api", "with": { "path": "/test-api/orders/{order}", "expect": 200 } }
   steps: {
     'order-api': async ({ step }) => {
-      const response = await fetch(new URL(String(step.with.path), 'http://localhost:3000'));
-      if (response.status !== step.with.expect) {
-        throw new AgentError('ASSERTION_FAILED', `GET ${String(step.with.path)} answered ${response.status}`);
+      const path = String(step.with.path);
+      let response: Response;
+      try {
+        response = await fetch(new URL(path, 'http://localhost:3000'));
+      } catch (cause) {
+        // A backend that isn't there is the environment, not the product or the path.
+        throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} failed: ${cause instanceof Error ? cause.message : String(cause)}`);
       }
+      if (response.status >= 500) throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} answered ${response.status}`);
+      if (response.status !== step.with.expect) throw new AgentError('ASSERTION_FAILED', `GET ${path} answered ${response.status}`);
     },
   },
   summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? 'unowned' }),

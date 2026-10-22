@@ -138,7 +138,7 @@ function match(attempt: AttemptView, planned: readonly PlannedStep[]): { step: R
   return pairs;
 }
 
-function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; id?: string; code?: string; message?: string } {
+function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; id?: string; code?: string; message?: string; pluginStep?: boolean } {
   const planned = plan(testCase);
   const pairs = match(attempt, planned);
   const failing = pairs.find((pair) => pair.step.status !== 'passed');
@@ -155,7 +155,7 @@ function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; i
   const evidence = /CIGE evidence ([A-Za-z0-9][A-Za-z0-9._-]*) (?:not satisfied|could not be checked)/.exec(error?.message ?? '')?.[1];
   if (evidence !== undefined) return { phase: 'evidence', id: evidence, ...located };
   const used = /CIGE step ([A-Za-z0-9][A-Za-z0-9._-]*) \(/.exec(error?.message ?? '')?.[1];
-  if (used !== undefined) return { phase: 'execution', id: used, ...located };
+  if (used !== undefined) return { phase: 'execution', id: used, pluginStep: true, ...located };
   if (/CIGE (precondition|hook)/.test(error?.message ?? '') || error?.phase === 'beforeEach' || error?.phase === 'beforeAll') {
     return { phase: 'precondition', ...located };
   }
@@ -203,6 +203,10 @@ export function classifyResult(testCase: CigeCase, result: ReportResult, report?
     return { ...base, signals: [...signals, `guardrail-violation:${guardrail}`] };
   }
   const code = where.code ?? '';
+  if (where.pluginStep === true) {
+    // A plugin's step threw a plain error: its own code, not a changed flow, so the classifier reads its message.
+    return { ...base, signals: [...signals, `plugin-step-failed:${where.id}`] };
+  }
   const failureType = ((): CigeFailureType | undefined => {
     if (where.phase === 'precondition' || INFRASTRUCTURE_CODES.has(code)) return 'infrastructure';
     if (where.phase === 'execution' && PATH_CODES.has(code)) return 'outdated-test-logic';

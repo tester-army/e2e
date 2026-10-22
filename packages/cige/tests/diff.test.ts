@@ -100,6 +100,27 @@ describe('diffCases', () => {
     expect(kinds(edited((file) => void (file['x-owner'] = 'checkout-team')))).toEqual(['case-extension-changed']);
   });
 
+  it('compares x- keys of same-text guardrails and same-hook evidence one to one, and names the keys', () => {
+    const twins = (owner: string): CigeTestCase => ({
+      ...BASE,
+      Intent: {
+        statement: 'A shopper can check out with a discount',
+        evidence: [
+          { id: 'first', hook: 'orderExists' },
+          { id: 'second', hook: 'orderExists', 'x-owner': owner },
+        ],
+      },
+      Guardrails: [
+        { id: 'g1', rule: 'Use only the test card' },
+        { id: 'g2', rule: 'Use only the test card', 'x-deny-host': owner },
+      ],
+    });
+    expect(diffCases(parseCige(twins('a')), parseCige(twins('b'))).map((entry) => `${entry.kind} ${entry.detail}`)).toEqual([
+      'intent-extension-changed second: x-owner',
+      'guardrail-extension-changed g2: x-deny-host',
+    ]);
+  });
+
   it('reads an edited guardrail as one removed and one added, so it needs approval', () => {
     expect(kinds(edited((file) => void (file.Guardrails[0] = 'Use the test card')))).toEqual(['!guardrail-removed', 'guardrail-added']);
   });

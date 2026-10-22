@@ -171,7 +171,7 @@ describe('e2e-cige check', () => {
     const dir = project(false);
     writeFileSync(
       path.join(dir, 'cige.config.mjs'),
-      "export default { plugins: [{ name: 'owners', readiness: (testCase) => (testCase.extensions?.['x-owner'] ? [] : ['no x-owner: nobody triages it']) }] };\n",
+      "export default { plugins: [{ name: 'owners', readiness: (testCase) => (testCase.extensions?.['x-owner'] ? undefined : 'no x-owner: nobody triages it') }] };\n",
     );
     writeFileSync(path.join(dir, 'tests', 'cige', 'checkout.cige.json'), JSON.stringify({ ...CASE, Context: { specRef: 'a.md', buildRef: 'b.md' } }));
     const state = io(dir);

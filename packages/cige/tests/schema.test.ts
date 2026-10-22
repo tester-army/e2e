@@ -177,6 +177,11 @@ describe('x- extensions', () => {
     });
   });
 
+  it('refuses a __proto__ key instead of dropping it', () => {
+    const file: unknown = JSON.parse('{ "__proto__": { "polluted": true }, "Context": {}, "Intent": "x", "Execution": ["y"] }');
+    expect(() => parseCige(file)).toThrow(/Unrecognized key: "__proto__"/);
+  });
+
   it('still refuses any other unknown key, and a malformed x- key', () => {
     expect(() => parseCige({ Context: { featureFlags: ['beta'] }, Intent: 'x', Execution: ['y'] })).toThrow(/Context: Unrecognized key: "featureFlags"/);
     expect(() => parseCige({ 'x-': 1, Context: {}, Intent: 'x', Execution: ['y'] })).toThrow(/Unrecognized key: "x-"/);
@@ -188,10 +193,11 @@ describe('x- extensions', () => {
       Context: {},
       Intent: 'x',
       Execution: [
-        { id: 'e1', step: 'y', params: { code: 'a' } },
+        { id: 'e1', step: 'y', params: { code: 'a', 'x-trace': 'kept' } },
         { id: 'e2', use: 'probe', with: { 'x-header': 'kept', nested: { 'x-also': true } } },
       ],
     });
+    expect(testCase.execution[0]).toEqual({ kind: 'act', id: 'e1', text: 'y', params: { code: 'a', 'x-trace': 'kept' } });
     expect(testCase.execution[1]).toEqual({ kind: 'use', id: 'e2', use: 'probe', with: { 'x-header': 'kept', nested: { 'x-also': true } } });
   });
 
