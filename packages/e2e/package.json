@@ -71,6 +71,10 @@
     "./oauth/opencode-console": {
       "types": "./dist/oauth/opencode-console.d.ts",
       "default": "./dist/oauth/opencode-console.js"
+    },
+    "./ocr": {
+      "types": "./dist/ocr/index.d.ts",
+      "default": "./dist/ocr/index.js"
     }
   },
   "bin": {
