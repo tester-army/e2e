@@ -11,18 +11,20 @@ import type { CigeConfig } from './config.ts';
 import type { CigeCase } from './schema.ts';
 
 /** One thing a case lacks for classification or replay. */
-export type CigeGapKind = 'no-spec-ref' | 'no-build-ref' | 'build-unset' | 'environment-unset' | 'environment-undeclared' | 'environment-no-reset' | 'resolver-failed';
+export type CigeGapKind = 'no-spec-ref' | 'no-build-ref' | 'build-unset' | 'environment-unset' | 'environment-undeclared' | 'environment-no-reset' | 'resolver-failed' | 'plugin';
 
 export interface CigeGap {
   readonly kind: CigeGapKind;
   readonly detail: string;
+  /** The plugin whose `readiness` hook reported it, for a `plugin` gap. */
+  readonly plugin?: string;
 }
 
 const BUILD_PLACEHOLDER = /\{build\}/;
 const ENVIRONMENT_PLACEHOLDER = /\{environment\}/;
 
 /** Every gap one case has under the config, in a fixed order; empty when it is ready. */
-export function readinessGaps(testCase: CigeCase, config: Pick<CigeConfig, 'build' | 'refs' | 'environments'>): CigeGap[] {
+export function readinessGaps<Fixtures>(testCase: CigeCase, config: Pick<CigeConfig<Fixtures>, 'build' | 'refs' | 'environments' | 'plugins'>): CigeGap[] {
   const { context } = testCase;
   const gaps: CigeGap[] = [];
   if (context.specRef === undefined && config.refs?.spec === undefined) {
@@ -48,6 +50,14 @@ export function readinessGaps(testCase: CigeCase, config: Pick<CigeConfig, 'buil
       gaps.push({ kind: 'environment-undeclared', detail: `environment "${environment}" is not in the config's environments: a replay cannot reset it` });
     } else if (declared.reset === undefined) {
       gaps.push({ kind: 'environment-no-reset', detail: `environment "${environment}" has no reset action: recovery cannot restore it` });
+    }
+  }
+  for (const plugin of config.plugins ?? []) {
+    if (plugin.readiness === undefined) continue;
+    try {
+      for (const detail of plugin.readiness(testCase)) gaps.push({ kind: 'plugin', plugin: plugin.name, detail });
+    } catch (cause) {
+      gaps.push({ kind: 'plugin', plugin: plugin.name, detail: `the readiness check failed: ${cause instanceof Error ? cause.message : String(cause)}` });
     }
   }
   return gaps;

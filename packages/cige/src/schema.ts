@@ -10,6 +10,8 @@
 
 import { z } from 'zod';
 
+import { extractExtensions, type CigeExtensions } from './extensions.ts';
+
 /** A stable id: what a run summary names a step, a guardrail, or an evidence item by. */
 const Id = z
   .string()
@@ -32,7 +34,14 @@ const ExecutionVerify = z.strictObject({
   vision: z.boolean().optional(),
 });
 
-const ExecutionEntry = z.union([Text, ExecutionAct, ExecutionVerify]);
+/** A step a plugin runs: `use` names a step kind a plugin registered, `with` is its input. */
+const ExecutionUse = z.strictObject({
+  id: Id,
+  use: Id,
+  with: z.record(z.string(), z.unknown()).optional(),
+});
+
+const ExecutionEntry = z.union([Text, ExecutionAct, ExecutionVerify, ExecutionUse]);
 
 const EvidenceAssert = z.strictObject({
   id: Id.optional(),
@@ -126,29 +135,39 @@ const CigeFile = z.strictObject({
 /** A CIGE test case as authored: what a `.cige.json` file holds. */
 export type CigeTestCase = z.input<typeof CigeFile>;
 
-/** One Execution entry after normalization: an `agent.act` goal or an `agent.assert` check. */
-export type CigeExecutionStep =
-  | { readonly kind: 'act'; readonly id: string; readonly text: string; readonly params?: Readonly<Record<string, unknown>> }
-  | { readonly kind: 'verify'; readonly id: string; readonly text: string; readonly vision?: boolean };
+/** What every object a case defines may carry: its `x-` keys, when it has any. */
+interface Extended {
+  readonly extensions?: CigeExtensions;
+}
+
+/** One Execution entry after normalization: an `agent.act` goal, an `agent.assert` check, or a plugin's step. */
+export type CigeExecutionStep = Extended &
+  (
+    | { readonly kind: 'act'; readonly id: string; readonly text: string; readonly params?: Readonly<Record<string, unknown>> }
+    | { readonly kind: 'verify'; readonly id: string; readonly text: string; readonly vision?: boolean }
+    | { readonly kind: 'use'; readonly id: string; readonly use: string; readonly with: Readonly<Record<string, unknown>> }
+  );
 
 /** One piece of evidence a pass requires: a judgment of the screen, or a named hook in your code. */
-export type CigeEvidence =
-  | { readonly kind: 'assert'; readonly id: string; readonly text: string; readonly vision?: boolean }
-  | { readonly kind: 'hook'; readonly id: string; readonly hook: string; readonly description?: string };
+export type CigeEvidence = Extended &
+  (
+    | { readonly kind: 'assert'; readonly id: string; readonly text: string; readonly vision?: boolean }
+    | { readonly kind: 'hook'; readonly id: string; readonly hook: string; readonly description?: string }
+  );
 
 /** One guardrail: its prose, and the actions the runner refuses on sight. */
-export interface CigeGuardrail {
+export interface CigeGuardrail extends Extended {
   readonly id: string;
   readonly rule: string;
-  readonly deny?: { readonly actions?: readonly string[]; readonly summary?: readonly string[] };
+  readonly deny?: Extended & { readonly actions?: readonly string[]; readonly summary?: readonly string[] };
 }
 
 /** A precondition: a fact the agent reads, or a hook your code runs before the first step. */
 export type CigePrecondition =
   | { readonly kind: 'fact'; readonly text: string }
-  | { readonly kind: 'hook'; readonly hook: string; readonly description?: string };
+  | (Extended & { readonly kind: 'hook'; readonly hook: string; readonly description?: string });
 
-export interface CigeContext {
+export interface CigeContext extends Extended {
   readonly system?: string;
   /** Prose for the model, and the key of `environments` in the CIGE config that replays the case. */
   readonly environment?: string;
@@ -175,7 +194,7 @@ export interface CigeContext {
 }
 
 /** One combination of a case's dimensions: values for its `{name}` placeholders, and where it runs. */
-export interface CigeVariant {
+export interface CigeVariant extends Extended {
   readonly id: string;
   readonly params: Readonly<Record<string, string | number | boolean>>;
   readonly platforms?: readonly string[];
@@ -183,7 +202,7 @@ export interface CigeVariant {
   readonly session?: string;
 }
 
-export interface CigeIntent {
+export interface CigeIntent extends Extended {
   readonly statement: string;
   readonly success: readonly string[];
   readonly failure: readonly string[];
@@ -192,8 +211,8 @@ export interface CigeIntent {
   readonly judge: boolean;
 }
 
-/** A validated, normalized CIGE test case. */
-export interface CigeCase {
+/** A validated, normalized CIGE test case. Its own `extensions` are the file's top-level `x-` keys. */
+export interface CigeCase extends Extended {
   readonly id: string;
   /** The file the case was read from, when it came from one. */
   readonly file?: string;
@@ -277,7 +296,12 @@ function pathOf(path: readonly PropertyKey[]): string {
  */
 export function parseCige(value: unknown, source = 'test case'): CigeCase {
   const issues: string[] = [];
-  const parsed = CigeFile.safeParse(capitalize(value, issues));
+  const extracted = extractExtensions(capitalize(value, issues));
+  const ext = (path: string): Extended => {
+    const extensions = extracted.at.get(path);
+    return extensions === undefined ? {} : { extensions };
+  };
+  const parsed = CigeFile.safeParse(extracted.file);
   if (!parsed.success) {
     for (const issue of parsed.error.issues) issues.push(...messagesOf(issue));
   }
@@ -287,16 +311,21 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
   const intentObject = typeof file.Intent === 'string' ? { statement: file.Intent } : file.Intent;
   const execution: CigeExecutionStep[] = file.Execution.map((entry, index) => {
     if (typeof entry === 'string') return { kind: 'act', id: `e${index + 1}`, text: entry };
+    const extended = ext(`Execution.${index}`);
     if ('step' in entry) {
-      return { kind: 'act', id: entry.id, text: entry.step, ...(entry.params === undefined ? {} : { params: entry.params }) };
+      return { kind: 'act', id: entry.id, text: entry.step, ...(entry.params === undefined ? {} : { params: entry.params }), ...extended };
     }
-    return { kind: 'verify', id: entry.id, text: entry.verify, ...(entry.vision === undefined ? {} : { vision: entry.vision }) };
+    if ('use' in entry) return { kind: 'use', id: entry.id, use: entry.use, with: entry.with ?? {}, ...extended };
+    return { kind: 'verify', id: entry.id, text: entry.verify, ...(entry.vision === undefined ? {} : { vision: entry.vision }), ...extended };
   });
   const evidence: CigeEvidence[] = (intentObject.evidence ?? []).map((entry, index) => {
     const id = typeof entry === 'string' ? `v${index + 1}` : (entry.id ?? `v${index + 1}`);
     if (typeof entry === 'string') return { kind: 'assert', id, text: entry };
-    if ('assert' in entry) return { kind: 'assert', id, text: entry.assert, ...(entry.vision === undefined ? {} : { vision: entry.vision }) };
-    return { kind: 'hook', id, hook: entry.hook, ...(entry.description === undefined ? {} : { description: entry.description }) };
+    const extended = ext(`Intent.evidence.${index}`);
+    if ('assert' in entry) {
+      return { kind: 'assert', id, text: entry.assert, ...(entry.vision === undefined ? {} : { vision: entry.vision }), ...extended };
+    }
+    return { kind: 'hook', id, hook: entry.hook, ...(entry.description === undefined ? {} : { description: entry.description }), ...extended };
   });
   const guardrails: CigeGuardrail[] = (file.Guardrails ?? []).map((entry, index) => {
     const id = typeof entry === 'string' ? `g${index + 1}` : (entry.id ?? `g${index + 1}`);
@@ -306,22 +335,29 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       : {
           ...(entry.deny.actions === undefined ? {} : { actions: entry.deny.actions }),
           ...(entry.deny.summary === undefined ? {} : { summary: entry.deny.summary }),
+          ...ext(`Guardrails.${index}.deny`),
         };
-    return { id, rule: entry.rule, ...(deny === undefined ? {} : { deny }) };
+    return { id, rule: entry.rule, ...(deny === undefined ? {} : { deny }), ...ext(`Guardrails.${index}`) };
   });
   const context = file.Context;
-  const preconditions: CigePrecondition[] = (context.preconditions ?? []).map((entry) =>
+  const preconditions: CigePrecondition[] = (context.preconditions ?? []).map((entry, index) =>
     typeof entry === 'string'
       ? { kind: 'fact', text: entry }
-      : { kind: 'hook', hook: entry.hook, ...(entry.description === undefined ? {} : { description: entry.description }) },
+      : {
+          kind: 'hook',
+          hook: entry.hook,
+          ...(entry.description === undefined ? {} : { description: entry.description }),
+          ...ext(`Context.preconditions.${index}`),
+        },
   );
 
-  const variants: CigeVariant[] = (file.Variants ?? []).map((entry) => ({
+  const variants: CigeVariant[] = (file.Variants ?? []).map((entry, index) => ({
     id: entry.id,
     params: entry.params ?? {},
     ...(entry.platforms === undefined ? {} : { platforms: entry.platforms }),
     ...(entry.agent === undefined ? {} : { agent: entry.agent }),
     ...(entry.session === undefined ? {} : { session: entry.session }),
+    ...ext(`Variants.${index}`),
   }));
 
   const judge = intentObject.judge ?? true;
@@ -336,14 +372,14 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       intentObject.statement,
       ...(intentObject.success ?? []),
       ...(intentObject.failure ?? []),
-      ...execution.flatMap((step) => (step.kind === 'verify' ? [step.text] : [])),
+      ...execution.flatMap((step) => (step.kind === 'verify' ? [step.text] : step.kind === 'use' ? stringsIn(step.with) : [])),
       ...evidence.flatMap((item) => (item.kind === 'assert' ? [item.text] : [])),
     ].flatMap(placeholdersIn),
   );
   const acted = execution.flatMap((step) =>
     step.kind === 'act' ? placeholdersIn(step.text).filter((name) => !Object.hasOwn(step.params ?? {}, name)) : [],
   );
-  const placeholders = new Set([...judged, ...execution.flatMap((step) => placeholdersIn(step.text))]);
+  const placeholders = new Set([...judged, ...execution.flatMap((step) => (step.kind === 'use' ? [] : placeholdersIn(step.text)))]);
   for (const variant of variants) {
     for (const name of Object.keys(variant.params)) {
       if (!placeholders.has(name)) {
@@ -395,6 +431,7 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       ...(context.specRef === undefined ? {} : { specRef: context.specRef }),
       ...(context.buildRef === undefined ? {} : { buildRef: context.buildRef }),
       ...(context.expectedRef === undefined ? {} : { expectedRef: context.expectedRef }),
+      ...ext('Context'),
     },
     intent: {
       statement: intentObject.statement,
@@ -402,10 +439,13 @@ export function parseCige(value: unknown, source = 'test case'): CigeCase {
       failure: intentObject.failure ?? [],
       evidence,
       judge,
+      // A plain-string Intent has no object to carry x- keys.
+      ...(typeof file.Intent === 'string' ? {} : ext('Intent')),
     },
     guardrails,
     execution,
     variants,
+    ...ext(''),
   };
 }
 
@@ -414,6 +454,14 @@ const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
 /** The `{name}` placeholders a piece of case text refers to. */
 export function placeholdersIn(text: string): string[] {
   return [...text.matchAll(PLACEHOLDER)].map((match) => match[1]!);
+}
+
+/** Every string inside a JSON value, nested ones included: where a step's `with` can hold placeholders. */
+function stringsIn(value: unknown): string[] {
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (typeof value === 'object' && value !== null) return Object.values(value).flatMap(stringsIn);
+  return [];
 }
 
 /** `text` with each `{name}` that `values` has filled in; any other placeholder stays as written. */

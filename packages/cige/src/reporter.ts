@@ -19,6 +19,7 @@ import { readinessGaps } from './check.ts';
 import { attemptsOf, classifyResult, type CigeClassification, type CigeFailureType } from './classify.ts';
 import { DEFAULT_CASES, fillRef, type CigeConfig } from './config.ts';
 import { loadCigeCases } from './load.ts';
+import type { CigeClassificationChange, CigePlugin } from './plugins.ts';
 import { fileSafe } from './refs.ts';
 import type { CigeCase } from './schema.ts';
 import { CIGE_TAG, cigeTag } from './suite.ts';
@@ -45,7 +46,11 @@ export interface CigeRunSummary {
     readonly errorCode?: string;
     readonly message?: string;
     readonly signals: readonly string[];
+    /** The plugins whose `classify` changed this classification, in config order. */
+    readonly adjustedBy?: readonly string[];
   };
+  /** The case's top-level `x-` keys, then each plugin's `summarize` fields under its name. */
+  readonly extensions?: Readonly<Record<string, unknown>>;
   readonly specRef?: string;
   readonly buildRef?: string;
   readonly expectedRef?: string;
@@ -109,10 +114,12 @@ function summarize<Fixtures>(
   const { id, variant } = key;
   const { build } = options;
   const fromRoot = (file: string): string => path.relative(run.projectRoot, file).split(path.sep).join('/');
-  const classification: CigeClassification =
+  const first: CigeClassification =
     testCase === undefined
       ? { result: result.status === 'passed' || result.status === 'flaky' ? 'pass' : result.status === 'skipped' || result.status === 'interrupted' ? result.status : 'fail', signals: ['case-not-found'] }
       : classifyResult(testCase, result, run.report);
+  const plugins = options.plugins ?? [];
+  const { classification, adjustedBy } = testCase === undefined ? { classification: first, adjustedBy: [] } : adjust(first, testCase, result, plugins);
   const context = testCase?.context;
   const environment = context?.environment;
   const refs = {
@@ -152,7 +159,7 @@ function summarize<Fixtures>(
     artifact.path === undefined ? (artifact.url === undefined ? [] : [artifact.url]) : [fromRoot(path.join(run.artifactsRoot, artifact.path))],
   );
   const trace = run.traces.get(result.id);
-  return {
+  const summary: CigeRunSummary = {
     testId: id,
     ...(variant === undefined ? {} : { variant }),
     runDate: run.report.run.startedAt.slice(0, 10),
@@ -168,6 +175,7 @@ function summarize<Fixtures>(
       ...(classification.errorCode === undefined ? {} : { errorCode: classification.errorCode }),
       ...(classification.message === undefined ? {} : { message: classification.message }),
       signals,
+      ...(adjustedBy.length === 0 ? {} : { adjustedBy }),
     },
     ...(refs.specRef === undefined ? {} : { specRef: refs.specRef }),
     ...(refs.buildRef === undefined ? {} : { buildRef: refs.buildRef }),
@@ -185,6 +193,68 @@ function summarize<Fixtures>(
       artifacts,
     },
   };
+  if (testCase === undefined) return summary;
+  const extensions: Record<string, unknown> = { ...testCase.extensions };
+  for (const plugin of plugins) {
+    if (plugin.summarize === undefined) continue;
+    try {
+      const fields = plugin.summarize({ testCase, summary });
+      if (fields !== undefined) extensions[plugin.name] = fields;
+    } catch (cause) {
+      extensions[plugin.name] = { error: cause instanceof Error ? cause.message : String(cause) };
+    }
+  }
+  return Object.keys(extensions).length === 0 ? summary : { ...summary, extensions };
+}
+
+const FAILURE_TYPES: ReadonlySet<CigeFailureType> = new Set(['infrastructure', 'outdated-test-logic', 'product-defect']);
+
+/** The classification without its failure type, for a plugin that clears it. */
+function untyped({ failureType: _cleared, ...rest }: CigeClassification): CigeClassification {
+  return rest;
+}
+
+/**
+ * The reporter's first classification after each plugin's `classify`, in
+ * config order, and the plugins that changed it. A plugin may set a failure
+ * type on a failure only, clear one, and add signals; one that throws adds
+ * `plugin-error:<name>` and changes nothing else.
+ */
+function adjust<Fixtures>(
+  first: CigeClassification,
+  testCase: CigeCase,
+  result: ReportResult,
+  plugins: readonly CigePlugin<Fixtures>[],
+): { readonly classification: CigeClassification; readonly adjustedBy: readonly string[] } {
+  const signals = [...first.signals];
+  let failureType = first.failureType;
+  const current = (): CigeClassification => ({ ...untyped(first), ...(failureType === undefined ? {} : { failureType }), signals: [...signals] });
+  const adjustedBy: string[] = [];
+  for (const plugin of plugins) {
+    if (plugin.classify === undefined) continue;
+    let change: CigeClassificationChange | undefined;
+    try {
+      change = plugin.classify({ testCase, result, classification: current() });
+    } catch {
+      signals.push(`plugin-error:${plugin.name}`);
+      continue;
+    }
+    if (change === undefined) continue;
+    let changed = false;
+    if (change.failureType === null && failureType !== undefined) {
+      failureType = undefined;
+      changed = true;
+    } else if (change.failureType !== undefined && change.failureType !== null && first.result === 'fail' && FAILURE_TYPES.has(change.failureType)) {
+      failureType = change.failureType;
+      changed = true;
+    }
+    if (change.signals !== undefined && change.signals.length > 0) {
+      signals.push(...change.signals);
+      changed = true;
+    }
+    if (changed) adjustedBy.push(plugin.name);
+  }
+  return { classification: current(), adjustedBy };
 }
 
 /**

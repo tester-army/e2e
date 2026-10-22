@@ -92,6 +92,17 @@ npx e2e-cige check --resolve          # what each case lacks to be classified an
 npx e2e-cige diff --base origin/main  # fails when a change weakens a case
 ```
 
+CIGE is extensible without forking it:
+
+- **`x-` fields:** any object in a case accepts `x-` keys (`"x-owner"`,
+  `"x-deny-host"`). Hooks and plugins read them; the model never sees them
+  unless a plugin adds them; top-level ones are copied into summaries. Any
+  other unknown key still fails to load.
+- **Plugins:** `plugins` in `cige.config.ts`, each with optional `context`,
+  `onAction`, `classify`, `summarize`, `readiness`, and `steps` hooks.
+- **Step kinds:** an Execution entry `{ "id": "e4", "use": "order-api",
+  "with": {...} }` runs a step kind a plugin registered.
+
 The `cige` agent skill (`npx skills add tester-army/e2e --skill cige`)
 reads the summaries, classifies each failure, and makes only the repair it
 allows. The file format is pinned by `schema/cige-1.schema.json`. See the

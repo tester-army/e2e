@@ -140,8 +140,12 @@ suites that consume the built packages the way a user would.
   the case files in the main process rather than anything a worker held.
   One `cige.config.ts` (`defineCige`) feeds the suite, the reporter, and the
   `e2e-cige` bin (`replay`, `env`, `refs`, `check`, `diff`), which spawns the
-  installed `e2e` bin rather than any internal API. Imports `e2e` only; no
-  core change.
+  installed `e2e` bin rather than any internal API. The schema is closed
+  except for `x-` keys, which `src/extensions.ts` takes off before
+  validation and the case keeps as `extensions`; behavior extends through
+  the config's `plugins` (`src/plugins.ts`), including `use` step kinds. A
+  new extension point is a plugin hook, never an open key. Imports `e2e`
+  and `e2e/runner` (for `isE2EError`) only; no core change.
 - `packages/github` — the published `@e2e-dev/github` package: the reporter
   that posts the run as one pull request comment from GitHub Actions and
   keeps it current on reruns, writing the same text to the job summary. It

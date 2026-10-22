@@ -2,9 +2,10 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://e2e.tester.army/schema/cige-1.schema.json",
   "title": "CIGE test case, version 1",
-  "description": "An agentic test case in the CIGE standard: Context grounds the run, Intent states why the test exists and what a pass needs, Guardrails say what the agent must never do, and Execution is the first path to try. See https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard.",
+  "description": "An agentic test case in the CIGE standard: Context grounds the run, Intent states why the test exists and what a pass needs, Guardrails say what the agent must never do, and Execution is the first path to try. Every object also accepts x- keys (x-owner, x-ticket) for your own data; no other unknown key is allowed. See https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard.",
   "type": "object",
   "additionalProperties": false,
+  "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
   "required": ["Context", "Intent", "Execution"],
   "properties": {
     "$schema": { "type": "string" },
@@ -24,7 +25,7 @@
       "type": "array",
       "minItems": 1,
       "description": "The first path to try, one goal per entry. Steps are guidance a repair may change while Intent and Guardrails hold.",
-      "items": { "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/act" }, { "$ref": "#/$defs/verify" }] }
+      "items": { "oneOf": [{ "$ref": "#/$defs/text" }, { "$ref": "#/$defs/act" }, { "$ref": "#/$defs/verify" }, { "$ref": "#/$defs/use" }] }
     },
     "Variants": {
       "type": "array",
@@ -40,6 +41,7 @@
       "type": "object",
       "description": "The operating ground. system, environment, actor, preconditions, facts, and prompts become the test's agentContext, which every agent step reads, so they hold facts, never instructions. The rest pick where the case runs or point to the ground truth a failure is classified against.",
       "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
       "properties": {
         "system": { "$ref": "#/$defs/text", "description": "The app or service under test." },
         "environment": { "$ref": "#/$defs/text", "description": "Where the case runs: prose for the model, and the name of the environment in the CIGE config that replays it." },
@@ -61,6 +63,7 @@
               {
                 "type": "object",
                 "additionalProperties": false,
+                "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
                 "required": ["hook"],
                 "properties": {
                   "hook": { "$ref": "#/$defs/id", "description": "A hook your code passes to cigeSuite, run before the first step." },
@@ -80,6 +83,7 @@
     "intent": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
       "required": ["statement"],
       "properties": {
         "statement": { "$ref": "#/$defs/text" },
@@ -94,12 +98,14 @@
               {
                 "type": "object",
                 "additionalProperties": false,
+                "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
                 "required": ["assert"],
                 "properties": { "id": { "$ref": "#/$defs/id" }, "assert": { "$ref": "#/$defs/text" }, "vision": { "type": "boolean" } }
               },
               {
                 "type": "object",
                 "additionalProperties": false,
+                "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
                 "required": ["hook"],
                 "properties": { "id": { "$ref": "#/$defs/id" }, "hook": { "$ref": "#/$defs/id" }, "description": { "$ref": "#/$defs/text" } }
               }
@@ -112,6 +118,7 @@
     "guardrail": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
       "required": ["rule"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
@@ -119,6 +126,7 @@
         "deny": {
           "type": "object",
           "additionalProperties": false,
+          "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
           "minProperties": 1,
           "description": "Actions the runner stops the step on: an action name (tap, navigate, tool:refund) or a prefix ending in *, and case-insensitive regular expressions matched against the action's summary.",
           "properties": {
@@ -131,6 +139,7 @@
     "act": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
       "required": ["id", "step"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
@@ -141,6 +150,7 @@
     "variant": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
       "required": ["id"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },
@@ -154,9 +164,22 @@
         "session": { "$ref": "#/$defs/id" }
       }
     },
+    "use": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
+      "required": ["id", "use"],
+      "description": "A step a plugin runs: use names a step kind a plugin in cige.config.ts registers, and with is its input. {name} placeholders in with's strings are filled by the variant.",
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "use": { "$ref": "#/$defs/id" },
+        "with": { "type": "object" }
+      }
+    },
     "verify": {
       "type": "object",
       "additionalProperties": false,
+      "patternProperties": { "^x-[A-Za-z0-9._-]+$": {} },
       "required": ["id", "verify"],
       "properties": {
         "id": { "$ref": "#/$defs/id" },

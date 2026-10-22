@@ -92,7 +92,9 @@ describe('render', () => {
   });
 
   it('puts every guardrail on each act instruction', () => {
-    const instruction = actInstruction(testCase, testCase.execution[0]!);
+    const first = testCase.execution[0];
+    if (first?.kind !== 'act') throw new Error('the first step is an act step');
+    const instruction = actInstruction(testCase, first);
     expect(instruction.startsWith('apply the code {code}\n\n')).toBe(true);
     expect(instruction).toContain(GUARDRAIL_HEADING);
     expect(instruction).toContain('- [g1] Use only the test card');
@@ -393,3 +395,103 @@ describe('classifyResult', () => {
     expect(classifyResult(parseCige(CHECKOUT), result)).toEqual({ result: 'interrupted', signals: ['status:interrupted'] });
   });
 });
+
+describe('plugins', () => {
+  const api = parseCige({
+    id: 'api',
+    Context: { system: 'Shop' },
+    Intent: { statement: 'An order for {sku} can be fetched', judge: false, evidence: [{ hook: 'orderExists' }] },
+    Guardrails: [{ id: 'no-admin', rule: 'Stay out of the admin area', 'x-deny-path': '/admin' }],
+    Execution: [
+      { id: 'e1', step: 'open the order for {sku}' },
+      { id: 'e2', use: 'order-api', with: { path: '/orders/{sku}', nested: ['{sku}'] } },
+    ],
+    Variants: [{ id: 'notebook', params: { sku: 'NB-1' } }],
+  });
+  const [notebook] = expandVariants(api);
+
+  it('runs a use step with the variant filled into with, in Execution order', async () => {
+    const { fixtures, calls } = fakeFixtures();
+    const seen: unknown[] = [];
+    await runCige(notebook!, fixtures, {
+      hooks: { orderExists: () => true },
+      plugins: [{ name: 'orders', steps: { 'order-api': ({ step }) => void seen.push(step.with) } }],
+    });
+    expect(seen).toEqual([{ path: '/orders/NB-1', nested: ['NB-1'] }]);
+    expect(calls.map((call) => call.api)).toEqual(['agent.act']);
+  });
+
+  it('fails a use step that throws as ACTION_FAILED naming it, and keeps an e2e error code', async () => {
+    const run = (step: () => unknown) =>
+      runCige(notebook!, fakeFixtures().fixtures, { hooks: { orderExists: () => true }, plugins: [{ name: 'orders', steps: { 'order-api': step } }] });
+    await expect(
+      run(() => {
+        throw new Error('the orders API answered 500');
+      }),
+    ).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'CIGE step e2 (order-api) failed: the orders API answered 500' });
+    await expect(
+      run(() => {
+        throw new AgentError('ASSERTION_FAILED', 'the order total is wrong');
+      }),
+    ).rejects.toMatchObject({ code: 'ASSERTION_FAILED', message: 'the order total is wrong' });
+  });
+
+  it('stops an act step on a plugin guardrail check, read back as that guardrail', async () => {
+    const { fixtures, calls } = fakeFixtures();
+    await runCige(notebook!, fixtures, {
+      hooks: { orderExists: () => true },
+      plugins: [
+        {
+          name: 'paths',
+          onAction: (event, testCase) => {
+            const rule = testCase.guardrails.find((guardrail) => typeof guardrail.extensions?.['x-deny-path'] === 'string');
+            const denied = rule?.extensions?.['x-deny-path'];
+            return rule !== undefined && typeof denied === 'string' && event.summary.includes(denied) ? { guardrail: rule.id, reason: `${denied} is off limits` } : undefined;
+          },
+          steps: { 'order-api': () => undefined },
+        },
+      ],
+    });
+    const onAction = (calls[0]!.options as ActOptions).onAction!;
+    expect(() => onAction({ index: 1, action: 'navigate', summary: 'navigate /orders/NB-1', source: 'model' })).not.toThrow();
+    let thrown: unknown;
+    try {
+      onAction({ index: 2, action: 'navigate', summary: 'navigate /admin/orders', source: 'model' });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(isAgentError(thrown) && thrown.code).toBe('POLICY_DENIED');
+    expect(violatedGuardrail(isAgentError(thrown) ? thrown.message : undefined)).toBe('no-admin');
+  });
+
+  function registered(cases: Parameters<typeof cigeSuite>[0], options: Omit<Parameters<typeof cigeSuite>[1] & object, 'test'> = {}): [string, TestOptions][] {
+    const calls: [string, TestOptions][] = [];
+    const test = ((title: string, testOptions: TestOptions) => void calls.push([title, testOptions])) as unknown as TestAPI;
+    cigeSuite(cases, { ...options, test });
+    return calls;
+  }
+
+  it('adds a plugin context line to agentContext, the only way an x- field reaches the model', () => {
+    const withFlags = parseCige({ id: 'flags', Context: { system: 'Shop', 'x-flags': ['new-cart'] }, Intent: 'A shopper can open the cart', Execution: ['open the cart'] });
+    expect(registered([withFlags])[0]?.[1].agentContext).toBe('System under test: Shop');
+    const flagged = registered([withFlags], {
+      plugins: [{ name: 'flags', context: (testCase) => `Feature flags on: ${String(testCase.context.extensions?.['x-flags'])}` }],
+    });
+    expect(flagged[0]?.[1].agentContext).toBe('System under test: Shop\n\nFeature flags on: new-cart');
+  });
+
+  it('fails collection on a step kind no plugin registers, and on a bad plugin set', () => {
+    expect(() => registered([api], { hooks: { orderExists: () => true } })).toThrow(/step kind "order-api" is used by the case but no plugin registers it/);
+    const step = () => undefined;
+    expect(() =>
+      registered([api], {
+        hooks: { orderExists: () => true },
+        plugins: [
+          { name: 'Orders', steps: { 'order-api': step } },
+          { name: 'more', steps: { 'order-api': step } },
+        ],
+      }),
+    ).toThrow(/plugin name "Orders"[\s\S]*registered by both "Orders" and "more"/);
+  });
+});
+

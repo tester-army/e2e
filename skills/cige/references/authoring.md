@@ -12,6 +12,7 @@ path that works today.
 - Dimensions
 - Refs
 - The config
+- Extending
 - Before you hand a new case over
 
 ## Ask before you write
@@ -155,6 +156,22 @@ Once `environments` is set, a case whose `Context.environment` names none
 of them fails to load, and a case with no `Context.environment` shows as
 `environment-unset` in `e2e-cige check`: set it on every case. Register the cases with `cigeSuite(config)` in a `*.e2e.ts` file and
 add `cige(config)` to the e2e config's `reporters`.
+
+## Extending
+
+- **Your own fields:** any object takes keys that start with `x-` (for example
+  `"x-owner"`, `"x-ticket"`, or `"x-deny-host"` on a guardrail). Never invent a key
+  without the prefix: it fails to load. The model never sees `x-` keys
+  unless a plugin's `context` adds them, and they are copied into
+  summaries, so no secrets.
+- **Your own checks:** if the project's `cige.config.ts` has `plugins`, read
+  them before writing a case. A plugin's `onAction` may enforce a
+  guardrail's `x-` data, its `readiness` may require an `x-` field, and its
+  `steps` name the `use` kinds you may write.
+- **Your own steps:** `{ "id": "e4", "use": "<kind>", "with": {...} }` runs a
+  plugin's step kind, such as an API check, in Execution order. Use one
+  only for a kind a plugin registers; `with` may hold `{name}` placeholders
+  a variant fills.
 
 ## Before you hand a new case over
 

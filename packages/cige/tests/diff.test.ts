@@ -94,6 +94,12 @@ describe('diffCases', () => {
     expect(kinds(edited((file) => void (file.Variants[0].platforms = ['ios'])))).toEqual(['!variant-changed']);
   });
 
+  it('blocks an x- change under Intent or on a guardrail, and allows a top-level one', () => {
+    expect(kinds(edited((file) => void (file.Intent['x-priority'] = 'p3')))).toEqual(['!intent-extension-changed']);
+    expect(kinds(edited((file) => void (file.Guardrails[1]['x-deny-host'] = 'admin.example.test')))).toEqual(['!guardrail-extension-changed']);
+    expect(kinds(edited((file) => void (file['x-owner'] = 'checkout-team')))).toEqual(['case-extension-changed']);
+  });
+
   it('reads an edited guardrail as one removed and one added, so it needs approval', () => {
     expect(kinds(edited((file) => void (file.Guardrails[0] = 'Use the test card')))).toEqual(['!guardrail-removed', 'guardrail-added']);
   });

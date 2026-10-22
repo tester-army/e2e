@@ -105,6 +105,7 @@ replay uses it.
 
 ```ts title="cige.config.ts"
 import { defineCige } from '@e2e-dev/cige';
+import { shop } from './cige.plugins.ts';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
@@ -134,6 +135,7 @@ export default defineCige({
       },
     },
   },
+  plugins: [shop],
   refs: {
     build: ({ build }) => (build === undefined ? undefined : { url: `https://github.com/acme/shop/commit/${build}` }),
     expected: ({ pointer }) => (pointer === undefined ? undefined : { files: [pointer] }),
@@ -469,6 +471,107 @@ deny patterns, criteria, evidence, or variants pass. `--allow-intent` exits
 as a pull request label; an agent never passes it.
 `--json` prints the report, with `intentUnchanged` and the count of
 `blocking` changes.
+
+## Extend CIGE
+
+Three layers let you add to CIGE without forking it: your own fields, your
+own behavior, and your own step kinds. Unknown keys that don't start with
+`x-` still fail to load, so a typo never vanishes.
+
+### Add your own fields
+
+Every object in a case accepts keys that start with `x-`, at any level:
+
+```json
+{
+  "id": "checkout-discount",
+  "x-owner": "checkout-team",
+  "Context": { "system": "Shop web app", "x-feature-flags": ["new-cart"] },
+  "Intent": { "statement": "A shopper can check out with a valid discount code", "x-priority": "p1" },
+  "Guardrails": [{ "id": "no-admin", "rule": "Stay out of the admin console", "x-deny-host": "admin.shop.test" }],
+  "Execution": ["apply the discount code SAVE10"]
+}
+```
+
+- The loader keeps them on the case as `extensions`, where hooks and
+  plugins read them.
+- They never reach the model, unless a plugin's `context` adds them.
+- The case's top-level `x-` keys are copied into each run summary's
+  `extensions`, for triage data such as an owner or a ticket.
+- `e2e-cige diff` blocks a changed `x-` key under Intent or on a guardrail,
+  since a plugin may enforce it. A top-level one passes.
+- They are committed in the case file and copied into summaries, so keep
+  secrets out.
+
+### Add behavior with plugins
+
+A plugin is an object in the config's `plugins` list, each hook optional:
+
+| Hook | Runs | Does |
+| --- | --- | --- |
+| `context` | When the suite registers the case | Adds lines to `agentContext`, checked against its 16 KiB limit |
+| `onAction` | After every action of an `act` step | A returned violation stops the step with `POLICY_DENIED`, named as that guardrail in the summary |
+| `classify` | In the reporter, after the first classification | Sets or clears (`null`) `failureType` on a failure and adds signals; `classification.adjustedBy` names the plugin |
+| `summarize` | In the reporter | Its fields land under `extensions.<plugin name>` |
+| `readiness` | In `e2e-cige check` and the `CIGE gaps` row | Each message is a `plugin` gap |
+| `steps` | When an Execution entry says `use` | Runs a step kind; see below |
+
+Plugin names are lowercase letters, digits, and dashes, unique in the
+config. A plugin that throws in `classify` or `summarize` is recorded in
+the summary and changes nothing else. Plugins are your code and run with
+the runner's full OS authority, as hooks do.
+
+<Accordion title="Example plugin: feature flags, a host deny list, an API step, an owner">
+```ts title="cige.plugins.ts"
+import { AgentError } from 'e2e';
+import type { CigePlugin } from '@e2e-dev/cige';
+
+export const shop: CigePlugin = {
+  name: 'shop',
+  // The one way an x- field reaches the model: a line in the case's agentContext.
+  context: (testCase) => {
+    const flags = testCase.context.extensions?.['x-feature-flags'];
+    return Array.isArray(flags) ? `Feature flags on: ${flags.join(', ')}` : undefined;
+  },
+  // A guardrail check the deny rules can't express, driven by the guardrail's own x- data.
+  onAction: (event, testCase) => {
+    for (const guardrail of testCase.guardrails) {
+      const host = guardrail.extensions?.['x-deny-host'];
+      if (typeof host === 'string' && event.summary.includes(host)) return { guardrail: guardrail.id, reason: `${host} is off limits` };
+    }
+    return undefined;
+  },
+  // A step kind: { "id": "e4", "use": "order-api", "with": { "path": "/test-api/orders/{order}", "expect": 200 } }
+  steps: {
+    'order-api': async ({ step }) => {
+      const response = await fetch(new URL(String(step.with.path), 'http://localhost:3000'));
+      if (response.status !== step.with.expect) {
+        throw new AgentError('ASSERTION_FAILED', `GET ${String(step.with.path)} answered ${response.status}`);
+      }
+    },
+  },
+  summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? 'unowned' }),
+  readiness: (testCase) => (testCase.extensions?.['x-owner'] === undefined ? ['no x-owner: nobody is paged when it fails'] : []),
+};
+```
+</Accordion>
+
+### Run your own step kinds
+
+An Execution entry with `use` runs a step kind a plugin registered, in
+order with the agent's steps:
+
+```json
+{ "id": "e4", "use": "order-api", "with": { "path": "/test-api/orders/{order}", "expect": 200 } }
+```
+
+- A variant fills `{name}` placeholders in every string inside `with`.
+- Return to pass. Throw an `AgentError`, such as `ASSERTION_FAILED` for a
+  check that failed, to keep its code. Any other throw fails the step as
+  `ACTION_FAILED`, naming it, so the summary's `failedStep` is its id.
+- Guardrails don't apply: the step is your code, not the model.
+- A step kind no plugin registers fails collection. A repair may rewrite a
+  `use` step, since it is Execution, but never the plugin's code.
 
 ## Next
 

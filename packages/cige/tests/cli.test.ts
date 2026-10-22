@@ -167,6 +167,18 @@ describe('e2e-cige check', () => {
     expect(state.out).toContain('environment-unset: no Context.environment: a replay has no environment to reset');
   });
 
+  it('lists a plugin readiness gap with the plugin that reported it', async () => {
+    const dir = project(false);
+    writeFileSync(
+      path.join(dir, 'cige.config.mjs'),
+      "export default { plugins: [{ name: 'owners', readiness: (testCase) => (testCase.extensions?.['x-owner'] ? [] : ['no x-owner: nobody triages it']) }] };\n",
+    );
+    writeFileSync(path.join(dir, 'tests', 'cige', 'checkout.cige.json'), JSON.stringify({ ...CASE, Context: { specRef: 'a.md', buildRef: 'b.md' } }));
+    const state = io(dir);
+    expect(await main(['check'], state)).toBe(1);
+    expect(state.out).toContain('  plugin (owners): no x-owner: nobody triages it');
+  });
+
   it('flags an environment the config does not declare', async () => {
     const state = io(project(false));
     expect(await main(['check'], state)).toBe(1);

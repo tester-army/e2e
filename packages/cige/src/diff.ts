@@ -37,7 +37,10 @@ export type CigeChangeKind =
   | 'context-changed'
   | 'variant-added'
   | 'variant-removed'
-  | 'variant-changed';
+  | 'variant-changed'
+  | 'intent-extension-changed'
+  | 'guardrail-extension-changed'
+  | 'case-extension-changed';
 
 const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'case-removed',
@@ -51,6 +54,9 @@ const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'deny-removed',
   'variant-removed',
   'variant-changed',
+  // Intent is human-owned, and a plugin may enforce a guardrail's x- data, so changing either can loosen the case.
+  'intent-extension-changed',
+  'guardrail-extension-changed',
 ]);
 
 export interface CigeChange {
@@ -110,6 +116,11 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
   for (const item of evidence.removed) changes.push(change('evidence-removed', `${item.id}: ${evidenceKey(item)}`));
   for (const item of evidence.added) changes.push(change('evidence-added', `${item.id}: ${evidenceKey(item)}`));
   if (before.intent.judge && !after.intent.judge) changes.push(change('judge-dropped', 'the Intent is no longer judged on screen'));
+  if (!same(before.intent.extensions, after.intent.extensions)) changes.push(change('intent-extension-changed', 'Intent x- keys'));
+  for (const was of before.intent.evidence) {
+    const now = after.intent.evidence.find((item) => evidenceKey(item) === evidenceKey(was));
+    if (now !== undefined && !same(was.extensions, now.extensions)) changes.push(change('intent-extension-changed', `${now.id}: evidence x- keys`));
+  }
   if (!before.intent.judge && after.intent.judge) changes.push(change('judge-added', 'the Intent is now judged on screen'));
 
   // Guardrails match by their rule text: an edited rule is the old one removed and a new one added.
@@ -119,6 +130,9 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
   for (const was of before.guardrails) {
     const now = after.guardrails.find((rule) => rule.rule === was.rule);
     if (now === undefined) continue;
+    if (!same(was.extensions, now.extensions) || !same(was.deny?.extensions, now.deny?.extensions)) {
+      changes.push(change('guardrail-extension-changed', `${now.id}: x- keys`));
+    }
     for (const field of ['actions', 'summary'] as const) {
       const { removed, added } = setDiff(was.deny?.[field] ?? [], now.deny?.[field] ?? [], (entry) => entry);
       for (const entry of removed) changes.push(change('deny-removed', `${now.id}: deny.${field} ${JSON.stringify(entry)}`));
@@ -139,6 +153,10 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
     );
     changes.push(change('context-changed', keys.join(', ')));
   }
+  if (!same(before.extensions, after.extensions)) {
+    const keys = Object.keys({ ...before.extensions, ...after.extensions }).filter((key) => !same(before.extensions?.[key], after.extensions?.[key]));
+    changes.push(change('case-extension-changed', keys.join(', ')));
+  }
   const variants = setDiff(before.variants, after.variants, (variant) => variant.id);
   for (const variant of variants.removed) changes.push(change('variant-removed', variant.id));
   for (const variant of variants.added) changes.push(change('variant-added', variant.id));
@@ -153,6 +171,7 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
 function intentUnchanged(changes: readonly CigeChange[]): boolean {
   const intentKinds: ReadonlySet<CigeChangeKind> = new Set([
     'case-removed',
+    'intent-extension-changed',
     'intent-changed',
     'criteria-added',
     'criteria-removed',

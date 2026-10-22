@@ -2,6 +2,7 @@
   "$schema": "../cige-1.schema.json",
   "cige": 1,
   "id": "workspace-streaming-starts",
+  "x-owner": "streaming-team",
   "Context": {
     "system": "Workspace streaming client",
     "environment": "staging",
@@ -13,13 +14,14 @@
     "tools": ["browser", "screenshot capture", "network-log reader"],
     "preconditions": [
       "The test account has one assigned workspace",
-      { "hook": "signIn", "description": "The test account is signed in" }
+      { "hook": "signIn", "description": "The test account is signed in", "x-seed": "workspace-basic" }
     ],
     "facts": ["A connected session shows a status of Connected"],
     "prompts": ["context/login-notes.md"],
     "specRef": "docs/specs/streaming.md",
     "buildRef": "releases/{build}.md",
-    "expectedRef": "fixtures/{build}/streaming.json"
+    "expectedRef": "fixtures/{build}/streaming.json",
+    "x-feature-flags": ["new-session-panel"]
   },
   "Intent": {
     "statement": "The user can start a streaming session on {workspace}",
@@ -29,14 +31,16 @@
       {
         "id": "connected-log",
         "hook": "connectionLogShowsConnected",
-        "description": "The connection log records the session"
+        "description": "The connection log records the session",
+        "x-source": "connection-log"
       },
       {
         "id": "first-frame",
         "assert": "the stream shows a rendered desktop, not a blank frame",
         "vision": true
       }
-    ]
+    ],
+    "x-priority": "p1"
   },
   "Guardrails": [
     "Do not delete resources",
@@ -45,20 +49,27 @@
     {
       "id": "no-admin",
       "rule": "Never open the admin console",
-      "deny": { "actions": ["navigate"], "summary": ["/admin"] }
+      "deny": { "actions": ["navigate"], "summary": ["/admin"], "x-reason": "admin console is out of scope" },
+      "x-deny-host": "admin.example.test"
     }
   ],
   "Execution": [
-    { "id": "e1", "step": "start streaming the assigned workspace" },
+    { "id": "e1", "step": "start streaming the assigned workspace", "x-timeout-ms": 30000 },
     { "id": "e2", "verify": "the status reads Connected" },
     {
       "id": "e3",
       "step": "open the session details for {workspace}",
       "params": { "workspace": "Dev desktop" }
+    },
+    {
+      "id": "e4",
+      "use": "http-check",
+      "with": { "path": "/sessions/{workspace}", "expect": 200 },
+      "x-note": "backend check"
     }
   ],
   "Variants": [
-    { "id": "dev", "params": { "workspace": "Dev desktop" } },
+    { "id": "dev", "params": { "workspace": "Dev desktop" }, "x-region": "eu" },
     { "id": "gpu", "params": { "workspace": "GPU desktop" }, "platforms": ["web"] }
   ]
 }

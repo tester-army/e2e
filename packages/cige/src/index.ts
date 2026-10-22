@@ -18,6 +18,16 @@ export {
   type CigeRefs,
 } from './config.ts';
 export { cigeSuite, cigeTag, CIGE_TAG, type CigeSuiteOptions } from './suite.ts';
+export type {
+  CigeClassificationChange,
+  CigeGuardrailViolation,
+  CigePlugin,
+  CigeStepContext,
+  CigeStepRunner,
+  CigeUseStep,
+} from './plugins.ts';
+export type { CigeExtensions } from './extensions.ts';
+export type { CigeGap, CigeGapKind } from './check.ts';
 export { expandVariants } from './variants.ts';
 export { writeRefs, type CigeRefsIndex } from './refs.ts';
 export { diffCases, type CigeChange, type CigeChangeKind } from './diff.ts';

@@ -253,7 +253,7 @@ async function check(io: CliIo, args: readonly string[]): Promise<number> {
   } else {
     for (const result of withGaps) {
       io.stdout(`${result.file ?? result.id} (${result.id})\n`);
-      for (const gap of result.gaps) io.stdout(`  ${gap.kind}: ${gap.detail}\n`);
+      for (const gap of result.gaps) io.stdout(`  ${gap.kind}${gap.plugin === undefined ? '' : ` (${gap.plugin})`}: ${gap.detail}\n`);
     }
     io.stdout(
       withGaps.length === 0

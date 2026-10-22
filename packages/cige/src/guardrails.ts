@@ -11,6 +11,7 @@
 
 import { AgentError, type ActionEvent, type ActionHook } from 'e2e';
 
+import type { CigeGuardrailViolation } from './plugins.ts';
 import type { CigeGuardrail } from './schema.ts';
 
 const VIOLATION = /CIGE guardrail ([A-Za-z0-9][A-Za-z0-9._-]*) violated/;
@@ -35,18 +36,26 @@ export function breakingGuardrail(guardrails: readonly CigeGuardrail[], event: P
 }
 
 /**
- * The `onAction` hook that enforces the structured guardrails. It returns
- * undefined when no guardrail has a `deny` rule, so a case without one
- * passes no hook at all.
+ * The `onAction` hook that enforces the structured guardrails, then any
+ * plugin checks (`check`), whose violations stop the step the same way and
+ * read back the same in a run summary. It returns undefined when there is
+ * nothing to enforce, so such a case passes no hook at all.
  */
-export function createGuardrailMonitor(guardrails: readonly CigeGuardrail[]): ActionHook | undefined {
-  if (!guardrails.some((rule) => rule.deny !== undefined)) return undefined;
+export function createGuardrailMonitor(
+  guardrails: readonly CigeGuardrail[],
+  check?: (event: ActionEvent) => CigeGuardrailViolation | undefined,
+): ActionHook | undefined {
+  if (check === undefined && !guardrails.some((rule) => rule.deny !== undefined)) return undefined;
   return (event) => {
     const broken = breakingGuardrail(guardrails, event);
-    if (broken === undefined) return;
-    throw new AgentError(
-      'POLICY_DENIED',
-      `CIGE guardrail ${broken.id} violated by ${event.action} (${event.source}): ${event.summary}. Guardrail: ${broken.rule}`,
-    );
+    if (broken !== undefined) {
+      throw new AgentError(
+        'POLICY_DENIED',
+        `CIGE guardrail ${broken.id} violated by ${event.action} (${event.source}): ${event.summary}. Guardrail: ${broken.rule}`,
+      );
+    }
+    const violation = check?.(event);
+    if (violation === undefined) return;
+    throw new AgentError('POLICY_DENIED', `CIGE guardrail ${violation.guardrail} violated by ${event.action} (${event.source}): ${event.summary}. ${violation.reason}`);
   };
 }

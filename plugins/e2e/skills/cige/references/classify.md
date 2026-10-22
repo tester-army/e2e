@@ -67,6 +67,13 @@ A run whose terminal summary shows a `CIGE gaps` row has cases without
 the refs or environment this needs. Run `npx e2e-cige check` and name the
 gaps in your hand-off, so the user fixes them before the next triage.
 
+A summary whose `classification.adjustedBy` names plugins was changed by
+the project's own rules: read those plugins in `cige.config.ts` before you
+overrule them, and treat their signals as evidence. `plugin-error:<name>`
+means a plugin failed, not the case. A failing `use` step (a plugin's
+step kind, `CIGE step <id> (<kind>) failed`) is the project's code checking
+the system: its message says what it saw.
+
 When two answers fit and the refs can't separate them, stop. Write what
 you saw and what would decide it, and hand it to a human. Do not guess and
 repair.

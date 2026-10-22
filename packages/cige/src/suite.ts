@@ -13,8 +13,9 @@ import { test as baseTest, type TestAPI, type TestFixtures, type TestOptions } f
 
 import { DEFAULT_CASES, type CigeConfig } from './config.ts';
 import { checkCases, loadCigeCases, type CigeRoot } from './load.ts';
-import { renderAgentContext } from './render.ts';
-import { missingHooks, runCige, type CigeHooks } from './run.ts';
+import { pluginProblems } from './plugins.ts';
+import { agentContextProblem, renderAgentContext } from './render.ts';
+import { missingHooks, missingStepKinds, runCige, type CigeHooks } from './run.ts';
 import { CigeValidationError, type CigeCase } from './schema.ts';
 import { expandVariants } from './variants.ts';
 
@@ -35,6 +36,8 @@ export interface CigeSuiteOptions<Fixtures = TestFixtures> {
   readonly hooks?: CigeHooks<Fixtures>;
   /** The environments of the CIGE config; once set, every case's `Context.environment` must name one. */
   readonly environments?: CigeConfig<Fixtures>['environments'];
+  /** The CIGE config's plugins. */
+  readonly plugins?: CigeConfig<Fixtures>['plugins'];
   /** Test options every case gets, such as `timeout`, `retries`, or more `tags`. A case's own Context wins. */
   readonly options?: Omit<TestOptions, 'agentContext' | 'only'>;
 }
@@ -48,9 +51,8 @@ function isConfig<Fixtures>(cases: unknown): cases is CigeConfig<Fixtures> {
 }
 
 /** The test options a resolved case runs with: the suite's, then the case's Context, which wins. */
-function optionsFor(testCase: CigeCase, extra: Omit<TestOptions, 'agentContext' | 'only'>): TestOptions {
+function optionsFor(testCase: CigeCase, extra: Omit<TestOptions, 'agentContext' | 'only'>, agentContext: string | undefined): TestOptions {
   const { context } = testCase;
-  const agentContext = renderAgentContext(testCase);
   const tags = [CIGE_TAG, cigeTag(testCase.id), ...(testCase.variant === undefined ? [] : [cigeTag(testCase.id, testCase.variant)]), ...(extra.tags ?? [])];
   return {
     ...extra,
@@ -78,12 +80,13 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
     throw new CigeValidationError('cigeSuite', ['was given no cases; pass globs, loaded cases, or the CIGE config']);
   }
   if (isConfig<Fixtures>(cases)) {
-    const { cases: globs, root, hooks, environments } = cases;
+    const { cases: globs, root, hooks, environments, plugins } = cases;
     return cigeSuite(globs ?? DEFAULT_CASES, {
       ...suiteOptions,
       ...(root === undefined ? {} : { root }),
       ...(hooks === undefined ? {} : { hooks }),
       ...(environments === undefined ? {} : { environments }),
+      ...(plugins === undefined ? {} : { plugins }),
     });
   }
   const globs = isGlobs(cases);
@@ -105,9 +108,15 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
   }
   const register = (suiteOptions.test ?? baseTest) as TestAPI<Fixtures>;
   const hooks = suiteOptions.hooks ?? {};
+  const plugins = suiteOptions.plugins ?? [];
   const { environments } = suiteOptions;
+  const invalidPlugins = pluginProblems(plugins);
+  if (invalidPlugins.length > 0) throw new CigeValidationError('the CIGE config', invalidPlugins);
   for (const testCase of loaded) {
-    const problems = missingHooks(testCase, hooks).map((name) => `hook "${name}" is named by the case but not passed in hooks`);
+    const problems = [
+      ...missingHooks(testCase, hooks).map((name) => `hook "${name}" is named by the case but not passed in hooks`),
+      ...missingStepKinds(testCase, plugins).map((kind) => `step kind "${kind}" is used by the case but no plugin registers it`),
+    ];
     const environment = testCase.context.environment;
     if (environments !== undefined && environment !== undefined && !Object.hasOwn(environments, environment)) {
       problems.push(`Context.environment "${environment}" is not one of the config's environments (${Object.keys(environments).join(', ') || 'none'})`);
@@ -115,7 +124,11 @@ export function cigeSuite<Fixtures extends TestFixtures = TestFixtures>(
     if (problems.length > 0) throw new CigeValidationError(testCase.file ?? testCase.id, problems);
     for (const resolved of expandVariants(testCase)) {
       const title = resolved.variant === undefined ? resolved.intent.statement : `${resolved.intent.statement} [${resolved.variant}]`;
-      register(title, optionsFor(resolved, suiteOptions.options ?? {}), (fixtures) => runCige(resolved, fixtures, { hooks }));
+      // Measured again here: plugins add context the loader never saw.
+      const agentContext = renderAgentContext(resolved, plugins);
+      const tooLarge = agentContextProblem(agentContext);
+      if (tooLarge !== undefined) throw new CigeValidationError(testCase.file ?? testCase.id, [tooLarge]);
+      register(title, optionsFor(resolved, suiteOptions.options ?? {}, agentContext), (fixtures) => runCige(resolved, fixtures, { hooks, plugins }));
     }
   }
   return loaded;

@@ -45,6 +45,7 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/models/e2e.decision.config.ts': 'docs/decision-models.mdx',
   'docs/examples/models/tests/decision.e2e.ts': 'docs/decision-models.mdx',
   'docs/examples/cige/cige.config.ts': 'docs/cige.mdx',
+  'docs/examples/cige/cige.plugins.ts': 'docs/cige.mdx',
   'docs/examples/cige/e2e.config.ts': 'docs/cige.mdx',
   'docs/examples/cige/tests/cige.e2e.ts': 'docs/cige.mdx',
   'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',

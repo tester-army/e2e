@@ -9,6 +9,7 @@
 import type { TestFixtures } from 'e2e';
 
 import type { CigeRoot } from './load.ts';
+import type { CigePlugin } from './plugins.ts';
 import type { CigeHooks } from './run.ts';
 import type { CigeCase } from './schema.ts';
 
@@ -84,6 +85,8 @@ export interface CigeConfig<Fixtures = TestFixtures> {
   readonly environments?: Readonly<Record<string, CigeEnvironment>>;
   /** Resolvers for a case's spec, release notes, and expected output. */
   readonly refs?: CigeRefs;
+  /** Your own behavior: context lines, guardrail checks, classification, summary fields, readiness gaps, and step kinds. */
+  readonly plugins?: readonly CigePlugin<Fixtures>[];
   /** The e2e config the cases run under, when it isn't the nearest `e2e.config.ts`; a replay passes it as `--config` unless the case's environment names its own. */
   readonly e2eConfig?: string;
   /** The build under test, such as a version or a commit: the summaries' `build`, and `{build}` in a ref. */

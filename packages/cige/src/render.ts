@@ -7,6 +7,7 @@
  * the acting agent sees them. The judges decide from Intent and the screen.
  */
 
+import { pluginContext, type CigePlugin } from './plugins.ts';
 import type { CigeCase, CigeExecutionStep } from './schema.ts';
 
 /** `agentContext` holds at most 16 KiB. */
@@ -21,8 +22,12 @@ function bytes(text: string): number {
   return Buffer.byteLength(text.normalize('NFC'), 'utf8');
 }
 
-/** The test's `agentContext`: the case's operating ground, facts only. */
-export function renderAgentContext(testCase: CigeCase): string | undefined {
+/**
+ * The test's `agentContext`: the case's operating ground, facts only, then
+ * any lines the plugins' `context` hooks add. `x-` fields never appear here
+ * unless a plugin puts them in.
+ */
+export function renderAgentContext(testCase: CigeCase, plugins: readonly CigePlugin<never>[] = []): string | undefined {
   const { context } = testCase;
   const lines: string[] = [];
   if (context.system !== undefined) lines.push(`System under test: ${context.system}`);
@@ -35,8 +40,17 @@ export function renderAgentContext(testCase: CigeCase): string | undefined {
     ...context.facts,
   ];
   if (facts.length > 0) lines.push(['Known state:', ...facts.map((fact) => `- ${fact}`)].join('\n'));
-  const parts = [lines.join('\n'), ...context.fragments.map((fragment) => fragment.trim())].filter((part) => part !== '');
+  const parts = [lines.join('\n'), ...context.fragments.map((fragment) => fragment.trim()), pluginContext(plugins, testCase).join('\n')].filter(
+    (part) => part !== '',
+  );
   return parts.length === 0 ? undefined : parts.join('\n\n');
+}
+
+/** Why a rendered `agentContext` can't be sent, when it is over the runner's limit. */
+export function agentContextProblem(agentContext: string | undefined): string | undefined {
+  // Measured as written: the runner is not documented to normalize context.
+  const contextBytes = agentContext === undefined ? 0 : Buffer.byteLength(agentContext, 'utf8');
+  return contextBytes > MAX_AGENT_CONTEXT_BYTES ? `Context renders to ${contextBytes} bytes of agentContext; the limit is ${MAX_AGENT_CONTEXT_BYTES}` : undefined;
 }
 
 /** The guardrail block every `act` instruction of the case carries; empty without guardrails. */
@@ -45,8 +59,8 @@ function renderGuardrails(testCase: CigeCase): string {
   return [GUARDRAIL_HEADING, ...testCase.guardrails.map((rule) => `- [${rule.id}] ${rule.rule}`)].join('\n');
 }
 
-/** The instruction one Execution step hands `agent.act`, guardrails included. */
-export function actInstruction(testCase: CigeCase, step: CigeExecutionStep): string {
+/** The instruction one Execution `act` step hands `agent.act`, guardrails included. */
+export function actInstruction(testCase: CigeCase, step: Extract<CigeExecutionStep, { readonly kind: 'act' }>): string {
   const guardrails = renderGuardrails(testCase);
   return guardrails === '' ? step.text : `${step.text}\n\n${guardrails}`;
 }
@@ -78,16 +92,14 @@ function depthOf(value: unknown): number {
  */
 export function sizeProblems(testCase: CigeCase): string[] {
   const problems: string[] = [];
-  const agentContext = renderAgentContext(testCase);
-  // Measured as written: the runner is not documented to normalize context.
-  const contextBytes = agentContext === undefined ? 0 : Buffer.byteLength(agentContext, 'utf8');
-  if (contextBytes > MAX_AGENT_CONTEXT_BYTES) {
-    problems.push(`Context renders to ${contextBytes} bytes of agentContext; the limit is ${MAX_AGENT_CONTEXT_BYTES}`);
-  }
+  const contextProblem = agentContextProblem(renderAgentContext(testCase));
+  if (contextProblem !== undefined) problems.push(contextProblem);
   const statement = (label: string, text: string, suffix = ''): void => {
     if (bytes(text) > MAX_INSTRUCTION_BYTES) problems.push(`${label} renders to ${bytes(text)} bytes${suffix}; the limit is ${MAX_INSTRUCTION_BYTES}`);
   };
   for (const step of testCase.execution) {
+    // A plugin's step reaches no model, so no runner limit applies to it.
+    if (step.kind === 'use') continue;
     if (step.kind === 'verify') {
       statement(`Execution ${step.id}`, step.text);
       continue;

@@ -19,7 +19,9 @@ You may rewrite `Execution` only.
    walk the flow. Don't guess at a UI from the old steps.
 4. Edit the steps. Keep the ids of the steps that still mean the same
    thing; give a new step a new id. A step is one goal, not a click
-   sequence.
+   sequence. A `use` step is Execution too: you may change its `with` or
+   its kind (one a plugin registers), but never a plugin's code in
+   `cige.config.ts`.
 5. Replay: `npx e2e-cige replay <id>`, once per variant with
    `--variant <v>` when the case has variants.
    Repeat until it passes. If no path reaches the Intent within the

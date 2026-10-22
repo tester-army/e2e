@@ -8,10 +8,11 @@
  * means each of those held: an Execution that merely ran is not a pass.
  */
 
-import { AgentError, isAgentError, type ActOptions, type AgentParams, type TestFixtures } from 'e2e';
+import { AgentError, isAgentError, type ActionEvent, type ActOptions, type AgentParams, type TestFixtures } from 'e2e';
 import { isE2EError } from 'e2e/runner';
 
 import { createGuardrailMonitor } from './guardrails.ts';
+import { stepRunnerOf, type CigeGuardrailViolation, type CigePlugin } from './plugins.ts';
 import { actInstruction, intentAssertion } from './render.ts';
 import type { CigeCase } from './schema.ts';
 
@@ -23,8 +24,8 @@ import type { CigeCase } from './schema.ts';
  * the check could not run, not that it failed: an e2e error keeps its code
  * (an `AgentError` such as `ENVIRONMENT_UNAVAILABLE`, a locator's
  * `LOCATOR_NOT_FOUND`), and any other throw, a Node `ECONNREFUSED`
- * included, is `ASSERTION_INCONCLUSIVE` with its message. A precondition hook's return value is
- * ignored; it fails only by throwing.
+ * included, is `ASSERTION_INCONCLUSIVE` with its message. A precondition
+ * hook's return value is ignored; it fails only by throwing.
  */
 export type CigeHook<Fixtures = TestFixtures> = (fixtures: Fixtures, testCase: CigeCase) => unknown;
 
@@ -33,6 +34,27 @@ export type CigeHooks<Fixtures = TestFixtures> = Readonly<Record<string, CigeHoo
 export interface RunCigeOptions<Fixtures = TestFixtures> {
   /** The hooks the case's preconditions and evidence name. */
   readonly hooks?: CigeHooks<Fixtures>;
+  /** The config's plugins: their `onAction` checks and the step kinds `use` steps name. */
+  readonly plugins?: readonly CigePlugin<Fixtures>[];
+}
+
+/** Every `use` step kind the case names that no plugin registers. */
+export function missingStepKinds(testCase: CigeCase, plugins: readonly CigePlugin<never>[]): string[] {
+  const kinds = testCase.execution.flatMap((step) => (step.kind === 'use' ? [step.use] : []));
+  return [...new Set(kinds)].filter((kind) => stepRunnerOf(plugins, kind) === undefined);
+}
+
+/** The plugins' `onAction` checks as one, or undefined when no plugin has one. */
+function pluginCheck(plugins: readonly CigePlugin<never>[], testCase: CigeCase): ((event: ActionEvent) => CigeGuardrailViolation | undefined) | undefined {
+  const checks = plugins.flatMap((plugin) => (plugin.onAction === undefined ? [] : [plugin.onAction]));
+  if (checks.length === 0) return undefined;
+  return (event) => {
+    for (const check of checks) {
+      const violation = check(event, testCase);
+      if (violation !== undefined) return violation;
+    }
+    return undefined;
+  };
 }
 
 /** A hook's return value, short enough for an error message; never throws on a circular or BigInt value. */
@@ -85,10 +107,22 @@ export async function runCige<Fixtures extends TestFixtures>(
 
   if (testCase.context.open !== undefined) await app.open(testCase.context.open);
 
-  const onAction = createGuardrailMonitor(testCase.guardrails);
+  const plugins = options.plugins ?? [];
+  const onAction = createGuardrailMonitor(testCase.guardrails, pluginCheck(plugins, testCase));
   for (const step of testCase.execution) {
     if (step.kind === 'verify') {
       await agent.assert(step.text, step.vision === true ? { vision: true } : {});
+      continue;
+    }
+    if (step.kind === 'use') {
+      const runner = stepRunnerOf(plugins, step.use);
+      if (runner === undefined) throw new AgentError('TEST_SETUP_FAILED', `CIGE step ${step.id} (${step.use}): no plugin registers this step kind`);
+      try {
+        await runner({ fixtures, testCase, step });
+      } catch (cause) {
+        if (isE2EError(cause)) throw cause;
+        throw new AgentError('ACTION_FAILED', `CIGE step ${step.id} (${step.use}) failed: ${messageOf(cause)}`, { cause });
+      }
       continue;
     }
     const actOptions: ActOptions = {

@@ -89,6 +89,19 @@ export default defineCige({
   environments: {
     memory: { config: 'e2e.config.ts', reset: () => writeFileSync(new URL('./reset-ran.txt', import.meta.url), 'memory') },
   },
+  plugins: [
+    {
+      name: 'orders',
+      steps: {
+        'order-api': ({ step }) => {
+          if (step.with.status !== 200) throw new Error(\`the orders API answered \${String(step.with.status)}\`);
+        },
+      },
+      classify: ({ testCase, classification }) =>
+        classification.result === 'fail' && testCase.extensions?.['x-ticket'] !== undefined ? { signals: ['ticketed'] } : undefined,
+      summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? null }),
+    },
+  ],
   refs: {
     build: ({ build, pointer }) => ({ text: \`Release notes for \${build} from \${pointer}\` }),
     spec: () => {
@@ -145,6 +158,17 @@ const CASES: Record<string, object> = {
     Variants: [
       { id: 'card', params: { method: 'card' } },
       { id: 'voucher', params: { method: 'voucher' } },
+    ],
+  },
+  api: {
+    id: 'api',
+    'x-ticket': 'SHOP-1',
+    'x-owner': 'checkout-team',
+    Context: {},
+    Intent: 'The orders API answers',
+    Execution: [
+      { id: 'e1', step: 'open the orders page' },
+      { id: 'e2', use: 'order-api', with: { status: 500 } },
     ],
   },
   infrastructure: {
@@ -216,6 +240,7 @@ describe('cigeSuite through the runner', () => {
     expect(exitCode).not.toBe(0);
     expect(tags['A shopper can place an order']).toEqual(['cige', 'cige:pass']);
     expect(Object.keys(summaries).toSorted()).toEqual([
+      'api',
       'defect',
       'evidence',
       'guardrail',
@@ -235,6 +260,18 @@ describe('cigeSuite through the runner', () => {
     expect(summaries['variants.card']).toMatchObject({ testId: 'variants', variant: 'card', result: 'pass', intent: 'A shopper can pay by card' });
     expect(summaries['variants.voucher']).toMatchObject({ variant: 'voucher', result: 'fail', failedStep: 'e1', failureType: 'outdated-test-logic' });
     expect(written).toContain('variants.voucher.run-summary.json');
+  });
+
+  it('runs a plugin step and carries x- keys and plugin fields into the summary', () => {
+    expect(summaries.api).toMatchObject({
+      result: 'fail',
+      failedStep: 'e2',
+      classification: { phase: 'execution', errorCode: 'ACTION_FAILED', adjustedBy: ['orders'] },
+      extensions: { 'x-ticket': 'SHOP-1', 'x-owner': 'checkout-team', orders: { owner: 'checkout-team' } },
+    });
+    expect(summaries.api?.classification.message).toContain('CIGE step e2 (order-api) failed: the orders API answered 500');
+    expect(summaries.api?.classification.signals).toContain('ticketed');
+    expect(summaries.pass?.extensions).toEqual({ orders: { owner: null } });
   });
 
   it('points a failure at its environment, its refs, and the command that replays it', () => {
@@ -370,7 +407,8 @@ describe('the reporter on a later run', () => {
   it('counts the cases that could not be fully triaged, under the run summary', async () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.
-    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "6 cases can't be fully classified or replayed: npx e2e-cige check" });
+    // The reporter config here has no plugins, so `api` counts by its missing specRef alone.
+    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "7 cases can't be fully classified or replayed: npx e2e-cige check" });
     const stale = JSON.parse(readFileSync(path.join(dir(), 'stale.run-summary.json'), 'utf8')) as CigeRunSummary;
     expect(stale.classification.signals).toContain('missing-spec-ref');
     expect(stale.classification.signals).not.toContain('missing-build-ref');

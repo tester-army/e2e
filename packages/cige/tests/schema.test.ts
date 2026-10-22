@@ -122,7 +122,7 @@ describe('dimensions and variants', () => {
     const testCase = parseCige(json('../schema/fixtures/cige-1.valid.json'));
     expect(testCase.context).toMatchObject({ platforms: ['web'], session: 'signed-in', expectedRef: 'fixtures/{build}/streaming.json' });
     expect(testCase.variants).toEqual([
-      { id: 'dev', params: { workspace: 'Dev desktop' } },
+      { id: 'dev', params: { workspace: 'Dev desktop' }, extensions: { 'x-region': 'eu' } },
       { id: 'gpu', params: { workspace: 'GPU desktop' }, platforms: ['web'] },
     ]);
   });
@@ -153,3 +153,58 @@ describe('dimensions and variants', () => {
     expect(() => parseCige({ ...pay, Variants: [{ id: 'card', params: { method: { kind: 'card' } } }] })).toThrow(CigeValidationError);
   });
 });
+
+describe('x- extensions', () => {
+  it('keeps x- keys on every object of the case, and never only in some', () => {
+    const testCase = parseCige(json('../schema/fixtures/cige-1.valid.json'));
+    expect(testCase.extensions).toEqual({ 'x-owner': 'streaming-team' });
+    expect(testCase.context.extensions).toEqual({ 'x-feature-flags': ['new-session-panel'] });
+    expect(testCase.context.preconditions[1]).toMatchObject({ kind: 'hook', extensions: { 'x-seed': 'workspace-basic' } });
+    expect(testCase.intent.extensions).toEqual({ 'x-priority': 'p1' });
+    expect(testCase.intent.evidence[0]?.extensions).toEqual({ 'x-source': 'connection-log' });
+    expect(testCase.guardrails[3]).toMatchObject({
+      id: 'no-admin',
+      extensions: { 'x-deny-host': 'admin.example.test' },
+      deny: { extensions: { 'x-reason': 'admin console is out of scope' } },
+    });
+    expect(testCase.execution[0]?.extensions).toEqual({ 'x-timeout-ms': 30000 });
+    expect(testCase.execution[3]).toEqual({
+      kind: 'use',
+      id: 'e4',
+      use: 'http-check',
+      with: { path: '/sessions/{workspace}', expect: 200 },
+      extensions: { 'x-note': 'backend check' },
+    });
+  });
+
+  it('still refuses any other unknown key, and a malformed x- key', () => {
+    expect(() => parseCige({ Context: { featureFlags: ['beta'] }, Intent: 'x', Execution: ['y'] })).toThrow(/Context: Unrecognized key: "featureFlags"/);
+    expect(() => parseCige({ 'x-': 1, Context: {}, Intent: 'x', Execution: ['y'] })).toThrow(/Unrecognized key: "x-"/);
+    expect(() => parseCige({ Context: {}, Intent: 'x', Execution: [{ id: 'e1', step: 'y', 'x owner': 1 }] })).toThrow(CigeValidationError);
+  });
+
+  it('leaves x- keys inside params and with as data', () => {
+    const testCase = parseCige({
+      Context: {},
+      Intent: 'x',
+      Execution: [
+        { id: 'e1', step: 'y', params: { code: 'a' } },
+        { id: 'e2', use: 'probe', with: { 'x-header': 'kept', nested: { 'x-also': true } } },
+      ],
+    });
+    expect(testCase.execution[1]).toEqual({ kind: 'use', id: 'e2', use: 'probe', with: { 'x-header': 'kept', nested: { 'x-also': true } } });
+  });
+
+  it('checks the placeholders in a use step, which the variant fills', () => {
+    const base = { Context: {}, Intent: 'An order can be fetched', Execution: [{ id: 'e1', use: 'http-check', with: { path: '/orders/{order}' } }] };
+    expect(() => parseCige(base)).toThrow(/\{order\} has no value/);
+    expect(parseCige({ ...base, Variants: [{ id: 'one', params: { order: '42' } }] }).variants).toHaveLength(1);
+  });
+
+  it('agrees with the JSON Schema on x- keys', () => {
+    const extra = { Context: { 'x-flags': [] }, Intent: { statement: 'x', 'x-priority': 'p2' }, Execution: ['y'], 'x-owner': 'qa' };
+    expect(validate(extra), JSON.stringify(validate.errors)).toBe(true);
+    expect(validate({ ...extra, featureFlags: [] })).toBe(false);
+  });
+});
+

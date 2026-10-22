@@ -1,4 +1,5 @@
 import { defineCige } from '@e2e-dev/cige';
+import { shop } from './cige.plugins.ts';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
@@ -28,6 +29,7 @@ export default defineCige({
       },
     },
   },
+  plugins: [shop],
   refs: {
     build: ({ build }) => (build === undefined ? undefined : { url: `https://github.com/acme/shop/commit/${build}` }),
     expected: ({ pointer }) => (pointer === undefined ? undefined : { files: [pointer] }),

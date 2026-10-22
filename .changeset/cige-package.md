@@ -19,4 +19,7 @@ replays a case in its environment (`replay`), runs an environment action
 (`env`), resolves a case's spec, release notes, and expected output (`refs`),
 lists each case that lacks a spec or build ref, a build, or a resettable
 environment before anything fails (`check`, also counted under the run
-summary), and fails a change that weakens a case (`diff`).
+summary), and fails a change that weakens a case (`diff`). A case may carry
+your own `x-` keys on any object, and `plugins` in the config add context
+lines, guardrail checks, classification and summary changes, readiness
+gaps, and step kinds an Execution entry runs with `use`.

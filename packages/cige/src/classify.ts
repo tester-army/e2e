@@ -104,11 +104,12 @@ interface PlannedStep {
 
 /** The agent steps the case makes, in the order `runCige` makes them. */
 function plan(testCase: CigeCase): PlannedStep[] {
-  const steps: PlannedStep[] = testCase.execution.map((step) =>
-    step.kind === 'act'
-      ? { phase: 'execution', id: step.id, api: 'agent.act', label: actInstruction(testCase, step) }
-      : { phase: 'execution', id: step.id, api: 'agent.assert', label: step.text },
-  );
+  // A plugin's `use` step makes no agent step, so there is nothing of it to pair.
+  const steps: PlannedStep[] = testCase.execution.flatMap((step): PlannedStep[] => {
+    if (step.kind === 'act') return [{ phase: 'execution', id: step.id, api: 'agent.act', label: actInstruction(testCase, step) }];
+    if (step.kind === 'verify') return [{ phase: 'execution', id: step.id, api: 'agent.assert', label: step.text }];
+    return [];
+  });
   for (const item of testCase.intent.evidence) {
     if (item.kind === 'assert') steps.push({ phase: 'evidence', id: item.id, api: 'agent.assert', label: item.text });
   }
@@ -153,6 +154,8 @@ function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; i
   const located = error === undefined ? {} : { code: error.code, message: error.message };
   const evidence = /CIGE evidence ([A-Za-z0-9][A-Za-z0-9._-]*) (?:not satisfied|could not be checked)/.exec(error?.message ?? '')?.[1];
   if (evidence !== undefined) return { phase: 'evidence', id: evidence, ...located };
+  const used = /CIGE step ([A-Za-z0-9][A-Za-z0-9._-]*) \(/.exec(error?.message ?? '')?.[1];
+  if (used !== undefined) return { phase: 'execution', id: used, ...located };
   if (/CIGE (precondition|hook)/.test(error?.message ?? '') || error?.phase === 'beforeEach' || error?.phase === 'beforeAll') {
     return { phase: 'precondition', ...located };
   }
