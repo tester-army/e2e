@@ -558,7 +558,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
    */
   waitFor(options?: { state?: 'attached' | 'detached' | 'visible' | 'hidden'; timeout?: number }): Promise<void>;
   /** Adds deterministic locator filters. */
-  filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+  filter(options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator }): Locator;
   /** Selects the first current match. */
   first(): Locator;
   /** Selects the last current match. */

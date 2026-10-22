@@ -141,8 +141,8 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `getByAltText(alt)` | `getByRole('image', alt)` | renamed |
 | `getByTitle` | the node carries no title | missing |
 | `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | by design |
-| `locator.filter({ hasText, has })`, `first()`, `last()`, `nth(i)`, `count()` | the same | same |
-| `filter({ hasNot, hasNotText })` | a positive filter or `nth`. `INVALID_LOCATOR`, alone or beside `hasText` or `has` | missing |
+| `locator.filter({ hasText, hasNotText, has })`, `first()`, `last()`, `nth(i)`, `count()` | the same | same |
+| `filter({ hasNot })` | a positive filter or `nth`. `INVALID_LOCATOR`, alone or beside another key | missing |
 | `locator.and(other)`, `locator.or(other)` | not yet | missing |
 | `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | same |
 | `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | web only |
