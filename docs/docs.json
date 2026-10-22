@@ -192,6 +192,7 @@
             "group": "Extend",
             "pages": [
               "tools",
+              "ocr",
               "executors",
               "writing-an-engine"
             ]

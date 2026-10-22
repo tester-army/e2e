@@ -1,0 +1,355 @@
+---
+title: Screenshot OCR
+description: Read drawn text locally, add OCR evidence to your agent, or run a model-free OCR workflow.
+icon: "font"
+"og:image": "https://e2e.tester.army/docs/images/og/ocr.png?v=022cab7132"
+"twitter:image": "https://e2e.tester.army/docs/images/og/ocr.png?v=022cab7132"
+---
+
+Import `e2e/ocr` to opt into screenshot text recognition. Use it for text
+that is drawn into pixels and missing from the semantic tree, such as a
+canvas label. Prefer normal locators when the engine exposes the control.
+OCR is uncertain evidence: it can misread or miss text and cannot prove a
+control is enabled, clickable, or behaving correctly.
+
+There are two ways to use it:
+
+- `ocrTools({ provider })` adds a read-only `screenshot_ocr` tool to the
+  normal agent. The agent still uses its configured model; local OCR makes
+  no additional AI call of its own.
+- `ocrExecutor({ provider, runStep })` runs your callback with `read`,
+  `locate`, `assertText`, and `tapText` helpers. It needs no model when your
+  callback and provider make no model calls.
+
+Neither path replaces the engine, adds synthetic semantic nodes, or changes
+what a semantic locator matches. Both require screenshots permitted by the
+harness. Nothing is enabled merely by installing `e2e`.
+
+## Install local recognition
+
+Install **Tesseract 5** and its language data on the machine running e2e,
+including each CI worker. Follow the official
+[Tesseract installation guide](https://tesseract-ocr.github.io/tessdoc/Installation.html).
+Tesseract is Apache-2.0 licensed. The adapter runs an already-installed
+executable; it bundles no native binary or trained data, adds no OCR package
+dependency, and downloads nothing at import or runtime.
+
+Check the same environment in which the runner starts:
+
+```bash
+tesseract --version
+tesseract --list-langs
+```
+
+`tesseractOcr()` defaults to `executable: 'tesseract'`, `language: 'eng'`, and
+`pageSegmentation: 11` (sparse text). Install `eng` data even when the binary
+is already present. For Simplified Chinese, install `chi_sim` independently
+and select `language: 'chi_sim'`; use `language: 'eng+chi_sim'` for both.
+Changing the language option does not install data. See Tesseract's
+[command-line guide](https://tesseract-ocr.github.io/tessdoc/Command-Line-Usage.html)
+for language selection and segmentation.
+
+| Adapter option | Meaning |
+| --- | --- |
+| `executable` | Local executable path or command name; defaults to `tesseract` on `PATH` |
+| `language` | Installed language or `+`-joined languages; defaults to `eng` |
+| `tessdata` | Local trained-data directory, passed as `--tessdata-dir`; omitted to use the executable's environment |
+| `pageSegmentation` | Tesseract OCR mode: `1` or `3` through `13`; defaults to `11` |
+
+The built-in adapter pipes PNG bytes to the local process and parses its
+TSV output in memory. It creates no temporary screenshot files and sends
+nothing to an OCR service. Each result is a recognized line; its confidence
+is the lowest confidence of the words in that line, normalized to `[0, 1]`.
+
+## Add OCR evidence to the normal agent
+
+Keep your model configuration and add the tool pack:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { ocrTools, tesseractOcr } from 'e2e/ocr';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: {
+    default: {
+      model: gateway('openai/gpt-6-luna-fast'),
+      tools: { ...ocrTools({ provider: tesseractOcr() }) },
+    },
+  },
+} satisfies E2EConfig;
+```
+
+The model can call `screenshot_ocr` during `agent.act` to request a fresh
+capture. It receives text, confidence, logical rectangles, and center
+points. The tool is read-only and does not spend an action slot. Its output
+is bounded, so a dense screen may be truncated. No recognized text does not
+prove there is no text on screen.
+
+This adds evidence, not a new tap tool. For built-in pixel actions, the
+agent still requests `screenshot` and uses that screenshot's coordinates;
+OCR's logical coordinates are not the screenshot tool's image coordinates.
+Normal agent steps retain their usual replay policy. Built-in judgments do
+not call project tools: adding this pack does not turn `agent.assert`,
+`agent.waitFor`, or `agent.extract` into OCR assertions.
+
+## Run a model-free callback
+
+For a fixed flow, provide the instruction handling yourself. This callback
+supports two explicit instructions and blocks everything else; it does not
+interpret arbitrary natural language.
+
+```ts title="e2e.ocr.config.ts"
+import type { E2EConfig } from 'e2e';
+import { ocrExecutor, tesseractOcr } from 'e2e/ocr';
+import { web } from '@e2e-dev/web';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: {
+    default: {
+      executor: ocrExecutor({
+        provider: tesseractOcr(),
+        async runStep(context, ocr) {
+          if (context.step.kind === 'act' && context.step.instruction === 'tap Continue') {
+            await ocr.tapText({ text: 'Continue' });
+            return { status: 'passed', summary: 'Tapped the unique Continue line.' };
+          }
+          if (context.step.kind === 'assert' && context.step.instruction === 'Ready is visible') {
+            await ocr.assertText({ text: 'Ready' });
+            return { status: 'passed', summary: 'Recognized a unique Ready line.' };
+          }
+          return {
+            status: 'blocked',
+            errorCode: 'AUTOMATION_UNSUPPORTED',
+            summary: 'This executor only supports tap Continue and Ready is visible.',
+          };
+        },
+      }),
+    },
+  },
+} satisfies E2EConfig;
+```
+
+Use this config for the following test. Replace `/canvas` with your own
+route, which should show a drawn Continue control and then a Ready label.
+The tap and its outcome are checked in separate steps.
+
+```ts title="tests/ocr.e2e.ts"
+import { test } from 'e2e';
+
+test('continues through a drawn control', async ({ app, agent }) => {
+  await app.open('/canvas');
+  await agent.act('tap Continue');
+  await agent.assert('Ready is visible');
+});
+```
+
+Select the configuration with the runner's `--config e2e.ocr.config.ts`
+option. The callback above uses no AI model or AI SDK. `ocrExecutor` handles
+`agent.act` and `agent.assert`; `agent.waitFor` and `agent.extract` still use
+the built-in judgments and require a configured model. Do not put `tools`
+or `system` beside an `executor` in the same agent entry.
+
+The callback's `OcrExecutorContext` exposes only `step`, `signal`, `target`,
+and `attempt`. It has no raw `observe`, `actions`, or `budgets` methods:
+all callback UI operations go through the OCR workflow's shared queue. For
+navigation, typing, or other UI actions, use ordinary test fixtures or a
+separate agent step and await it before starting the next OCR operation.
+Never drive the same target concurrently with an OCR workflow.
+
+The executor sets `cache: 'off'` for **its own steps only**. Every OCR action
+is located again; OCR coordinates are never recorded or replayed by this
+executor. Other agents and their semantic replay cache keep their existing
+policy.
+
+## Android and iOS
+
+The same OCR pipeline can use the mobile engine with
+`mobile({ platform: 'ios' })` or `mobile({ platform: 'android' })`.
+Tesseract runs in the **e2e worker**, not on the phone, simulator, or
+emulator. Install the executable and trained data on that worker even when
+the device is hosted elsewhere.
+
+After following the [mobile setup guide](/mobile), use the same callback
+with mobile targets. Replace each `app.bundleId` with
+your installed app's iOS bundle identifier or Android package name; mobile
+launches use `app.bundleId`, not `app.url`.
+
+```ts title="e2e.mobile.ocr.config.ts"
+import type { E2EConfig } from 'e2e';
+import { ocrExecutor, tesseractOcr } from 'e2e/ocr';
+import { mobile } from '@e2e-dev/mobile';
+
+export default {
+  tests: 'tests/mobile-ocr.e2e.ts',
+  targets: [
+    { name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'com.example.app' } },
+    { name: 'android', engine: mobile({ platform: 'android' }), app: { bundleId: 'com.example.app' } },
+  ],
+  workers: 1,
+  agents: {
+    default: {
+      executor: ocrExecutor({
+        provider: tesseractOcr(),
+        async runStep(context, ocr) {
+          if (context.step.kind === 'act' && context.step.instruction === 'tap Continue') {
+            await ocr.tapText({ text: 'Continue' });
+            return { status: 'passed', summary: 'Tapped the unique Continue line.' };
+          }
+          if (context.step.kind === 'assert' && context.step.instruction === 'Ready is visible') {
+            await ocr.assertText({ text: 'Ready' });
+            return { status: 'passed', summary: 'Recognized a unique Ready line.' };
+          }
+          return {
+            status: 'blocked',
+            errorCode: 'AUTOMATION_UNSUPPORTED',
+            summary: 'This executor only supports tap Continue and Ready is visible.',
+          };
+        },
+      }),
+    },
+  },
+} satisfies E2EConfig;
+```
+
+Run this test with `--config e2e.mobile.ocr.config.ts`. The app's launch
+screen must show Continue and reveal Ready after the tap. Unlike a web
+route, `app.open()` takes no path here.
+
+```ts title="tests/mobile-ocr.e2e.ts"
+import { test } from '@e2e-dev/mobile';
+
+test('continues through a drawn mobile control', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('tap Continue');
+  await agent.assert('Ready is visible');
+});
+```
+
+Platform limits still apply: the engine must provide permitted,
+full-viewport PNGs with consistent geometry and support point taps. OCR
+cannot supply missing device permissions, recover withheld screenshots,
+or reach text outside the capture. Device animations, keyboard changes,
+and rotation can invalidate a pending tap. Coordinate-only evidence does
+not establish that an OS sheet or drawn label accepts input.
+
+These examples are typechecked. No simulator, emulator, or physical-device
+OCR verification is claimed by these examples; verify the flow on your
+chosen target and app.
+
+## Read, locate, assert, and tap
+
+| Helper | Result and behavior |
+| --- | --- |
+| `read()` | Fresh `OcrReading` with the capture's `revision`, `viewport`, and all recognized `matches`, including low-confidence lines |
+| `locate(query)` | Fresh capture and exactly one qualifying `OcrMatch`; does not act |
+| `assertText(query)` | Same unique match rule, but missing text raises `ASSERTION_FAILED`; does not act or poll |
+| `tapText(query)` | Locates a line, rechecks the capture, and sends its center to the harness's `tapAt`; only permitted in an `act` step |
+
+A match contains `text`, `confidence`, `rect`, and `point`. All rectangles
+and points returned by these helpers use **logical viewport pixels**.
+Each call observes anew; `locate` does not reserve its match for a later
+`tapText`. Calls on one workflow run in order and honor the step's abort
+signal, deadline, and action budget.
+
+### Matching rules
+
+Pass `{ text: 'Continue' }` to match a whole recognized line. Matching uses
+Unicode NFC normalization, collapsed and trimmed whitespace, and
+case-insensitive comparison by default.
+
+- `exact: false` permits a substring of one line. It does not join text
+  across lines or provide fuzzy matching.
+- `caseSensitive: true` preserves case during comparison.
+- `minConfidence` is in `[0, 1]` and defaults to `0.8`. It is the provider's
+  confidence score, not a guarantee that the text is correct.
+- `region: { x, y, width, height }` uses logical viewport pixels. A line's
+  entire box must fit inside it. Regions filter recognized results; they
+  do not crop the image sent to the provider.
+- Exactly one line must qualify. Duplicates raise `LOCATOR_AMBIGUOUS`;
+  narrow the text or region instead of choosing an arbitrary first match.
+
+A missing or low-confidence line raises `LOCATOR_NOT_FOUND` for `locate`
+and `tapText`, or `ASSERTION_FAILED` for `assertText`. An ambiguous assertion
+still raises `LOCATOR_AMBIGUOUS`. A successful text assertion proves only
+that the provider recognized the requested line at the selected threshold.
+
+### Freshness before a tap
+
+`tapText` captures and recognizes once, then takes a fresh permitted capture
+before dispatch. It compares the PNG bytes and capture geometry, including
+image scale, viewport, and reported path. The initial capture must also be
+within `maxAgeMs` (default **2,000 ms**), measured from capture start. Changed
+or expired evidence raises `ACTION_FAILED` without sending the tap. A
+clock, animation, or other unrelated pixel change can therefore refuse it.
+
+Internally, the tap goes through the normal checked harness `tapAt` and
+fails when the target lacks point taps. Known disabled or secure semantic
+controls at the point are refused. Assertion steps are read-only: `tapText` in an
+assertion raises `POLICY_DENIED` before dispatch.
+
+This is a freshness guard, not an atomic UI transaction. The app can still
+change after validation and before input arrives. Verify the outcome after
+every tap, and do not blindly repeat a consequential action after an
+uncertain failure.
+
+`timeoutMs` defaults to **10,000 ms** for each capture and recognition call;
+it also bounds the pre-tap validation capture. The step's deadline and
+cancellation still take precedence. An OCR-specific timeout raises
+`AUTOMATION_UNSUPPORTED`; an expired step deadline raises `STEP_TIMEOUT`.
+Increasing `timeoutMs` does not increase `maxAgeMs`.
+
+## Capture and provider contract
+
+The engine must return an uncropped, full-viewport PNG with correct byte
+and geometry metadata. Cropped or rotated captures whose dimensions do not
+match the viewport are rejected rather than guessing a transform. The PNG
+header must agree with its declared dimensions. A screenshot with withheld
+or unavailable pixels is `POLICY_DENIED`; incompatible images and geometry
+are `AUTOMATION_UNSUPPORTED`.
+
+Image pixels are divided by **`observation.pixels.scale`**, the image's
+scale, to produce logical coordinates. Use this image scale rather than
+an inferred device DPR; it accounts for an engine resizing its capture.
+Do not pre-crop, rotate, or independently resize the provider's input.
+
+This first version uses the existing executor screenshot API, which caps
+the longest side at **768 image pixels**. It does not request the original
+device-resolution capture. Small or dense text, particularly on a tall
+mobile screen, may lose detail before Tesseract receives it. A correct
+coordinate transform does not restore that detail: use larger test text
+and verify recognition on the target. Lowering the confidence threshold
+is not a fix for unreadable text.
+
+You can supply an `OcrProvider` with a `name` and
+`recognize(image, { signal })` method. It receives permitted PNG bytes,
+`mediaType`, `width`, and `height`, and must return line boxes in those
+**input-image pixels**, with finite confidence in `[0, 1]`. The workflow
+validates every box, bounds results, converts coordinates, and races work
+against cancellation. Providers should stop promptly when their signal
+aborts; the harness cannot undo a custom provider's external side effects.
+Provider failures become `AUTOMATION_UNSUPPORTED` without exposing native
+diagnostics or recognized content in the failure message.
+
+## Privacy and limits
+
+OCR uses the harness's screenshot policy. Secure-field masking must be
+proven, and screenshots are withheld after a secret fill for the rest of
+the attempt, including when restoring a tainted session. OCR does not
+bypass those protections or recover withheld pixels.
+
+Masking is **not general PII removal**. Sensitive text drawn elsewhere on
+the screen may remain in permitted pixels and in OCR output. A region
+filter does not limit what the provider sees. Use synthetic test data and
+review what the app displays before enabling OCR.
+
+The built-in `tesseractOcr` adapter runs locally. A custom provider is
+trusted project code with the runner's permissions and may transmit the
+whole screenshot; review its data handling before using it. With
+`ocrTools`, recognized text is sent to the configured agent model as tool
+evidence even though Tesseract itself is local. Avoid logging raw readings
+or including sensitive recognized text in verdict summaries or artifacts.
+See the [security model](/security) for redaction limits.

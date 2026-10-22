@@ -109,6 +109,14 @@ const captureEvidence = defineTool(
 - `attachScreenshot(pixels, label)` adds the image to the step's artifacts
   and returns its artifact id. A reused label overwrites the earlier image.
 
+## Screenshot OCR
+
+Add `ocrTools({ provider: tesseractOcr() })` from `e2e/ocr` to read drawn
+text missing from the semantic tree. The read-only `screenshot_ocr` tool
+runs local Tesseract and sends recognized text to the configured model.
+It does not add semantic nodes or bypass screenshot restrictions. See
+[Screenshot OCR](/ocr) for setup and privacy limits.
+
 ## Device toolkits
 
 `@e2e-dev/mobile` has a ready tool pack, `mobileTools`, with `open_app`,

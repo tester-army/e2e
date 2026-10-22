@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { ocrExecutor, tesseractOcr, type OcrMatch } from 'e2e/ocr';
 import {
   credentials,
   expect,
@@ -805,3 +806,19 @@ session.steps().push({} as StepRecord);
 session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
+
+
+// OCR callbacks receive metadata only: raw UI operations cannot bypass the freshness queue.
+ocrExecutor({
+  provider: tesseractOcr(),
+  async runStep(context, ocr) {
+    // @ts-expect-error direct UI actions are deliberately unavailable
+    context.actions.tapAt({ x: 1, y: 2 });
+    // @ts-expect-error observations must go through the shared OCR queue
+    context.observe();
+    // @ts-expect-error raw project-tool mutation cannot bypass the shared OCR queue
+    context.budgets.runTool({ name: 'mutate', mutates: true }, async () => {});
+    void (await ocr.locate({ text: 'Continue', region: { x: 0, y: 0, width: 100, height: 100 } }) satisfies OcrMatch);
+    return { status: 'passed', summary: context.step.instruction };
+  },
+}) satisfies StepExecutor;

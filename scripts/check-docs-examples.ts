@@ -44,6 +44,12 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/web/testmu-browsers.config.ts': 'docs/integrations/testmu.mdx',
   'docs/examples/models/e2e.decision.config.ts': 'docs/decision-models.mdx',
   'docs/examples/models/tests/decision.e2e.ts': 'docs/decision-models.mdx',
+  'docs/examples/ocr/e2e.config.ts': 'docs/ocr.mdx',
+  'docs/examples/ocr/e2e.ocr.config.ts': 'docs/ocr.mdx',
+  'docs/examples/ocr/tests/ocr.e2e.ts': 'docs/ocr.mdx',
+  'docs/examples/ocr/e2e.mobile.ocr.config.ts': 'docs/ocr.mdx',
+  'docs/examples/ocr/tests/mobile-ocr.e2e.ts': 'docs/ocr.mdx',
+  'docs/examples/skill/e2e.ocr.config.ts': 'skills/e2e/references/agent.md',
   'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',
   'docs/examples/skill/e2e.setup.config.ts': 'skills/e2e/references/setup.md',
 };
