@@ -7,7 +7,7 @@ import { CLOSED_SHADOW_SELECTOR_ENGINE } from './closed-shadow.ts';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
 /** CSS injected into captured pixels to hide carets without mutating element style attributes. */
-const HIDE_CARET_STYLE = '* { caret-color: transparent !important; }';
+const HIDE_CARET_STYLE = ':is(input, textarea, [contenteditable], *) { caret-color: transparent !important; }';
 
 /**
  * Budget for one masked screenshot, still capped by the operation timeout. A

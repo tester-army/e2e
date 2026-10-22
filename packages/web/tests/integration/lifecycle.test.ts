@@ -974,7 +974,6 @@ describe('web engine lifecycle', () => {
         <input id="test-input" value="hello">
         <textarea id="test-textarea">world</textarea>
       `);
-      await page.focus('#test-input');
 
       await page.evaluate(() => {
         (window as unknown as { mutations: MutationRecord[] }).mutations = [];
@@ -985,11 +984,18 @@ describe('web engine lifecycle', () => {
         observer.observe(document.getElementById('test-textarea')!, { attributes: true, attributeFilter: ['style'] });
       });
 
-      const snapshot = await engine.observe!(operation('cstyle'), { pixels: true });
-      expect(snapshot.pixels).toBeDefined();
+      for (const selector of ['#test-input', '#test-textarea']) {
+        await page.focus(selector);
+        await page.evaluate(() => {
+          (window as unknown as { mutations: MutationRecord[] }).mutations = [];
+        });
 
-      const mutations = await page.evaluate(() => (window as unknown as { mutations: MutationRecord[] }).mutations);
-      expect(mutations).toHaveLength(0);
+        const snapshot = await engine.observe!(operation('cstyle'), { pixels: true });
+        expect(snapshot.pixels).toBeDefined();
+
+        const mutations = await page.evaluate(() => (window as unknown as { mutations: MutationRecord[] }).mutations);
+        expect(mutations).toHaveLength(0);
+      }
 
       expect(await page.getAttribute('#test-input', 'style')).toBeNull();
       expect(await page.getAttribute('#test-textarea', 'style')).toBeNull();
