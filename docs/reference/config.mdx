@@ -138,7 +138,9 @@ The budget of every engine operation, in milliseconds.
 actionTimeout: 10_000, // default: 30000
 ```
 
-A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
+- A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
+- A call's own `timeout` option wins over it.
+- `--action-timeout <ms>` overrides it for one run.
 
 #### `assertionTimeout`
 
@@ -147,6 +149,9 @@ The default `expect` deadline, in milliseconds.
 ```ts
 assertionTimeout: 10_000, // default: 5000
 ```
+
+- A matcher's own `timeout` option wins over it.
+- `--assertion-timeout <ms>` overrides it for one run.
 
 #### `cleanupTimeout`
 

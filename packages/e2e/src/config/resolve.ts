@@ -135,6 +135,10 @@ export interface CacheStrictSource {
 export interface CliOverrides {
   retries?: number;
   workers?: number;
+  /** `--action-timeout <ms>`: the budget of every engine operation, over the config's `actionTimeout`. */
+  actionTimeout?: number;
+  /** `--assertion-timeout <ms>`: the default `expect` deadline, over the config's `assertionTimeout`. */
+  assertionTimeout?: number;
   reporters?: readonly BuiltinReporter[];
   /** Replay cache mode override; `--no-cache` maps to `'off'`. */
   cache?: CacheMode;
@@ -263,13 +267,18 @@ export function resolveConfig(
 
   const timeout = positiveInt(raw.timeout, 'timeout', 'milliseconds') ?? 120_000;
   const launchTimeout = positiveInt(raw.launchTimeout, 'launchTimeout', 'milliseconds') ?? 60_000;
-  const actionTimeout = positiveInt(raw.actionTimeout, 'actionTimeout', 'milliseconds') ?? 30_000;
-  const assertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout', 'milliseconds') ?? 5_000;
+  const configActionTimeout = positiveInt(raw.actionTimeout, 'actionTimeout', 'milliseconds');
+  const configAssertionTimeout = positiveInt(raw.assertionTimeout, 'assertionTimeout', 'milliseconds');
   const cleanupTimeout = positiveInt(raw.cleanupTimeout, 'cleanupTimeout', 'milliseconds') ?? 30_000;
   const maxDuration = timerMs(raw.maxDuration, 'maxDuration');
 
   // CLI overrides obey the same bounds as the config keys they replace: a
-  // `--workers 0` would otherwise plan work no worker can ever take.
+  // `--workers 0` would otherwise plan work no worker can ever take. A
+  // timeout flag still leaves the config value checked, so a broken value
+  // fails with or without the flag, and it stops at what a timer can wait,
+  // as `--max-duration` does: a longer one fires at once.
+  const actionTimeout = timerMs(cli.actionTimeout, '--action-timeout') ?? configActionTimeout ?? 30_000;
+  const assertionTimeout = timerMs(cli.assertionTimeout, '--assertion-timeout') ?? configAssertionTimeout ?? 5_000;
   const retries =
     boundedInt(cli.retries, '--retries', 0, 10) ??
     boundedInt(raw.retries, 'retries', 0, 10) ??

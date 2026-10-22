@@ -46,6 +46,10 @@ symlinks to it), registers MCP in `.mcp.json` and `.cursor/mcp.json`, skips
 installing dependencies. A flag per question overrides one default:
 `--engine`, `--gateway`, `--endpoint`, `--skills`, `--mcp` (comma-separated
 locations, or `none`), `--install`; `npx e2e init --help` lists the values.
+To start a new app from one of the repo's examples instead, run `npx e2e init
+my-app --example with-vite` (or `with-expo`, `with-flutter`, ...): it
+downloads the example into an empty directory with its config and tests, then
+asks only for the skill, MCP, and install.
 
 The wizard needs a terminal: without one, `init` exits with code 2. From an
 agent's shell, run `npx e2e init --yes` when its defaults fit and install the

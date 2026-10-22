@@ -324,6 +324,7 @@
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "observationRevision": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "observationTruncated": { "type": "boolean" },
         "explanation": { "type": "string", "maxLength": 8192 },
         "visionInput": { "type": "boolean" },
         "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"] },

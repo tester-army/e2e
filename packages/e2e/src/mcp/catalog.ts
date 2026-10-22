@@ -4,6 +4,7 @@
  * honors, `screenshot` and the point tools (`tap_at`, `hover_at`, `type_at`,
  * `press_at`, `select_at`) among it, answering `PIXEL_TAINTED` once a secret
  * has been filled, `locate` tries a semantic locator the way a test would,
+ * `test_lines` returns the test line every action printed (`test-lines.ts`),
  * `start_recording` and `stop_recording` follow when the engine records video,
  * and the project's own tools come last. The config load refuses a project
  * tool named like a built-in; should one reach here anyway, the built-in
@@ -25,6 +26,7 @@ import { describeExpression, roleQuery, testIdQuery, textQuery } from '../locato
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { AgentTool, Role } from '../types.ts';
 import { recordingTools, type SessionRecorder } from './recording.ts';
+import { SessionTestLines, type TestLineFills } from './test-lines.ts';
 
 /** How many matching nodes `locate` describes. */
 const MAX_LOCATE_NODES = 10;
@@ -40,6 +42,10 @@ export interface SessionCatalog {
   readonly readOnly: ReadonlySet<string>;
   /** The project's own tools among them. */
   readonly project: ReadonlySet<string>;
+  /** The step context the tools run on, keeping every observation for the test lines; the first screen is read through it too. */
+  readonly context: StepExecutorContext;
+  /** The test lines the session's actions printed. */
+  readonly lines: SessionTestLines;
 }
 
 export interface CatalogOptions {
@@ -53,6 +59,10 @@ export interface CatalogOptions {
   readonly redaction: NodeRedaction;
   /** The session's recorder, when the engine records video. */
   readonly recorder: SessionRecorder | undefined;
+  /** The target's app URL, which a navigation's test line is made relative to. */
+  readonly appBase?: { readonly href: string; readonly origin: string } | undefined;
+  /** The credentials and secrets a fill's test line names. */
+  readonly fills?: TestLineFills | undefined;
   readonly warn: (message: string) => void;
   /** Told the cause of every grammar action that failed into a result. */
   readonly onActionFailed?: ((cause: unknown) => void) | undefined;
@@ -60,19 +70,29 @@ export interface CatalogOptions {
 
 /** Builds the session's catalog from the step context and the target. */
 export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
-  const { context, screen } = options;
+  const { screen, locator } = options;
+  const lines = new SessionTestLines({
+    query: locateQuery,
+    resolve: (expression) => locator.resolveNow(expression),
+    read: (ref) => options.session.read(ref, locator.operation()),
+    redact: options.redaction.redact,
+    appBase: options.appBase,
+    fills: options.fills,
+  });
+  const context = lines.watch(options.context);
   // The grammar's own observe reports a diff for the model loop; the
   // session's shows the whole screen, so it replaces the grammar's.
   const { observe: _diffObserve, ...verbs } = createGrammarTools(context, { screen, onActionFailed: options.onActionFailed });
   const recording = options.recorder === undefined ? {} : recordingTools(options.recorder);
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),
-    ...verbs,
-    locate: locateTool(options.locator, options.session, options.redaction),
+    ...lines.wrap(verbs),
+    locate: locateTool(locator, options.session, options.redaction),
+    test_lines: lines.tool(),
     ...recording,
   };
   const defined = options.tools;
-  const readOnly = new Set(['observe', 'locate', 'screenshot']);
+  const readOnly = new Set(['observe', 'locate', 'test_lines', 'screenshot']);
   const project: ToolSet = {};
   for (const [name, tool] of Object.entries(projectTools(context, defined))) {
     if (name in builtIn) {
@@ -82,7 +102,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     project[name] = tool;
     if (defined[name]?.annotations.mutates === false) readOnly.add(name);
   }
-  return { tools: { ...builtIn, ...project }, readOnly, project: new Set(Object.keys(project)) };
+  return { tools: { ...builtIn, ...project }, readOnly, project: new Set(Object.keys(project)), context, lines };
 }
 
 /**

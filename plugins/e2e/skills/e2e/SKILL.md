@@ -90,7 +90,8 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    text. Semantic locators need the accessible names the app renders, so read
    the components, open the page with `--headed`, or drive the live app over
    a connected `e2e mcp` server (topic `mcp`): `open_session`, `observe`,
-   and `locate` show exact names and check a locator before you write it.
+   and `locate` show exact names and check a locator before you write it,
+   and each action prints the test line that repeats it.
 3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one
    atomic goal per call, and pin each outcome right after with `expect` or
    `agent.assert`. A test with three goals makes three calls.

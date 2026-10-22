@@ -83,7 +83,7 @@ function parseShard(value: string): Shard {
   return { index, total };
 }
 
-/** An integer inside a closed range, for the explore budgets and `--max-duration`. */
+/** An integer inside a closed range, for the explore budgets, `--max-duration`, and the timeout overrides. */
 function parseBoundedInt(bounds: { readonly min: number; readonly max: number }): (value: string) => number {
   return (value) => {
     const parsed = Number(value);
@@ -461,7 +461,13 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       'after',
       [
         '',
-        examples(['e2e init', 'e2e init my-app', 'e2e init --yes', 'e2e init --yes --gateway openrouter --skills .agents/skills --mcp none --install']),
+        examples([
+          'e2e init',
+          'e2e init my-app',
+          'e2e init my-app --example with-expo',
+          'e2e init --yes',
+          'e2e init --yes --gateway openrouter --skills .agents/skills --mcp none --install',
+        ]),
         '',
         docsLine('/reference/cli'),
       ].join('\n'),
@@ -580,6 +586,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .option('--workers <n>', 'parallel workers (default: from the config)', parseNonNegativeInt)
     .option('--retries <n>', 'retries per failing test (default: from the config)', parseNonNegativeInt)
+    .option('--action-timeout <ms>', 'budget of every engine operation, such as a locator waiting for its element; a call\'s own timeout still wins (default: actionTimeout in the config, else 30000)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
+    .option('--assertion-timeout <ms>', 'default expect deadline; a matcher\'s own timeout still wins (default: assertionTimeout in the config, else 5000)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--max-failures <n>', 'stop the run once this many tests have failed; the rest are skipped', parsePositiveInt)
     .option('--max-duration <ms>', 'stop the run once it has spent this many milliseconds running tests; the rest are skipped (default: maxDuration in the config)', parseBoundedInt({ min: 1, max: MAX_TIMER_MS }))
     .option('--repeat-each <n>', 'run every selected test this many times, each run its own result (pair with --no-cache to exercise the model each time)', parsePositiveInt)
@@ -611,6 +619,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run --last-failed',
           'e2e run --shard 2/3',
           'e2e run --reporter list,junit --workers 4 --retries 2',
+          'e2e run tests/signup.e2e.ts --action-timeout 5000',
           'e2e run --max-failures 3',
           'e2e run --max-duration 900000',
           'e2e run --repeat-each 5 --no-cache tests/checkout.e2e.ts',
@@ -638,6 +647,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           agent?: string[];
           retries?: number;
           workers?: number;
+          actionTimeout?: number;
+          assertionTimeout?: number;
           maxFailures?: number;
           maxDuration?: number;
           repeatEach?: number;
@@ -666,6 +677,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           agent: options.agent,
           retries: options.retries,
           workers: options.workers,
+          actionTimeout: options.actionTimeout,
+          assertionTimeout: options.assertionTimeout,
           maxFailures: options.maxFailures,
           maxDuration: options.maxDuration,
           repeatEach: options.repeatEach,

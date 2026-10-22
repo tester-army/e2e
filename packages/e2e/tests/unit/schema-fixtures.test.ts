@@ -180,6 +180,19 @@ describe.each(schemas)('%s schema', (name) => {
       expect(validate(report)).toBe(true);
     });
 
+    it('accepts only a boolean observation truncation marker', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { results: { attempts: { steps: { api: string; observationTruncated?: unknown }[] }[] }[] };
+      };
+      const act = report.run.results[0]!.attempts[0]!.steps.find((step) => step.api === 'agent.act')!;
+      expect(act.observationTruncated).toBe(true);
+      expect(validate(report)).toBe(true);
+      act.observationTruncated = 'yes';
+      expect(validate(report)).toBe(false);
+      delete act.observationTruncated;
+      expect(validate(report)).toBe(true);
+    });
+
     it('lets only a gap name the rule that made a typed value run-time data', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {
         run: { results: { attempts: { steps: { api: string; cache?: { mode: string; reason?: string; derived?: string } }[] }[] }[] };

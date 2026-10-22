@@ -19,6 +19,9 @@ Each folder installs published packages from npm and works outside this
 repository. See its README for run commands. Agent tests need
 `AI_GATEWAY_API_KEY`; without it, they skip.
 
+Start a new project from one with `npx e2e init my-app --example with-expo`.
+`init` downloads the folder from the tag of the CLI's version.
+
 ## Hosted mobile devices
 
 [with-limrun](with-limrun) runs the same five app-flow tests on hosted iOS

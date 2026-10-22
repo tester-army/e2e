@@ -632,9 +632,17 @@ async function typeIntoNode(
   await context.actions.tap(target);
   await context.actions.typeText(value, { replace: false });
   return {
-    lead: `${label} is not an input; tapped it to focus it and typed through the keyboard. The tree does not list this node's text, so an unchanged listing says nothing about the typing: verify it through the app's reaction or a screenshot.`,
+    lead: `${label} ${TYPED_THROUGH_KEYBOARD}. The tree does not list this node's text, so an unchanged listing says nothing about the typing: verify it through the app's reaction or a screenshot.`,
     expectChange: false,
   };
+}
+
+/** How the lead of a `type` that fell back to the keyboard says so (`typeIntoNode`). */
+const TYPED_THROUGH_KEYBOARD = 'is not an input; tapped it to focus it and typed through the keyboard';
+
+/** True for the result of a `type` whose node took the value through the keyboard, not as a fill. */
+export function typedThroughKeyboard(result: string): boolean {
+  return (result.split('\n', 1)[0] ?? '').includes(TYPED_THROUGH_KEYBOARD);
 }
 
 /**

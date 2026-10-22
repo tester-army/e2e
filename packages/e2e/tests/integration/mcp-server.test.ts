@@ -252,6 +252,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       'select_at',
       'type_secret',
       'locate',
+      'test_lines',
       'start_recording',
       'stop_recording',
     ]);
@@ -263,7 +264,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 26 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 27 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin.password" (password)');
@@ -289,7 +290,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const tapped = await call('tap', { target: nodeId(observed.text, /button "Increment"/) });
     expect(tapped.isError, tapped.text).toBe(false);
     // An action reports what changed on screen, as it does for the testing agent.
-    expect(tapped.text).toMatch(/^Tapped #n\d+\.\n\nScreen changes since revision/);
+    expect(tapped.text).toMatch(/^Tapped #n\d+\.\nTest line: await screen\.getByRole\("button", "Increment"\)\.tap\(\);\n\nScreen changes since revision/);
     const after = await call('observe');
     expect(after.text).toMatch(/status "Counter" text="1"/);
 

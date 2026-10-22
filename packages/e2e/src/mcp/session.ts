@@ -300,6 +300,11 @@ export class SessionHost {
         tools: config.agent.tools,
         redaction: { redact: attempt.agentRuntime.redact, redactCut: attempt.agentRuntime.redactCut },
         recorder,
+        appBase: target.app.base,
+        fills: {
+          credentials: [...config.credentials.values()].map((credential) => ({ name: credential.name, username: credential.username, password: credential.password.name })),
+          secrets: [...config.secrets.keys()],
+        },
         locator: new LocatorEngine({
           session: attempt.session,
           budget: attempt.budget,
@@ -388,7 +393,11 @@ export class SessionHost {
     }
   }
 
-  /** Opens the app URL when the engine can navigate, then observes; a device's pinned app launched before the step opened. */
+  /**
+   * Opens the app URL when the engine can navigate, then observes; a device's
+   * pinned app launched before the step opened. Either opening is the test's
+   * `app.open()`, the session's first test line.
+   */
   private async firstScreen(live: LiveSession): Promise<string> {
     const base = live.target.app.base?.href;
     if (base !== undefined && live.step.context.target.verbs.has('navigate')) {
@@ -397,8 +406,11 @@ export class SessionHost {
       } catch (cause) {
         return `Opening ${base} failed: ${errorMessage(cause)}\nUse navigate once the app is reachable.`;
       }
+      live.catalog.lines.opened();
+    } else if (launchesPinnedApp(live.target)) {
+      live.catalog.lines.opened();
     }
-    const observation = await live.step.run((context) => context.observe());
+    const observation = await live.step.run(() => live.catalog.context.observe());
     return live.screen.initial(observation);
   }
 
@@ -427,7 +439,7 @@ export class SessionHost {
     );
     lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
-      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen, and observe shows the whole screen. Call close_session when you are done.',
+      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen and the test line that repeats it (test_lines returns them all), and observe shows the whole screen. Call close_session when you are done.',
     );
     return `${lines.join('\n')}\n\n${screen}`;
   }
@@ -490,7 +502,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, test_lines (the test line each action printed, as a draft test body), start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id from open_session; may be omitted only while one session is open'),
@@ -504,7 +516,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'call',
       description:
-        "Run one tool of a session by name, with its arguments as an object: call {tool: \"tap\", args: {target: \"n42\"}, session: \"<id>\"}. The session's catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen; node ids are valid only for the newest observation.",
+        "Run one tool of a session by name, with its arguments as an object: call {tool: \"tap\", args: {target: \"n42\"}, session: \"<id>\"}. The session's catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen and the test line that repeats them; node ids are valid only for the newest observation.",
       inputSchema: z.object({
         tool: z.string().min(1).describe('A catalog tool name, e.g. "observe", "tap", "locate", "screenshot"'),
         args: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments; omit for a tool without any"),

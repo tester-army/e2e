@@ -71,9 +71,10 @@ The catalog, per session:
 | Catalog tool | Does |
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. On the web engine a link's `href` is its path on the app URL's origin, else origin and path (`mailto:` and `tel:` keep their scheme, `blob:` its inner origin and path); `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
 | `locate` | Tries a semantic locator with exactly one of `role`, `text`, `label`, `placeholder`, `testId` (`name` only with `role`; `exact` optional; anything else is `INVALID_ARGUMENT`) and returns how many nodes match, which, and the `screen.*` call to write. |
+| `test_lines` | Every test line the session's actions printed, in order, as a draft test body, starting with `await app.open();` for the session's own opening; an action without a line shows as a `//` comment. A line's locator matched the target alone on the live screen before the action (role and name first, test id last, narrowed to `{ visible: true }`, a container, or `.nth(i)` with a comment when twins share it); a fill names `credentials.user(name)` or `secrets.get(name)`, never a value; a navigation on the app's origin is written as its path. |
 | `screenshot` | The masked pixels as an image. |
 | `tap_at` | Taps a point (`x`, `y` in the latest screenshot's pixels): a listed control under it by id, otherwise the bare point, which an engine without a bare-point tap cannot do. Listed when the engine declares `tap` or a bare-point tap. |
 | `hover_at` | Hovers a point the same way: a listed control under it by id, otherwise the bare point. Listed when the engine declares `hover` or a bare-point hover. |
@@ -101,8 +102,10 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 1. `open_session`, then `call {tool: "observe"}` and act until the screen you
    want to test is in front of you. Node ids are valid only for the newest
    observation; an action reports what changed, so observe again before
-   using new ids.
-2. `call {tool: "locate", args: {...}}` for each locator you intend to write.
+   using new ids. Each action prints the test line that repeats it: copy it
+   as you go, or take them all from `test_lines`.
+2. `call {tool: "locate", args: {...}}` for each locator no action printed,
+   such as an assertion's target.
    One match: use the printed `screen.getByRole(...)` call. Zero or several:
    adjust before writing the test; the same failure would hit the test as
    `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`. A role query's `name` matches

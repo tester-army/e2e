@@ -793,6 +793,8 @@ void (session.fixtures.device.tap satisfies () => void);
 void (session.artifactsDir satisfies string);
 void (session.tracePath satisfies string);
 void (session.steps() satisfies readonly StepRecord[]);
+declare const stepRecord: StepRecord;
+void (stepRecord.observationTruncated satisfies boolean | undefined);
 void (session.report() satisfies Report | undefined);
 void (session.close() satisfies Promise<readonly SerializedError[]>);
 void (session satisfies AsyncDisposable);
