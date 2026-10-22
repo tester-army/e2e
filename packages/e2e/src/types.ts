@@ -236,6 +236,7 @@ export type AgentErrorCode =
   | 'SEED_DATA_MISSING'
   | 'TEST_SETUP_FAILED'
   | 'MODEL_UNAVAILABLE'
+  | 'MODEL_REFUSED'
   | 'MODEL_PROVIDER_FAILED'
   | 'CONTEXT_OVERFLOW'
   | 'MODEL_OUTPUT_INVALID'
@@ -591,7 +592,7 @@ export interface App {
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
-  /** Captures a redacted evidence screenshot. */
+  /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
 }
 

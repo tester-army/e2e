@@ -1,23 +1,36 @@
 ---
 title: TestMu AI
 sidebarTitle: TestMu AI
-description: Run mobile targets on TestMu AI (formerly LambdaTest) Android emulators, iOS simulators, and real devices with the testmu() device provider from @e2e-dev/testmu.
+description: Run mobile targets on TestMu AI (formerly LambdaTest) emulators, simulators, and real devices, and web targets in its hosted Chrome and Edge, with @e2e-dev/testmu.
 icon: "/images/icons/testmu.svg"
-"og:image": "https://e2e.tester.army/docs/images/og/integrations/testmu.png?v=6ef69e0285"
-"twitter:image": "https://e2e.tester.army/docs/images/og/integrations/testmu.png?v=6ef69e0285"
+"og:image": "https://e2e.tester.army/docs/images/og/integrations/testmu.png?v=4bc1e43b07"
+"twitter:image": "https://e2e.tester.army/docs/images/og/integrations/testmu.png?v=4bc1e43b07"
 ---
 
-`testmu()` from `@e2e-dev/testmu` is a
-[device provider](/mobile#hosted-devices) for
-[TestMu AI](https://www.lambdatest.com) (formerly LambdaTest) Android
-emulators, iOS simulators, and real devices. Each worker slot leases one
-device when the run starts and releases it when the run ends.
+`@e2e-dev/testmu` runs targets on
+[TestMu AI](https://www.lambdatest.com) (formerly LambdaTest). `testmu()` is
+a [device provider](/mobile#hosted-devices) for Android emulators, iOS
+simulators, and real devices. `testmuBrowsers()` from `@e2e-dev/testmu/web`
+is a [browser provider](/browser#hosted-browsers) for hosted Chrome and
+Edge. Tests stay the same.
+
+## Authenticate
+
+Set `LT_USERNAME` and `LT_ACCESS_KEY` in the environment `e2e run` starts
+in, such as CI secrets. Copy them from **Account Settings → Password &
+Security → Username and Access Key**
+([accounts.lambdatest.com/security/username-accesskey](https://accounts.lambdatest.com/security/username-accesskey)).
+Without either, the lease fails before any test starts. `testmuBrowsers()`
+sends them only in each session's CDP URL, never in a log line.
+
+## Run mobile targets on devices
+
+Each worker slot leases one device when the run starts and releases it when
+the run ends.
 
 <Tip>
 No Mac, Xcode, or Android SDK on the machine that runs e2e.
 </Tip>
-
-## Setup
 
 Install the integration alongside the mobile engine:
 
@@ -85,7 +98,7 @@ an `https` URL, or a local path, resolved against the directory of
 `.app` on an iOS simulator, and a signed `.ipa` on a real iOS device. Leave
 the target's `app.appPath` out, and keep `app.bundleId` for `app.open()`.
 
-Tests are the same as on a local device:
+<Accordion title="Example test">
 
 ```ts title="tests/home.e2e.ts"
 import { test } from '@e2e-dev/mobile';
@@ -98,16 +111,49 @@ test('Proverbial home screen', async ({ app, screen }) => {
   await expect(screen.getByRole('button', /^geolocation$/i)).toBeVisible();
 });
 ```
+</Accordion>
 
-## Authenticate
+## Run web targets in browsers
 
-Set `LT_USERNAME` and `LT_ACCESS_KEY` in the environment `e2e run` starts
-in, such as CI secrets. Copy them from **Account Settings → Password &
-Security → Username and Access Key**
-([accounts.lambdatest.com/security/username-accesskey](https://accounts.lambdatest.com/security/username-accesskey)).
-Without either, the lease fails before anything starts.
+Each worker slot gets its own Chrome or Edge session for the run. Every
+attempt gets a new browser context in that session, as in a local run, so a
+test never sees another test's cookies, storage, or permissions.
 
-## Options
+Install the integration alongside the web engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/web @e2e-dev/testmu
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/web @e2e-dev/testmu
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/web @e2e-dev/testmu
+```
+</CodeGroup>
+
+Set the target's `browser` to `testmuBrowsers()`:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { testmuBrowsers } from '@e2e-dev/testmu/web';
+
+export default {
+  targets: [
+    {
+      name: 'testmu-web',
+      engine: web({ browser: testmuBrowsers(), viewport: null }),
+      app: { url: 'https://staging.example.com' },
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+## Device options
 
 | Option        | Default         | Meaning |
 | ------------- | --------------- | ------- |
@@ -129,24 +175,80 @@ Device features are set when the session starts and hold for the whole
 session. An unknown option or an invalid value fails the config load with
 `INVALID_CONFIG`.
 
-An attempt that records [video](/reference/config#video) links TestMu AI's
-recording of the session, found by its `build` and `sessionName`. The
-recording covers the whole session, so every attempt on a worker slot links
-the same video. Runs that overlap and share a fixed `build` and
-`sessionName` can link each other's videos; the defaults never do.
+## Browser options
+
+| Option | Default | Meaning |
+| ------ | ------- | ------- |
+| `browserName` | `'Chrome'` | `'Chrome'` or `'MicrosoftEdge'`. The web engine attaches over CDP, so any other browser fails the config. |
+| `capabilities` | none | `browserVersion`, sent next to `browserName`, and TestMu AI's `LT:Options` fields, such as `platform`, `geoLocation`, `timezone`, `video`, `network`, or `tunnel` and `tunnelName` for [TestMu AI Tunnel](https://www.lambdatest.com/support/docs/testing-locally-hosted-pages/). |
+
+The provider sends `platform` (`Windows 11`, since TestMu AI refuses a
+session without one), `build` (the run id), `project` (`e2e`), and
+`idleTimeout` (600 seconds) unless `capabilities` sets them. Edge sessions get
+`--user-data-dir=remote-debug-profile-edge` in `browserOptions` unless
+`capabilities` set one. It sets `user`, `accessKey`, and `name` itself, so
+`capabilities` that set any of them fail the config with `INVALID_CONFIG`.
+So do a nested `LT:Options`, a `browserName` (use the option), a value JSON
+cannot carry, and a misspelled `testmuBrowsers()` option. Other
+`capabilities` keys go to TestMu AI unchecked.
+
+```ts
+testmuBrowsers({
+  browserName: 'MicrosoftEdge',
+  capabilities: { browserVersion: '140', platform: 'Windows 10', build: `checkout ${process.env.GITHUB_SHA}`, video: true },
+})
+```
+
+## Find sessions and videos
+
+By default, the dashboard names each session `e2e-<run id>-<target>-<slot>`.
+
+An attempt that records [video](/reference/config#video) gets:
+
+- **On a device**, a link to TestMu AI's recording of the session, found by
+  its `build` and `sessionName`. The recording covers the whole session, so
+  every attempt on a worker slot links the same video. Runs that overlap and
+  share a fixed `build` and `sessionName` can link each other's videos; the
+  defaults never do.
+- **In a browser**, the web engine's screencast of the page, as in a local
+  run. TestMu AI records the session's screen when you pass
+  `capabilities: { video: true }`. Watch it in the TestMu AI dashboard.
 
 ## Limits
 
-- Each session starts when its slot is leased, which takes about 30 to 75
-  seconds, and is billed until the run releases it, even when no test runs
-  on it. Keep `workers` times the number of TestMu AI targets within your
-  plan's parallel sessions.
-- If the runner is killed before it releases a device, nothing sends the
-  session another command, so TestMu AI's
+- **Parallel sessions.** Keep `workers` times the number of TestMu AI targets
+  within your plan's parallel sessions. A browser session beyond the plan
+  waits in TestMu AI's queue.
+- **Device sessions are billed while leased.** A device session starts when
+  its slot is leased, which takes about 30 to 75 seconds. It is billed until
+  the run releases it, even when no test runs on it.
+- **Stopped runner on a device.** If the runner is killed before it releases a device,
+  nothing sends the session another command. TestMu AI's
   [idle timeout](https://www.lambdatest.com/support/docs/desired-capabilities-in-appium/)
-  (120 seconds by default) ends it, which takes about three minutes after its
-  last command.
-- Device settings (permissions, location, network, appearance), system
-  alerts, recording and device logs through agent-device, and port reverse
-  are not available. Read logs on the TestMu AI dashboard, and use TestMu AI
-  Tunnel to reach a server on your network.
+  (120 seconds by default) ends it, about three minutes after its last
+  command.
+- **Device settings and logs.** Device settings (permissions, location,
+  network, appearance), system alerts, recording and device logs through
+  agent-device, and port reverse are not available. Read logs on the TestMu
+  AI dashboard, and use TestMu AI Tunnel to reach a server on your network.
+- **60-second browser connect.** The web engine waits at most 60 seconds for
+  a browser session to accept the CDP connection. A shorter `launchTimeout`
+  ends the wait sooner, but a longer one does not extend it. A session still
+  queued or provisioning after that fails with `LAUNCH_TIMEOUT`, or with
+  `ENGINE_FAILURE` when `launchTimeout` is over 60 seconds.
+- **Dropped browser connections.** A browser session cannot be resumed, so
+  a dropped connection fails the attempt.
+- **Browser downloads.** TestMu AI's browsers save downloads on their own
+  machines, so `browser.waitForDownload` fails with `ENGINE_FAILURE`. Assert
+  on the download link or the request instead.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Hosted devices" icon="mobile" href="/mobile#hosted-devices">
+    How a device provider leases devices.
+  </Card>
+  <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
+    How a browser provider leases browsers.
+  </Card>
+</CardGroup>

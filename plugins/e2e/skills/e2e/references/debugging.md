@@ -13,7 +13,10 @@ default.
 
 ## Read the failure
 
-1. Every failure in the `list` output ends with `❯ trace
+1. Every failure in the `list` output names the failing line with a code
+   frame, where the screen was (`❯ at`: a URL on the web, the app and
+   screen title on a device), the nodes nearest a failed locator
+   (`❯ on screen`), and ends with `❯ trace
    .e2e/results/<test>/trace.md`. Open that trace page: `Look at:` (the line it unwound
    through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
    `Waited:` (a locator), whether every attempt failed alike (a bug, not a
@@ -37,15 +40,34 @@ default.
    - the cache's decision for an agent step: replayed, handed off and where
      (`at action 2 of 3, tap button "Apply": ...`), what became of the
      recording, and the entry file;
-   - the agent's last turns, loop-guard notes included, and the
-     accessibility tree at failure, one node per line.
-   Fix from what was there. `trace` (default `retain-on-failure`) chooses
-   which tests keep a page; `--trace` keeps one for every test of a run.
-2. `.e2e/report.json` holds the same facts for scripts, not for reading:
+   - the agent's last turns, loop-guard notes included, and under
+     `## Screen at failure` the nodes closest to what a failed locator
+     asked for and the screen, one node per line.
+   `trace` (default `retain-on-failure`) chooses which tests keep a page;
+   `--trace` keeps one for every test of a run.
+2. Fix from that evidence, never by walking the flow again from the start
+   over MCP: the run already saw every screen up to the failure.
+   - Fix every line it covers, not only the failing one. `observed` is what
+     the screen showed; a `❯ on screen` node is most likely what a failed
+     locator meant; the screen at failure (also `screen-at-failure.txt`,
+     item 5) holds the names the rest of that screen's lines need.
+   - A test stops at its first failed step (an `expect.soft` lets it go
+     on), and every wrong line after it costs another run. Before
+     rerunning, check the lines after it as far as you can: against the
+     screen at failure, the app source, or a live session.
+   - For a screen the evidence and the source leave out, look live (topic
+     `mcp`): open or reuse a session, go straight to that screen, then
+     `observe` and `locate`. On the web, `navigate` to the path of the
+     `❯ at` URL or the screen's route, and tap only to reach a state no URL
+     opens. A device session starts on the app's launch screen: take the
+     shortest path from there.
+   - Then rerun the file (topic `mcp` says when a session must close
+     first).
+3. `.e2e/report.json` holds the same facts for scripts, not for reading:
    each step's `events` (`engine`, `poll`, `navigation`) and the attempt's
    `appLog` (each line's `step` is a step `index`) are what the page's step
    lines are rendered from, before it filters and caps them.
-3. When a script needs them:
+4. When a script needs them:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
@@ -56,9 +78,11 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 
    `error.details` holds the facts, `error.source` the line, `failure` the
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
-   failed agent step has `turns`; `selected` drops filtered-out tests
+   failed agent step has `turns`; any agent step has
+   `observationTruncated: true` when a semantic observation was incomplete;
+   `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
+5. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
    for a `--last-failed` rerun), beside the
    trace page: `screen-at-failure.txt`
    and the engine's screenshot per failed attempt; downloads; with
@@ -94,6 +118,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | `STEP_NOT_AWAITED` | The body returned while a step or `expect.poll` still ran, or an `afterEach` hook or fixture teardown returned while an `expect.poll` still ran: a call without `await` | `await` the call the code frame names (every `app`, `agent`, `screen`, `expect`, `expect.poll` call) |
 | `MODEL_UNAVAILABLE` | `agents.<name>.model` holds no AI SDK instance: reported once under `run.errors` at the first `agent` fixture; the run stops. A model-less custom executor fails only `waitFor` and `extract` this way. Also GitHub Copilot refusing the configured model to the account (`model_not_supported`, a plan or settings limit the listing cannot show): reported once at the first call, the run stops | Construct one, e.g. `gateway('openai/gpt-6-luna-fast')` from `ai`, and export its key (`AI_GATEWAY_API_KEY`); for Copilot, pick an id the plan serves |
 | `MODEL_PROVIDER_FAILED` | Network, 5xx, rate limit, no credits, or no response in 120 s, after the transport retries | Check the credential (the key; for keyless `gateway()` the Vercel CLI login and `.vercel/project.json`) and quota; retry (exit 3) |
+| `MODEL_REFUSED` | The model refused the prompt (finish reason `content-filter`). Exit 1 | Rephrase the prompt or instruction, or switch to a different model |
 | `REPLAY_STALE` | `--strict-cache` or `cache.strict`, and a committed recording no longer replays; `step.cache.reason` says why | Rerun read-write with the knob the message names off; commit the changed entry under the directory it names (a custom `cache.store` is written by that run) |
 | `AUTOMATION_UNSUPPORTED` | The step needs an interaction the engine's toolset lacks (drag on a device, say); blocked, exit 1 | Do that step with `screen` actions, or run the test on a target that supports it |
 | `STEP_TIMEOUT`, `STEP_BUDGET_EXHAUSTED` | Goal too big or ambiguous, or a slow provider | Split the goal, use on-screen wording, add vocabulary via `agents.<name>.context` or `agentContext`; raise `maxSteps` or `maxModelCalls` (budget), the config `timeout` (`act`), `judgmentTimeout` (judgments); `--debug` |
@@ -111,6 +136,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | --- | --- |
 | `--headed` | Watch the failing step |
 | `--workers 1 --retries 0` | Take parallelism and retries out of the picture |
+| `--action-timeout 5000` | While writing a test: a wrong locator fails in 5 s instead of 30 s (`--assertion-timeout` for `expect`). Keep it longer than the slowest screen takes to load |
 | `--no-cache` | Rule out a stale `agent.act` replay |
 | `--debug` | Each agent step's duration, model calls, cost, transcript |
 | `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | What the model saw and called |

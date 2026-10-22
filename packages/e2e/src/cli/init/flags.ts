@@ -5,6 +5,7 @@ import type { InitOptions } from '../init.ts';
 import { parseNames } from '../parse-names.ts';
 import { SKILL_LOCATIONS } from './agent-skill.ts';
 import { getEnginePresets } from './engines.ts';
+import { EXAMPLES, findExample } from './examples.ts';
 import { GATEWAYS, validateEndpoint } from './gateways.ts';
 import { MCP_LOCATIONS } from './mcp-config.ts';
 
@@ -20,6 +21,10 @@ const MCP_FILES = MCP_LOCATIONS.map((location) => location.file);
 /** Adds a flag per wizard question to the `init` command. */
 export function addInitOptions(command: Command): Command {
   return command
+    .addOption(
+      new Option('--example <name>', `start from an example app downloaded from GitHub: ${EXAMPLES.map((example) => example.id).join(', ')}`)
+        .argParser(parseExample),
+    )
     .addOption(new Option('--engine <id>', 'engine for a new config').choices(getEnginePresets().map((preset) => preset.id)))
     .addOption(
       new Option('--gateway <id>', 'model gateway for agent steps in a new config; none for deterministic tests only').choices([
@@ -46,6 +51,12 @@ export function addInitOptions(command: Command): Command {
 export function checkInitFlags(options: InitFlagValues, command: Command): Omit<InitOptions, 'directory' | 'interactive'> {
   if (options.endpoint !== undefined && options.gateway !== 'openai-compatible') {
     command.error(`error: --endpoint is the base URL for --gateway openai-compatible, not --gateway ${options.gateway}`, { exitCode: 2 });
+  }
+  if (options.example !== undefined) {
+    const conflicts = (['engine', 'gateway', 'endpoint'] as const).filter((flag) => options[flag] !== undefined);
+    if (conflicts.length > 0) {
+      command.error(`error: --example ${options.example} brings its own e2e.config.ts; drop ${conflicts.map((flag) => `--${flag}`).join(', ')}`, { exitCode: 2 });
+    }
   }
   const { skills, mcp, ...rest } = options;
   return {
@@ -75,6 +86,15 @@ function checkLocations(command: Command, flag: string, noun: string, names: rea
 /** A location with its trailing slashes dropped, so `.agents/skills/` is `.agents/skills`. */
 function trimSlashes(name: string): string {
   return name.replace(/\/+$/u, '');
+}
+
+/** The `--example` value as its folder name; `expo` and `with-expo` both name `with-expo`. */
+function parseExample(value: string): string {
+  const example = findExample(value.trim());
+  if (example === undefined) {
+    throw new InvalidArgumentError(`unknown example "${value}"; expected ${EXAMPLES.map(({ id }) => id).join(', ')}`);
+  }
+  return example.id;
 }
 
 /** The `--endpoint` URL, by the rule config resolution applies; `init` trims it. */

@@ -1,11 +1,11 @@
 /**
- * Copy the maintained skills into the shared Claude and Codex plugin.
+ * Copy the maintained skills into the shared Claude, Codex, and Cursor plugin.
  * Each skill's agents/openai.yaml and the plugin's assets belong to the
- * plugin; every other skill file, the license, both manifests' version
- * (the runner's, so plugin installs update with each release), and Claude's
- * manifest are generated here. `version-packages` runs it after
- * `changeset version`. Use --check in CI to report missing, stale, or
- * removed generated files.
+ * plugin; every other skill file, the license, every manifest's version
+ * (the runner's, so plugin installs update with each release), and the Claude
+ * and Cursor manifests are generated here from Codex's. `version-packages`
+ * runs it after `changeset version`. Use --check in CI to report missing,
+ * stale, or removed generated files.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
@@ -66,6 +66,16 @@ const versioned = { ...codexManifest, version: runner.version };
 generated.set(join(plugin, '.codex-plugin/plugin.json'), json(versioned));
 // Claude reads the same top-level fields; JSON.stringify drops Codex's `interface` block.
 generated.set(join(plugin, '.claude-plugin/plugin.json'), json({ ...versioned, interface: undefined }));
+// Cursor adds a display name and one logo.
+generated.set(
+  join(plugin, '.cursor-plugin/plugin.json'),
+  json({
+    ...versioned,
+    interface: undefined,
+    displayName: codexManifest.interface.displayName,
+    logo: codexManifest.interface.logo,
+  }),
+);
 generated.set(join(plugin, 'LICENSE'), readFileSync(join(root, 'LICENSE')));
 
 const stale: string[] = [];

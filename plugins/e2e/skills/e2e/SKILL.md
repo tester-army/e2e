@@ -90,20 +90,51 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    text. Semantic locators need the accessible names the app renders, so read
    the components, open the page with `--headed`, or drive the live app over
    a connected `e2e mcp` server (topic `mcp`): `open_session`, `observe`,
-   and `locate` show exact names and check a locator before you write it.
+   and `locate` show exact names and check a locator before you write it,
+   and each action prints the test line that repeats it.
 3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one
    atomic goal per call, and pin each outcome right after with `expect` or
    `agent.assert`. A test with three goals makes three calls.
+   Start it on the screen it covers, since every rerun pays for the steps
+   before: in a browser a saved session instead of the sign-in form and
+   `app.open` on that screen's path, on a device `device.openLink`, and data
+   from the app's API (topic `writing-tests`).
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
 4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
    model in the config and that provider's authentication (a saved
    subscription login, an API key); a local endpoint may need none. Tests
    without agent steps need no model.
-5. Read the trace page the terminal names under each failed test
-   (`.e2e/results/<test>/trace.md`): every step with what it did, the cache's
-   decision, what the app logged, the agent's turns, and the screen at
-   failure. Fix the locator, the expectation, or the app. Never add a sleep.
+5. When it fails, fix it from what the run recorded (next section).
+
+## Workflow: fixing a failed test
+
+The run already saw every screen up to the failure. Fix from what it
+recorded; never walk the flow again from the start over MCP just to see a
+screen.
+
+1. Read the failure block in the terminal: the failing line with its code
+   frame, the message (an assertion's `expected` and `observed`), where the
+   screen was (`❯ at`: a URL on the web, the app and screen title on a
+   device), and the nodes nearest a failed locator (`❯ on screen`). Then
+   read the trace page it names (`❯ trace .e2e/results/<test>/trace.md`):
+   every step with what it did, what the app logged, the agent's turns, and
+   `## Screen at failure`, the screen one node per line (topic `debugging`).
+2. Fix every line that evidence covers, not only the one that failed: the
+   screen at failure shows the names the rest of that screen's lines need.
+   Fix the locator, the expectation, or the app. Never add a sleep.
+3. A test stops at its first failed step (an `expect.soft` lets it go on),
+   and every wrong line after it costs another run. Before rerunning, check
+   the lines after it as far as you can: against the screen at failure, the
+   app source, or a live session.
+4. For a screen the evidence and the source leave out, look live (topic
+   `mcp`): open or reuse a session, go straight to that screen, then
+   `observe` and `locate`. On the web, `navigate` to the path of the `❯ at`
+   URL or the screen's route, and tap only to reach a state no URL opens. A
+   device session starts on the app's launch screen: take the shortest path
+   from there.
+5. Rerun the file (topic `mcp` says when a session must close first).
+   Repeat with the next failure.
 
 ## Rules
 

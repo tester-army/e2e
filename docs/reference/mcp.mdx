@@ -167,6 +167,7 @@ What `call` can run depends on the session's target.
 | [Actions](#actions) | Act on an observed node |
 | [`dismiss_keyboard`](#dismiss_keyboard) | Hides the on-screen keyboard |
 | [`locate`](#locate) | Tries a semantic locator |
+| [`test_lines`](#test_lines) | Returns the session's test lines |
 | [`screenshot`](#screenshot) | Returns the masked viewport |
 | [Point tools](#point-tools) | Act at a screenshot point |
 | [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
@@ -188,8 +189,8 @@ current path and revision. Takes no arguments.
 
 `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`,
 `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`,
-`back`, `type_secret`. Each returns the action's summary and what changed on
-screen.
+`back`, `type_secret`. Each returns the action's summary, the
+[test line](#test_lines) that repeats it, and what changed on screen.
 
 | Input | Does |
 | --- | --- |
@@ -225,6 +226,51 @@ Returns how many nodes match a semantic locator, which ones, and the
   `getByText`.
 - What it shows of a node passes the secret ledger, as `observe` does: a
   filled secret reads `<secret:name>`.
+
+#### `test_lines`
+
+Returns every test line the session's actions printed, in order, as a draft
+test body. Takes no arguments.
+
+Each action's result carries its line after the summary:
+
+```txt
+Tapped #n31.
+Test line: await screen.getByRole("button", "Sign in").tap();
+```
+
+- The locator comes from the target as the newest observation listed it,
+  before the action runs. Role and name, label, placeholder, text, and test
+  id are tried in that order, and the first that matches the target and
+  nothing else on the live screen wins, as [`locate`](#locate) would report it.
+- A locator that also matches twins is narrowed: to nodes that render
+  (`{ visible: true }`), then under a container
+  (`getByRole("listitem").filter({ hasText: "Offer B" })`), then by position
+  (`.nth(1)`, with a comment saying so). A position is used only when the
+  live twins are the ones the observation listed, each in place or all
+  moved together.
+- At most 10 locators are tried per target. On a device each try reads the
+  whole screen.
+- When nothing reaches the target alone, the result says `No test line:`
+  and why. A line that would fail is never printed.
+- A failed action prints and records no line. The draft shows an action
+  without a line as a `//` comment.
+
+| Action | Line |
+| --- | --- |
+| Opening the session | `app.open()` |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover` | `tap()`, `doubleTap()`, `longPress()`, `secondaryTap()`, `hover()`, with any `modifiers` |
+| `type` into a node | `fill(value)`; a credential's username as `credentials.user(name).username` |
+| `type_secret` | `fill(credentials.user(name).password)` or `fill(secrets.get(name))`, never the value |
+| `press` on a node, once | `press(key)` |
+| `select`, `check` | `selectOption(label)`, `check()` or `uncheck()` |
+| `drag`, `upload` | `dragTo(locator)`, `setInputFiles(files)` |
+| `scroll_to` a node | `scrollIntoView()` |
+| `navigate`, `back` | `app.open(url)`, with a URL on the app's origin as its path; `app.back()` |
+
+No line: `type` or `press` with no target, `press` with `times` over 1,
+`scroll`, `scroll_to` a text, `dismiss_keyboard`, and a `type` the node took
+through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
 

@@ -1,6 +1,6 @@
 /** Per-test sessions opened through the built runner's reusable host API. */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFakeEngine, FAKE_APP, type FakeEngineHandle } from '../helpers/fake-engine.ts';
@@ -61,7 +61,9 @@ describe('host.openSession', { timeout: 60_000 }, () => {
     expect(path.isAbsolute(session.artifactsDir)).toBe(true);
     expect(path.isAbsolute(session.tracePath)).toBe(true);
 
-    await session.fixtures.app.screenshot('home');
+    const shotPath = await session.fixtures.app.screenshot('home');
+    expect(shotPath).toBe(path.join(session.artifactsDir, 'screenshots', 'fake.png'));
+    expect(existsSync(shotPath)).toBe(true);
     expect(progress.filter((step) => step.phase === 'start')).toHaveLength(1);
     expect(progress.filter((step) => step.phase === 'end')).toHaveLength(1);
     const shot = session.steps().find((step) => step.api === 'app.screenshot');

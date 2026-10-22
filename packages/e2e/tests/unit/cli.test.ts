@@ -40,6 +40,7 @@ function initOutcome(exitCode: number, overrides: Record<string, unknown> = {}) 
     exitCode,
     result: exitCode === 0 ? 'scaffolded' : 'invalid-project',
     yes: false,
+    example: null,
     existingConfig: false,
     engine: null,
     gateway: null,
@@ -234,6 +235,25 @@ describe('e2e run argument parsing', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
+  it('parses --action-timeout and --assertion-timeout as milliseconds a timer can wait and rejects anything else with exit code 2', async () => {
+    await invoke('run', '--action-timeout', '5000', '--assertion-timeout', '2147483647');
+    expect(lastRunOptions()).toMatchObject({ actionTimeout: 5_000, assertionTimeout: 2_147_483_647 });
+    runMock.mockClear();
+    await invoke('run');
+    expect(lastRunOptions()).toMatchObject({ actionTimeout: undefined, assertionTimeout: undefined });
+    runMock.mockClear();
+    for (const flag of ['--action-timeout', '--assertion-timeout']) {
+      for (const value of ['0', '-1', '2.5', '5s', '2147483648']) {
+        stderrSpy.mockClear();
+        process.exitCode = undefined;
+        await invoke('run', flag, value);
+        expect(process.exitCode, `${flag} ${value}`).toBe(2);
+        expect(written(stderrSpy)).toContain(`option '${flag} <ms>' argument '${value}' is invalid. must be an integer from 1 through 2147483647`);
+      }
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('parses --repeat-each as a positive integer', async () => {
     await invoke('run', '--repeat-each', '3');
     expect(lastRunOptions().repeatEach).toBe(3);
@@ -267,11 +287,11 @@ describe('e2e run argument parsing', () => {
     delete process.env.CI;
     try {
       watchMock.mockResolvedValue(1);
-      await invoke('run', '-w', 'tests/a.e2e.ts', '--tag', 'smoke');
+      await invoke('run', '-w', 'tests/a.e2e.ts', '--tag', 'smoke', '--action-timeout', '3000');
       expect(runMock).not.toHaveBeenCalled();
       expect(watchMock).toHaveBeenCalledTimes(1);
       const options = watchMock.mock.calls[0]?.[0] as { base: RunOptions; stdin: unknown; clear: boolean };
-      expect(options.base).toMatchObject({ files: ['tests/a.e2e.ts'], tags: ['smoke'] });
+      expect(options.base).toMatchObject({ files: ['tests/a.e2e.ts'], tags: ['smoke'], actionTimeout: 3_000 });
       expect(options.stdin).toBe(process.stdin.isTTY === true ? process.stdin : undefined);
       expect(options.clear).toBe(process.stdout.isTTY === true);
       expect(process.exitCode).toBe(1);
@@ -674,6 +694,8 @@ describe('e2e --version and --help', () => {
       '--agent',
       '--workers',
       '--retries',
+      '--action-timeout',
+      '--assertion-timeout',
       '--max-failures',
       '--max-duration',
       '--repeat-each',

@@ -12,14 +12,12 @@ import type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest }
 import { ConfigurationError, rejectUnknownKeys, type ProviderRecordContext, type ProviderRecording } from 'e2e/engine';
 import { testmuCredentials, type TestmuCredentials } from './credentials.ts';
 import { assertDriverVersion, installPlugin, startDriver, stopDriver } from './daemon.ts';
+import { DEFAULT_PROJECT, defaultSessionName } from './dashboard.ts';
 import { LEASE_TTL_MS, startHeartbeat } from './heartbeat.ts';
 import { findSession, sessionVideoUrl, testmuApiEndpoint, type SessionRef } from './sessions.ts';
 
 /** agent-device's name for TestMu AI, as the lease provider and the tenant. */
 const PROVIDER = 'testmu';
-
-/** The dashboard project sessions are grouped under when `project` is absent. */
-const DEFAULT_PROJECT = 'e2e';
 
 const DEVICE_TYPES: ReadonlySet<string> = new Set(['virtual', 'real']);
 
@@ -243,9 +241,9 @@ export function testmu(options: TestmuOptions): DeviceProvider {
  * The dashboard name of a slot's session, unique among the run's slots of the
  * target so `record` can find the session by it within its build.
  */
-function slotSessionName(sessionName: string | undefined, { runId, targetName, slot, slots }: DeviceRequest): string {
-  if (sessionName === undefined) return `e2e-${runId}-${targetName}-${slot + 1}`;
-  return slots > 1 ? `${sessionName}-${slot + 1}` : sessionName;
+function slotSessionName(sessionName: string | undefined, request: DeviceRequest): string {
+  if (sessionName === undefined) return defaultSessionName(request);
+  return request.slots > 1 ? `${sessionName}-${request.slot + 1}` : sessionName;
 }
 
 /** `app` as the daemon reads it: an `lt://` id or URL as written, a local path resolved against the project root, never the daemon's working directory. */

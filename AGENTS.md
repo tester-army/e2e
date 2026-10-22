@@ -91,7 +91,10 @@ suites that consume the built packages the way a user would.
   vendor SDK and the engine it plugs into as peers. It implements that
   engine's provider seam (`BrowserProvider` for web, `DeviceProvider` for
   mobile) and imports the engine's types only; the engines never know it
-  exists.
+  exists. A service with providers for both engines ships them in that one
+  package, each engine an optional peer and each provider on its own entry
+  that never imports the other engine (`@e2e-dev/testmu` and
+  `@e2e-dev/testmu/web`).
   Its docs page under `docs/integrations/` ships with the vendor's logo as
   the sidebar icon and on its overview card (`authoring-docs`, "Page
   icons"); `scripts/check-docs-logos.ts` fails `pnpm docs:check` without
@@ -134,7 +137,8 @@ suites that consume the built packages the way a user would.
 - `packages/testmu` — the published `@e2e-dev/testmu` package: TestMu AI
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's
-  `@agent-device/testmu` plugin.
+  `@agent-device/testmu` plugin, and hosted Chrome and Edge for the web
+  engine (`BrowserProvider`) from `@e2e-dev/testmu/web`.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -234,11 +238,13 @@ suites that consume the built packages the way a user would.
   `core.symlinks=true` (CONTRIBUTING.md). The vendored third-party skills in `.claude/skills/` (`unbox-ai`,
   `unslop`, tracked by `skills-lock.json`) stay where they are: the CLI
   skips them as installed project skills.
-- `plugins/e2e/` — one skills-only package for Codex and Claude Code. The
-  root `.agents/plugins/marketplace.json` and `.claude-plugin/marketplace.json`
-  both point here. Edit skill Markdown in `skills/`, then run
-  `pnpm plugins:sync`; `pnpm plugins:check` checks the generated copies,
-  license, Claude manifest, and both manifests' `version`, which is the
+- `plugins/e2e/` — one skills-only package for Codex, Claude Code, and
+  Cursor; Grok Build reads the Claude files. The root
+  `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, and
+  `.cursor-plugin/marketplace.json` all point here. Edit skill Markdown in
+  `skills/`, then run `pnpm plugins:sync`; `pnpm plugins:check` checks the
+  generated copies, license, the Claude and Cursor manifests (generated from
+  Codex's), and every manifest's `version`, which is the
   runner's (`version-packages` syncs it, so plugin
   installs update once per release; it does the same for
   `packages/e2e/server.json`, the MCP Registry entry). The Codex manifest's other fields,

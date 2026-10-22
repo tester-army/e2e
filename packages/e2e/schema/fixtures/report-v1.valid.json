@@ -96,6 +96,7 @@
                 "status": "passed",
                 "startedAt": "2026-07-24T12:00:00.000Z",
                 "durationMs": 4200,
+                "observationTruncated": true,
                 "events": [
                   {
                     "kind": "model",

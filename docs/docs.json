@@ -135,7 +135,8 @@
               "quickstart",
               "core-concepts",
               "coding-agents",
-              "mcp-server"
+              "mcp-server",
+              "ci"
             ]
           },
           {
@@ -168,7 +169,6 @@
           {
             "group": "Run in CI",
             "pages": [
-              "ci",
               "ci/github-actions",
               "ci/eas-workflows",
               "ci/bitrise",
@@ -281,6 +281,10 @@
     }
   },
   "redirects": [
+    {
+      "source": "/integrations/testmu-browsers",
+      "destination": "/integrations/testmu#run-web-targets-in-browsers"
+    },
     {
       "source": "/mobile-ci",
       "destination": "/ci#mobile-jobs"

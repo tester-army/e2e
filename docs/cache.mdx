@@ -73,7 +73,8 @@ a step that replayed before an `agent.assert` that could not reach its
 model.
 
 These count as a failure of the flow: an unusable model answer
-(`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`), `STEP_TIMEOUT` (even with a
+(`MODEL_OUTPUT_INVALID`, `CONTEXT_OVERFLOW`), a refusal (`MODEL_REFUSED`),
+`STEP_TIMEOUT` (even with a
 request still open), and any other failure in the same attempt, such as an
 `afterEach` assertion.
 </Accordion>

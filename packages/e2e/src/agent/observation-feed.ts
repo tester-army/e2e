@@ -99,6 +99,8 @@ export class ObservationFeed {
   private visionDegraded: VisionDegradation | undefined;
   /** True once pixels this feed cleared were handed to the executor as model input. */
   private pixelsSent = false;
+  /** Whether any semantic observation in this step stopped at a capture or byte limit. */
+  private observationTruncated = false;
 
   constructor(
     private readonly runtime: AgentContext,
@@ -293,9 +295,10 @@ export class ObservationFeed {
     return observation;
   }
 
-  /** The step's pixel record for the report. */
-  visionReport(): Pick<StepAgentDetails, 'visionInput' | 'visionDegraded'> {
+  /** The step's observation and pixel record for the report. */
+  reportDetails(): Pick<StepAgentDetails, 'observationTruncated' | 'visionInput' | 'visionDegraded'> {
     return {
+      ...(this.observationTruncated ? { observationTruncated: true } : {}),
       ...(this.pixelsSent ? { visionInput: true } : {}),
       ...(this.visionDegraded === undefined ? {} : { visionDegraded: this.visionDegraded }),
     };
@@ -352,6 +355,9 @@ export class ObservationFeed {
   /** Makes an observation the newest, remembers it among the recent ones, and books its size. */
   private publish(observation: AgentObservation): void {
     this.newest = observation;
+    if (observation.kind === 'semantic' && observation.truncated) {
+      this.observationTruncated = true;
+    }
     if (observation.kind === 'pixels') this.recent.length = 0;
     else this.recent.push(observation);
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();

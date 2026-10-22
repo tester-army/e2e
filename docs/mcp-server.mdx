@@ -14,7 +14,7 @@ acts on it, and checks its work.
 
 | Task | Without `e2e mcp` | With `e2e mcp` |
 | --- | --- | --- |
-| Write a test | Guesses locators, runs, fails, guesses again | Checks each locator before it writes it |
+| Write a test | Guesses locators, runs, fails, guesses again | Copies a checked test line from each action it takes |
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
 | Show a change in a PR | Describes it | Records a video |
@@ -75,6 +75,20 @@ A session starts the target's app command, if it has one.
 - "Reproduce issue #123 in the app and record a video."
 
 Add "headed" to watch a local browser or simulator.
+
+## How it writes a test line
+
+Each action in a session answers with the test line that repeats it. The
+line's locator matched that control alone on the live screen:
+
+```text wrap
+Tapped #n31.
+Test line: await screen.getByRole("button", "Sign in").tap();
+```
+
+`test_lines` returns every line so far, in order, as a draft test body. The
+agent pastes it into a test and adds the assertions. See
+[`test_lines`](/reference/mcp#test_lines) for how a line is built.
 
 ## How it checks a locator
 

@@ -15,6 +15,21 @@ describe('providerHints for Anthropic', () => {
     expect(direct.instructions('rules')).toEqual(hints.instructions('rules'));
   });
 
+  it.each([
+    { provider: 'amazon-bedrock', modelId: 'eu.anthropic.claude-sonnet-4-6' },
+    { provider: 'amazon-bedrock', modelId: 'anthropic.claude-opus-5-5' },
+    { provider: 'vertex.anthropic.messages', modelId: 'claude-opus-5-5' },
+    { provider: 'openrouter.chat', modelId: 'anthropic/claude-sonnet-5-5' },
+  ])('recognizes Claude on %j, where the same check runs', (model) => {
+    const platform = providerHints(model);
+    expect(platform.instructions('rules')).toEqual(hints.instructions('rules'));
+    const history: ModelMessage[] = [
+      { role: 'user', content: 'step' },
+      { role: 'assistant', content: [{ type: 'reasoning', text: '' }, { type: 'text', text: 'ok' }] },
+    ];
+    expect(platform.afterEdit(history, 0)).toEqual([history[0], { role: 'assistant', content: [{ type: 'text', text: 'ok' }] }]);
+  });
+
   it('marks the system prompt as a breakpoint and adds no request options', () => {
     expect(hints.instructions('rules')).toEqual({
       role: 'system',
@@ -48,6 +63,36 @@ describe('providerHints for Anthropic', () => {
     ]);
     expect(kept?.providerOptions).toEqual({ anthropic: { other: 1 }, openai: { x: 1 } });
   });
+
+  describe('after an edit', () => {
+    const reasoning = { type: 'reasoning', text: '', providerOptions: { anthropic: { signature: 'sig' } } } as const;
+    const call = (id: string) => ({ type: 'tool-call', toolCallId: id, toolName: 'tap', input: {} }) as const;
+    const result = (id: string): ModelMessage => ({
+      role: 'tool',
+      content: [{ type: 'tool-result', toolCallId: id, toolName: 'tap', output: { type: 'text', value: 'ok' } }],
+    });
+    const history: ModelMessage[] = [
+      { role: 'user', content: 'step' },
+      { role: 'assistant', content: [reasoning, call('c1')] },
+      result('c1'),
+      { role: 'assistant', content: [reasoning] },
+      { role: 'user', content: 'notice' },
+      { role: 'assistant', content: [reasoning, call('c2')] },
+      result('c2'),
+    ];
+
+    it('drops the reasoning from the edited message on, and a reply that was only reasoning', () => {
+      const after = hints.afterEdit(history, 2);
+      // Untouched messages carry over as the same objects; the edited one and the reply after it keep their calls.
+      expect(after.slice(0, 3)).toEqual([history[0], history[1], history[2]]);
+      expect(after[1]).toBe(history[1]);
+      expect(after.slice(3)).toEqual([history[4], { role: 'assistant', content: [call('c2')] }, history[6]]);
+    });
+
+    it('returns the history itself when nothing from the edit on reasoned', () => {
+      expect(hints.afterEdit(history, 6)).toBe(history);
+    });
+  });
 });
 
 describe('providerHints for OpenAI-shaped providers', () => {
@@ -78,9 +123,13 @@ describe('providerHints for OpenAI-shaped providers', () => {
     });
   });
 
-  it('does not touch the messages', () => {
-    const messages: ModelMessage[] = [{ role: 'user', content: 'step' }];
+  it('does not touch the messages, after an edit included: OpenAI binds no reasoning to the prefix', () => {
+    const messages: ModelMessage[] = [
+      { role: 'user', content: 'step' },
+      { role: 'assistant', content: [{ type: 'reasoning', text: 'thought' }, { type: 'text', text: 'ok' }] },
+    ];
     expect(hints.markLatest(messages)).toBe(messages);
+    expect(hints.afterEdit(messages, 0)).toBe(messages);
   });
 });
 
