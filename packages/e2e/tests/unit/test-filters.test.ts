@@ -80,6 +80,7 @@ function scope(overrides: Partial<TestFilterScope> = {}) {
   const value: TestFilterScope = {
     projectRoot: ROOT,
     changes: CHANGES,
+    configFile: 'e2e.ci.config.ts',
     secrets: config().allSecrets,
     collectedIds: new Set(),
     timeoutMs: FILTER_TIMEOUT_MS,
@@ -300,7 +301,7 @@ describe('applyTestFilters', () => {
     expect(applied.excluded.size).toBe(2);
   });
 
-  it('hands a filter a frozen list and a context of the project root, the change, the signal, log, and redact', async () => {
+  it('hands a filter a frozen list and a context of the project root, the change, the loaded config, the signal, log, and redact', async () => {
     const candidates = await candidatesOf('a');
     const controller = new AbortController();
     let received: { tests: readonly TestFilterCandidate[]; context: TestFilterContext } | undefined;
@@ -317,9 +318,10 @@ describe('applyTestFilters', () => {
     );
     expect(received!.tests).toEqual(candidates);
     expect(Object.isFrozen(received!.tests)).toBe(true);
-    expect(Object.keys(received!.context).toSorted()).toEqual(['changes', 'log', 'projectRoot', 'redact', 'signal']);
+    expect(Object.keys(received!.context).toSorted()).toEqual(['changes', 'configFile', 'log', 'projectRoot', 'redact', 'signal']);
     expect(received!.context.projectRoot).toBe(ROOT);
     expect(received!.context.changes).toBe(CHANGES);
+    expect(received!.context.configFile).toBe('e2e.ci.config.ts');
     expect(Object.isFrozen(received!.context)).toBe(true);
     // The signal is the run's interrupt combined with the filter's deadline.
     expect(received!.context.signal.aborted).toBe(false);

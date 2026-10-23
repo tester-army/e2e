@@ -1542,6 +1542,13 @@ export interface TestFilterContext {
   /** The change the filter judges; the same for every filter of the run. */
   readonly changes: TestFilterChanges;
   /**
+   * The config file this run loaded, whatever its name, as a POSIX path
+   * relative to `changes.root` like `changes.files`, in its on-disk bytes
+   * (compare in NFC, as with a test's `file`); `undefined` when the run was
+   * given a config object or loaded one outside the repository.
+   */
+  readonly configFile?: string | undefined;
+  /**
    * Aborts when the run is interrupted, or with a `TimeoutError` reason after
    * 5 minutes; hand it to every model and network call.
    */

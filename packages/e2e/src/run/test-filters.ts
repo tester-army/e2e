@@ -1,5 +1,6 @@
 /** Test filters (`filters`): which apply, what they are given, calling them, and what they decided. */
 
+import path from 'node:path';
 import type { Collection } from '../collect/collect.ts';
 import { select, type Selection, type SelectionFilters, type TestExclusion, type TestTargetPair } from '../collect/select.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
@@ -50,6 +51,8 @@ export interface TestFilterScope {
   readonly projectRoot: string;
   /** The change every filter judges. */
   readonly changes: TestFilterChanges;
+  /** The loaded config file relative to `changes.root`, POSIX; none for a config object. */
+  readonly configFile: string | undefined;
   readonly secrets: ResolvedConfig['allSecrets'];
   /** The id of every collected test, setup tests included: an `exclude` naming one a filter was not given is ignored, since that test's fate is settled. */
   readonly collectedIds: ReadonlySet<string>;
@@ -94,6 +97,18 @@ export const FILTER_TIMEOUT_MS = 300_000;
 const NO_FILTERS = 'warning: --changed-since: the config has no filters, so every test runs';
 
 /**
+ * The loaded config as `changes.files` spells it, relative to the repository
+ * root: its directory resolved on disk, its own name kept, since git lists a
+ * symlinked config under the link's path. `undefined` outside the repository,
+ * where no changed file can name it.
+ */
+function repoConfigFile(configPath: string, root: string): string | undefined {
+  const relative = path.relative(root, path.join(onDiskPath(path.dirname(configPath)), path.basename(configPath)));
+  if (relative === '' || path.isAbsolute(relative) || relative.split(path.sep)[0] === '..') return undefined;
+  return relative.split(path.sep).join('/');
+}
+
+/**
  * The second selection pass, which `run` and `list` share. `first` is the
  * selection every flag made, `--shard` included, so each shard machine hands
  * the filters its own slice and the cut never depends on what they answer.
@@ -128,6 +143,7 @@ export async function filterSelection(first: Selection, options: FilterSelection
   const applied = await applyTestFilters(config.filters, candidates, {
     projectRoot,
     changes,
+    configFile: config.configPath === undefined ? undefined : repoConfigFile(config.configPath, changes.root),
     secrets: config.allSecrets,
     collectedIds: new Set(collection.tests.map((test) => test.id)),
     timeoutMs: options.timeoutMs ?? FILTER_TIMEOUT_MS,
@@ -237,6 +253,7 @@ async function callFilter(filter: TestFilter, input: readonly TestFilterCandidat
   const context: TestFilterContext = Object.freeze({
     projectRoot: scope.projectRoot,
     changes: scope.changes,
+    configFile: scope.configFile,
     signal,
     log: (line: string) => {
       if (live) scope.notice(`${name}: ${cut(redact(String(line)))}`);

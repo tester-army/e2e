@@ -71,9 +71,10 @@ const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gat
  * A test filter named `decision` that asks the decision model, test by
  * test, whether the change can affect what it checks, and whether it can
  * break the setup that saves the test's session, and leaves out the tests
- * unlikely on both counts. A change to the config or a lockfile leaves
- * nothing out, and a test whose test file, setup file, or stored
- * screenshots changed always runs. A test the model does not judge runs,
+ * unlikely on both counts. A change to the config the run loaded, any
+ * file named like an e2e config, or a lockfile leaves nothing out, and a
+ * test whose test file, setup file, or stored screenshots changed always
+ * runs. A test the model does not judge runs,
  * and the note says why. When every call fails, as without a key, or git fails,
  * the filter throws, so the run warns and runs every test.
  */
@@ -124,8 +125,9 @@ interface Answers {
   readonly setups: Map<string, number>;
 }
 /**
- * Leaves nothing out when a `RUN_ALL` file of the project changed, runs
- * the tests the change touches directly without asking, and asks the model
+ * Leaves nothing out when the loaded config or a `RUN_ALL` file of the
+ * project changed, runs the tests the change touches directly without
+ * asking, and asks the model
  * about the rest, and the setup files that save their sessions, against
  * the redacted diff and the redacted files, in calls of at most
  * `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when both
@@ -184,14 +186,19 @@ function repoPath({ projectRoot, changes }: TestFilterContext, file: string): st
   return path.relative(changes.root, path.join(projectRoot, file)).split(path.sep).join('/').normalize('NFC');
 }
 /**
- * The first changed `RUN_ALL` file that belongs to the project: one in the
- * project directory or inside it, or in a directory above it, as a
- * workspace root's lockfile is. A sibling project's config or lockfile, or
- * one in a docs folder outside the project, goes to the model.
+ * The first changed file that leaves nothing out: the config the run
+ * loaded, whatever its name, or a `RUN_ALL` file that belongs to the
+ * project, one in the project directory or inside it, or in a directory
+ * above it, as a workspace root's lockfile is. A sibling project's config
+ * or lockfile, or one in a docs folder outside the project, goes to the
+ * model. Without `configFile`, from an older e2e or a config object, only
+ * the `RUN_ALL` names apply.
  */
 function runAllFile(context: TestFilterContext): string | undefined {
   const project = repoPath(context, '.');
+  const config = context.configFile?.normalize('NFC');
   return context.changes.files.find((file) => {
+    if (file.normalize('NFC') === config) return true;
     if (!RUN_ALL.has(path.posix.basename(file))) return false;
     const directory = path.posix.dirname(file.normalize('NFC'));
     return directory === '.' || project === '' || directory === project || project.startsWith(`${directory}/`) || directory.startsWith(`${project}/`);

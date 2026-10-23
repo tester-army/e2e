@@ -618,6 +618,27 @@ describe('what a filter is told', () => {
       rmSync(path.dirname(link), { recursive: true, force: true });
     }
   });
+
+  it('names the config file the run loaded, whatever its name, relative to the repository root, and none for a config object', async () => {
+    const config = cliConfig("[{ name: 'areas', filter(tests, { configFile, log }) { log('config ' + configFile); return { exclude: {} }; } }]");
+    const nested = config.replace("'../../helpers/", "'../../../../helpers/");
+    const project = fixture({ ...THREE_TESTS, 'e2e.config.ts': config, 'e2e.ci.config.ts': config, 'apps/web/e2e.ci.config.ts': nested, 'apps/web/tests/alpha.e2e.ts': testFile('alpha') });
+    const told = (cwd: string, args: readonly string[]) => {
+      const listed = cli({ dir: cwd, cleanup: () => undefined }, ['list', '--changed-since', 'main', ...args]);
+      expect(listed.exitCode, listed.output).toBe(0);
+      return listed.output.split('\n').filter((line) => line.startsWith('areas: config'));
+    };
+    expect(told(project.dir, [])).toEqual(['areas: config e2e.config.ts']);
+    expect(told(project.dir, ['--config', 'e2e.ci.config.ts'])).toEqual(['areas: config e2e.ci.config.ts']);
+    expect(told(path.join(project.dir, 'apps', 'web'), ['--config', 'e2e.ci.config.ts'])).toEqual(['areas: config apps/web/e2e.ci.config.ts']);
+    // Git lists a symlinked config under the link's own path.
+    symlinkSync('e2e.ci.config.ts', path.join(project.dir, 'e2e.link.config.ts'));
+    expect(told(project.dir, ['--config', 'e2e.link.config.ts'])).toEqual(['areas: config e2e.link.config.ts']);
+
+    const { filter, calls } = recording(keepOnly('areas', ['alpha', 'beta', 'gamma']));
+    await listExisting(project, { config: { filters: [filter] } });
+    expect(calls.map(({ context }) => context.configFile)).toEqual([undefined]);
+  });
 });
 
 describe('interrupting a filter that ignores its signal', () => {

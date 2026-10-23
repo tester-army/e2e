@@ -346,6 +346,7 @@ filterCandidate.setupFile satisfies string | undefined;
 declare const filterContext: TestFilterContext;
 // @ts-expect-error the change is read-only
 filterContext.changes.files.push('src/a.ts');
+filterContext.configFile satisfies string | undefined;
 // @ts-expect-error a filter takes its tests read-only: the runner freezes them
 ({ name: 'sorts', filter: (tests: TestFilterCandidate[]) => ({ exclude: {}, note: `${tests.push(filterCandidate)}` }) }) satisfies TestFilter;
 // Every name a public signature uses is importable, so a reporter or an executor can annotate what it reads.

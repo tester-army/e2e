@@ -115,7 +115,8 @@ The decision filter also runs:
 
 - The tests in a test file that changed or whose stored screenshots
   changed, and the tests that use the sessions of such a setup file.
-- Every test, when a file named `e2e.config.ts` (`.mts`, `.js`, `.mjs`),
+- Every test, when the config the run loaded changes, whatever its name,
+  or when a file named `e2e.config.ts` (`.mts`, `.js`, `.mjs`),
   Gradle's `libs.versions.toml`, or a lockfile changes in the project's
   directory, inside it, or in a directory above it, such as the workspace
   root. Lockfiles are known by name, such as `pnpm-lock.yaml`,

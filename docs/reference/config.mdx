@@ -1743,6 +1743,8 @@ interface TestFilterContext {
   readonly projectRoot: string;
   /** The change every filter of the run judges. */
   readonly changes: TestFilterChanges;
+  /** The config file the run loaded, relative to `changes.root` like `changes.files`; `undefined` for a config object or one outside the repository. */
+  readonly configFile?: string | undefined;
   /** Aborts when the run is interrupted, or with a `TimeoutError` after 5 minutes. */
   readonly signal: AbortSignal;
   /** Prints one progress line. */

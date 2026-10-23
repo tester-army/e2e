@@ -380,6 +380,25 @@ describe('decisionFilter', () => {
     }
   });
 
+  it('leaves nothing out, making no call, when the config the run loaded changed, whatever its name, and goes by name for any other', async () => {
+    const project = 'apps/web';
+    const base = { 'src/cart.ts': 'export const total = 1;\n', [`${project}/${LOGIN}`]: "test('signs in', async () => {});\n" };
+    const loaded = `${project}/e2e.ci.config.ts`;
+    for (const [file, configFile] of [[loaded, loaded], ['config/caf\u00E9.config.ts', 'config/cafe\u0301.config.ts']] as const) {
+      const { model, requests } = scriptedJudge(() => 0);
+      const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(changedRepo(base, { [file]: 'changed\n' }, { project }), configFile).context);
+      expect(result, file).toEqual({ exclude: {}, note: `${file} changed, so the decision filter left nothing out` });
+      expect(requests, file).toEqual([]);
+    }
+    // Another config of the project, one an e2e without `configFile` loaded, goes to the model unless it is named like an e2e config.
+    for (const configFile of [`${project}/e2e.config.ts`, undefined]) {
+      const { model, requests } = scriptedJudge(() => 0);
+      const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(changedRepo(base, { [loaded]: 'changed\n' }, { project }), configFile).context);
+      expect(result.exclude, String(configFile)).toEqual({ [SIGNS_IN.id]: '0% likely affected' });
+      expect(requests, String(configFile)).toHaveLength(1);
+    }
+  });
+
   it('sends a renamed file as a rename and a deleted file without its lines', async () => {
     const body = Array.from({ length: 20 }, (_, i) => `export const line${i} = ${i};`).join('\n');
     const repo = changedRepo({ 'src/old.ts': `${body}\n`, 'src/gone.ts': 'export const gone = true;\n', [LOGIN]: "test('signs in', async () => {});\n" }, {});

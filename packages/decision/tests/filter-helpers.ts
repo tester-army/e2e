@@ -120,12 +120,13 @@ export function commitAll(repo: ChangedRepo): void {
 /** A secret every context's `redact` replaces. */
 export const SECRET = 'sk-test-4f9c2b7e1d';
 
-/** A filter context for `repo`; `log` lines land in `logs`. */
-export function filterContext(repo: ChangedRepo): { context: TestFilterContext; logs: string[] } {
+/** A filter context for `repo`, whose run loaded `configFile` (repository-relative) when given; `log` lines land in `logs`. */
+export function filterContext(repo: ChangedRepo, configFile?: string): { context: TestFilterContext; logs: string[] } {
   const logs: string[] = [];
   const context: TestFilterContext = {
     projectRoot: repo.projectRoot,
     changes: { base: repo.base, root: repo.root, files: repo.files },
+    configFile,
     signal: new AbortController().signal,
     log: (line) => {
       logs.push(line);
