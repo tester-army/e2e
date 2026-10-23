@@ -17,6 +17,13 @@ export function resolveExpression(
   platform: MobilePlatform,
 ): ProjectedNode[] {
   switch (expression.kind) {
+    case 'union': {
+      const matches = new Set([
+        ...resolveExpression(expression.left, index, platform),
+        ...resolveExpression(expression.right, index, platform),
+      ]);
+      return index.filter((entry) => matches.has(entry));
+    }
     case 'query': {
       const candidates =
         expression.scope === undefined ? index : descendantsOf(resolveExpression(expression.scope, index, platform), index);

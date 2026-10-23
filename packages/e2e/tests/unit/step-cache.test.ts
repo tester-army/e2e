@@ -693,6 +693,18 @@ describe('StepTraceSession', () => {
     }
   });
 
+  it('does not stage an eviction outcome when deleting a consumed entry rejects', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    context.store.delete = async () => { throw new Error('store unavailable'); };
+    const session = makeSession(context, makeHost(['/pricing', '/customers']));
+    await session.begin();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    await expect(session.conclude('failed', undefined)).resolves.toBeUndefined();
+    expect(context.staged).toEqual([]);
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: -1, implicatesUnconfirmed: true });
+    expect(writes.size).toBe(0);
+  });
+
   it('evicts nothing on failure when no replay was consumed', async () => {
     const deleted: string[] = [];
     const context = fakeContext(async () => ({ status: 'miss' }));

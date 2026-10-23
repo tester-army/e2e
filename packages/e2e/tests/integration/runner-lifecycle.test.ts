@@ -738,10 +738,55 @@ test('never runs either', async () => { throw new Error('three'); });
       expect(invalid.report.run.errors.map((error) => [error.code, error.message])).toEqual([
         ['INVALID_CONFIG', 'maxFailures must be a positive safe integer, got 0'],
       ]);
+      for (const [shard, message] of [
+        [{ index: 1.5, total: 2 }, 'shard.index must be an integer from 1 through 2'],
+        [{ index: 3, total: 2 }, 'shard.index must be an integer from 1 through 2'],
+        [{ index: 1, total: 0 }, 'shard.total must be a positive safe integer, got 0'],
+      ] as const) {
+        const badShard = await runExisting(project, { runOptions: { shard } });
+        expect(badShard.exitCode).toBe(2);
+        expect(badShard.report.run.errors.map((error) => [error.code, error.message])).toEqual([['INVALID_CONFIG', message]]);
+      }
       project.cleanup();
     },
     120_000,
   );
+
+  it('rejects incomplete SDK shards before startup and accepts boundary shards', async () => {
+    const project = createProject({
+      'e2e.config.ts': workerFakeConfigSource(1),
+      'tests/shard.e2e.ts': `import { test } from 'e2e';
+test('selected', async () => {});
+`,
+    });
+    try {
+      for (const [field, message] of [
+        ['index', 'shard.index is required'],
+        ['total', 'shard.total is required'],
+      ] as const) {
+        // Runtime callers can supply partial objects despite the SDK type.
+        const shard = { index: 1, total: 1 };
+        Reflect.deleteProperty(shard, field);
+        const events: string[] = [];
+        const outcome = await runExisting(project, { runOptions: { shard, passWithNoTests: true, onEvent: (event) => { events.push(event.type); } } });
+        expect(outcome.exitCode).toBe(2);
+        expect(outcome.report.run.errors.map((error) => [error.code, error.message])).toEqual([['INVALID_CONFIG', message]]);
+        expect(events).not.toContain('plan');
+        await expect(listExisting(project, { shard })).rejects.toMatchObject({ code: 'INVALID_CONFIG', message });
+      }
+      const zeroIndex = await runExisting(project, { runOptions: { shard: { index: 0, total: 1 } } });
+      expect(zeroIndex.exitCode).toBe(2);
+      expect(zeroIndex.report.run.errors.map((error) => error.code)).toEqual(['INVALID_CONFIG']);
+      await expect(listExisting(project, { shard: { index: 0, total: 1 } })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+      for (const shard of [{ index: 1, total: 1 }, { index: 1, total: 2 }, { index: 2, total: 2 }]) {
+        const outcome = await runExisting(project, { runOptions: { shard, passWithNoTests: true } });
+        expect(outcome.exitCode).toBe(0);
+        await expect(listExisting(project, { shard, passWithNoTests: true })).resolves.toBeDefined();
+      }
+    } finally {
+      project.cleanup();
+    }
+  }, 120_000);
 
   it(
     'stops at --max-failures inside a serial group and reports each member once',

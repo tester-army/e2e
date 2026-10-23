@@ -42,7 +42,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--shard <index/total>` | One contiguous slice of the selected tests (`--shard 2/3`), cut after every other filter; serial groups stay whole, each shard brings its own setup tests. |
 | `--headed` | Visible browser or simulator when the engine supports it. |
 | `--agent <names>` | Run unpinned tests as these `agents.<name>` entries (default `agents.default`), comma-separated or repeated; several names run each such test once per agent. |
-| `--workers <n>`, `--retries <n>` | Override the resolved values; retries 0-10, workers 1-1024. |
+| `--workers <n>`, `--retries <n>` | Override the resolved values; retries 0-10, workers 1-1024. A retry replays the cache only in strict mode (`--strict-cache`, `cache.strict`); otherwise it runs every agent step live. |
 | `--action-timeout <ms>`, `--assertion-timeout <ms>` | Override config `actionTimeout` (default 30000) and `assertionTimeout` (default 5000) for this run; a call's own `{ timeout }` still wins. |
 | `--max-failures <n>` | Stop after n failures: the rest skip (cause `failure-limit`), running tests end `interrupted`; exit 1. |
 | `--max-duration <ms>` | Stop after ms of running tests, over config `maxDuration`: the rest skip (cause `time-limit`), running tests end `interrupted`, `RUN_TIMEOUT`; exit 1. |

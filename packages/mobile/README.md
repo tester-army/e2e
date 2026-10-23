@@ -39,7 +39,7 @@ export default {
   workers: 1,
   agents: {
     default: {
-      model: gateway('openai/gpt-5.6-luna'),
+      model: gateway('openai/gpt-6-luna-fast'),
       tools: mobileTools(iphone, pixel),
     },
   },

@@ -101,10 +101,12 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    from the app's API (topic `writing-tests`).
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
-4. Run one file: `npx e2e run tests/<feature>.e2e.ts`. Agent steps need a
-   model in the config and that provider's authentication (a saved
-   subscription login, an API key); a local endpoint may need none. Tests
-   without agent steps need no model.
+4. Run only the test you are working on:
+   `npx e2e run tests/<feature>.e2e.ts:<line>`, the line its `test(` opens
+   on, with the flags in "Rerunning a test while you fix it" below. Agent
+   steps need a model in the config and that provider's authentication (a
+   saved subscription login, an API key); a local endpoint may need none.
+   Tests without agent steps need no model.
 5. When it fails, fix it from what the run recorded (next section).
 
 ## Workflow: fixing a failed test
@@ -133,8 +135,45 @@ screen.
    URL or the screen's route, and tap only to reach a state no URL opens. A
    device session starts on the app's launch screen: take the shortest path
    from there.
-5. Rerun the file (topic `mcp` says when a session must close first).
-   Repeat with the next failure.
+5. Rerun only that test, the way the next section says (topic `mcp` says
+   when a session must close first). Repeat with the next failure.
+
+## Rerunning a test while you fix it
+
+Every run of a failing test waits out its failure, and every `agent.act`
+that runs live spends model calls. Keep each rerun to the one test and the
+lines you changed:
+
+- Run by `file:line`, not the file or the suite. After an edit above the
+  test, look its `test(` line up again: a stale line runs another test, or
+  fails with `NO_TESTS` listing the lines tests start at.
+- Add `--action-timeout 5000`: a locator that matches nothing fails in 5 s
+  instead of the default 30 s. It also bounds each action inside an agent
+  step, so keep it longer than the slowest screen takes to load. A `screen`
+  call's own `{ timeout }` still wins. An `expect` already gives up after
+  5 s by default (`assertionTimeout`).
+- Keep the replay cache on. A failed run keeps the recording of every goal
+  whose check passed, and the next run replays those with no model call.
+  New, changed, and failed goals run live, and so does a replay the trace
+  page shows as handed off. `agent.assert`, `agent.waitFor`, and
+  `agent.extract` always call the model. Leave `--no-cache` off: it sends every goal to the model
+  again. Only a `read-write` cache records: the local default, but not with
+  `CI` set and no cache mode in the config, nor in strict mode. A stopped
+  run (Ctrl-C, a command your tool's timeout kills, `--max-duration`) saves
+  nothing, so give the command a timeout longer than the test.
+- Don't rename the test, its `describe`, or its file, and don't reword a
+  goal, change its params, or change the agent's `context` or the test's
+  `agentContext` once a goal passes. Each is part of a recording's key, so
+  every goal it touches records again live. Fixing a locator or an
+  expectation keeps the recordings.
+- Add `--retries 0` when retries are on (`retries` in the config, or `CI`
+  set, where the default is 1); a `retries` option on the test or its
+  `describe` wins over the flag. Outside strict mode (`--strict-cache`, `cache.strict`), a
+  retry never replays: it runs every goal live and waits out the failure
+  again.
+- Once the test passes, drop `--action-timeout` and run it one time with
+  `--no-cache`: every goal runs live at the config's timeouts, which shows
+  the agent still reaches it without its recordings.
 
 ## Rules
 
@@ -142,6 +181,9 @@ screen.
   ask before adding a test framework, and name any existing framework.
 - Live MCP tools need the project's own `e2e mcp` server registered in the
   client (topic `mcp`); writing and running tests use the CLI directly.
+  Keep a session open across runs while you write or fix a web test; topic
+  `mcp` says when a run can go beside it, and what to do on
+  `APP_ALREADY_RUNNING`.
 - Run the CLI as `npx e2e ...` (or `pnpm exec e2e ...`).
 - The config is `export default { ... } satisfies E2EConfig` with
   `import type { E2EConfig } from 'e2e'`. `targets` is required; a UI target

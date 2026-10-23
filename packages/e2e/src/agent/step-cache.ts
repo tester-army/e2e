@@ -653,8 +653,8 @@ export class StepTraceSession {
    */
   private async evict(): Promise<void> {
     if (this.cache.store.delete === undefined) return;
-    this.cache.staged.push({ kind: 'decided', outcome: 'evicted', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
-    await this.cache.store.delete(this.keyHash).catch(() => undefined);
+    const deleted = await this.cache.store.delete(this.keyHash).then(() => true, () => false);
+    if (deleted) this.cache.staged.push({ kind: 'decided', outcome: 'evicted', keyHash: this.keyHash, stepIndex: this.options.stepIndex });
   }
 
   private repairedAfterEndMismatch(recorder: TraceRecorder): boolean {

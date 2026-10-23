@@ -280,7 +280,8 @@ function exploreRegistration(
     options: {
       timeout: state.budgets.timeoutMs + TIMEOUT_GRACE_MS,
       retries: 0,
-      agentContext: [`Exploration goal: ${state.goal}`, ...(session === undefined ? [] : [signedInContext(session)])].join('\n'),
+      // The goal reaches every prompt as the test's title (`Test: <goal>`).
+      ...(session === undefined ? {} : { agentContext: signedInContext(session) }),
       ...(session === undefined ? {} : { session }),
     },
     sessions: [],

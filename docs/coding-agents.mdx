@@ -140,25 +140,33 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
 - **Secrets through `credentials.user(name)`.** Declare them in the config.
   Never write them in a test.
 
-While it iterates, the agent runs one file:
+While it iterates, the agent runs only the test it works on, by the line
+its `test(` opens on. With `--action-timeout 5000`, a wrong locator fails
+after 5 s instead of 30 s:
 
 <CodeGroup>
 ```bash npm
-npx e2e run tests/checkout.e2e.ts
+npx e2e run tests/checkout.e2e.ts:3 --action-timeout 5000
 ```
 
 ```bash pnpm
-pnpm exec e2e run tests/checkout.e2e.ts
+pnpm exec e2e run tests/checkout.e2e.ts:3 --action-timeout 5000
 ```
 
 ```bash bun
-bunx e2e run tests/checkout.e2e.ts
+bunx e2e run tests/checkout.e2e.ts:3 --action-timeout 5000
 ```
 </CodeGroup>
 
 The agent fixes CLI, config, and collection errors before it runs again.
-It doesn't edit cache recordings. After it changes a test, or when a replay
-fails, it adds `--no-cache` to run the live agent. See [Caching](/cache).
+It doesn't edit cache recordings.
+
+The agent keeps the replay cache on, so a goal whose check passed replays
+without model calls. It turns retries off, since a retry runs every goal
+live. When the test passes, the agent drops `--action-timeout` and runs it
+one time with `--no-cache` to check that the live agent reaches every
+goal. See
+[Rerun a test while you fix it](/cache#rerun-a-test-while-you-fix-it).
 
 ## How an agent reads a failure
 

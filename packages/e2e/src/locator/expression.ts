@@ -126,6 +126,8 @@ export function indexExpression(
  */
 export function expressionHints(expression: LocatorExpression): Pick<ErrorDetails, 'role' | 'name' | 'testId'> {
   switch (expression.kind) {
+    case 'union':
+      return {};
     case 'query': {
       const { query } = expression;
       const value = patternText(query.value);
@@ -151,6 +153,8 @@ function patternText(pattern: TextPattern): string {
 /** Renders an expression for diagnostics. */
 export function describeExpression(expression: LocatorExpression): string {
   switch (expression.kind) {
+    case 'union':
+      return `${describeExpression(expression.left)}.or(${describeExpression(expression.right)})`;
     case 'query': {
       const query = expression.query;
       const value =

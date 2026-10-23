@@ -121,9 +121,13 @@ describe('a secret value passed as a plain string', () => {
       {
         instruction: `inspect ${MARKER} with {note}`,
         params: { note: MARKER, [`key ${MARKER}`]: [MARKER] },
-        agentContext: `context ${MARKER}`,
+        agentContext: `Test: suite ${MARKER} > title holds ${MARKER}\ncontext ${MARKER}`,
       },
-      { instruction: 'paste the key into the focus target', params: { key: { kind: 'secret', name: 'probe', purpose: 'generic-secret' } } },
+      {
+        instruction: 'paste the key into the focus target',
+        params: { key: { kind: 'secret', name: 'probe', purpose: 'generic-secret' } },
+        agentContext: 'Test: types the secret through its handle',
+      },
     ]);
   });
 
@@ -153,7 +157,7 @@ describe('a secret value passed as a plain string', () => {
 const BUILT_IN_SUITE = `import { test, expect } from 'e2e';
 const S = ${JSON.stringify(SECRET)};
 
-test('built-in agent', { agentContext: \`context \${S}\` }, async ({ app, agent }) => {
+test(\`built-in agent \${S}\`, { agentContext: \`context \${S}\` }, async ({ app, agent }) => {
   await app.open();
   await agent.act(\`inspect \${S} with {note}\`, { params: { note: S } });
   await agent.assert(\`the page does not show \${S}\`);
@@ -181,15 +185,15 @@ describe('a secret value passed as a plain string to the built-in agent', () => 
   });
 
   it('sends the act loop and the judgment the redacted instruction, params, and context', () => {
-    expect(resultByTitle(outcome, 'built-in agent').status).toBe('passed');
+    expect(resultByTitle(outcome, `built-in agent ${MARKER}`).status).toBe('passed');
     expect(loopCalls.length).toBeGreaterThan(0);
     const [act] = loopCalls;
     expect(act!.prompt).toContain(`Execute this test step: inspect ${MARKER} with {note}`);
     expect(act!.prompt).toContain(`{"note":"${MARKER}"}`);
-    expect(act!.system).toContain(`context ${MARKER}`);
+    expect(act!.system).toContain(`Test: built-in agent ${MARKER}\ncontext ${MARKER}`);
     expect(fakeCalls).toHaveLength(1);
     expect(fakeCalls[0]!.instruction).toBe(`the page does not show ${MARKER}`);
-    expect(fakeCalls[0]!.system).toContain(`context ${MARKER}`);
+    expect(fakeCalls[0]!.system).toContain(`Test: built-in agent ${MARKER}\ncontext ${MARKER}`);
     expect(JSON.stringify([loopCalls, fakeCalls])).not.toContain(SECRET);
   });
 });
