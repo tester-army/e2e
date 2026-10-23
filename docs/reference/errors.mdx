@@ -41,6 +41,11 @@ test('upgrade to Pro', async ({ agent }) => {
 
 - In a mixed run the highest-precedence code present wins,
   `130 > 4 > 3 > 2 > 1 > 0`. The report keeps every individual result.
+- A test that passed but whose cleanup failed (a required video that could
+  not be finalized, a session that would not close) exits with the code for
+  the cleanup error's category, or 3 as an infrastructure failure when the
+  attempt record carries no cleanup error: the run asked for that artifact,
+  so its loss is not a success.
 - A setup assertion failure is a test failure and skips its dependents.
   Missing setup infrastructure keeps its configuration or infrastructure
   class.
