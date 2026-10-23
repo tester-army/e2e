@@ -63,6 +63,8 @@ export interface CatalogOptions {
   readonly appBase?: { readonly href: string; readonly origin: string } | undefined;
   /** The credentials and secrets a fill's test line names. */
   readonly fills?: TestLineFills | undefined;
+  /** The test the session ran first, as `file:line`, which its test lines carry on from. */
+  readonly testRan?: string | undefined;
   readonly warn: (message: string) => void;
   /** Told the cause of every grammar action that failed into a result. */
   readonly onActionFailed?: ((cause: unknown) => void) | undefined;
@@ -78,6 +80,7 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     redact: options.redaction.redact,
     appBase: options.appBase,
     fills: options.fills,
+    testRan: options.testRan,
   });
   const context = lines.watch(options.context);
   // The grammar's own observe reports a diff for the model loop; the

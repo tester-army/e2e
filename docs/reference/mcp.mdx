@@ -104,6 +104,7 @@ open_session {target: "web", headed: true}
 | `target` | string | no | The target to open. Otherwise `--target`, else the only target. |
 | `config` | string (path) | no | The config for this session. Otherwise `--config`, else discovered like `e2e run`. |
 | `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
+| `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
 
 #### `tools`
 
@@ -258,7 +259,7 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 
 | Action | Line |
 | --- | --- |
-| Opening the session | `app.open()` |
+| Opening the session, without [`test`](#running-a-test) | `app.open()` |
 | `tap`, `double_tap`, `long_press`, `right_click`, `hover` | `tap()`, `doubleTap()`, `longPress()`, `secondaryTap()`, `hover()`, with any `modifiers` |
 | `type` into a node | `fill(value)`; a credential's username as `credentials.user(name).username` |
 | `type_secret` | `fill(credentials.user(name).password)` or `fill(secrets.get(name))`, never the value |
@@ -383,7 +384,9 @@ them. A listed release on another version than the project's e2e can reject
 config keys it does not know; the registration above always matches.
 
 The server needs no model: a project without the optional `ai` package
-opens sessions and drives the app with the deterministic tools.
+opens sessions and drives the app with the deterministic tools. A test a
+session [runs](#running-a-test) calls the configured model for an agent step
+the replay cache cannot serve.
 
 Start the server in the project directory. Config discovery works like
 `e2e run`. For another config, see [`--config`](#config) and
@@ -394,12 +397,16 @@ Start the server in the project directory. Config discovery works like
 - Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only
   the protocol.
 - What your code writes through `console`, `process.stdout`, or
-  `process.stderr` (the config's top-level code, project tools) goes to
-  stderr with secret values redacted.
+  `process.stderr` (the config's top-level code, project tools, a test a
+  session runs) goes to stderr with secret values redacted.
 - Output printed while a config loads appears once it has loaded. If the
   load fails, that output is withheld, since the config's secrets are
   unknown.
-- An error nobody caught is logged redacted and shuts the server down.
+- A promise a session's test leaves rejected fails that test, as in a run.
+  One that rejects after the test's body ended is an `UNHANDLED_REJECTION`
+  line in `close_session`'s result, and a warning on stderr once the session
+  has closed. Any other error nobody caught, a rejection before any session
+  has run a test included, is logged redacted and shuts the server down.
 
 <Note>
 A child process that inherits the server's stdio writes past this.
@@ -432,13 +439,72 @@ Sessions enforce what tests enforce:
   a tool returns, a node `locate` found, an action's result, an
   `open_session` or `close_session` failure, a cleanup line, and the server's
   own log lines.
-- Nothing a session does is recorded as a test result or into the replay
-  cache. Its artifacts land under
+- Nothing a session does is recorded as a test result. Only a test the
+  session runs reads or writes the replay cache
+  ([Running a test](#running-a-test)). Its artifacts land under
   `<output>/results/mcp/<target>-<attemptId>/`, its videos under
   `<output>/videos/`. A later `e2e run` clears `<output>/results`; the videos
   stay.
 - A queued call cancelled by the client does not execute when its turn
   arrives.
+
+## Running a test
+
+`open_session {test}` runs one test of the project on the session's attempt,
+then hands the session over on the screen where the test stopped. A coding
+agent fixes a failing test from there without clicking through the flow
+again.
+
+```txt
+open_session {test: "tests/checkout.e2e.ts:12"}
+```
+
+- **Selection.** `test` takes what `e2e run` takes as a positional: a file
+  with `:line` for the test declared on that line, a file, a directory, a
+  glob, or a name. It must select exactly one test on the session's target.
+  The line is the one the `test(` call is on; a line inside the test
+  selects nothing.
+- **What runs.** The test's `beforeAll` hooks, its `test.extend()` fixtures,
+  its `beforeEach` hooks, and its body, with the same fixtures, locators,
+  `expect`, `timeout`, `actionTimeout`, and `assertionTimeout` as in a run.
+  The session does not open the app URL or launch the pinned app first; the
+  test opens the app itself.
+- **Where it stops.** At the first failure, or at the end of the body. Nothing
+  is torn down. The opening text leads with the outcome: passed, or failed
+  with the code, the message, the failing line and the code around it, the
+  URL, the nodes nearest a locator that matched nothing, and the last 15
+  steps. The session summary, the catalog, and the screen follow.
+- **Test lines.** The test's own steps print no [test line](#test_lines).
+  The session's lines start with the agent's first action, and `test_lines`
+  returns them as the lines that continue the test.
+- **Teardown.** `afterEach` hooks, fixture teardowns, and `afterAll` hooks
+  run at `close_session`, or when the session closes on its own. Their
+  failures show as `Cleanup (afterEach)` and `Cleanup (afterAll)` lines.
+- **Rerun.** `close_session`, then `open_session {test}` again. Each session
+  loads the config and the test files fresh, files they import included.
+- **Replay cache.** The test reads and writes the cache as a run's first
+  attempt: steps replay, and a new recording is saved once a later check
+  passes. A failure evicts the entries no check confirmed. The cache settles
+  when the body ends, so an `afterEach` check confirms nothing.
+  [`cache.strict`](/reference/config#cache) holds as in a run.
+- **Not part of it.** No test result, report, or trace page. Retries, and the
+  test's `trace` and `video` modes, don't apply. The failure screenshot and
+  `screen-at-failure.txt` land in the session's artifacts directory.
+- **Screenshots.** Each session counts as a run of its own for
+  `toHaveScreenshot`: a baseline one session writes is compared against in
+  the next.
+- **Several sessions.** Test code in two sessions takes turns: one session
+  runs its test or its teardown at a time, since `expect.poll`,
+  `expect.soft`, and `test.skip` find the running test through one slot per
+  process. An open cancelled while its test waits for its turn runs none of
+  the test's code.
+
+| Throws | When |
+| --- | --- |
+| `NO_TESTS` | `test` selects no runnable test. The message names the cause, as for `e2e run`. |
+| `TEST_AMBIGUOUS` | `test` selects several tests. The message lists them as `file:line`. |
+| `SESSION_TEST_UNSUPPORTED` | The test is in a serial group, starts from a setup test's `session`, or runs as several agents. |
+| `COLLECTION_ERROR` | A test file fails to collect, as for `e2e run`. |
 
 ## Several sessions
 
@@ -468,7 +534,7 @@ session.
   `readyUrl`, say) has stopped.
 - Each session loads the config afresh, down to the files it imports by
   path, such as a base config it spreads, so each gets engine instances of
-  its own. An engine created inside a package is one instance every session
+  its own. A session that runs a test loads the test files the same way. An engine created inside a package is one instance every session
   shares.
 - Sessions on one app command share its process: the first session starts
   it, and it stops when the last of them closes. A URL declared with port

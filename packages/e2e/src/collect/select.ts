@@ -325,7 +325,7 @@ export function select(
   collection: Collection,
   config: ResolvedConfig,
   filters: SelectionFilters = {},
-  flags: { passWithNoTests?: boolean } = {},
+  flags: { passWithNoTests?: boolean; noTestsHint?: string } = {},
 ): Selection {
   const tagMode = filters.tagMode ?? 'any';
   const targets = selectTargets(config.targets, filters.targetIds);
@@ -375,7 +375,7 @@ export function select(
   if (runnableOrdinary.length === 0 && flags.passWithNoTests !== true) {
     throw new ConfigurationError(
       'NO_TESTS',
-      `${describeNoTests(collection, config, filters, withSessions)}; pass --pass-with-no-tests to allow this`,
+      `${describeNoTests(collection, config, filters, withSessions)}; ${flags.noTestsHint ?? 'pass --pass-with-no-tests to allow this'}`,
     );
   }
 

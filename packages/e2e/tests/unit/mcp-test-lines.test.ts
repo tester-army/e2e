@@ -72,6 +72,7 @@ async function harness(options: {
   readonly matches: Readonly<Record<string, readonly Fake[]>>;
   readonly actions?: Partial<ExecutorActions>;
   readonly tree?: boolean;
+  readonly testRan?: string;
 }): Promise<Harness> {
   const root: Fake = { id: 'root', role: 'document', name: 'Page', y: 0, children: options.screen };
   const base = fakeExecutorContext({ secrets: [{ name: 'admin.password', purpose: 'password' }, { name: 'apiKey', purpose: 'generic-secret' }] }).context;
@@ -110,6 +111,7 @@ async function harness(options: {
     redact: (text) => text.replaceAll('sk-live-0000', '<secret:apiKey>'),
     appBase: { href: 'http://127.0.0.1:4100/', origin: 'http://127.0.0.1:4100' },
     fills: { credentials: [{ name: 'admin', username: 'ada@example.test', password: 'admin.password' }], secrets: ['apiKey'] },
+    testRan: options.testRan,
   });
   const watched = lines.watch(context);
   const tools: ToolSet = { ...lines.wrap(createGrammarTools(watched)), test_lines: lines.tool() };
@@ -413,6 +415,20 @@ describe('SessionTestLines', () => {
         '// scroll: no test line: a test action brings its node into view itself, and a row deep in a windowed list takes screen.scrollUntilVisible(locator)',
         '',
         'Paste it into a test body, async ({ app, screen }) => { ... }, and add an expect after each step that should change the screen.',
+      ].join('\n'),
+    );
+  });
+
+  it('drafts the lines after a test the session ran as the ones that continue it', async () => {
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] }, testRan: 'tests/profile.e2e.ts:4' });
+    await session.run('tap', { target: 'n2' });
+    expect(session.lines.draft()).toBe(
+      [
+        "Test lines from this session's actions after test tests/profile.e2e.ts:4 stopped, in order (1 lines):",
+        '',
+        'await screen.getByRole("button", "Save").tap();',
+        '',
+        'Put them in that test where it stopped, in place of the line that failed or after its last line, and add an expect after each step that should change the screen.',
       ].join('\n'),
     );
   });
