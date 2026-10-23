@@ -659,6 +659,11 @@ class LocatorImpl extends ScreenImpl implements Locator {
     );
   }
 
+  or(other: Locator): Locator {
+    const right = this.ownLocator(other, 'or').expression;
+    return new LocatorImpl(this.context, { kind: 'union', left: this.expression, right });
+  }
+
   first(): Locator {
     return new LocatorImpl(this.context, indexExpression(this.expression, 'first'));
   }

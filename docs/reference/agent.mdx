@@ -422,6 +422,10 @@ Use `'only'` for visual checks, such as whether an overlay covers a form or a
 chart looks correct. Screenshots show the current viewport, so scroll to the
 relevant content first.
 
+The browser engine's semantic tree leaves out the content of a
+[frame from another site](/browser#reach-into-an-iframe). To judge that
+content, use `true` or `'only'`.
+
 Pixels are withheld, and the tree is sent alone, when:
 
 - a secret fill has tainted the viewport (`visionDegraded: "PIXEL_TAINTED"`

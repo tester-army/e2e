@@ -805,3 +805,7 @@ session.steps().push({} as StepRecord);
 session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
+
+void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
+// @ts-expect-error an alternative must be a Locator
+void screen.getByRole('tab').or('tab');

@@ -84,7 +84,9 @@ makes, so an `aria-hidden` node that still paints counts as visible. See
 `getByRole('img', { name })` builds the same query as
 `getByRole('image', { name })`, so a test ported from Playwright keeps its
 spelling. On the web, `image` covers `<img>` with alt text and any element
-with `role="img"`. An `<img alt="">` is decoration and matches nothing.
+with `role="img"`. An `<img alt="">` is decoration and matches nothing,
+unless it has a `title`, a `tabindex`, or a global ARIA attribute: then it is
+an `image`.
 
 ##### Roles on the web
 
@@ -110,6 +112,9 @@ The web engine derives the roles from HTML the way HTML-AAM does:
 - `<form>` and `<section>` are `form` and `region` only when they carry an
   `aria-label`, `aria-labelledby`, or `title`.
 - `<menu>` is a `list`; only `role="menu"` is a `menu`.
+- `role="presentation"` and `role="none"` are ignored on a focusable element
+  or one with a global ARIA attribute such as `aria-label`, as `getByRole`
+  reads them: `<button role="none">` is still a `button`.
 
 Names follow the same rules:
 
@@ -276,6 +281,7 @@ Prefer it over `browser.locator('p:visible')`, which ties the test to CSS.
 | Method | Returns |
 | --- | --- |
 | [`filter`](#filter) | `Locator` |
+| [`or`](#or) | `Locator` |
 | [`first`](#first) | `Locator` |
 | [`last`](#last) | `Locator` |
 | [`nth`](#nth) | `Locator` |
@@ -304,6 +310,24 @@ await row.getByRole('button', 'Void').tap();
 | `INVALID_LOCATOR` | Neither `hasText` nor `has` is given. |
 | `INVALID_LOCATOR` | Any other key, even beside them: `hasNot`, `hasNotText`, and `visible` are not filters here. |
 | `INVALID_LOCATOR` | `has` is not a runner locator, or was made by another target's screen. |
+
+#### `or`
+
+```ts
+/** Matches either locator, preserving document order without duplicate nodes. */
+or(other: Locator): Locator;
+```
+
+`a.or(b)` matches either branch once, in document order. It stays strict:
+when both match different nodes, an action throws `LOCATOR_AMBIGUOUS`.
+Add `first()` if either will do. Both locators must come from the same
+screen and attempt. On web, both need identical literal frame-selector
+chains; display-value branches cannot be composed.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | `other` is not a runner locator, or belongs to another screen or attempt. |
+| `UNSUPPORTED_CAPABILITY` | Web branches have different frame-selector chains, or a branch is a display-value query. |
 
 #### `first`
 

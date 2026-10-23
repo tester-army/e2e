@@ -437,7 +437,10 @@ export interface StepExecutorContext {
    * the runner's 8192-byte ledger limit; `''` when none.
    */
   readonly ledger: string;
-  /** Trusted project/test agent context (config `agent.context` + test). */
+  /**
+   * Trusted context, redacted: the test's title path (`Test: billing > upgrades the tier`)
+   * when the step runs in a test, then the agent's `context`, then test/group `agentContext`.
+   */
   readonly agentContext: string | undefined;
   readonly budgets: ExecutorBudgets;
   /**

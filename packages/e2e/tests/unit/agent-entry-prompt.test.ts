@@ -5,17 +5,19 @@ import { createEngineSession } from '../../src/engine/session.ts';
 import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';
+import { WrittenScreenshots } from '../../src/run/screenshots.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 import type { E2EConfig } from '../../src/types.ts';
 import { runAgentStepsOnFakeTime } from '../helpers/agent-fake-time.ts';
 import { installFakeLoopModel, loopCalls } from '../helpers/fake-loop-model.ts';
+import { fakeCalls, installFakeModel, judgment } from '../helpers/fake-model.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
 runAgentStepsOnFakeTime();
 
 /** A real fixture graph with an in-memory engine and no runner process or model provider. */
-function runtime(overrides: Partial<E2EConfig>, agentContext?: string) {
+function runtime(overrides: Partial<E2EConfig>, agentContext?: string, titlePath?: readonly string[]) {
   const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) });
   const config = resolveConfig(
     { targets: [{ name: 'fake', platform: 'custom', engine }], cache: 'off', ...overrides },
@@ -37,6 +39,7 @@ function runtime(overrides: Partial<E2EConfig>, agentContext?: string) {
     agentContext,
     saveSession: undefined,
     models: new WorkerModels(() => {}),
+    ...(titlePath === undefined ? {} : { test: { file: 'tests/billing.e2e.ts', titlePath, writtenScreenshots: new WrittenScreenshots('/tmp') } }),
   });
   return fixtures;
 }
@@ -61,6 +64,26 @@ describe('the built-in agent from its agents entry', () => {
     );
     await fixtures.agent.act('open billing');
     expect(loopCalls[0]!.system).toContain('Project context:\nPlans are called tiers.\nBilling lives under Settings.');
+  });
+
+  it("opens the context with the test's title path", async () => {
+    const model = installFakeLoopModel(() => conclude);
+    const fixtures = runtime(
+      { agents: { default: { model, context: 'Plans are called tiers.' } } },
+      'Billing lives under Settings.',
+      ['billing', 'upgrades the plan'],
+    );
+    await fixtures.agent.act('open billing');
+    expect(loopCalls[0]!.system).toContain(
+      'Project context:\nTest: billing > upgrades the plan\nPlans are called tiers.\nBilling lives under Settings.',
+    );
+  });
+
+  it('gives a judgment the title too', async () => {
+    const judge = installFakeModel(() => judgment(true, 'shown'));
+    const fixtures = runtime({ agents: { default: { model: judge } } }, undefined, ['billing', 'upgrades the plan']);
+    await fixtures.agent.assert('the plan is upgraded');
+    expect(fakeCalls[0]!.system).toContain('<project-context>\nTest: billing > upgrades the plan\n</project-context>');
   });
 
   it("builds each agent from its own entry: another agent's system never leaks in", async () => {

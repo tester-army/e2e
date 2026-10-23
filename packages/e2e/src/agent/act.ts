@@ -43,7 +43,7 @@ import { failedStepOutcome, StepTraceSession, type StepCacheHost, type StepOutco
 import type { ParamTemplate } from '../cache/template.ts';
 
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
-export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
+export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext' | 'keyedContext'>;
 
 /** Everything one dispatched step is, resolved before the step opens. */
 export interface DispatchSpec {
@@ -157,8 +157,9 @@ export async function dispatchAgentStep(
   // Redacted per step, not once per agent: the ledger is live, so a value
   // resolved since the agent was selected is covered too.
   const context = agent.agentContext === undefined ? undefined : runtime.redact(agent.agentContext);
+  const keyedContext = agent.keyedContext === undefined ? undefined : runtime.redact(agent.keyedContext);
   return runtime.steps.run('agent', spec.api, spec.instruction, async () => {
-    const dispatch = new ActDispatch(runtime, spec, { ...agent, agentContext: context });
+    const dispatch = new ActDispatch(runtime, spec, { ...agent, agentContext: context, keyedContext });
     try {
       let verdict: StepVerdict;
       try {
@@ -259,8 +260,9 @@ class ActDispatch {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
             },
-            // Redacted already (`dispatchAgentStep`): the key digests the context the executor reads.
-            agent: { name: agent.name, context: agent.agentContext },
+            // Redacted already (`dispatchAgentStep`): the key digests the context the
+            // executor reads, less the test's title, which the key's test id names.
+            agent: { name: agent.name, context: agent.keyedContext },
             redact: runtime.redact,
             redactCut: runtime.redactCut,
             maxActions: this.accounting.maxActions,

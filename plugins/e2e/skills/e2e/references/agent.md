@@ -67,7 +67,9 @@ gates, and limits.
 - `context` is what the app calls things, sent to every model call, judges
   included; `system` is how the acting agent works, read only by the act
   loop. Both live on the agents entry; `agentContext` on a test or group
-  adds more.
+  adds more. Under `e2e run`, the context opens with the test's title path
+  (`Test: billing > upgrades the tier`), judges included, so name a test
+  for what it covers, not for the verdict it expects.
 
 ### Choose an agent
 
@@ -260,7 +262,11 @@ most changed. Pixels arrive through `vision` on a judgment or the act loop's
 `screenshot` and point tools, masked and withheld after a secret fill. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred
-absent nor old node ids reused. Nothing the model returns runs as code or
+absent nor old node ids reused. The browser engine's tree shows a frame
+from another site (a hosted card field) as its `iframe` node with none of
+its content, so the agent reaches it only through pixels: script steps
+there with `browser.frameLocator`, and judge it with `vision`. Nothing the
+model returns runs as code or
 selectors: the runner validates and authorizes every tool call first.
 
 ## Budgets and cost
@@ -308,21 +314,34 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   there, every one that went away is gone, at least one of those changed
   during the replay, and no new alert showed; otherwise the agent takes
   over mid-step. The web engine does not observe Next.js App Router's route
-  announcer, so its title echo never counts. Entries are keyed per agent and
-  per `agentContext`. `step.cache.reason` says why: `no-entry`,
+  announcer, so its title echo never counts. An entry's key holds the test
+  file and title path, the target, the instruction and params, the agent,
+  its `context`, and the test's `agentContext`, so renaming the test or its
+  file records every goal in it again, and rewording a goal records that
+  goal again. `step.cache.reason` says why: `no-entry`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
-- A step recording no actions, or changing nothing on screen or in the
-  route, creates no entry; one whose `unique()` value
-  equals, is spelled inside, or is the encoded form of another param's value
-  is not recorded either (`step.cache.notRecorded`: `param-collision`).
+- A step changing nothing on screen or in the route creates no entry
+  (`step.cache.write`: `no-change`) and runs live every run, strict
+  included; a change only inside a frame from another site counts as
+  nothing, since the tree leaves it out. A step recording no actions
+  creates no entry either. A step whose
+  `unique()` value equals, is spelled inside, or is the encoded form of
+  another param's value is not recorded either (`step.cache.notRecorded`:
+  `param-collision`).
 - `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries
   and share replays with CI and teammates (CI stays `read-only` unless
   `cache: 'read-write'` is set).
-- A failing run evicts the entries it implicates; `--no-cache` rules the
-  cache out of a failure. A cancelled run and a failure where no model
-  answered (`MODEL_PROVIDER_FAILED`, `MODEL_UNAVAILABLE`) implicate nothing
-  and evict nothing.
+- A failing run keeps the entries a check confirmed before the failure. It
+  evicts a replay that ran into the failure and any recording no check
+  confirmed. A cancelled run and a failure where no model answered
+  (`MODEL_PROVIDER_FAILED`, `MODEL_UNAVAILABLE`) implicate nothing and evict
+  nothing.
+- While you fix a test, keep the cache on: each rerun replays the goals
+  whose check passed instead of calling the model for them (SKILL.md,
+  "Rerunning a test while you fix it"). `--no-cache` is for ruling out a
+  stale replay (topic debugging, "Tools"), and for one live run once the
+  test passes.
 - With committed recordings, `--strict-cache` in CI fails a recording that
   no longer replays with `REPLAY_STALE` instead of quietly spending model
   calls every run; re-record with a `read-write` run without the flag and

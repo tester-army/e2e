@@ -8,6 +8,10 @@ See .dev/skills/writing-pr/SKILL.md. No history; run output only as `## Verified
 
 -
 
+## Issue
+
+<!-- Fixes #123. Required for fix, chore, test, perf, ci, build, and revert PRs (CONTRIBUTING.md#pull-requests). -->
+
 ## Verified
 
 Ran it locally: yes | no - <why>

@@ -94,6 +94,14 @@ describe('locator expressions over a device snapshot', () => {
     expect(names({ kind: 'index', source: query('role', 'listitem'), index: 5 })).toEqual([]);
   });
 
+  it('unions matches in traversal order without duplicates', () => {
+    const back = query('role', 'button');
+    const search = query('label', 'Search');
+    expect(names({ kind: 'union', left: search, right: back })).toEqual(['Back', 'Search']);
+    expect(names({ kind: 'union', left: back, right: back })).toEqual(['Back']);
+    expect(names({ kind: 'index', source: { kind: 'union', left: search, right: back }, index: 'first' })).toEqual(['Back']);
+  });
+
   it('routes agent-device selectors to the selector matcher, and rejects frames', () => {
     expect(names({ kind: 'selector', selector: 'id=ABOUT' })).toEqual(['About']);
     expect(names({ kind: 'selector', selector: 'id=NOPE || label="Airplane Mode"' })).toEqual(['Airplane Mode']);

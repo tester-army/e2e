@@ -132,7 +132,7 @@ export default {
 | `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. The deadline can't stop work that ignores it |
 | `ctx.replayedPrefix` | Set when a cache replay ran part of the step first. See [Replay cache](#replay-cache) |
 | `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |
-| `ctx.agentContext` | The agent's `context` plus the test's `agentContext` |
+| `ctx.agentContext` | The test's title path under `e2e run` (`Test: billing > upgrades the tier`), the agent's `context`, then the test's `agentContext` |
 | `ctx.ledger` | The completed steps of the test |
 | `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
 | `ctx.budgets` | Accounting for custom tools (`runTool`) and model calls (`recordModelCall`) |
