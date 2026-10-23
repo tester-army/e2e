@@ -6,10 +6,13 @@ icon: "object-group"
 "twitter:image": "https://e2e.tester.army/docs/images/og/page-objects.png?v=c53bbc6604"
 ---
 
-A page object is a class that holds one screen's locators and the actions a
-test takes on it. If you wrote them for Playwright or Selenium, the shape is
-the same here. e2e has no base class for them: write a plain class over
-`screen`, and give it to tests through a fixture.
+A page object keeps one screen's locators and actions in one place, so your
+tests call `signIn()` instead of repeating the same queries. It's a design
+pattern, and it works the same in any test framework. If you've written page
+objects in Playwright or Selenium, this will look familiar.
+
+In e2e, a page object is a plain TypeScript class that takes `screen`. You
+hand it to tests through a fixture.
 
 ## Write a page object
 
