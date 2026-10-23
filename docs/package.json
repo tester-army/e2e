@@ -23,7 +23,7 @@
     "agent-device": "0.21.29",
     "ai": "7.0.134",
     "e2e": "workspace:*",
-    "mint": "4.2.909",
+    "mint": "4.2.1110",
     "react": "19.3.1",
     "tsx": "4.23.14",
     "typescript": "7.0.2",
