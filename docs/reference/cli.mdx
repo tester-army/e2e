@@ -114,7 +114,7 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | `[directory]` | Where to scaffold; created when missing. Default: the working directory. |
 | `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no install. |
 | `--example <name>` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. See [Starting from an example](#starting-from-an-example). |
-| `--engine <id>` | The engine for a new config: `web`, `mobile`, or `none`. Default: asked. |
+| `--engine <ids>` | The engines for a new config: `web`, `mobile`, or `none`. Comma-separated or repeated; `web,mobile` writes a target for each. Default: asked. |
 | `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
 | `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
 | `--skills <dirs>` | Where to install the agent skill: `.agents/skills`, `.claude/skills`, or `none`. Comma-separated or repeated. Default: asked. |
@@ -144,9 +144,10 @@ output never shows it.
 
 For a new project, the wizard asks for:
 
-- **The engine.** **Web** (Playwright, the default) adds `@e2e-dev/web`.
-  **Mobile (iOS/Android)** adds `@e2e-dev/mobile`, defaults to iOS on macOS
-  and Android elsewhere, and opens Settings. **None** adds nothing.
+- **The engines.** Select one, both, or none. **Web** (Playwright, the
+  default) adds `@e2e-dev/web`. **Mobile (iOS/Android)** adds
+  `@e2e-dev/mobile`, defaults to iOS on macOS and Android elsewhere, and opens
+  Settings. Selecting none adds no engine, for HTTP tests or your own.
 - **A model provider or subscription for agent steps:** Vercel AI Gateway,
   OpenRouter, an OpenAI-compatible endpoint, ChatGPT, GitHub Copilot, OpenCode
   Console, or SuperGrok. None is for tests that use only locators. The wizard
@@ -168,8 +169,8 @@ field or lockfile, then the invoking package manager, then npm.
 | Creates | Content |
 | --- | --- |
 | `package.json` | Created as a private ESM package when missing; otherwise gets only the missing dependencies and scripts. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. Adds a `test:e2e` script that runs `e2e run`, unless one exists |
-| `e2e.config.ts` | One target for the selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android. With a gateway, `agents.default` is `{ model, system }` |
-| `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
+| `e2e.config.ts` | One target per selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android, and `workers: 1`. With a gateway, `agents.default` is `{ model, system }` |
+| `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead. With both engines, `tests/web.e2e.ts` and `tests/mobile.e2e.ts` instead, each test with `requires: ['browser']` or `requires: ['device']` so the other target skips it |
 | `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
 | `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |

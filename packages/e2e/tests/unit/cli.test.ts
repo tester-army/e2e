@@ -584,12 +584,12 @@ describe('e2e init argument parsing', () => {
 
   it('passes every wizard answer given as a flag', async () => {
     await invoke(
-      'init', '--yes', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
+      'init', '--yes', '--engine', 'mobile,web', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
       '--skills', '.agents/skills/,.claude/skills,.agents/skills', '--mcp', '.mcp.json', '--install',
     );
     expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
       yes: true,
-      engine: 'mobile',
+      engines: ['mobile', 'web'],
       gateway: 'openai-compatible',
       endpoint: ' http://127.0.0.1:11434/v1 ',
       skills: ['.agents/skills', '.claude/skills'],
@@ -616,12 +616,16 @@ describe('e2e init argument parsing', () => {
   });
 
   it('reads none as no location, and --no-install as declining the install', async () => {
-    await invoke('init', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
-    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), expect.objectContaining({ gateway: 'none', skills: [], mcp: [], install: false }));
+    await invoke('init', '--engine', 'none', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(
+      process.cwd(),
+      expect.objectContaining({ engines: [], gateway: 'none', skills: [], mcp: [], install: false }),
+    );
   });
 
   it.each([
-    [['--engine', 'playwright'], "option '--engine <id>' argument 'playwright' is invalid. Allowed choices are web, mobile, none."],
+    [['--engine', 'playwright'], 'error: --engine: unknown engine "playwright"; expected web, mobile, none'],
+    [['--engine', 'web,none'], 'error: --engine: none cannot be combined with other values'],
     [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
     [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
     [['--skills', ''], 'must name at least one skill directory'],

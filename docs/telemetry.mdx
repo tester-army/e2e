@@ -118,7 +118,7 @@ own tools count together as `tool`, and any other name as `other`.
 | `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, `invalid-project`, or `example-failed` |
 | `yes`, `existing_config` | Whether `--yes` was given, and whether a config already existed, so no engine or gateway was asked |
 | `example` | The `--example` name (`with-vite`, `with-expo`, ...), `null` without the flag |
-| `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`web`, `mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
+| `engine`, `gateway` | The ids of the engines and the model gateway chosen for a new config (`web`, `mobile`, `web,mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
 
 </Accordion>

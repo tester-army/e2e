@@ -20,7 +20,7 @@ import {
   splitSkillDirs,
   type SkillInstall,
 } from './init/agent-skill.ts';
-import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
+import { getEnginePresets, DEFAULT_ENGINE_IDS, type EngineId } from './init/engines.ts';
 import { copyExample, ExampleCopyCancelled, ExampleDownloadError, findExample, isEmptyDirectory, type ExampleCopy } from './init/examples.ts';
 import { DEFAULT_ENDPOINT, GATEWAYS, getGatewayPreset, validateEndpoint, type GatewayId } from './init/gateways.ts';
 import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
@@ -48,8 +48,11 @@ export interface InitOptions {
    * then runs in the example's e2e project with its config and tests as they are.
    */
   example?: string;
-  /** The answers given as flags; each one skips its prompt, and an omitted one takes the `--yes` default or asks. */
-  engine?: EngineId;
+  /**
+   * The answers given as flags; each one skips its prompt, and an omitted one
+   * takes the `--yes` default or asks. `engines` is empty for a config with no engine.
+   */
+  engines?: readonly EngineId[];
   gateway?: GatewayChoice;
   /** The base URL for the `openai-compatible` gateway. */
   endpoint?: string;
@@ -82,7 +85,7 @@ const DEFAULT_GATEWAY: GatewayId = 'vercel';
 export type GatewayChoice = GatewayId | 'none';
 
 /** The wizard's answers, each from a flag, an earlier run, or `--yes`; a missing one is asked. */
-type Answers = Pick<InitOptions, 'engine' | 'gateway' | 'endpoint' | 'skills' | 'mcp' | 'install'>;
+type Answers = Pick<InitOptions, 'engines' | 'gateway' | 'endpoint' | 'skills' | 'mcp' | 'install'>;
 
 /**
  * Runs `e2e init`. Every prompt happens before the first write, existing
@@ -184,11 +187,8 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
 
   const existingConfig = CONFIG_NAMES.find((file) => existsSync(path.join(cwd, file)));
   const javascript = JS_CONFIG_NAMES.some((name) => name === existingConfig);
-  const examplePath = path.join('tests', javascript ? 'example.e2e.js' : 'example.e2e.ts');
-  const exampleExists = existsSync(path.join(cwd, examplePath));
   facts.existingConfig = existingConfig !== undefined;
   if (existingConfig !== undefined && example === undefined) clack.log.warn(`Exists, not touching: ${existingConfig}`);
-  if (exampleExists && example === undefined) clack.log.warn(`Exists, not touching: ${examplePath}`);
 
   const gitignorePath = path.join(cwd, '.gitignore');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
@@ -198,7 +198,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   // A flag answers its question, an earlier run's locations stand when no flag names others, and --yes answers the rest.
   const defaults: Answers = options.yes
     ? {
-        engine: DEFAULT_ENGINE_ID,
+        engines: DEFAULT_ENGINE_IDS,
         gateway: DEFAULT_GATEWAY,
         endpoint: DEFAULT_ENDPOINT,
         skills: SKILL_LOCATIONS.map(({ dir }) => dir),
@@ -209,7 +209,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   const foundSkillDirs = findInstalledSkillDirs(cwd);
   const foundMcpFiles = findRegisteredMcpFiles(cwd);
   const given = {
-    engine: options.engine ?? defaults.engine,
+    engines: options.engines ?? defaults.engines,
     gateway: options.gateway ?? defaults.gateway,
     endpoint: options.endpoint ?? defaults.endpoint,
     skills: options.skills ?? (foundSkillDirs.length > 0 ? foundSkillDirs : defaults.skills),
@@ -218,20 +218,24 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   };
 
   // Engine and model gateway are choices for a new config only; an existing config keeps its own dependencies.
-  let engine: EngineId = 'none';
+  let engines: readonly EngineId[] = [];
   let model: ScaffoldModel | undefined;
-  const configFlags = (['engine', 'gateway', 'endpoint'] as const).filter((flag) => options[flag] !== undefined).map((flag) => `--${flag}`);
+  const configFlags = ([['engines', 'engine'], ['gateway', 'gateway'], ['endpoint', 'endpoint']] as const)
+    .filter(([option]) => options[option] !== undefined)
+    .map(([, flag]) => `--${flag}`);
   if (existingConfig !== undefined && configFlags.length > 0) {
     clack.log.warn(`Ignoring ${configFlags.join(', ')}: ${existingConfig} exists, and these apply to a new config only`);
   }
   if (existingConfig === undefined) {
-    const selectedEngine = given.engine ?? await clack.select<EngineId>({
-      message: 'Which engine?',
-      initialValue: DEFAULT_ENGINE_ID,
+    const selectedEngines = given.engines ?? await clack.multiselect<EngineId>({
+      message: 'Which engines? Select none for HTTP tests or your own engine.',
       options: getEnginePresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
+      initialValues: [...DEFAULT_ENGINE_IDS],
+      required: false,
     });
-    if (isCancelled(selectedEngine)) return cancel();
-    engine = selectedEngine;
+    if (isCancelled(selectedEngines)) return cancel();
+    // Preset order, whatever order they were toggled or typed in, so the config and telemetry read the same each time.
+    engines = getEnginePresets().map(({ id }) => id).filter((id) => selectedEngines.includes(id));
 
     // The gateway is a visible choice, not a runner default: the config imports
     // its provider package and constructs the model.
@@ -255,7 +259,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     } else if (gateway !== 'none') {
       model = { gateway };
     }
-    facts.engine = engine;
+    facts.engine = engines.length === 0 ? 'none' : engines.join(',');
     facts.gateway = model?.gateway ?? 'none';
   }
 
@@ -299,7 +303,19 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     return done('invalid-project', 2);
   }
 
-  const scaffold = createScaffold(engine, model);
+  const scaffold = createScaffold(engines, model);
+  const testPath = (name: string): string => path.join('tests', `${name}.e2e.${javascript ? 'js' : 'ts'}`);
+  // A config with several engines keeps one example per engine; a re-run adds no tests/example.e2e.ts beside them.
+  const hasEngineExamples = getEnginePresets().some(({ file }) => existsSync(path.join(cwd, testPath(file))));
+  const tests = existingConfig !== undefined && hasEngineExamples
+    ? []
+    : scaffold.tests.map((test) => ({ relative: testPath(test.name), content: test.content }));
+  const newTests = tests.filter((test) => !existsSync(path.join(cwd, test.relative)));
+  if (example === undefined) {
+    for (const test of tests) {
+      if (!newTests.includes(test)) clack.log.warn(`Exists, not touching: ${test.relative}`);
+    }
+  }
   const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
   const { manifest, additions: scripts } = addScripts(dependencies.manifest, SCRIPTS);
   if (example === undefined && dependencies.additions.length > 0) {
@@ -315,7 +331,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
       ? [{ relative: 'package.json', content: serializePackage(manifest, pkg.original), existing: pkg.original !== undefined }]
       : []),
     ...(existingConfig === undefined ? [{ relative: 'e2e.config.ts', content: scaffold.config, existing: false }] : []),
-    ...(exampleExists ? [] : [{ relative: examplePath, content: scaffold.example, existing: false }]),
+    ...newTests.map((test) => ({ ...test, existing: false })),
   ];
 
   if (example === undefined && files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
