@@ -2414,13 +2414,42 @@ describe('deterministic actions', () => {
     await h.engine.perform!(inFlight.ref, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
 
-    // A control the fresh snapshot no longer lists is acted on as it was.
+    // A missing control must be resolved again before any input is dispatched.
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
     h.fake.respond('capture.snapshot', () => submit(600, '@e42'));
     const landed = await observed(h, 'Submit');
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
-    await h.engine.perform!(landed.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+    const presses = h.fake.methods().filter((method) => method === 'interactions.press').length;
+    await expect(h.engine.perform!(landed.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
+  });
+
+  it('does not tap a recycled ref when a native button becomes a tab during relocation', async () => {
+    autoAdvanceTimers();
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [...SETTINGS_NODES, { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Chat' }],
+    }));
+    const chat = await observed(h, 'Chat');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref: '@e10', index: 10, parentIndex: 0, depth: 1, type: 'tab-bar' },
+        { ref: '@e12', index: 11, parentIndex: 10, depth: 2, type: 'button', label: 'Chat' },
+        { ref: '@e11', index: 12, parentIndex: 10, depth: 2, type: 'button', label: 'Orders' },
+      ],
+    }));
+    const presses = h.fake.methods().filter((method) => method === 'interactions.press').length;
+    await expect(h.engine.perform!(chat.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
+
+    await h.engine.perform!((await observed(h, 'Chat')).ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e12' });
   });
 
   it('acts on the duplicate nearest where the control was when a fresh snapshot lists several alike', async () => {
