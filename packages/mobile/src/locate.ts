@@ -42,6 +42,10 @@ export function resolveExpression(
           const within = descendantsOf([entry], index);
           if (resolveExpression(expression.has, within, platform).length === 0) return false;
         }
+        if (expression.hasNot !== undefined) {
+          const within = descendantsOf([entry], index);
+          if (resolveExpression(expression.hasNot, within, platform).length > 0) return false;
+        }
         return true;
       });
     }

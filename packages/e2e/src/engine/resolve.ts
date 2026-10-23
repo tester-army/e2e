@@ -102,6 +102,10 @@ function resolve(
           const within = descendantsOf([node], candidates, tree);
           if (resolve(expression.has, within, tree, options).length === 0) return false;
         }
+        if (expression.hasNot !== undefined) {
+          const within = descendantsOf([node], candidates, tree);
+          if (resolve(expression.hasNot, within, tree, options).length > 0) return false;
+        }
         return true;
       });
     }

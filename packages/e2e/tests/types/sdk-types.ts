@@ -809,3 +809,7 @@ session.tracePath = '/tmp/trace.md';
 void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
 // @ts-expect-error an alternative must be a Locator
 void screen.getByRole('tab').or('tab');
+
+void (screen.getByRole('listitem').filter({ hasText: 'Invoice', has: screen.getByRole('button'), hasNot: screen.getByRole('link') }) satisfies Locator);
+// @ts-expect-error filter options only accept hasText, has, hasNot
+void screen.getByRole('listitem').filter({ hasNotText: 'Paid' });

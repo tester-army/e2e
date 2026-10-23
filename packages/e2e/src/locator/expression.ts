@@ -92,16 +92,17 @@ function scoped(
 /** Builds a filter expression; an empty filter object is an immediate error. */
 export function filterExpression(
   source: LocatorExpression,
-  options: { hasText?: TextMatch; has?: LocatorExpression },
+  options: { hasText?: TextMatch; has?: LocatorExpression; hasNot?: LocatorExpression },
 ): LocatorExpression {
-  if (options.hasText === undefined && options.has === undefined) {
-    throw new TestError('INVALID_LOCATOR', 'filter() requires hasText and/or has');
+  if (options.hasText === undefined && options.has === undefined && options.hasNot === undefined) {
+    throw new TestError('INVALID_LOCATOR', 'filter() requires hasText, has, and/or hasNot');
   }
   return {
     kind: 'filter',
     source,
     ...(options.hasText !== undefined ? { hasText: toTextPattern(options.hasText, { exact: false }) } : {}),
     ...(options.has !== undefined ? { has: options.has } : {}),
+    ...(options.hasNot !== undefined ? { hasNot: options.hasNot } : {}),
   };
 }
 
@@ -175,6 +176,7 @@ export function describeExpression(expression: LocatorExpression): string {
         );
       }
       if (expression.has !== undefined) parts.push(`has: ${describeExpression(expression.has)}`);
+      if (expression.hasNot !== undefined) parts.push(`hasNot: ${describeExpression(expression.hasNot)}`);
       return `${describeExpression(expression.source)}.filter({ ${parts.join(', ')} })`;
     }
     case 'index':

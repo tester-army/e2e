@@ -90,6 +90,10 @@ describe('locator expressions over a device snapshot', () => {
     expect(names(cellsWithAbout)).toEqual(['About']);
     const cellsHavingText: LocatorExpression = { kind: 'filter', source: query('role', 'listitem'), has: query('role', 'text') };
     expect(names(cellsHavingText)).toEqual(['About']);
+    const cellsNotHavingButton: LocatorExpression = { kind: 'filter', source: query('role', 'listitem'), hasNot: query('role', 'button') };
+    expect(names(cellsNotHavingButton)).toEqual(['About', 'Scroller']);
+    const cellsNotHavingText: LocatorExpression = { kind: 'filter', source: query('role', 'listitem'), hasNot: query('role', 'text') };
+    expect(names(cellsNotHavingText)).toEqual(['Scroller']);
     expect(names({ kind: 'index', source: query('role', 'listitem'), index: 'last' })).toEqual(['Scroller']);
     expect(names({ kind: 'index', source: query('role', 'listitem'), index: 5 })).toEqual([]);
   });

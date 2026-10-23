@@ -256,7 +256,7 @@ function plain(locator: PwLocator): ProjectedLocator {
 }
 
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
-  'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  'displayValue queries cannot scope child queries or serve as a has/hasNot filter in this engine';
 
 /**
  * Projects a complete immutable expression onto a Playwright locator within
@@ -311,6 +311,9 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
       if (expression.has !== undefined) {
         options.has = requireComposable(project(scope, expression.has, testIdAttribute));
+      }
+      if (expression.hasNot !== undefined) {
+        options.hasNot = requireComposable(project(scope, expression.hasNot, testIdAttribute));
       }
       if (source.steps.length > 0) {
         return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
