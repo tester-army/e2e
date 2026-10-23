@@ -14,7 +14,7 @@ acts on it, and checks its work.
 
 | Task | Without `e2e mcp` | With `e2e mcp` |
 | --- | --- | --- |
-| Write a test | Guesses locators, runs, fails, guesses again | Copies a checked test line from each action it takes |
+| Write a test | Guesses locators, runs, fails, guesses again | Writes the test as it walks the flow, from checked test lines |
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
 | Show a change in a PR | Describes it | Records a video |
@@ -71,7 +71,7 @@ A session starts the target's app command, if it has one.
 ## Ask the agent
 
 - "Add a Remember me checkbox to the login form. Check it in the app with e2e."
-- "Write a test for checkout. Check every locator in the app first."
+- "Write a test for checkout while you walk it in the app."
 - "Reproduce issue #123 in the app and record a video."
 
 Add "headed" to watch a local browser or simulator.
@@ -86,13 +86,14 @@ Tapped #n31.
 Test line: await screen.getByRole("button", "Sign in").tap();
 ```
 
-`test_lines` returns every line so far, in order, as a draft test body. The
-agent pastes it into a test and adds the assertions. See
+The agent copies the lines it needs into the test as it walks the flow.
+`test_lines` returns every line so far, in order, as a draft test body. See
 [`test_lines`](/reference/mcp#test_lines) for how a line is built.
 
 ## How it checks a locator
 
-A locator guessed from the source fails in the session, not in a test run:
+For a line no action printed, such as an assertion, the agent tries the
+locator in the session first. A wrong guess fails there, not in a test run:
 
 ```text wrap
 0 nodes match getByLabel("Email").
