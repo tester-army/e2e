@@ -1,20 +1,24 @@
 ---
 title: Writing fixtures
-description: Set up test data, accounts, and other resources before each test and clean them up after it.
+description: Create test data and other resources before each test and clean them up after it.
 icon: "puzzle-piece"
-"og:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=c21f1fee7f"
-"twitter:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=c21f1fee7f"
+"og:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=a85d0155da"
+"twitter:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=a85d0155da"
 ---
 
 A fixture is a value a test receives in its parameter list, set up before
 the test and torn down after it. Define your own with `test.extend` to
-create test data, sign in, or start a service, with cleanup that runs even
-when the test fails.
+create test data or start a service, with cleanup that runs even when the
+test fails.
+
+To sign in, use a [saved session](/authentication), not a fixture. A session
+holds cookies and storage, not server data. Fixtures create that data.
 
 ## Define fixtures in one file
 
 Put your fixtures in one file and export the extended `test` from it. Start
-from your engine's `test`, so a definition can use `browser` or `device`.
+from your engine's `test`, so fixtures and tests can use `browser` or
+`device`. This file creates a project and a task through the app's test API.
 
 ```ts title="tests/fixtures.ts" expandable
 import { test as base } from '@e2e-dev/web';
@@ -22,39 +26,47 @@ import type { App } from 'e2e';
 
 export { expect } from 'e2e';
 
-interface Account {
-  readonly email: string;
-  readonly sessionToken: string;
+interface Project {
+  readonly id: string;
+  readonly name: string;
 }
 
-/** The URL the run serves the app at, including a port it picked. */
-function appUrl(app: App): string {
-  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
-  return app.baseUrl;
+interface Task {
+  readonly id: string;
+  readonly title: string;
 }
 
 /** Calls the app's test API and fails on any status but 2xx. */
-async function testApi(app: App, path: string, method: 'POST' | 'DELETE'): Promise<Response> {
-  const response = await fetch(new URL(path, appUrl(app)), { method });
+async function testApi(app: App, method: 'POST' | 'DELETE', path: string, body?: object): Promise<Response> {
+  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
+  const response = await fetch(new URL(path, app.baseUrl), {
+    method,
+    headers: { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
   if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}`);
   return response;
 }
 
-/** A fresh account for each test, deleted after it. */
-export const test = base.extend<{ account: Account }>({
-  account: async ({ app }, use) => {
-    const response = await testApi(app, '/api/test/accounts', 'POST');
-    const account = (await response.json()) as Account;
-    await use(account);
-    await testApi(app, `/api/test/accounts/${encodeURIComponent(account.email)}`, 'DELETE');
+/** A fresh project for each test, deleted after it. */
+export const test = base.extend<{ project: Project }>({
+  project: async ({ app }, use) => {
+    const response = await testApi(app, 'POST', '/api/test/projects', { name: 'Launch plan' });
+    const project = (await response.json()) as Project;
+    await use(project);
+    await testApi(app, 'DELETE', `/api/test/projects/${project.id}`);
   },
 });
 
-/** The same account, already signed in to the browser. */
-export const signedInTest = test.extend<{ signedIn: Account }>({
-  signedIn: async ({ account, app, browser }, use) => {
-    await browser.setCookies([{ url: appUrl(app), name: 'session', value: account.sessionToken }]);
-    await use(account);
+/** One task in that project. */
+export const taskTest = test.extend<{ task: Task }>({
+  task: async ({ app, project }, use) => {
+    const response = await testApi(app, 'POST', `/api/test/projects/${project.id}/tasks`, {
+      title: 'Write the announcement',
+    });
+    const task = (await response.json()) as Task;
+    await use(task);
+    await testApi(app, 'DELETE', `/api/test/tasks/${task.id}`);
   },
 });
 ```
@@ -62,14 +74,16 @@ export const signedInTest = test.extend<{ signedIn: Account }>({
 Code before `await use(value)` is the setup. The test receives `value`. Code
 after `use` is the teardown, and it runs after the test passes or fails.
 
-Import `test` and `expect` from this file in your test files:
+Import `test` and `expect` from this file in your test files. The test
+restores the `admin` session and works on its own fresh data:
 
-```ts title="tests/settings.e2e.ts"
-import { expect, signedInTest as test } from './fixtures.ts';
+```ts title="tests/tasks.e2e.ts"
+import { expect, taskTest as test } from './fixtures.ts';
 
-test('shows the account email', async ({ app, screen, signedIn }) => {
-  await app.open('/settings');
-  await expect(screen.getByLabel('Email')).toHaveValue(signedIn.email);
+test('completes a task', { session: 'admin' }, async ({ app, screen, project, task }) => {
+  await app.open(`/projects/${project.id}`);
+  await screen.getByRole('checkbox', task.title).check();
+  await expect(screen.getByRole('checkbox', task.title)).toBeChecked();
 });
 ```
 
@@ -77,38 +91,36 @@ test('shows the account email', async ({ app, screen, signedIn }) => {
 
 A definition sees the fixtures of the `test` it extends, not the other
 definitions in the same call. To use one fixture in another, extend in a
-second call. Above, `signedIn` reads `account` because `signedInTest`
-extends `test`.
+second call. Above, `task` reads `project` because `taskTest` extends
+`test`.
 
 Setup runs in declaration order, after the engine's fixtures. Teardown runs
-in reverse order, so `signedIn` cleans up before `account` is deleted.
+in reverse order, so the task is deleted before its project.
 
 ## Give each setup its own test
 
 Every fixture in a chain sets up for every test registered through it,
-whether the test names the fixture or not. A test that needs no account
-still pays for one when it uses an extended `test`.
+whether the test names the fixture or not. A test that needs no task
+still creates one when it uses `taskTest`.
 
 So export one `test` for each setup. In `tests/fixtures.ts`, `test` sets
-up `account`, and `signedInTest` sets up `account`, then `signedIn`. For a
-test that needs neither, import `test` from `@e2e-dev/web` directly.
-For signing in through the UI one time and reusing it, use a
-[saved session](/authentication) instead of a fixture.
+up `project`, and `taskTest` sets up `project`, then `task`. For a test
+that needs neither, import `test` from `@e2e-dev/web` directly.
 
 ## Read fixtures in hooks
 
 Register hooks on your extended `test` to read its fixtures:
 
 ```ts
-signedInTest.beforeEach(async ({ app, signedIn }) => {
-  await app.open(`/users/${encodeURIComponent(signedIn.email)}`);
+taskTest.beforeEach(async ({ app, project }) => {
+  await app.open(`/projects/${project.id}`);
 });
 ```
 
 The top-level `beforeEach` and `afterEach` exports from `e2e` and the engine
 packages are typed with only the core and engine fixtures. At run time, a
 hook reads the fixtures of the test it runs around. If that test was
-registered through another `test` without `signedIn`, the hook fails with
+registered through another `test` without `project`, the hook fails with
 `UNSUPPORTED_CAPABILITY`.
 
 ## When a fixture fails

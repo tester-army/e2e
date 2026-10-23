@@ -3,38 +3,46 @@ import type { App } from 'e2e';
 
 export { expect } from 'e2e';
 
-interface Account {
-  readonly email: string;
-  readonly sessionToken: string;
+interface Project {
+  readonly id: string;
+  readonly name: string;
 }
 
-/** The URL the run serves the app at, including a port it picked. */
-function appUrl(app: App): string {
-  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
-  return app.baseUrl;
+interface Task {
+  readonly id: string;
+  readonly title: string;
 }
 
 /** Calls the app's test API and fails on any status but 2xx. */
-async function testApi(app: App, path: string, method: 'POST' | 'DELETE'): Promise<Response> {
-  const response = await fetch(new URL(path, appUrl(app)), { method });
+async function testApi(app: App, method: 'POST' | 'DELETE', path: string, body?: object): Promise<Response> {
+  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
+  const response = await fetch(new URL(path, app.baseUrl), {
+    method,
+    headers: { 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
   if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}`);
   return response;
 }
 
-/** A fresh account for each test, deleted after it. */
-export const test = base.extend<{ account: Account }>({
-  account: async ({ app }, use) => {
-    const response = await testApi(app, '/api/test/accounts', 'POST');
-    const account = (await response.json()) as Account;
-    await use(account);
-    await testApi(app, `/api/test/accounts/${encodeURIComponent(account.email)}`, 'DELETE');
+/** A fresh project for each test, deleted after it. */
+export const test = base.extend<{ project: Project }>({
+  project: async ({ app }, use) => {
+    const response = await testApi(app, 'POST', '/api/test/projects', { name: 'Launch plan' });
+    const project = (await response.json()) as Project;
+    await use(project);
+    await testApi(app, 'DELETE', `/api/test/projects/${project.id}`);
   },
 });
 
-/** The same account, already signed in to the browser. */
-export const signedInTest = test.extend<{ signedIn: Account }>({
-  signedIn: async ({ account, app, browser }, use) => {
-    await browser.setCookies([{ url: appUrl(app), name: 'session', value: account.sessionToken }]);
-    await use(account);
+/** One task in that project. */
+export const taskTest = test.extend<{ task: Task }>({
+  task: async ({ app, project }, use) => {
+    const response = await testApi(app, 'POST', `/api/test/projects/${project.id}/tasks`, {
+      title: 'Write the announcement',
+    });
+    const task = (await response.json()) as Task;
+    await use(task);
+    await testApi(app, 'DELETE', `/api/test/tasks/${task.id}`);
   },
 });
