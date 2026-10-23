@@ -124,7 +124,10 @@ screen.
    `## Screen at failure`, the screen one node per line (topic `debugging`).
 2. Fix every line that evidence covers, not only the one that failed: the
    screen at failure shows the names the rest of that screen's lines need.
-   Fix the locator, the expectation, or the app. Never add a sleep.
+   Fix the locator, the expectation, or the app. Never add a sleep or a
+   fixed delay (`setTimeout`, `waitForTimeout`): wait for the state you
+   need with `agent.waitFor('<that state>')` instead (topic `agent`; it
+   needs a model).
 3. A test stops at its first failed step (an `expect.soft` lets it go on),
    and every wrong line after it costs another run. Before rerunning, check
    the lines after it as far as you can: against the screen at failure, the

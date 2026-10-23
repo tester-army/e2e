@@ -526,6 +526,10 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 - APIs live in the same suite: `fetch(new URL('/api/users', app.baseUrl))`
   plus value matchers, in a `test.extend` fixture that reads `browser.cookies()`
   when the API needs the session.
-- No sleeps or polling loops; a matcher with a longer `timeout` instead.
+- No sleeps, fixed delays, or polling loops. Wait for the state, not a
+  duration: `agent.waitFor('the import finished')` with a `timeout` long
+  enough for the slowest case (topic `agent` lists its model and budget
+  limits), or a matcher with a longer `timeout` when a locator names the
+  state exactly.
 - `await` every step call and `expect.poll`, else `STEP_NOT_AWAITED` at the line of the call.
 - Assert the fact a model produced with `toContain`, not its exact sentence.

@@ -198,6 +198,24 @@ expect(data.titles).toContain('Buy milk');
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
   screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+- Never sleep for a fixed time to let the app settle. A sleep is too short
+  on a slow run and wasted time on a fast one; `waitFor` returns as soon as
+  the state appears:
+
+```ts
+// BAD: guesses how long the export takes.
+await new Promise((resolve) => setTimeout(resolve, 10_000));
+
+// GOOD: waits for the state, up to the timeout.
+await agent.waitFor('the export finished and a download link appeared', { timeout: 60_000 });
+```
+
+- `waitFor` needs a model even under a custom executor and is never cached,
+  so each run spends judgments on it. It judges again on every screen
+  change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  changing (a progress counter), raise `interval`. The test timeout still
+  caps its `timeout`.
+
 - `extract` takes any Standard Schema validator (zod works); the model sees
   the schema's shape, never its value rules (`min`, `max`, lengths,
   patterns), which check what it read. Data the screen does not show is
