@@ -45,6 +45,9 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/web/testmu-browsers.config.ts': 'docs/integrations/testmu.mdx',
   'docs/examples/models/e2e.decision.config.ts': 'docs/decision-models.mdx',
   'docs/examples/models/tests/decision.e2e.ts': 'docs/decision-models.mdx',
+  'docs/examples/page-objects/tests/pages/sign-in-page.ts': 'docs/page-objects.mdx',
+  'docs/examples/page-objects/tests/fixtures.ts': 'docs/page-objects.mdx',
+  'docs/examples/page-objects/tests/sign-in.e2e.ts': 'docs/page-objects.mdx',
   'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',
   'docs/examples/skill/e2e.setup.config.ts': 'skills/e2e/references/setup.md',
 };

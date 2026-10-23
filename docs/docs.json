@@ -203,7 +203,8 @@
               "security",
               "telemetry",
               "debugging",
-              "agent-steps"
+              "agent-steps",
+              "page-objects"
             ]
           },
           {

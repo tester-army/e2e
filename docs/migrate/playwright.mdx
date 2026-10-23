@@ -365,10 +365,8 @@ export const test = base.extend<{ accountPage: AccountPage }>({
 });
 ```
 
-A fixture that reads `browser` makes every test on that `test` web only,
-named in its parameters or not. On a device target, each fails in
-`beforeEach` with `UNSUPPORTED_CAPABILITY`. Give those tests `requires: ['browser']`, or keep
-portable tests on the base `test`.
+A fixture that reads `browser` makes every test on that `test` web only. See
+[Keep it portable](/page-objects#keep-it-portable).
 
 `locator.page()` has no counterpart, so pass `browser` with the locator. Drop
 `newPage()` and `page.close()` from the hooks: every attempt starts in a fresh
