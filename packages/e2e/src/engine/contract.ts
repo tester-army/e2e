@@ -96,6 +96,7 @@ export type LocatorExpression =
       readonly source: LocatorExpression;
       readonly hasText?: TextPattern;
       readonly has?: LocatorExpression;
+      readonly hasNot?: LocatorExpression;
     }
   | {
       readonly kind: 'index';

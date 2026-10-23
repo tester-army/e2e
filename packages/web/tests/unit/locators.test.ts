@@ -28,12 +28,13 @@ function fakeLocator(chain: readonly string[]): PwLocator {
       fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
     getByText: (text: string | RegExp, options?: { exact?: boolean }) =>
       fakeLocator([...chain, `text(${String(text)}${options?.exact ? ',exact' : ''})`]),
-    filter: (options: { hasText?: string | RegExp; has?: PwLocator; visible?: boolean }) =>
+    filter: (options: { hasText?: string | RegExp; has?: PwLocator; hasNot?: PwLocator; visible?: boolean }) =>
       fakeLocator([
         ...chain,
         `filter(${[
           options.hasText === undefined ? '' : `hasText=${String(options.hasText)}`,
           options.has === undefined ? '' : `has=${chainOf(options.has).join('>')}`,
+          options.hasNot === undefined ? '' : `hasNot=${chainOf(options.hasNot).join('>')}`,
           options.visible === undefined ? '' : `visible=${String(options.visible)}`,
         ]
           .filter((part) => part !== '')
@@ -99,6 +100,8 @@ describe('projectExpression', () => {
     expect(chainOf(scoped.locator)).toEqual([EXACT_LABEL, 'first', ROOTS, 'role(textbox)']);
     const rows = projectExpression(page, { kind: 'filter', source: textbox, has: label });
     expect(chainOf(rows.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${EXACT_LABEL})`]);
+    const withoutLabel = projectExpression(page, { kind: 'filter', source: textbox, hasNot: label });
+    expect(chainOf(withoutLabel.locator)).toEqual([ROOTS, 'role(textbox)', `filter(hasNot=${EXACT_LABEL})`]);
     // A substring label query keeps Playwright's own matching.
     const loose = projectExpression(page, {
       kind: 'query',
@@ -212,14 +215,27 @@ describe('projectExpression', () => {
     ]);
     expect(projected.displayValue).not.toBeNull();
     expect(projected.steps).toEqual([{ kind: 'index', index: 0 }]);
+
+    const projectedHasNot = projectExpression(page, {
+      kind: 'index',
+      source: { kind: 'filter', source: shared, hasText: { kind: 'string', value: 'x', exact: false }, hasNot: textbox },
+      index: 0,
+    });
+    expect(chainOf(projectedHasNot.locator)).toEqual([
+      'locator(e2e-roots=input:not([type="checkbox" i]):not([type="radio" i]), textarea, select)',
+      `filter(hasText=x,hasNot=${ROOTS}>role(textbox))`,
+    ]);
   });
 
-  it('rejects a displayValue query as a scope or has-filter, and names only those cases', () => {
-    const message = 'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  it('rejects a displayValue query as a scope or has/hasNot-filter, and names only those cases', () => {
+    const message = 'displayValue queries cannot scope child queries or serve as a has/hasNot filter in this engine';
     expect(() => projectExpression(page, { ...textbox, scope: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );
     expect(() => projectExpression(page, { kind: 'filter', source: textbox, has: shared })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
+    );
+    expect(() => projectExpression(page, { kind: 'filter', source: textbox, hasNot: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );
   });
@@ -247,6 +263,13 @@ describe('projectExpression', () => {
         kind: 'filter',
         source: { kind: 'index', source: textbox, index: 'first' },
         has: shared,
+      }),
+    ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY' }));
+    expect(() =>
+      projectExpression(page, {
+        kind: 'filter',
+        source: { kind: 'index', source: textbox, index: 'first' },
+        hasNot: shared,
       }),
     ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY' }));
   });

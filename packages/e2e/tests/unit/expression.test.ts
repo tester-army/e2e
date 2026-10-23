@@ -57,7 +57,7 @@ describe('locator expressions', () => {
 
   it('rejects empty filters', () => {
     const source = testIdQuery('card', undefined, undefined);
-    expect(() => filterExpression(source, {})).toThrow(/hasText and\/or has/);
+    expect(() => filterExpression(source, {})).toThrow(/hasText, has, and\/or hasNot/);
   });
 
   it('rejects negative and fractional nth indices', () => {
@@ -106,8 +106,11 @@ describe('locator expressions', () => {
     expect(describeExpression(filterExpression(source, { has: inner }))).toBe(
       'getByRole("listitem").filter({ has: getByRole("button", name: "Remove") })',
     );
-    expect(describeExpression(filterExpression(source, { hasText: 'Pro', has: inner }))).toBe(
-      'getByRole("listitem").filter({ hasText: "Pro", has: getByRole("button", name: "Remove") })',
+    expect(describeExpression(filterExpression(source, { hasNot: inner }))).toBe(
+      'getByRole("listitem").filter({ hasNot: getByRole("button", name: "Remove") })',
+    );
+    expect(describeExpression(filterExpression(source, { hasText: 'Pro', has: inner, hasNot: inner }))).toBe(
+      'getByRole("listitem").filter({ hasText: "Pro", has: getByRole("button", name: "Remove"), hasNot: getByRole("button", name: "Remove") })',
     );
   });
 });

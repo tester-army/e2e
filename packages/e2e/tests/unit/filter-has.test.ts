@@ -65,4 +65,34 @@ describe('locator.filter({ has })', () => {
     );
     expect(expressions).toEqual([]);
   });
+
+  it('filters candidates excluding those matching hasNot', async () => {
+    const { screen, expressions } = listScreen();
+    const rows = screen.getByRole('listitem').filter({ hasNot: screen.getByRole('button', { name: 'Remove' }) });
+    expect(await rows.count()).toBe(1);
+    expect(await rows.textContent()).toBe('Beta');
+    expect(expressions).toContainEqual({
+      kind: 'filter',
+      source: roleQuery('listitem', undefined, undefined),
+      hasNot: roleQuery('button', { name: 'Remove' }, undefined),
+    });
+  });
+
+  it('names the whole chain with hasNot when a filtered read finds nothing', async () => {
+    const { screen } = listScreen();
+    await expect(
+      screen.getByRole('listitem').filter({ hasNot: screen.getByRole('listitem') }).textContent(),
+    ).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+      message: expect.stringContaining('getByRole("listitem").filter({ hasNot: getByRole("listitem") })'),
+    });
+  });
+
+  it('refuses a hasNot that is not an e2e locator before any engine call', () => {
+    const { screen, expressions } = listScreen();
+    expect(() => screen.getByRole('listitem').filter({ hasNot: invalid<Locator>({}) })).toThrow(
+      expect.objectContaining({ code: 'INVALID_LOCATOR' }),
+    );
+    expect(expressions).toEqual([]);
+  });
 });
