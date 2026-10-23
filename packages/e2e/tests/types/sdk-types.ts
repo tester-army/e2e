@@ -22,6 +22,7 @@ import {
   type Locator,
   type ModelInstance,
   type PointHit,
+  type PointDragResult,
   type PointTapResult,
   type PollExpectation,
   type RecordingMode,
@@ -321,6 +322,7 @@ executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
 'tapAt' satisfies ExecutorVerb;
 'hover' satisfies ExecutorVerb;
 'drag' satisfies ExecutorVerb;
+'dragAt' satisfies ExecutorVerb;
 'upload' satisfies ExecutorVerb;
 'back' satisfies ExecutorVerb;
 // @ts-expect-error a verb is one of the action grammar's names
@@ -457,6 +459,9 @@ screen.getByRole('button', { hidden: true });
 declare const point: import('../../src/types.ts').Point;
 void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
 void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
+void (executorContext.actions.dragAt(point, point) satisfies Promise<PointDragResult>);
+// @ts-expect-error a point drag names both ends
+void executorContext.actions.dragAt(point);
 void screen.tapAt(point, { timeout: 1_000 });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });

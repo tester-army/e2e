@@ -137,6 +137,28 @@ export function describePointAction(
   return `${did} the point ${at}; no listed control is there${under}.`;
 }
 
+/**
+ * What one point drag did, for the model that named the points: the two
+ * controls it joined by id, or the bare points with what each sits on.
+ */
+export function describePointDrag(
+  input: PointProse & {
+    readonly from: ViewportPoint;
+    readonly to: ViewportPoint;
+    readonly source?: RedactedNode;
+    readonly destination?: RedactedNode;
+    readonly fromUnder?: RedactedNode;
+    readonly toUnder?: RedactedNode;
+  },
+): string {
+  const at = (point: ViewportPoint) => `(${String(point.x)}, ${String(point.y)})`;
+  if (input.source !== undefined && input.destination !== undefined) {
+    return `Dragged ${describeNode(input, input.source)}, the control at ${at(input.from)}, onto ${describeNode(input, input.destination)}, the control at ${at(input.to)}.`;
+  }
+  const under = (node: RedactedNode | undefined) => (node === undefined ? '' : ` (under it: ${describeNode(input, node)})`);
+  return `Dragged from the point ${at(input.from)}${under(input.fromUnder)} to the point ${at(input.to)}${under(input.toUnder)}; no two listed controls hold the ends.`;
+}
+
 /** What one hit test found, for the model that named the point. */
 export function describePointHit(
   input: PointProse & {

@@ -247,6 +247,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       'screenshot',
       'tap_at',
       'hover_at',
+      'drag_at',
       'type_at',
       'press_at',
       'select_at',

@@ -152,6 +152,10 @@ The tools, one per engine action. Name the target as the screen names it
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.
 - `tap_at`/`hover_at`/`press_at`/`select_at`/`type_at`: a screenshot point.
+- `drag_at`: from one screenshot point to another (`to_x`, `to_y`), for a
+  canvas shape or map pin; by id when the points land on two different
+  listed controls. Otherwise it needs the engine's `dragTo` pointer kind, or
+  it fails with `UNSUPPORTED_CAPABILITY`.
 - `dismiss_keyboard` (device): hide the on-screen keyboard.
 
 The focused field's selected text is listed as `selection="..."` (never for

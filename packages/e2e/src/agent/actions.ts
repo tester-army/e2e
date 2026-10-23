@@ -76,6 +76,19 @@ export type RecordableAction =
       readonly point: ViewportPoint;
       readonly viewport: ViewportSize;
       readonly under?: RedactedNode;
+    }
+  /**
+   * A drag from one bare viewport point to another, with the viewport it was
+   * placed in and, at each end, the listed node whose box contained it, so
+   * the trace can follow both nodes when the layout shifts.
+   */
+  | {
+      readonly name: 'dragAt';
+      readonly from: ViewportPoint;
+      readonly to: ViewportPoint;
+      readonly viewport: ViewportSize;
+      readonly under?: RedactedNode;
+      readonly toUnder?: RedactedNode;
     };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
@@ -211,11 +224,15 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
   const target =
     'node' in action
       ? describePlaced(action.node, action, redaction)
-      : 'point' in action
+      : 'point' in action || action.name === 'dragAt'
         ? describePlaced(action.under, {}, redaction)
         : undefined;
   const destination =
-    action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redaction) : undefined;
+    action.name === 'drag'
+      ? describePlaced(action.destination.node, action.destination, redaction)
+      : action.name === 'dragAt'
+        ? describePlaced(action.toUnder, {}, redaction)
+        : undefined;
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redaction.redact(sanitizeText(value)));
   const prose = (() => {
@@ -261,6 +278,11 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
       case 'hoverAt': {
         const at = `${POINT_ACTION_PROSE[action.name]} the point (${String(action.point.x)}, ${String(action.point.y)})`;
         return target === undefined ? at : `${at} on ${where}`;
+      }
+      case 'dragAt': {
+        const from = `drag from the point (${String(action.from.x)}, ${String(action.from.y)})${target === undefined ? '' : ` on ${where}`}`;
+        const to = `the point (${String(action.to.x)}, ${String(action.to.y)})${destination === undefined ? '' : ` on ${describeForSummary(destination)}`}`;
+        return `${from} to ${to}`;
       }
     }
   })();

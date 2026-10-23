@@ -51,6 +51,7 @@ export function fakeExecutorContext(options: FakeExecutorContextOptions = {}): F
     back: refuse('back'),
     tapAt: refuse('tapAt'),
     hoverAt: refuse('hoverAt'),
+    dragAt: refuse('dragAt'),
     typeText: refuse('typeText'),
     pressKey: refuse('pressKey'),
     dismissKeyboard: refuse('dismissKeyboard'),

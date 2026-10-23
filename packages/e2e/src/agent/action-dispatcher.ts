@@ -23,13 +23,20 @@ import { describePosition } from '../cache/relocate.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { ActionHookError, AgentError, toAgentError } from './error.ts';
-import { RUNTIME_CODES, type ExecutorActions, type ExecutorTarget, type PointHit, type PointTapResult } from './executor.ts';
+import {
+  RUNTIME_CODES,
+  type ExecutorActions,
+  type ExecutorTarget,
+  type PointDragResult,
+  type PointHit,
+  type PointTapResult,
+} from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed, Resolved } from './observation-feed.ts';
 import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
-import { describePointAction, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
+import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
 import { nodeReading, normalizeReading, readingShape } from './reading.ts';
 import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
@@ -151,6 +158,7 @@ export class ActionDispatcher {
       back: () => this.back(),
       tapAt: (point) => this.pointVerb('tapAt', point),
       hoverAt: (point) => this.pointVerb('hoverAt', point),
+      dragAt: (from, to) => this.pointDrag(from, to),
       hitTest: (point) => this.hitTest(point),
       typeText: (value, typing) => this.typeText(value, typing?.replace === true),
       pressKey: (key) => this.pressKey(key),
@@ -265,6 +273,69 @@ export class ActionDispatcher {
     });
   }
 
+  /**
+   * Drags from one viewport point to another, routed onto the tree in queue
+   * order the way a point verb is. When the points land on two different
+   * listed, enabled controls and the engine drags nodes, the drag joins them by id, so
+   * policy, stale relocation, and the trace descriptor see an ordinary
+   * `drag`; otherwise the bare points go to the engine's `dragTo` pointer
+   * kind when it takes one. Both points are clamped to the viewport first.
+   */
+  private pointDrag(from: ViewportPoint, to: ViewportPoint): Promise<PointDragResult> {
+    requireFinitePoint(from, 'dragAt');
+    requireFinitePoint(to, 'dragAt');
+    return this.queue.run(async () => {
+      const observation = this.feed.requireLatest();
+      const start = clampToViewport(from, observation.viewport);
+      const end = clampToViewport(to, observation.viewport);
+      const fromHit = hitTest(observation, start);
+      const toHit = hitTest(observation, end);
+      // Both ends inside one control is a drag within it, a slider's thumb or
+      // a shape on a listed canvas, which a node drag onto itself cannot do.
+      const nodes = this.verbs.has('drag') && fromHit.control?.ref.id !== toHit.control?.ref.id;
+      const sourceControl = nodes ? fromHit.control : undefined;
+      const destinationControl = nodes ? toHit.control : undefined;
+      if (sourceControl !== undefined && destinationControl !== undefined) {
+        const source = { id: sourceControl.ref.id };
+        const destination = { id: destinationControl.ref.id };
+        const summary = describePointDrag({ from: start, to: end, source: sourceControl, destination: destinationControl, ...this.prose(observation) });
+        await this.runActionNow('dragTo', () => this.targeted(this.feed.resolve(source), (node) => this.dragOnto(node, destination)));
+        return { from: start, to: end, source, destination, summary };
+      }
+      if (!this.verbs.has('dragAt')) {
+        throw new TestError(
+          'UNSUPPORTED_CAPABILITY',
+          `the drag from (${String(start.x)}, ${String(start.y)}) to (${String(end.x)}, ${String(end.y)}) does not join two controls the screen lists and this engine drags listed nodes only; drag a node onto another by id instead`,
+        );
+      }
+      // As for a point verb, each end's containing node is the trace's handle
+      // on it; the tree's root is the page itself and follows no layout shift.
+      const root = observation.kind === 'semantic' ? observation.tree.ref.id : undefined;
+      const placed = (node: RedactedNode | undefined) => (node === undefined || node.ref.id === root ? undefined : node);
+      const under = placed(fromHit.under);
+      const toUnder = placed(toHit.under);
+      const summary = describePointDrag({
+        from: start,
+        to: end,
+        ...(fromHit.under === undefined ? {} : { fromUnder: fromHit.under }),
+        ...(toHit.under === undefined ? {} : { toUnder: toHit.under }),
+        ...this.prose(observation),
+      });
+      await this.runActionNow('dragAt', async () => {
+        await this.session.performAt(start, { kind: 'dragTo', target: end }, this.accounting.actionOperation());
+        return {
+          name: 'dragAt',
+          from: start,
+          to: end,
+          viewport: { width: observation.viewport.width, height: observation.viewport.height },
+          ...(under === undefined ? {} : { under }),
+          ...(toUnder === undefined ? {} : { toUnder }),
+        };
+      });
+      return { from: start, to: end, summary };
+    });
+  }
+
   /** Records project tools through the same budget and operation queue as grammar actions. */
   runTool<T>(call: { name: string; mutates: boolean }, body: () => Promise<T>): Promise<T> {
     const run = async (): Promise<T> => {
@@ -328,11 +399,14 @@ export class ActionDispatcher {
    * replay can tell one "Done" column from another.
    */
   private drag(source: ExecutorTarget, destination: ExecutorTarget): Promise<void> {
-    return this.commitTargeted('dragTo', source, async (node) => {
-      const dropped = this.feed.resolve(destination);
-      await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
-      return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
-    });
+    return this.commitTargeted('dragTo', source, (node) => this.dragOnto(node, destination));
+  }
+
+  /** The body of a node drag past the source's resolution: the drop target resolved on the same look, then the drag. */
+  private async dragOnto(node: RedactedNode, destination: ExecutorTarget): Promise<RecordableAction> {
+    const dropped = this.feed.resolve(destination);
+    await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
+    return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
   }
 
   /**

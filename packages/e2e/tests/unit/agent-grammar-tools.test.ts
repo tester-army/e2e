@@ -34,6 +34,7 @@ const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
   screenshot: {},
   tap_at: { x: 10, y: 20 },
   hover_at: { x: 10, y: 20 },
+  drag_at: { x: 10, y: 20, to_x: 30, to_y: 40 },
   type_at: { x: 10, y: 20, value: 'ada', replace: true },
   press_at: { x: 10, y: 20, key: 'Enter' },
   select_at: { x: 10, y: 20, value: 'Pro' },
@@ -104,7 +105,7 @@ describe('the grammar tools have closed schemas', () => {
     tainted = true;
     const options = { toolCallId: 'point', messages: [], context: undefined };
     const pointTools = [...GRAMMAR_TOOL_NAMES].filter((name) => name.endsWith('_at'));
-    expect(pointTools).toHaveLength(5);
+    expect(pointTools).toHaveLength(6);
     for (const name of pointTools) {
       const result = await tools[name]!.execute!(ACCEPTED[name]!, options);
       expect(result, name).toContain('PIXEL_TAINTED');

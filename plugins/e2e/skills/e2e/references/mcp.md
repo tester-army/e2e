@@ -78,6 +78,7 @@ The catalog, per session:
 | `screenshot` | The masked pixels as an image. |
 | `tap_at` | Taps a point (`x`, `y` in the latest screenshot's pixels): a listed control under it by id, otherwise the bare point, which an engine without a bare-point tap cannot do. Listed when the engine declares `tap` or a bare-point tap. |
 | `hover_at` | Hovers a point the same way: a listed control under it by id, otherwise the bare point. Listed when the engine declares `hover` or a bare-point hover. |
+| `drag_at` | Drags from one point (`x`, `y`) to another (`to_x`, `to_y`): by id when they land on two different listed controls, otherwise between the bare points, which an engine without a bare-point drag cannot do. Listed when the engine declares `dragTo` or a bare-point drag. |
 | `type_at` | Types `value` into the field at a point: a listed input under it is filled by id; with a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without a keyboard a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
 | `press_at` | Sends one `key` (`Enter`, `Escape`, `Tab`) to the control at a point: a listed control gets it by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
 | `select_at` | Picks the option whose visible label is `value` in the select-like control at a point; the point must land on a listed select. Listed when the engine declares `select`. |
@@ -90,7 +91,7 @@ structured results. Its `error-text` and `error-json` outputs set the MCP
 result's `isError: true`; treat them as failed calls.
 
 Once a secret is filled in the session, `screenshot` and the point tools
-(`tap_at`, `hover_at`, `type_at`, `press_at`, `select_at`) answer with a
+(`tap_at`, `hover_at`, `drag_at`, `type_at`, `press_at`, `select_at`) answer with a
 `PIXEL_TAINTED` line for the rest of it; act on listed nodes by id (topic
 `writing-tests`). Before the session's first `screenshot`, a point tool only
 says to take one.

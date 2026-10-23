@@ -436,6 +436,7 @@ describe('createEngineSession', () => {
     // The point verbs need their own pointer kind; other pointer kinds alone offer nothing.
     expect(verbs({ performAt: async () => undefined, pointerActions: ['tap', 'hover'] })).toEqual(['hoverAt', 'tapAt']);
     expect(verbs({ performAt: async () => undefined, pointerActions: ['hover'] })).toEqual(['hoverAt']);
+    expect(verbs({ performAt: async () => undefined, pointerActions: ['dragTo'] })).toEqual(['dragAt']);
     expect(verbs({ performAt: async () => undefined, pointerActions: ['longPress', 'swipeTo'] })).toEqual([]);
     const keyboard = { type: async () => undefined, press: async () => undefined };
     expect(verbs({ keyboard })).toEqual(['pressKey', 'typeText']);

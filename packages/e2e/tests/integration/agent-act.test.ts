@@ -677,6 +677,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'complete_step',
       'double_tap',
       'drag',
+      'drag_at',
       'hover',
       'hover_at',
       'long_press',

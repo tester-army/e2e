@@ -379,6 +379,7 @@ An undeclared verb is absent from the toolset.
 | `navigate` | `session.open` |
 | `back` | `session.back` |
 | `tap_at`, `hover_at` | the `tap` or `hover` kind, in `actions` or in `pointerActions` |
+| `drag_at` | the `dragTo` kind, in `actions` or in `pointerActions` |
 | `type_at` | `fill` or `keyboard` |
 | `press_at` | `press` or `keyboard` |
 | `select_at` | `selectOption` |
@@ -386,10 +387,13 @@ An undeclared verb is absent from the toolset.
 
 - `clear` and `focus` unlock no verb.
 - `tap_at`, `hover_at`, `type_at`, `press_at`, and `select_at` go through
-  `perform` when the point lands on a node the tree lists.
+  `perform` when the point lands on a node the tree lists, and `drag_at`
+  when its two points land on two different listed nodes.
 - When the point lands on nothing the tree lists, `tap_at` and `hover_at`
   go through `performAt` (the `tap` and `hover` pointer kinds), and
-  `type_at` and `press_at` fall back to `keyboard`.
+  `type_at` and `press_at` fall back to `keyboard`. `drag_at` goes through
+  `performAt` with the `dragTo` pointer kind and the second point as its
+  `target`.
 
 #### Test APIs
 

@@ -17,6 +17,8 @@
  */
 
 import { describeAction, type DescribedAction, type RecordableAction } from '../agent/actions.ts';
+import type { RedactedNode } from '../agent/observation.ts';
+import type { ViewportPoint } from '../engine/surface.ts';
 import { isRelocatableDescriptor } from './relocate.ts';
 import {
   DESCRIPTOR_FIELDS,
@@ -28,6 +30,7 @@ import {
   isNodeAction,
   type ActionTrace,
   type DerivedReason,
+  type PointWithin,
   type RecordedAction,
   type RecordedModel,
   type ScrollAction,
@@ -228,23 +231,27 @@ export class TraceRecorder {
         return { name: 'dismissKeyboard', summary };
       case 'tapAt':
       case 'hoverAt': {
-        // The point replays as given on a same-sized viewport. When a listed
-        // node with a durable descriptor contained it, its place inside that
-        // node's box is kept too, so replay can follow the node instead. An
-        // anonymous container, a group among groups on a screen merged into
-        // one accessibility node, could not be re-found and is not kept: the
-        // point alone is the honest record.
-        const box = action.under?.rect;
-        const within =
-          target === undefined || !isRelocatableDescriptor(target) || box === undefined || box.width <= 0 || box.height <= 0
-            ? undefined
-            : { target, fx: fraction((action.point.x - box.x) / box.width), fy: fraction((action.point.y - box.y) / box.height) };
+        const within = placeWithin(target, action.under, action.point);
         return {
           name: action.name,
           summary,
           point: action.point,
           viewport: { width: action.viewport.width, height: action.viewport.height },
           ...(within === undefined ? {} : { within }),
+        };
+      }
+      case 'dragAt': {
+        // Each end is kept the way a point action keeps its one point.
+        const fromWithin = placeWithin(target, action.under, action.from);
+        const toWithin = placeWithin(destination, action.toUnder, action.to);
+        return {
+          name: 'dragAt',
+          summary,
+          from: action.from,
+          to: action.to,
+          viewport: { width: action.viewport.width, height: action.viewport.height },
+          ...(fromWithin === undefined ? {} : { fromWithin }),
+          ...(toWithin === undefined ? {} : { toWithin }),
         };
       }
     }
@@ -282,6 +289,24 @@ export class TraceRecorder {
     }
     this.actions.push(action);
   }
+}
+
+/**
+ * A bare point's place inside the box of the listed node that contained it.
+ * The point replays as given on a same-sized viewport; when a node with a
+ * durable descriptor contained it, its place inside that node's box lets
+ * replay follow the node instead. An anonymous container, a group among
+ * groups on a screen merged into one accessibility node, could not be
+ * re-found and is not kept: the point alone is the honest record.
+ */
+function placeWithin(
+  target: TraceTargetDescriptor | undefined,
+  under: RedactedNode | undefined,
+  point: ViewportPoint,
+): PointWithin | undefined {
+  const box = under?.rect;
+  if (target === undefined || !isRelocatableDescriptor(target) || box === undefined || box.width <= 0 || box.height <= 0) return undefined;
+  return { target, fx: fraction((point.x - box.x) / box.width), fy: fraction((point.y - box.y) / box.height) };
 }
 
 /** A place inside a box as a fraction of its side, clamped to the box and rounded so the entry stays small. */

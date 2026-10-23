@@ -754,6 +754,28 @@ function createPointTools(
       execute: ({ x: px, y: py }) => atPoint(tool, px, py, async (point) => (await context.actions[verb](point)).summary),
     });
   }
+  if (verbs.has('drag') || verbs.has('dragAt')) {
+    tools['drag_at'] = screenTool({
+      description:
+        'Drag from one point in the latest screenshot to another, for a drag the screen does not list: a shape on a canvas, a pin on a map, a card dropped on an empty spot. Both points are pixel coordinates in that image (x from the left edge, y from the top edge); start on the middle of what you drag. When the points land on two different listed controls, they are dragged by id' +
+        (verbs.has('dragAt') ? '; otherwise the bare points are dragged.' : ', which this engine needs: a point on nothing listed fails.') +
+        ' Last resort: when the screen lists what you drag and where it goes, use drag by id.',
+      inputSchema: z.object({
+        x,
+        y,
+        to_x: z.number().describe('x of the drop point in the latest screenshot, pixels from the left edge'),
+        to_y: z.number().describe('y of the drop point in the latest screenshot, pixels from the top edge'),
+      }),
+      execute: ({ x: px, y: py, to_x: qx, to_y: qy }) =>
+        inOrder(() => {
+          const from = pointOf(px, py, 'drag_at');
+          if (typeof from === 'string') return Promise.resolve(from);
+          const to = pointOf(qx, qy, 'drag_at');
+          if (typeof to === 'string') return Promise.resolve(to);
+          return perform(pointAttempt('drag_at', `${at(px, py)} to ${at(qx, qy)}`), async () => (await context.actions.dragAt(from, to)).summary);
+        }),
+    });
+  }
   if (verbs.has('type') || keyboard) {
     tools['type_at'] = screenTool({
       description: keyboard

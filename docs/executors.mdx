@@ -141,8 +141,10 @@ export default {
 | `ctx.attachScreenshot(pixels, label)` | Keeps observed pixels as a `screenshot` artifact of the step and resolves with its report id |
 
 `tapAt(point)` and `hoverAt(point)` act on the listed control at the point,
-else call the engine's coordinate action. `hitTest(point)` finds that control
-without acting. Engines with a keyboard add `typeText`, `pressKey`, and
+else call the engine's coordinate action. `dragAt(from, to)` drags by id when
+the points land on two different listed controls, else between the points
+through the engine's `dragTo` pointer kind. `hitTest(point)` finds the
+control at a point without acting. Engines with a keyboard add `typeText`, `pressKey`, and
 `dismissKeyboard` for the focused control. `upload(target, paths)` refuses a
 path outside the project root or a hidden one with `POLICY_DENIED`, and a
 missing file with `INVALID_ARGUMENT`.

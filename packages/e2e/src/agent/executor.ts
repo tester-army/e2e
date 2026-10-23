@@ -256,6 +256,17 @@ export interface ExecutorActions {
    */
   hoverAt(point: ViewportPoint): Promise<PointTapResult>;
   /**
+   * Drags from one viewport point to another, in the CSS pixels `tapAt`
+   * takes, for a drag the tree does not list: a shape on a canvas, a pin on
+   * a map, a card dropped on an empty spot. When the points land on two
+   * different listed, enabled controls and the engine drags nodes, they are dragged by id,
+   * exactly like `drag`; otherwise the bare points go to the engine's
+   * `dragTo` pointer kind, recorded with the viewport (`dragAt` in
+   * `target.verbs`). Fails when a point is on nothing listed and the engine
+   * drags nodes only.
+   */
+  dragAt(from: ViewportPoint, to: ViewportPoint): Promise<PointDragResult>;
+  /**
    * Types into whatever holds focus, with no node resolved: the path for a
    * field the tree does not list (drawn on a canvas, flattened out of a
    * platform's accessibility tree) after a `tapAt` gave it focus. Inserts at
@@ -299,6 +310,18 @@ export interface PointTapResult {
   /** The listed control the point resolved to; absent when a bare point was acted on. */
   readonly target?: ExecutorTarget;
   /** Prose for a model: what was acted on, or what sits under a bare point. */
+  readonly summary: string;
+}
+
+/** What one `dragAt` did, for the executor to relay to its model. */
+export interface PointDragResult {
+  /** Where the drag started and ended, in the newest observation's CSS pixels. */
+  readonly from: ViewportPoint;
+  readonly to: ViewportPoint;
+  /** The listed controls the points resolved to; both absent when the bare points were dragged. */
+  readonly source?: ExecutorTarget;
+  readonly destination?: ExecutorTarget;
+  /** Prose for a model: what was dragged where, or what sits under the bare points. */
   readonly summary: string;
 }
 

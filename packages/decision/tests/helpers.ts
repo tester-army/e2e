@@ -146,6 +146,7 @@ export function context(options: {
     typeText: noop, pressKey: noop, dismissKeyboard: noop,
     tapAt: vi.fn<ExecutorActions['tapAt']>().mockImplementation(async (point) => ({ point, summary: 'tap' })),
     hoverAt: vi.fn<ExecutorActions['hoverAt']>().mockImplementation(async (point) => ({ point, summary: 'hover' })),
+    dragAt: vi.fn<ExecutorActions['dragAt']>().mockImplementation(async (from, to) => ({ from, to, summary: 'drag' })),
     hitTest: vi.fn<ExecutorActions['hitTest']>().mockImplementation(async (point) => ({ point, summary: 'hit' })),
   };
   const tree = options.tree ?? { id: 'root', children: [{ id: 'name', role: 'textbox', name: 'Name', value: '' }] };

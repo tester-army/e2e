@@ -307,14 +307,37 @@ export type PointActionName = 'tapAt' | 'hoverAt';
  */
 export interface PointAction extends ActionBase {
   readonly name: PointActionName;
-  readonly point: { readonly x: number; readonly y: number };
+  readonly point: TracePoint;
   readonly viewport: TraceViewport;
-  readonly within?: {
-    readonly target: TraceTargetDescriptor;
-    /** The point's place inside the node's box, 0 at the left or top edge and 1 at the right or bottom. */
-    readonly fx: number;
-    readonly fy: number;
-  };
+  readonly within?: PointWithin;
+}
+
+/** A viewport point in CSS pixels, as recorded. */
+export interface TracePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** A recorded point's place inside the box of the listed node that contained it. */
+export interface PointWithin {
+  readonly target: TraceTargetDescriptor;
+  /** The point's place inside the node's box, 0 at the left or top edge and 1 at the right or bottom. */
+  readonly fx: number;
+  readonly fy: number;
+}
+
+/**
+ * A drag from one bare viewport point to another, each end replayed the way
+ * a point action is: at its place inside the listed node that contained it,
+ * when one did, else at the recorded point on a viewport of the recorded size.
+ */
+export interface PointDragAction extends ActionBase {
+  readonly name: 'dragAt';
+  readonly from: TracePoint;
+  readonly to: TracePoint;
+  readonly viewport: TraceViewport;
+  readonly fromWithin?: PointWithin;
+  readonly toWithin?: PointWithin;
 }
 
 /**
@@ -372,6 +395,7 @@ export type RecordedAction =
   | NavigateAction
   | BackAction
   | PointAction
+  | PointDragAction
   | TypeTextAction
   | PressKeyAction
   | DismissKeyboardAction
@@ -707,6 +731,26 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
       if (raw['within'] !== undefined && within === undefined) return undefined;
       return { name, summary, point, viewport, ...(within === undefined ? {} : { within }) };
     }
+    case 'dragAt': {
+      const from = readPoint(raw['from']);
+      const to = readPoint(raw['to']);
+      const viewport = readViewport(raw['viewport']);
+      if (from === undefined || to === undefined || viewport === undefined) return undefined;
+      const fromWithin = raw['fromWithin'] === undefined ? undefined : readWithin(raw['fromWithin']);
+      const toWithin = raw['toWithin'] === undefined ? undefined : readWithin(raw['toWithin']);
+      if ((raw['fromWithin'] !== undefined && fromWithin === undefined) || (raw['toWithin'] !== undefined && toWithin === undefined)) {
+        return undefined;
+      }
+      return {
+        name: 'dragAt',
+        summary,
+        from,
+        to,
+        viewport,
+        ...(fromWithin === undefined ? {} : { fromWithin }),
+        ...(toWithin === undefined ? {} : { toWithin }),
+      };
+    }
     case 'back':
       return { name: 'back', summary };
     case 'typeText': {
@@ -730,7 +774,7 @@ function readRecordedAction(document: unknown): RecordedAction | undefined {
   }
 }
 
-function readPoint(document: unknown): PointAction['point'] | undefined {
+function readPoint(document: unknown): TracePoint | undefined {
   const raw = readObject(document);
   const x = raw?.['x'];
   const y = raw?.['y'];
@@ -748,7 +792,7 @@ function readViewport(document: unknown): TraceViewport | undefined {
   return { width: width as number, height: height as number };
 }
 
-function readWithin(document: unknown): NonNullable<PointAction['within']> | undefined {
+function readWithin(document: unknown): PointWithin | undefined {
   const raw = readObject(document);
   const target = raw === undefined ? undefined : readDescriptor(raw['target']);
   const fx = raw?.['fx'];
@@ -861,6 +905,21 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       if (action.within === undefined) return withSummary(action);
       const mapped = target(action.within.target);
       return mapped === undefined ? undefined : withSummary({ ...action, within: { ...action.within, target: mapped } });
+    }
+    case 'dragAt': {
+      const within = (end: PointWithin | undefined): PointWithin | null | undefined => {
+        if (end === undefined) return null;
+        const mapped = target(end.target);
+        return mapped === undefined ? undefined : { ...end, target: mapped };
+      };
+      const fromWithin = within(action.fromWithin);
+      const toWithin = within(action.toWithin);
+      if (fromWithin === undefined || toWithin === undefined) return undefined;
+      return withSummary({
+        ...action,
+        ...(fromWithin === null ? {} : { fromWithin }),
+        ...(toWithin === null ? {} : { toWithin }),
+      });
     }
     case 'back':
     case 'pressKey':

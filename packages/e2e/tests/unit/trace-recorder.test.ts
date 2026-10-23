@@ -330,3 +330,54 @@ describe('TraceRecorder: bare-point taps', () => {
     expect(broken((action) => { action['point'] = { x: 'left', y: 60 }; })).toBeUndefined();
   });
 });
+
+describe('TraceRecorder: bare-point drags', () => {
+  const viewport = { width: 1280, height: 720 };
+  const board = redacted({ ref: { id: 'b1', revision: 'r1' }, role: 'img', name: 'Board', rect: { x: 100, y: 200, width: 400, height: 200 } });
+
+  it('records both points with the viewport, and where each sat inside the node that contained it', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'dragAt', from: { x: 200, y: 250 }, to: { x: 400, y: 350 }, viewport, under: board, toUnder: board });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' });
+    expect(trace?.actions[0]).toEqual({
+      name: 'dragAt',
+      summary: 'drag from the point (200, 250) on img "Board" to the point (400, 350) on img "Board"',
+      from: { x: 200, y: 250 },
+      to: { x: 400, y: 350 },
+      viewport,
+      fromWithin: { target: { role: 'img', name: 'Board' }, fx: 0.25, fy: 0.25 },
+      toWithin: { target: { role: 'img', name: 'Board' }, fx: 0.75, fy: 0.75 },
+    });
+    expect(trace?.truncated).toBeUndefined();
+  });
+
+  it('records an end on nothing listed by the viewport alone, and reads the drag back', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'dragAt', from: { x: 200, y: 250 }, to: { x: 700, y: 600 }, viewport, under: board });
+    const trace = recorder.finalize({ ...conclusion, startPath: '/canvas' })!;
+    expect(trace.actions[0]).toEqual({
+      name: 'dragAt',
+      summary: 'drag from the point (200, 250) on img "Board" to the point (700, 600)',
+      from: { x: 200, y: 250 },
+      to: { x: 700, y: 600 },
+      viewport,
+      fromWithin: { target: { role: 'img', name: 'Board' }, fx: 0.25, fy: 0.25 },
+    });
+    const entry = readTraceEntry(JSON.parse(JSON.stringify(buildTraceEntry(trace))));
+    expect(entry?.payload.actions[0]).toEqual(trace.actions[0]);
+  });
+
+  it('rejects a stored drag whose point, viewport, or fraction is malformed', () => {
+    const recorder = makeRecorder();
+    recorder.record({ name: 'dragAt', from: { x: 200, y: 250 }, to: { x: 700, y: 600 }, viewport });
+    const entry = JSON.parse(JSON.stringify(buildTraceEntry(recorder.finalize({ ...conclusion, startPath: '/canvas' })!)));
+    const broken = (patch: (action: Record<string, unknown>) => void) => {
+      const copy = JSON.parse(JSON.stringify(entry));
+      patch(copy.payload.actions[0]);
+      return readTraceEntry(copy);
+    };
+    expect(broken((action) => { delete action['to']; })).toBeUndefined();
+    expect(broken((action) => { action['viewport'] = { width: 1280, height: -1 }; })).toBeUndefined();
+    expect(broken((action) => { action['toWithin'] = { target: { role: 'img' }, fx: 0, fy: 2 }; })).toBeUndefined();
+  });
+});

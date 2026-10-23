@@ -31,6 +31,19 @@ test('taps a listed control by id when the point lands on it', async ({ app, age
   await expect(screen.getByRole('status')).toHaveText('reset');
 });
 
+test('drags a drawn pin the tree does not list', async ({ app, agent, screen }) => {
+  await app.open('/canvas');
+  await agent.act('drag the red pin to the middle of the map');
+  await expect(screen.getByRole('status')).toHaveText('moved red to 200,100');
+  await screen.tapAt({ x: 200, y: 100 });
+  await expect(screen.getByRole('status')).toHaveText('red');
+});
+
+test('drags between listed controls by id when both points land on them', async ({ app, agent }) => {
+  await app.open('/canvas');
+  await agent.act('drag the reset button onto the note field');
+});
+
 test('opens a bare canvas with a screenshot already attached', async ({ app, agent, screen }) => {
   await app.open('/canvas-bare');
   await agent.act('pick the blue pin on the bare map');
@@ -116,6 +129,18 @@ function actModel(call: LoopCall) {
     if (calls === 1) return [{ toolName: 'tap_at', input: { x: 30, y: 165 } }];
     return conclude('passed');
   }
+  if (call.prompt.includes('drag the red pin')) {
+    // The red pin at CSS (300, 60) is image (180, 36); the map's middle, CSS (200, 100), is image (120, 60).
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls === 1) return [{ toolName: 'drag_at', input: { x: 180, y: 36, to_x: 120, to_y: 60 } }];
+    return conclude('passed');
+  }
+  if (call.prompt.includes('drag the reset button onto the note field')) {
+    // Reset's center, CSS (50, 275), is image (30, 165); the Note field's, CSS (100, 315), is image (60, 189).
+    if (calls === 0) return [{ toolName: 'screenshot', input: {} }];
+    if (calls === 1) return [{ toolName: 'drag_at', input: { x: 30, y: 165, to_x: 60, to_y: 189 } }];
+    return conclude('passed');
+  }
   if (call.prompt.includes('pick the blue pin on the bare map')) {
     // The opening prompt carried the screenshot: the blue pin at CSS (80, 140) is image (48, 84), no screenshot call.
     return calls === 0 ? [{ toolName: 'tap_at', input: { x: 48, y: 84 } }] : conclude('passed');
@@ -184,7 +209,7 @@ function actModel(call: LoopCall) {
   return conclude('passed');
 }
 
-const POINT_VERBS = ['screenshot', 'tap_at', 'type_at', 'press_at', 'select_at'];
+const POINT_VERBS = ['screenshot', 'tap_at', 'drag_at', 'type_at', 'press_at', 'select_at'];
 
 describe('agent.act pixel verbs', () => {
   let app: FixtureApp;
@@ -261,6 +286,27 @@ describe('agent.act pixel verbs', () => {
     expect(actions[0]!.detail).toBe('tap button "Reset"');
     const [, , third] = turnsOf('press the reset button');
     expect(third!.lastToolResult).toMatch(/Tapped #\S+ button \\"Reset\\", the control at \(50, 275\)/);
+  });
+
+  it('drags between two bare points through the engine when no listed controls hold them', () => {
+    expect(resultByTitle(outcome, 'drags a drawn pin the tree does not list').status).toBe('passed');
+    const step = stepOf('drags a drawn pin the tree does not list');
+    const actions = step.events.filter((event) => event.kind === 'engine');
+    expect(actions.map((event) => event.name)).toEqual(['dragAt']);
+    expect(actions[0]!.detail).toBe('drag from the point (300, 60) to the point (200, 100)');
+    const [, , third] = turnsOf('drag the red pin');
+    expect(third!.lastToolResult).toContain('Dragged from the point (300, 60) to the point (200, 100); no two listed controls hold the ends');
+    expect(third!.lastToolResult).toContain('"type":"file"');
+  });
+
+  it('drags by id when both points land on listed controls', () => {
+    expect(resultByTitle(outcome, 'drags between listed controls by id when both points land on them').status).toBe('passed');
+    const step = stepOf('drags between listed controls by id when both points land on them');
+    const actions = step.events.filter((event) => event.kind === 'engine');
+    expect(actions.map((event) => event.name)).toEqual(['dragTo']);
+    expect(actions[0]!.detail).toBe('drag button "Reset" to textbox "Note"');
+    const [, , third] = turnsOf('drag the reset button onto the note field');
+    expect(third!.lastToolResult).toMatch(/Dragged #\S+ button \\"Reset\\", the control at \(50, 275\), onto #\S+ textbox \\"Note\\", the control at \(100, 315\)/);
   });
 
   it('attaches a screenshot to the opening prompt of a screen with nothing to tap by id', () => {

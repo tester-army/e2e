@@ -228,7 +228,7 @@ the file store.
 | `gap` | An action can't be replayed, see [below](#limits-and-gaps). | The agent does this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed, and it's unknown whether it took effect. The agent is told to check before it acts again. | Check the app. |
-| `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
+| `viewport-changed` | A bare-point tap, hover, or drag was recorded on a viewport of another size. | Keep the viewport fixed. |
 | `end-mismatch` | Every action ran, but the [end check](#how-a-replay-works) failed. | Leftover data from an earlier run, a banner that comes and goes, or a regression. Unique test data and cleanup in `afterEach` help. |
 
 To rule the cache out of a failure, run one time without it:
