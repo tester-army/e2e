@@ -1,5 +1,11 @@
 # @e2e-dev/limrun
 
+## 0.2.2
+
+### Patch Changes
+
+- [#1308](https://github.com/tester-army/e2e/pull/1308) [`07eb481`](https://github.com/tester-army/e2e/commit/07eb4812ffd7226d5a5a1ee1a6ab23076f138f0f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.29.
+
 ## 0.2.1
 
 ### Patch Changes
