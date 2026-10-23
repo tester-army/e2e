@@ -745,9 +745,9 @@ export interface Engine {
   /**
    * capability: pointer - requires observation. Performs one pointer action
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
-   * node behind it: the agent's `tap_at` verb lands here when the point the
-   * model named in a screenshot sits on nothing the tree lists (a shape on a
-   * canvas, a pin on a map, a control in a system sheet), and so do a test's
+   * node behind it: the agent's `tap_at` and `hover_at` verbs land here with
+   * the point the model named in a screenshot (a shape on a canvas, a pin on
+   * a map, a control in a system sheet or one the tree lists), and so do a test's
    * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
    * Dispatch the pointer at the point as given; the harness has clamped an
    * agent's point to the viewport and validated a test's. Throw

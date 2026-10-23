@@ -157,8 +157,10 @@ The tools, one per engine action. Name the target as the screen names it
 The focused field's selected text is listed as `selection="..."` (never for
 a secret), so a repeated `Shift+ArrowLeft` selects one word with visible
 feedback. Point tools serve a canvas shape, map pin, image region, or system
-sheet control, hit-testing the tree first so a listed control underneath is
-acted on by id; `type_at` on nothing listed taps, then types. A screen with
+sheet control. `tap_at` and `hover_at` act at the point; `press_at`,
+`select_at`, and `type_at` hit-test the tree first so a listed control
+underneath is acted on by id, and `type_at` on nothing listed taps, then
+types. A screen with
 nothing to tap by id opens with a screenshot attached. A device has no
 `right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
 masked and withheld after a secret fill (topic writing-tests): act on pixels
