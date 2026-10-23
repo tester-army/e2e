@@ -15,9 +15,9 @@ import type {
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
 import { defineEngine, type EngineHandle } from '../../src/engine/index.ts';
 import { classifyError, serializeError } from '../../src/internal/errors.ts';
-import type { AttemptRecord, ResultRecord, RunError, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
+import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 import { runUnits } from '../../src/run/scheduler.ts';
-import { serialGroupId, type SerialAttemptRun } from '../../src/run/serial.ts';
+import { serialGroupId } from '../../src/run/serial.ts';
 import { buildWorkPlans, type TargetWorkPlan, type TimeLimit } from '../../src/run/units.ts';
 import type { SpawnUnitRunner, UnitRunner, UnitRunnerEvents } from '../../src/run/unit-runner.ts';
 import type { MainToWorker, RunUnitMessage } from '../../src/run/worker/protocol.ts';
@@ -155,7 +155,7 @@ interface FakeBehaviour {
   /** The hung pair starts its next attempt after `attemptsBeforeHang` and keeps running through an interrupt. */
   readonly startAttemptBeforeHang?: boolean;
   /** Serial group attempts the unit's pairs (one group) finish before the worker hangs. */
-  readonly serialRunsBeforeHang?: readonly SerialAttemptRun[];
+  readonly serialRunsBeforeHang?: readonly SerialAttemptRecord[];
   /** Members the group's next attempt finishes before the worker hangs. */
   readonly serialMembersBeforeHang?: readonly SerialMemberRecord[];
   /** Instead of hanging, the worker exits on its own once it sent what came before. */
@@ -323,10 +323,10 @@ class FakeRunner implements UnitRunner {
       const first = message.pairs[0];
       for (const finishedRun of this.behaviour.serialRunsBeforeHang ?? []) {
         const groupId = serialGroupId(first!.test.serialId!, this.targetName, first!.agent, first!.repeat);
-        for (const [index, member] of finishedRun.record.members.entries()) {
+        for (const [index, member] of finishedRun.members.entries()) {
           const pair = message.pairs[index]!;
           this.events.onMessage({ type: 'pair-start', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, title: pair.test.id, file: pair.test.file, serialId: pair.test.serialId });
-          this.events.onMessage({ type: 'serial-member', groupId, attempt: finishedRun.record, member });
+          this.events.onMessage({ type: 'serial-member', groupId, attempt: finishedRun, member });
         }
         this.events.onMessage({ type: 'serial-attempt', groupId, run: finishedRun });
       }
@@ -934,22 +934,20 @@ function memberRecord(pairs: readonly TestTargetPair[], attemptIndex: number, me
 }
 
 /** A finished group attempt whose members ended with `statuses`. */
-function groupRun(pairs: readonly TestTargetPair[], index: number, statuses: readonly ('passed' | 'failed')[]): SerialAttemptRun {
+function groupRun(pairs: readonly TestTargetPair[], index: number, statuses: readonly ('passed' | 'failed')[]): SerialAttemptRecord {
   const failed = statuses.includes('failed');
   return {
-    reachedMembers: true,
-    record: {
-      id: `group-attempt-${index}`,
-      index,
-      status: failed ? 'failed' : 'passed',
-      startedAt: '2026-01-01T00:00:00.000Z',
-      durationMs: 5,
-      members: statuses.map((status, memberIndex) => memberRecord(pairs, index, memberIndex, status)),
-      artifacts: [],
-      ...(failed ? { error: FAILED_ATTEMPT.error! } : {}),
-      secondaryErrors: [],
-      cleanup: 'complete',
-    },
+    id: `group-attempt-${index}`,
+    cutRetry: false,
+    index,
+    status: failed ? 'failed' : 'passed',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    durationMs: 5,
+    members: statuses.map((status, memberIndex) => memberRecord(pairs, index, memberIndex, status)),
+    artifacts: [],
+    ...(failed ? { error: FAILED_ATTEMPT.error! } : {}),
+    secondaryErrors: [],
+    cleanup: 'complete',
   };
 }
 
@@ -1283,7 +1281,7 @@ describe('scheduler fault handling', () => {
 
     expect(collected.serialGroups).toHaveLength(1);
     expect(collected.serialGroups[0]!.status).toBe(verdict);
-    expect(collected.serialGroups[0]!.attempts).toEqual(runs.map((entry) => entry.record));
+    expect(collected.serialGroups[0]!.attempts).toEqual(runs);
     expect(collected.results.map((result) => result.status)).toEqual(results);
   });
 

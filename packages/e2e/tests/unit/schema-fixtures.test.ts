@@ -35,6 +35,23 @@ describe.each(schemas)('%s schema', (name) => {
   });
 
   if (name === 'report-v1') {
+    it('accepts optional runner cut-retry decisions and rejects other types', () => {
+      const report = readJson('fixtures', 'report-v1.valid.json') as {
+        run: { serialGroups: { attempts: Record<string, unknown>[] }[] };
+      };
+      const attempt = report.run.serialGroups[0]!.attempts[1]!;
+      for (const cutRetry of [true, false]) {
+        attempt['cutRetry'] = cutRetry;
+        expect(validate(report)).toBe(true);
+      }
+      for (const cutRetry of ['true', 1, null]) {
+        attempt['cutRetry'] = cutRetry;
+        expect(validate(report)).toBe(false);
+      }
+      delete attempt['cutRetry'];
+      expect(validate(report)).toBe(true);
+    });
+
     it("bounds what a step tells and what the app logged: a log line's source and level, a hook phase, and the cache detail, entry, and write", () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {
         run: { results: { attempts: (Record<string, unknown> & { steps: Record<string, unknown>[] })[] }[] };

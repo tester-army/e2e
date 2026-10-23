@@ -1,7 +1,7 @@
 /**
  * What one result left behind, wherever the report keeps it. A serial
  * member's result carries no attempts of its own: its error, duration, and
- * steps live on the group's final attempt, keyed by test id. Every other
+ * steps live on the group's attempts, keyed by test id. Every other
  * result answers from its own attempts. The reporters that read a result
  * (JUnit, markdown) share this one reading.
  */
@@ -9,6 +9,7 @@
 import type { SkipInfo } from '../collect/select.ts';
 import type { FailureEvidence } from '../run/records.ts';
 import type { AppLogRecord } from '../run/steps.ts';
+import { isCutSerialRetry } from '../run/retry.ts';
 import type { ReportError, ReportResult, ReportSerialGroup, ReportStep } from './build.ts';
 
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -16,6 +17,10 @@ type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
 /** One attempt as a reporter reads it: what stopped it, the steps up to there, and what it left behind. */
 export interface AttemptView {
   readonly status: ReportResult['attempts'][number]['status'] | 'skipped';
+  /** How long the attempt ran; for a serial member, the member's own part of it. */
+  readonly durationMs: number;
+  /** This attempt's member records are not the verdict: the retry was interrupted, or it never reached its members. */
+  readonly cut: boolean;
   readonly error: ReportError | undefined;
   readonly steps: readonly ReportStep[];
   /** What the app logged during the attempt (for a serial member, during its part of it), each line with its step. */
@@ -33,10 +38,12 @@ export interface AttemptView {
 }
 
 export interface Outcome {
-  /** The final attempt's duration; for a serial member, the member's own. */
+  /** The verdict attempt's duration. */
   readonly durationMs: number;
   /** The final attempt: the verdict of a failed test, the passing retry of a flaky one. */
   readonly final: AttemptView;
+  /** The last attempt that reached the result's verdict, so a retry the run interrupted does not stand for it; otherwise the final one. */
+  readonly verdict: AttemptView;
   /** The last attempt that did not pass before the final one, when there was one: what a flaky test hit. */
   readonly lastFailed: AttemptView | undefined;
   /** Every attempt in order, so a reporter can say whether they failed alike. */
@@ -46,14 +53,17 @@ export interface Outcome {
 }
 
 /** What a result that never ran an attempt reads as. */
-const NO_ATTEMPT: AttemptView = { status: 'skipped', error: undefined, steps: [], appLog: [], failure: undefined, artifacts: [], secondaryErrors: [], skip: undefined };
+const NO_ATTEMPT: AttemptView = { status: 'skipped', durationMs: 0, cut: false, error: undefined, steps: [], appLog: [], failure: undefined, artifacts: [], secondaryErrors: [], skip: undefined };
 
 export function outcome(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): Outcome {
   const views = attemptViews(result, groups);
   const earlier = views.slice(0, -1);
+  const final = views.at(-1) ?? NO_ATTEMPT;
+  const verdict = views.findLast((view) => !view.cut && reachedVerdict(result.status, view.status)) ?? final;
   return {
-    durationMs: durationOf(result, groups),
-    final: views.at(-1) ?? NO_ATTEMPT,
+    durationMs: verdict.durationMs,
+    final,
+    verdict,
     lastFailed: earlier.toReversed().find((attempt) => attempt.status !== 'passed'),
     attempts: views,
     failedAttempts: earlier.filter((attempt) => attempt.status !== 'passed').length,
@@ -65,6 +75,8 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
   if (result.serialGroupId === undefined) {
     return result.attempts.map((attempt) => ({
       status: attempt.status,
+      durationMs: attempt.durationMs,
+      cut: false,
       error: attempt.error,
       steps: attempt.steps,
       appLog: attempt.appLog ?? [],
@@ -76,10 +88,13 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
     }));
   }
   const attempts = groups.get(result.serialGroupId)?.attempts ?? [];
-  return attempts.map((attempt) => {
+  return attempts.map((attempt, index) => {
     const member = attempt.members.find((candidate) => candidate.testId === result.testId);
     return {
       status: member?.status ?? attempt.status,
+      durationMs: member?.durationMs ?? 0,
+      // Older reports lack `cutRetry`; infer it from the attempt's status.
+      cut: attempt.cutRetry ?? isCutSerialRetry(attempt.status, index, true),
       error: member?.error ?? attempt.error,
       steps: member?.steps ?? [],
       appLog: member?.appLog ?? [],
@@ -93,8 +108,8 @@ function attemptViews(result: ReportResult, groups: ReadonlyMap<string, ReportSe
   });
 }
 
-function durationOf(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): number {
-  if (result.serialGroupId === undefined) return result.attempts.at(-1)?.durationMs ?? 0;
-  const last = groups.get(result.serialGroupId)?.attempts.at(-1);
-  return last?.members.find((candidate) => candidate.testId === result.testId)?.durationMs ?? 0;
+/** Whether an attempt ended the way the result did; a failure and a timeout are one verdict. */
+function reachedVerdict(result: ReportResult['status'], attempt: AttemptView['status']): boolean {
+  if (result === 'failed' || result === 'timed-out') return attempt === 'failed' || attempt === 'timed-out';
+  return attempt === result;
 }

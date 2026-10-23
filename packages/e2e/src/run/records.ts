@@ -114,6 +114,11 @@ export interface SerialMemberRecord {
 
 export interface SerialAttemptRecord {
   id: string;
+  /**
+   * The retry was interrupted, or it never reached its members, so this
+   * attempt's member records are not the verdict.
+   */
+  cutRetry: boolean;
   index: number;
   status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
   startedAt: string;

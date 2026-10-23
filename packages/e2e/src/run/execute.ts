@@ -49,10 +49,10 @@ import type {
   SerialGroupRecord,
   SerialMemberRecord,
 } from './records.ts';
-import { isFailedStatus } from './records.ts';
+import { isFailedStatus, type SerialAttemptRecord } from './records.ts';
 import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
-import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
+import { runSerialUnit, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
 import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
@@ -73,7 +73,7 @@ export interface ExecutionEvents {
   /** One member that finished in a serial group attempt, ahead of the group. */
   onSerialMember?(groupId: string, attempt: SerialAttemptStart, member: SerialMemberRecord): void;
   /** One finished serial group attempt, ahead of the group. */
-  onSerialAttempt?(groupId: string, run: SerialAttemptRun): void;
+  onSerialAttempt?(groupId: string, run: SerialAttemptRecord): void;
   /** Fires before a runnable pair starts; a serial unit announces each member as it begins. */
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
@@ -246,7 +246,7 @@ export class TargetExecutor implements SerialHost {
   }
 
   /** Streams one finished serial group attempt (SerialHost). */
-  serialAttemptFinished(groupId: string, run: SerialAttemptRun): void {
+  serialAttemptFinished(groupId: string, run: SerialAttemptRecord): void {
     this.options.events?.onSerialAttempt?.(groupId, run);
   }
 

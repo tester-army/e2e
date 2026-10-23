@@ -496,9 +496,10 @@ describe('renderMarkdownReport', () => {
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [
-        { ...attempt({ status: 'failed', artifacts: ['video'] }), members: [] },
+        { ...attempt({ status: 'failed', artifacts: ['video'] }), status: 'failed', members: [] },
         {
           ...attempt({ status: 'failed', artifacts: ['screenshot'] }),
+          status: 'failed',
           members: [
             {
               id: 'm',
@@ -525,17 +526,17 @@ describe('renderMarkdownReport', () => {
     expect(renderMarkdownReport(page({ status: 'failed', results: [member] }))).toContain('**🔴 step two**  \n`tests/example.e2e.ts:3`\n\n**failed**\n');
   });
 
-  it('tells a serial member from the attempt that failed it when the interrupted retry skipped it', () => {
+  it.each(['interrupted', 'failed'] as const)('tells a serial member from its verdict when a %s retry was cut', (status) => {
     const member = named({ title: 'step two', status: 'failed', serialGroupId: 'g1' });
-    const memberRecord = (status: 'failed' | 'skipped') => ({
-      id: `m-${status}`,
+    const memberRecord = (memberStatus: 'failed' | 'skipped') => ({
+      id: `m-${memberStatus}`,
       index: 0,
       testId: member.testId,
-      status,
+      status: memberStatus,
       startedAt: REPORT_AT,
       durationMs: 40,
-      steps: status === 'failed' ? [step({ index: 0, label: 'tap Next', status: 'failed', error: reportError({ message: 'nope' }) })] : [],
-      ...(status === 'failed'
+      steps: memberStatus === 'failed' ? [step({ index: 0, label: 'tap Next', status: 'failed', error: reportError({ message: 'nope' }) })] : [],
+      ...(memberStatus === 'failed'
         ? { error: { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'nope', retryable: false } }
         : { skip: { cause: 'serial-predecessor-failed' as const, reason: 'group attempt did not reach this member' } }),
       secondaryErrors: [],
@@ -554,13 +555,14 @@ describe('renderMarkdownReport', () => {
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [
-        { ...attempt({ status: 'failed' }), members: [memberRecord('failed')] },
-        { ...attempt({ status: 'interrupted', error: { code: 'INTERRUPTED', message: 'run interrupted in phase body' } }), members: [memberRecord('skipped')] },
+        { ...attempt({ status: 'failed' }), status: 'failed', members: [memberRecord('failed')] },
+        { ...attempt({ status, error: { code: 'INTERRUPTED', message: 'retry could not finish' } }), status, cutRetry: true, members: [{ ...memberRecord(status === 'failed' ? 'failed' : 'skipped'), error: reportError({ code: 'INTERRUPTED', message: 'retry could not finish' }), steps: [] }] },
       ],
     };
     const body = renderMarkdownReport(page({ status: 'interrupted', results: [member], serialGroups: [group] }));
     expect(body).toContain('**ASSERTION_FAILED** at step 1 of 1: `screen.tap tap Next`');
-    expect(body).not.toContain('INTERRUPTED');
+    if (status === 'interrupted') expect(body).not.toContain('INTERRUPTED');
+    else expect(body).toContain('then **INTERRUPTED**');
   });
 
   it('tolerates a document written before results carried repeat, or one giving a flaky test a single attempt', () => {

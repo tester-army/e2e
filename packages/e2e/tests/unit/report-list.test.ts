@@ -107,6 +107,7 @@ function serialGroup(
     status: 'passed',
     attempts: attempts.map((entry, index) => ({
       id: `group-attempt-${index}`,
+      cutRetry: false,
       index,
       status: entry.error === undefined ? 'passed' : 'failed',
       startedAt: new Date(0).toISOString(),

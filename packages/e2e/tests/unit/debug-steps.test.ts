@@ -82,7 +82,7 @@ function serialGroup(members: SerialMemberRecord[]): SerialGroupRecord {
     repeat: 0,
     memberTestIds: members.map((each) => each.testId),
     status: 'passed',
-    attempts: [{ id: 'g1-attempt-1', index: 0, status: 'passed', startedAt: AT, durationMs: 3000, members, artifacts: [], secondaryErrors: [], cleanup: 'complete' }],
+    attempts: [{ id: 'g1-attempt-1', cutRetry: false, index: 0, status: 'passed', startedAt: AT, durationMs: 3000, members, artifacts: [], secondaryErrors: [], cleanup: 'complete' }],
   };
 }
 

@@ -477,6 +477,7 @@
       "properties": {
         "id": { "$ref": "#/$defs/uuidV7" },
         "index": { "type": "integer", "minimum": 0 },
+        "cutRetry": { "type": "boolean", "description": "The retry was interrupted or never reached its members, so this attempt's member records are not the verdict. Absent in older reports." },
         "status": { "enum": ["passed", "failed", "timed-out", "interrupted"] },
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },

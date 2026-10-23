@@ -871,6 +871,14 @@ session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
 
+/** Serial verdict provenance is optional on reports written by older runners. */
+type SerialReportAttempt = Report['run']['serialGroups'][number]['attempts'][number];
+declare const serialReportAttempt: SerialReportAttempt;
+const cutSerialRetry: boolean | undefined = serialReportAttempt.cutRetry;
+void cutSerialRetry;
+// @ts-expect-error the runner's cut-retry decision is a boolean, never a status string
+serialReportAttempt.cutRetry = 'interrupted';
+
 void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
 // @ts-expect-error an alternative must be a Locator
 void screen.getByRole('tab').or('tab');
