@@ -1,48 +1,28 @@
 import { test as base } from '@e2e-dev/web';
-import type { App } from 'e2e';
+import { expect, unique } from 'e2e';
 
-export { expect } from 'e2e';
+export { expect };
 
-interface Project {
-  readonly id: string;
-  readonly name: string;
-}
-
-interface Task {
-  readonly id: string;
-  readonly title: string;
-}
-
-/** Calls the app's test API and fails on any status but 2xx. */
-async function testApi(app: App, method: 'POST' | 'DELETE', path: string, body?: object): Promise<Response> {
-  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
-  const response = await fetch(new URL(path, app.baseUrl), {
-    method,
-    headers: { 'content-type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}`);
-  return response;
-}
-
-/** A fresh project for each test, deleted after it. */
-export const test = base.extend<{ project: Project }>({
-  project: async ({ app }, use) => {
-    const response = await testApi(app, 'POST', '/api/test/projects', { name: 'Launch plan' });
-    const project = (await response.json()) as Project;
-    await use(project);
-    await testApi(app, 'DELETE', `/api/test/projects/${project.id}`);
+/** A fresh project for each test, created and deleted through the app. */
+export const test = base.extend<{ project: string }>({
+  project: async ({ app, agent, screen }, use) => {
+    const name = `Launch plan ${Date.now()}`;
+    await app.open('/projects');
+    await agent.act('create a project named {name}', { params: { name: unique(name) } });
+    await expect(screen.getByRole('heading', name)).toBeVisible();
+    await use(name);
+    await app.open('/projects');
+    await agent.act('delete the project {name}', { params: { name: unique(name) } });
+    await expect(screen.getByRole('link', name)).toBeHidden();
   },
 });
 
-/** One task in that project. */
-export const taskTest = test.extend<{ task: Task }>({
-  task: async ({ app, project }, use) => {
-    const response = await testApi(app, 'POST', `/api/test/projects/${project.id}/tasks`, {
-      title: 'Write the announcement',
-    });
-    const task = (await response.json()) as Task;
-    await use(task);
-    await testApi(app, 'DELETE', `/api/test/tasks/${task.id}`);
+/** One task in that project. Deleting the project deletes it too. */
+export const taskTest = test.extend<{ task: string }>({
+  task: async ({ agent, screen }, use) => {
+    const title = 'Write the announcement';
+    await agent.act('add a task {title}', { params: { title } });
+    await expect(screen.getByRole('checkbox', title)).toBeVisible();
+    await use(title);
   },
 });

@@ -18,55 +18,38 @@ holds cookies and storage, not server data. Fixtures create that data.
 
 Put your fixtures in one file and export the extended `test` from it. Start
 from your engine's `test`, so fixtures and tests can use `browser` or
-`device`. This file creates a project and a task through the app's test API.
+`device`.
+
+A fixture gets the same fixtures as a test, `agent` included. So it can
+create its data through the app with `agent.act`, and needs no test API:
 
 ```ts title="tests/fixtures.ts" expandable
 import { test as base } from '@e2e-dev/web';
-import type { App } from 'e2e';
+import { expect, unique } from 'e2e';
 
-export { expect } from 'e2e';
+export { expect };
 
-interface Project {
-  readonly id: string;
-  readonly name: string;
-}
-
-interface Task {
-  readonly id: string;
-  readonly title: string;
-}
-
-/** Calls the app's test API and fails on any status but 2xx. */
-async function testApi(app: App, method: 'POST' | 'DELETE', path: string, body?: object): Promise<Response> {
-  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
-  const response = await fetch(new URL(path, app.baseUrl), {
-    method,
-    headers: { 'content-type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}`);
-  return response;
-}
-
-/** A fresh project for each test, deleted after it. */
-export const test = base.extend<{ project: Project }>({
-  project: async ({ app }, use) => {
-    const response = await testApi(app, 'POST', '/api/test/projects', { name: 'Launch plan' });
-    const project = (await response.json()) as Project;
-    await use(project);
-    await testApi(app, 'DELETE', `/api/test/projects/${project.id}`);
+/** A fresh project for each test, created and deleted through the app. */
+export const test = base.extend<{ project: string }>({
+  project: async ({ app, agent, screen }, use) => {
+    const name = `Launch plan ${Date.now()}`;
+    await app.open('/projects');
+    await agent.act('create a project named {name}', { params: { name: unique(name) } });
+    await expect(screen.getByRole('heading', name)).toBeVisible();
+    await use(name);
+    await app.open('/projects');
+    await agent.act('delete the project {name}', { params: { name: unique(name) } });
+    await expect(screen.getByRole('link', name)).toBeHidden();
   },
 });
 
-/** One task in that project. */
-export const taskTest = test.extend<{ task: Task }>({
-  task: async ({ app, project }, use) => {
-    const response = await testApi(app, 'POST', `/api/test/projects/${project.id}/tasks`, {
-      title: 'Write the announcement',
-    });
-    const task = (await response.json()) as Task;
-    await use(task);
-    await testApi(app, 'DELETE', `/api/test/tasks/${task.id}`);
+/** One task in that project. Deleting the project deletes it too. */
+export const taskTest = test.extend<{ task: string }>({
+  task: async ({ agent, screen }, use) => {
+    const title = 'Write the announcement';
+    await agent.act('add a task {title}', { params: { title } });
+    await expect(screen.getByRole('checkbox', title)).toBeVisible();
+    await use(title);
   },
 });
 ```
@@ -74,28 +57,42 @@ export const taskTest = test.extend<{ task: Task }>({
 Code before `await use(value)` is the setup. The test receives `value`. Code
 after `use` is the teardown, and it runs after the test passes or fails.
 
-Import `test` and `expect` from this file in your test files. The test
-restores the `admin` session and works on its own fresh data:
+Write fixture goals like goals in a test. Keep each one atomic and check it
+with `expect`. Give a value that changes on each run with `unique()`, so the
+[cache can replay the step](/cache#what-must-match). See
+[Goals](/core-concepts#goals).
+
+Import `test` and `expect` from this file in your test files. The saved
+session is restored before the fixtures run, so they work signed in. The
+test starts on the project page the fixtures left open:
 
 ```ts title="tests/tasks.e2e.ts"
 import { expect, taskTest as test } from './fixtures.ts';
 
-test('completes a task', { session: 'admin' }, async ({ app, screen, project, task }) => {
-  await app.open(`/projects/${project.id}`);
-  await screen.getByRole('checkbox', task.title).check();
-  await expect(screen.getByRole('checkbox', task.title)).toBeChecked();
+test('completes a task', { session: 'admin' }, async ({ screen, task }) => {
+  await screen.getByRole('checkbox', task).check();
+  await expect(screen.getByRole('checkbox', task)).toBeChecked();
 });
 ```
+
+The report lists the fixture's steps in phase `beforeEach` and `afterEach`.
+
+<Note>
+Every agent step in a fixture runs for every test that uses it. Where the
+cache can't replay a step, it costs model calls each time. When your app
+has a test API, a `fetch` call in the fixture is faster.
+</Note>
 
 ## Build one fixture on another
 
 A definition sees the fixtures of the `test` it extends, not the other
 definitions in the same call. To use one fixture in another, extend in a
-second call. Above, `task` reads `project` because `taskTest` extends
+second call. Above, `task` runs after `project` because `taskTest` extends
 `test`.
 
 Setup runs in declaration order, after the engine's fixtures. Teardown runs
-in reverse order, so the task is deleted before its project.
+in reverse order: a fixture's teardown runs before the teardown of the
+fixture it builds on.
 
 ## Give each setup its own test
 
@@ -112,8 +109,8 @@ that needs neither, import `test` from `@e2e-dev/web` directly.
 Register hooks on your extended `test` to read its fixtures:
 
 ```ts
-taskTest.beforeEach(async ({ app, project }) => {
-  await app.open(`/projects/${project.id}`);
+taskTest.beforeEach(async ({ screen, project }) => {
+  await expect(screen.getByRole('heading', project)).toBeVisible();
 });
 ```
 
