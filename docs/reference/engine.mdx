@@ -310,7 +310,11 @@ export interface OperationContext {
    * abort at `timeoutMs`: bound each call by that budget yourself.
    */
   readonly signal: AbortSignal;
-  /** Remaining operation budget when the call starts. */
+  /**
+   * Remaining operation budget when the call starts. A waiting call's last
+   * locate or read can get more than its deadline leaves: as long as the
+   * slowest one it has seen.
+   */
   readonly timeoutMs: number;
   /** The run id. */
   readonly runId: string;
@@ -1404,8 +1408,9 @@ export const RETRYABLE_ENGINE_ERROR_CODES: ReadonlySet<EngineErrorCode> = new Se
 
 #### Timeouts at a deadline
 
-An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms of
-a waiting call's deadline left, after one that completed, ends the wait
+An `OPERATION_TIMEOUT` on a locate or read that started with under 100 ms, or
+under its slowest completed locate or read, of a waiting call's deadline left,
+after one that completed, ends the wait
 instead:
 
 | Waiting call | Fails with |

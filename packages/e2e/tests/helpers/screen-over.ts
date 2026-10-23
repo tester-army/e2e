@@ -28,8 +28,8 @@ import { StepRecorder } from '../../src/run/steps.ts';
 import type { Screen } from '../../src/types.ts';
 
 export interface ScreenOverOptions {
-  /** Answers every `locate`. */
-  readonly locate: (expression: LocatorExpression) => readonly SemanticNode[] | Promise<readonly SemanticNode[]>;
+  /** Answers every `locate`, with the operation it runs under. */
+  readonly locate: (expression: LocatorExpression, operation: OperationContext) => readonly SemanticNode[] | Promise<readonly SemanticNode[]>;
   /** Answers every `observe`; the root's ref is what a viewport swipe is addressed to. */
   readonly observe: () => EngineSnapshot;
   /** Receives every node action with the operation it runs under; without it the engine declares no actions. */
@@ -52,7 +52,7 @@ export function screenOver(options: ScreenOverOptions): { screen: Screen; steps:
     version: '1',
     spiVersion: 1,
     observe: async () => options.observe(),
-    locate: async (expression) => options.locate(expression),
+    locate: async (expression, operation) => options.locate(expression, operation),
     ...(perform === undefined
       ? {}
       : {

@@ -26,10 +26,9 @@ export function cancelled(text: string): EngineError {
 const MIN_ANSWER_MS = 250;
 
 /**
- * One input operation's budget (`actionTimeout`, or the call's `timeout`),
- * which the harness signal does not enforce. Only the device commands that
- * send input run under it; reads stay unbounded, so a locator poll keeps its
- * last snapshot and a target settling before a tap is relocated in full.
+ * One operation's budget (its `timeoutMs`), which the harness signal does not
+ * enforce. Every device command the operation sends runs under it: the
+ * inputs through `send`, the snapshots and screenshots through `read`.
  */
 export class InputBudget {
   private readonly endsAt: number;
@@ -57,12 +56,8 @@ export class InputBudget {
    * landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it.
    */
   send<T>(dispatch: () => Promise<T>, holdMs = 0): Promise<T> {
-    const remaining = this.endsAt - Date.now();
-    if (remaining <= 0) {
-      return Promise.reject(
-        this.sent ? this.maybeCommitted() : new EngineError('OPERATION_TIMEOUT', `${this.label} timed out before it was sent`, { retryable: false }),
-      );
-    }
+    const remaining = this.remainingMs();
+    if (remaining <= 0) return Promise.reject(this.spent());
     if (holdMs >= remaining) {
       return Promise.reject(
         new EngineError(
@@ -75,6 +70,34 @@ export class InputBudget {
     const pending = this.track(dispatch());
     this.sent = true;
     return withTimeout(pending, Math.max(remaining, MIN_ANSWER_MS), () => this.maybeCommitted());
+  }
+
+  /**
+   * Runs one device read with what is left of the budget. With none left it
+   * reads nothing. A read that does not answer in time is `OPERATION_TIMEOUT`,
+   * or `ACTION_MAY_HAVE_COMMITTED` once an input of this operation went out,
+   * so the runner never repeats that input.
+   */
+  read<T>(dispatch: () => Promise<T>): Promise<T> {
+    const remaining = this.remainingMs();
+    if (remaining <= 0) return Promise.reject(this.spent());
+    return withTimeout(this.track(dispatch()), remaining, () =>
+      this.sent
+        ? this.maybeCommitted()
+        : new EngineError('OPERATION_TIMEOUT', `${this.label} timed out before the device answered`, { retryable: false }),
+    );
+  }
+
+  /** Milliseconds left of the budget; zero or less once it is spent. */
+  remainingMs(): number {
+    return this.endsAt - Date.now();
+  }
+
+  /** The failure of a command the spent budget did not send. */
+  private spent(): EngineError {
+    return this.sent
+      ? this.maybeCommitted()
+      : new EngineError('OPERATION_TIMEOUT', `${this.label} timed out before it was sent`, { retryable: false });
   }
 
   private maybeCommitted(): EngineError {
