@@ -1,8 +1,6 @@
 import { test as base } from '@e2e-dev/web';
 import { expect, unique } from 'e2e';
 
-export { expect };
-
 /** A fresh project for each test, created and deleted through the app. */
 export const test = base.extend<{ project: string }>({
   project: async ({ app, agent, screen }, use) => {

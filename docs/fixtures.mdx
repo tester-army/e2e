@@ -19,8 +19,6 @@ can create its data through the app with [goals](/core-concepts#goals):
 import { test as base } from '@e2e-dev/web';
 import { expect, unique } from 'e2e';
 
-export { expect };
-
 /** A fresh project for each test, created and deleted through the app. */
 export const test = base.extend<{ project: string }>({
   project: async ({ app, agent, screen }, use) => {
@@ -50,7 +48,8 @@ Code before `await use(value)` is the setup, and code after it is the
 teardown. Import the extended `test` in your test files:
 
 ```ts title="tests/tasks.e2e.ts"
-import { expect, taskTest as test } from './fixtures.ts';
+import { expect } from 'e2e';
+import { taskTest as test } from './fixtures.ts';
 
 test('completes a task', { session: 'admin' }, async ({ screen, task }) => {
   await screen.getByRole('checkbox', task).check();
