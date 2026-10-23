@@ -5,6 +5,7 @@ import type { ObservationPixels, OperationContext, ViewportSize } from 'e2e/engi
 import { CaptureScope } from './capture-scope.ts';
 import { CLOSED_SHADOW_SELECTOR_ENGINE } from './closed-shadow.ts';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { withHiddenCaret } from './screenshot-caret.ts';
 
 /**
  * Budget for one masked screenshot, still capped by the operation timeout. A
@@ -71,14 +72,25 @@ export async function capturePixels(
     // A frame that detaches mid-sweep contributes nothing to the count, which can
     // only push the observation toward withholding the image.
     const counts = await scope.read(() => Promise.allSettled(masks.map((mask) => mask.count())));
-    const image = await scope.read(() => page.screenshot({
-      type: 'png',
-      scale: 'css',
-      animations: 'disabled',
-      caret: 'hide',
-      timeout: Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS)),
-      ...maskOptions(masks),
-    }));
+    // Playwright's `caret: 'hide'` writes an inline caret-color on every
+    // editable element and restores it after the frame, which a framework
+    // hydrating at that moment reads as a server mismatch. The adopted
+    // stylesheet hides the caret without touching any element's own style.
+    const image = await scope.read(() => {
+      const budget = Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS));
+      return withHiddenCaret(page, budget, () => {
+        scope.check();
+        const screenshotBudget = Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS));
+        return page.screenshot({
+          type: 'png',
+          scale: 'css',
+          animations: 'disabled',
+          caret: 'initial',
+          timeout: screenshotBudget,
+          ...maskOptions(masks),
+        });
+      });
+    });
     const data = new Uint8Array(image);
     // The bytes are the authority on their own size. `scale: 'css'` is asked for
     // precisely so one image pixel is one CSS pixel, but the ratio is measured

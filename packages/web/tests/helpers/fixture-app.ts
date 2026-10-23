@@ -344,6 +344,33 @@ const MEDIA = `<!doctype html>
 <body><p>media</p></body>
 </html>`;
 
+/**
+ * A form for the screenshot caret test: light-DOM editables, a secure field,
+ * and an editable inside a closed shadow root whose own stylesheet asks for a
+ * red caret.
+ */
+const CARET = `<!doctype html>
+<html>
+<head><title>Fixture Caret</title></head>
+<body style="margin:0;background:#fff">
+<input id="plain" value="plain" style="width:120px;height:20px">
+<textarea id="notes" style="width:120px;height:40px">notes</textarea>
+<input id="secret" type="password" value="secret" style="width:120px;height:20px">
+<x-caret id="caret-host"></x-caret>
+<script>
+  const root = document.getElementById('caret-host').attachShadow({ mode: 'closed' });
+  root.innerHTML = '<style>input { caret-color: rgb(255, 0, 0); }</style><input id="shadowed" value="shadow">';
+</script>
+</body>
+</html>`;
+
+/** A page whose policy blocks `<style>` elements, for the caret stylesheet test. */
+const CARET_CSP = `<!doctype html>
+<html>
+<head><title>Fixture Caret CSP</title><meta http-equiv="Content-Security-Policy" content="style-src 'none'"></head>
+<body><input id="plain" value="csp"></body>
+</html>`;
+
 const PAGES: Readonly<Record<string, string>> = {
   '/': HOME,
   '/pointer': POINTER,
@@ -351,6 +378,8 @@ const PAGES: Readonly<Record<string, string>> = {
   '/closed-form': CLOSED_FORM,
   '/closed-order': CLOSED_ORDER,
   '/contents': CONTENTS,
+  '/caret': CARET,
+  '/caret-csp': CARET_CSP,
   '/closed-login': CLOSED_LOGIN,
   '/form': FORM,
   '/values': VALUES,
