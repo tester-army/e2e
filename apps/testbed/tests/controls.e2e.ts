@@ -202,6 +202,17 @@ test.describe('controls', { requires: ['browser'], tags: ['controls'] }, () => {
     await expect(screen.getByLabel('Attachments state')).toHaveText('attachment.txt, second.txt');
   });
 
+  test('a button that opens a hidden file input takes the files', async ({ screen }) => {
+    await screen.getByRole('button', 'Choose avatar').setInputFiles('fixtures/attachment.txt');
+    await expect(screen.getByLabel('Avatar state')).toHaveText('attachment.txt');
+  });
+
+  test('a button that opens no file chooser fails as ACTION_FAILED', async ({ screen }) => {
+    const error = await failure(() => screen.getByRole('button', 'Close A').setInputFiles('fixtures/attachment.txt', { timeout: 500 }));
+    expect(error).toHaveProperty('code', 'ACTION_FAILED');
+    expect(error).toHaveProperty('message', expect.stringContaining('opened no file chooser'));
+  });
+
   test('scrollIntoView brings a node far below into the viewport', async ({ screen }) => {
     const footnote = screen.getByText('Footnote', { exact: true });
     await expect(screen.getByLabel('Footnote state')).toHaveText('out of view');
