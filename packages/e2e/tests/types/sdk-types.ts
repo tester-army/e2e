@@ -359,6 +359,7 @@ finishedRun.lastRun satisfies FinishedRun['report'] | undefined;
 5 satisfies RunExitCode;
 declare const executorContext: StepExecutorContext;
 executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
+executorContext.attempt.titlePath satisfies readonly string[];
 'tapAt' satisfies ExecutorVerb;
 'hover' satisfies ExecutorVerb;
 'drag' satisfies ExecutorVerb;

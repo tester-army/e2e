@@ -67,6 +67,11 @@ export interface ExecutorStep {
 export interface ExecutorAttempt {
   readonly testId: string;
   readonly attemptId: string;
+  /**
+   * The test's title path, outermost `describe` first, redacted; empty
+   * outside `e2e run` (an `openHost` session, `e2e mcp`).
+   */
+  readonly titlePath: readonly string[];
   /** Zero-based retry index of this attempt. */
   readonly index: number;
   /**
@@ -436,10 +441,7 @@ export interface StepExecutorContext {
    * the runner's 8192-byte ledger limit; `''` when none.
    */
   readonly ledger: string;
-  /**
-   * Trusted context, redacted: the test's title path (`Test: billing > upgrades the tier`)
-   * when the step runs in a test, then the agent's `context`, then test/group `agentContext`.
-   */
+  /** Trusted project/test agent context (config `agent.context` + test). */
   readonly agentContext: string | undefined;
   readonly budgets: ExecutorBudgets;
   /**

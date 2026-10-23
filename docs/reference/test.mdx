@@ -427,9 +427,7 @@ See [`test.setup`](#test-setup).
 
 #### `agentContext`
 
-Extra context for agent steps. Layers are concatenated outermost first,
-after the test's title path (`Test: pricing > shows the total`) and the
-agent's `context`.
+Extra context for agent steps. Layers are concatenated outermost first.
 
 ```ts
 describe('pricing', { agentContext: 'Prices are shown in EUR.' }, () => {});
