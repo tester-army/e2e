@@ -88,6 +88,7 @@ The app under test is the target's `app`, not an engine option; see
 | [`settle`](#settle) | `number \| false` | `150` |
 | [`transition`](#transition) | `number` | `500` |
 | [`videoTouches`](#videotouches) | `boolean` | `true` |
+| [`screenIdPrefix`](#screenidprefix) | `string` | unset |
 
 Every optional value also accepts `undefined`, so values read straight from
 `process.env` need no conditional spread. Each entry below shows its member's
@@ -248,6 +249,30 @@ readonly videoTouches?: boolean | undefined;
 mobile({ platform: 'ios', videoTouches: false }); // default: true
 ```
 
+#### `screenIdPrefix`
+
+```ts
+/** Prefix of an on-screen accessibility identifier or resource id that names the screen. */
+readonly screenIdPrefix?: string | undefined;
+```
+
+```ts title="e2e.config.ts"
+mobile({ platform: 'ios', screenIdPrefix: 'e2e-screen:' });
+```
+
+```tsx
+<View testID="e2e-screen:Offers" style={{ flex: 1 }}>{/* ... */}</View>
+```
+
+- A visible marker names the screen after the prefix. It takes precedence over
+  the title bar. On Android, the engine removes the native `<package>:id/`
+  part of a resource id before matching. When several markers are visible,
+  the last one in document order wins.
+- Keep `snapshot: 'full'` so the tree includes plain views. With this option
+  unset, the title bar names the screen as before.
+- A screen whose location changes misses its recorded steps and records them
+  again. A `--strict-cache` run fails with `REPLAY_STALE` until you re-record.
+
 #### The app under test
 
 The app is the target's `app`: `bundleId`, `appPath`, `launchArguments`,
@@ -351,7 +376,7 @@ running on the device. The next attempt waits for it to settle.
 | `validateApp` | Requires `app.bundleId` or `app.appPath` and refuses `app.url` for now, with a note on reaching this machine from the platform's device. A target with either is a `native-app` target, so `requires: ['native-app']` selects device targets. |
 | `session` | `back`, `restart`, and `reset`. No `open`: `app.open()` takes no path and the runner serves it with `restart`, the fresh launch of the pinned app; the agent's `navigate` verb is unavailable, and `device.openLink(url)` opens a deep link or web link. |
 | `artifacts` | Redacted screenshots under `screenshots/NNN-<label>.png`; a screenshot that cannot be redacted fails instead of being written. Video, when the attempt's [video mode](/reference/config#video) records, as `video/video.mp4`, or a device provider's own recording. |
-| `location` | `<bundle id> / <screen title>`, the replay cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
+| `location` | `<bundle id> / <screen title>`, the replay cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android, or the screen marker's value when `screenIdPrefix` is set and a marker is on screen. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
 ### Device
