@@ -1463,7 +1463,15 @@ describe('device fixture', () => {
       await observed(h, 'Back');
       const device = fixture(h);
       h.fake.respond('command.keyboard', NO_DISMISS_KEY);
-      captures(h, [{ ...KEYBOARD_UP, viewport: { width: 844, height: 390 } }, KEYBOARD_GONE]);
+      const landscape = [
+        { ref: '@e1', index: 0, depth: 0, type: 'application', label: 'Order', rect: { x: 0, y: 0, width: 844, height: 390 } },
+        { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'scroll-view', rect: { x: 0, y: 60, width: 844, height: 330 } },
+        { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'text-field', label: 'Notes', rect: { x: 20, y: 80, width: 804, height: 44 } },
+      ];
+      captures(h, [
+        { ...KEYBOARD_UP, viewport: { width: 844, height: 390 }, nodes: landscape, keyboard: { kind: 'visible', frame: { x: 0, y: 230, width: 844, height: 160 } } },
+        KEYBOARD_GONE,
+      ]);
       await device.dismissKeyboard();
       expect(h.fake.lastArgs('interactions.swipe')).toEqual({
         from: { x: 422, y: 195 },
