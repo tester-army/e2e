@@ -205,9 +205,11 @@ test.describe('controls', { requires: ['browser'], tags: ['controls'] }, () => {
   test('scrollIntoView brings a node far below into the viewport', async ({ screen }) => {
     const footnote = screen.getByText('Footnote', { exact: true });
     await expect(screen.getByLabel('Footnote state')).toHaveText('out of view');
+    await expect(footnote).not.toBeInViewport();
 
     await footnote.scrollIntoView();
     await expect(screen.getByLabel('Footnote state')).toHaveText('in view');
+    await expect(footnote).toBeInViewport({ ratio: 0.5 });
     expect((await boxOf(footnote)).y).toBeGreaterThanOrEqual(0);
   });
 

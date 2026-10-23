@@ -357,10 +357,16 @@ void screen.getByRole('button').waitFor({ state: 'gone' });
 // Playwright's state flags and ignoreCase are taken where Playwright takes them, and nowhere else.
 void asyncExpectation.toBeChecked({ checked: false });
 void asyncExpectation.toBeVisible({ visible: false, timeout: 1000 });
+void asyncExpectation.toBeInViewport({ ratio: 0 });
+void asyncExpectation.toBeInViewport({ ratio: 0.5, timeout: 1000 });
 void asyncExpectation.toContainText('error', { ignoreCase: true });
 void asyncExpectation.toHaveAttribute('data-kind', 'error', { ignoreCase: true });
 // @ts-expect-error toBeChecked has no indeterminate state
 void asyncExpectation.toBeChecked({ indeterminate: true });
+// @ts-expect-error toBeInViewport takes a numeric ratio
+void asyncExpectation.toBeInViewport({ ratio: 'half' });
+// @ts-expect-error toBeInViewport has no threshold option
+void asyncExpectation.toBeInViewport({ threshold: 0.5 });
 // @ts-expect-error a value is compared as it is, case included
 void asyncExpectation.toHaveValue('a', { ignoreCase: true });
 // @ts-expect-error presence has no case to ignore

@@ -27,10 +27,13 @@ interface Sample {
   readonly node: SemanticNode | null;
   /** Every current match, read; only a `wholeSet: 'read'` matcher asks for them. */
   readonly nodes: readonly SemanticNode[];
+  readonly viewport?: { width: number; height: number };
 }
 
 interface MatcherSpec {
   readonly name: string;
+  /** Reads the matched node box and the current viewport for a geometry check. */
+  readonly needsViewport?: boolean;
   /**
    * Evaluates the whole sample instead of requiring one node: `true` counts
    * the matches, `'read'` also reads each of them.
@@ -223,6 +226,12 @@ class AsyncExpectationImpl implements AsyncExpectation {
 
   private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
     const { engine } = this.internals.context;
+    if (spec.needsViewport === true) {
+      return {
+        ...(await engine.readWithViewport(this.internals.expression, deadline)),
+        nodes: [],
+      };
+    }
     if (spec.wholeSet === 'read') {
       const nodes = await engine.readAll(this.internals.expression, deadline);
       return { count: nodes.length, node: null, nodes };
@@ -349,6 +358,44 @@ class AsyncExpectationImpl implements AsyncExpectation {
   toBeHidden(options?: { timeout?: number }): Promise<void> {
     this.readOptions('toBeHidden', options);
     return this.visibilityMatcher('toBeHidden', false, options?.timeout);
+  }
+
+  toBeInViewport(options?: { ratio?: number; timeout?: number }): Promise<void> {
+    const api = this.api('toBeInViewport');
+    rejectUnknownOptions(api, options, ['ratio', 'timeout']);
+    const ratio: unknown = options?.ratio;
+    if (ratio !== undefined && (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio < 0 || ratio > 1)) {
+      throw new TestError('INVALID_ARGUMENT', `${api} option ratio must be between 0 and 1`);
+    }
+
+    const expectedRatio = ratio as number | undefined;
+    return this.poll(
+      {
+        name: 'toBeInViewport',
+        needsViewport: true,
+        evaluableNode: (node) => node.rect !== undefined,
+        predicate: (sample) => {
+          const rect = sample.node?.rect;
+          if (rect === undefined || sample.viewport === undefined) return false;
+
+          const intersectionRatio = viewportIntersectionRatio(rect, sample.viewport);
+          return expectedRatio === undefined || expectedRatio === 0
+            ? intersectionRatio > 0
+            : intersectionRatio >= expectedRatio;
+        },
+        describeExpected:
+          expectedRatio === undefined
+            ? 'a positive area inside the viewport'
+            : `at least ${expectedRatio} of its area inside the viewport`,
+        observed: (sample) => {
+          if (sample.node === null) return 'no node';
+          if (sample.node.rect === undefined) return 'no bounding box';
+          if (sample.viewport === undefined) return 'no viewport geometry';
+          return `bounding box intersection ratio ${viewportIntersectionRatio(sample.node.rect, sample.viewport)}`;
+        },
+      },
+      options?.timeout,
+    );
   }
 
   toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void> {
@@ -492,6 +539,23 @@ function matchesSubsequence(
     if (satisfies(node, patterns[next]!)) next += 1;
   }
   return next === patterns.length;
+}
+
+/** The share of a node's box that intersects the viewport. */
+function viewportIntersectionRatio(
+  rect: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number },
+): number {
+  const area = rect.width * rect.height;
+  if (area <= 0) return 0;
+
+  const left = Math.max(0, rect.x);
+  const top = Math.max(0, rect.y);
+  const right = Math.min(viewport.width, rect.x + rect.width);
+  const bottom = Math.min(viewport.height, rect.y + rect.height);
+  const intersection = Math.max(0, right - left) * Math.max(0, bottom - top);
+
+  return intersection / area;
 }
 
 /**

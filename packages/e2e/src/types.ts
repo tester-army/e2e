@@ -793,6 +793,8 @@ export interface AsyncExpectation {
   toBeVisible(options?: { visible?: boolean; timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
+  /** Waits until a share of the match's box intersects the viewport. */
+  toBeInViewport(options?: { ratio?: number; timeout?: number }): Promise<void>;
   /** Waits for one match to exist, visible or not; `attached: false` waits for none. */
   toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void>;
   /** Waits for enabled state; `enabled: false` waits for disabled state. */

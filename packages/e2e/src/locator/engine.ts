@@ -334,6 +334,27 @@ export class LocatorEngine {
     return this.readOne(expression, deadline, missingFrame);
   }
 
+  /** Reads a matched node's box and the current viewport for geometry assertions. */
+  async readWithViewport(
+    expression: LocatorExpression,
+    deadline: Deadline,
+  ): Promise<{
+    node: SemanticNode | null;
+    count: number;
+    viewport?: { width: number; height: number };
+  }> {
+    const { node, count } = await this.tryRead(expression, deadline);
+    if (node === null) return { node, count };
+
+    try {
+      const observation = await this.session.observe(this.operationWithin(deadline));
+      return { node, count, viewport: observation.viewport };
+    } catch (cause) {
+      if (asEngineError(cause)?.code === 'NODE_STALE') return { node: null, count: 0 };
+      throw translateLocatorError(cause, expression);
+    }
+  }
+
   /**
    * Reads the one current match at once, for `isVisible` and `isHidden`:
    * null for zero matches, a missing frame, or a node that went stale; two

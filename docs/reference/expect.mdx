@@ -60,6 +60,7 @@ holds or its timeout passes, under the rules in [Behavior](#behavior):
 | --- | --- |
 | [`toBeVisible`](#tobevisible-and-tobehidden) | Waits for visibility |
 | [`toBeHidden`](#tobevisible-and-tobehidden) | Waits for hidden or absent state |
+| [`toBeInViewport`](#tobeinviewport) | Waits for viewport intersection |
 | [`toBeAttached`](#tobeattached) | Waits for one match to exist |
 | [`toBeEnabled`](#tobeenabled-and-tobedisabled) | Waits for enabled state |
 | [`toBeDisabled`](#tobeenabled-and-tobedisabled) | Waits for disabled state |
@@ -84,6 +85,24 @@ hidden or absent state.
 await expect(screen.getByRole('dialog')).toBeVisible();
 await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 10_000 });
 await expect(screen.getByRole('dialog')).toBeVisible({ visible: false }); // as toBeHidden()
+```
+
+#### `toBeInViewport`
+
+Waits until the match's box intersects the viewport. The default passes when
+any positive area is inside. Set `ratio` from `0` to `1` to require that share
+of the box; `0` also means any positive area. The calculation uses the
+reported box and viewport rectangle, ignores clipping by overflow ancestors,
+and does not check whether another element covers the match. It never scrolls.
+If the engine never reports a box before the assertion timeout, the assertion
+fails with `ASSERTION_FAILED` and `observed: no bounding box`, including under
+`.not`. It trusts the engine's coordinates, so the result depends on the
+engine reporting scroll-aware boxes.
+
+```ts
+await expect(screen.getByRole('toolbar', 'Selection')).toBeInViewport();
+await expect(screen.getByRole('toolbar', 'Selection')).toBeInViewport({ ratio: 0.5 });
+await expect(screen.getByRole('alert')).not.toBeInViewport();
 ```
 
 #### `toBeAttached`
@@ -804,6 +823,8 @@ export interface AsyncExpectation {
   toBeVisible(options?: { visible?: boolean; timeout?: number }): Promise<void>;
   /** Waits for hidden or absent state. */
   toBeHidden(options?: { timeout?: number }): Promise<void>;
+  /** Waits until a share of the match's box intersects the viewport. */
+  toBeInViewport(options?: { ratio?: number; timeout?: number }): Promise<void>;
   /** Waits for one match to exist, visible or not; `attached: false` waits for none. */
   toBeAttached(options?: { attached?: boolean; timeout?: number }): Promise<void>;
   /** Waits for enabled state; `enabled: false` waits for disabled state. */

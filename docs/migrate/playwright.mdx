@@ -198,6 +198,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | Playwright | e2e | Status |
 | --- | --- | --- |
 | `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeFocused()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | same |
+| `toBeInViewport()` | the same ratio option; checks the reported node box against the viewport rectangle, without ancestor clipping | by design |
 | `toBeChecked()` | the same on a checkable node; on any other node `.not.toBeChecked()` passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toHaveText()`, `toContainText()` | compare the rendered text, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same: `toHaveText` needs the count to match, `toContainText` an ordered subsequence | same |
@@ -207,7 +208,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | renamed |
 | a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toBeAttached()` | the same; passes on a hidden match too | same |
-| `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet | missing |
+| `toBeEmpty()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet | missing |
 | `expect(locator).toHaveClass(cls)` | `expect(browser).toHaveClass(locator, cls)`; a DOM fact is asserted through `browser`; reads the `class` attribute, so `''` matches `class=""` and not a missing attribute | web only |
 | `toHaveCSS()`, `toHaveId()`, `toHaveJSProperty()`, `toContainClass()`, `toHaveValues()` | `browser.evaluate` plus a value matcher | missing |
 | `expect(page).toHaveURL()`, `toHaveTitle()` | `expect(browser).toHaveURL()`, `toHaveTitle()`; `toHaveURL` takes `ignoreCase` | web only |
