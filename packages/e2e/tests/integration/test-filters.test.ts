@@ -6,8 +6,7 @@
  * outruns the deadline leaving nothing out, interrupts, `e2e list` as the
  * dry run, and each shard judging only its own slice. Each project here is
  * a git repository whose `feature` branch changes `src/app.ts`, judged with
- * `changedSince: 'main'`, and the environment is scrubbed of GitHub Actions,
- * so no run reads as `pull_request_target`, which runs every test.
+ * `changedSince: 'main'`, outside CI.
  */
 
 import { spawn, spawnSync } from 'node:child_process';
@@ -39,7 +38,7 @@ afterEach(() => {
 
 type Target = NonNullable<E2EConfig['targets']>[number];
 
-/** The environment of every run here: outside CI, so no run reads as `pull_request_target`. */
+/** The environment of every run here: outside CI. */
 const LOCAL_ENV: NodeJS.ProcessEnv = { ...process.env, CI: '', GITHUB_ACTIONS: '' };
 
 /**
@@ -411,45 +410,7 @@ describe('when the filters run', () => {
     await expect(listExisting(project, { config: { filters: [filter] } })).rejects.toMatchObject({ code: 'INVALID_CHANGED_SINCE' });
   });
 
-  it('runs every test on pull_request_target, even with changedSince, calling no filter, on run and list', async () => {
-    const project = fixture(THREE_TESTS);
-    const { filter, calls } = recording(keepOnly('areas', []));
-    const env = { ...LOCAL_ENV, GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
-    const notices: string[] = [];
-    const outcome = await runExisting(project, {
-      config: { filters: [filter] },
-      runOptions: { env, onEvent: (event) => { if (event.type === 'notice' && event.target === 'filter') notices.push(event.message); } },
-    });
-    expect(outcome.report.run.errors).toEqual([]);
-    expect(outcome.exitCode).toBe(0);
-    const report = reportOf(project);
-    expect(executedTests(report)).toEqual(['alpha', 'beta', 'gamma']);
-    expect(report.run.changes).toEqual({ skipped: 'pull_request_target runs every test' });
-    expect(report.run.filters).toBeUndefined();
-    expect(notices).toEqual(['pull_request_target runs every test, so no filter ran']);
-    const listed = await listExisting(project, { config: { filters: [filter] }, env });
-    expect(listed.pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
-    expect(calls).toEqual([]);
-  });
-
-  it('runs every test without calling a filter when the config file the run loaded changed', () => {
-    const config = cliConfig(`[
-    { name: 'areas', filter(tests, { projectRoot }) {
-      appendFileSync(path.join(projectRoot, 'given.log'), JSON.stringify(tests.map((test) => test.title)) + '\\n');
-      return { exclude: Object.fromEntries(tests.map((test) => [test.id, 'unaffected'])) };
-    } },
-  ]`);
-    const project = fixture({ ...THREE_TESTS, 'e2e.config.ts': config }, { 'e2e.config.ts': `${config}// retries next\n` });
-    const ran = cli(project, ['run', '--changed-since', 'main']);
-    expect(ran.exitCode, ran.output).toBe(0);
-    expect(ran.output).toContain('e2e.config.ts changed, so no filter ran');
-    expect(existsSync(path.join(project.dir, 'given.log'))).toBe(false);
-    const report = reportOf(project);
-    expect(executedTests(report)).toEqual(['alpha', 'beta', 'gamma']);
-    expect(report.run.changes).toEqual({ base: baseOf(project), files: 1, skipped: 'e2e.config.ts changed' });
-  });
-
-  it('runs a changed setup and every test that uses its session without asking the filters, though a filter would leave out every test', async () => {
+  it('hands the filters every test, even one whose setup file changed, and their answer stands', async () => {
     /** The setup file, with `edit` as its last line. */
     const setupFile = (edit: string) => `import { test } from 'e2e';
 test.setup('sign in', { sessions: ['member'] }, async ({ app, session }) => {
@@ -466,12 +427,11 @@ ${edit}
     const outcome = await runExisting(project, { config: { filters: [filter] } });
     expect(outcome.report.run.errors).toEqual([]);
     expect(outcome.exitCode).toBe(0);
-    expect(calls.map(({ tests }) => tests.map(titleOf))).toEqual([['guest page']]);
+    expect(calls.map(({ tests }) => tests.map(titleOf).toSorted())).toEqual([['guest page', 'member page']]);
     const report = reportOf(project);
-    expect(executedTests(report)).toEqual(['member page']);
-    expect(row(report, 'sign in')).toMatchObject({ selected: true, status: 'passed' });
-    expect(row(report, 'guest page').skip).toEqual({ cause: 'filtered', filter: 'areas', reason: 'the diff misses guest page' });
-    expect(report.run.changes).toEqual({ base: baseOf(project), files: 1, pinned: 1 });
+    expect(executedTests(report)).toEqual([]);
+    expect(row(report, 'member page').skip).toEqual({ cause: 'filtered', filter: 'areas', reason: 'the diff misses member page' });
+    expect(report.run.changes).toEqual({ base: baseOf(project), files: 1 });
   });
 
   it('reruns what --last-failed owes without asking the filters, so a filter cannot turn a real failure green', async () => {
@@ -624,21 +584,24 @@ ${edit}
 });
 
 describe('what a filter is told', () => {
-  it('hands a project reached through a symlink its resolved root, so its test files join the change root, and pins a changed test file through it', async () => {
+  it('hands a project reached through a symlink its resolved root, so its test files join the change root', async () => {
     const project = fixture(THREE_TESTS, { 'tests/beta.e2e.ts': testFile('beta', '{ tags: [] }') });
     const link = path.join(mkdtempSync(path.join(os.tmpdir(), 'e2e-filter-link-')), 'project');
     symlinkSync(project.dir, link);
     try {
       let joined: string[] = [];
+      let changed: readonly string[] = [];
       const areas: TestFilter = {
         name: 'areas',
         filter: (tests, { projectRoot, changes }) => {
           joined = tests.map((test) => path.relative(changes.root, path.join(projectRoot, test.file)).split(path.sep).join('/'));
+          changed = changes.files;
           return { exclude: {} };
         },
       };
       await listExisting(project, { cwd: link, config: { filters: [areas] } });
-      expect(joined).toEqual(['tests/alpha.e2e.ts', 'tests/gamma.e2e.ts']);
+      expect(joined).toEqual(['tests/alpha.e2e.ts', 'tests/beta.e2e.ts', 'tests/gamma.e2e.ts']);
+      expect(changed).toEqual(['tests/beta.e2e.ts']);
     } finally {
       rmSync(path.dirname(link), { recursive: true, force: true });
     }

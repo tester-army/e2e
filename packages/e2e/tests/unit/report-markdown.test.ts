@@ -895,25 +895,20 @@ describe('a run test filters narrowed', () => {
     expect(body).toContain('note \\| with pipe');
   });
 
-  it('names the change the filters judged above their lines, with the tests that ran because their file changed', () => {
+  it('names the change the filters judged above their lines', () => {
     const base = '0123456789abcdef0123456789abcdef01234567';
     const body = renderMarkdownReport(
-      page({ results: [passing, leftOut('pays', 'areas', 'unaffected')], changes: { base, files: 12, pinned: 2 }, filters: [record({ candidates: 2, excluded: 1 })] }),
+      page({ results: [passing, leftOut('pays', 'areas', 'unaffected')], changes: { base, files: 12 }, filters: [record({ candidates: 2, excluded: 1 })] }),
     );
-    expect(body).toContain('\n**Change** 12 files changed since `0123456`; 2 tests ran without filters: their test file, screenshots, or setup file changed  \n**Filter** `areas` kept 1 of 2 tests, left out 1\n');
-    const one = renderMarkdownReport(page({ results: [passing], changes: { base, files: 1, pinned: 1 }, filters: [record({ candidates: 1, excluded: 0 })] }));
-    expect(one).toContain('**Change** 1 file changed since `0123456`; 1 test ran without filters: its test file, screenshots, or setup file changed  \n');
-    expect(renderMarkdownReport(page({ results: [passing], changes: { base, files: 4 }, filters: [record({ candidates: 1, excluded: 0 })] }))).toContain('\n**Change** 4 files changed since `0123456`  \n');
+    expect(body).toContain('\n**Change** 12 files changed since `0123456`  \n**Filter** `areas` kept 1 of 2 tests, left out 1\n');
+    expect(renderMarkdownReport(page({ results: [passing], changes: { base, files: 1 }, filters: [record({ candidates: 1, excluded: 0 })] }))).toContain('\n**Change** 1 file changed since `0123456`  \n');
   });
 
   it('says why no filter ran, whatever the reason', () => {
     const base = '0123456789abcdef0123456789abcdef01234567';
-    for (const changes of [{ skipped: 'pull_request_target runs every test' }, { base, files: 2, skipped: 'pnpm-lock.yaml changed' }]) {
+    for (const changes of [{ skipped: 'no tests to judge' }, { base, files: 0, skipped: 'no files changed since 0123456' }]) {
       expect(renderMarkdownReport(page({ results: [passing], changes })), changes.skipped).toContain(`\n**Filters** none ran: ${changes.skipped}\n`);
     }
-    // A change that edits only test files says why every test ran.
-    const tests = renderMarkdownReport(page({ results: [passing], changes: { base, files: 3, pinned: 3, skipped: 'no tests left to judge' } }));
-    expect(tests).toContain('**Filters** none ran: no tests left to judge; 3 tests ran without filters: their test file, screenshots, or setup file changed\n');
   });
 
   it('caps the left-out table at 50 rows, pointing at report.json for the rest', () => {

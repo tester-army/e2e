@@ -143,7 +143,6 @@ describe('filterSelection', () => {
       collection: col,
       selectionFilters: {},
       changedSince: 'no-such-ref',
-      env: ENV,
       signal: new AbortController().signal,
       notice: (message) => notices.push(message),
       ...overrides,
@@ -173,12 +172,11 @@ describe('filterSelection', () => {
     const never = vi.fn(() => ({ exclude: {} }));
     const cfg = config({ filters: [filterOf('areas', never)] });
     const first = select(col, cfg);
-    const env = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
-    const { value, notices } = options(col, cfg, { env });
+    const { value, notices } = options(col, cfg, { selectionFilters: { lastFailed: new Set() } });
     const kept = await filterSelection(first, value);
-    expect(kept).toEqual({ selection: first, records: [], changes: { skipped: 'pull_request_target runs every test' } });
+    expect(kept).toEqual({ selection: first, records: [], changes: { skipped: '--last-failed' } });
     expect(kept.selection).toBe(first);
-    expect(notices).toEqual(['pull_request_target runs every test, so no filter ran']);
+    expect(notices).toEqual(['--last-failed: the tests the last run owes run without filters']);
     expect(never).not.toHaveBeenCalled();
   });
 });

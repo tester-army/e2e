@@ -88,15 +88,6 @@ Turns on CI mode:
 - A focused test is `ONLY_IN_CI`.
 - `reuseExisting` on an app command is ignored.
 
-### Test filters
-
-[Test filters](/filters) run with `--changed-since`, except on GitHub's
-`pull_request_target`.
-
-| Variable | Example | Reading | Effect |
-| --- | --- | --- | --- |
-| `GITHUB_ACTIONS`, `GITHUB_EVENT_NAME` | `GITHUB_EVENT_NAME=pull_request_target` | value | `true` and `pull_request_target` call no filter, even with `--changed-since`, so the run runs every test |
-
 ### Replay cache
 
 | Variable | Example | Reading | Effect |

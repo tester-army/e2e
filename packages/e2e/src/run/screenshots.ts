@@ -5,9 +5,6 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { ArtifactSink } from './fixtures.ts';
 
-/** What follows a test file's name in the directory of its stored screenshots, `<test file>-snapshots`. */
-export const SNAPSHOTS_SUFFIX = '-snapshots';
-
 /** Where one attempt keeps its screenshots, and how it names them. */
 export interface ScreenshotContext {
   /** The project root; stored screenshots are reported relative to it. */
@@ -78,7 +75,7 @@ export class WrittenScreenshots {
 export function createScreenshotContext(options: ScreenshotContextOptions): ScreenshotContext {
   return {
     projectRoot: options.projectRoot,
-    directory: path.join(options.projectRoot, `${options.file}${SNAPSHOTS_SUFFIX}`),
+    directory: path.join(options.projectRoot, `${options.file}-snapshots`),
     suffix: `-${options.targetName}-${process.platform}`,
     titlePath: options.titlePath,
     update: options.update,

@@ -23,7 +23,7 @@ import path from 'node:path';
 import { collapseText } from '../internal/text.ts';
 import type { Report1Document, ReportChanges, ReportError, ReportExplore, ReportExploreFinding, ReportFilter, ReportResult, ReportStep, ReportTarget } from './build.ts';
 import { ENDED_TEXT, orderFindings, SEVERITY_WORDS, stepCountParts } from './explore-text.ts';
-import { filterDecision, formatCost, formatTokens, pinnedTests, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
+import { filterDecision, formatCost, formatTokens, repeatSuffix, shortCommit, statusBucket, tally, type Counters } from './format.ts';
 import { leftOutTests } from './left-out.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
@@ -168,9 +168,8 @@ function filterLine(record: ReportFilter, counts: ReadonlyMap<string, number>): 
 function changesLine(changes: ReportChanges | undefined): string | undefined {
   if (changes === undefined) return undefined;
   if (changes.base === undefined) return `**Filters** none ran: ${cell(changes.skipped)}`;
-  const pinned = changes.pinned === undefined ? '' : `; ${pinnedTests(changes.pinned, 'past')}`;
-  if (changes.skipped !== undefined) return `**Filters** none ran: ${cell(changes.skipped)}${pinned}`;
-  return `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}${pinned}`;
+  if (changes.skipped !== undefined) return `**Filters** none ran: ${cell(changes.skipped)}`;
+  return `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}`;
 }
 
 /**

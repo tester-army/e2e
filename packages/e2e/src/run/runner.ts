@@ -369,7 +369,7 @@ export async function listSelection(options: ListOptions, notice: (message: stri
   const selection =
     changedSince === undefined
       ? first
-      : (await filterSelection(first, { config, collection, selectionFilters: inputs.filters, changedSince, env, signal: new AbortController().signal, notice })).selection;
+      : (await filterSelection(first, { config, collection, selectionFilters: inputs.filters, changedSince, signal: new AbortController().signal, notice })).selection;
   return {
     pairs: selection.pairs.map((pair) => toListedPair(config.projectRoot, pair)),
     unmatched: collection.unmatchedPositionals,
@@ -851,7 +851,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           collection,
           selectionFilters: planned.filters,
           changedSince: options.changedSince,
-          env,
           signal: interrupted,
           notice: (message) => notice('filter', message),
           step: (name, work) => setupStep({ kind: 'filter', name }, () => debug.time('filter', work), (call) => (call.outcome === 'answered' ? undefined : call.outcome)),

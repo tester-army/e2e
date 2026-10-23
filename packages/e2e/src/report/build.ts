@@ -105,17 +105,14 @@ export type ReportChanges =
       base: string;
       /** How many files changed since `base`; 0 when there is no change. */
       files: number;
-      /** How many tests ran without filters because their test file, the setup file of their session, or either one's stored screenshots changed; omitted when none. */
-      pinned?: number | undefined;
-      /** Why no filter ran, such as `pnpm-lock.yaml changed`; omitted when they ran. */
+      /** Why no filter ran, such as `no file changed`; omitted when they ran. */
       skipped?: string | undefined;
     }
   | {
-      /** Why no filter ran before git was asked: `--last-failed`, `no tests to judge`, or `pull_request_target runs every test`. */
+      /** Why no filter ran before git was asked: `--last-failed` or `no tests to judge`. */
       skipped: string;
       base?: undefined;
       files?: undefined;
-      pinned?: undefined;
     };
 
 /** One test filter the run applied, in order. */

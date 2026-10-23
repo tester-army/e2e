@@ -48,13 +48,15 @@ steps:
     with:
       fetch-depth: 0
   # ...
-  - run: npx e2e run ${{ github.base_ref && format('--changed-since origin/{0}', github.base_ref) }}
+  - run: npx e2e run ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0}', github.base_ref) || '' }}
     env:
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 ```
 
-`github.base_ref` is set only on pull requests, so a push, merge queue, or
-scheduled run passes no flag and runs every test. `fetch-depth: 0` puts the
+The flag goes only on `pull_request` runs, so a push, merge queue, or
+scheduled run passes none and runs every test. Never pass it on
+`pull_request_target`: that run holds your secrets, and a fork's diff
+could talk the model into leaving tests out. `fetch-depth: 0` puts the
 base branch and the merge base in the checkout. Without them, the run fails
 with `INVALID_CHANGED_SINCE`.
 
@@ -104,16 +106,17 @@ filter reads only what the commits change.
 
 - Every test, when the run has no `--changed-since`, or when no file
   changed since the merge base.
-- Every test on `pull_request_target`, even with `--changed-since`: it can
-  hand a fork's change to the model beside your secrets.
-- The tests in a test file that changed or whose stored screenshots
-  changed, and the tests that use the sessions of such a setup file.
-- Every test, when the config file, Gradle's `libs.versions.toml`, or a
-  lockfile changes anywhere in the repository. Lockfiles are known by name,
-  such as `pnpm-lock.yaml`, `Podfile.lock`, `gradle.lockfile`,
-  `Gemfile.lock`, `go.sum`, or `Cargo.lock`; the model judges any other.
 - A `--last-failed` rerun, so `e2e run || e2e run --last-failed` is safe,
   and every `--watch` rerun after the first run.
+
+The decision filter also runs:
+
+- The tests in a test file that changed or whose stored screenshots
+  changed, and the tests that use the sessions of such a setup file.
+- Every test, when an `e2e.config` file, Gradle's `libs.versions.toml`, or
+  a lockfile changes anywhere in the repository. Lockfiles are known by
+  name, such as `pnpm-lock.yaml`, `Podfile.lock`, `gradle.lockfile`,
+  `Gemfile.lock`, `go.sum`, or `Cargo.lock`; the model judges any other.
 
 A filter that throws, returns something other than `{ exclude, note? }`,
 or runs past 5 minutes leaves nothing out, and a warning says so. The next
@@ -175,7 +178,7 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
 # ...
-      - run: npx e2e run ${{ github.base_ref && !contains(github.event.pull_request.labels.*.name, 'all-tests') && format('--changed-since origin/{0}', github.base_ref) || '' }}
+      - run: npx e2e run ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'all-tests') && format('--changed-since origin/{0}', github.base_ref) || '' }}
 ```
 
 ## Write your own

@@ -259,12 +259,12 @@ jobs:
   with `decisionFilter` from `@e2e-dev/decision` and `gateway` from `ai`,
   pass `AI_GATEWAY_API_KEY` in the run step's `env`, give
   `actions/checkout` `fetch-depth: 0`, and run
-  `npx e2e run ${{ github.base_ref && format('--changed-since origin/{0}', github.base_ref) }}`.
+  `npx e2e run ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0}', github.base_ref) || '' }}`.
   Filters run only with `--changed-since <ref>`, which that expression
-  passes on pull requests alone. Every test runs without it, on
-  `pull_request_target`, a lockfile or config change, and a `--last-failed`
-  rerun, and so do tests whose test file, setup file, or stored screenshots
-  changed. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
+  passes on `pull_request` alone; never pass it on `pull_request_target`.
+  Every test runs without it and on a `--last-failed` rerun. The decision
+  filter also runs every test on a lockfile or `e2e.config` change, and the
+  tests whose test file, setup file, or stored screenshots changed. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
   on merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. Preview
   with `npx e2e list --changed-since origin/main`, after committing: the
   decision filter reads what the commits change, and a file only the

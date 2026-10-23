@@ -152,8 +152,8 @@ describe.each(schemas)('%s schema', (name) => {
         [() => delete changes['files'], () => (changes['files'] = 0)],
         [() => delete changes['base'], () => (changes['base'] = 'a'.repeat(40))],
         [() => (changes['files'] = -1), () => (changes['files'] = 3)],
-        [() => (changes['pinned'] = 0), () => (changes['pinned'] = 1)],
-        [() => (changes['skipped'] = ''), () => (changes['skipped'] = 'pnpm-lock.yaml changed')],
+        [() => (changes['pinned'] = 1), () => delete changes['pinned']],
+        [() => (changes['skipped'] = ''), () => (changes['skipped'] = 'no tests to judge')],
         [() => (changes['skipped'] = 'x'.repeat(1025)), () => (changes['skipped'] = 'x'.repeat(1024))],
         [() => (changes['paths'] = ['src/app.ts']), () => delete changes['paths']],
         [() => (error['phase'] = 'filtering'), () => (error['phase'] = 'filter')],
@@ -167,7 +167,7 @@ describe.each(schemas)('%s schema', (name) => {
       // A run that called no filter before git was asked says why, and nothing about a change.
       report.run.changes = { skipped: '--last-failed' };
       expect(validate(report)).toBe(true);
-      for (const counted of [{ files: 0 }, { pinned: 1 }, { base: 'a'.repeat(40) }]) {
+      for (const counted of [{ files: 0 }, { base: 'a'.repeat(40) }]) {
         report.run.changes = { skipped: '--last-failed', ...counted };
         expect(validate(report), JSON.stringify(counted)).toBe(false);
       }

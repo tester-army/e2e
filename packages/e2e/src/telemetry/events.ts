@@ -459,7 +459,6 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       filters_failed: run.filters?.filter((record) => record.outcome === 'failed').length ?? 0,
       filters_skipped: run.changes?.skipped !== undefined,
       filters_changed_files: run.changes?.files ?? 0,
-      tests_pinned_by_change: run.changes?.pinned ?? 0,
       tests_left_out_by_filters: run.filters?.reduce((total, record) => total + record.excluded, 0) ?? 0,
       attempts_total: attempts.reduce((total, count) => total + count, 0),
       tests_retried: attempts.filter((count) => count > 1).length,

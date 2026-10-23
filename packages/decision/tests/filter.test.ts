@@ -145,14 +145,13 @@ describe('decisionFilter', () => {
   it('sends the redacted diff and the redacted test file under its redacted path', async () => {
     const file = `tests/${SECRET}.e2e.ts`;
     const repo = changedRepo(
-      { 'src/cart.ts': 'export const total = 1;\n', [file]: "test('signs in', async () => {});\n" },
-      { 'src/cart.ts': `export const key = '${SECRET}';\n`, [file]: `test('signs in with ${SECRET}', async () => {});\n` },
+      { 'src/cart.ts': 'export const total = 1;\n', [file]: `test('signs in with ${SECRET}', async () => {});\n` },
+      { 'src/cart.ts': `export const key = '${SECRET}';\n` },
     );
     const { model, requests } = scriptedJudge(() => 0.9);
     await decisionFilter({ model }).filter([candidate(file, `signs in with ${SECRET}`)], filterContext(repo).context);
     const state = requests[0]?.state as { diff: string };
     expect(state.diff).toContain("+export const key = '[redacted]';");
-    expect(state.diff).toContain("+test('signs in with [redacted]', async () => {});");
     expect(JSON.stringify(state)).not.toContain(SECRET);
     expect(sent(requests[0])).toEqual({ 'tests/[redacted].e2e.ts': readFileSync(path.join(repo.root, file), 'utf8').replaceAll(SECRET, '[redacted]') });
     expect(requests[0]?.instructions).toEqual({ t0: asked('tests/[redacted].e2e.ts', 'signs in with [redacted]') });
@@ -160,7 +159,10 @@ describe('decisionFilter', () => {
 
   it('sends test files whose paths redact to the same key in separate calls', async () => {
     const [alpha, beta] = ['tests/alpha.e2e.ts', 'tests/beta.e2e.ts'];
-    const repo = cartRepo({ [alpha]: "test('runs a', async () => {});\n", [beta]: "test('runs b', async () => {});\n" });
+    const repo = changedRepo(
+      { 'src/cart.ts': 'export const total = 1;\n', [alpha]: "test('runs a', async () => {});\n", [beta]: "test('runs b', async () => {});\n" },
+      { 'src/cart.ts': 'export const total = 2;\n' },
+    );
     const { context } = filterContext(repo);
     const { model, requests } = scriptedJudge(() => 0.9);
     await decisionFilter({ model }).filter([candidate(alpha, 'runs a'), candidate(beta, 'runs b')], {
@@ -284,6 +286,50 @@ describe('decisionFilter', () => {
     expect(await decisionFilter({ model }).filter([], context)).toEqual({ exclude: {} });
     expect(requests).toEqual([]);
     expect(logs).toEqual([]);
+  });
+
+  it('leaves nothing out, making no call, when the e2e config or a lockfile changed at any depth, never for a file only named like one', async () => {
+    for (const file of ['e2e.config.ts', 'apps/web/e2e.config.mjs', 'pnpm-lock.yaml', 'ios/Podfile.lock', 'go.sum', 'gradle/libs.versions.toml']) {
+      const { model, requests } = scriptedJudge(() => 0);
+      const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(cartRepo({ [file]: 'changed\n' })).context);
+      expect(result, file).toEqual({ exclude: {}, note: `${file} changed, so the decision filter left nothing out` });
+      expect(requests, file).toEqual([]);
+    }
+    const { model, requests } = scriptedJudge(() => 0);
+    const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo({ 'docs/pnpm-lock.yaml.md': 'about locks\n' })).context);
+    expect(result.exclude).toEqual({ [SIGNS_IN.id]: '0% likely affected' });
+    expect(requests).toHaveLength(1);
+  });
+
+  it('keeps the tests whose test file, setup file, or stored screenshots changed without asking, and asks about the rest', async () => {
+    // macOS keeps the bytes a file was created with, while git names it in NFC: committed composed, handed over decomposed.
+    const setup = 'tests/caf\u00E9.setup.e2e.ts';
+    const repo = changedRepo(
+      {
+        'src/cart.ts': 'export const total = 1;\n',
+        [CART]: "test('adds an item', async () => {});\n",
+        [LOGIN]: "test('signs in', async () => {});\n",
+        [SEARCH]: "test('finds a product', async () => {});\n",
+        [setup]: "test.setup('sign in', async () => {});\n",
+        'tests/other.e2e.ts': "test('other', async () => {});\n",
+      },
+      { [CART]: "test('adds an item', async () => { /* edited */ });\n", [setup]: "test.setup('sign in', async () => { /* edited */ });\n", [`${SEARCH}-snapshots/home.png`]: 'png\n', 'src/cart.ts': 'export const total = 2;\n' },
+    );
+    const other = candidate('tests/other.e2e.ts', 'other');
+    const tests = [ADDS, withSetup(SIGNS_IN, 'tests/cafe\u0301.setup.e2e.ts'), FINDS, other];
+    const { model, requests } = scriptedJudge(() => 0);
+    const { context, logs } = filterContext(repo);
+    const result = await decisionFilter({ model }).filter(tests, context);
+    expect(result.exclude).toEqual({ [other.id]: '0% likely affected' });
+    expect(logs).toEqual(['3 tests run without asking: the test file, setup file, or stored screenshots changed', 'asking scripted-judge about 1 test in 1 file']);
+    expect(requests.map((request) => Object.keys(sent(request)))).toEqual([['tests/other.e2e.ts']]);
+  });
+
+  it('makes no call when the change touched every test it was given', async () => {
+    const { model, requests } = scriptedJudge(() => 0);
+    const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo({ [LOGIN]: "test('signs in', async () => { /* edited */ });\n" })).context);
+    expect(result).toEqual({ exclude: {} });
+    expect(requests).toEqual([]);
   });
 
   it('sends a renamed file as a rename and a deleted file without its lines', async () => {

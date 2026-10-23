@@ -67,7 +67,7 @@ jobs:
       # the merge queue and main pass no --changed-since and run every test.
       # Without the key (a fork's pull request), every test runs.
       - name: Testbed
-        run: pnpm --filter @e2e-dev/testbed test ${{ github.base_ref && format('--changed-since origin/{0}', github.base_ref) }}
+        run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0}', github.base_ref) || '' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
 

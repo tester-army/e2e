@@ -758,12 +758,11 @@
       "properties": {
         "base": { "description": "The merge base the change is measured from.", "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
         "files": { "description": "How many files changed since base; 0 when there is no change.", "type": "integer", "minimum": 0 },
-        "pinned": { "description": "How many tests ran without filters because their test file, the setup file of their session, or either one's stored screenshots changed.", "type": "integer", "minimum": 1 },
-        "skipped": { "description": "Why no filter ran, such as pnpm-lock.yaml changed.", "type": "string", "minLength": 1, "maxLength": 1024 }
+        "skipped": { "description": "Why no filter ran, such as --last-failed.", "type": "string", "minLength": 1, "maxLength": 1024 }
       },
       "oneOf": [
         { "required": ["base", "files"] },
-        { "required": ["skipped"], "properties": { "base": false, "files": false, "pinned": false } }
+        { "required": ["skipped"], "properties": { "base": false, "files": false } }
       ]
     },
     "carried": {

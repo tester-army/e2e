@@ -131,7 +131,9 @@ suites that consume the built packages the way a user would.
   secret, or assertion verdict. It also exports `decisionFilter()`, a
   `TestFilter` that asks a decision model whether the pull request's diff
   can affect each test, packing test files into calls under the model's
-  size limit, 8 calls at a time, and leaves out the unlikely ones. A failed
+  size limit, 8 calls at a time, and leaves out the unlikely ones. It runs
+  every test on an `e2e.config` or lockfile change, and asks nothing about a
+  test whose test file, setup file, or stored screenshots changed. A failed
   call leaves its tests in and the rest are still judged; after 3 failed
   calls it stops asking. When every call fails, or git or a file read
   fails, it throws, and the run warns and runs every test.

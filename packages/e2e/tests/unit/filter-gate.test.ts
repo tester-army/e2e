@@ -1,37 +1,26 @@
 /**
  * The gate in front of the test filters, on real throwaway git
- * repositories: a `--last-failed` rerun, an empty selection, and
- * `pull_request_target` never ask git, no change calls no filter, a
- * lockfile or the config file changing runs every test, and a test whose
- * file, stored screenshots, or session's setup file changed runs without
- * filters.
+ * repositories: a `--last-failed` rerun and an empty selection never ask
+ * git, no change calls no filter, and any other change is judged by every
+ * filter, on every test.
  */
 
-import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { onDiskPath } from '../../src/internal/paths.ts';
 import { gateTestFilters, type FilterGateInput } from '../../src/run/filter-gate.ts';
 import type { TestFilterCandidate } from '../../src/types.ts';
 import { commitFiles, initRepo, runGit, useTempDirs } from '../helpers/git-repo.ts';
 
 const tempDir = useTempDirs();
 
-/** Whether the temp directory's filesystem ignores case, as default macOS and Windows do. */
-const CASE_INSENSITIVE = existsSync(os.tmpdir().toUpperCase()) && existsSync(os.tmpdir().toLowerCase());
-
-/** A candidate for the one test in project-relative `file`, whose session `setupFile` saves when given. */
-function candidate(file: string, setupFile?: string): TestFilterCandidate {
-  return { id: `${file}::t`, file, titlePath: ['t'], tags: [], ...(setupFile === undefined ? {} : { setupFile }) };
+/** A candidate for the one test in project-relative `file`. */
+function candidate(file: string): TestFilterCandidate {
+  return { id: `${file}::t`, file, titlePath: ['t'], tags: [] };
 }
 
-const CANDIDATES = [candidate('tests/a.e2e.ts'), candidate('tests/b.e2e.ts'), candidate('tests/c.e2e.ts')];
+const CANDIDATES = [candidate('tests/a.e2e.ts'), candidate('tests/b.e2e.ts')];
 
-/**
- * A repository with the project in `app/`, its config and three test files
- * committed on `main`, and a branch checked out that commits `files`.
- */
+/** A repository with the project in `app/`, its config and two test files committed on `main`, and a branch checked out that commits `files`. */
 function projectRepo(files: Readonly<Record<string, string>>) {
   const root = tempDir();
   initRepo(root);
@@ -39,7 +28,6 @@ function projectRepo(files: Readonly<Record<string, string>>) {
     'app/e2e.config.ts': 'export default {};\n',
     'app/tests/a.e2e.ts': 'a\n',
     'app/tests/b.e2e.ts': 'b\n',
-    'app/tests/c.e2e.ts': 'c\n',
     'app/src/app.ts': 'one\n',
   });
   runGit(root, 'checkout', '--quiet', '-b', 'feature');
@@ -47,15 +35,13 @@ function projectRepo(files: Readonly<Record<string, string>>) {
   return { root, base, projectRoot: path.join(root, 'app') };
 }
 
-/** Runs the gate on `input` over a run with all three candidates and no session, judging the change since `main` outside CI, recording its notices. */
+/** Runs the gate on `input` over a run with both candidates, judging the change since `main`, recording its notices. */
 async function gate(input: Partial<FilterGateInput> & Pick<FilterGateInput, 'projectRoot'>) {
   const notices: string[] = [];
   const decided = await gateTestFilters({
     candidates: CANDIDATES,
     lastFailed: false,
     changedSince: 'main',
-    configPath: undefined,
-    env: {},
     signal: new AbortController().signal,
     notice: (message) => notices.push(message),
     ...input,
@@ -63,38 +49,9 @@ async function gate(input: Partial<FilterGateInput> & Pick<FilterGateInput, 'pro
   return { ...decided, notices };
 }
 
-/** Runs the gate on `input`, which must judge the change. */
-async function judged(input: Partial<FilterGateInput> & Pick<FilterGateInput, 'projectRoot'>) {
-  const decided = await gate(input);
-  if (decided.kind !== 'judge') throw new Error(`expected the gate to judge, got ${JSON.stringify(decided.record)}`);
-  return decided;
-}
-
-/**
- * Hands the gate the project root as `spell` writes it from the
- * repository root, then spelled as on disk, as the run hands it over, and
- * the config file as `spell` writes it, and expects a changed test file
- * still pinned and a changed config file still running every test.
- */
-async function expectSpelledRootMatched(spell: (root: string) => string): Promise<void> {
-  const changed = projectRepo({ 'app/tests/b.e2e.ts': 'b2\n' });
-  const decided = await judged({ projectRoot: onDiskPath(spell(changed.root)) });
-  expect(decided.candidates).toEqual([CANDIDATES[0], CANDIDATES[2]]);
-  expect(decided.record).toEqual({ base: changed.base, files: 1, pinned: 1 });
-
-  const edited = projectRepo({ 'app/e2e.config.ts': 'export default { changed: true };\n' });
-  const projectRoot = spell(edited.root);
-  const configPath = path.join(projectRoot, 'e2e.config.ts');
-  expect(await gate({ projectRoot: onDiskPath(projectRoot), configPath })).toMatchObject({
-    kind: 'skip',
-    record: { base: edited.base, files: 1, skipped: 'app/e2e.config.ts changed' },
-  });
-}
-
 describe('gateTestFilters', () => {
   it('never judges a --last-failed rerun, and asks no git for it', async () => {
-    const outside = tempDir();
-    const decided = await gate({ projectRoot: outside, lastFailed: true });
+    const decided = await gate({ projectRoot: tempDir(), lastFailed: true });
     expect(decided).toEqual({
       kind: 'skip',
       record: { skipped: '--last-failed' },
@@ -107,26 +64,6 @@ describe('gateTestFilters', () => {
     expect(decided).toEqual({ kind: 'skip', record: { skipped: 'no tests to judge' }, notices: ['no tests to judge, so no filter ran'] });
   });
 
-  it("calls no filter on GitHub Actions' pull_request_target, which may hold a fork's change beside the repository's secrets, asking no git", async () => {
-    const { projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n' });
-    const env = { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request_target' };
-    const skipped = {
-      kind: 'skip',
-      record: { skipped: 'pull_request_target runs every test' },
-      notices: ['pull_request_target runs every test, so no filter ran'],
-    };
-    expect(await gate({ projectRoot, env })).toEqual(skipped);
-    // No git is asked: a directory outside any repository says the same.
-    expect(await gate({ projectRoot: tempDir(), env })).toEqual(skipped);
-    // A --last-failed rerun and an empty selection are decided first.
-    expect((await gate({ projectRoot, env, lastFailed: true })).record).toEqual({ skipped: '--last-failed' });
-    expect((await gate({ projectRoot, env, candidates: [] })).record).toEqual({ skipped: 'no tests to judge' });
-    // Any other event, or the event name outside GitHub Actions, judges the change.
-    for (const other of [{ GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_EVENT_NAME: 'pull_request_target' }]) {
-      expect((await judged({ projectRoot, env: other })).changes.files, JSON.stringify(other)).toEqual(['app/src/app.ts']);
-    }
-  });
-
   it('calls no filter with no file changed since the ref', async () => {
     const { projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n' });
     const decided = await gate({ projectRoot, changedSince: 'HEAD' });
@@ -135,93 +72,14 @@ describe('gateTestFilters', () => {
     expect(decided).toEqual({ kind: 'skip', record: { base: head, files: 0, skipped: reason }, notices: [`${reason}, so no filter ran`] });
   });
 
-  it('judges the change, handing the filters every candidate whose file did not change', async () => {
-    const { root, base, projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n', 'README.md': 'docs\n' });
-    const decided = await judged({ projectRoot, configPath: path.join(projectRoot, 'e2e.config.ts') });
-    expect(decided.candidates).toEqual(CANDIDATES);
-    expect(decided.changes).toMatchObject({ base, files: ['README.md', 'app/src/app.ts'] });
-    expect(decided.changes.root).toBe(runGit(root, 'rev-parse', '--show-toplevel'));
-    expect(decided.record).toEqual({ base, files: 2 });
-    expect(decided.notices).toEqual([`judging 2 files changed since ${base.slice(0, 7)}`]);
-  });
-
-  it('runs a test whose file changed without filters, mapping project paths into the repository', async () => {
-    const { base, projectRoot } = projectRepo({ 'app/tests/b.e2e.ts': 'b2\n', 'app/src/app.ts': 'two\n' });
-    const decided = await judged({ projectRoot });
-    expect(decided.candidates.map((entry) => entry.file)).toEqual(['tests/a.e2e.ts', 'tests/c.e2e.ts']);
-    expect(decided.record).toEqual({ base, files: 2, pinned: 1 });
-    expect(decided.notices).toEqual([`judging 2 files changed since ${base.slice(0, 7)}`, '1 test runs without filters: its test file, screenshots, or setup file changed']);
-  });
-
-  it('runs a test whose session a changed setup file saves without filters, mapping the setup file as it maps a test file', async () => {
-    // macOS keeps the bytes a file was created with, while git there names every file in NFC: committed composed, collected decomposed.
-    const composed = 'tests/caf\u00E9.setup.e2e.ts';
-    const decomposed = 'tests/cafe\u0301.setup.e2e.ts';
-    const { base, projectRoot } = projectRepo({ 'app/tests/auth.setup.e2e.ts': 'setup2\n', [`app/${composed}`]: 's\n', 'app/src/app.ts': 'two\n' });
-    const candidates = [
-      candidate('tests/a.e2e.ts', 'tests/auth.setup.e2e.ts'),
-      candidate('tests/b.e2e.ts', decomposed),
-      candidate('tests/c.e2e.ts', 'tests/other.setup.e2e.ts'),
-    ];
-    const decided = await judged({ projectRoot, candidates });
-    expect(decided.candidates).toEqual([candidates[2]]);
-    expect(decided.record).toEqual({ base, files: 3, pinned: 2 });
-    expect(decided.notices).toEqual([`judging 3 files changed since ${base.slice(0, 7)}`, '2 tests run without filters: their test file, screenshots, or setup file changed']);
-  });
-
-  it("runs a test whose stored screenshots, or its setup file's, changed without filters, never another file's", async () => {
-    const { base, projectRoot } = projectRepo({
-      'app/tests/a.e2e.ts-snapshots/home-darwin.png': 'png\n',
-      'app/tests/auth.setup.e2e.ts-snapshots/signed-in.png': 'png\n',
-      'app/tests/c.e2e.tsx-snapshots/home.png': 'png\n',
-    });
-    const candidates = [CANDIDATES[0]!, candidate('tests/b.e2e.ts', 'tests/auth.setup.e2e.ts'), CANDIDATES[2]!];
-    const decided = await judged({ projectRoot, candidates });
-    expect(decided.candidates).toEqual([CANDIDATES[2]]);
-    expect(decided.record).toEqual({ base, files: 3, pinned: 2 });
-  });
-
-  it('pins a changed test file and spots a config change through a symlinked project path', async () => {
-    await expectSpelledRootMatched((root) => {
-      const link = path.join(tempDir(), 'link');
-      symlinkSync(root, link);
-      return path.join(link, 'app');
-    });
-  });
-
-  it.runIf(CASE_INSENSITIVE)('pins a changed test file and spots a config change when the project root is typed in another case', async () => {
-    await expectSpelledRootMatched((root) => path.join(root, 'APP'));
-  });
-
-  it('calls no filter once every test file changed', async () => {
-    const { base, projectRoot } = projectRepo({ 'app/tests/a.e2e.ts': 'a2\n', 'app/tests/b.e2e.ts': 'b2\n', 'app/tests/c.e2e.ts': '' });
+  it('judges any change, a test file, the config, or a lockfile among it, from the repository root', async () => {
+    const { root, base, projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n', 'app/tests/b.e2e.ts': 'b2\n', 'app/e2e.config.ts': 'export default { a: 1 };\n', 'pnpm-lock.yaml': 'lock\n' });
     const decided = await gate({ projectRoot });
-    expect(decided).toEqual({
-      kind: 'skip',
-      record: { base, files: 3, pinned: 3, skipped: 'no tests left to judge' },
-      notices: ['3 tests run without filters: their test file, screenshots, or setup file changed', 'no tests left to judge, so no filter ran'],
-    });
+    if (decided.kind !== 'judge') throw new Error(`expected the gate to judge, got ${JSON.stringify(decided.record)}`);
+    expect(decided.changes).toMatchObject({ base, files: ['app/e2e.config.ts', 'app/src/app.ts', 'app/tests/b.e2e.ts', 'pnpm-lock.yaml'] });
+    expect(decided.changes.root).toBe(runGit(root, 'rev-parse', '--show-toplevel'));
+    expect(decided.record).toEqual({ base, files: 4 });
+    expect(decided.notices).toEqual([`judging 4 files changed since ${base.slice(0, 7)}`]);
   });
 
-  it('runs every test when a lockfile of any package manager at any depth changed, never for a config file it did not load or a file named like a lockfile', async () => {
-    const names = ['package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb', 'deno.lock', 'Podfile.lock', 'Package.resolved', 'Cartfile.resolved'];
-    names.push('gradle.lockfile', 'buildscript-gradle.lockfile', 'libs.versions.toml', 'Gemfile.lock', 'poetry.lock', 'uv.lock', 'Pipfile.lock', 'pdm.lock', 'go.sum', 'Cargo.lock');
-    names.push('composer.lock', 'pubspec.lock', 'mix.lock', 'packages.lock.json', 'flake.lock', 'MODULE.bazel.lock');
-    const { root, base, projectRoot } = projectRepo({ 'app/src/app.ts': 'two\n' });
-    for (const lockfile of [...names, 'app/packages/ui/pnpm-lock.yaml', 'app/ios/Podfile.lock']) {
-      // Uncommitted, which --changed-since counts.
-      mkdirSync(path.dirname(path.join(root, lockfile)), { recursive: true });
-      writeFileSync(path.join(root, lockfile), 'lock\n');
-      const decided = await gate({ projectRoot });
-      expect(decided, lockfile).toEqual({ kind: 'skip', record: { base, files: 2, skipped: `${lockfile} changed` }, notices: [`${lockfile} changed, so no filter ran`] });
-      rmSync(path.join(root, lockfile));
-    }
-
-    const edited = projectRepo({ 'app/e2e.config.ts': 'export default { changed: true };\n' });
-    // A config value has no file to change: the edit is an ordinary file.
-    expect((await judged({ projectRoot: edited.projectRoot })).changes.files).toEqual(['app/e2e.config.ts']);
-    // A file merely named like a lockfile is not one.
-    const named = projectRepo({ 'app/docs/pnpm-lock.yaml.md': 'about locks\n' });
-    expect((await judged({ projectRoot: named.projectRoot })).changes.files).toEqual(['app/docs/pnpm-lock.yaml.md']);
-  });
 });

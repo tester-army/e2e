@@ -467,8 +467,7 @@
     },
     "changes": {
       "base": "0123456789abcdef0123456789abcdef01234567",
-      "files": 3,
-      "pinned": 1
+      "files": 3
     },
     "filters": [
       {

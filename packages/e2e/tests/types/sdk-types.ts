@@ -660,8 +660,8 @@ report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed-out' | undefined;
 ({ cause: 'explicit', reason: 'not on CI', filter: 'jev' }) satisfies NonNullable<Report['run']['results'][number]['skip']>;
 // The change the filters judged is counts only, never a file list: base and files together once git measured it, else why no filter ran.
 report.run.changes satisfies
-  | { base: string; files: number; pinned?: number | undefined; skipped?: string | undefined }
-  | { skipped: string; base?: undefined; files?: undefined; pinned?: undefined }
+  | { base: string; files: number; skipped?: string | undefined }
+  | { skipped: string; base?: undefined; files?: undefined }
   | undefined;
 // @ts-expect-error a change git never measured has no file count
 ({ files: 0, skipped: '--last-failed' }) satisfies NonNullable<Report['run']['changes']>;

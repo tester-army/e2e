@@ -302,14 +302,11 @@ same layout as its own rows. The `json` reporter does not carry them.
   invalid result, `timed-out` when it ran past 5 minutes. A filter left with
   no tests is not called and has no record.
 - Once the filters have decided, `run.changes` holds the change they
-  judged, by counts: `base` (the merge base), `files`, `pinned` (the tests
-  that [always ran](/filters#what-always-runs) because their files
-  changed), and `skipped` (why no filter ran, such as
-  `pnpm-lock.yaml changed`). It is present when filters are configured and
+  judged, by counts: `base` (the merge base), `files`, and `skipped` (why
+  no filter ran, such as `no files changed since abc1234`). It is present when filters are configured and
   the run passed `--changed-since`, except under `e2e explore`, on
   `--watch` reruns, and when the run ends before the filters decide. On
-  `--last-failed`, with no tests to judge, or on `pull_request_target`, it
-  holds `skipped` alone.
+  `--last-failed`, or with no tests to judge, it holds `skipped` alone.
 - A failure while the filters decide, such as `INVALID_CHANGED_SINCE` for a
   ref that names no commit, is in `run.errors` with `phase` `filter`. A
   malformed `changedSince` has `phase` `config`.

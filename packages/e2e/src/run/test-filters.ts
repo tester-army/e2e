@@ -18,7 +18,7 @@ import { gateTestFilters, type FilterGateInput } from './filter-gate.ts';
 import { staticSecretLedger } from './secrecy.ts';
 
 /** What `filterSelection` judges a selection with, and where each line about what the gate and the filters decided goes. */
-export interface FilterSelectionOptions extends Pick<FilterGateInput, 'changedSince' | 'env' | 'signal' | 'notice'> {
+export interface FilterSelectionOptions extends Pick<FilterGateInput, 'changedSince' | 'signal' | 'notice'> {
   readonly config: ResolvedConfig;
   readonly collection: Collection;
   /** The flags the selection was made with, `--last-failed` among them. */
@@ -105,18 +105,17 @@ export async function filterSelection(first: Selection, options: FilterSelection
   }
   // Spelled as on disk, as `changes.root` is, so the gate and a filter can join the two.
   const projectRoot = onDiskPath(config.projectRoot);
+  const candidates = filterCandidates(first);
   const gate = await gateTestFilters({
-    candidates: filterCandidates(first),
+    candidates,
     lastFailed: selectionFilters.lastFailed !== undefined,
     changedSince: options.changedSince,
     projectRoot,
-    configPath: config.configPath,
-    env: options.env,
     signal,
     notice,
   });
   if (gate.kind === 'skip') return { selection: first, records: [], changes: gate.record };
-  const applied = await applyTestFilters(config.filters, gate.candidates, {
+  const applied = await applyTestFilters(config.filters, candidates, {
     projectRoot,
     changes: gate.changes,
     secrets: config.allSecrets,

@@ -26,14 +26,55 @@ const MAX_DIFF_BUFFER = 64 * 1024 * 1024;
 const MAX_PATHSPEC_CHARS = 16_000;
 /** Plain `git diff` output whatever the repository's config says. */
 const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-textconv', '-U3'];
+/**
+ * Files that can change what any test does, by name at any depth: the
+ * config files e2e discovers, the lockfiles of every package manager, and
+ * Gradle's version catalog. A change to one leaves nothing out.
+ */
+const RUN_ALL: ReadonlySet<string> = new Set([
+  'e2e.config.ts',
+  'e2e.config.mts',
+  'e2e.config.js',
+  'e2e.config.mjs',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
+  'bun.lock',
+  'bun.lockb',
+  'deno.lock',
+  'Podfile.lock',
+  'Package.resolved',
+  'Cartfile.resolved',
+  'gradle.lockfile',
+  'buildscript-gradle.lockfile',
+  'libs.versions.toml',
+  'Gemfile.lock',
+  'poetry.lock',
+  'uv.lock',
+  'Pipfile.lock',
+  'pdm.lock',
+  'go.sum',
+  'Cargo.lock',
+  'composer.lock',
+  'pubspec.lock',
+  'mix.lock',
+  'packages.lock.json',
+  'flake.lock',
+  'MODULE.bazel.lock',
+]);
+/** What follows a test file's name in the directory of its stored screenshots. */
+const SNAPSHOTS_SUFFIX = '-snapshots/';
 /** How a valid model reads, for every model error. */
 const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })";
 /**
  * A test filter named `decision` that asks the decision model, test by
  * test, whether the change can affect what it checks, and whether it can
  * break the setup that saves the test's session, and leaves out the tests
- * unlikely on both counts. A test the model does not judge runs, and the
- * note says why. When every call fails, as without a key, or git fails,
+ * unlikely on both counts. A change to the config or a lockfile leaves
+ * nothing out, and a test whose test file, setup file, or stored
+ * screenshots changed always runs. A test the model does not judge runs,
+ * and the note says why. When every call fails, as without a key, or git fails,
  * the filter throws, so the run warns and runs every test.
  */
 export function decisionFilter(options: DecisionFilterOptions): TestFilter {
@@ -81,8 +122,9 @@ interface Answers {
   readonly setups: Map<string, number>;
 }
 /**
- * Asks the model about the tests, and the setup files that save their
- * sessions, against the redacted diff and the redacted files, in calls of
+ * Leaves nothing out when a `RUN_ALL` file changed, keeps the tests the
+ * change touches directly, and asks the model about the rest, and the
+ * setup files that save their sessions, against the redacted diff and the redacted files, in calls of
  * at most `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when
  * both it and its setup are unlikely to be affected. A failed call leaves
  * its tests in, and after `MAX_FAILURES` no more calls are made. The note
@@ -90,10 +132,15 @@ interface Answers {
  * when git or a file read fails, the first failure's first line when calls
  * fail and none answers, and on an abort.
  */
-async function judge(tests: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
-  // A wrapper may hand on no tests: nothing to ask, and no diff to read.
-  if (tests.length === 0) return { exclude: {} };
+async function judge(given: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
   const { changes, signal, log, redact } = context;
+  const everything = changes.files.find((file) => RUN_ALL.has(path.posix.basename(file)));
+  if (everything !== undefined) return { exclude: {}, note: `${everything} changed, so the decision filter left nothing out` };
+  const touched = touchedBy(context);
+  const tests = given.filter((test) => !touched(test.file) && !touched(test.setupFile));
+  if (tests.length < given.length) log(`${counted(given.length - tests.length, 'test')} run without asking: the test file, setup file, or stored screenshots changed`);
+  // A wrapper may hand on no tests, or the change touched them all: nothing to ask, and no diff to read.
+  if (tests.length === 0) return { exclude: {} };
   const { modelId } = options.model;
   log(`asking ${modelId} about ${testsIn(tests)}`);
   const raw = await changeDiff(changes, signal);
@@ -115,6 +162,23 @@ async function judge(tests: readonly TestFilterCandidate[], context: TestFilterC
   const what = tooLarge.length === 1 ? `${tooLarge[0]?.key} is` : `${counted(tooLarge.length, 'file')} are`;
   const why = [failures.length === 0 ? undefined : firstLine(failures[0]), tooLarge.length === 0 ? undefined : `${what} too large to send with the diff`];
   return answered(exclude, `${modelId} did not judge ${testsIn(missed)}: ${why.filter((part) => part !== undefined).join('; ')}`, spend);
+}
+/**
+ * Whether a project-relative file, or one of its stored screenshots, is in
+ * the change. Git names files in NFC, while a test file's name keeps the
+ * bytes on disk, NFD where macOS wrote them, so both are composed.
+ */
+function touchedBy({ projectRoot, changes }: TestFilterContext): (file: string | undefined) => boolean {
+  const changed = new Set(changes.files.map((file) => file.normalize('NFC')));
+  const screenshotted = new Set<string>();
+  for (const file of changed) {
+    for (let at = file.indexOf(SNAPSHOTS_SUFFIX); at !== -1; at = file.indexOf(SNAPSHOTS_SUFFIX, at + 1)) screenshotted.add(file.slice(0, at));
+  }
+  return (file) => {
+    if (file === undefined) return false;
+    const key = path.relative(changes.root, path.join(projectRoot, file)).split(path.sep).join('/').normalize('NFC');
+    return changed.has(key) || screenshotted.has(key);
+  };
 }
 /**
  * The files the model reads: each test file, then each setup file that
