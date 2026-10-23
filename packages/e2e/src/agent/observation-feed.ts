@@ -52,6 +52,12 @@ const MAX_RECENT_OBSERVATIONS = 8;
  */
 const MAX_SHOWN_TEXTS = 4_096;
 
+/** One semantic observation of the step and when it was captured. */
+interface TimedObservation {
+  readonly atMs: number;
+  readonly observation: SemanticAgentObservation;
+}
+
 /** A target resolved to a node of the observation it was found in. */
 export interface Resolved {
   readonly node: RedactedNode;
@@ -82,7 +88,7 @@ export class ObservationFeed {
   /** What the step's screens have shown, one string per node, oldest first; see MAX_SHOWN_TEXTS. */
   private readonly shown = new Set<string>();
   /** The newest observations of the step, oldest first; see MAX_RECENT_OBSERVATIONS. */
-  private readonly recent: SemanticAgentObservation[] = [];
+  private readonly recent: TimedObservation[] = [];
   /**
    * The screen shape the newest committed action was resolved against, with
    * the window its settle policy allows, kept until the next settled
@@ -242,10 +248,15 @@ export class ObservationFeed {
     return { id, node: latest.nodes.get(id) ?? this.refound(id, latest), observation: latest };
   }
 
+  /** The recent semantic observations captured at or after `sinceMs`, oldest first. */
+  looksSince(sinceMs: number): readonly TimedObservation[] {
+    return this.recent.filter((look) => look.atMs >= sinceMs);
+  }
+
   /** What `id` named in the most recent observation that carried it. */
   lastSeen(id: string): Resolved | undefined {
     for (let index = this.recent.length - 1; index >= 0; index -= 1) {
-      const observation = this.recent[index]!;
+      const { observation } = this.recent[index]!;
       const node = observation.nodes.get(id);
       if (node !== undefined) return { node, observation };
     }
@@ -359,7 +370,7 @@ export class ObservationFeed {
       this.observationTruncated = true;
     }
     if (observation.kind === 'pixels') this.recent.length = 0;
-    else this.recent.push(observation);
+    else this.recent.push({ atMs: Date.now(), observation });
     if (this.recent.length > MAX_RECENT_OBSERVATIONS) this.recent.shift();
     if (observation.kind === 'semantic') this.noteShown(observation);
     const metrics = this.accounting.metrics;
