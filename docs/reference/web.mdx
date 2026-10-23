@@ -442,7 +442,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
 | [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
 | [`keyboard`](#keyboard) | `{ press, down, up, type }` |
-| [`mouse`](#mouse) | `{ move, wheel, down, up }` |
+| [`mouse`](#mouse) | `{ dblclick, move, wheel, down, up }` |
 
 The [config](/reference/config) sets each member's budget:
 
@@ -888,9 +888,14 @@ await browser.keyboard.type('hello');
 #### `mouse`
 
 Viewport-level pointer input from test code, independent of agent
-observations.
+observations. `dblclick(x, y)` sends a primary-button double-click at
+viewport CSS coordinates without element actionability checks. This can
+start inline editing when a diagram's SVG receives the input instead of
+the textbox listed in the semantic tree. Both coordinates must be finite
+numbers; otherwise it throws `INVALID_ARGUMENT`.
 
 ```ts
+await browser.mouse.dblclick(120, 240);
 await browser.mouse.move(120, 240);
 await browser.mouse.down();
 await browser.mouse.move(320, 240);
@@ -1176,6 +1181,8 @@ export interface Browser extends Expectable<BrowserExpectation> {
    * before starting a pointer sequence.
    */
   readonly mouse: {
+    /** Double-clicks the primary button at viewport CSS coordinates, without element actionability checks. */
+    dblclick(x: number, y: number): Promise<void>;
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;
     /** Scrolls the pointer wheel. */

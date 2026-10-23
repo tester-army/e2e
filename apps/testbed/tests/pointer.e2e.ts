@@ -61,3 +61,26 @@ test.describe('raw pointer input', { requires: ['browser'] }, () => {
     await expect(screen.getByLabel('Pad state')).toHaveText('swiped from 10,20 to 150,20');
   });
 });
+
+test('raw mouse double-click edits a label beneath a sibling SVG', { requires: ['browser'] }, async ({ app, browser, screen }) => {
+  await app.open('/pointer');
+  await browser.evaluate(() => {
+    document.body.innerHTML = `
+      <div style="position:relative;width:200px;height:80px"
+        ondblclick="const t=this.querySelector('textarea');t.readOnly=false;t.style.pointerEvents='auto';t.focus()">
+        <svg width="200" height="80" style="position:absolute;inset:0">
+          <path d="M1 1H199V79H1Z" fill="white" stroke="black" />
+        </svg>
+        <textarea aria-label="Edit label" readonly
+          style="position:absolute;inset:0;pointer-events:none;background:transparent">Node</textarea>
+      </div>`;
+    return null;
+  });
+  const point = await browser.evaluate(() => {
+    const box = document.querySelector('textarea')!.getBoundingClientRect();
+    return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  });
+  await browser.mouse.dblclick(point.x, point.y);
+  await screen.getByRole('textbox', 'Edit label').fill('Renamed');
+  await expect(screen.getByRole('textbox', 'Edit label')).toHaveValue('Renamed');
+});

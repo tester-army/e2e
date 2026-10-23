@@ -281,6 +281,8 @@ export interface Browser extends Expectable<BrowserExpectation> {
    * before starting a pointer sequence.
    */
   readonly mouse: {
+    /** Double-clicks the primary button at viewport CSS coordinates, without element actionability checks. */
+    dblclick(x: number, y: number): Promise<void>;
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;
     /** Scrolls the pointer wheel. */
@@ -657,6 +659,12 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
         surface.guard(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text), classifyInputError),
     },
     mouse: {
+      dblclick: (x, y) => {
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+          throw new TestError('INVALID_ARGUMENT', 'browser.mouse.dblclick requires two finite coordinates');
+        }
+        return surface.guard(context.operation(), 'mouse.dblclick', () => surface.requirePage().mouse.dblclick(x, y), classifyInputError);
+      },
       move: (x, y) =>
         surface.guard(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y), classifyInputError),
       wheel: (deltaX, deltaY) =>
@@ -695,7 +703,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     onDialog: action,
     waitForDownload: { ...action, timeout: (_trigger, options) => options?.timeout },
     keyboard: { down: { ...action, label: (key) => key }, up: { ...action, label: (key) => key }, press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
-    mouse: { move: action, wheel: action, down: action, up: action },
+    mouse: { dblclick: action, move: action, wheel: action, down: action, up: action },
   });
 }
 

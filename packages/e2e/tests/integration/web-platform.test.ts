@@ -52,6 +52,7 @@ test('deterministic queries and reads', async ({ app, screen, browser }) => {
   expect(await screen.getByTestId('items').getAttribute('constructor')).toBeNull();
   expect(await screen.getByTestId('items').getAttribute('toString')).toBeNull();
   expect(await screen.getByTestId('items').getAttribute('__proto__')).toBeNull();
+  await browser.mouse.dblclick(1000, 600);
 });
 
 test('class assertions report the observed class on failure', async ({ app, browser }) => {
@@ -718,5 +719,13 @@ describe('web platform integration', () => {
     const result = resultByTitle(outcome, title);
     expect(result.status).toBe('failed');
     expect(result.attempts[0]!.error).toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining(message) });
+  });
+
+  it('records coordinate double-clicks as browser resource steps', () => {
+    const result = resultByTitle(outcome, 'deterministic queries and reads');
+    expect(result.status).toBe('passed');
+    expect(result.attempts[0]!.steps).toContainEqual(expect.objectContaining({
+      kind: 'resource', api: 'browser.mouse.dblclick', status: 'passed',
+    }));
   });
 });

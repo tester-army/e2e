@@ -510,6 +510,9 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `keyboard.up(key)`, `mouse.*`: unfocused input. Only `down(key)` holds a
   key or modifier until `up(key)`. `press(key)` presses and releases within
   the call. Prefer `locator.press` and `locator.fill`.
+- `mouse.dblclick(x, y)`: a primary-button double-click at viewport CSS
+  coordinates, without element actionability checks. Useful when a diagram
+  receives pointer input on an SVG rather than its semantic textbox.
 
 A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 `RegExp` matched against the full URL (`*` stays within one path segment,
