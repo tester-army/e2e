@@ -828,6 +828,51 @@ describe('observation', () => {
     expect(treeOnly.root.children).toHaveLength(1);
   });
 
+  it.each([undefined, 1, 2, 3] as const)('captures screenshots at configured density %s and masks secure fields at that scale', async (density) => {
+    const h = harness({ screenshotPixelDensity: density });
+    const scale = density ?? 1;
+    const width = 390 * scale;
+    const height = 844 * scale;
+    const png = encodePng({ width, height, channels: 4, pixels: new Uint8Array(width * height * 4).fill(255) });
+    const captures: { path: string; pixelDensity?: number; normalizeStatusBar?: boolean }[] = [];
+    h.fake.respond('capture.screenshot', (args) => {
+      const capture = args as (typeof captures)[number];
+      captures.push(capture);
+      writeFileSync(capture.path, png);
+      return { path: capture.path };
+    });
+    await openAttempt(h);
+    const observation = await h.engine.observe!(operation(), { pixels: true, comparable: true });
+    expect(observation.pixels).toMatchObject({ width, height, scale });
+    expect(observation.maskedRegionCount).toBe(1);
+    const artifact = await h.engine.artifacts!.screenshot('density', operation());
+    for (const bytes of [observation.pixels!.data, new Uint8Array(readFileSync(path.join(artifactsDir, artifact!)))]) {
+      const decoded = decodePng(bytes);
+      const at = (x: number, y: number) => [...decoded.pixels.subarray((y * width + x) * 4, (y * width + x) * 4 + 3)];
+      expect(at(100 * scale, 290 * scale)).toEqual([0, 0, 0]);
+      expect(at(100 * scale, 240 * scale)).toEqual([255, 255, 255]);
+    }
+    expect(captures).toHaveLength(2);
+    for (const capture of captures) {
+      if (density === undefined) expect(capture).not.toHaveProperty('pixelDensity');
+      else expect(capture.pixelDensity).toBe(density);
+      expect(existsSync(capture.path)).toBe(false);
+    }
+    expect(captures.map((capture) => capture.normalizeStatusBar)).toEqual([true, undefined]);
+
+    h.fake.respond('capture.snapshot', () => ({ nodes: [{ ref: 'e1', type: 'SecureTextField', label: 'PIN', value: '1234' }] }));
+    expect((await h.engine.observe!(operation(), { pixels: true })).pixels).toBeUndefined();
+    await expect(h.engine.artifacts!.screenshot('unmaskable', operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(existsSync(path.join(artifactsDir, 'screenshots', '002-unmaskable.png'))).toBe(false);
+  });
+
+  it('rejects unsupported screenshot density configuration before any device command', () => {
+    for (const density of [0, 4, 1.5, NaN, '3', null]) {
+      expect(() => mobile({ platform: 'ios', screenshotPixelDensity: density as 1 })).toThrow(/screenshotPixelDensity/);
+    }
+    expect(() => mobile({ platform: 'android', screenshotPixelDensity: 1 })).toThrow(/iOS simulator/);
+  });
+
   it('holds the status bar in a fixed state for a screenshot taken for comparison, and only then', async () => {
     const h = harness();
     const png = encodePng({ width: 195, height: 422, channels: 4, pixels: new Uint8Array(195 * 422 * 4).fill(255) });

@@ -115,4 +115,11 @@ export interface MobileOptions {
    * daemon that pass can outlast the attempt's `cleanupTimeout`.
    */
   readonly videoTouches?: boolean | undefined;
+  /**
+   * Pixels per logical point for screenshots on iOS simulators. Omitted,
+   * agent-device uses 1. Applies to observation pixels and saved screenshots,
+   * not video. Android is rejected at configuration; agent-device rejects
+   * physical iOS devices when capturing. Secure-field masking is unchanged.
+   */
+  readonly screenshotPixelDensity?: 1 | 2 | 3 | undefined;
 }

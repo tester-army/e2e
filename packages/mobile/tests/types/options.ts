@@ -35,3 +35,12 @@ const farm = {
 ({ daemon: { baseUrl: 'http://10.0.0.7:4700' } }) satisfies DeviceLease;
 // @ts-expect-error a lease names its daemon by URL.
 ({ id: 'lease-1', daemon: { baseUrl: 4700 } }) satisfies DeviceLease;
+
+({ platform: 'ios', screenshotPixelDensity: 1 }) satisfies MobileOptions;
+({ platform: 'ios', screenshotPixelDensity: 2 }) satisfies MobileOptions;
+({ platform: 'ios', screenshotPixelDensity: 3 }) satisfies MobileOptions;
+({ platform: 'ios', screenshotPixelDensity: undefined }) satisfies MobileOptions;
+// @ts-expect-error screenshot density is 1, 2 or 3 pixels per point.
+({ platform: 'ios', screenshotPixelDensity: 4 }) satisfies MobileOptions;
+// @ts-expect-error screenshot density is a number, not a string.
+({ platform: 'ios', screenshotPixelDensity: '3' }) satisfies MobileOptions;

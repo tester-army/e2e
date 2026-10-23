@@ -88,6 +88,7 @@ The app under test is the target's `app`, not an engine option; see
 | [`settle`](#settle) | `number \| false` | `150` |
 | [`transition`](#transition) | `number` | `500` |
 | [`videoTouches`](#videotouches) | `boolean` | `true` |
+| [`screenshotPixelDensity`](#screenshotpixeldensity) | `1 \| 2 \| 3` | `1` |
 
 Every optional value also accepts `undefined`, so values read straight from
 `process.env` need no conditional spread. Each entry below shows its member's
@@ -96,6 +97,7 @@ declaration.
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | An empty `device` list. |
+| `INVALID_CONFIG` | `screenshotPixelDensity` is not `1`, `2` or `3`, or is set on Android. |
 | `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
 | `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
 
@@ -247,6 +249,29 @@ readonly videoTouches?: boolean | undefined;
 ```ts
 mobile({ platform: 'ios', videoTouches: false }); // default: true
 ```
+
+#### `screenshotPixelDensity`
+
+```ts
+/**
+ * Pixels per logical point for screenshots on iOS simulators. Omitted,
+ * agent-device uses 1. Applies to observation pixels and saved screenshots,
+ * not video. Android is rejected at configuration; agent-device rejects
+ * physical iOS devices when capturing. Secure-field masking is unchanged.
+ */
+readonly screenshotPixelDensity?: 1 | 2 | 3 | undefined;
+```
+
+```ts
+mobile({ platform: 'ios', device: 'iPhone 17 Pro', screenshotPixelDensity: 3 }); // default: 1
+```
+
+Use a higher density to inspect small icons or map markers. A `3` density
+produces three times as many pixels in each dimension, increasing image size
+and capture cost. Locator coordinates stay in logical points. Secure bounds
+are scaled to the image; pixels are withheld if masking cannot be proven.
+On a physical iOS device, agent-device refuses the density request: saved
+screenshots fail and observations fall back to tree-only evidence.
 
 #### The app under test
 

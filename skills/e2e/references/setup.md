@@ -348,6 +348,11 @@ export default {
   'NO']` loads that dev server on every fresh launch, dev menu off;
   `app.command` (`npx expo start --port 8081`) with `readyUrl:
   'http://localhost:8081/status'` starts it.
+- `mobile({ platform: 'ios', screenshotPixelDensity: 3 })` captures iOS simulator
+  observation pixels and saved screenshots at three pixels per logical point.
+  Omitted, density stays at 1. Secure-field masking still applies; observation
+  pixels and saved screenshots are withheld when secure bounds cannot be proven.
+  Android rejects the option; physical iOS captures refuse it. Video is unchanged.
 - One worker per device. No `device`: every booted simulator or emulator of
   the platform, and every connected phone, is the pool, up to `workers` (none booted: agent-device boots
   one); one `device`: one worker whatever `workers` says; a list (`device:

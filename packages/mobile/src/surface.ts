@@ -321,6 +321,7 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   settle: true,
   transition: true,
   videoTouches: true,
+  screenshotPixelDensity: true,
 } satisfies Record<keyof MobileOptions, true>);
 
 /** Every state a permission takes, kept equal to `PermissionState` by the compiler. */
@@ -439,6 +440,10 @@ export class AgentDeviceSurface {
     private readonly createClient: ClientFactory,
   ) {
     rejectUnknownKeys('mobile()', options, MOBILE_OPTION_KEYS);
+    if (options.screenshotPixelDensity !== undefined &&
+      (options.platform !== 'ios' || ![1, 2, 3].includes(options.screenshotPixelDensity))) {
+      throw new ConfigurationError('INVALID_CONFIG', 'mobile().screenshotPixelDensity requires an iOS simulator and density 1, 2 or 3');
+    }
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
@@ -1577,7 +1582,7 @@ export class AgentDeviceSurface {
       const directory = mkdtempSync(path.join(tmpdir(), 'e2e-agent-device-'));
       const file = path.join(directory, 'screenshot.png');
       try {
-        return await read(await client.capture.screenshot({ path: file, ...(capture.normalizeStatusBar === true ? { normalizeStatusBar: true } : {}) }), file);
+        return await read(await client.capture.screenshot({ path: file, ...(this.options.screenshotPixelDensity === undefined ? {} : { pixelDensity: this.options.screenshotPixelDensity }), ...(capture.normalizeStatusBar === true ? { normalizeStatusBar: true } : {}) }), file);
       } finally {
         rmSync(directory, { recursive: true, force: true });
       }
