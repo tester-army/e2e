@@ -1,0 +1,5 @@
+---
+"e2e": patch
+---
+
+`e2e mcp` sessions have a `run_code` tool. Pass it test statements as a test body writes them, such as `await screen.getByLabel('Email').fill('ada@example.com')`, and the session runs them on its `screen` and `app` fixtures with a test's waits, exactly-one rule, and matchers. It stops at the first failure and returns each statement's result, then what changed on screen. The statements that pass, except reads, join the `test_lines` draft. Each statement waits at most 5 seconds unless `timeout` says otherwise. The server parses the code into a closed grammar and never runs it as JavaScript. A secret `fill` passes the same checks as `type_secret`, reads and matchers see `<secret:name>` where a secret value is, and in a project with secrets a locator found by part of a text is refused. `run_code` is now a reserved name: a project tool named `run_code` fails the config load with `INVALID_CONFIG`. The bundled skill tells the coding agent to run the lines no action printed, such as assertions, with `run_code` before it writes them into the test.

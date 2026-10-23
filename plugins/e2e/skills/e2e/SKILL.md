@@ -22,7 +22,7 @@ The Rules and Feedback sections below still apply.
 | When you are | Topic | Read |
 | --- | --- | --- |
 | Adding e2e to a project, writing `e2e.config.ts`, starting the app from the config, signing in to a model, setting up mobile targets | `setup` | [references/setup.md](references/setup.md) |
-| Looking at the running app, checking a UI change, taking a screenshot or video, or trying a locator before writing it, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
+| Looking at the running app, checking a UI change, taking a screenshot or video, or trying a locator or running a test line before writing it, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
 | Writing or fixing a test: fixtures, locators, actions, matchers, sign-in sessions, the `browser` fixture, API-only tests | `writing-tests` | [references/writing-tests.md](references/writing-tests.md) |
 | Adding `agent.*` steps, picking a model, cutting cost, budgets, the replay cache | `agent` | [references/agent.md](references/agent.md) |
 | Running tests: CLI flags, CI, reporters, trace pages, `report.json` for scripts, exit codes | `running` | [references/running.md](references/running.md) |
@@ -91,7 +91,8 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    the components, open the page with `--headed`, or drive the live app over
    a connected `e2e mcp` server (topic `mcp`): `open_session`, `observe`,
    and `locate` show exact names and check a locator before you write it,
-   and each action prints the test line that repeats it.
+   each action prints the test line that repeats it, and `run_code` runs
+   your own lines on the live app.
 3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one
    atomic goal per call, and pin each outcome right after with `expect` or
    `agent.assert`. A test with three goals makes three calls.
@@ -131,10 +132,11 @@ screen.
    app source, or a live session.
 4. For a screen the evidence and the source leave out, look live (topic
    `mcp`): open or reuse a session, go straight to that screen, then
-   `observe` and `locate`. On the web, `navigate` to the path of the `❯ at`
-   URL or the screen's route, and tap only to reach a state no URL opens. A
-   device session starts on the app's launch screen: take the shortest path
-   from there.
+   `observe` and `locate`, or `run_code` for the fixed line and the ones
+   after it. On the web, `navigate` to the path of the `❯ at` URL or the
+   screen's route, and tap only to reach a state no URL opens. A device
+   session starts on the app's launch screen: take the shortest path from
+   there.
 5. Rerun only that test, the way the next section says (topic `mcp` says
    when a session must close first). Repeat with the next failure.
 
