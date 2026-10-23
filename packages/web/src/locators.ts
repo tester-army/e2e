@@ -312,6 +312,9 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       if (expression.has !== undefined) {
         options.has = requireComposable(project(scope, expression.has, testIdAttribute));
       }
+      if (expression.hasNot !== undefined) {
+        options.hasNot = requireComposable(project(scope, expression.hasNot, testIdAttribute));
+      }
       if (source.steps.length > 0) {
         return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
       }

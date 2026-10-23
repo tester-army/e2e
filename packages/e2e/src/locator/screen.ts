@@ -646,15 +646,18 @@ class LocatorImpl extends ScreenImpl implements Locator {
     }, { verifies: true });
   }
 
-  filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
-    rejectUnknownOptions('filter', options, ['hasText', 'has'], 'INVALID_LOCATOR');
-    const { hasText, has } = options ?? {};
+  filter(options: { hasText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator {
+    rejectUnknownOptions('filter', options, ['hasText', 'has', 'hasNot'], 'INVALID_LOCATOR');
+    const { hasText, has, hasNot } = options ?? {};
     const hasExpression = has === undefined ? undefined : this.ownLocator(has, 'filter({ has })').expression;
+    const hasNotExpression =
+      hasNot === undefined ? undefined : this.ownLocator(hasNot, 'filter({ hasNot })').expression;
     return new LocatorImpl(
       this.context,
       filterExpression(this.expression, {
         ...(hasText !== undefined ? { hasText } : {}),
         ...(hasExpression !== undefined ? { has: hasExpression } : {}),
+        ...(hasNotExpression !== undefined ? { hasNot: hasNotExpression } : {}),
       }),
     );
   }

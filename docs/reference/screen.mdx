@@ -292,7 +292,7 @@ Refinement returns a new locator without querying the app.
 
 ```ts
 /** Adds deterministic locator filters. */
-filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+filter(options: { hasText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator;
 ```
 
 ```ts
@@ -304,12 +304,14 @@ await row.getByRole('button', 'Void').tap();
   match and its descendants, unlike a query text, which matches exactly. Pass
   a `RegExp` for anything stricter.
 - `has` keeps a match whose subtree resolves the inner locator.
+- `hasNot` drops a match whose subtree resolves the inner locator. It follows
+  the same scoping rules as `has`.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_LOCATOR` | Neither `hasText` nor `has` is given. |
-| `INVALID_LOCATOR` | Any other key, even beside them: `hasNot`, `hasNotText`, and `visible` are not filters here. |
-| `INVALID_LOCATOR` | `has` is not a runner locator, or was made by another target's screen. |
+| `INVALID_LOCATOR` | None of `hasText`, `has`, or `hasNot` is given. |
+| `INVALID_LOCATOR` | Any other key, even beside them: `hasNotText` and `visible` are not filters here. |
+| `INVALID_LOCATOR` | `has` or `hasNot` is not a runner locator, or was made by another target's screen. |
 
 #### `or`
 
