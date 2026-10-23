@@ -1,0 +1,164 @@
+---
+title: Writing fixtures
+description: Set up test data, accounts, and other resources before each test and clean them up after it.
+icon: "puzzle-piece"
+"og:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=c21f1fee7f"
+"twitter:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=c21f1fee7f"
+---
+
+A fixture is a value a test receives in its parameter list, set up before
+the test and torn down after it. Define your own with `test.extend` to
+create test data, sign in, or start a service, with cleanup that runs even
+when the test fails.
+
+## Define fixtures in one file
+
+Put your fixtures in one file and export the extended `test` from it. Start
+from your engine's `test`, so a definition can use `browser` or `device`.
+
+```ts title="tests/fixtures.ts"
+import { test as base } from '@e2e-dev/web';
+import type { App } from 'e2e';
+
+export { expect } from 'e2e';
+
+interface Account {
+  readonly email: string;
+  readonly sessionToken: string;
+}
+
+/** The URL the run serves the app at, including a port it picked. */
+function appUrl(app: App): string {
+  if (app.baseUrl === undefined) throw new Error('set app.url on the target');
+  return app.baseUrl;
+}
+
+/** Calls the app's test API and fails on any status but 2xx. */
+async function testApi(app: App, path: string, method: 'POST' | 'DELETE'): Promise<Response> {
+  const response = await fetch(new URL(path, appUrl(app)), { method });
+  if (!response.ok) throw new Error(`${method} ${path} failed: HTTP ${response.status}`);
+  return response;
+}
+
+/** A fresh account for each test, deleted after it. */
+export const test = base.extend<{ account: Account }>({
+  account: async ({ app }, use) => {
+    const response = await testApi(app, '/api/test/accounts', 'POST');
+    const account = (await response.json()) as Account;
+    await use(account);
+    await testApi(app, `/api/test/accounts/${encodeURIComponent(account.email)}`, 'DELETE');
+  },
+});
+
+/** The same account, already signed in to the browser. */
+export const signedInTest = test.extend<{ signedIn: Account }>({
+  signedIn: async ({ account, app, browser }, use) => {
+    await browser.setCookies([{ url: appUrl(app), name: 'session', value: account.sessionToken }]);
+    await use(account);
+  },
+});
+```
+
+Code before `await use(value)` is the setup. The test receives `value`. Code
+after `use` is the teardown, and it runs after the test passes or fails.
+
+Import `test` and `expect` from this file in your test files:
+
+```ts title="tests/settings.e2e.ts"
+import { expect, signedInTest as test } from './fixtures.ts';
+
+test('shows the account email', async ({ app, screen, signedIn }) => {
+  await app.open('/settings');
+  await expect(screen.getByLabel('Email')).toHaveValue(signedIn.email);
+});
+```
+
+## Build one fixture on another
+
+A definition sees the fixtures of the `test` it extends, not the other
+definitions in the same call. To use one fixture in another, extend in a
+second call. Above, `signedIn` reads `account` because `signedInTest`
+extends `test`.
+
+Setup runs in declaration order, after the engine's fixtures. Teardown runs
+in reverse order, so `signedIn` cleans up before `account` is deleted.
+
+## Give each setup its own test
+
+Every fixture in a chain sets up for every test registered through it,
+whether the test names the fixture or not. A test that needs no account
+still pays for one when it uses an extended `test`.
+
+So export one `test` for each setup. In `tests/fixtures.ts`, `test` sets
+up `account`, and `signedInTest` sets up `account`, then `signedIn`. For a
+test that needs neither, import `test` from `@e2e-dev/web` directly.
+For signing in through the UI one time and reusing it, use a
+[saved session](/authentication) instead of a fixture.
+
+## Read fixtures in hooks
+
+Register hooks on your extended `test` to read its fixtures:
+
+```ts
+signedInTest.beforeEach(async ({ app, signedIn }) => {
+  await app.open(`/users/${encodeURIComponent(signedIn.email)}`);
+});
+```
+
+The top-level `beforeEach` and `afterEach` exports from `e2e` and the engine
+packages are typed with only the core and engine fixtures. At run time, a
+hook reads the fixtures of the test it runs around. If that test was
+registered through another `test` without `signedIn`, the hook fails with
+`UNSUPPORTED_CAPABILITY`.
+
+## When a fixture fails
+
+Setup counts against the test `timeout`. Each teardown gets its own
+`cleanupTimeout`.
+
+- An error before `use` fails the attempt in phase `beforeEach`. The hooks
+  and the body don't run.
+- An error after `use` fails a passing attempt in phase `afterEach`. After a
+  failed body, it joins `secondaryErrors`.
+- A definition that returns without calling `use`, or calls it twice, fails
+  with `TEST_SETUP_FAILED`.
+
+For name clashes and the rest, see the
+[full list of mistakes](/reference/test#your-own-fixtures).
+
+<Accordion title="Share one resource across a worker's tests">
+A fixture runs per attempt. For work that only needs to happen one time per
+worker, such as installing an app on a device, cache the promise on
+`globalThis`. It lasts as long as the worker process. Clear it when the work
+fails, so a retry can try again.
+
+```ts
+const INSTALLS = Symbol.for('my-suite.installs');
+
+export const test = base.extend<{ build: undefined }>({
+  build: async ({ device }, use) => {
+    const holder = globalThis as { [INSTALLS]?: Promise<unknown> };
+    holder[INSTALLS] ??= device.installApp().catch((error: unknown) => {
+      delete holder[INSTALLS];
+      throw error;
+    });
+    await holder[INSTALLS];
+    await use(undefined);
+  },
+});
+```
+
+No hook runs when the worker stops, so keep this for work that needs no
+cleanup.
+</Accordion>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Test reference" icon="code" href="/reference/test#your-own-fixtures">
+    The fixture contract, types, and every failure.
+  </Card>
+  <Card title="Signing in" icon="key" href="/authentication">
+    Save a session one time and restore it in each test.
+  </Card>
+</CardGroup>
