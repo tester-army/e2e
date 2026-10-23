@@ -89,6 +89,10 @@ export interface Placement {
 const CONTAINER_ROLES: ReadonlySet<string> = new Set(['row', 'listitem', 'article', 'group', 'region', 'dialog', 'tabpanel']);
 /** Longest container key kept. */
 const MAX_WITHIN_CHARS = 80;
+/** Roles whose text is a value the app updates in place, a count, a clock, or progress, never the name of what holds it. */
+const LIVE_VALUE_ROLES: ReadonlySet<string> = new Set(['status', 'timer', 'marquee', 'log', 'progressbar', 'meter']);
+/** No role skipped: the container key with live values read as text (`liveContainerKey`). */
+const NO_ROLES: ReadonlySet<string> = new Set();
 
 /**
  * The key of the nearest named container a node sits in, the first text of
@@ -103,11 +107,37 @@ const MAX_WITHIN_CHARS = 80;
  * renders whichever rows are near the viewport, so its first row is a scroll
  * position, not a place, and the same row would read as `Row 0512 in Row
  * 0500` one time and `in Row 0501` the next. Its own label still keys it.
+ * A live value (`<output>`, a status, a timer, a progress bar) keys nothing
+ * either: a region whose first line reads `Count: <output>0</output>` would
+ * be keyed "0", and a replay that starts at another count would not find its
+ * control.
  */
 export function containerKey(
   id: string,
   nodes: ReadonlyMap<string, RedactedNode>,
   parents: ReadonlyMap<string, string>,
+): string | undefined {
+  return keyOf(id, nodes, parents, LIVE_VALUE_ROLES);
+}
+
+/**
+ * The container key with live values read as text: the key for twins that
+ * nothing else tells apart (`describePlacement`).
+ */
+export function liveContainerKey(
+  id: string,
+  nodes: ReadonlyMap<string, RedactedNode>,
+  parents: ReadonlyMap<string, string>,
+): string | undefined {
+  return keyOf(id, nodes, parents, NO_ROLES);
+}
+
+/** The container key of `id`, skipping the text of nodes in a `skipped` role. */
+function keyOf(
+  id: string,
+  nodes: ReadonlyMap<string, RedactedNode>,
+  parents: ReadonlyMap<string, string>,
+  skipped: ReadonlySet<string>,
 ): string | undefined {
   const node = nodes.get(id);
   const own = node === undefined ? '' : squash(node.name ?? node.text ?? '');
@@ -116,7 +146,7 @@ export function containerKey(
   while (cursor !== undefined) {
     const container = nodes.get(cursor);
     if (container !== undefined && CONTAINER_ROLES.has(container.role ?? '')) {
-      const key = (namedAfterTwinOf(container, nodes.get(came)) ? undefined : firstLeafText(container)) ?? ownLabel(container);
+      const key = namedAfterTwinOf(container, nodes.get(came), skipped) ? ownLabel(container) : firstTextOf(container, skipped);
       const clean = key === undefined ? '' : bound(collapseText(key), MAX_WITHIN_CHARS);
       return clean === '' || squash(clean) === own ? undefined : clean;
     }
@@ -132,11 +162,12 @@ export function containerKey(
  * not `branch` itself: the container is then a list of such rows, named
  * after whichever one comes first.
  */
-function namedAfterTwinOf(container: RedactedNode, branch: RedactedNode | undefined): boolean {
+function namedAfterTwinOf(container: RedactedNode, branch: RedactedNode | undefined, skipped: ReadonlySet<string>): boolean {
   if (branch === undefined || !CONTAINER_ROLES.has(branch.role ?? '')) return false;
   for (const child of container.children ?? []) {
+    if (skipped.has(child.role ?? '')) continue;
     const own = (child.children?.length ?? 0) === 0 ? (child.text ?? child.name ?? '').trim() : '';
-    if (own === '' && firstLeafText(child) === undefined) continue;
+    if (own === '' && firstLeafText(child, skipped) === undefined) continue;
     return child.ref.id !== branch.ref.id && child.role === branch.role;
   }
   return false;
@@ -151,15 +182,27 @@ export function parentsOf(nodes: ReadonlyMap<string, RedactedNode>): ReadonlyMap
   return parents;
 }
 
-/** The first leaf's own text under a container, depth-first. */
-function firstLeafText(node: RedactedNode): string | undefined {
+/** The first leaf's own text under a container, depth-first, past nodes in a `skipped` role. */
+function firstLeafText(node: RedactedNode, skipped: ReadonlySet<string>): string | undefined {
   for (const child of node.children ?? []) {
+    if (skipped.has(child.role ?? '')) continue;
     const own = (child.children?.length ?? 0) === 0 ? (child.text ?? child.name ?? '').trim() : '';
     if (own !== '') return own;
-    const deeper = firstLeafText(child);
+    const deeper = firstLeafText(child, skipped);
     if (deeper !== undefined) return deeper;
   }
   return undefined;
+}
+
+/**
+ * The first leaf text under a container past nodes in a `skipped` role, or
+ * else its own label. None when its only leaf text is in a skipped role: a
+ * list item's label is its content, so it would carry the value back in.
+ */
+function firstTextOf(container: RedactedNode, skipped: ReadonlySet<string>): string | undefined {
+  const leaf = firstLeafText(container, skipped);
+  if (leaf !== undefined) return leaf;
+  return skipped.size > 0 && firstLeafText(container, NO_ROLES) !== undefined ? undefined : ownLabel(container);
 }
 
 /** A container's own name or text, when it has one. */

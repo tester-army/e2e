@@ -18,8 +18,8 @@ import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { ActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
-import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
-import { describePosition } from '../cache/relocate.ts';
+import { describeAction, type Placement, type RecordableAction } from './actions.ts';
+import { describePlacement } from '../cache/relocate.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { ActionHookError, AgentError, toAgentError } from './error.ts';
@@ -706,12 +706,7 @@ export class ActionDispatcher {
    * number picks the same one.
    */
   private placementOf({ node, observation }: Resolved): Placement {
-    const within = containerKey(node.ref.id, observation.nodes, observation.parents);
-    const position = describePosition(node, within, observation.nodes);
-    return {
-      ...(within === undefined ? {} : { within }),
-      ...(position === undefined ? {} : { position }),
-    };
+    return describePlacement(node, observation.nodes, observation.parents);
   }
 
   /** The seam a policy records its decisions through, onto this step's events. */
