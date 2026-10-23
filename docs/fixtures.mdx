@@ -6,22 +6,14 @@ icon: "puzzle-piece"
 "twitter:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=a85d0155da"
 ---
 
-A fixture is a value a test receives in its parameter list, set up before
-the test and torn down after it. Define your own with `test.extend` to
-create test data or start a service, with cleanup that runs even when the
-test fails.
-
-To sign in, use a [saved session](/authentication), not a fixture. A session
-holds cookies and storage, not server data. Fixtures create that data.
+A fixture is a value a test receives, set up before the test and torn down
+after it, even when the test fails. Use one to create test data. To sign in,
+use a [saved session](/authentication) instead.
 
 ## Define fixtures in one file
 
-Put your fixtures in one file and export the extended `test` from it. Start
-from your engine's `test`, so fixtures and tests can use `browser` or
-`device`.
-
-A fixture gets the same fixtures as a test, `agent` included. So it can
-create its data through the app with `agent.act`, and needs no test API:
+Extend your engine's `test` and export it. A fixture can use `agent`, so it
+can create its data through the app with [goals](/core-concepts#goals):
 
 ```ts title="tests/fixtures.ts" expandable
 import { test as base } from '@e2e-dev/web';
@@ -54,17 +46,8 @@ export const taskTest = test.extend<{ task: string }>({
 });
 ```
 
-Code before `await use(value)` is the setup. The test receives `value`. Code
-after `use` is the teardown, and it runs after the test passes or fails.
-
-Write fixture goals like goals in a test. Keep each one atomic and check it
-with `expect`. Give a value that changes on each run with `unique()`, so the
-[cache can replay the step](/cache#what-must-match). See
-[Goals](/core-concepts#goals).
-
-Import `test` and `expect` from this file in your test files. The saved
-session is restored before the fixtures run, so they work signed in. The
-test starts on the project page the fixtures left open:
+Code before `await use(value)` is the setup, and code after it is the
+teardown. Import the extended `test` in your test files:
 
 ```ts title="tests/tasks.e2e.ts"
 import { expect, taskTest as test } from './fixtures.ts';
@@ -75,38 +58,26 @@ test('completes a task', { session: 'admin' }, async ({ screen, task }) => {
 });
 ```
 
-The report lists the fixture's steps in phase `beforeEach` and `afterEach`.
+The saved session is restored before the fixtures run.
 
 <Note>
-Every agent step in a fixture runs for every test that uses it. Where the
-cache can't replay a step, it costs model calls each time. When your app
-has a test API, a `fetch` call in the fixture is faster.
+Agent steps in a fixture run for every test that uses it. If your app has a
+test API, a `fetch` call is faster.
 </Note>
 
 ## Build one fixture on another
 
-A definition sees the fixtures of the `test` it extends, not the other
-definitions in the same call. To use one fixture in another, extend in a
-second call. Above, `task` runs after `project` because `taskTest` extends
-`test`.
-
-Setup runs in declaration order, after the engine's fixtures. Teardown runs
-in reverse order: a fixture's teardown runs before the teardown of the
-fixture it builds on.
+A fixture can read only the fixtures of the `test` it extends. So `task`
+uses `project` through a second `extend`. Teardown runs in reverse order.
 
 ## Give each setup its own test
 
-Every fixture in a chain sets up for every test registered through it,
-whether the test names the fixture or not. A test that needs no task
-still creates one when it uses `taskTest`.
-
-So export one `test` for each setup. In `tests/fixtures.ts`, `test` sets
-up `project`, and `taskTest` sets up `project`, then `task`. For a test
-that needs neither, import `test` from `@e2e-dev/web` directly.
+Every fixture in a chain runs for every test registered through it, named
+or not. Export one `test` for each setup, like `test` and `taskTest` above.
 
 ## Read fixtures in hooks
 
-Register hooks on your extended `test` to read its fixtures:
+Register the hook on your extended `test` to get the fixture types:
 
 ```ts
 taskTest.beforeEach(async ({ screen, project }) => {
@@ -114,52 +85,10 @@ taskTest.beforeEach(async ({ screen, project }) => {
 });
 ```
 
-The top-level `beforeEach` and `afterEach` exports from `e2e` and the engine
-packages are typed with only the core and engine fixtures. At run time, a
-hook reads the fixtures of the test it runs around. If that test was
-registered through another `test` without `project`, the hook fails with
-`UNSUPPORTED_CAPABILITY`.
-
 ## When a fixture fails
 
-Setup counts against the test `timeout`. Each teardown gets its own
-`cleanupTimeout`.
-
-- An error before `use` fails the attempt in phase `beforeEach`. The hooks
-  and the body don't run.
-- An error after `use` fails a passing attempt in phase `afterEach`. After a
-  failed body, it joins `secondaryErrors`.
-- A definition that returns without calling `use`, or calls it twice, fails
-  with `TEST_SETUP_FAILED`.
-
-For name clashes and the rest, see the
-[full list of mistakes](/reference/test#your-own-fixtures).
-
-<Accordion title="Share one resource across a worker's tests">
-A fixture runs per attempt. For work that only needs to happen one time per
-worker, such as installing an app on a device, cache the promise on
-`globalThis`. It lasts as long as the worker process. Clear it when the work
-fails, so a retry can try again.
-
-```ts
-const INSTALLS = Symbol.for('my-suite.installs');
-
-export const test = base.extend<{ build: undefined }>({
-  build: async ({ device }, use) => {
-    const holder = globalThis as { [INSTALLS]?: Promise<unknown> };
-    holder[INSTALLS] ??= device.installApp().catch((error: unknown) => {
-      delete holder[INSTALLS];
-      throw error;
-    });
-    await holder[INSTALLS];
-    await use(undefined);
-  },
-});
-```
-
-No hook runs when the worker stops, so keep this for work that needs no
-cleanup.
-</Accordion>
+An error in setup fails the test in `beforeEach`. An error in teardown is
+reported in `afterEach`. See the [full list of mistakes](/reference/test#your-own-fixtures).
 
 ## Next
 
