@@ -441,6 +441,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | [`emulateMedia`](#media-emulation) | `Promise<void>` |
 | [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
 | [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
+| [`waitForDownloads`](#waitfordownloads) | `Promise<{ path, absolutePath, … }[]>` |
 | [`keyboard`](#keyboard) | `{ press, down, up, type }` |
 | [`mouse`](#mouse) | `{ move, wheel, down, up }` |
 
@@ -453,10 +454,10 @@ The [config](/reference/config) sets each member's budget:
   `locator` and `frameLocator` touch no page and take none.
 
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
-`forward`, `waitForResponse`, and `waitForDownload`, capped by the test
-deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`,
-`unrouteAll`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`,
-`keyboard.*`, and `mouse.*` take no override.
+`forward`, `waitForResponse`, `waitForDownload`, and `waitForDownloads`, capped
+by the test deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`,
+`unroute`, `unrouteAll`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`,
+`onDialog`, `keyboard.*`, and `mouse.*` take no override.
 
 #### `goto`
 
@@ -872,6 +873,12 @@ const file = await browser.waitForDownload(() =>
 A trigger still running at the timeout fails with the step timeout. One that
 throws fails with its own error.
 
+#### `waitForDownloads`
+
+`waitForDownloads(trigger, { count })` calls the trigger once and returns
+`count` files in start order, each its own artifact, under the same timeout.
+When fewer start in time, the error names both counts; extra downloads are ignored.
+
 #### `keyboard`
 
 Viewport-level keyboard input, for whatever has focus.
@@ -1159,6 +1166,11 @@ export interface Browser extends Expectable<BrowserExpectation> {
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
+  /** Runs one trigger and waits for the requested number of completed downloads. */
+  waitForDownloads(
+    trigger: () => Promise<void>,
+    options: { count: number; timeout?: number },
+  ): Promise<readonly { path: string; absolutePath: string; suggestedFilename: string }[]>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */

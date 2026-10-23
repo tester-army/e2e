@@ -20,6 +20,7 @@
     "packages/web/tests/types/keyboard.ts",
     "packages/web/tests/types/media.ts",
     "packages/web/tests/types/routes.ts",
+    "packages/web/tests/types/downloads.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
     "packages/e2e/tests/live/*.ts",
