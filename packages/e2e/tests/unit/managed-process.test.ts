@@ -6,8 +6,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InfrastructureError } from '../../src/internal/errors.ts';
-import { ManagedProcess } from '../../src/run/managed-process.ts';
+import { ManagedProcess, stopsSettled } from '../../src/run/managed-process.ts';
 import type { CommandConfig } from '../../src/types.ts';
+import { freePort } from '../helpers/free-port.ts';
 
 describe('ManagedProcess', () => {
   it.each(['preflight', 'startup'] as const)('cancels an in-flight %s readiness probe', async (phase) => {
@@ -72,6 +73,33 @@ describe('ManagedProcess', () => {
     await app.start(controller.signal);
     expect(Date.now() - startedAt).toBeLessThan(5_000);
     await app.stop();
+  }, 20_000);
+
+  // Windows has no SIGTERM a process can ignore: the stop ends it at once.
+  it.skipIf(process.platform === 'win32')('keeps stopsSettled pending until a stop force-kills a process that ignores SIGTERM at shutdownTimeout', async () => {
+    const port = await freePort();
+    const app = new ManagedProcess(
+      'app.command',
+      {
+        executable: process.execPath,
+        args: ['-e', `process.on('SIGTERM', () => {}); require('node:http').createServer((request, response) => response.end()).listen(${port}, '127.0.0.1');`],
+        startupTimeout: 10_000,
+        shutdownTimeout: 500,
+      },
+      process.cwd(),
+      { readyUrl: `http://127.0.0.1:${port}/` },
+    );
+    await app.start(new AbortController().signal);
+    const stopped = app.stop();
+    let settled = false;
+    const settling = stopsSettled().then(() => {
+      settled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(settled).toBe(false);
+    await stopped;
+    await settling;
+    expect(settled).toBe(true);
   }, 20_000);
 });
 

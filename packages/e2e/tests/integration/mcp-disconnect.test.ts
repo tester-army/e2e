@@ -6,7 +6,7 @@
  */
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -165,6 +165,17 @@ describe('e2e mcp when the client goes away', { timeout: 90_000 }, () => {
     expect(await exitWithin(20_000), stderr).toBe(0);
     expect(alive(pid!)).toBe(false);
     expect(stderr).toContain('client disconnected');
+  });
+
+  it('stops the app and exits 0 when the client closes stdin after the config it loaded left a timer open', async () => {
+    appendFileSync(path.join(project.dir, 'e2e.config.ts'), 'setInterval(() => {}, 60_000);\n');
+    await openSession();
+    const pid = appPid();
+    expect(pid !== undefined && alive(pid)).toBe(true);
+
+    server.stdin.end();
+    expect(await exitWithin(20_000), stderr).toBe(0);
+    expect(alive(pid!)).toBe(false);
   });
 
   it('closes the session, stops the app, and exits 0 when the client dies with a call in flight', async () => {

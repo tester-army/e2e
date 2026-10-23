@@ -14,5 +14,6 @@ ignoreBrokenPipes([process.stdout, process.stderr]);
 
 const { main } = await import('./index.ts');
 await main(process.argv);
-const { exitIfStopped } = await import('./run-output.ts');
+const { exitAfterGrace, exitIfStopped } = await import('./run-output.ts');
 await exitIfStopped();
+exitAfterGrace();
