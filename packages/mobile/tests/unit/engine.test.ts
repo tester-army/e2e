@@ -2423,6 +2423,32 @@ describe('deterministic actions', () => {
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
   });
 
+  it.each(['type', 'fill', 'clear'] as const)('reobserves after %s when the keyboard moves a control after an unchanged snapshot', async (action) => {
+    autoAdvanceTimers();
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    const search = await observed(h, 'Search');
+    if (action === 'type') {
+      await h.engine.keyboard!.type('blue', { replace: false }, test());
+    } else {
+      await h.engine.perform!(search.ref, action === 'fill' ? { kind: 'fill', value: 'blue', sensitive: false } : { kind: 'clear' }, test());
+    }
+    // The first post-entry snapshot still has the old bounds. The keyboard
+    // arrives later, moving an existing control before the next tap lands.
+    const beforeKeyboard = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: SETTINGS_NODES.map((node) =>
+        node.identifier === 'ABOUT' || node.label === 'About'
+          ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } }
+          : node,
+      ),
+    }));
+    await h.engine.perform!(beforeKeyboard.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
   it('acts on the duplicate nearest where the control was when a fresh snapshot lists several alike', async () => {
     const h = harness({ transition: 120 });
     await openAttempt(h);
