@@ -10,16 +10,22 @@ import { isPlainObject } from '../internal/options.ts';
 import { onDiskPath } from '../internal/paths.ts';
 import { collapseText } from '../internal/text.ts';
 import { budgetText, withAbort } from '../internal/time.ts';
-import { compareTests, type ReportChanges, type ReportFilter } from '../report/build.ts';
-import { ellipsize, filterDecision } from '../report/format.ts';
+import { compareTests, type FilterOutcome, type ReportChanges, type ReportFilter } from '../report/build.ts';
+import { ellipsize, filterDecision, shortCommit } from '../report/format.ts';
+import { plural } from '../report/markdown-text.ts';
 import { leftOutTests } from '../report/left-out.ts';
 import type { TestFilter, TestFilterCandidate, TestFilterChanges, TestFilterContext } from '../types.ts';
-import { gateTestFilters, type FilterGateInput } from './filter-gate.ts';
+import { findChanges } from './changes.ts';
 import { staticSecretLedger } from './secrecy.ts';
 
 /** What `filterSelection` judges a selection with, and where each line about what the gate and the filters decided goes. */
-export interface FilterSelectionOptions extends Pick<FilterGateInput, 'changedSince' | 'signal' | 'notice'> {
+export interface FilterSelectionOptions {
   readonly config: ResolvedConfig;
+  /** The base ref `--changed-since` named. */
+  readonly changedSince: string;
+  readonly signal: AbortSignal;
+  /** One line about what the filters judge and what each decided. */
+  readonly notice: (message: string) => void;
   readonly collection: Collection;
   /** The flags the selection was made with, `--last-failed` among them. */
   readonly selectionFilters: SelectionFilters;
@@ -52,14 +58,14 @@ export interface TestFilterScope {
   readonly signal: AbortSignal;
   /** One line, already prefixed and redacted. */
   readonly notice: (message: string) => void;
-  /** `run` wraps each call in the `filter` setup step, which ends `failed` or `timed-out` for a call that left nothing out; `list` calls it bare. */
+  /** `run` wraps each call in the `filter` setup step, which ends `failed` or `timed-out` for a call that did not answer; `list` calls it bare. */
   readonly step: (name: string, work: () => Promise<FilterCall>) => Promise<FilterCall>;
 }
 
 /** How one filter call ended: with its answer, checked; or thrown, refused, or abandoned past the deadline, with the note that says so. */
-export type FilterCall =
+type FilterCall =
   | { readonly outcome: 'answered'; readonly result: CheckedResult }
-  | { readonly outcome: NonNullable<ReportFilter['outcome']>; readonly note: string };
+  | { readonly outcome: FilterOutcome; readonly note: string };
 
 /** What the filters decided: every test they left out, by test id, and one decision per filter that ran. */
 interface AppliedTestFilters {
@@ -68,7 +74,7 @@ interface AppliedTestFilters {
 }
 
 /** A filter's answer once checked: what it left out, with each reason, and its note, redacted and cut; no note when it left none. */
-export interface CheckedResult {
+interface CheckedResult {
   readonly exclude: readonly (readonly [string, string])[];
   readonly note: string | undefined;
 }
@@ -91,8 +97,10 @@ const NO_FILTERS = 'warning: --changed-since: the config has no filters, so ever
  * The second selection pass, which `run` and `list` share. `first` is the
  * selection every flag made, `--shard` included, so each shard machine hands
  * the filters its own slice and the cut never depends on what they answer.
- * Without a filter in the config, or when the gate calls none, `first`
- * stands. Otherwise the exclusions go into a selection with the same flags,
+ * Without a filter in the config, `first` stands, and so it does, with
+ * `run.changes.skipped` saying why, on a `--last-failed` rerun, whose
+ * tests are owed, with no test to judge (git is asked for neither), and
+ * when no file changed since the merge base. Otherwise the exclusions go into a selection with the same flags,
  * which serial groups and sessions settle like any other filter; an empty
  * result is the filters' doing, or pass 1's under `passWithNoTests`, and
  * passes. Each decision's line goes to `options.notice`.
@@ -103,21 +111,23 @@ export async function filterSelection(first: Selection, options: FilterSelection
     if (!signal.aborted) notice(NO_FILTERS);
     return { selection: first, records: [], changes: undefined };
   }
-  // Spelled as on disk, as `changes.root` is, so the gate and a filter can join the two.
-  const projectRoot = onDiskPath(config.projectRoot);
+  /** `first` stands, for `record.skipped`, said as `message` or `<why>, so no filter ran`. */
+  const skip = (record: ReportChanges & { readonly skipped: string }, message = `${record.skipped}, so no filter ran`): FilteredSelection => {
+    notice(message);
+    return { selection: first, records: [], changes: record };
+  };
+  if (selectionFilters.lastFailed !== undefined) return skip({ skipped: '--last-failed' }, '--last-failed: the tests the last run owes run without filters');
   const candidates = filterCandidates(first);
-  const gate = await gateTestFilters({
-    candidates,
-    lastFailed: selectionFilters.lastFailed !== undefined,
-    changedSince: options.changedSince,
-    projectRoot,
-    signal,
-    notice,
-  });
-  if (gate.kind === 'skip') return { selection: first, records: [], changes: gate.record };
+  if (candidates.length === 0) return skip({ skipped: 'no tests to judge' });
+  // Spelled as on disk, as `changes.root` is, so a filter can join the two.
+  const projectRoot = onDiskPath(config.projectRoot);
+  const changes = await findChanges({ cwd: projectRoot, changedSince: options.changedSince, signal });
+  const counts = { base: changes.base, files: changes.files.length };
+  if (changes.files.length === 0) return skip({ ...counts, skipped: `no files changed since ${shortCommit(changes.base)}` });
+  notice(`judging ${plural(changes.files.length, 'file')} changed since ${shortCommit(changes.base)}`);
   const applied = await applyTestFilters(config.filters, candidates, {
     projectRoot,
-    changes: gate.changes,
+    changes,
     secrets: config.allSecrets,
     collectedIds: new Set(collection.tests.map((test) => test.id)),
     timeoutMs: options.timeoutMs ?? FILTER_TIMEOUT_MS,
@@ -131,7 +141,7 @@ export async function filterSelection(first: Selection, options: FilterSelection
     const summary = filterSummary(record);
     if (summary !== undefined) notice(summary);
   }
-  return { selection, records, changes: gate.record };
+  return { selection, records, changes: counts };
 }
 
 /**

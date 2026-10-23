@@ -24,12 +24,12 @@ export interface DecideRequest {
  * probability `resolve` gives its instructions, and records each call. Each
  * call first awaits `before`, given its index from 0 and its request; a
  * throw there fails the call. Each answer reports `inputTokens` and, when
- * given, `providerMetadata`.
+ * given, `providerMetadata`, or what it returns for the call's index.
  */
 export function scriptedJudge(
   resolve: (instructions: string) => number,
   before?: (call: number, request: DecideRequest) => void | Promise<void>,
-  { inputTokens = 10, providerMetadata }: { readonly inputTokens?: number; readonly providerMetadata?: DecideResult['providerMetadata'] } = {},
+  { inputTokens = 10, providerMetadata }: { readonly inputTokens?: number; readonly providerMetadata?: DecideResult['providerMetadata'] | ((call: number) => DecideResult['providerMetadata']) } = {},
 ): { model: DecisionModel; requests: DecideRequest[] } {
   const requests: DecideRequest[] = [];
   const model: Decider = {
@@ -42,9 +42,11 @@ export function scriptedJudge(
       const instructions = Object.fromEntries(Object.entries(call.questions).map(([id, question]) => [id, String(question.instructions)]));
       const request = { state: json?.type === 'json' ? json.value : undefined, instructions, abortSignal: call.abortSignal, providerOptions: call.providerOptions };
       requests.push(request);
-      await before?.(requests.length - 1, request);
+      const index = requests.length - 1;
+      await before?.(index, request);
+      const metadata = typeof providerMetadata === 'function' ? providerMetadata(index) : providerMetadata;
       const answers = Object.fromEntries(Object.entries(instructions).map(([id, text]) => [id, { type: 'boolean' as const, probability: resolve(text) }]));
-      return { answers, warnings: [], usage: { inputTokens, outputTokens: 0 }, response: { modelId: 'scripted-judge' }, ...(providerMetadata === undefined ? {} : { providerMetadata }) };
+      return { answers, warnings: [], usage: { inputTokens, outputTokens: 0 }, response: { modelId: 'scripted-judge' }, ...(metadata === undefined ? {} : { providerMetadata: metadata }) };
     },
   };
   return { model, requests };

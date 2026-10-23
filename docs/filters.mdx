@@ -72,9 +72,11 @@ The filter leaves out a test when the model rates both the test and its
 setup under 20% likely affected. Tests the model can't judge run, and the
 filter's note says why: a diff over 60 kB, a test or setup file too large
 to send with the diff, or some calls failing. When every call fails, as
-without a key on a pull request from a fork, or when git fails, the filter
-fails: the run warns and runs every test. The filter needs `ai` 7.0.134 or
-later.
+without a key on a pull request from a fork, the filter fails: the run
+warns and runs every test. When git can't measure the change, because it
+is missing, the project is not in a repository, or the ref shares no
+history with `HEAD`, the run fails with `INVALID_CHANGED_SINCE`. The
+filter needs `ai` 7.0.134 or later.
 
 Any [decision model](/decision-models) that answers `boolean` questions
 works, such as Jev through TypeSafe directly:
@@ -113,10 +115,13 @@ The decision filter also runs:
 
 - The tests in a test file that changed or whose stored screenshots
   changed, and the tests that use the sessions of such a setup file.
-- Every test, when an `e2e.config` file, Gradle's `libs.versions.toml`, or
-  a lockfile changes anywhere in the repository. Lockfiles are known by
-  name, such as `pnpm-lock.yaml`, `Podfile.lock`, `gradle.lockfile`,
-  `Gemfile.lock`, `go.sum`, or `Cargo.lock`; the model judges any other.
+- Every test, when a file named `e2e.config.ts` (`.mts`, `.js`, `.mjs`),
+  Gradle's `libs.versions.toml`, or a lockfile changes in the project's
+  directory, inside it, or in a directory above it, such as the workspace
+  root. Lockfiles are known by name, such as `pnpm-lock.yaml`,
+  `Podfile.lock`, `gradle.lockfile`, `Gemfile.lock`, `go.sum`, or
+  `Cargo.lock`. The model judges any other file, and those of a sibling
+  project.
 
 A filter that throws, returns something other than `{ exclude, note? }`,
 or runs past 5 minutes leaves nothing out, and a warning says so. The next
@@ -204,7 +209,6 @@ export const areas = {
   filter(tests, { changes }) {
     const reached = new Set<string>();
     for (const file of changes.files) {
-      if (file.includes('.e2e.ts')) continue;
       const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
       if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
       for (const tag of AREAS[area] ?? []) reached.add(tag);

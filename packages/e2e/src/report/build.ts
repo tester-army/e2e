@@ -105,7 +105,7 @@ export type ReportChanges =
       base: string;
       /** How many files changed since `base`; 0 when there is no change. */
       files: number;
-      /** Why no filter ran, such as `no file changed`; omitted when they ran. */
+      /** Why no filter ran, such as `no files changed since abc1234`; omitted when they ran. */
       skipped?: string | undefined;
     }
   | {
@@ -114,6 +114,9 @@ export type ReportChanges =
       base?: undefined;
       files?: undefined;
     };
+
+/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, note? }`, or ran past 5 minutes. */
+export type FilterOutcome = 'failed' | 'timed-out';
 
 /** One test filter the run applied, in order. */
 export interface ReportFilter {
@@ -131,7 +134,7 @@ export interface ReportFilter {
    * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
    * stopped waiting. Absent when it answered.
    */
-  outcome?: 'failed' | 'timed-out' | undefined;
+  outcome?: FilterOutcome | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */

@@ -1528,7 +1528,9 @@ export interface TestFilterChanges {
   /**
    * Repository-relative POSIX paths of every file added, modified, or
    * deleted since `base`, both paths of a rename, uncommitted and untracked
-   * files included; sorted, never empty.
+   * files included; sorted, never empty. Spelled as git prints them, which
+   * on macOS is NFC while a test's `file` keeps the bytes on disk, so
+   * compare a non-ASCII path with `.normalize('NFC')` on both sides.
    */
   readonly files: readonly string[];
 }

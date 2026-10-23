@@ -385,6 +385,18 @@ describe('test filters on a run', () => {
 });
 
 describe('when the filters run', () => {
+  it('calls no filter when no file changed since the merge base, recording the base and why', async () => {
+    const project = fixture(THREE_TESTS);
+    const { filter, calls } = recording(keepOnly('areas', []));
+    const head = runGit(project.dir, 'rev-parse', 'HEAD');
+    const listed = await listExisting(project, { config: { filters: [filter] }, changedSince: 'HEAD' });
+    expect(listed.pairs.map((pair) => pair.disposition)).toEqual(['run', 'run', 'run']);
+    const outcome = await runExisting(project, { config: { filters: [filter] }, runOptions: { changedSince: 'HEAD' } });
+    expect(outcome.exitCode).toBe(0);
+    expect(reportOf(project).run.changes).toEqual({ base: head, files: 0, skipped: `no files changed since ${head.slice(0, 7)}` });
+    expect(calls).toEqual([]);
+  });
+
   it('calls no filter, asks no git, and says nothing without changedSince, on run and list, recording no change and no filter', async () => {
     const project = createProject(THREE_TESTS);
     projects.push(project);
@@ -550,10 +562,10 @@ ${edit}
     const project = fixture(THREE_TESTS);
     const { filter, calls } = recording(keepOnly('areas', []));
     const cases = [
-      [true as unknown as string, 'config', 'changedSince must be a git ref, such as origin/main; got true'],
+      [true as unknown as string, 'config', '--changed-since must name a git ref, such as origin/main; got true'],
       ['', 'config', '--changed-since must name a git ref, such as origin/main; got ""'],
       ['--output=x', 'config', '--changed-since must name a git ref, such as origin/main; got "--output=x"'],
-      ['origin/mian', 'filter', '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout'],
+      ['origin/mian', 'filter', '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout or GIT_DEPTH: 0 on GitLab'],
     ] as const;
     for (const [changedSince, phase, message] of cases) {
       const outcome = await runExisting(project, { config: { filters: [filter] }, runOptions: { changedSince } });
@@ -705,6 +717,28 @@ describe('e2e list with filters', () => {
       ['delta', 'filtered', 'outside the shard'],
       ['gamma', 'filtered', 'outside the shard'],
     ]);
+  });
+
+  it('redacts what the config and a filter print on e2e list, and keeps --reporter json stdout to the document', () => {
+    const SECRET = 'sk-live-abcdef0123456789';
+    const config = cliConfig(`[
+    { name: 'leaky', filter(tests) {
+      console.log('filter sees ' + process.env.LEAKY_SECRET);
+      console.error('and says ' + process.env.LEAKY_SECRET);
+      return { exclude: {} };
+    } },
+  ]`).replace('  filters:', `  secrets: { API_KEY: process.env.LEAKY_SECRET! },\n  filters:`).replace('export default {', "console.log('config sees ' + process.env.LEAKY_SECRET);\nexport default {");
+    const project = fixture({ ...THREE_TESTS, 'e2e.config.ts': config });
+    const json = cli(project, ['list', '--reporter', 'json', '--changed-since', 'main'], { LEAKY_SECRET: SECRET });
+    expect(json.exitCode, json.output).toBe(0);
+    expect((JSON.parse(json.stdout) as { pairs: ListedPair[] }).pairs).toHaveLength(3);
+    expect(json.output).not.toContain(SECRET);
+    expect(json.stderr).toContain('config sees <secret:API_KEY>');
+    expect(json.stderr).toContain('filter sees <secret:API_KEY>');
+    const text = cli(project, ['list', '--changed-since', 'main'], { LEAKY_SECRET: SECRET });
+    expect(text.exitCode, text.output).toBe(0);
+    expect(text.output).not.toContain(SECRET);
+    expect(text.stdout).toContain('filter sees <secret:API_KEY>');
   });
 
   it('prints the pairs a filter left out with the filter and its reason as json { pairs } with the summary on stderr, every pair to run without --changed-since, and every pair to run with a warning when the filter throws', () => {

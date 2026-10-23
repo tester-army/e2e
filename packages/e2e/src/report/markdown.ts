@@ -167,6 +167,7 @@ function filterLine(record: ReportFilter, counts: ReadonlyMap<string, number>): 
  */
 function changesLine(changes: ReportChanges | undefined): string | undefined {
   if (changes === undefined) return undefined;
+  // Checking `base` first narrows the union, so `files` and `base` are known below.
   if (changes.base === undefined) return `**Filters** none ran: ${cell(changes.skipped)}`;
   if (changes.skipped !== undefined) return `**Filters** none ran: ${cell(changes.skipped)}`;
   return `**Change** ${plural(changes.files, 'file')} changed since ${code(shortCommit(changes.base))}`;

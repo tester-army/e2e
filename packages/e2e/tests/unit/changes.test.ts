@@ -8,7 +8,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { findChanges, type ChangeLookup, type ChangeOptions } from '../../src/run/changes.ts';
+import { findChanges } from '../../src/run/changes.ts';
+import type { TestFilterChanges } from '../../src/types.ts';
 import { commitFiles, initRepo, runGit, useTempDirs } from '../helpers/git-repo.ts';
 
 const tempDir = useTempDirs();
@@ -32,14 +33,14 @@ function featureRepo() {
 }
 
 /** `findChanges` in `cwd` with `options` over the change since `main` and a live signal. */
-function lookUp(cwd: string, options: Partial<ChangeOptions> = {}): Promise<ChangeLookup> {
+function lookUp(cwd: string, options: Partial<Parameters<typeof findChanges>[0]> = {}): Promise<TestFilterChanges> {
   return findChanges({ cwd, changedSince: 'main', signal: new AbortController().signal, ...options });
 }
 
 /** The files a lookup found, failing the test when it found none. */
-function filesOf(lookup: ChangeLookup): readonly string[] {
-  if (lookup.kind !== 'found') throw new Error(`expected a change, got: ${lookup.reason}`);
-  return lookup.changes.files;
+function filesOf(lookup: TestFilterChanges): readonly string[] {
+  if (lookup.files.length === 0) throw new Error(`expected a change since ${lookup.base}`);
+  return lookup.files;
 }
 
 /** A clone of `dir`'s `branch`, `depth` commits deep, as actions/checkout makes one. */
@@ -53,10 +54,9 @@ describe('findChanges with --changed-since', () => {
   it('measures from the merge base of the ref and HEAD, at the repository root, sorted and frozen', async () => {
     const { dir, base } = featureRepo();
     const lookup = await lookUp(dir);
-    expect(lookup).toEqual({ kind: 'found', changes: { base, root: realpathSync(dir), files: ['src/app.ts', 'tests/new.e2e.ts'] } });
-    if (lookup.kind !== 'found') return;
-    expect(Object.isFrozen(lookup.changes)).toBe(true);
-    expect(Object.isFrozen(lookup.changes.files)).toBe(true);
+    expect(lookup).toEqual({ base, root: realpathSync(dir), files: ['src/app.ts', 'tests/new.e2e.ts'] });
+    expect(Object.isFrozen(lookup)).toBe(true);
+    expect(Object.isFrozen(lookup.files)).toBe(true);
 
     // Asked from a subdirectory, paths stay repository-relative, and untracked files outside it count too.
     writeFileSync(path.join(dir, 'root-new.ts'), 'new\n');
@@ -107,7 +107,13 @@ describe('findChanges with --changed-since', () => {
   it('finds no change, naming the merge base, when the working tree matches it', async () => {
     const { dir } = featureRepo();
     const head = runGit(dir, 'rev-parse', 'HEAD');
-    expect(await lookUp(dir, { changedSince: 'HEAD' })).toEqual({ kind: 'none', reason: `no files changed since ${head.slice(0, 7)}`, base: head });
+    expect(await lookUp(dir, { changedSince: 'HEAD' })).toEqual({ base: head, root: realpathSync(dir), files: [] });
+  });
+
+  it('resolves a ref whose syntax takes the rest of the text, as a commit message search does', async () => {
+    const { dir, base } = featureRepo();
+    const subject = runGit(dir, 'log', '-1', '--format=%s', base);
+    expect((await lookUp(dir, { changedSince: `:/${subject}` })).base).toBe(base);
   });
 
   it('is INVALID_CHANGED_SINCE for a ref that names no commit, or one with unrelated history', async () => {
@@ -115,7 +121,7 @@ describe('findChanges with --changed-since', () => {
     await expect(lookUp(dir, { changedSince: 'origin/mian' })).rejects.toMatchObject({
       category: 'configuration',
       code: 'INVALID_CHANGED_SINCE',
-      message: '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout',
+      message: '--changed-since "origin/mian" names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout or GIT_DEPTH: 0 on GitLab',
     });
     runGit(dir, 'checkout', '--quiet', '--orphan', 'unrelated');
     commitFiles(dir, { 'other.txt': 'x\n' }, 'unrelated');

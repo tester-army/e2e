@@ -18,6 +18,11 @@ const upgradeMock = vi.hoisted(() => vi.fn());
 vi.mock('../../src/telemetry/checkout.ts', () => ({ runsFromCheckout: () => false }));
 vi.mock('../../src/run/runner.ts', () => ({ run: runMock, listSelection: listMock }));
 vi.mock('../../src/cli/watch.ts', () => ({ watchSession: watchMock }));
+// `e2e list --reporter json` writes its document past the claimed output; here it lands on the stdout spy.
+vi.mock('../../src/run/process-output.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/run/process-output.ts')>()),
+  writeTerminal: (stream: 'stdout' | 'stderr', text: string) => process[stream].write(text),
+}));
 vi.mock('../../src/cli/init.ts', () => ({
   init: initMock,
 }));

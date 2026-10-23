@@ -351,17 +351,22 @@ export async function list(options: ListOptions = {}): Promise<ListResult> {
   return listSelection(options, () => undefined);
 }
 
-/** `list`, handing each line about the test filters, what they judge and what each decided, to `notice`: what `e2e list` prints on stderr. */
-export async function listSelection(options: ListOptions, notice: (message: string) => void): Promise<ListResult> {
+/**
+ * `list`, handing each line about the test filters, what they judge and
+ * what each decided, to `notice`: what `e2e list` prints on stderr. With
+ * `processOutput`, what the config prints while it loads is held until its
+ * secrets are known, as `run` does, since the filters run in this process.
+ */
+export async function listSelection(options: ListOptions, notice: (message: string) => void, processOutput?: RunnerOutput): Promise<ListResult> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
   const runOptions = toSelectionRunOptions(options);
-  const config = await loadRunConfig(
-    runOptions,
-    cwd,
-    env,
-    runOptions.output === undefined ? {} : { output: runOptions.output },
-  );
+  const loadConfig = async (): Promise<ResolvedConfig> => {
+    const loaded = await loadRunConfig(runOptions, cwd, env, runOptions.output === undefined ? {} : { output: runOptions.output });
+    registerStaticSecrets(loaded.allSecrets);
+    return loaded;
+  };
+  const config = await (processOutput === undefined ? loadConfig() : processOutput.withholdDuring(loadConfig));
   const { changedSince } = runOptions;
   const collection = await collect(config, runOptions.files);
   const inputs = await selectionInputs(runOptions, config);
@@ -576,11 +581,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // What each test filter decided, once they ran, and the change they judged.
   let filterReport: readonly ReportFilter[] = [];
   let changesReport: ReportChanges | undefined;
-  // The results the filters left out, from when they decide until the
-  // scheduler starts and records them with the rest. A run that stops in
-  // between records them once it has stopped, so the report, the events, and
-  // the outcome still show what the filters left out.
-  let pendingLeftOut: readonly ResultRecord[] = [];
+  // The results of the pairs that never run (skipped, filtered by a flag, or
+  // left out by a filter), from selection until the scheduler starts and
+  // records them with the rest. A run that stops in between records them
+  // once it has stopped, so the report, the events, and the outcome still
+  // show every test the selection held.
+  let pendingNonRun: readonly ResultRecord[] = [];
   const buildRunReport = (exitCode: RunExitCode): Report1Document => {
     const document = buildReport({
       runId,
@@ -865,7 +871,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       }
     }
     selection = repeatEach(selection, options.repeatEach ?? 1);
-    pendingLeftOut = selection.pairs.filter((pair) => pair.skip?.filter !== undefined).map(nonRunResult);
+    pendingNonRun = selection.pairs.filter((pair) => pair.test.kind !== 'setup' && pair.disposition !== 'run').map(nonRunResult);
 
     // Pre-flight: grade every selected target from its engine declaration
     // before any worker starts, so a config that asks for more than the
@@ -1026,7 +1032,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             envFor: workerEnvFor(plans, env),
           });
 
-    pendingLeftOut = [];
+    pendingNonRun = [];
     await debug.time('scheduler', () =>
       runUnits({
         plans,
@@ -1099,7 +1105,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     } catch (cause) {
       recordFailure(cause);
     }
-    for (const result of pendingLeftOut) recordResult(result);
+    for (const result of pendingNonRun) recordResult(result);
     // Engines finish first: every worker is gone, and what `prepare` leased
     // (a cloud device billed by the minute) should not wait on the app's
     // shutdown. Services go down after the apps that depended on them; a
@@ -1308,7 +1314,7 @@ function validateRunOptions(options: SelectionRunOptions): void {
   }
   const ref = options.changedSince;
   if (ref !== undefined && typeof ref !== 'string') {
-    throw new ConfigurationError('INVALID_CHANGED_SINCE', `changedSince must be a git ref, such as origin/main; got ${describeValue(ref)}`);
+    throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${describeValue(ref)}`);
   }
   if (ref !== undefined && (ref === '' || ref.startsWith('-'))) {
     throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${JSON.stringify(ref)}`);

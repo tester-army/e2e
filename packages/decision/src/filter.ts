@@ -115,6 +115,8 @@ interface Spend {
   calls: number;
   tokens: number;
   costUsd: number | undefined;
+  /** Set once a call that answered reported no cost, so a sum of the others would undercount. */
+  uncosted: boolean;
 }
 /** What the model answered, by test id and by setup file, as the probability of true. */
 interface Answers {
@@ -122,25 +124,26 @@ interface Answers {
   readonly setups: Map<string, number>;
 }
 /**
- * Leaves nothing out when a `RUN_ALL` file changed, keeps the tests the
- * change touches directly, and asks the model about the rest, and the
- * setup files that save their sessions, against the redacted diff and the redacted files, in calls of
- * at most `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when
- * both it and its setup are unlikely to be affected. A failed call leaves
- * its tests in, and after `MAX_FAILURES` no more calls are made. The note
- * names what the model did not judge, and what the calls spent. Throws
- * when git or a file read fails, the first failure's first line when calls
- * fail and none answers, and on an abort.
+ * Leaves nothing out when a `RUN_ALL` file of the project changed, runs
+ * the tests the change touches directly without asking, and asks the model
+ * about the rest, and the setup files that save their sessions, against
+ * the redacted diff and the redacted files, in calls of at most
+ * `MAX_QUESTIONS`, `CONCURRENCY` at a time. A test is left out when both
+ * it and its setup are unlikely to be affected. A failed call leaves its
+ * tests in, and after `MAX_FAILURES` no more calls are made. The note names
+ * the tests that ran without asking, what the model did not judge, and
+ * what the calls spent. Throws when git or a file read fails, the first
+ * failure's first line when calls fail and none answers, and on an abort.
  */
 async function judge(given: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
   const { changes, signal, log, redact } = context;
-  const everything = changes.files.find((file) => RUN_ALL.has(path.posix.basename(file)));
+  const everything = runAllFile(context);
   if (everything !== undefined) return { exclude: {}, note: `${everything} changed, so the decision filter left nothing out` };
   const touched = touchedBy(context);
   const tests = given.filter((test) => !touched(test.file) && !touched(test.setupFile));
-  if (tests.length < given.length) log(`${counted(given.length - tests.length, 'test')} run without asking: the test file, setup file, or stored screenshots changed`);
+  const unasked = tests.length === given.length ? undefined : `${counted(given.length - tests.length, 'test')} ran without asking: the test file, setup file, or stored screenshots changed`;
   // A wrapper may hand on no tests, or the change touched them all: nothing to ask, and no diff to read.
-  if (tests.length === 0) return { exclude: {} };
+  if (tests.length === 0) return unasked === undefined ? { exclude: {} } : { exclude: {}, note: unasked };
   const { modelId } = options.model;
   log(`asking ${modelId} about ${testsIn(tests)}`);
   const raw = await changeDiff(changes, signal);
@@ -150,6 +153,11 @@ async function judge(given: readonly TestFilterCandidate[], context: TestFilterC
   const { batches, tooLarge } = pack(await subjects(tests, context), Buffer.byteLength(diff));
   const { answers, spend, failures } = await askAll(batches, diff, options, signal);
   if (spend.calls === 0 && failures.length > 0) throw new Error(firstLine(failures[0]), { cause: failures[0] });
+  const { exclude, missed } = verdicts(tests, answers);
+  return answered(exclude, [unasked, missed.length === 0 ? undefined : `${modelId} did not judge ${testsIn(missed)}: ${unjudgedBecause(failures, tooLarge)}`], spend);
+}
+/** The tests to leave out, each with its reason, and the tests the model did not answer for, itself or its setup. */
+function verdicts(tests: readonly TestFilterCandidate[], answers: Answers): { readonly exclude: Record<string, string>; readonly missed: readonly TestFilterCandidate[] } {
   const exclude: Record<string, string> = {};
   const missed: TestFilterCandidate[] = [];
   for (const test of tests) {
@@ -158,25 +166,47 @@ async function judge(given: readonly TestFilterCandidate[], context: TestFilterC
     if (own === undefined || setup === undefined) missed.push(test);
     else if (Math.max(own, setup) < MIN_PROBABILITY) exclude[test.id] = `${Math.round(Math.max(own, setup) * 100)}% likely affected`;
   }
-  if (missed.length === 0) return answered(exclude, undefined, spend);
-  const what = tooLarge.length === 1 ? `${tooLarge[0]?.key} is` : `${counted(tooLarge.length, 'file')} are`;
-  const why = [failures.length === 0 ? undefined : firstLine(failures[0]), tooLarge.length === 0 ? undefined : `${what} too large to send with the diff`];
-  return answered(exclude, `${modelId} did not judge ${testsIn(missed)}: ${why.filter((part) => part !== undefined).join('; ')}`, spend);
+  return { exclude, missed };
+}
+/** Why some tests went unjudged: the first failed call's first line, and the files too large to send with the diff. */
+function unjudgedBecause(failures: readonly unknown[], tooLarge: readonly Subject[]): string {
+  const why: string[] = [];
+  if (failures.length > 0) why.push(firstLine(failures[0]));
+  if (tooLarge.length > 0) why.push(`${tooLarge.length === 1 ? `${tooLarge[0]?.key} is` : `${counted(tooLarge.length, 'file')} are`} too large to send with the diff`);
+  return why.join('; ');
 }
 /**
- * Whether a project-relative file, or one of its stored screenshots, is in
- * the change. Git names files in NFC, while a test file's name keeps the
- * bytes on disk, NFD where macOS wrote them, so both are composed.
+ * A path from the repository root, in POSIX form and NFC, as git names
+ * files on macOS, for a project-relative `file`; `''` for the project
+ * root itself when it is the repository root.
  */
-function touchedBy({ projectRoot, changes }: TestFilterContext): (file: string | undefined) => boolean {
-  const changed = new Set(changes.files.map((file) => file.normalize('NFC')));
+function repoPath({ projectRoot, changes }: TestFilterContext, file: string): string {
+  return path.relative(changes.root, path.join(projectRoot, file)).split(path.sep).join('/').normalize('NFC');
+}
+/**
+ * The first changed `RUN_ALL` file that belongs to the project: one in the
+ * project directory or inside it, or in a directory above it, as a
+ * workspace root's lockfile is. A sibling project's config or lockfile, or
+ * one in a docs folder outside the project, goes to the model.
+ */
+function runAllFile(context: TestFilterContext): string | undefined {
+  const project = repoPath(context, '.');
+  return context.changes.files.find((file) => {
+    if (!RUN_ALL.has(path.posix.basename(file))) return false;
+    const directory = path.posix.dirname(file.normalize('NFC'));
+    return directory === '.' || project === '' || directory === project || project.startsWith(`${directory}/`) || directory.startsWith(`${project}/`);
+  });
+}
+/** Whether a project-relative file, or one of its stored screenshots, is in the change, each compared in NFC. */
+function touchedBy(context: TestFilterContext): (file: string | undefined) => boolean {
+  const changed = new Set(context.changes.files.map((file) => file.normalize('NFC')));
   const screenshotted = new Set<string>();
   for (const file of changed) {
     for (let at = file.indexOf(SNAPSHOTS_SUFFIX); at !== -1; at = file.indexOf(SNAPSHOTS_SUFFIX, at + 1)) screenshotted.add(file.slice(0, at));
   }
   return (file) => {
     if (file === undefined) return false;
-    const key = path.relative(changes.root, path.join(projectRoot, file)).split(path.sep).join('/').normalize('NFC');
+    const key = repoPath(context, file);
     return changed.has(key) || screenshotted.has(key);
   };
 }
@@ -185,23 +215,22 @@ function touchedBy({ projectRoot, changes }: TestFilterContext): (file: string |
  * saves a test's session, keyed by their redacted path from the repository
  * root, as the diff names files, with their questions.
  */
-async function subjects(tests: readonly TestFilterCandidate[], { projectRoot, changes, signal, redact }: TestFilterContext): Promise<Subject[]> {
+async function subjects(tests: readonly TestFilterCandidate[], context: TestFilterContext): Promise<Subject[]> {
+  const { projectRoot, signal, redact } = context;
+  const setups = [...new Set(tests.flatMap((test) => (test.setupFile === undefined ? [] : [test.setupFile])))];
+  const files = [...new Set([...tests.map((test) => test.file), ...setups])];
+  const read = await Promise.all(files.map((file) => readFile(path.join(projectRoot, file), { encoding: 'utf8', signal })));
   const found = new Map<string, Subject>();
-  const subject = async (file: string): Promise<Subject> => {
-    const known = found.get(file);
-    if (known !== undefined) return known;
-    const absolute = path.join(projectRoot, file);
-    const text = redact(await readFile(absolute, { encoding: 'utf8', signal }));
-    const created: Subject = { key: redact(path.relative(changes.root, absolute).split(path.sep).join('/')), text, bytes: Buffer.byteLength(text), questions: [] };
-    found.set(file, created);
-    return created;
-  };
+  files.forEach((file, i) => {
+    const text = redact(read[i] ?? '');
+    found.set(file, { key: redact(repoPath(context, file)), text, bytes: Buffer.byteLength(text), questions: [] });
+  });
   for (const test of tests) {
-    const { key, questions } = await subject(test.file);
+    const { key, questions } = found.get(test.file)!;
     questions.push({ kind: 'test', test, text: redact(`Can the diff change what the e2e test "${test.titlePath.join(' > ')}" in ${key} checks? ${fileOf(key)}, hooks included.`) });
   }
-  for (const file of new Set(tests.flatMap((test) => (test.setupFile === undefined ? [] : [test.setupFile])))) {
-    const { key, questions } = await subject(file);
+  for (const file of setups) {
+    const { key, questions } = found.get(file)!;
     questions.push({ kind: 'setup', file, text: `Can the diff break the e2e setup in ${key}, or the session it saves for the tests that use it? ${fileOf(key)}.` });
   }
   return [...found.values()];
@@ -253,7 +282,7 @@ async function askAll(
   const stop = new AbortController();
   const abortSignal = AbortSignal.any([signal, stop.signal]);
   const answers: Answers = { tests: new Map(), setups: new Map() };
-  const spend: Spend = { calls: 0, tokens: 0, costUsd: undefined };
+  const spend: Spend = { calls: 0, tokens: 0, costUsd: undefined, uncosted: false };
   const failures: unknown[] = [];
   let next = 0;
   const work = async (): Promise<void> => {
@@ -273,7 +302,8 @@ async function askAll(
         const cost = readCost(providerMetadata);
         spend.calls += 1;
         spend.tokens += (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0);
-        if (cost !== undefined) spend.costUsd = (spend.costUsd ?? 0) + cost;
+        if (cost === undefined) spend.uncosted = true;
+        else spend.costUsd = (spend.costUsd ?? 0) + cost;
       } catch (error) {
         if (signal.aborted) throw signal.reason;
         // A call the stop cut short is not a failure of its own.
@@ -286,10 +316,11 @@ async function askAll(
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, batches.length) }, work));
   return { answers, spend, failures };
 }
-/** The filter's answer: `exclude`, and a note of `problem`, if any, then what the calls spent, such as `11 calls, 307.6k tokens, $0.0129`. */
-function answered(exclude: Record<string, string>, problem: string | undefined, { calls, tokens, costUsd }: Spend): TestFilterResult {
-  const spent = calls === 0 ? undefined : `${counted(calls, 'call')}, ${formatTokens(tokens)} tokens${costUsd === undefined ? '' : `, ${formatCost(costUsd)}`}`;
-  const note = [problem, spent].filter((part) => part !== undefined).join('; ');
+/** The filter's answer: `exclude`, and a note of each of `problems` given, then what the calls spent, such as `11 calls, 307.6k tokens, $0.0129`, its cost only when every call reported one. */
+function answered(exclude: Record<string, string>, problems: readonly (string | undefined)[], { calls, tokens, costUsd, uncosted }: Spend): TestFilterResult {
+  const cost = costUsd === undefined || uncosted ? '' : `, ${formatCost(costUsd)}`;
+  const spent = calls === 0 ? undefined : `${counted(calls, 'call')}, ${formatTokens(tokens)} tokens${cost}`;
+  const note = [...problems, spent].filter((part) => part !== undefined).join('; ');
   return note === '' ? { exclude } : { exclude, note };
 }
 /**
@@ -312,8 +343,9 @@ function formatTokens(count: number): string {
   if (count < 1_000_000) return `${(count / 1_000).toFixed(1)}k`;
   return `${(count / 1_000_000).toFixed(1)}M`;
 }
-/** USD with enough precision for sub-cent calls. */
+/** USD with enough precision for sub-cent calls; `<$0.0001` for a cost that would round to nothing. */
 function formatCost(costUsd: number): string {
+  if (costUsd > 0 && costUsd < 0.00005) return '<$0.0001';
   return `$${costUsd.toFixed(costUsd < 0.1 ? 4 : 2)}`;
 }
 /** How a question points the model at the file it is about, by its key in `testFiles`. */
@@ -327,8 +359,8 @@ function testsIn(tests: readonly TestFilterCandidate[]): string {
 /**
  * The change as one unified diff of `changes.files`, with renames found and
  * a deleted file's lines left out: what the commits since `changes.base`
- * change, whatever the working tree changes on top, then each file no
- * commit changes by name alone, since CI may have written it. Stops adding
+ * change, never the working tree, then each file no commit changes by name
+ * alone, since CI may have written it. Stops adding
  * files once the diff is past `MAX_DIFF_BYTES`.
  */
 async function changeDiff({ base, root, files }: TestFilterChanges, signal: AbortSignal): Promise<string> {

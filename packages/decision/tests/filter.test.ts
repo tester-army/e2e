@@ -320,16 +320,64 @@ describe('decisionFilter', () => {
     const { model, requests } = scriptedJudge(() => 0);
     const { context, logs } = filterContext(repo);
     const result = await decisionFilter({ model }).filter(tests, context);
-    expect(result.exclude).toEqual({ [other.id]: '0% likely affected' });
-    expect(logs).toEqual(['3 tests run without asking: the test file, setup file, or stored screenshots changed', 'asking scripted-judge about 1 test in 1 file']);
+    expect(result).toEqual({ exclude: { [other.id]: '0% likely affected' }, note: '3 tests ran without asking: the test file, setup file, or stored screenshots changed; 1 call, 10 tokens' });
+    expect(logs).toEqual(['asking scripted-judge about 1 test in 1 file']);
     expect(requests.map((request) => Object.keys(sent(request)))).toEqual([['tests/other.e2e.ts']]);
   });
 
   it('makes no call when the change touched every test it was given', async () => {
     const { model, requests } = scriptedJudge(() => 0);
     const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo({ [LOGIN]: "test('signs in', async () => { /* edited */ });\n" })).context);
-    expect(result).toEqual({ exclude: {} });
+    expect(result).toEqual({ exclude: {}, note: '1 test ran without asking: the test file, setup file, or stored screenshots changed' });
     expect(requests).toEqual([]);
+  });
+
+  it('maps a project below the repository root: its own test, setup, and screenshot changes run without asking', async () => {
+    const project = 'packages/app';
+    const repo = changedRepo(
+      {
+        'src/shared.ts': 'export const x = 1;\n',
+        [`${project}/${CART}`]: "test('adds an item', async () => {});\n",
+        [`${project}/${LOGIN}`]: "test('signs in', async () => {});\n",
+        [`${project}/${SEARCH}`]: "test('finds a product', async () => {});\n",
+        [`${project}/tests/auth.setup.e2e.ts`]: "test.setup('sign in', async () => {});\n",
+        // The same paths outside the project are another project's files.
+        [CART]: "test('elsewhere', async () => {});\n",
+      },
+      {
+        'src/shared.ts': 'export const x = 2;\n',
+        [`${project}/${CART}`]: "test('adds an item', async () => { /* edited */ });\n",
+        [`${project}/tests/auth.setup.e2e.ts`]: "test.setup('sign in', async () => { /* edited */ });\n",
+        [`${project}/${SEARCH}-snapshots/home.png`]: 'png\n',
+        [LOGIN]: "test('elsewhere', async () => {});\n",
+      },
+      { project },
+    );
+    const other = candidate('tests/other.e2e.ts', 'other');
+    writeFileSync(path.join(repo.projectRoot, 'tests/other.e2e.ts'), "test('other', async () => {});\n");
+    const { model, requests } = scriptedJudge(() => 0);
+    const tests = [ADDS, withSetup(SIGNS_IN, 'tests/auth.setup.e2e.ts'), FINDS, other];
+    const result = await decisionFilter({ model }).filter(tests, filterContext(repo).context);
+    expect(result.exclude).toEqual({ [other.id]: '0% likely affected' });
+    expect(result.note).toContain('3 tests ran without asking');
+    expect(requests.map((request) => Object.keys(sent(request)))).toEqual([[`${project}/tests/other.e2e.ts`]]);
+  });
+
+  it("leaves nothing out for the project's own config or lockfile, or one above it, and asks about a sibling project's or a docs folder's", async () => {
+    const project = 'apps/web';
+    const base = { 'src/cart.ts': 'export const total = 1;\n', [`${project}/${LOGIN}`]: "test('signs in', async () => {});\n" };
+    for (const file of [`${project}/e2e.config.ts`, `${project}/ios/Podfile.lock`, 'apps/pnpm-lock.yaml', 'pnpm-lock.yaml']) {
+      const { model, requests } = scriptedJudge(() => 0);
+      const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(changedRepo(base, { [file]: 'changed\n' }, { project })).context);
+      expect(result, file).toEqual({ exclude: {}, note: `${file} changed, so the decision filter left nothing out` });
+      expect(requests, file).toEqual([]);
+    }
+    for (const file of ['apps/admin/e2e.config.ts', 'apps/admin/pnpm-lock.yaml', 'docs/examples/e2e.config.ts', 'apps/web-old/yarn.lock']) {
+      const { model, requests } = scriptedJudge(() => 0);
+      const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(changedRepo(base, { [file]: 'changed\n' }, { project })).context);
+      expect(result.exclude, file).toEqual({ [SIGNS_IN.id]: '0% likely affected' });
+      expect(requests, file).toHaveLength(1);
+    }
   });
 
   it('sends a renamed file as a rename and a deleted file without its lines', async () => {
@@ -429,6 +477,17 @@ describe('decisionFilter', () => {
     const { model } = scriptedJudge(() => 0.9, undefined, { providerMetadata: { gateway: { cost: '0', marketCost: '0.25' } } });
     const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo()).context);
     expect(result).toEqual({ exclude: {}, note: '1 call, 10 tokens, $0.25' });
+  });
+
+  it('shows no cost when a call that answered reported none, rather than a partial sum', async () => {
+    const repo = changedRepo(
+      { 'src/cart.ts': 'export const total = 1;\n', [CART]: sized('adds an item', 45_000), [LOGIN]: sized('signs in', 45_000) },
+      { 'src/cart.ts': 'export const total = 2;\n' },
+    );
+    const { model, requests } = scriptedJudge(() => 0.9, undefined, { providerMetadata: (call) => (call === 0 ? { gateway: { cost: '0.5' } } : undefined) });
+    const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context);
+    expect(requests).toHaveLength(2);
+    expect(result).toEqual({ exclude: {}, note: '2 calls, 20 tokens' });
   });
 
   it.each([

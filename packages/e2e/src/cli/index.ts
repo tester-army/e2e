@@ -11,6 +11,7 @@ import { classifyError, exitCodeForCategory } from '../internal/errors.ts';
 import type { Shard, TagMode } from '../collect/select.ts';
 import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
+import { writeTerminal } from '../run/process-output.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
@@ -874,6 +875,9 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         command: Command,
       ) => {
         rejectForwardedFlags(command, files);
+        // The config and its test filters run in this process and may print a secret, as under `run`.
+        const output = claimRunnerOutput();
+        if (options.reporter === 'json') output.keepStdoutForReport();
         let pairs: readonly ListedPair[];
         try {
           ({ pairs } = await listSelection(
@@ -884,18 +888,18 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
               ...selectionRunOptions(options),
             },
             (message) => process.stderr.write(`${bounded(message)}\n`),
+            output,
           ));
         } catch (cause) {
+          output.end();
           reportFailure(telemetry, cause);
           return;
         }
+        output.end();
         // `list` includes pairs a selection flag removed. The command prints the ones that run or are skipped, and those a test filter left out.
         const listed = pairs.filter((pair) => pair.disposition === 'run' || pair.disposition === 'skip' || pair.filter !== undefined);
-        process.stdout.write(
-          options.reporter === 'json'
-            ? `${JSON.stringify({ pairs: listed }, null, 2)}\n`
-            : listed.map((pair) => `${formatListedPair(pair)}\n`).join(''),
-        );
+        if (options.reporter === 'json') writeTerminal('stdout', `${JSON.stringify({ pairs: listed }, null, 2)}\n`);
+        else process.stdout.write(listed.map((pair) => `${formatListedPair(pair)}\n`).join(''));
         process.exitCode = 0;
       },
     );

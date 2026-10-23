@@ -10,16 +10,11 @@ import { COMMIT_HASH, GitFailure, runGit, type GitResult } from '../internal/git
 import { compareCodePoints } from '../internal/globs.ts';
 import { onDiskPath } from '../internal/paths.ts';
 import { budgetText } from '../internal/time.ts';
-import { ellipsize, shortCommit } from '../report/format.ts';
+import { ellipsize } from '../report/format.ts';
 import type { TestFilterChanges } from '../types.ts';
 
-/** The change to judge, or why there is none since the merge base `base`. */
-export type ChangeLookup =
-  | { readonly kind: 'found'; readonly changes: TestFilterChanges }
-  | { readonly kind: 'none'; readonly reason: string; readonly base: string };
-
 /** What `findChanges` asks git from, and when it gives up. */
-export interface ChangeOptions {
+interface ChangeOptions {
   /** The directory git is asked in: the project root. */
   readonly cwd: string;
   /** The base ref `--changed-since` named. */
@@ -38,10 +33,11 @@ const GIT_MAX_BUFFER = 256 * 1024 * 1024;
 /**
  * Finds the change the test filters judge: every file that differs from
  * the merge base of `changedSince` and HEAD, in the working tree, untracked
- * files included. Every git call together has a 30 second budget; a ref
- * git cannot measure from, in time or at all, is `INVALID_CHANGED_SINCE`.
+ * files included, sorted; `files` is empty when nothing changed. Every git
+ * call together has a 30 second budget; a ref git cannot measure from, in
+ * time or at all, is `INVALID_CHANGED_SINCE`.
  */
-export async function findChanges(options: ChangeOptions): Promise<ChangeLookup> {
+export async function findChanges(options: ChangeOptions): Promise<TestFilterChanges> {
   const ref = options.changedSince;
   const budgetMs = options.budgetMs ?? GIT_BUDGET_MS;
   const deadline = new AbortController();
@@ -62,11 +58,11 @@ export async function findChanges(options: ChangeOptions): Promise<ChangeLookup>
 }
 
 /** The change since `ref`, asking git within `signal`. */
-async function lookUp(ref: string, cwd: string, signal: AbortSignal): Promise<ChangeLookup> {
+async function lookUp(ref: string, cwd: string, signal: AbortSignal): Promise<TestFilterChanges> {
   const root = await repositoryRoot(cwd, signal);
   const quoted = JSON.stringify(ref);
   const commit = await commitOf(root, ref, signal);
-  if (commit === undefined) throw invalidChangedSince(`--changed-since ${quoted} names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout`);
+  if (commit === undefined) throw invalidChangedSince(`--changed-since ${quoted} names no commit in this checkout; fetch it, such as with fetch-depth: 0 on actions/checkout or GIT_DEPTH: 0 on GitLab`);
   const base = await mergeBase(root, commit, signal);
   if (base === undefined) {
     throw invalidChangedSince(
@@ -84,15 +80,14 @@ async function lookUp(ref: string, cwd: string, signal: AbortSignal): Promise<Ch
  * repository, which git lists as its directory, is not this repository's
  * change.
  */
-async function changesSince(root: string, base: string, signal: AbortSignal): Promise<ChangeLookup> {
+async function changesSince(root: string, base: string, signal: AbortSignal): Promise<TestFilterChanges> {
   const [diff, untracked] = await Promise.all([
     gitOutput(root, ['diff', '--name-only', '--no-renames', '--no-ext-diff', '-z', base, '--'], signal),
     gitOutput(root, ['ls-files', '--others', '--exclude-standard', '--full-name', '-z'], signal),
   ]);
   const files = [...new Set([...diff.split('\0'), ...untracked.split('\0').filter((file) => !file.endsWith('/'))])].filter((file) => file !== '').toSorted(compareCodePoints);
-  if (files.length === 0) return { kind: 'none', reason: `no files changed since ${shortCommit(base)}`, base };
   // As on disk, like the filter context's `projectRoot`: git prints `C:/repo` on Windows.
-  return { kind: 'found', changes: Object.freeze({ base, root: onDiskPath(root), files: Object.freeze(files) }) };
+  return Object.freeze({ base, root: onDiskPath(root), files: Object.freeze(files) });
 }
 
 /** The repository `cwd` is in, by its absolute root. */
@@ -102,11 +97,18 @@ async function repositoryRoot(cwd: string, signal: AbortSignal): Promise<string>
   return root;
 }
 
-/** The commit `rev` names in the checkout, or undefined when it names none here. */
+/**
+ * The commit `rev` names in the checkout, or undefined when it names none
+ * here. The object is found first and peeled after, so a rev whose syntax
+ * takes the rest of the text, as `:/message` does, is not handed `^{commit}`.
+ */
 async function commitOf(root: string, rev: string, signal: AbortSignal): Promise<string | undefined> {
-  const result = await runGit(root, ['rev-parse', '--verify', '--quiet', `${rev}^{commit}`], { signal, maxBuffer: GIT_MAX_BUFFER });
-  const commit = result.stdout.trim();
-  return result.exitCode === 0 && COMMIT_HASH.test(commit) ? commit : undefined;
+  const found = await runGit(root, ['rev-parse', '--verify', '--quiet', rev], { signal, maxBuffer: GIT_MAX_BUFFER });
+  const object = found.stdout.trim();
+  if (found.exitCode !== 0 || !COMMIT_HASH.test(object)) return undefined;
+  const peeled = await runGit(root, ['rev-parse', '--verify', '--quiet', `${object}^{commit}`], { signal, maxBuffer: GIT_MAX_BUFFER });
+  const commit = peeled.stdout.trim();
+  return peeled.exitCode === 0 && COMMIT_HASH.test(commit) ? commit : undefined;
 }
 
 /** The merge base of `commit` and HEAD, or undefined when the checkout holds no shared history. */
