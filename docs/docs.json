@@ -191,8 +191,8 @@
           {
             "group": "Extend",
             "pages": [
-              "fixtures",
               "tools",
+              "fixtures",
               "executors",
               "writing-an-engine"
             ]
