@@ -6,6 +6,9 @@ import { CaptureScope } from './capture-scope.ts';
 import { CLOSED_SHADOW_SELECTOR_ENGINE } from './closed-shadow.ts';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
 
+/** CSS injected into captured pixels to hide carets without mutating element style attributes. */
+const HIDE_CARET_STYLE = ':is(input, textarea, [contenteditable], *) { caret-color: transparent !important; }';
+
 /**
  * Budget for one masked screenshot, still capped by the operation timeout. A
  * heavy page that cannot produce a frame promptly must cost the observation a
@@ -75,7 +78,8 @@ export async function capturePixels(
       type: 'png',
       scale: 'css',
       animations: 'disabled',
-      caret: 'hide',
+      caret: 'initial',
+      style: HIDE_CARET_STYLE,
       timeout: Math.max(1, Math.min(deadline - Date.now(), PIXEL_CAPTURE_TIMEOUT_MS)),
       ...maskOptions(masks),
     }));
