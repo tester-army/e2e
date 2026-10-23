@@ -280,6 +280,12 @@ unique(7);
 // @ts-expect-error a link has no bytes, and only video links exist
 ({ kind: 'trace', url: 'https://r.example/a.zip', mediaType: 'application/zip', redaction: 'incomplete', runId: 'r', testId: 't', attemptId: 'a', startedAt: '2026-01-01T00:00:00.000Z' }) satisfies StoredArtifactLink;
 ({ targets, output: 'results/e2e' }) satisfies E2EConfig;
+({ targets, keepResults: 3 }) satisfies E2EConfig;
+({ targets, keepResults: 0 }) satisfies E2EConfig;
+// @ts-expect-error keepResults is a count, not a boolean switch.
+({ targets, keepResults: true }) satisfies E2EConfig;
+// @ts-expect-error keepResults is numeric.
+({ targets, keepResults: '3' }) satisfies E2EConfig;
 // @ts-expect-error output is one directory
 ({ targets, output: ['a', 'b'] }) satisfies E2EConfig;
 declare const reporter: Reporter;

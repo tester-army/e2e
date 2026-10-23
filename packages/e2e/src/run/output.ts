@@ -22,6 +22,8 @@ export interface OutputLayout {
   readonly results: string;
   /** The per-run encrypted session stores. */
   readonly sessions: string;
+  /** Bounded snapshots of completed runs, opt-in through `keepResults`. */
+  readonly history: string;
   /** Where `e2e mcp` saves one session's recordings. */
   readonly videos: (sessionId: string) => string;
 }
@@ -33,6 +35,7 @@ export function outputLayout(output: string): OutputLayout {
     aiTrace: path.join(output, 'ai-trace.json'),
     results: path.join(output, 'results'),
     sessions: path.join(output, 'sessions'),
+    history: path.join(output, 'history'),
     videos: (sessionId) => path.join(output, 'videos', sessionId),
   };
 }
