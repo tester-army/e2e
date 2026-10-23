@@ -20,6 +20,7 @@ import type { ActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Se
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
+import { appNavigation } from '../cache/route.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { ActionHookError, AgentError, toAgentError } from './error.ts';
@@ -520,11 +521,12 @@ export class ActionDispatcher {
       throw new TestError('INVALID_ARGUMENT', 'navigate requires a URL');
     }
     const resolved = resolveNavigationUrl(url, this.runtime.app.base).url;
-    // The raw argument is recorded, not the resolved URL: replay re-resolves
-    // through the same base and scheme rule this call just passed.
+    // The argument is recorded without the app's origin, not the resolved URL:
+    // replay re-resolves it through the same base and scheme rule wherever the app runs then.
+    const recorded = appNavigation(url, this.runtime.app.base?.origin);
     await this.runAction('navigate', async () => {
       await this.session.app.open(resolved, this.accounting.operation());
-      return { name: 'navigate', url };
+      return { name: 'navigate', url: recorded };
     });
   }
 
