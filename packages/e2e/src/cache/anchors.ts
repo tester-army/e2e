@@ -26,7 +26,7 @@
 import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
 import { bound, collapseText } from '../internal/text.ts';
-import { descriptorTiers, fieldsEqual, type DescriptorField } from './relocate.ts';
+import { descriptorTiers, fieldsEqual, testIdShapeTier, type DescriptorField } from './relocate.ts';
 import {
   MAX_TRACE_ANCHORS,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -181,10 +181,11 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
   return label !== undefined && /^\d+$/.test(label) && anchor.testId === undefined && (anchor.name === undefined || anchor.text === undefined || anchor.name === anchor.text);
 }
 
-/** Whether an anchor's text cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
+/** Whether an anchor's text, or a minted test id that is all it has, cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
 function isVolatileAnchor(anchor: TraceTargetDescriptor, countIsData: (anchor: TraceTargetDescriptor) => boolean): boolean {
   const texts = [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
-  if (isBareNumber(anchor) || texts.some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)))) return true;
+  if (isBareNumber(anchor) || testIdShapeTier(anchor) !== undefined) return true;
+  if (texts.some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)))) return true;
   return texts.some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
 }
 
@@ -246,7 +247,7 @@ export function deltaMismatch(
 ): DeltaMismatch | undefined {
   const live = projectAnchors(nodes);
   const appeared = delta.endAnchors ?? [];
-  const missing = appeared.filter((anchor) => !anchorIn(anchor, live));
+  const missing = appeared.filter((anchor) => !appearedIn(anchor, live));
   const present = (delta.goneAnchors ?? []).filter((anchor) => anchorIn(anchor, live));
   const before = projectAnchors(beforeNodes).filter((anchor) => isAlert(anchor.descriptor));
   const unrecordedAlerts = live
@@ -254,7 +255,7 @@ export function deltaMismatch(
       (anchor) =>
         isAlert(anchor.descriptor) &&
         !before.some((earlier) => anchorIn(anchor.descriptor, [earlier])) &&
-        !appeared.some((recorded) => anchorIn(recorded, [anchor])),
+        !appeared.some((recorded) => appearedIn(recorded, [anchor])),
     )
     .map((anchor) => anchor.descriptor);
   return missing.length === 0 && present.length === 0 && unrecordedAlerts.length === 0 ? undefined : { missing, present, unrecordedAlerts };
@@ -294,7 +295,7 @@ export function deltaEvidenced(
   const counted = (anchor: TraceTargetDescriptor) => !outcome || !echoes(anchor);
   const baseline = projectAnchors(baselineNodes);
   return (
-    appeared.some((anchor) => counted(anchor) && !anchorIn(anchor, baseline)) ||
+    appeared.some((anchor) => counted(anchor) && !appearedIn(anchor, baseline)) ||
     gone.some((anchor) => counted(anchor) && anchorIn(anchor, baseline))
   );
 }
@@ -322,6 +323,22 @@ function anchorIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): 
         fieldsEqual(shape(tier), shape(node.descriptor), ANCHOR_FIELDS),
     ),
   );
+}
+
+/**
+ * Whether an anchor that appeared is on screen: `anchorIn`, or any node of
+ * its shape for a minted test id (`testIdShapeTier`). A vanished one stays
+ * exact, as entries recorded beside siblings of its shape expect.
+ */
+function appearedIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): boolean {
+  if (anchorIn(anchor, nodes)) return true;
+  const minted = testIdShapeTier(anchor);
+  if (minted === undefined) return false;
+  const shaped = nodes.flatMap((node) => {
+    const descriptor = testIdShapeTier(node.descriptor);
+    return descriptor === undefined ? [] : [{ ...node, descriptor }];
+  });
+  return anchorIn(minted, shaped);
 }
 
 /**
@@ -372,12 +389,13 @@ function statesKey(states: readonly TraceAnchorState[] | undefined): string {
  * whenever it identifies the node means an app that mints test ids per
  * render cannot make every unchanged control look new after a re-render and
  * crowd the real effect out of the capped list; a node only a test id
- * identifies keeps it. The states make a control that changed state a node
- * of the delta on both sides: the switch as it was, gone, and as it is,
- * appeared; the value does the same for a field typed into.
+ * identifies keeps it, as its shape when minted. The states make a control
+ * that changed state a node of the delta on both sides: the switch as it
+ * was, gone, and as it is, appeared; the value does the same for a field
+ * typed into.
  */
 function anchorKey(descriptor: TraceTargetDescriptor): string {
   const tiers = descriptorTiers(descriptor);
-  const loosest = tiers[tiers.length - 1] ?? descriptor;
+  const loosest = testIdShapeTier(descriptor) ?? tiers[tiers.length - 1] ?? descriptor;
   return JSON.stringify([...ANCHOR_FIELDS.map((field) => loosest[field]), descriptor.value, statesKey(descriptor.states)]);
 }
