@@ -17,6 +17,9 @@ Android emulator, or phone.
 - **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Detox, or Maestro
   suite to e2e one slice at a time, with the old suite running beside the
   new one and a `MIGRATION.md` file the next session resumes from.
+- **cige**: write CIGE test cases for `@e2e-dev/cige`, classify a run's
+  failures, and make only the repair each classification allows, replayed
+  in its environment and checked with `e2e-cige diff`.
 
 ## Install
 

@@ -9,6 +9,7 @@ dist/
 **/.e2e/ai-trace.json
 **/.e2e/junit.xml
 **/.e2e/summary.md
+**/.e2e/cige/
 **/.e2e/logs/
 **/.e2e/videos/
 # Left in older checkouts by runs before results/ held each test's trace page and artifacts.
@@ -16,6 +17,7 @@ dist/
 **/.e2e/traces/
 # No .e2e/cache/ rule: the benchmarks commit theirs (AGENTS.md, "Committed recordings").
 packages/e2e/tests/tmp-projects/
+packages/cige/tests/tmp-projects/
 # The e2e package ships the repository skill (skills/e2e); the build copies it here.
 packages/e2e/skills/
 # npm shows the repository README on the e2e package page; the build copies it here.

@@ -1,0 +1,10 @@
+interface:
+  display_name: "CIGE test cases"
+  short_description: "Write, classify, and safely repair CIGE agentic test cases"
+  icon_small: "../../assets/icon.png"
+  icon_large: "../../assets/icon.png"
+  brand_color: "#171717"
+  default_prompt: "Use $e2e:cige to classify the latest CIGE run summaries in .e2e/cige/ and make only the repair each classification allows."
+
+policy:
+  allow_implicit_invocation: true

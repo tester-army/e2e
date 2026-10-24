@@ -80,6 +80,7 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `packages/web`: the published `@e2e-dev/web` browser engine
 - `packages/mobile`: the published `@e2e-dev/mobile` mobile engine
 - `packages/decision`: the decision-model executor and test filter on the public `StepExecutor` and `TestFilter` contracts
+- `packages/cige`: CIGE test cases (`.cige.json`) as e2e tests, and the reporter that writes their run summaries
 - `apps/testbed`: private dogfood suite that consumes the built packages
 - `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
@@ -87,7 +88,8 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
 - `skills/create-verification-skill/`: the generator of a project-local `verify-<app>` skill, installed with `npx skills add tester-army/e2e --skill create-verification-skill`
 - `skills/migrate-to-e2e/`: ports an existing Playwright, Cypress, Selenium, Detox, or Maestro suite one slice at a time, installed with `npx skills add tester-army/e2e --skill migrate-to-e2e`
-- `plugins/e2e/`: the Claude Code, Codex, and Cursor plugin of the three skills, installed from this repository as a marketplace with `claude plugin marketplace add tester-army/e2e` or `codex plugin marketplace add tester-army/e2e`, or copied into `~/.cursor/plugins/local/` for Cursor
+- `skills/cige/`: writes, classifies, and repairs CIGE test cases for `@e2e-dev/cige`, installed with `npx skills add tester-army/e2e --skill cige`
+- `plugins/e2e/`: the Claude Code, Codex, and Cursor plugin of the four skills, installed from this repository as a marketplace with `claude plugin marketplace add tester-army/e2e` or `codex plugin marketplace add tester-army/e2e`, or copied into `~/.cursor/plugins/local/` for Cursor
 - `.dev/skills/`: the skills coding agents use to work on this repo, symlinked from `.claude/skills/` so `npx skills add tester-army/e2e` offers only `skills/*`
 
 On Windows, enable Developer Mode and clone with

@@ -1,0 +1,110 @@
+# @e2e-dev/cige
+
+Run [CIGE](https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard)
+test cases with e2e. A CIGE case keeps the stable meaning of a test apart
+from the parts that drift:
+
+- **Context**: where the test runs.
+- **Intent**: why it exists and what a pass needs.
+- **Guardrails**: what the agent must never do.
+- **Execution**: the first path to try.
+
+```json title="tests/cige/checkout.cige.json"
+{
+  "id": "checkout-discount",
+  "Context": { "system": "Shop web app", "environment": "staging", "open": "/cart", "specRef": "docs/specs/checkout.md", "buildRef": "releases/{build}.md" },
+  "Intent": {
+    "statement": "A shopper can check out with the discount code {code}",
+    "evidence": [{ "id": "order-record", "hook": "orderPersisted" }]
+  },
+  "Guardrails": [{ "id": "no-refund", "rule": "Never refund an order", "deny": { "actions": ["tool:refund"] } }],
+  "Execution": [
+    { "id": "e1", "step": "apply the discount code {code}" },
+    { "id": "e2", "step": "pay with the test card" }
+  ],
+  "Variants": [{ "id": "save10", "params": { "code": "SAVE10" } }]
+}
+```
+
+```ts
+// cige.config.ts: read by the suite, the reporter, and the e2e-cige command
+import { defineCige } from '@e2e-dev/cige';
+
+export default defineCige({
+  cases: 'tests/cige/*.cige.json',
+  root: new URL('.', import.meta.url),
+  build: process.env.GITHUB_SHA,
+  hooks: { orderPersisted: async () => (await fetch('http://localhost:3000/test-api/orders/latest')).ok },
+  environments: {
+    staging: {
+      config: 'e2e.config.ts',
+      reset: async () => {
+        const response = await fetch('http://localhost:3000/test-api/reset', { method: 'POST' });
+        if (!response.ok) throw new Error(`resetting staging returned ${response.status}`);
+      },
+    },
+  },
+});
+```
+
+```ts
+// tests/cige.e2e.ts
+import { cigeSuite } from '@e2e-dev/cige';
+import cigeConfig from '../cige.config.ts';
+
+cigeSuite(cigeConfig);
+```
+
+```ts
+// e2e.config.ts
+import { cige } from '@e2e-dev/cige';
+import cigeConfig from './cige.config.ts';
+
+export default { /* targets, agents */ reporters: ['list', cige(cigeConfig)] };
+```
+
+Each case becomes one test per variant, tagged `cige:<id>` (and
+`cige:<id>/<variant>`) and titled by its Intent:
+
+- A `step` entry is one `agent.act` goal, with the guardrails appended to
+  its instruction. A guardrail's `deny` rule is also checked after every
+  action, and a match stops the step with `POLICY_DENIED`.
+- A `verify` entry is one `agent.assert`, without the guardrails: the judge
+  decides from the statement and the screen.
+- The case passes only when every piece of evidence the Intent names holds
+  (an evidence hook holds only when it returns `true`), and then, unless
+  `judge` is `false`, the Intent itself.
+
+The `cige()` reporter writes one summary per CIGE result under
+`<output>/cige/`, `.e2e/cige/` by default. A summary holds a first
+classification of the result (infrastructure, outdated test logic, or
+product defect) when the error code decides it, the failing step's id, the
+report and trace, the refs with `{build}` filled in, and the command that
+replays it.
+
+The `e2e-cige` command works between runs:
+
+```bash
+npx e2e-cige replay <id>              # reset the environment, run the case alone, no cache
+npx e2e-cige env reset <environment>  # provision | reset | teardown
+npx e2e-cige refs <id>                # spec, release notes, expected output into .e2e/cige/<id>.refs/
+npx e2e-cige check --resolve          # what each case lacks to be classified and replayed
+npx e2e-cige diff --base origin/main  # fails when a change weakens a case
+```
+
+CIGE is extensible without forking it:
+
+- **`x-` fields:** any object in a case accepts `x-` keys (`"x-owner"`,
+  `"x-deny-host"`). Hooks and plugins read them; the model never sees them
+  unless a plugin adds them; top-level ones are copied into summaries. Any
+  other unknown key still fails to load.
+- **Plugins:** `plugins` in `cige.config.ts`, each with optional `context`,
+  `onAction`, `classify`, `summarize`, `readiness`, and `steps` hooks.
+- **Step kinds:** an Execution entry `{ "id": "e4", "use": "order-api",
+  "with": {...} }` runs a step kind a plugin registered.
+
+The `cige` agent skill (`npx skills add tester-army/e2e --skill cige`)
+reads the summaries, classifies each failure, and makes only the repair it
+allows. The file format is pinned by `schema/cige-1.schema.json`. See the
+[CIGE guide](https://e2e.tester.army/docs/cige) for every field, the
+guardrail rules, and the classification table.

@@ -30,7 +30,8 @@
     "examples/**",
     "**/next-env.d.ts",
     "**/.e2e/**",
-    "packages/e2e/tests/tmp-projects/**"
+    "packages/e2e/tests/tmp-projects/**",
+    "packages/cige/tests/tmp-projects/**"
   ],
   "ignoreDependencies": [
     "e2e",

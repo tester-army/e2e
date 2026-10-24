@@ -240,6 +240,9 @@ importers:
 
   apps/testbed:
     dependencies:
+      '@e2e-dev/cige':
+        specifier: workspace:*
+        version: link:../../packages/cige
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../../packages/decision
@@ -311,6 +314,9 @@ importers:
       '@ai-sdk/typesafe-ai':
         specifier: 3.0.19
         version: 3.0.19(zod@4.6.1)
+      '@e2e-dev/cige':
+        specifier: workspace:*
+        version: link:../packages/cige
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../packages/decision
@@ -362,6 +368,28 @@ importers:
       zod:
         specifier: 4.6.1
         version: 4.6.1
+
+  packages/cige:
+    dependencies:
+      zod:
+        specifier: 4.6.1
+        version: 4.6.1
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.2
+        version: 26.6.2
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.1
+        version: 5.0.1(@types/node@26.6.2)(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/decision:
     dependencies:
@@ -4113,10 +4141,6 @@ packages:
 
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
-
-  chai@6.2.2:
-    resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
-    engines: {node: '>=18'}
 
   chai@6.3.0:
     resolution: {integrity: sha512-XWAtwJ6OHO+tj0EKCs0Y2UamnyOxseZWltU4x2U2wh8g4AigdjwvtUjvLP2tqkA/avxHEtzxNaqGq/YGNwckKg==}
@@ -11734,8 +11758,6 @@ snapshots:
 
   ccount@2.0.1: {}
 
-  chai@6.2.2: {}
-
   chai@6.3.0: {}
 
   chalk@2.4.2:
@@ -16857,7 +16879,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.1(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
-      chai: 6.2.2
+      chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
       magic-string: 1.2.3
@@ -16878,7 +16900,7 @@ snapshots:
     dependencies:
       '@types/chai': 5.2.3
       '@vitest/mocker': 5.0.1(vite@8.1.5(@types/node@26.6.2)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
-      chai: 6.2.2
+      chai: 6.3.0
       es-module-lexer: 2.3.2
       expect-type: 1.4.0
       magic-string: 1.2.3

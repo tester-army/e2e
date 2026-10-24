@@ -155,7 +155,8 @@
               "visual-testing",
               "authentication",
               "bug-bash",
-              "agents"
+              "agents",
+              "cige"
             ]
           },
           {

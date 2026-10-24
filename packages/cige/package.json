@@ -1,0 +1,70 @@
+{
+  "name": "@e2e-dev/cige",
+  "version": "0.0.0",
+  "description": "CIGE test cases for e2e: Context, Intent, Guardrails, and Execution as portable JSON, with run summaries, replay, and field-rule checks for self-healing agents",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "agentic-testing",
+    "cige",
+    "self-healing-tests",
+    "guardrails"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Vivek Krishna Choppa <vivekkrishnachoppa@gmail.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/cige"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/cige#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema/cige-1.schema.json": "./schema/cige-1.schema.json"
+  },
+  "bin": {
+    "e2e-cige": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "schema/cige-1.schema.json",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "4.6.1"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.21.0 <1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.2",
+    "ajv": "8.20.0",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.0.1"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

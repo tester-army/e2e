@@ -1,0 +1,7 @@
+{
+  "Context": { "system": "Checkout" },
+  "Intent": { "statement": "" },
+  "Guardrails": [{ "deny": { "actions": [] } }],
+  "Execution": [],
+  "Variants": [{ "id": "bad id", "params": { "nested": { "not": "a primitive" } } }]
+}
