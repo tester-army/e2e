@@ -165,6 +165,14 @@ describe('siteOf and sameSite', () => {
     expect(sameSite('https://evil.test/', 'tester.army')).toBe(false);
     expect(sameSite('null', 'tester.army')).toBe(false);
   });
+
+  it('does not let a trailing DNS dot merge unrelated hosts onto one site', () => {
+    expect(siteOf('www.bank.example.com.')).toBe('example.com');
+    expect(siteOf('shop.example.co.uk.')).toBe('example.co.uk');
+    expect(siteOf('app.localhost.')).toBe('app.localhost');
+    expect(sameSite('https://evil.com./steal', siteOf('www.bank.com.'))).toBe(false);
+    expect(sameSite('https://www.bank.com./pay', 'bank.com')).toBe(true);
+  });
 });
 
 describe('urlMatches', () => {

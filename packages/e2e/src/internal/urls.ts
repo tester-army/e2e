@@ -151,10 +151,12 @@ export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | un
  * second-level label (`example.co.uk`, `shop.com.au`). An IP literal or a
  * single-label host such as `localhost` is a site of its own. Where the
  * approximation errs it errs narrow, except on shared hosting suffixes such
- * as `vercel.app`, which it reads as one site.
+ * as `vercel.app`, which it reads as one site. A trailing dot is absolute DNS
+ * (`bank.example.com.`), not a label; leaving it makes every such host share
+ * the site `com.` or `uk.`.
  */
 export function siteOf(hostname: string): string {
-  const host = hostname.toLowerCase();
+  const host = hostname.toLowerCase().replace(/\.$/, '');
   if (host.startsWith('[') || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return host;
   const labels = host.split('.');
   if (labels.length <= 2) return host;
