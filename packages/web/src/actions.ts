@@ -90,8 +90,8 @@ async function setChecked(target: ActionTarget, checked: boolean, operation: Con
 
 /**
  * The label a click on a native checkbox or radio goes through instead of
- * the control itself. Without `position` Playwright clicks the label's
- * centre, which may be a link elsewhere in the label.
+ * the control itself, at the control's point when it has one, else at the
+ * label's centre.
  */
 interface StandIn {
   labelIndex: number;
@@ -106,24 +106,37 @@ interface StandIn {
  * there reaches it through the label.
  */
 function pickStandIn(node: Element): StandIn | null {
-  if (!(node instanceof HTMLInputElement) || (node.type !== 'checkbox' && node.type !== 'radio') || node.disabled) {
+  if (!(node instanceof HTMLInputElement) || (node.type !== 'checkbox' && node.type !== 'radio') || node.matches(':disabled')) {
     return null;
   }
   const labels = [...(node.labels ?? [])];
-  if (labels.length === 0) return null;
+  const root = node.getRootNode();
+  if (labels.length === 0 || (!(root instanceof Document) && !(root instanceof ShadowRoot))) return null;
+  const INTERACTIVE = 'a,button,input,select,textarea,summary,[contenteditable],[role="button"],[role="link"]';
+  const hasBox = ({ width, height }: DOMRect): boolean => width > 0 && height > 0;
+  const centre = ({ left, top, width, height }: DOMRect): [number, number] => [left + width / 2, top + height / 2];
+  const pressesInteractive = (label: HTMLLabelElement, hit: Element | null): boolean => {
+    const interactive = hit?.closest(INTERACTIVE) ?? null;
+    return interactive !== null && label.contains(interactive);
+  };
   node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   const box = node.getBoundingClientRect();
-  const hasBox = ({ width, height }: DOMRect): boolean => width > 0 && height > 0;
   if (!hasBox(box)) {
-    const index = labels.findIndex((label) => hasBox(label.getBoundingClientRect()));
+    const index = labels.findIndex((label) => {
+      const outer = label.getBoundingClientRect();
+      return (
+        hasBox(outer) &&
+        label.checkVisibility({ visibilityProperty: true }) &&
+        !pressesInteractive(label, root.elementFromPoint(...centre(outer)))
+      );
+    });
     return index === -1 ? null : { labelIndex: index };
   }
-  const root = node.getRootNode();
-  if (!(root instanceof Document) && !(root instanceof ShadowRoot)) return null;
-  const hit = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  const hit = root.elementFromPoint(...centre(box));
   if (hit === null || hit === node) return null;
   for (const [index, label] of labels.entries()) {
     if (!label.contains(hit)) continue;
+    if (pressesInteractive(label, hit)) return null;
     const outer = label.getBoundingClientRect();
     const x = box.left + box.width / 2 - outer.left;
     const y = box.top + box.height / 2 - outer.top;
@@ -135,9 +148,8 @@ function pickStandIn(node: Element): StandIn | null {
 
 /**
  * Clicks a control with Playwright's actionability checks, through its own
- * label when `pickStandIn` names one. The checks then run on the label: its
- * own content passes, anything else on top, such as a modal, still fails
- * NOT_ACTIONABLE.
+ * label when `pickStandIn` names one. The checks then run on the label, so
+ * anything else on top, such as a modal, still fails NOT_ACTIONABLE.
  */
 async function clickControl(
   target: ActionTarget,
@@ -155,7 +167,7 @@ async function clickControl(
     standIn === null
       ? null
       : target.kind === 'locator'
-        ? (await target.locator.evaluateHandle(labelAt, standIn.labelIndex)).asElement()
+        ? (await target.locator.evaluateHandle(labelAt, standIn.labelIndex, { timeout: remaining() })).asElement()
         : (await target.element.evaluateHandle(labelAt, standIn.labelIndex)).asElement();
   if (standIn === null || label === null) {
     await asActionable(target).click({ ...options, timeout: remaining() });

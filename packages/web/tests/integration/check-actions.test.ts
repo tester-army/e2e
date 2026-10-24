@@ -232,6 +232,54 @@ describe.each(KINDS)('a control its own label covers, through the %s target', (k
     expect(await page.isChecked('#c')).toBe(true);
   });
 
+  it('checks a boxless checkbox past a label hidden by visibility, which keeps its box', async () => {
+    await page.setContent(`
+      <input type="checkbox" id="c" style="display:none">
+      <label for="c" style="visibility:hidden">A</label>
+      <label for="c">B</label>`);
+    expect(await perform(await targetOf(kind, '#c'), { kind: 'check' })).toBeUndefined();
+    expect(await page.isChecked('#c')).toBe(true);
+  });
+
+  it('still refuses a radio under a link in its own label, and follows no link', async () => {
+    await page.setContent(`<style>${ELEMENT_PLUS_CSS}</style>
+      <label class="el-radio-button"><input class="el-radio-button__original-radio" type="radio" name="mode" id="install">
+        <a href="#went" class="el-radio-button__inner">安装</a></label>`);
+    for (const action of [{ kind: 'check' }, { kind: 'tap' }] as const) {
+      expect(await perform(await targetOf(kind, '#install'), action)).toMatchObject({
+        code: 'NOT_ACTIONABLE',
+        message: expect.stringContaining('intercepts pointer events'),
+      });
+      expect(await page.isChecked('#install')).toBe(false);
+      expect(page.url()).not.toContain('#went');
+    }
+  });
+
+  it('still refuses a boxless checkbox whose visible label has a link at its centre', async () => {
+    await page.setContent(`
+      <input type="checkbox" id="c" style="display:none">
+      <label for="c" style="display:inline-block"><a href="#went">Terms</a></label>`);
+    for (const action of [{ kind: 'check' }, { kind: 'tap' }] as const) {
+      expect(await perform(await targetOf(kind, '#c'), action)).toMatchObject({
+        code: 'NOT_ACTIONABLE',
+        message: expect.stringContaining('not visible'),
+      });
+      expect(await page.isChecked('#c')).toBe(false);
+      expect(page.url()).not.toContain('#went');
+    }
+  });
+
+  it('still refuses an Element Plus radio-button a disabled fieldset holds', async () => {
+    await page.setContent(`<style>${ELEMENT_PLUS_CSS}</style><fieldset disabled>${ELEMENT_PLUS_CONTROLS}</fieldset>`);
+    for (const action of [{ kind: 'check' }, { kind: 'tap' }] as const) {
+      expect(await perform(await targetOf(kind, '#install'), action)).toMatchObject({
+        code: 'NOT_ACTIONABLE',
+        message: expect.stringContaining('not enabled'),
+      });
+      expect(await page.isChecked('#install')).toBe(false);
+    }
+  });
+
   it('still refuses a boxless checkbox whose every label is hidden', async () => {
     await page.setContent(`
       <input type="checkbox" id="c" style="display:none">
