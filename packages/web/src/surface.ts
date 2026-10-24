@@ -55,6 +55,7 @@ import { connectionAbort, withOperationDeadline, type OperationBound } from './o
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
 import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import type { WebMedia } from './media.ts';
+import type { WebClock } from './clock.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { readSelector, takeReadsFunction } from './read-selector.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames, siteHeadersFor } from './protected-app.ts';
@@ -234,6 +235,8 @@ export interface WebOptions {
    * provider with `scope: 'attempt'`) is `INVALID_CONFIG`.
    */
   readonly timezoneId?: string;
+  /** The initial time of each context, advancing at real speed by default; unavailable on persistent contexts. */
+  readonly clock?: WebClock;
   /**
    * The `prefers-color-scheme` every page reports from its first paint, to
    * its `@media` rules and to `matchMedia`, as Playwright's own
@@ -284,6 +287,7 @@ export class PlaywrightSurface {
   private readonly userAgent: string | undefined;
   private readonly locale: string | undefined;
   private readonly timezoneId: string | undefined;
+  private readonly clock: WebOptions['clock'];
   /** The configured media features, which every attempt starts from. */
   private readonly media: WebMedia;
   private readonly configuredInitScripts: ConfiguredInitScripts;
@@ -318,6 +322,7 @@ export class PlaywrightSurface {
     this.userAgent = options.userAgent;
     this.locale = options.locale;
     this.timezoneId = options.timezoneId;
+    this.clock = options.clock;
     this.media = obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion });
     this.configuredInitScripts = new ConfiguredInitScripts(options.initScripts ?? []);
   }
@@ -492,6 +497,10 @@ export class PlaywrightSurface {
         ...(this.headers === undefined ? {} : { serviceWorkers: 'block' as const }),
       },
       configure: async (target) => {
+        if (this.clock !== undefined) {
+          await target.clock.install({ time: this.clock.time });
+          if (this.clock.mode === 'paused') await target.clock.pauseAt(this.clock.time);
+        }
         await target.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
         for (const script of initScripts) await target.addInitScript(script);
         target.setDefaultTimeout(CONTEXT_DEFAULT_TIMEOUT_MS);
@@ -862,7 +871,7 @@ export class PlaywrightSurface {
         const page = this.requirePage();
         if (action.kind === 'swipe' && ref.id === ROOT_NODE_ID) {
           this.requireSession().requireObservation();
-          return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
+          return performViewportSwipe(page, action.direction, action.momentum ?? 'none', currentOperation.timeoutMs);
         }
         return dispatchLocatorAction(this.requireSession().refs.lookup(ref), action, currentOperation, (other) =>
           this.requireSession().refs.lookup(other),
@@ -876,7 +885,7 @@ export class PlaywrightSurface {
   performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
     return this.acted(operation, this.guard(operation, `${action.kind} at point`, (currentOperation) => {
       this.requireSession().requireObservation();
-      return dispatchPointerAction(this.requirePage(), point, action, currentOperation.signal);
+      return dispatchPointerAction(this.requirePage(), point, action, currentOperation);
     }, classifyInputError));
   }
 

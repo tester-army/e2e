@@ -41,6 +41,7 @@ describe('web({ connect })', () => {
     expect(() => web({ connect, userAgent: 'synthetic playwright' })).toThrow(/persistent context/);
     expect(() => web({ connect, locale: 'de-DE' })).toThrow(/persistent context; locale requires/);
     expect(() => web({ connect, timezoneId: 'Europe/Berlin' })).toThrow(/persistent context; timezoneId requires/);
+    expect(() => web({ connect, clock: { time: 0 } })).toThrow(/persistent context; clock requires/);
   });
 
   it('rejects connect with a non-chromium browser as INVALID_CONFIG', () => {

@@ -56,6 +56,7 @@ const POST_DISPATCH_LOG = [
 ];
 
 const TAP: LocatorAction = { kind: 'tap' };
+const OPERATION = { timeoutMs: 7, signal: new AbortController().signal };
 
 describe('classifyActionError', () => {
   it('passes classified errors through untouched, whatever their class', () => {
@@ -155,7 +156,7 @@ describe('classifyActionError', () => {
 /** A locator stub recording every action call; the swipe path also needs a box, a page, and whether the node is under the pointer's aim. */
 function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }, aim: 'pointer' | 'centre' | 'blocked' = 'blocked') {
   const wheel = vi.fn(async (_x: number, _y: number) => undefined);
-  const frame = vi.fn(async () => undefined);
+  const frame = vi.fn(async () => ({ dispose: async () => undefined }));
   const move = vi.fn(async (_x: number, _y: number) => undefined);
   const locator = {
     click: vi.fn(async () => undefined),
@@ -170,7 +171,7 @@ function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }, aim: 'poin
     dragTo: vi.fn(async () => undefined),
     boundingBox: vi.fn(async () => box),
     evaluate: vi.fn(async () => (aim === 'blocked' ? { aim } : { aim, box })),
-    page: () => ({ viewportSize: () => ({ width: 1280, height: 720 }), mouse: { wheel, move }, evaluate: frame }),
+    page: () => ({ viewportSize: () => ({ width: 1280, height: 720 }), mouse: { wheel, move }, evaluate: async () => 0, waitForFunction: frame }),
   };
   const target: ActionTarget = { kind: 'locator', locator: locator as unknown as PwLocator };
   return { locator, target, wheel, move, frame };
@@ -180,7 +181,6 @@ describe('dispatchLocatorAction', () => {
   const lookup = () => {
     throw new Error('no second target in these cases');
   };
-  const OPERATION = { timeoutMs: 7, signal: new AbortController().signal };
 
   it.each([
     [{ kind: 'longPress', durationMs: 900 }, 'click', [{ timeout: 7, delay: 900 }]],
@@ -264,29 +264,34 @@ describe('dispatchPointerAction', () => {
       dblclick: async (x: number, y: number) => { calls.push(`dblclick ${x},${y}`); },
       wheel: async (dx: number, dy: number) => { calls.push(`wheel ${dx},${dy}`); },
     };
-    const page = { mouse, evaluate: async () => { calls.push('frame'); }, viewportSize: () => ({ width: 800, height: 600 }) } as unknown as Page;
+    const page = {
+      mouse,
+      evaluate: async () => 0,
+      waitForFunction: async () => { calls.push('frame'); return { dispose: async () => undefined }; },
+      viewportSize: () => ({ width: 800, height: 600 }),
+    } as unknown as Page;
     return { page, calls };
   }
 
   it('taps, double-taps, secondary-taps, and long-presses at the point as given', async () => {
     const { page, calls } = stubPage();
-    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'tap' });
-    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'doubleTap' });
-    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'secondaryTap' });
-    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 });
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'tap' }, OPERATION);
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'doubleTap' }, OPERATION);
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'secondaryTap' }, OPERATION);
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 }, OPERATION);
     expect(calls).toEqual(['click 10,20', 'dblclick 10,20', 'click 10,20 right', 'click 10,20 700ms']);
   });
 
   it('rounds a fractional point to the nearest CSS pixel: the browser would truncate it a pixel early', async () => {
     const { page, calls } = stubPage();
-    await dispatchPointerAction(page, { x: 332, y: 158.875 }, { kind: 'tap' });
-    await dispatchPointerAction(page, { x: 10.4, y: 20.5 }, { kind: 'swipeTo', target: { x: 110.6, y: 20.5 } });
+    await dispatchPointerAction(page, { x: 332, y: 158.875 }, { kind: 'tap' }, OPERATION);
+    await dispatchPointerAction(page, { x: 10.4, y: 20.5 }, { kind: 'swipeTo', target: { x: 110.6, y: 20.5 } }, OPERATION);
     expect(calls).toEqual(['click 332,159', 'move 10,21', 'down', 'move 61,21', 'move 111,21', 'up']);
   });
 
   it('swipes along a path as a pointer drag: down at the point, through the midpoint, up at the end', async () => {
     const { page, calls } = stubPage();
-    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 110, y: 20 } });
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 110, y: 20 } }, OPERATION);
     expect(calls).toEqual(['move 10,20', 'down', 'move 60,20', 'move 110,20', 'up']);
   });
 
@@ -294,7 +299,7 @@ describe('dispatchPointerAction', () => {
     vi.useFakeTimers();
     try {
       const { page, calls } = stubPage();
-      const promise = dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 70, y: 20 }, durationMs: 48 });
+      const promise = dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 70, y: 20 }, durationMs: 48 }, OPERATION);
       await vi.advanceTimersByTimeAsync(0);
       expect(calls).toEqual(['move 10,20', 'down']);
       await vi.advanceTimersByTimeAsync(16);
@@ -318,7 +323,7 @@ describe('dispatchPointerAction', () => {
         page,
         { x: 10, y: 20 },
         { kind: 'swipeTo', target: { x: 70, y: 20 }, durationMs: 48 },
-        controller.signal,
+        { ...OPERATION, signal: controller.signal },
       );
       await vi.advanceTimersByTimeAsync(16);
       expect(calls).toEqual(['move 10,20', 'down', 'move 30,20']);
@@ -332,20 +337,46 @@ describe('dispatchPointerAction', () => {
 
   it('swipes in a direction as a wheel gesture over the point, sized by the viewport', async () => {
     const { page, calls } = stubPage();
-    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' });
+    await dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' }, OPERATION);
     expect(calls).toEqual(['move 10,20', 'wheel 0,300', 'frame']);
   });
 
   it('resolves a swipe only once the frame after the wheel rendered', async () => {
     const { page } = stubPage();
     let render!: () => void;
-    (page as unknown as { evaluate: () => Promise<void> }).evaluate = () => new Promise((resolve) => (render = resolve));
+    const rendered = { dispose: vi.fn(async () => undefined) };
+    Object.assign(page, { waitForFunction: () => new Promise(resolve => { render = () => resolve(rendered); }) });
     let done = false;
-    const swipe = dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' }).then(() => (done = true));
+    const swipe = dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' }, OPERATION).then(() => (done = true));
     await vi.waitFor(() => expect(render).toBeDefined());
     expect(done).toBe(false);
     render();
     await swipe;
     expect(done).toBe(true);
+    expect(rendered.dispose).toHaveBeenCalledOnce();
+  });
+
+  it('does not send the wheel when cancelled during the pointer move', async () => {
+    const { page } = stubPage();
+    const controller = new AbortController();
+    vi.spyOn(page.mouse, 'move').mockImplementation(async () => { controller.abort(); });
+    const wheel = vi.spyOn(page.mouse, 'wheel');
+    await expect(dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' }, { ...OPERATION, signal: controller.signal }))
+      .rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(wheel).not.toHaveBeenCalled();
+  });
+
+  it('does not send the wheel when the pointer move consumes the budget', async () => {
+    vi.useFakeTimers({ now: 0 });
+    try {
+      const { page } = stubPage();
+      vi.spyOn(page.mouse, 'move').mockImplementation(async () => { vi.advanceTimersByTime(OPERATION.timeoutMs); });
+      const wheel = vi.spyOn(page.mouse, 'wheel');
+      await expect(dispatchPointerAction(page, { x: 10, y: 20 }, { kind: 'swipe', direction: 'down' }, OPERATION))
+        .rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+      expect(wheel).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

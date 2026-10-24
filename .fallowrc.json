@@ -19,6 +19,7 @@
     "packages/web/tests/types/init-scripts.ts",
     "packages/web/tests/types/keyboard.ts",
     "packages/web/tests/types/media.ts",
+    "packages/web/tests/types/clock.ts",
     "packages/web/tests/types/routes.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",

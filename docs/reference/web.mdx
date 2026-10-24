@@ -58,6 +58,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`userAgent`](#useragent) | `string` | the browser's own |
 | [`locale`](#locale) | `string` | the browser's own |
 | [`timezoneId`](#timezoneid) | `string` | the machine's |
+| [`clock`](#clock) | `WebClock` | the system clock |
 | [`colorScheme`](#media-emulation) | `'light' \| 'dark' \| 'no-preference'` | the browser's own |
 | [`reducedMotion`](#media-emulation) | `'reduce' \| 'no-preference'` | the browser's own |
 | [`initScripts`](#init-scripts) | `WebInitScript[]` | - |
@@ -71,8 +72,8 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | An option `web()` does not take (`url` or any other app key included), or an unknown key inside `connect` or `basicAuth`. The message names the nearest known key for a likely typo (`viewprt` is `viewport`), else every key. |
-| `INVALID_CONFIG` | `headers`, `basicAuth`, `userAgent`, `locale`, or `timezoneId` on a [persistent context](#recovering-a-cdp-transport) (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`). |
+| `INVALID_CONFIG` | An option `web()` does not take (`url` or any other app key included), or an unknown key inside `connect`, `basicAuth`, or `clock`. The message names the nearest known key for a likely typo (`viewprt` is `viewport`), else every key. |
+| `INVALID_CONFIG` | `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, or `clock` on a [persistent context](#recovering-a-cdp-transport) (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`). |
 
 #### `browser`
 
@@ -233,7 +234,7 @@ A saved session carries it, not a shared browser.
 
 <Note>
 A persistent context does not support `headers`, `basicAuth`, `userAgent`,
-`locale`, `timezoneId` (see [Options](#options)), `app.clearState`, or
+`locale`, `timezoneId`, `clock` (see [Options](#options)), `app.clearState`, or
 session state capture and restore. `app.clearState` fails with
 `UNSUPPORTED_CAPABILITY`. `app.restart` remains available.
 </Note>
@@ -331,6 +332,39 @@ resolve local time against.
 ```ts
 web({ timezoneId: 'Europe/Berlin' }); // default: the machine's
 ```
+
+#### `clock`
+
+Start each context at a chosen time before page scripts run, including new
+tabs and frames. Time advances at real speed by default.
+
+```ts
+web({ clock: { time: '2032-01-02T03:04:05Z' } });
+web({ clock: { time: 0, mode: 'paused' } });
+```
+
+- Use a date string with an explicit offset, or milliseconds since the Unix epoch.
+- Navigation, reload, and `app.restart()` keep the context's current time.
+- Each attempt, `app.clearState()`, and session restore start again at the configured time.
+- Only the browser clock changes. The app server and runner keep their own clocks.
+- A [persistent context](#recovering-a-cdp-transport) does not support this option.
+
+`paused` also stops page timers and animation frames. An app that needs them
+to finish loading can stall. This option does not add clock controls to the
+`browser` fixture.
+
+```ts
+export interface WebClock {
+  /** A date string or milliseconds since the Unix epoch. */
+  readonly time: string | number;
+  /** Advance at real speed by default; `paused` stops the clock and page timers. */
+  readonly mode?: 'running' | 'paused';
+}
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A missing or invalid `time`, a timestamp outside the JavaScript date range, or a `mode` other than `'running'` or `'paused'`. |
 
 #### Media emulation
 
@@ -1073,6 +1107,8 @@ export interface WebOptions {
    * Defaults to the machine's. A persistent context is `INVALID_CONFIG`.
    */
   readonly timezoneId?: string;
+  /** The initial time of each context. See [clock](#clock). */
+  readonly clock?: WebClock;
   /** The `prefers-color-scheme` every page reports. See [Media emulation](#media-emulation). */
   readonly colorScheme?: WebMedia['colorScheme'];
   /** The `prefers-reduced-motion` every page reports. See [Media emulation](#media-emulation). */

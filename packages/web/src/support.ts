@@ -2,7 +2,7 @@
 
 import { setTimeout } from 'node:timers/promises';
 import type { ElementHandle, Locator as PwLocator, Mouse, Page } from 'playwright-core';
-import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
+import { Deadline, EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;
@@ -393,14 +393,16 @@ export async function performViewportSwipe(
   page: Page,
   direction: ScrollDirection,
   momentum: Momentum,
+  timeout: number,
 ): Promise<void> {
+  const deadline = new Deadline(timeout);
   const viewport = await currentViewport(page);
   const distance = swipeDistance(
     direction === 'up' || direction === 'down' ? viewport.height : viewport.width,
     momentum,
   );
   const [deltaX, deltaY] = wheelDelta(direction, distance);
-  await wheelRendered(page, deltaX, deltaY);
+  await wheelRendered(page, deltaX, deltaY, deadline);
 }
 
 /**
@@ -453,6 +455,7 @@ export async function performElementSwipe(
   momentum: Momentum,
   timeout: number,
 ): Promise<void> {
+  const deadline = new Deadline(timeout);
   // A node the pointer already hovers takes the wheel where it is; one hit at
   // its centre takes it there, at the box that hit test read; otherwise hover
   // waits for it to be actionable, scrolls it into view, and reports whatever
@@ -474,7 +477,7 @@ export async function performElementSwipe(
   const [deltaX, deltaY] = wheelDelta(direction, distance);
   const page = await targetPage(target);
   if (aimed.aim === 'centre') await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-  await wheelRendered(page, deltaX, deltaY);
+  await wheelRendered(page, deltaX, deltaY, deadline);
 }
 
 /**
@@ -483,15 +486,20 @@ export async function performElementSwipe(
  * a read right after a bare `mouse.wheel` can see the document it left. A
  * hidden document renders no frames, so it resolves at once.
  */
-async function wheelRendered(page: Page, deltaX: number, deltaY: number): Promise<void> {
+async function wheelRendered(page: Page, deltaX: number, deltaY: number, deadline: Deadline): Promise<void> {
   await page.mouse.wheel(deltaX, deltaY);
-  await page.evaluate(nextRenderedFrame);
-}
-
-/** Page-side: resolves after the next rendered frame, or at once in a hidden document. */
-function nextRenderedFrame(): Promise<void> {
-  if (document.visibilityState === 'hidden') return Promise.resolve();
-  return new Promise((resolve) => requestAnimationFrame(() => window.setTimeout(resolve, 0)));
+  // The document timeline advances even when the app's clock and animation callbacks are paused.
+  const frame = await page.evaluate(() => document.timeline.currentTime);
+  try {
+    const rendered = await page.waitForFunction(previous => document.visibilityState === 'hidden' || document.timeline.currentTime !== previous, frame,
+      { timeout: Math.max(1, deadline.remaining()) });
+    await rendered.dispose();
+  } catch (cause) {
+    if (isPwTimeout(cause)) {
+      throw new EngineError('ACTION_MAY_HAVE_COMMITTED', 'swipe dispatched but waiting for its rendered frame timed out', { retryable: false, cause });
+    }
+    throw cause;
+  }
 }
 
 /** Where a wheel reaches a node, and the box it read when it was not blocked. */

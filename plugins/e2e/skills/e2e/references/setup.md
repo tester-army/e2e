@@ -216,6 +216,7 @@ start a script that brings them up and serves the app.
 | `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
 | `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
+| `clock` | `{ time: string \| number, mode?: 'running' \| 'paused' }` starts each context at a chosen date string or epoch milliseconds before page scripts, including tabs and frames. Default: real speed; `paused` stops page timers too. Context resets and session restores start again at `time`. |
 | `colorScheme`, `reducedMotion` | The `prefers-color-scheme` (`'light'`, `'dark'`, `'no-preference'`) and `prefers-reduced-motion` (`'reduce'`, `'no-preference'`) every page reports to its `@media` rules and `matchMedia`, from first paint. |
 | `initScripts` | Scripts every document runs before the page's own: source, `{ path }`, or a function with no closures. |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
@@ -226,7 +227,7 @@ start a script that brings them up and serves the app.
   the handle (a reference, not the value) in `app.command.env`, a template
   literal, or `context`; read those from `process.env`.
 - `reconnectEndpoint` or an attempt-scoped provider rides one persistent
-  context without `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, `app.clearState()`, or
+  context without `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, `clock`, `app.clearState()`, or
   session state. Recovery never repeats a dispatched operation; exhausting
   the budget is `OPERATION_TIMEOUT`. Without `reconnectEndpoint` a dropped
   connection is reacquired at the next attempt.

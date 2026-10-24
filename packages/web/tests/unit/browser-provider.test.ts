@@ -189,6 +189,7 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: cloud, userAgent: 'synthetic playwright' })).toThrow(/persistent context/);
     expect(() => web({ browser: cloud, locale: 'de-DE' })).toThrow(/persistent context; locale requires/);
     expect(() => web({ browser: cloud, timezoneId: 'Europe/Berlin' })).toThrow(/persistent context; timezoneId requires/);
+    expect(() => web({ browser: cloud, clock: { time: 0 } })).toThrow(/persistent context; clock requires/);
     expect(() => web({ browser: provider().impl, headers: { 'x-preview': 'synthetic' } })).not.toThrow();
   });
 
