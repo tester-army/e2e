@@ -242,23 +242,14 @@ export class LocatorEngine {
   }
 
   /**
-   * Resolves every current match for an assertion poll: a missing frame or a
-   * stale resolve is retried within the caller's deadline, like a node that
-   * is not there yet.
+   * Resolves every current match at once, without waiting for one. A frame
+   * the engine reports missing is zero matches, since nothing under it is in
+   * the document. A stale resolve is still retried within the deadline, as
+   * every resolve does: that repairs a race with a navigation, it does not
+   * wait for a match.
    */
-  async resolveAll(expression: LocatorExpression, deadline: Deadline): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, deadline);
-  }
-
-  /**
-   * Resolves every current match at once, for the reads that promise not to
-   * wait (`count`, `all`). A frame the engine reports missing is zero
-   * matches, since nothing under it is in the document. A stale resolve is
-   * still retried within the action timeout, as every resolve does: that
-   * repairs a race with a navigation, it does not wait for a match.
-   */
-  async resolveNow(expression: LocatorExpression): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, this.deadline(this.options.actionTimeout), 'empty');
+  async resolveNow(expression: LocatorExpression, deadline: Deadline = this.deadline(this.options.actionTimeout)): Promise<readonly NodeRef[]> {
+    return this.resolveOnce(expression, deadline, 'empty');
   }
 
   /**
@@ -285,27 +276,15 @@ export class LocatorEngine {
   }
 
   /**
-   * Reads every current match for an assertion poll, in document order. A
-   * ref superseded between resolve and read re-resolves the whole set while
-   * the deadline remains, since one stale member says nothing about the
-   * others; a stale set at the deadline is `LOCATOR_NOT_FOUND`.
+   * Reads every current match at once, in document order: a missing frame
+   * reads as no matches. A ref superseded between resolve and read
+   * re-resolves the whole set while the deadline remains, since one stale
+   * member says nothing about the others; a stale set at the deadline is
+   * `LOCATOR_NOT_FOUND`.
    */
-  async readAll(expression: LocatorExpression, deadline: Deadline): Promise<readonly SemanticNode[]> {
-    return this.readEvery(expression, deadline, 'wait');
-  }
-
-  /** Reads every current match at once, for `allTextContents`: a missing frame reads as no matches. */
   async readAllNow(expression: LocatorExpression, deadline: Deadline = this.deadline(this.options.actionTimeout)): Promise<readonly SemanticNode[]> {
-    return this.readEvery(expression, deadline, 'empty');
-  }
-
-  private async readEvery(
-    expression: LocatorExpression,
-    deadline: Deadline,
-    missingFrame: MissingFrame,
-  ): Promise<readonly SemanticNode[]> {
     for (;;) {
-      const refs = await this.resolveOnce(expression, deadline, missingFrame);
+      const refs = await this.resolveOnce(expression, deadline, 'empty');
       try {
         const nodes: SemanticNode[] = [];
         for (const ref of refs) nodes.push(await this.session.read(ref, this.operationWithin(deadline)));

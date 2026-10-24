@@ -101,11 +101,11 @@ describe('invokeTool', () => {
 
   it("refuses an argument the session catalog's observe and locate do not declare", async () => {
     const { context, dispatched } = fakeExecutorContext();
-    const resolveAll = vi.fn(async () => []);
+    const resolveNow = vi.fn(async () => []);
     const { tools } = createSessionCatalog({
       context,
       screen: new ScreenPresenter(),
-      locator: { resolveAll } as never,
+      locator: { resolveNow } as never,
       session: {} as never,
       tools: {},
       redaction: { redact: (text) => text, redactCut: (text) => text },
@@ -121,7 +121,7 @@ describe('invokeTool', () => {
       message: 'call locate: Unrecognized key: "selector"; tools {tool: "locate"} shows its arguments',
     });
     expect(dispatched).toEqual([]);
-    expect(resolveAll).not.toHaveBeenCalled();
+    expect(resolveNow).not.toHaveBeenCalled();
   });
 
   it('lets a tool failure propagate with its code, for the host to render', async () => {
