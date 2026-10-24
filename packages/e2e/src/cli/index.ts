@@ -141,9 +141,11 @@ function rejectForwardedFlags(command: Command, files: readonly string[]): void 
 
 type Reporter = BuiltinReporter;
 
-/** Reporter ids, comma-separated; the CLI only rejects ids it does not know. */
+/** Reporter ids, comma-separated. */
 function parseReporters(value: string): Reporter[] {
-  return parseList(value).map((id) => {
+  const ids = parseList(value);
+  if (ids.length === 0) throw new InvalidArgumentError('must name at least one reporter');
+  return ids.map((id) => {
     if (!isBuiltinReporter(id)) {
       throw new InvalidArgumentError(`unknown reporter "${id}"; expected ${BUILTIN_REPORTERS.join(', ')}`);
     }

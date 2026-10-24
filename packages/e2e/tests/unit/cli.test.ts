@@ -357,6 +357,19 @@ describe('e2e run argument parsing', () => {
     expect(written(stderrSpy)).toContain('unknown reporter "teamcity"');
   });
 
+  it('rejects an empty --reporter on run and explore with exit code 2 instead of running with no reporters', async () => {
+    for (const command of ['run', 'explore']) {
+      for (const value of ['', ' , ']) {
+        process.exitCode = undefined;
+        stderrSpy.mockClear();
+        await invoke(command, '--reporter', value);
+        expect(process.exitCode).toBe(2);
+        expect(written(stderrSpy)).toContain(`option '--reporter <ids>' argument '${value}' is invalid. must name at least one reporter`);
+      }
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('exits 2 on an unknown option or command without running, pointing at --help', async () => {
     await invoke('run', '--nope');
     expect(runMock).not.toHaveBeenCalled();
