@@ -6,6 +6,7 @@ import { decide, requireDecide, type Decision } from './decide.ts';
 import { perform, type Action } from './dispatch.ts';
 import { actionSpace, type ActionSpace, type Control, type Element, type Operation, type Target } from './elements.ts';
 import { PointLocator, type Aim } from './locator.ts';
+import { checkModel, checkProviderOptions } from './model.ts';
 import type { Point, Screenshot } from './overlay.ts';
 import { nonSecretParams } from './params.ts';
 import { describe, gated, invalid, need, pick, verdictOf, type Gates, type Verdict } from './picks.ts';
@@ -21,15 +22,13 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
   if (typeof options !== 'object' || options === null) {
     throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor() takes an options object; ${EXAMPLE}`);
   }
-  requireDecide();
-  checkModel(options.model);
+  requireDecide('decisionExecutor');
+  checkModel(options.model, { caller: 'decisionExecutor', questionType: 'choice', example: EXAMPLE });
   const gates: Gates = { minProbability: options.minProbability ?? 0, minConfidence: options.minConfidence ?? 0 };
   if (!inUnit(gates.minProbability) || !inUnit(gates.minConfidence)) {
     throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ minProbability, minConfidence }) must be between 0 and 1');
   }
-  if (options.providerOptions !== undefined && !isOptionsRecord(options.providerOptions)) {
-    throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ providerOptions }) maps provider names to option objects, e.g. { gateway: { zeroDataRetention: true } }');
-  }
+  checkProviderOptions(options.providerOptions, 'decisionExecutor');
   if (options.vision !== undefined && typeof options.vision !== 'boolean') {
     throw new ConfigurationError('INVALID_CONFIG', 'decisionExecutor({ vision }) must be a boolean');
   }
@@ -47,44 +46,6 @@ export function decisionExecutor(options: DecisionExecutorOptions): StepExecutor
 }
 /** How a valid model reads, for every model error. */
 const EXAMPLE = "pass an AI SDK decision model, e.g. decisionExecutor({ model: typeSafeAi.decisionModel('jev-latest') })";
-/**
- * Rejects anything the AI SDK cannot decide with, at config load: a model id
- * string, a language model, or a decision model that cannot answer `choice`.
- */
-function checkModel(model: unknown): void {
-  if (typeof model === 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got a function, not a model; call it with a model id, ${EXAMPLE}`);
-  }
-  if (typeof model !== 'object' || model === null) {
-    const got = typeof model === 'string' ? `the string ${JSON.stringify(model)}` : String(model);
-    throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got ${got}; ${EXAMPLE}`);
-  }
-  const fields = model as Record<string, unknown>;
-  const name = `${String(fields['provider'])}/${String(fields['modelId'])}`;
-  if (typeof fields['doDecide'] !== 'function' && typeof fields['doEvaluate'] !== 'function') {
-    const kind = typeof fields['doGenerate'] === 'function' ? `the language model ${name}` : 'an object that is not a decision model';
-    throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got ${kind}; ${EXAMPLE}`);
-  }
-  if (fields['specificationVersion'] !== 'v4') {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `decisionExecutor({ model }) got ${name}, a ${String(fields['specificationVersion'])} model; the AI SDK decides with v4 decision models`,
-    );
-  }
-  const supported = fields['supportedQuestionTypes'];
-  if (!Array.isArray(supported) || !supported.includes('choice')) {
-    throw new ConfigurationError('INVALID_CONFIG', `decisionExecutor({ model }) got ${name}, which does not answer choice questions`);
-  }
-}
-/** A plain object whose every value is a plain object: the shape the AI SDK takes as providerOptions. */
-function isOptionsRecord(value: unknown): boolean {
-  const isRecord = (v: unknown): boolean => {
-    if (typeof v !== 'object' || v === null) return false;
-    const prototype: unknown = Object.getPrototypeOf(v);
-    return prototype === Object.prototype || prototype === null;
-  };
-  return isRecord(value) && Object.values(value as object).every(isRecord);
-}
 function inUnit(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1;
 }

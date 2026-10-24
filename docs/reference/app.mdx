@@ -129,8 +129,7 @@ const shot = await app.screenshot('after-checkout');
 ```
 
 - The file is an attempt artifact under `screenshots/`. The returned path is
-  relative to the attempt's artifact directory. The report records the path
-  relative to the artifact root.
+  absolute. The report records the path relative to the artifact root.
 - `label` names the step and joins the file name.
 
 | Throws | When |
@@ -172,7 +171,7 @@ export interface App {
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
-  /** Captures a redacted evidence screenshot. */
+  /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
 }
 ```

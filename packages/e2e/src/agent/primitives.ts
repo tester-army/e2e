@@ -275,10 +275,10 @@ const NODE_VERBS: readonly {
 
 /**
  * The point verbs, one tool each, offered while pixels may reach the model:
- * a point in the latest screenshot for a target the tree does not list. A
- * listed control under the point is acted on by id through the node verb
- * `POINT_VERBS` pairs it with; a bare point reaches the engine when it takes
- * one.
+ * a point in the latest screenshot for a target the tree does not list. The
+ * bare point reaches the engine when it takes one; otherwise the listed
+ * control under it is acted on by id through the node verb `POINT_VERBS`
+ * pairs it with.
  */
 const POINT_TOOLS: readonly {
   readonly verb: PointActionName;
@@ -292,14 +292,14 @@ const POINT_TOOLS: readonly {
     verb: 'tapAt',
     tool: 'tap_at',
     does:
-      'Tap a point in the latest screenshot, given as pixel coordinates in that image (x from the left edge, y from the top edge). Aim for the center of the target. A listed control under the point is tapped by its id; otherwise the bare point is tapped',
+      'Tap a point in the latest screenshot, given as pixel coordinates in that image (x from the left edge, y from the top edge). Aim for the center of the target. The bare point is tapped',
     byId: 'tap it by id',
   },
   {
     verb: 'hoverAt',
     tool: 'hover_at',
     does:
-      'Move the pointer to a point in the latest screenshot without clicking, for a hover target the screen does not list (a drawn control, a region of an image). A listed control under the point is hovered by its id; otherwise the bare point is hovered',
+      'Move the pointer to a point in the latest screenshot without clicking, for a hover target the screen does not list (a drawn control, a region of an image). The bare point is hovered',
     byId: 'hover it by id',
   },
 ];
@@ -571,11 +571,10 @@ export function createGrammarTools(
   // The pixel verbs are offered while pixels can still leave the runner. Once
   // a secret was filled in the attempt they could only decline, and a verb
   // that is absent costs the model nothing where one that declines costs a
-  // turn. They are the fallback for a target the tree does not list: every
-  // point is hit-tested against the tree the runner holds, so a listed
-  // control under it is acted on by id, policed and recorded like any other
-  // action, and only a point on nothing listed reaches the engine as a bare
-  // point (tap) or through the keyboard (type, press).
+  // turn. They are the fallback for a target the tree does not list: a tap
+  // or hover reaches the engine as a bare point where it takes one, and a
+  // type, press, or select acts on a listed control under the point by id,
+  // else through the keyboard.
   if (!context.pixelsTainted) {
     tools['screenshot'] = screenTool({
       description:
@@ -661,11 +660,12 @@ function isNotFillable(cause: unknown): boolean {
  * The point-addressed fallback verbs, offered next to the id-addressed
  * grammar while pixels may reach the model: `tap_at`, `type_at`, `press_at`,
  * and `select_at`, each taking a point in the latest screenshot for a target
- * the tree does not list. A point is hit-tested against the tree the harness
- * holds, so a control the tree lists is acted on by id underneath: policed,
- * recorded with a durable descriptor, and replayed like any other action. A
- * point on nothing listed taps as a bare point, and with a keyboard is
- * tapped to focus it and typed into. Before a screenshot the verbs cost
+ * the tree does not list. `tap_at` taps the bare point where the engine
+ * takes one. The others hit-test the point against the tree the harness
+ * holds, so a field the tree lists is acted on by id underneath: policed,
+ * recorded with a durable descriptor, and replayed like any other action.
+ * With a keyboard, a point on nothing listed is tapped to focus it and
+ * typed into. Before a screenshot the verbs cost
  * nothing: they answer with the line that says to take one.
  */
 function createPointTools(

@@ -15,6 +15,42 @@ Please read the [code of conduct](./CODE_OF_CONDUCT.md) before you post.
 Security issues go through [`SECURITY.md`](./SECURITY.md), not the issue
 tracker.
 
+## Pull requests
+
+The changes most likely to be accepted:
+
+- Bug fixes
+- Docs fixes
+- Engine and platform fixes (a browser, device, or OS that misbehaves)
+- Performance improvements
+
+New features, and changes to the public contract below, need agreement before
+any code. Open a feature request with the problem and the API you have in
+mind, and wait for a maintainer to agree before opening a PR. A feature PR
+nobody agreed to will likely be closed.
+
+If you want to work on an existing issue, comment on it first so nobody else
+picks it up.
+
+A bot checks every community PR:
+
+- The title is a [conventional commit](#commit-message-convention).
+- `fix`, `chore`, `test`, `perf`, `ci`, `build`, and `revert` PRs link an
+  existing issue: `Fixes #123` under `## Issue`. `feat`, `docs`, and
+  `refactor` PRs are exempt.
+- The description says what changes and why, and `## Verified` from the
+  [PR template](./.github/PULL_REQUEST_TEMPLATE.md) says how you checked it.
+
+A PR that fails the check gets the `needs:compliance` label and a comment
+listing what to fix. If it is still failing 72 hours later, it is closed.
+Once a day, community PRs open for more than a month with fewer than 2
+positive reactions (👍 ❤️ 🎉 🚀) and no maintainer approval are closed too.
+If one was closed by mistake, say so on the PR.
+
+Keep PRs small, and write the description yourself, briefly. Long
+AI-generated descriptions may be ignored. If you can't explain the change in
+a few lines, the PR is probably too big.
+
 ## The contract
 
 There is no separate spec document. The code is the contract, pinned in three
@@ -43,7 +79,7 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `packages/e2e`: the published `e2e` package (SDK, runner, CLI, engine contract)
 - `packages/web`: the published `@e2e-dev/web` browser engine
 - `packages/mobile`: the published `@e2e-dev/mobile` mobile engine
-- `packages/decision`: the decision-model executor on the public `StepExecutor` contract
+- `packages/decision`: the decision-model executor and test filter on the public `StepExecutor` and `TestFilter` contracts
 - `packages/cige`: CIGE test cases (`.cige.json`) as e2e tests, and the reporter that writes their run summaries
 - `apps/testbed`: private dogfood suite that consumes the built packages
 - `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
@@ -170,8 +206,7 @@ pending changesets. That PR gets no CI of its own (it is opened with
 peer ranges, builds, publishes the new versions, and creates the matching
 GitHub release. A release that published `e2e` then lists it in the MCP
 Registry (`mcp-registry.yml`); to retry a failed listing, run that workflow
-by hand with the version. It also calls the `VERCEL_DEPLOY_HOOK` secret,
-which rebuilds the docs at e2e.tester.army. `@e2edev/e2e` is the
+by hand with the version. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 

@@ -12,7 +12,7 @@ import { processSecrets } from './secrecy.ts';
 import { run as execute, toSelectionRunOptions, type ListOptions, type RunOptions as InternalRunOptions } from './runner.ts';
 
 /** Options for executing a suite through the public runner API. */
-export type SuiteRunOptions = Pick<ListOptions, 'cwd' | 'config' | 'files'> & Pick<InternalRunOptions, 'interruptSignal' | 'onEvent'>;
+export type SuiteRunOptions = Pick<ListOptions, 'cwd' | 'config' | 'files' | 'changedSince'> & Pick<InternalRunOptions, 'interruptSignal' | 'onEvent'>;
 
 /** The completed run's report and output paths, without live engine or configuration handles. */
 export interface RunResult {
@@ -38,7 +38,7 @@ export async function runSuite(options: SuiteRunOptions = {}): Promise<RunResult
       const interrupt = ownedInterrupt(options.interruptSignal);
       try {
         return await execute({
-          ...toSelectionRunOptions({ cwd: options.cwd, config: options.config, files: options.files }),
+          ...toSelectionRunOptions({ cwd: options.cwd, config: options.config, files: options.files, changedSince: options.changedSince }),
           quiet: true,
           processOutput: output,
           interruptSignal: interrupt.signal,

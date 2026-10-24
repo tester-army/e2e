@@ -67,7 +67,9 @@ gates, and limits.
 - `context` is what the app calls things, sent to every model call, judges
   included; `system` is how the acting agent works, read only by the act
   loop. Both live on the agents entry; `agentContext` on a test or group
-  adds more.
+  adds more. Under `e2e run`, every prompt opens with the test's title path
+  (`Test: billing > upgrades the tier`), judges included, so name a test
+  for what it covers, not for the verdict it expects.
 
 ### Choose an agent
 
@@ -155,8 +157,10 @@ The tools, one per engine action. Name the target as the screen names it
 The focused field's selected text is listed as `selection="..."` (never for
 a secret), so a repeated `Shift+ArrowLeft` selects one word with visible
 feedback. Point tools serve a canvas shape, map pin, image region, or system
-sheet control, hit-testing the tree first so a listed control underneath is
-acted on by id; `type_at` on nothing listed taps, then types. A screen with
+sheet control. `tap_at` and `hover_at` act at the point; `press_at`,
+`select_at`, and `type_at` hit-test the tree first so a listed control
+underneath is acted on by id, and `type_at` on nothing listed taps, then
+types. A screen with
 nothing to tap by id opens with a screenshot attached. A device has no
 `right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
 masked and withheld after a secret fill (topic writing-tests): act on pixels
@@ -196,6 +200,24 @@ expect(data.titles).toContain('Buy milk');
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
   screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+- Never sleep for a fixed time to let the app settle. A sleep is too short
+  on a slow run and wasted time on a fast one; `waitFor` returns as soon as
+  the state appears:
+
+```ts
+// BAD: guesses how long the export takes.
+await new Promise((resolve) => setTimeout(resolve, 10_000));
+
+// GOOD: waits for the state, up to the timeout.
+await agent.waitFor('the export finished and a download link appeared', { timeout: 60_000 });
+```
+
+- `waitFor` needs a model even under a custom executor and is never cached,
+  so each run spends judgments on it. It judges again on every screen
+  change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  changing (a progress counter), raise `interval`. The test timeout still
+  caps its `timeout`.
+
 - `extract` takes any Standard Schema validator (zod works); the model sees
   the schema's shape, never its value rules (`min`, `max`, lengths,
   patterns), which check what it read. Data the screen does not show is
@@ -260,7 +282,11 @@ most changed. Pixels arrive through `vision` on a judgment or the act loop's
 `screenshot` and point tools, masked and withheld after a secret fill. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred
-absent nor old node ids reused. Nothing the model returns runs as code or
+absent nor old node ids reused. The browser engine's tree shows a frame
+from another site (a hosted card field) as its `iframe` node with none of
+its content, so the agent reaches it only through pixels: script steps
+there with `browser.frameLocator`, and judge it with `vision`. Nothing the
+model returns runs as code or
 selectors: the runner validates and authorizes every tool call first.
 
 ## Budgets and cost
@@ -308,21 +334,34 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   there, every one that went away is gone, at least one of those changed
   during the replay, and no new alert showed; otherwise the agent takes
   over mid-step. The web engine does not observe Next.js App Router's route
-  announcer, so its title echo never counts. Entries are keyed per agent and
-  per `agentContext`. `step.cache.reason` says why: `no-entry`,
+  announcer, so its title echo never counts. An entry's key holds the test
+  file and title path, the target, the instruction and params, the agent,
+  its `context`, and the test's `agentContext`, so renaming the test or its
+  file records every goal in it again, and rewording a goal records that
+  goal again. `step.cache.reason` says why: `no-entry`,
   `wrong-context`, `target-not-found`, `target-ambiguous`, `end-mismatch`,
   and so on.
-- A step recording no actions, or changing nothing on screen or in the
-  route, creates no entry; one whose `unique()` value
-  equals, is spelled inside, or is the encoded form of another param's value
-  is not recorded either (`step.cache.notRecorded`: `param-collision`).
+- A step changing nothing on screen or in the route creates no entry
+  (`step.cache.write`: `no-change`) and runs live every run, strict
+  included; a change only inside a frame from another site counts as
+  nothing, since the tree leaves it out. A step recording no actions
+  creates no entry either. A step whose
+  `unique()` value equals, is spelled inside, or is the encoded form of
+  another param's value is not recorded either (`step.cache.notRecorded`:
+  `param-collision`).
 - `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries
   and share replays with CI and teammates (CI stays `read-only` unless
   `cache: 'read-write'` is set).
-- A failing run evicts the entries it implicates; `--no-cache` rules the
-  cache out of a failure. A cancelled run and a failure where no model
-  answered (`MODEL_PROVIDER_FAILED`, `MODEL_UNAVAILABLE`) implicate nothing
-  and evict nothing.
+- A failing run keeps the entries a check confirmed before the failure. It
+  evicts a replay that ran into the failure and any recording no check
+  confirmed. A cancelled run and a failure where no model answered
+  (`MODEL_PROVIDER_FAILED`, `MODEL_UNAVAILABLE`) implicate nothing and evict
+  nothing.
+- While you fix a test, keep the cache on: each rerun replays the goals
+  whose check passed instead of calling the model for them (SKILL.md,
+  "Rerunning a test while you fix it"). `--no-cache` is for ruling out a
+  stale replay (topic debugging, "Tools"), and for one live run once the
+  test passes.
 - With committed recordings, `--strict-cache` in CI fails a recording that
   no longer replays with `REPLAY_STALE` instead of quietly spending model
   calls every run; re-record with a `read-write` run without the flag and

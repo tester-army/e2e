@@ -559,6 +559,8 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   waitFor(options?: { state?: 'attached' | 'detached' | 'visible' | 'hidden'; timeout?: number }): Promise<void>;
   /** Adds deterministic locator filters. */
   filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+  /** Matches either locator, deduplicated in traversal order; both must belong to this screen. */
+  or(other: Locator): Locator;
   /** Selects the first current match. */
   first(): Locator;
   /** Selects the last current match. */
@@ -592,7 +594,7 @@ export interface App {
   clearState(): Promise<void>;
   /** Navigates back once. */
   back(): Promise<void>;
-  /** Captures a redacted evidence screenshot. */
+  /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
 }
 
@@ -1206,7 +1208,7 @@ export type RecordingMode = 'off' | 'on' | 'retain-on-failure' | 'on-first-retry
 /**
  * A live AI SDK language model instance: `gateway('openai/gpt-6-luna-fast')`
  * from `ai`, `openrouter(...)` from `@openrouter/ai-sdk-provider`,
- * `openai('gpt-4o')` from `@ai-sdk/openai`, or any other provider
+ * `openai('gpt-6-luna-fast')` from `@ai-sdk/openai`, or any other provider
  * implementing the AI SDK `LanguageModelV2+` specification. The instance owns
  * its own transport and credentials; the runner knows no gateway or provider
  * of its own. Detection is structural, so any AI SDK provider package works
@@ -1489,6 +1491,82 @@ export interface Reporter {
   onRunFinished?(run: FinishedRun, signal: AbortSignal): Promise<ReporterSummary | void>;
 }
 
+/**
+ * Leaves collected tests out of a run before anything starts. Called at most
+ * once, in the runner process; workers load the config too and never call
+ * it, so constructing one must have no side effects: read git, the
+ * environment, or the network inside `filter`. A call that throws, returns
+ * an invalid result, or runs past 5 minutes leaves nothing out.
+ */
+export interface TestFilter {
+  /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */
+  readonly name: string;
+  /** Decides which of `tests` to leave out; every test the result does not name runs. */
+  readonly filter: (tests: readonly TestFilterCandidate[], context: TestFilterContext) => TestFilterResult | Promise<TestFilterResult>;
+}
+
+/** One test a filter may leave out: what names it, never its body. */
+export interface TestFilterCandidate {
+  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` takes. */
+  readonly id: string;
+  /** Project-relative POSIX path of the test file. */
+  readonly file: string;
+  /** The describe titles, then the test title. */
+  readonly titlePath: readonly string[];
+  /** The describe chain's tags, outermost first, then the test's own. */
+  readonly tags: readonly string[];
+  /** Project-relative POSIX path of the setup test file that saves the test's session; absent when the test uses none. */
+  readonly setupFile?: string;
+}
+
+/** What a run's test filters judge: every file that differs from the base commit. */
+export interface TestFilterChanges {
+  /** The commit the change is measured from: the merge base of the base ref and HEAD. */
+  readonly base: string;
+  /** Absolute path of the git repository root, spelled as on disk like `projectRoot`; `files` are relative to it. */
+  readonly root: string;
+  /**
+   * Repository-relative POSIX paths of every file added, modified, or
+   * deleted since `base`, both paths of a rename, uncommitted and untracked
+   * files included; sorted, never empty. Spelled as git prints them, which
+   * on macOS is NFC while a test's `file` keeps the bytes on disk, so
+   * compare a non-ASCII path with `.normalize('NFC')` on both sides.
+   */
+  readonly files: readonly string[];
+}
+
+/** What the runner hands a filter besides its tests. */
+export interface TestFilterContext {
+  /** Absolute project root, spelled as on disk like `changes.root`: symlinks resolved, names in on-disk case; a test's `file` is relative to it. */
+  readonly projectRoot: string;
+  /** The change the filter judges; the same for every filter of the run. */
+  readonly changes: TestFilterChanges;
+  /**
+   * The config file this run loaded, whatever its name, as a POSIX path
+   * relative to `changes.root` like `changes.files`, in its on-disk bytes
+   * (compare in NFC, as with a test's `file`); `undefined` when the run was
+   * given a config object or loaded one outside the repository.
+   */
+  readonly configFile?: string | undefined;
+  /**
+   * Aborts when the run is interrupted, or with a `TimeoutError` reason after
+   * 5 minutes; hand it to every model and network call.
+   */
+  readonly signal: AbortSignal;
+  /** Prints one progress line as a run notice. */
+  log(line: string): void;
+  /** Replaces every fixed-value secret and credential password in `text`, and any run of 8 or more consecutive characters of one. */
+  redact(text: string): string;
+}
+
+/** A filter's answer: every test it does not name runs. */
+export interface TestFilterResult {
+  /** The tests to leave out, by `TestFilterCandidate.id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
+  readonly exclude: Readonly<Record<string, string>>;
+  /** One line about the whole decision, such as `the diff is too large to judge`. */
+  readonly note?: string;
+}
+
 export interface E2EConfig {
   /** Stable project id, 1 through 256 characters; defaults to the root `package.json` name. */
   projectId?: string;
@@ -1561,6 +1639,8 @@ export interface E2EConfig {
    * construct their own, exactly like model instances.
    */
   agents?: Readonly<Record<string, AgentConfig>>;
+  /** Test filters, in order, run with `--changed-since`: each judges the tests the one before it kept. */
+  filters?: readonly TestFilter[];
   /**
    * The adaptive replay cache. Opt-out: unset means
    * `read-write`, and `'off'` disables it, as does the `--no-cache` flag,

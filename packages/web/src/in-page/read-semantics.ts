@@ -176,9 +176,67 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     NON_HOST_TAGS.indexOf(el.tagName.toLowerCase()) === -1 &&
     !(el.parentElement instanceof HTMLElement && el.parentElement.isContentEditable);
 
+  const NAME_PROHIBITED_ROLES = [
+    'caption', 'code', 'deletion', 'emphasis', 'generic', 'insertion', 'paragraph', 'presentation', 'strong',
+    'subscript', 'superscript',
+  ];
+  /** Global ARIA attributes, each with the roles it does not count on, as Playwright lists them. */
+  const GLOBAL_ARIA_ATTRIBUTES: ReadonlyArray<readonly [string, readonly string[]]> = [
+    ['aria-atomic', []],
+    ['aria-busy', []],
+    ['aria-controls', []],
+    ['aria-current', []],
+    ['aria-describedby', []],
+    ['aria-details', []],
+    ['aria-dropeffect', []],
+    ['aria-flowto', []],
+    ['aria-grabbed', []],
+    ['aria-hidden', []],
+    ['aria-keyshortcuts', []],
+    ['aria-label', NAME_PROHIBITED_ROLES],
+    ['aria-labelledby', NAME_PROHIBITED_ROLES],
+    ['aria-live', []],
+    ['aria-owns', []],
+    ['aria-relevant', []],
+    ['aria-roledescription', ['generic']],
+  ];
+
+  /** Playwright's implicit role for the tags whose role some global ARIA attributes do not count on. */
+  const NAME_PROHIBITED_TAG_ROLES: Readonly<Record<string, string>> = {
+    caption: 'caption', code: 'code', del: 'deletion', em: 'emphasis', ins: 'insertion', p: 'paragraph',
+    strong: 'strong', sub: 'subscript', sup: 'superscript',
+  };
+
+  /** True when the element carries a global ARIA attribute that counts on `role`. */
+  const hasGlobalAriaAttribute = (el: Element, role: string | null): boolean =>
+    GLOBAL_ARIA_ATTRIBUTES.some(([name, prohibited]) =>
+      (role === null || prohibited.indexOf(role) === -1) && el.hasAttribute(name));
+
+  /** True when `tabindex` parses as a number, as Playwright reads it. */
+  const hasTabIndex = (el: Element): boolean => !Number.isNaN(Number(String(el.getAttribute('tabindex'))));
+
+  /** Whether a person can focus the element, as Playwright decides presentational-role conflicts. */
+  const isFocusable = (el: Element): boolean => {
+    const tag = el.tagName.toLowerCase();
+    if (['button', 'input', 'select', 'textarea', 'option', 'optgroup'].indexOf(tag) !== -1 && el.matches(':disabled')) {
+      return false;
+    }
+    if (hasTabIndex(el) || ['button', 'details', 'select', 'textarea'].indexOf(tag) !== -1) return true;
+    if (tag === 'a' || tag === 'area') return el.hasAttribute('href');
+    return tag === 'input' && !(el as HTMLInputElement).hidden;
+  };
+
+  /**
+   * WAI-ARIA presentational-role conflict resolution: `presentation` or
+   * `none` is ignored on a focusable element or one with a global ARIA
+   * attribute, and the tag's role stands.
+   */
+  const hasPresentationConflict = (el: Element): boolean =>
+    isFocusable(el) || hasGlobalAriaAttribute(el, NAME_PROHIBITED_TAG_ROLES[el.tagName.toLowerCase()] ?? null);
+
   const implicitRole = memoized((el: Element): string | null => {
     const explicit = explicitRole(el);
-    if (explicit !== null) {
+    if (explicit !== null && !((explicit === 'presentation' || explicit === 'none') && hasPresentationConflict(el))) {
       // The vocabulary spells ARIA's `img` as `image`.
       return explicit === 'img' ? 'image' : explicit;
     }
@@ -199,7 +257,9 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       case 'textarea':
         return 'textbox';
       case 'img':
-        return el.getAttribute('alt') === '' ? 'presentation' : 'image';
+        return el.getAttribute('alt') === '' && !el.getAttribute('title') && !hasGlobalAriaAttribute(el, null) && !hasTabIndex(el)
+          ? 'presentation'
+          : 'image';
       // An inline icon is a picture whether or not anything names it, as
       // Playwright reads it; Chrome ignores an unnamed one.
       case 'svg':
@@ -1074,6 +1134,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   const isInert = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
     el.hasAttribute('inert') || style?.getPropertyValue('interactivity') === 'inert';
 
+  /** A closed select has no option boxes; explicit exclusions still remove choices it does not offer. */
+  const isOfferedOption = (option: HTMLOptionElement): boolean => {
+    if (isSkippedContent(option)) return false;
+    for (let current: Element | null = option; current !== null && current.tagName.toLowerCase() !== 'select'; current = parentOrHostOf(current)) {
+      if (hidesSubtree(current, styleOf(current))) return false;
+    }
+    return true;
+  };
+
   /** Smallest side, in CSS pixels, an empty box must have to be worth reporting. */
   const MIN_BOX_SIDE = 12;
 
@@ -1516,8 +1585,11 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     // has to guess the labels it may pick. The options are what the control
     // offers, so they are listed under it, bounded like any long list.
     if (tag === 'select') {
-      const choices = Array.from((el as HTMLSelectElement).options).slice(0, MAX_SELECT_OPTIONS);
-      for (const option of choices) {
+      let offered = 0;
+      for (const option of Array.from((el as HTMLSelectElement).options)) {
+        if (offered >= MAX_SELECT_OPTIONS) break;
+        if (!isOfferedOption(option)) continue;
+        offered += 1;
         if (nodes.length >= maxNodes) {
           truncated = true;
           return;

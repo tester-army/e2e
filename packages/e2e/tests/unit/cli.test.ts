@@ -16,9 +16,13 @@ const upgradeMock = vi.hoisted(() => vi.fn());
 
 // The suite runs from the repository; these tests cover an installed CLI, where telemetry is on.
 vi.mock('../../src/telemetry/checkout.ts', () => ({ runsFromCheckout: () => false }));
-vi.mock('../../src/runner.ts', () => ({ list: listMock }));
-vi.mock('../../src/run/runner.ts', () => ({ run: runMock }));
+vi.mock('../../src/run/runner.ts', () => ({ run: runMock, listSelection: listMock }));
 vi.mock('../../src/cli/watch.ts', () => ({ watchSession: watchMock }));
+// `e2e list --reporter json` writes its document past the claimed output; here it lands on the stdout spy.
+vi.mock('../../src/run/process-output.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/run/process-output.ts')>()),
+  writeTerminal: (stream: 'stdout' | 'stderr', text: string) => process[stream].write(text),
+}));
 vi.mock('../../src/cli/init.ts', () => ({
   init: initMock,
 }));
@@ -104,6 +108,7 @@ describe('e2e run argument parsing', () => {
     expect(options.configPath).toBeUndefined();
     expect(options.reporters).toBeUndefined();
     expect(options.agent).toBeUndefined();
+    expect(options.changedSince).toBeUndefined();
     expect(process.exitCode).toBe(0);
   });
 
@@ -269,6 +274,15 @@ describe('e2e run argument parsing', () => {
     const options = lastRunOptions();
     expect(options.shard).toEqual({ index: 2, total: 3 });
     expect(options.lastFailed).toBe(true);
+  });
+
+  it('maps --changed-since to changedSince, which needs a ref', async () => {
+    await invoke('run', 'tests/a.e2e.ts', '--changed-since', 'origin/main');
+    expect(lastRunOptions()).toMatchObject({ files: ['tests/a.e2e.ts'], changedSince: 'origin/main' });
+    runMock.mockClear();
+    await invoke('run', '--changed-since');
+    expect(process.exitCode).toBe(2);
+    expect(runMock).not.toHaveBeenCalled();
   });
 
   it('rejects a --shard that is not index/total within range with exit code 2 and never runs', async () => {
@@ -522,6 +536,8 @@ describe('e2e list', () => {
       'auth',
       '--tag-mode',
       'all',
+      '--changed-since',
+      'origin/main',
       '--pass-with-no-tests',
     );
     expect(lastListOptions()).toEqual({
@@ -530,6 +546,7 @@ describe('e2e list', () => {
       targets: ['web', 'webkit'],
       tags: ['smoke', 'auth'],
       tagMode: 'all',
+      changedSince: 'origin/main',
       passWithNoTests: true,
     });
     expect(written(stdoutSpy)).toBe('');
@@ -551,6 +568,27 @@ describe('e2e list', () => {
     expect(listMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
     expect(written(stderrSpy)).toContain("option '--tag <tags>' argument '' is invalid. must name at least one tag");
+  });
+
+  it('prints a pair a test filter left out with the filter and its reason, as json { pairs } and as a line, and the filter lines on stderr, bounded', async () => {
+    const left = listed({ file: 'tests/a.e2e.ts', title: 'refunds', titlePath: ['refunds'], tags: [], target: 'web', disposition: 'filtered', reason: 'the diff misses billing', filter: 'areas' });
+    listMock.mockImplementation(async (_options: ListOptions, notice: (message: string) => void) => {
+      notice('areas: reading the diff\u001b[2J');
+      notice('areas kept 1 of 2 tests, left out 1 (src/auth changed)');
+      return { pairs: [pairs[0]!, left, pairs[3]!] };
+    });
+    await invoke('list', '--reporter', 'json');
+    expect(process.exitCode).toBe(0);
+    const json = JSON.parse(written(stdoutSpy)) as { pairs: ListedPair[] };
+    // A pair a selection flag removed stays out, as it always has; the one a filter left out is listed.
+    expect(json.pairs).toEqual(JSON.parse(JSON.stringify([pairs[0], left])));
+    const raw = stderrSpy.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('');
+    expect(raw).not.toContain('\u001b');
+    expect(written(stderrSpy)).toBe(['areas: reading the diff', 'areas kept 1 of 2 tests, left out 1 (src/auth changed)', ''].join('\n'));
+
+    stdoutSpy.mockClear();
+    await invoke('list');
+    expect(written(stdoutSpy)).toBe('tests/a.e2e.ts › signs in [web] #smoke #auth\ntests/a.e2e.ts › refunds [web] (left out by areas: the diff misses billing)\n');
   });
 
   it('prints a collection failure as code and message with its exit code', async () => {
@@ -687,6 +725,7 @@ describe('e2e --version and --help', () => {
       '--exclude-tag',
       '--grep',
       '--grep-invert',
+      '--changed-since',
       '--last-failed',
       '--shard',
       '--pass-with-no-tests',

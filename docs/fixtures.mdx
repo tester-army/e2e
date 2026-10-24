@@ -1,0 +1,101 @@
+---
+title: Writing fixtures
+description: Create test data and other resources before each test and clean them up after it.
+icon: "puzzle-piece"
+"og:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=a85d0155da"
+"twitter:image": "https://e2e.tester.army/docs/images/og/fixtures.png?v=a85d0155da"
+---
+
+A fixture is a value a test receives, set up before the test and torn down
+after it, even when the test fails. Use one to create test data. To sign in,
+use a [saved session](/authentication) instead.
+
+## Define fixtures in one file
+
+Extend your engine's `test` and export it. A fixture can use `agent`, so it
+can create its data through the app with [goals](/core-concepts#goals):
+
+```ts title="tests/fixtures.ts" expandable
+import { test as base } from '@e2e-dev/web';
+import { expect, unique } from 'e2e';
+
+/** A fresh project for each test, created and deleted through the app. */
+export const test = base.extend<{ project: string }>({
+  project: async ({ app, agent, screen }, use) => {
+    const name = `Launch plan ${Date.now()}`;
+    await app.open('/projects');
+    await agent.act('create a project named {name}', { params: { name: unique(name) } });
+    await expect(screen.getByRole('heading', name)).toBeVisible();
+    await use(name);
+    await app.open('/projects');
+    await agent.act('delete the project {name}', { params: { name: unique(name) } });
+    await expect(screen.getByRole('link', name)).toBeHidden();
+  },
+});
+
+/** One task in that project. Deleting the project deletes it too. */
+export const taskTest = test.extend<{ task: string }>({
+  task: async ({ agent, screen }, use) => {
+    const title = 'Write the announcement';
+    await agent.act('add a task {title}', { params: { title } });
+    await expect(screen.getByRole('checkbox', title)).toBeVisible();
+    await use(title);
+  },
+});
+```
+
+Code before `await use(value)` is the setup, and code after it is the
+teardown. Import the extended `test` in your test files:
+
+```ts title="tests/tasks.e2e.ts"
+import { expect } from 'e2e';
+import { taskTest as test } from './fixtures.ts';
+
+test('completes a task', { session: 'admin' }, async ({ screen, task }) => {
+  await screen.getByRole('checkbox', task).check();
+  await expect(screen.getByRole('checkbox', task)).toBeChecked();
+});
+```
+
+The saved session is restored before the fixtures run.
+
+<Note>
+Agent steps in a fixture run for every test that uses it. If your app has a
+test API, a `fetch` call is faster.
+</Note>
+
+## Build one fixture on another
+
+A fixture can read only the fixtures of the `test` it extends. So `task`
+uses `project` through a second `extend`. Teardown runs in reverse order.
+
+## Give each setup its own test
+
+Every fixture in a chain runs for every test registered through it, named
+or not. Export one `test` for each setup, like `test` and `taskTest` above.
+
+## Read fixtures in hooks
+
+Register the hook on your extended `test` to get the fixture types:
+
+```ts
+taskTest.beforeEach(async ({ screen, project }) => {
+  await expect(screen.getByRole('heading', project)).toBeVisible();
+});
+```
+
+## When a fixture fails
+
+An error in setup fails the test in `beforeEach`. An error in teardown is
+reported in `afterEach`. See the [full list of mistakes](/reference/test#your-own-fixtures).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Test reference" icon="code" href="/reference/test#your-own-fixtures">
+    The fixture contract, types, and every failure.
+  </Card>
+  <Card title="Signing in" icon="key" href="/authentication">
+    Save a session one time and restore it in each test.
+  </Card>
+</CardGroup>

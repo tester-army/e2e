@@ -352,6 +352,7 @@ export class Invocation {
       const prompt = this.runtime.redact(
         buildPrompt({
           ...request.prompt,
+          titlePath: this.runtime.attempt.titlePath,
           ...(this.treeWithheld ? { withholdTree: true } : {}),
           ...(repair === undefined
             ? {}

@@ -143,7 +143,8 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `getByRole(role, { includeHidden })` | a role query never matches a hidden node; `{ visible: true }` on the other queries drops hidden twins | by design |
 | `locator.filter({ hasText, has })`, `first()`, `last()`, `nth(i)`, `count()` | the same | same |
 | `filter({ hasNot, hasNotText })` | a positive filter or `nth`. `INVALID_LOCATOR`, alone or beside `hasText` or `has` | missing |
-| `locator.and(other)`, `locator.or(other)` | not yet | missing |
+| `locator.or(other)` | the same; web branches need identical literal frame-selector chains. A locator is strict, so add `first()` when both match | same |
+| `locator.and(other)` | not yet | missing |
 | `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | same |
 | `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | web only |
 | `page.waitForSelector(selector)` | `browser.locator(selector).waitFor()`; a locator is strict, see [What differs on purpose](#what-differs-on-purpose) | renamed |
@@ -314,6 +315,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `--output` | `--output`, the results directory; each test's trace page and artifacts are in its `results/` | same |
 | `--trace <mode>` | `--trace [mode]`, the same modes; a bare `--trace` is `on` | same |
 | `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | same |
+| `--only-changed` | `--changed-since <ref>` with a [test filter](/filters) in `filters`, such as `decisionFilter({ model })`, which asks a model which tests the change can affect | by design |
 | `--quiet` | not yet | missing |
 | `-u`, `--update-snapshots` | the same; rewrites the stored screenshots that differ | same |
 | `--list` | `npx e2e list`, with the same selection flags | renamed |
@@ -364,10 +366,8 @@ export const test = base.extend<{ accountPage: AccountPage }>({
 });
 ```
 
-A fixture that reads `browser` makes every test on that `test` web only,
-named in its parameters or not. On a device target, each fails in
-`beforeEach` with `UNSUPPORTED_CAPABILITY`. Give those tests `requires: ['browser']`, or keep
-portable tests on the base `test`.
+A fixture that reads `browser` makes every test on that `test` web only. See
+[Keep it portable](/page-objects#keep-it-portable).
 
 `locator.page()` has no counterpart, so pass `browser` with the locator. Drop
 `newPage()` and `page.close()` from the hooks: every attempt starts in a fresh

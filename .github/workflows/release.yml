@@ -85,21 +85,6 @@ jobs:
     with:
       version: ${{ needs.release.outputs.e2e-version }}
 
-  # Rebuilds the docs at e2e.tester.army, so they follow each e2e release.
-  site:
-    needs: release
-    if: ${{ needs.release.outputs.e2e-version != '' }}
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 5
-    permissions: {}
-    steps:
-      - name: Trigger the Vercel deploy hook
-        run: |
-          [ -n "$VERCEL_DEPLOY_HOOK" ] || { echo "::error::the VERCEL_DEPLOY_HOOK secret is not set"; exit 1; }
-          curl --fail --silent --show-error --request POST "$VERCEL_DEPLOY_HOOK"
-        env:
-          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
-
   # A changesets snapshot of every public package, published to the `nightly`
   # dist-tag as `<next version>-nightly-<datetime>`. Same filename as the
   # versioned release on purpose: npm Trusted Publishing is granted per

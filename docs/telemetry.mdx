@@ -143,6 +143,7 @@ own tools count together as `tool`, and any other name as `other`.
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_interrupted`, `tests_flaky`, `tests_skipped` | The summary counts |
 | `attempts_total`, `tests_retried` | How many attempts the run made across tests and serial groups, and how many of these needed more than one |
+| `filters_run`, `filters_timed_out`, `filters_failed`, `filters_skipped`, `filters_changed_files`, `tests_left_out_by_filters` | How many [test filters](/filters) the run applied, how many ran out of time, and how many failed, whether a run with `--changed-since` called none of them, such as when no file changed, how many files the change had, and how many tests the filters left out. Never a filter's name, reason, or note, a path, or a commit |
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions: `web`, `ios`, `web@0.6.1`, or your own engine's name and version |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `steps_agent_act`, `steps_agent_assert`, `steps_agent_extract`, `steps_agent_waitfor` | The agent steps by entry point |
@@ -169,6 +170,7 @@ boolean, or one of the runner's own option values, never text you wrote:
 | `config_credentials`, `config_secrets` | How many credentials and secrets are configured |
 | `config_cache_mode`, `config_cache_store`, `config_cache_strict` | `off`, `read-only`, or `read-write`; `file` or `custom`; whether strict replay is on |
 | `config_reporters`, `config_custom_reporters`, `config_artifact_store` | The built-in reporter ids (`list`, `json`, `junit`, `markdown`), how many reporter objects the config adds, and whether an artifact store is set |
+| `config_filters` | How many test filters the config declares |
 | `config_trace_modes`, `config_video_modes` | The distinct recording modes across targets (`off`, `on`, `retain-on-failure`, `on-first-retry`, `on-all-retries`) |
 | `config_app_commands`, `config_environments` | How many targets start an app command, and the distinct app environments (`test`, `staging`, `production`) |
 

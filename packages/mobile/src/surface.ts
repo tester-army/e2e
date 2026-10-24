@@ -218,6 +218,12 @@ interface ScreenshotCapture {
   readonly normalizeStatusBar?: boolean;
 }
 
+/** Whether two viewports are one screen, in the same orientation or rotated; rects from the tree carry fractions. */
+function sameScreen(a: ViewportSize, b: ViewportSize): boolean {
+  const near = (x: number, y: number): boolean => Math.abs(x - y) < 1;
+  return (near(a.width, b.width) && near(a.height, b.height)) || (near(a.width, b.height) && near(a.height, b.width));
+}
+
 /** The centre of a rect in logical pixels. */
 function centreOf(rect: Rect): { x: number; y: number } {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 };
@@ -421,8 +427,10 @@ export class AgentDeviceSurface {
   /**
    * The screen's logical size as last learned from a snapshot with geometry
    * or from the device itself, so a snapshot without geometry (an empty
-   * screen before any app is open, a sparse tree) still reports the viewport
-   * every observation must carry.
+   * screen before any app is open, a sparse tree) or with an app drawn
+   * smaller than the screen still reports the viewport every observation
+   * must carry. A rotation replaces it; any other size needs the device's
+   * screen to agree, see `viewportFor`.
    */
   private knownViewport: ViewportSize | undefined;
 
@@ -969,6 +977,14 @@ export class AgentDeviceSurface {
     }
   }
 
+  /**
+   * Projects a snapshot and learns its viewport when it is plainly the
+   * screen's: the first one the session reads, the one it knows, or that one
+   * rotated. A tree of any other size may be an app drawn smaller than the
+   * screen (behind Notification Center, iOS shrinks it to a third), so an
+   * observation's `viewportFor` checks it against the device before it
+   * replaces the known one.
+   */
   private project(raw: RawSnapshot): ProjectedSnapshot {
     const projected = projectSnapshot(raw.nodes ?? [], {
       mintId: () => {
@@ -978,20 +994,36 @@ export class AgentDeviceSurface {
       viewport: raw.viewport,
     });
     this.latestIndex = projected.index;
-    if (projected.viewport !== undefined) this.knownViewport = projected.viewport;
+    const read = projected.viewport;
+    if (read !== undefined && (this.knownViewport === undefined || sameScreen(read, this.knownViewport))) this.knownViewport = read;
     return projected;
   }
 
   /**
-   * The viewport of a snapshot: its own geometry, else the last one this
-   * session learned, else the device's logical screen size read off one
-   * screenshot. A device whose size cannot be learned fails the observation:
-   * the harness measures every rect and point against the viewport, so an
-   * invented one would misplace every tap.
+   * The viewport of a snapshot: its own geometry when that is the screen,
+   * else the last one this session learned, else the device's logical screen
+   * size read off one screenshot. A tree whose size is neither the known one
+   * nor that one rotated replaces it only when the screenshot's size, in
+   * either orientation, agrees: a screenshot reports the portrait size even
+   * in landscape, so it confirms a size but cannot pick the orientation. Only
+   * a simulator's screenshot reports a logical size; on a real device the
+   * tree's size is taken as it comes. A device whose size cannot be learned
+   * at all fails the observation: the harness
+   * measures every rect and point against the viewport, so an invented one
+   * would misplace every tap.
    */
   private async viewportFor(projected: ProjectedSnapshot, signal: AbortSignal): Promise<ViewportSize> {
-    const known = projected.viewport ?? this.knownViewport;
-    if (known !== undefined) return known;
+    const read = projected.viewport;
+    const known = this.knownViewport;
+    if (known !== undefined) {
+      if (read === undefined) return known;
+      if (!sameScreen(read, known)) {
+        const probed = await this.probeViewport(signal);
+        if (probed !== undefined && !sameScreen(read, probed)) return known;
+      }
+      this.knownViewport = read;
+      return read;
+    }
     const probed = await this.probeViewport(signal);
     if (probed === undefined) {
       throw new EngineError(
@@ -1050,7 +1082,7 @@ export class AgentDeviceSurface {
    */
   private traceScreen(raw: RawSnapshot, projected: ProjectedSnapshot): void {
     const sink = this.screenSink;
-    const viewport = projected.viewport ?? this.knownViewport;
+    const viewport = this.knownViewport;
     if (sink === undefined || viewport === undefined) return;
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     tellHarness(() =>
@@ -1568,7 +1600,7 @@ export class AgentDeviceSurface {
     };
     const projected = this.project(await this.snapshotOrEmpty(operation, false));
     const data = await this.rawScreenshot(signal);
-    const masked = redactSecure(data, projected, projected.viewport ?? this.knownViewport);
+    const masked = redactSecure(data, projected, this.knownViewport);
     if (masked === undefined) {
       throw new EngineError('ENGINE_FAILURE', 'a secure field on screen could not be masked; screenshot withheld', {
         retryable: false,

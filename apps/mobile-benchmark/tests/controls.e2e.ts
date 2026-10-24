@@ -5,6 +5,8 @@
  * assertion pairs with the status line the app prints.
  */
 
+import { existsSync } from 'node:fs';
+import { isAbsolute } from 'node:path';
 import type { Screen } from 'e2e';
 import { expect, openScenario, test } from './fixtures.ts';
 
@@ -389,7 +391,9 @@ test.describe('control inventory', () => {
 
   test('screenshot, restart, and clearState reopen the app on its home list', async ({ app, screen }) => {
     const shot = await app.screenshot('inventory');
-    expect(shot).toMatch(/^screenshots\/\d{3}-inventory\.png$/);
+    expect(isAbsolute(shot)).toBe(true);
+    expect(shot).toMatch(/[\\/]screenshots[\\/]\d{3}-inventory\.png$/);
+    expect(existsSync(shot)).toBe(true);
 
     await app.restart();
     await expect(screen.getByTestId('Login Form')).toBeVisible();

@@ -201,8 +201,8 @@ describe('e2e explore', () => {
     expect(result.attempts[0]!.steps.map((step) => step.api)).toEqual(['app.open', 'agent.extract', 'agent.act', 'agent.extract']);
     // The explorer's loop saw the finding tool beside the grammar.
     expect(loopCalls[0]!.toolNames).toContain(FINDING_TOOL_NAME);
-    // The planner's calls carried the goal as trusted context.
-    expect(fakeCalls[0]!.system).toContain('Exploration goal: Explore the home page and find bugs');
+    // The planner's prompts opened with the goal, the test's title.
+    expect(fakeCalls[0]!.prompt).toContain('Test: Explore the home page and find bugs');
     // The written report is the outcome's document.
     const written = JSON.parse(readFileSync(path.join(project.dir, '.e2e', 'report.json'), 'utf8')) as typeof outcome.report;
     expect(written.run.explore).toEqual(record);
@@ -259,10 +259,10 @@ describe('e2e explore', () => {
     const result = outcome.report.run.results[0]!;
     expect(result.titlePath).toEqual(['Explore the home page with key <secret:probe>']);
     expect(outcome.report.run.explore!.goal).toBe('Explore the home page with key <secret:probe>');
-    expect(fakeCalls[0]!.system).toContain('Exploration goal: Explore the home page with key <secret:probe>');
-    // The explorer's loop ran, carrying the goal as context.
+    expect(fakeCalls[0]!.prompt).toContain('Test: Explore the home page with key <secret:probe>');
+    // The explorer's loop ran, its prompt opening with the goal.
     expect(loopCalls.length).toBeGreaterThan(0);
-    expect(loopCalls[0]!.system).toContain('Exploration goal: Explore the home page with key <secret:probe>');
+    expect(loopCalls[0]!.prompt).toContain('Test: Explore the home page with key <secret:probe>');
     const paths = result.attempts[0]!.artifacts.map((artifact) => artifact.path ?? '');
     expect(paths.some((entry) => entry.startsWith('explore-the-home-page-with-key-secret-'))).toBe(true);
     expect(JSON.stringify([outcome.report, fakeCalls, loopCalls])).not.toContain(value);
@@ -672,7 +672,8 @@ test('never runs under explore', async () => {
     expect(setupCalls.length).toBeGreaterThan(0);
     for (const call of setupCalls) {
       expect(call.system).not.toContain('Exploration mode');
-      expect(call.system).not.toContain('Exploration goal');
+      expect(call.system).not.toContain('Explore the storage page');
+      expect(call.prompt).not.toContain('Explore the storage page');
       expect(call.toolNames).not.toContain(FINDING_TOOL_NAME);
     }
     expect(outcome.explore.findings).toEqual([]);

@@ -65,7 +65,7 @@ export function fakeExecutorContext(options: FakeExecutorContextOptions = {}): F
       params: undefined,
       secrets: options.secrets ?? [{ name: 'admin', purpose: 'password' }],
     },
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     target: { name: 'web', platform: 'web', verbs: new Set(options.verbs ?? (Object.keys(actions) as ExecutorVerb[])), tapModifiers: options.tapModifiers ?? false },
     signal,
     model: undefined,

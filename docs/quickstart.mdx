@@ -281,6 +281,54 @@ bunx e2e run tests/agent.e2e.ts
 If you chose **None** in the wizard, [add a model](/models) first. Add
 `--headed` to watch a web test. Add `--no-cache` to skip cached actions.
 
+### Configure the project
+
+`e2e.config.ts` holds the options. These are the ones most projects change
+after `init`:
+
+| To | Set | See |
+| --- | --- | --- |
+| point at your app | `app.url`, or `app.bundleId` on mobile | [The app under test](/reference/config#the-app-under-test) |
+| start the app with the run | `app.command` | [Starting your app](/web#starting-your-app) |
+| use a model | `agents.default.model` | [Models](/models) |
+| test several browsers or devices | one `targets` entry each, with a `name` | [targets](/reference/config#targets) |
+| give tests more time | `timeout`, `actionTimeout`, `assertionTimeout` | [timeout](/reference/config#timeout) |
+| retry failed tests | `retries`, `1` in CI | [retries](/reference/config#retries) |
+| run tests in parallel | `workers`, `1` in CI | [workers](/reference/config#workers) |
+| pick the test files | `tests` | [tests](/reference/config#tests) |
+| keep traces and videos | `trace`, `video` | [Recording](/reference/config#recording) |
+| write a JUnit report | `reporters: ['list', 'junit']` | [reporters](/reference/config#reporters) |
+| sign in and pass API keys | `credentials`, `secrets` | [Signing in](/authentication) |
+| write the replay cache in CI | `cache: 'read-write'` | [Caching](/cache) |
+
+<Accordion title="Example config with common options">
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+
+const app = {
+  url: process.env.APP_URL ?? 'http://localhost:3000',
+  command: { executable: 'npm', args: ['run', 'dev'], reuseExisting: true },
+};
+
+export default {
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  targets: [
+    { name: 'chromium', engine: web({ viewport: { width: 1440, height: 900 } }), app },
+    { name: 'firefox', engine: web({ browser: 'firefox' }), app },
+  ],
+  timeout: 180_000,
+  workers: 4,
+  reporters: ['list', 'junit'],
+  video: 'retain-on-failure',
+} satisfies E2EConfig;
+```
+
+`--target firefox` runs one target. Targets that share one `command` share
+one server process.
+</Accordion>
+
 ## Next
 
 <CardGroup cols={2}>

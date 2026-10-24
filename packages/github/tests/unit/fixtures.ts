@@ -101,6 +101,9 @@ export function report(
     readonly projectId?: string;
     /** What a `--last-failed` rerun carries; the fixture's own carried section is never inherited. */
     readonly carried?: ReportRun['carried'];
+    /** What the test filters decided and the change they judged; the fixture's own are never inherited either. */
+    readonly filters?: ReportRun['filters'];
+    readonly changes?: ReportRun['changes'];
   } = {},
 ): Report {
   const status = input.status ?? 'passed';
@@ -120,6 +123,8 @@ export function report(
       results,
       errors: input.errors ?? [],
       carried: input.carried,
+      filters: input.filters,
+      changes: input.changes,
     },
   };
 }

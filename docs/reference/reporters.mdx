@@ -247,8 +247,9 @@ type ReporterSummary = readonly { label: string; text: string }[];
   calls `onRunFinished`.
 
 <Note>
-Hand `signal` to every request and timer, or an abandoned reporter keeps the
-CLI alive after the run has ended.
+Hand `signal` to every request and timer. The CLI exits without waiting for
+a reporter it abandoned, cutting off what it still does; under
+[`e2e/runner`](/reference/runner), that work keeps your process alive.
 </Note>
 
 ##### Summary rows
@@ -288,6 +289,28 @@ same layout as its own rows. The `json` reporter does not carry them.
   a carried failure or hook error against the outcome.
 - The artifacts both reports name are on disk under `artifactsRoot`.
 
+<a id="test-filters" />
+##### Test filters
+
+- A test a [test filter](/filters) left out is an unselected result with
+  `skip.cause` `filtered` and `skip.filter` naming the filter.
+- `run.filters` holds one record per filter that was called, in order:
+  `name`, `candidates`, `excluded` (the tests left out once serial groups
+  took back their members), `note` (cut to 1024 characters; for a filter
+  that failed or timed out, the warning saying why), and `outcome`, set
+  when the filter left nothing out: `failed` when it threw or returned an
+  invalid result, `timed-out` when it ran past 5 minutes. A filter left with
+  no tests is not called and has no record.
+- Once the filters have decided, `run.changes` holds the change they
+  judged, by counts: `base` (the merge base), `files`, and `skipped` (why
+  no filter ran, such as `no files changed since abc1234`). It is present when filters are configured and
+  the run passed `--changed-since`, except under `e2e explore`, on
+  `--watch` reruns, and when the run ends before the filters decide. On
+  `--last-failed`, or with no tests to judge, it holds `skipped` alone.
+- A failure while the filters decide, such as `INVALID_CHANGED_SINCE` for a
+  ref that names no commit, is in `run.errors` with `phase` `filter`. A
+  malformed `changedSince` has `phase` `config`.
+
 ## Events
 
 `onEvent` receives one of these facts. Each event also has a sequence
@@ -300,7 +323,7 @@ type RunEventFact =
   | { type: 'notice'; target; message }
   | { type: 'output'; target; pair; stream: 'stdout' | 'stderr'; text }
   | { type: 'setup'; step: SetupStep; state: 'started' }
-  | { type: 'setup'; step: SetupStep; state: 'finished'; durationMs; outcome?: 'reused' }
+  | { type: 'setup'; step: SetupStep; state: 'finished'; durationMs; outcome?: 'reused' | 'failed' | 'timed-out' }
   | { type: 'test-started'; testId; agent; repeat; title; file; serialId; target }
   | { type: 'step'; testId; agent; repeat; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
@@ -315,6 +338,14 @@ type RunEventFact =
 - `run-started` comes first and `run-finished` last.
 - `judge` on `run-started` is the run agent's judge model, present only when
   judgments use a model other than `model`.
+- `setup` brackets the work before the tests start. Its `step.kind` is
+  `collect`, `filter` (one [test filter](/filters), by its `name`),
+  `prepare`, `service`, or `app`. `outcome` is `reused` when a service or
+  app command attached to a process already serving its URL, `failed` when
+  a filter threw or returned an invalid result, and `timed-out` when a
+  filter ran past 5 minutes.
+- A `notice` names what its line is about in `target`: a target, `app`,
+  `collect`, `filter` for a test filter's progress and summary, or `run`.
 - `output` is one write a test made to stdout or stderr; `pair` names the
   test running at the time and is undefined between tests.
 - `test-finished` carries the full result record, including every attempt's

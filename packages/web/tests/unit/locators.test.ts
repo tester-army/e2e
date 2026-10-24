@@ -7,7 +7,7 @@
 import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, TextPattern } from 'e2e/engine';
-import { applyPostSteps, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
+import { applyPostSteps, frameSelectors, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */
 interface FakeLocator {
@@ -42,6 +42,7 @@ function fakeLocator(chain: readonly string[]): PwLocator {
     first: () => fakeLocator([...chain, 'first']),
     last: () => fakeLocator([...chain, 'last']),
     nth: (index: number) => fakeLocator([...chain, `nth(${String(index)})`]),
+    or: (other: PwLocator) => fakeLocator([...chain, `or(${chainOf(other).join('>')})`]),
   };
   return self as unknown as PwLocator;
 }
@@ -249,6 +250,19 @@ describe('projectExpression', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY' }));
   });
+
+  it('projects a union onto Playwright or, and rejects a displayValue branch', () => {
+    const button: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } },
+    };
+    const projected = projectExpression(page, { kind: 'union', left: textbox, right: button });
+    expect(chainOf(projected.locator)).toEqual([ROOTS, 'role(textbox)', `or(${ROOTS}>role(button))`]);
+    expect(projected.steps).toEqual([]);
+    expect(() => projectExpression(page, { kind: 'union', left: shared, right: textbox })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', retryable: false }),
+    );
+  });
 });
 
 describe('applyPostSteps', () => {
@@ -274,5 +288,22 @@ describe('applyPostSteps', () => {
     expect(kept).toEqual(['c']);
     expect(asked).toEqual(['c:x']);
     expect(await applyPostSteps(matches, [index('first'), filter], never)).toEqual([]);
+  });
+});
+
+describe('frameSelectors', () => {
+  const inFrame = (selector: string): LocatorExpression => ({ kind: 'frame', selector, source: textbox });
+
+  it('lists the frames along an expression, outermost first', () => {
+    expect(frameSelectors({ kind: 'frame', selector: '#outer', source: inFrame('#inner') })).toEqual(['#outer', '#inner']);
+    expect(frameSelectors({ kind: 'union', left: inFrame('#left'), right: inFrame('#left') })).toEqual(['#left']);
+  });
+
+  it('rejects a union whose branches live in different documents', () => {
+    for (const right of [inFrame('#right'), textbox]) {
+      expect(() => frameSelectors({ kind: 'union', left: inFrame('#left'), right })).toThrow(
+        expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', retryable: false }),
+      );
+    }
   });
 });

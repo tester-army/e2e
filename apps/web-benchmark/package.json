@@ -16,7 +16,7 @@
   "dependencies": {
     "e2e": "workspace:*",
     "@e2e-dev/web": "workspace:*",
-    "next": "16.4.0",
+    "next": "16.4.1",
     "react": "19.3.1",
     "react-dom": "19.3.1"
   },

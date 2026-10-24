@@ -60,10 +60,12 @@ process.exitCode = result.exitCode;
 | `cwd` | `'apps/web'` | `string` | the current working directory |
 | `config` | `'e2e.ci.config.ts'` | `string \| E2EConfig` | discovered `e2e.config.ts` |
 | `files` | `['tests/signup.e2e.ts:12']` | `readonly string[]` | the configured suite |
+| `changedSince` | `'origin/main'` | `string` | - |
 | `interruptSignal` | `controller.signal` | `AbortSignal` | - |
 | `onEvent` | `(event) => {}` | `RunEventSink` | - |
 
 - `files` takes paths, globs, bare names, or `file:line`.
+- `changedSince` works as [`--changed-since`](/filters).
 - Aborting `interruptSignal` interrupts tests and executes teardown.
 - `onEvent` receives typed progress events. Terminal progress is off. It
   must not block. A throwing or rejecting callback is disabled without
@@ -132,6 +134,7 @@ process sees an edit.
 | `grep`, `grepInvert` | `[/checkout/]` | `readonly RegExp[]` | - |
 | `lastFailed` | `true` | `boolean` | - |
 | `shard` | `{ index: 1, total: 4 }` | `{ index, total }` | - |
+| `changedSince` | `'origin/main'` | `string` | - |
 | `passWithNoTests` | `true` | `boolean` | - |
 | `output` | `'.e2e'` | `string` | the config's `output` |
 | `env` | `{ ...process.env, CI: '1' }` | `NodeJS.ProcessEnv` | `process.env` |
@@ -146,6 +149,9 @@ process sees an edit.
 - `lastFailed` keeps only tests the previous run did not pass, read from
   `report.json` under `output`.
 - `shard` is the `--shard index/total` slice.
+- `changedSince` works as `--changed-since`. The [test filters](/filters)
+  run in the calling process; `list` prints none of their lines, `e2e list`
+  does.
 - `passWithNoTests` resolves with no runnable test instead of throwing
   `NO_TESTS`.
 - `output` is the results directory.
@@ -172,9 +178,10 @@ process sees an edit.
 | `target`, `agent` | The target name and the configured agent this pair runs as. |
 | `disposition` | `run`, `skip`, or `filtered`. |
 | `reason` | Why the pair is skipped or filtered, such as `title does not match --grep`. Omitted when it runs. |
+| `filter` | The name of the test filter that left the pair out. A pair a selection flag filtered has none. |
 
-`e2e list` prints only `run` and `skip` pairs. `list` returns `filtered`
-pairs too.
+`e2e list` prints the `run` and `skip` pairs, and the pairs a test filter
+left out. `list` returns every `filtered` pair.
 
 ##### Errors
 
@@ -195,8 +202,9 @@ try {
 
 | Throws | When |
 | --- | --- |
-| `NO_TESTS` | The selection is empty and `passWithNoTests` is not set. A `ConfigurationError`. |
+| `NO_TESTS` | The selection is empty and `passWithNoTests` is not set. A `ConfigurationError`. When the test filters leave nothing to run, `list` resolves instead, with every pair `filtered` or `skip`. |
 | `UNKNOWN_TARGET` | A name in `targets` is not a configured target. |
+| `INVALID_CHANGED_SINCE` | `changedSince` is empty or starts with `-`, or the test filters run and it names a ref git can't measure a change from. |
 | The codes `run` records | The config is missing, the loader refused it, or collection failed. |
 
 #### `openHost`

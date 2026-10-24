@@ -128,7 +128,15 @@ suites that consume the built packages the way a user would.
   questions with probability distributions, plus an optional small language
   model that writes field values when the decision model picks `type`.
   `minProbability` and `minConfidence` gate a chosen operation, target,
-  secret, or assertion verdict.
+  secret, or assertion verdict. It also exports `decisionFilter()`, a
+  `TestFilter` that asks a decision model whether the pull request's diff
+  can affect each test, packing test files into calls under the model's
+  size limit, 8 calls at a time, and leaves out the unlikely ones. It runs
+  every test on an `e2e.config` or lockfile change, and asks nothing about a
+  test whose test file, setup file, or stored screenshots changed. A failed
+  call leaves its tests in and the rest are still judged; after 3 failed
+  calls it stops asking. When every call fails, or git or a file read
+  fails, it throws, and the run warns and runs every test.
 - `packages/cige` — the published `@e2e-dev/cige` package: CIGE test cases
   (Context, Intent, Guardrails, Execution) as `.cige.json` files, pinned by
   `schema/cige-1.schema.json` with a valid and an invalid fixture.
@@ -370,6 +378,13 @@ thread handled, and labeled `Ready for Human Review`. "It compiles" and
   `E2E_MODEL=provider/model-id`, the testbed's own override) run only on the weekly
   `.github/workflows/agent.yml` schedule or by manual dispatch. Both run
   against local deterministic apps, so a failure there is ours.
+- The default testbed suite runs `decisionFilter` with Jev on a pull request
+  (`apps/testbed/e2e.config.ts`, with `--changed-since` from `spec.yml`), so a
+  PR's testbed check runs only the tests Jev rates the change can affect;
+  without the key, every test runs, and when a call fails, the tests no call
+  judged run. The merge queue and `main` pass no `--changed-since` and run
+  every test, so the merge gate stays deterministic. Locally, every test runs
+  unless you pass `--changed-since origin/main`.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 

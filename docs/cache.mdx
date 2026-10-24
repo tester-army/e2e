@@ -15,7 +15,7 @@ longer matches, the agent takes over from the current screen.
 run summary counts the outcomes:
 
 ```text
-           AI  4.1k tokens · 2 model calls · anthropic/claude-sonnet-4.5
+           AI  4.1k tokens · 2 model calls · openai/gpt-6-luna-fast
         Cache  4 replayed · 1 handed off · 1 missed
 ```
 
@@ -51,8 +51,10 @@ when the attempt ended:
 | `kept` | The entry stays as it is. |
 | `unconfirmed` | Not saved: no check passed after the step. Follow it with a locator assertion or `agent.assert`. |
 | `evicted` | The entry was deleted: its replay ended in a failure or a repair, or no check confirmed it before the attempt failed. |
-| `no-change` | Nothing recorded: no control appeared, went away, or changed state, and the route stayed the same. A step that took no action records nothing either. |
+| `no-change` | Nothing recorded: no control appeared, went away, or changed state, and the route stayed the same. That includes a step whose only change is inside a [frame from another site](/browser#reach-into-an-iframe). Such a step runs live on every run. |
 | `not-written` | Not saved: the store didn't write the recording, for example one over the file store's size limit. |
+
+A step that took no action records nothing and reports no `write`.
 
 A failing attempt still saves the steps verified before the failure. It
 deletes unverified entries and the replays involved in the failure. A custom store needs a `delete` method for this. Cancelling
@@ -84,7 +86,8 @@ request still open), and any other failure in the same attempt, such as an
 A cache entry belongs to one test, target, instruction, set of params, and
 agent. Each of these changes causes a miss:
 
-- renaming the test or the target,
+- renaming the test, its `describe` group, or the target, or moving the
+  test file,
 - changing the instruction or an ordinary param,
 - running with another configured agent (`agent: ['buyer', 'admin']`
   records one entry each), or changing the agent's `context` or the test's
@@ -121,6 +124,27 @@ For preview URLs that change on each deploy, set
 [`app.identity`](/reference/config#the-app-under-test) to keep one cache
 identity. On devices, replay uses the
 [screen title](/reference/mobile#replay-cache-on-a-device) as the path.
+
+## Rerun a test while you fix it
+
+While you fix a failing test, keep the cache on in `read-write` mode, the
+local default, and outside [strict mode](#fail-on-a-stale-recording),
+which never writes. With `CI` set, an unset mode is `read-only`. A failed
+run keeps the recordings a check
+[confirmed](#when-a-recording-is-written) before the failure. The next run
+replays those goals without model calls, as long as each replay still
+matches the screen.
+
+1. Run only that test, by the line its `test(` opens on:
+   `npx e2e run tests/cart.e2e.ts:3`.
+2. Don't rename the test or reword a goal that passes. Each
+   [causes a miss](#what-must-match): a rename for every goal in the test,
+   a reworded goal for itself.
+3. When retries are on (`retries` in the config, or `CI` set), add
+   `--retries 0`. A `retries` option on the test or its `describe` wins
+   over the flag. A retry doesn't replay, so it runs every goal live.
+4. When the test passes, run it one time with `--no-cache`. Every goal
+   runs live, which shows the agent still reaches it without a recording.
 
 ## How a replay works
 
@@ -194,7 +218,7 @@ the file store.
 
 | Reason | What happened | What to do |
 | --- | --- | --- |
-| `no-entry` | No recording matches this step and its params. | The next verified pass records it. |
+| `no-entry` | No recording matches this step and its params. | The next verified pass records it, unless the step's `step.cache.write` is `no-change`. |
 | `retry` | Retries never replay, except under `--strict-cache` or `cache.strict`. | Nothing. |
 | `invalid-entry` | The file is unreadable, over 1 MiB, or from another schema version. | `npx e2e cache clear`. |
 | `truncated` | The recording hit a limit, see [below](#limits-and-gaps). | Split the step, or pass the secret as a `Secret`. |

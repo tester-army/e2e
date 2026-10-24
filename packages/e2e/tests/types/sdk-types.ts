@@ -38,6 +38,9 @@ import {
   type StepTurn,
   type StoredArtifactLink,
   type Target,
+  type TestFilter,
+  type TestFilterCandidate,
+  type TestFilterContext,
   type Unique,
   type CacheStore,
   type ExecutorObservation,
@@ -307,6 +310,45 @@ if (runEvent.type === 'step') {
 ({ onRunFinished: async () => undefined }) satisfies Reporter;
 // @ts-expect-error reporter ids are a closed union
 ({ targets, reporters: ['xunit'] }) satisfies E2EConfig;
+
+// A test filter is a named object under filters; it answers with the tests to leave out, each with a reason.
+const areas = {
+  name: 'areas',
+  filter: (tests) => ({
+    exclude: Object.fromEntries(tests.filter((candidate) => !candidate.tags.includes('auth')).map((candidate) => [candidate.id, 'the diff reaches none of its tags'])),
+  }),
+} satisfies TestFilter;
+const jev = {
+  name: 'jev',
+  async filter(tests, { projectRoot, changes, signal, log, redact }) {
+    log(`asking about ${tests.length} tests in ${projectRoot}, ${changes.root} against ${changes.base}`);
+    signal satisfies AbortSignal;
+    const exclude: Record<string, string> = {};
+    for (const candidate of tests) exclude[candidate.id] = redact(`${candidate.file}: ${candidate.titlePath.join(' > ')}`);
+    return { exclude, note: 'one call' };
+  },
+} satisfies TestFilter;
+({ targets, filters: [areas, jev] }) satisfies E2EConfig;
+// @ts-expect-error filters is a list, not a record of entries
+({ targets, filters: { affected: areas } }) satisfies E2EConfig;
+// @ts-expect-error a filter is an object with a name, not a bare function
+({ targets, filters: [() => ({ exclude: {} })] }) satisfies E2EConfig;
+// @ts-expect-error a filter has a name
+({ targets, filters: [{ filter: () => ({ exclude: {} }) }] }) satisfies E2EConfig;
+// @ts-expect-error a filter leaves tests out by id with a reason; it never lists the ones to keep
+({ name: 'jev', filter: () => ({ keep: [] }) }) satisfies TestFilter;
+declare const filterCandidate: TestFilterCandidate;
+// @ts-expect-error a candidate names a test, never its body
+filterCandidate.fn;
+// @ts-expect-error a candidate is read-only
+filterCandidate.tags.push('smoke');
+filterCandidate.setupFile satisfies string | undefined;
+declare const filterContext: TestFilterContext;
+// @ts-expect-error the change is read-only
+filterContext.changes.files.push('src/a.ts');
+filterContext.configFile satisfies string | undefined;
+// @ts-expect-error a filter takes its tests read-only: the runner freezes them
+({ name: 'sorts', filter: (tests: TestFilterCandidate[]) => ({ exclude: {}, note: `${tests.push(filterCandidate)}` }) }) satisfies TestFilter;
 // Every name a public signature uses is importable, so a reporter or an executor can annotate what it reads.
 declare const finishedRun: FinishedRun;
 finishedRun.status satisfies RunStatus;
@@ -318,6 +360,7 @@ finishedRun.lastRun satisfies FinishedRun['report'] | undefined;
 5 satisfies RunExitCode;
 declare const executorContext: StepExecutorContext;
 executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
+executorContext.attempt.titlePath satisfies readonly string[];
 'tapAt' satisfies ExecutorVerb;
 'hover' satisfies ExecutorVerb;
 'drag' satisfies ExecutorVerb;
@@ -611,6 +654,22 @@ report.run.carried satisfies
   | { results: Report['run']['results']; serialGroups: Report['run']['serialGroups']; errors: Report['run']['errors'] }
   | undefined;
 
+// A run test filters narrowed records each filter by name, and every row one left out names it.
+report.run.filters satisfies readonly { name: string; candidates: number; excluded: number; note?: string | undefined }[] | undefined;
+report.run.results[0]!.skip?.filter satisfies string | undefined;
+report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed-out' | undefined;
+// @ts-expect-error only a filtered skip names the test filter that left the test out
+({ cause: 'explicit', reason: 'not on CI', filter: 'jev' }) satisfies NonNullable<Report['run']['results'][number]['skip']>;
+// The change the filters judged is counts only, never a file list: base and files together once git measured it, else why no filter ran.
+report.run.changes satisfies
+  | { base: string; files: number; skipped?: string | undefined }
+  | { skipped: string; base?: undefined; files?: undefined }
+  | undefined;
+// @ts-expect-error a change git never measured has no file count
+({ files: 0, skipped: '--last-failed' }) satisfies NonNullable<Report['run']['changes']>;
+// A filter deciding what runs is a setup step named by the filter's name.
+if (runEvent.type === 'setup' && runEvent.step.kind === 'filter') runEvent.step.name satisfies string;
+
 // An explore run's events narrow to the exploration's progress.
 if (runEvent.type === 'explore') {
   runEvent.progress.phase satisfies 'started' | 'planning' | 'step-started' | 'step-finished' | 'finding' | 'finished';
@@ -687,6 +746,9 @@ void run({
   onEvent: (event) => { event satisfies RunEvent; },
 } satisfies RunOptions);
 void run({ config: 'e2e.config.ts' });
+void run({ changedSince: 'origin/main' } satisfies RunOptions);
+// @ts-expect-error changedSince is a git ref
+void run({ changedSince: true });
 void (runResult.exitCode satisfies RunExitCode);
 void (runResult.status satisfies RunStatus);
 void (runResult.report satisfies Report);
@@ -716,7 +778,7 @@ void run({ onEvent: (_event: string) => {} });
 void list({
   cwd: '.', config: 'e2e.config.ts', files: ['tests/a.e2e.ts'], tags: ['smoke'], tagMode: 'all', excludeTags: ['slow'],
   grep: [/^plain$/], grepInvert: [/other/], lastFailed: false, shard: { index: 1, total: 2 }, passWithNoTests: true,
-  output: 'out', env: {}, targets: ['web'],
+  output: 'out', env: {}, targets: ['web'], changedSince: 'origin/main',
 } satisfies ListOptions);
 void list({ config: { targets } });
 void isE2EError(new ConfigurationError('NO_TESTS', 'none'));
@@ -725,6 +787,9 @@ void list({ grep: ['plain'] });
 // @ts-expect-error disposition is run, skip, or filtered
 const disposition: ListedPair['disposition'] = 'pending';
 void disposition;
+// A pair a test filter left out names it.
+declare const listedPair: ListedPair;
+listedPair.filter satisfies string | undefined;
 
 // `e2e/runner` hosts worker resources and opens a named, test-lifetime session with typed fixtures.
 type HostedFixtures = { device: { tap(): void } };
@@ -805,3 +870,7 @@ session.steps().push({} as StepRecord);
 session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
+
+void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
+// @ts-expect-error an alternative must be a Locator
+void screen.getByRole('tab').or('tab');

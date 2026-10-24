@@ -15,7 +15,7 @@ import type { AppLogSource } from '../engine/index.ts';
 import type { AppLogRecord, StepCacheInfo, StepCacheRecord, StepEvent, StepTurn } from '../run/steps.ts';
 import type { Report1Document, ReportError, ReportResult, ReportSource, ReportStep } from './build.ts';
 import { cell, code, formatDuration, link, MAX_CELL_CHARS, MAX_ID_CHARS, MAX_LABEL_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
-import { repeatSuffix } from './format.ts';
+import { repeatSuffix, STATUS_WORD } from './format.ts';
 import type { AttemptView, Outcome } from './outcome.ts';
 
 type ReportArtifact = ReportResult['attempts'][number]['artifacts'][number];
@@ -440,15 +440,6 @@ function videoOffset(step: ReportStep, videos: readonly ReportArtifact[]): strin
 }
 
 // --- the page ---
-
-const STATUS_WORD: Record<ReportResult['status'], string> = {
-  passed: 'passed',
-  flaky: 'flaky',
-  failed: 'failed',
-  'timed-out': 'timed out',
-  interrupted: 'interrupted',
-  skipped: 'skipped',
-};
 
 const STEP_GLYPH: Record<ReportStep['status'], string> = { passed: '✓', failed: '✗', blocked: '✗', 'timed-out': '✗', cancelled: '–' };
 

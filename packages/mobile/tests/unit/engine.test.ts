@@ -685,6 +685,33 @@ describe('observation', () => {
     }
   });
 
+  it('keeps the known viewport for an app drawn smaller than the screen, and follows a rotation', async () => {
+    const screen = { logicalWidth: 390, logicalHeight: 844, width: 1170, height: 2532, pixelDensity: 3 };
+    // Calendar behind Notification Center, read live on an iOS 26 simulator: its tree, healthy, clipped to a third of the screen.
+    const shrunk = { ...SETTINGS_SNAPSHOT, viewport: { width: 130, height: 281.33 }, snapshotQuality: { state: 'healthy' } };
+    const h = harness();
+    h.fake.respond('capture.screenshot', () => screen);
+    await openAttempt(h);
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 390, height: 844 });
+    h.fake.respond('capture.snapshot', () => shrunk);
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 390, height: 844 });
+    expect(h.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(1);
+
+    // A rotation is the known size transposed: taken as it comes, without asking the device.
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 844, height: 390 } }));
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 844, height: 390 });
+    expect(h.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(1);
+
+    // Any other size replaces the known one when the device's screen agrees.
+    h.fake.respond('capture.screenshot', () => ({ logicalWidth: 402, logicalHeight: 874 }));
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 402, height: 874 } }));
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 402, height: 874 });
+    // A real device's screenshot reports no logical size: the tree's size stands.
+    h.fake.respond('capture.screenshot', () => ({ width: 1125, height: 2001 }));
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 375, height: 667 } }));
+    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 375, height: 667 });
+  });
+
   it('reports the keyboard state the capture measured, and nothing when it measured none', async () => {
     const h = harness();
     await openAttempt(h);
@@ -702,14 +729,15 @@ describe('observation', () => {
   });
 
   it('measures the screen in the viewport the snapshot publishes, and in its tree when it publishes none', async () => {
-    const h = harness();
+    const published = harness();
     // The application node reads 390x844; a published viewport outranks it.
-    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 402, height: 874 } }));
-    await openAttempt(h);
-    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 402, height: 874 });
-    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
-    expect((await h.engine.observe!(operation())).viewport).toEqual({ width: 390, height: 844 });
-    expect(h.fake.methods()).not.toContain('capture.screenshot');
+    published.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 402, height: 874 } }));
+    await openAttempt(published);
+    expect((await published.engine.observe!(operation())).viewport).toEqual({ width: 402, height: 874 });
+    const tree = harness();
+    await openAttempt(tree);
+    expect((await tree.engine.observe!(operation())).viewport).toEqual({ width: 390, height: 844 });
+    expect([...published.fake.methods(), ...tree.fake.methods()]).not.toContain('capture.screenshot');
   });
 
   it('is an empty screen before any app is open when no app is pinned, and a fault when one is', async () => {
@@ -1426,6 +1454,28 @@ describe('device fixture', () => {
       expect(h.fake.lastArgs('interactions.swipe')).toEqual({
         from: { x: 195, y: 383 },
         to: { x: expect.closeTo(183.3, 2), y: 383 },
+      });
+    });
+
+    it('drags at the centre of a screen rotated since the last observation', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', NO_DISMISS_KEY);
+      const landscape = [
+        { ref: '@e1', index: 0, depth: 0, type: 'application', label: 'Order', rect: { x: 0, y: 0, width: 844, height: 390 } },
+        { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'scroll-view', rect: { x: 0, y: 60, width: 844, height: 330 } },
+        { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'text-field', label: 'Notes', rect: { x: 20, y: 80, width: 804, height: 44 } },
+      ];
+      captures(h, [
+        { ...KEYBOARD_UP, viewport: { width: 844, height: 390 }, nodes: landscape, keyboard: { kind: 'visible', frame: { x: 0, y: 230, width: 844, height: 160 } } },
+        KEYBOARD_GONE,
+      ]);
+      await device.dismissKeyboard();
+      expect(h.fake.lastArgs('interactions.swipe')).toEqual({
+        from: { x: 422, y: 195 },
+        to: { x: expect.closeTo(396.68, 2), y: 195 },
       });
     });
 
