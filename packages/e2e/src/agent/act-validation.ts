@@ -9,7 +9,9 @@ import { validateJsonValue } from '../internal/json-value.ts';
 import { paramPointer, type ParamTemplate } from '../cache/template.ts';
 import { isSecret } from '../secrets.ts';
 import { isUnique } from '../params.ts';
-import type { ActOptions, AgentErrorCode, AgentParams, JsonValue, Secret } from '../types.ts';
+import type { ActOptions, ActPosition, AgentErrorCode, AgentParams, JsonValue, Secret } from '../types.ts';
+import { collapseText } from '../internal/text.ts';
+import { MAX_TRACE_DESCRIPTOR_CHARS } from '../cache/trace.ts';
 import { AgentError, CATEGORY_BY_CODE } from './error.ts';
 import { BLOCKABLE_CODES, type StepVerdict } from './executor.ts';
 
@@ -38,7 +40,7 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'position']);
 
 /**
  * The `act` type has no `schema` and no `vision`, and no key outside
@@ -47,7 +49,7 @@ const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxS
  * params)` arrives as an options bag of the caller's own keys, and
  * `act(instruction, params, options)` as a third argument.
  */
-export function validateActOptions(options: ActOptions | undefined, extraArguments: number): void {
+export function validateActOptions(options: ActOptions | undefined, extraArguments: number): ActPosition | undefined {
   if (extraArguments > 0) {
     throw new TestError(
       'INVALID_ARGUMENT',
@@ -83,6 +85,22 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
       `agent.act options has no ${unknown.length === 1 ? 'key' : 'keys'} ${listed}; the values an instruction refers to go under params: act(instruction, { params: { ${unknown.join(', ')} } })`,
     );
   }
+  return validatePosition(options.position);
+}
+
+/** Validate and snapshot the hint before a step or cache lookup opens. */
+function validatePosition(value: unknown): ActPosition | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act position must be { testId, at: "first" | "last" }');
+  }
+  const { testId, at } = value as Record<string, unknown>;
+  if (Object.keys(value).some((key) => key !== 'testId' && key !== 'at') ||
+    typeof testId !== 'string' || testId === '' || testId.length > MAX_TRACE_DESCRIPTOR_CHARS || collapseText(testId) !== testId ||
+    (at !== 'first' && at !== 'last')) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act position requires a nonblank, normalized testId within the recording limit and at: "first" | "last"');
+  }
+  return Object.freeze({ testId, at });
 }
 
 /**

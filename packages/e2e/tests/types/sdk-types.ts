@@ -529,6 +529,14 @@ void appOrigin;
 appFixture.baseUrl = 'http://127.0.0.1:3000/';
 
 const actResult = await agent.act('open billing', { params: { plan: 'pro' }, timeout: 10_000 });
+await agent.act('open the first inbox item', { position: { testId: 'inbox-item', at: 'first' } });
+await agent.act('open the last inbox item', { position: { testId: 'inbox-item', at: 'last' } });
+// @ts-expect-error positional intent names the repeated test id explicitly
+await agent.act('open a row', { position: 'first' });
+// @ts-expect-error the only supported edges are first and last
+await agent.act('open a row', { position: { testId: 'row', at: 'middle' } });
+// @ts-expect-error positional intent cannot be applied to every target implicitly
+await agent.act('open a row', { position: { at: 'first' } });
 actResult.summary satisfies string;
 actResult.modelCalls satisfies number;
 // @ts-expect-error act returns no data; extract does

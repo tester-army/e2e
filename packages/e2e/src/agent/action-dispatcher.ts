@@ -16,10 +16,10 @@ import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { ActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import type { ActionHook, ActPosition, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
-import { describePosition } from '../cache/relocate.ts';
+import { describePosition, relocateDescriptor } from '../cache/relocate.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { ActionHookError, AgentError, toAgentError } from './error.ts';
@@ -105,6 +105,7 @@ function requireClickModifiers(value: readonly KeyModifier[], verb: NodeActionNa
 export interface ActionDispatcherOptions {
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  readonly position?: ActPosition | undefined;
   /** Secrets declared in the step's params, by stable name; the only ones `typeSecret` may fill. */
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The step's trace-cache session, read at commit time; undefined when caching is off. */
@@ -337,8 +338,9 @@ export class ActionDispatcher {
   private drag(source: ExecutorTarget, destination: ExecutorTarget): Promise<void> {
     return this.commitTargeted('dragTo', source, async (node) => {
       const dropped = this.feed.resolve(destination);
+      const placement = this.placementOf(dropped);
       await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
-      return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
+      return { name: 'drag', node, destination: { node: dropped.node, ...placement } };
     });
   }
 
@@ -713,6 +715,16 @@ export class ActionDispatcher {
    * number picks the same one.
    */
   private placementOf({ node, observation }: Resolved): Placement {
+    const hint = this.options.position;
+    if (hint !== undefined && node.testId === hint.testId) {
+      if (observation.truncated) throw new TestError('UNSUPPORTED_CAPABILITY', 'agent.act position requires a complete semantic observation');
+      const target = { testId: hint.testId, ordinal: hint.at, ...(node.role === undefined ? {} : { role: node.role }) };
+      const match = relocateDescriptor(target, observation.nodes);
+      if (match.kind !== 'found' || match.id !== node.ref.id) {
+        throw new TestError('INVALID_ARGUMENT', `agent.act position requires the ${hint.at} matching ${JSON.stringify(hint.testId)} control`);
+      }
+      return { ordinal: hint.at };
+    }
     const within = containerKey(node.ref.id, observation.nodes, observation.parents);
     const position = describePosition(node, within, observation.nodes);
     return {

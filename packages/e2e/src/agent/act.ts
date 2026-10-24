@@ -52,6 +52,7 @@ export interface DispatchSpec {
   readonly kind: 'act' | 'assert';
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  readonly position?: ActOptions['position'];
   /** Secrets declared in the params, by stable name. */
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The `unique()` values in the params, by JSON Pointer; the trace cache templates them. */
@@ -79,7 +80,7 @@ export async function runActStep(
   extraArguments = 0,
 ): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
-  validateActOptions(options, extraArguments);
+  const position = validateActOptions(options, extraArguments);
   const { projected, secrets, templates } = validateParams(options?.params);
   return dispatchAgentStep(runtime, {
     api: 'agent.act',
@@ -94,6 +95,7 @@ export async function runActStep(
     maxModelCalls: options?.maxModelCalls,
     agent: options?.agent,
     onAction: options?.onAction,
+    position,
   });
 }
 
@@ -191,8 +193,9 @@ export async function dispatchAgentStep(
  */
 function redactSpec(spec: DispatchSpec, redact: (text: string) => string): DispatchSpec {
   const instruction = redact(spec.instruction);
-  if (spec.params === undefined) return { ...spec, instruction };
-  return { ...spec, instruction, ...redactParams(spec.params, spec.templates, redact) };
+  const position = spec.position === undefined ? undefined : { ...spec.position, testId: redact(spec.position.testId) };
+  if (spec.params === undefined) return { ...spec, instruction, position };
+  return { ...spec, instruction, position, ...redactParams(spec.params, spec.templates, redact) };
 }
 
 /** One step's wiring: the collaborators, the executor's context, and the verdict mapping. */
@@ -230,6 +233,7 @@ class ActDispatch {
       maxObservationBytes: agent.config.maxObservationBytes,
       maxInputTokens: agent.config.maxInputTokens,
       instructionBytes: tokenUpperBound(spec.instruction),
+      position: spec.position,
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
@@ -237,6 +241,7 @@ class ActDispatch {
       secrets: spec.secrets,
       trace: () => this.stepCache,
       onAction: spec.onAction,
+      position: spec.position,
     });
     // The dispatch always runs inside a recorded step (`dispatchAgentStep`
     // opens one); the index names the step to the executor and to the trace cache.
@@ -255,6 +260,7 @@ class ActDispatch {
             instruction: spec.instruction,
             params: spec.params,
             templates: spec.templates,
+            position: spec.position,
             executor: {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
@@ -559,6 +565,6 @@ function screenOf(observation: AgentObservation, appOrigin: string | undefined):
     ...(observation.location === undefined ? {} : { path: appLocation(observation.location, appOrigin) }),
   };
   return observation.kind === 'semantic'
-    ? { ...metadata, kind: 'semantic', nodes: observation.nodes }
+    ? { ...metadata, kind: 'semantic', nodes: observation.nodes, ...(observation.truncated ? { truncated: true } : {}) }
     : { ...metadata, kind: 'pixels' };
 }

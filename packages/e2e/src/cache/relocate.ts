@@ -111,6 +111,9 @@ function withoutTestId(descriptor: TraceTargetDescriptor): TraceTargetDescriptor
  */
 export function descriptorTiers(descriptor: TraceTargetDescriptor): readonly TraceTargetDescriptor[] {
   if (!isRelocatableDescriptor(descriptor)) return [];
+  if (descriptor.ordinal !== undefined) {
+    return descriptor.testId !== undefined && Object.keys(descriptor).every((field) => field === 'role' || field === 'testId' || field === 'ordinal') ? [descriptor] : [];
+  }
   if (descriptor.testId === undefined) return [descriptor];
   const semantic = withoutTestId(descriptor);
   // A test id that churned is forgiven only when the semantic fields still
@@ -160,15 +163,7 @@ function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly Descr
   return described;
 }
 
-/**
- * Relocates one descriptor against the nodes of a fresh observation, tier by
- * tier (`descriptorTiers`), each exactly-one-or-diverge. Ambiguity at any
- * tier diverges immediately: two candidates sharing the matched identity
- * cannot be told apart by waiting, and acting on either would be a guess.
- * The one exception is a recorded `position`: the recording itself found the
- * same twins and noted which one it acted on, so the same count of twins
- * resolves to the same one; any other count diverges as before.
- */
+/** Relocates conservatively unless an explicit test-id edge permits selection at a changing count. */
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
   nodes: ReadonlyMap<string, RedactedNode>,
@@ -176,6 +171,9 @@ export function relocateDescriptor(
   const matches = matchingIds(descriptor, nodes);
   if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
   const { position } = descriptor;
+  if (descriptor.ordinal !== undefined) {
+    return { kind: 'found', id: (descriptor.ordinal === 'first' ? matches[0] : matches.at(-1))! };
+  }
   // A lone match is the node for a descriptor with an identity. An anonymous
   // one has only its count and place: one unnamed twin where the recording
   // counted two is as likely the other field as the right one.

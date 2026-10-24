@@ -67,6 +67,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | Option | Type | Default |
 | --- | --- | --- |
 | `params` | `AgentParams` | none |
+| `position` | [`ActPosition`](#types) | ordinary target matching |
 | `timeout` | `number` | `config.timeout`, 120000 |
 | `maxSteps` | `number` | `agents.<name>.maxSteps`, 25 |
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
@@ -78,6 +79,28 @@ differs on every run in [`unique()`](#unique). The model sees a `Secret` as
 its name and purpose only. Before the runner fills it, it checks the field
 the model picked: an enabled editable input, and a password field for a
 password. `locator.fill` runs no such check, since your code chose the field.
+
+Use `position` when a repeated control means its current first or last
+match, even after rows change. Name its test id explicitly:
+
+```ts
+await agent.act('open the first inbox item', {
+  position: { testId: 'inbox-item', at: 'first' },
+});
+```
+
+`testId` must be nonblank, whitespace-normalized and at most 300 characters.
+
+Matching node actions must select that edge before input is sent. Other
+test ids retain ordinary matching. Recordings keep the test id, role and
+edge, without the row's label or container text. First, last and ordinary
+calls have separate recordings. End-state checks remain unchanged.
+
+Order is the engine's semantic document order across all observed matches
+of that test id and role. An empty set hands replay off, or fails with
+`REPLAY_STALE` under strict cache. An incomplete tree cannot establish an
+edge; a live positional action refuses it with `POLICY_DENIED`. Virtualized
+or paginated rows absent from the observation do not participate. Use distinct test ids for separate lists.
 
 `onAction` runs after each action the step completes, once the screen
 settles, and before the next action. That includes actions the
@@ -117,8 +140,9 @@ The runner's own stops, and the checks on the call itself:
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
 | `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `INVALID_ARGUMENT` | A malformed instruction or `position`, oversized `params`, an unknown option, an `onAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take. |
+| `POLICY_DENIED` | A live positional action cannot establish its edge from an incomplete observation. |
 
 ### agent.assert
 
@@ -478,6 +502,8 @@ export interface ActOptions extends AgentOption {
    * cache records a slot for it instead of the value.
    */
   params?: AgentParams;
+  /** Select the first or last observed match for this test id; all other targets retain ordinary matching. */
+  position?: ActPosition;
   /** Step deadline in milliseconds; defaults to `config.timeout`. */
   timeout?: number;
   /** Action budget; defaults to `agents.<name>.maxSteps` and can only lower it. */
@@ -490,6 +516,12 @@ export interface ActOptions extends AgentOption {
    * Observe only: drive nothing from it. A throw fails the step.
    */
   onAction?: ActionHook;
+}
+
+/** Explicit positional intent for actions on one repeated test id. */
+export interface ActPosition {
+  readonly testId: string;
+  readonly at: 'first' | 'last';
 }
 
 /** The `onAction` hook of an `act` call. */

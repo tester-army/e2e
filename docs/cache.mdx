@@ -148,6 +148,11 @@ matches the screen.
 
 ## How a replay works
 
+For a changing list, [`agent.act`'s `position`](/reference/agent#agent-act) opts
+one test id into first/last matching. Its recordings follow the current
+observed order and have separate cache identities. Other targets keep the
+rules below; end-state checks still apply.
+
 1. Check the starting screen: it must be the same route.
 2. Find each recorded control by role, name, test id, and surrounding
    context, and repeat its action. The runner waits for missing controls and

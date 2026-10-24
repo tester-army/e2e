@@ -47,7 +47,7 @@ export type ObservedScreen = {
    */
   readonly path?: string;
 } & (
-  | { readonly kind: 'semantic'; readonly nodes: ObservedNodes }
+  | { readonly kind: 'semantic'; readonly nodes: ObservedNodes; readonly truncated?: true }
   | { readonly kind: 'pixels' }
 );
 
@@ -434,6 +434,7 @@ async function relocate(
 ): Promise<Relocated> {
   let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
   const settled = await pollSettled(host, (screen): Relocated | undefined => {
+    if (descriptor.ordinal !== undefined && screen.truncated) return undefined;
     const result = relocateDescriptor(descriptor, screen.nodes);
     if (result.kind === 'failed') {
       last = result.failure === 'target-not-found' ? result : { ...result, screen };
@@ -465,6 +466,7 @@ async function relocatePair(
     return retryable(failure, descriptor) ? undefined : { kind: 'failed' as const, failure };
   };
   const settled = await pollSettled(host, (screen) => {
+    if (screen.truncated && (source.ordinal !== undefined || destination.ordinal !== undefined)) return undefined;
     const from = relocateDescriptor(source, screen.nodes);
     if (from.kind === 'failed') return failed(source, from.failure);
     const to = relocateDescriptor(destination, screen.nodes);

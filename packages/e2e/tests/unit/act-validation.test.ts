@@ -6,6 +6,20 @@ import { unique } from '../../src/params.ts';
 import { ConfigurationError } from '../../src/internal/errors.ts';
 
 describe('validateActOptions', () => {
+  it('snapshots positional intent independently of later caller mutation', () => {
+    const position = { testId: 'inbox-item', at: 'first' as const };
+    const validated = validateActOptions({ position }, 0);
+    position.testId = 'other-item';
+    expect(validated).toEqual({ testId: 'inbox-item', at: 'first' });
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
+  it.each([null, [], 'first', {}, { at: 'first' }, { testId: '', at: 'first' },
+    { testId: ' row ', at: 'first' }, { testId: 'row', at: 'middle' },
+    { testId: 'row', at: 'first', extra: true }, { testId: 'x'.repeat(10_000), at: 'last' },
+  ])('refuses malformed positional intent %j', (position) => {
+    expect(() => validateActOptions({ position } as never, 0)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+  });
   it('accepts the options bag and an absent one', () => {
     expect(() => validateActOptions(undefined, 0)).not.toThrow();
     expect(() =>
