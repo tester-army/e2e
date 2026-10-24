@@ -87,6 +87,12 @@ export interface CigeConfig<Fixtures = TestFixtures> {
   readonly refs?: CigeRefs;
   /** Your own behavior: context lines, guardrail checks, classification, summary fields, readiness gaps, and step kinds. */
   readonly plugins?: readonly CigePlugin<Fixtures>[];
+  /**
+   * This file's path from the project root, when it isn't `cige.config.ts`
+   * there: the `e2e-cige` commands a run summary prints pass it as
+   * `--config`, so they find the same cases.
+   */
+  readonly configFile?: string;
   /** The e2e config the cases run under, when it isn't the nearest `e2e.config.ts`; a replay passes it as `--config` unless the case's environment names its own. */
   readonly e2eConfig?: string;
   /** The build under test, such as a version or a commit: the summaries' `build`, and `{build}` in a ref. */

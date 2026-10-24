@@ -150,7 +150,10 @@ export default defineCige({
 
 Set `e2eConfig` to the e2e config file when the cases don't run under
 the nearest `e2e.config.ts`; a replay without an environment config uses
-it.
+it. Set `configFile` to this file's path when it isn't `cige.config.ts` at
+the project root, or the `replay` and `resolveRefs` commands in run
+summaries won't find the cases. When a summary's command answers "no CIGE
+case has the id", add `--config <the CIGE config file>` to it.
 
 Once `environments` is set, a case whose `Context.environment` names none
 of them fails to load, and a case with no `Context.environment` shows as

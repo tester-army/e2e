@@ -444,6 +444,18 @@ describe('the reporter on a later run', () => {
     expect(readdirSync(dir())).toContain('variants.card.run-summary.json');
   });
 
+  it('passes the config file to the commands a summary prints, when it is not the default', async () => {
+    await cige({
+      cases: 'cases/*.cige.json',
+      configFile: 'config/cige.shop.ts',
+      environments: { memory: { reset: () => undefined } },
+      refs: { build: () => undefined },
+    }).onRunFinished!(finished(outcome.report), new AbortController().signal);
+    const stale = JSON.parse(readFileSync(path.join(dir(), 'stale.run-summary.json'), 'utf8')) as CigeRunSummary;
+    expect(stale.replay.command).toBe('npx e2e-cige replay stale --config config/cige.shop.ts');
+    expect(stale.resolveRefs).toBe('npx e2e-cige refs stale --config config/cige.shop.ts');
+  });
+
   it('counts the cases that could not be fully triaged, under the run summary', async () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.

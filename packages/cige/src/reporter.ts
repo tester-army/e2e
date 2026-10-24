@@ -137,6 +137,8 @@ function summarize<Fixtures>(
   // When the case ran more than once (targets, agents), the replay names the result's own.
   const narrow = shared ? ['--target', result.targetId, '--agent', result.agent] : [];
   const variantArgs = variant === undefined ? [] : ['--variant', variant];
+  // Without it, a summary of a suite on another config file prints commands that find no case.
+  const configArgs = options.configFile === undefined ? [] : ['--config', options.configFile];
   const environments = options.environments;
   const replay =
     environments === undefined
@@ -147,7 +149,7 @@ function summarize<Fixtures>(
         }
       : {
           ...(environment === undefined ? {} : { environment }),
-          command: ['npx', 'e2e-cige', 'replay', id, ...variantArgs, ...(narrow.length === 0 ? [] : ['--', ...narrow])].map(shellArg).join(' '),
+          command: ['npx', 'e2e-cige', 'replay', id, ...variantArgs, ...configArgs, ...(narrow.length === 0 ? [] : ['--', ...narrow])].map(shellArg).join(' '),
         };
   // The refs go beside the summary; name the directory when it isn't the command's default.
   const summaries = fromRoot(outputDir);
@@ -180,7 +182,7 @@ function summarize<Fixtures>(
     ...(refs.specRef === undefined ? {} : { specRef: refs.specRef }),
     ...(refs.buildRef === undefined ? {} : { buildRef: refs.buildRef }),
     ...(refs.expectedRef === undefined ? {} : { expectedRef: refs.expectedRef }),
-    ...(hasResolvers ? { resolveRefs: ['npx', 'e2e-cige', 'refs', id, ...variantArgs, ...outputArgs].map(shellArg).join(' ') } : {}),
+    ...(hasResolvers ? { resolveRefs: ['npx', 'e2e-cige', 'refs', id, ...variantArgs, ...configArgs, ...outputArgs].map(shellArg).join(' ') } : {}),
     replay,
     ...(testCase?.file === undefined ? {} : { case: fromRoot(testCase.file) }),
     target: result.targetId,

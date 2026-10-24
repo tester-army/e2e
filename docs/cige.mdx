@@ -99,9 +99,10 @@ Declare the cases, their hooks, the environments they run in, and the ref
 resolvers one time in `cige.config.ts`. The suite, the reporter, and the
 `e2e-cige` command all read it. The command loads it with Node's type
 stripping, so use only TypeScript that erases to JavaScript: no `enum`.
-Set `root` so all three find the same files, and `e2eConfig` when the
-cases run under a config other than the nearest `e2e.config.ts`, so a
-replay uses it.
+Set `root` so all three find the same files, `e2eConfig` when the cases
+run under a config other than the nearest `e2e.config.ts`, so a replay uses
+it, and `configFile` when this file isn't `cige.config.ts` at the project
+root, so the commands a run summary prints pass it as `--config`.
 
 ```ts title="cige.config.ts"
 import { defineCige } from '@e2e-dev/cige';
