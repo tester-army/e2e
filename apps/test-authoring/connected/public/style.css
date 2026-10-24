@@ -1,0 +1,14 @@
+:root { font-family: system-ui, sans-serif; color: #173529; background: #f6f8f5; }
+body { max-width: 960px; margin: 0 auto; padding: 24px; }
+header { border-bottom: 1px solid #bdcabc; padding-bottom: 16px; }
+nav { display: flex; gap: 18px; flex-wrap: wrap; }
+a { color: #145e3b; }
+article, section, form { background: white; padding: 18px; margin: 16px 0; border: 1px solid #d5ded3; border-radius: 8px; }
+label { display: block; margin: 12px 0; }
+input, select { font: inherit; padding: 8px; margin-left: 8px; max-width: 90%; }
+button { font: inherit; padding: 8px 12px; margin: 4px; cursor: pointer; }
+button:disabled { cursor: wait; }
+dl { display: grid; grid-template-columns: 180px 1fr; gap: 8px; }
+dd { margin: 0; }
+[role=alert] { color: #a51b20; padding: 12px; }
+output { font-variant-numeric: tabular-nums; }

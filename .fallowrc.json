@@ -23,7 +23,14 @@
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
     "packages/e2e/tests/live/*.ts",
-    "packages/e2e/src/config/register.ts"
+    "packages/e2e/src/config/register.ts",
+    "apps/test-authoring/cli.ts",
+    "apps/test-authoring/connected-cli.ts",
+    "apps/test-authoring/connected/public/app.js",
+    "apps/test-authoring/connected/public/expense-app.js",
+    "apps/test-authoring/connected/public/server.mjs",
+    "apps/test-authoring/connected/public/style.css",
+    "apps/test-authoring/connected/public/lower/*.test.mjs"
   ],
   "ignorePatterns": [
     "docs/**",
