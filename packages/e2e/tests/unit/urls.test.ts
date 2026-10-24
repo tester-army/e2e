@@ -76,6 +76,13 @@ describe('isLoopbackHost', () => {
     expect(isLoopbackHost('127.1.2.3')).toBe(true);
     expect(isLoopbackHost('example.test')).toBe(false);
   });
+
+  it('treats an absolute-DNS loopback name as loopback, so plain HTTP stays allowed', () => {
+    expect(isLoopbackHost('localhost.')).toBe(true);
+    expect(isLoopbackHost('app.localhost.')).toBe(true);
+    expect(normalizeBaseUrl('http://localhost.:3000').origin).toBe('http://localhost.:3000');
+    expect(normalizeBaseUrl('localhost.:3000/app').href).toBe('http://localhost.:3000/app');
+  });
 });
 
 describe('resolveNavigationUrl', () => {

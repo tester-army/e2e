@@ -97,11 +97,16 @@ function withScheme(raw: string): string {
   return `${isLoopbackHost(probe.hostname) ? 'http' : 'https'}://${raw}`;
 }
 
-/** True for loopback hosts where plain HTTP is allowed. */
+/**
+ * True for loopback hosts where plain HTTP is allowed. A trailing dot is
+ * absolute DNS (`localhost.`), the same host; leaving it rejects plain HTTP
+ * to that name and gives a schemeless URL https.
+ */
 export function isLoopbackHost(hostname: string): boolean {
-  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true;
-  if (hostname === '::1' || hostname === '[::1]') return true;
-  if (/^127(\.\d{1,3}){3}$/.test(hostname)) return true;
+  const host = hostname.replace(/\.$/, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) return true;
+  if (host === '::1' || host === '[::1]') return true;
+  if (/^127(\.\d{1,3}){3}$/.test(host)) return true;
   return false;
 }
 
