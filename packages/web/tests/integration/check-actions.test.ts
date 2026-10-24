@@ -171,3 +171,109 @@ describe('a control gone before the click', () => {
     expect(await perform(target, { kind: 'check' })).toMatchObject({ code: 'NODE_STALE', retryable: true });
   });
 });
+
+const ELEMENT_PLUS_CSS = `
+.el-radio-button{outline:none;display:inline-block;position:relative}
+.el-radio-button__original-radio{opacity:0;z-index:-1;outline:none;position:absolute}
+.el-radio-button__inner{white-space:nowrap;vertical-align:middle;background:#fff;border:1px solid #dcdfe6;line-height:1;cursor:pointer;display:inline-block;position:relative;padding:8px 15px}
+.el-checkbox{cursor:pointer;display:inline-flex;align-items:center;position:relative}
+.el-checkbox__input{white-space:nowrap;cursor:pointer;outline:none;display:inline-flex;position:relative}
+.el-checkbox__original{opacity:0;z-index:-1;outline:none;width:0;height:0;margin:0;position:absolute}
+.el-checkbox__inner{display:inline-block;position:relative;border:1px solid #dcdfe6;width:14px;height:14px;background:#fff;z-index:1}
+.el-radio{cursor:pointer;display:inline-flex;align-items:center;position:relative}
+.el-radio__input{white-space:nowrap;cursor:pointer;outline:none;display:inline-flex;position:relative}
+.el-radio__original{opacity:0;z-index:-1;outline:none;margin:0;position:absolute;top:0;bottom:0;left:0;right:0}
+.el-radio__inner{border:1px solid #dcdfe6;border-radius:100%;width:14px;height:14px;background:#fff;position:relative;display:inline-block}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10}
+`;
+
+const ELEMENT_PLUS_CONTROLS = `
+<label class="el-radio-button"><input class="el-radio-button__original-radio" type="radio" name="mode" id="install"><span class="el-radio-button__inner">安装</span></label>
+<label class="el-radio-button"><input class="el-radio-button__original-radio" type="radio" name="mode" id="remove"><span class="el-radio-button__inner">卸载</span></label>
+<label class="el-checkbox"><span class="el-checkbox__input"><input class="el-checkbox__original" type="checkbox" id="agree"><span class="el-checkbox__inner"></span></span><span class="el-checkbox__label">Agree</span></label>
+<label class="el-radio"><span class="el-radio__input"><input class="el-radio__original" type="radio" name="size" id="large"><span class="el-radio__inner"></span></span><span class="el-radio__label">Large</span></label>
+`;
+
+const ELEMENT_PLUS_PAGE = `<style>${ELEMENT_PLUS_CSS}</style>${ELEMENT_PLUS_CONTROLS}`;
+
+const ELEMENT_PLUS_CASES = [
+  ['radio-button', '#install'],
+  ['checkbox', '#agree'],
+  ['radio', '#large'],
+] as const;
+
+describe.each(KINDS)('a control its own label covers, through the %s target', (kind) => {
+  it.each(ELEMENT_PLUS_CASES)('checks an Element Plus %s', async (_, selector) => {
+    await page.setContent(ELEMENT_PLUS_PAGE);
+    expect(await perform(await targetOf(kind, selector), { kind: 'check' })).toBeUndefined();
+    expect(await page.isChecked(selector)).toBe(true);
+  });
+
+  it.each(ELEMENT_PLUS_CASES)('taps an Element Plus %s', async (_, selector) => {
+    await page.setContent(ELEMENT_PLUS_PAGE);
+    expect(await perform(await targetOf(kind, selector), { kind: 'tap' })).toBeUndefined();
+    expect(await page.isChecked(selector)).toBe(true);
+  });
+
+  it.each(ELEMENT_PLUS_CASES)('still refuses an Element Plus %s under a modal', async (_, selector) => {
+    await page.setContent(`${ELEMENT_PLUS_PAGE}<div class="modal"></div>`);
+    for (const action of [{ kind: 'check' }, { kind: 'tap' }] as const) {
+      expect(await perform(await targetOf(kind, selector), action)).toMatchObject({ code: 'NOT_ACTIONABLE' });
+      expect(await page.isChecked(selector)).toBe(false);
+    }
+  });
+
+  it('checks a boxless checkbox through its first visible label, past a hidden one', async () => {
+    await page.setContent(`
+      <input type="checkbox" id="c" style="display:none">
+      <label for="c" style="display:none">A</label>
+      <label for="c">B</label>`);
+    expect(await perform(await targetOf(kind, '#c'), { kind: 'check' })).toBeUndefined();
+    expect(await page.isChecked('#c')).toBe(true);
+  });
+
+  it('still refuses a boxless checkbox whose every label is hidden', async () => {
+    await page.setContent(`
+      <input type="checkbox" id="c" style="display:none">
+      <label for="c" style="display:none">A</label>`);
+    expect(await perform(await targetOf(kind, '#c'), { kind: 'check' })).toMatchObject({ code: 'NOT_ACTIONABLE' });
+    expect(await page.isChecked('#c')).toBe(false);
+  });
+
+  it('still refuses a disabled Element Plus radio-button', async () => {
+    await page.setContent(ELEMENT_PLUS_PAGE.replace('id="install"', 'id="install" disabled'));
+    for (const action of [{ kind: 'check' }, { kind: 'tap' }] as const) {
+      expect(await perform(await targetOf(kind, '#install'), action)).toMatchObject({ code: 'NOT_ACTIONABLE' });
+      expect(await page.isChecked('#install')).toBe(false);
+    }
+  });
+
+  it('checks an Element Plus radio-button inside a shadow root', async () => {
+    await page.setContent(`<div id="host"></div><script>
+      document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = ${JSON.stringify(ELEMENT_PLUS_PAGE)};
+    </script>`);
+    expect(await perform(await targetOf(kind, '#install'), { kind: 'check' })).toBeUndefined();
+    expect(await page.isChecked('#install')).toBe(true);
+  });
+});
+
+describe('a tap on a locator that never appears', () => {
+  it('fails NOT_ACTIONABLE within one deadline, as a plain click does', async () => {
+    await page.setContent('<p>Nothing to tap</p>');
+    const started = Date.now();
+    const error = await perform({ kind: 'locator', locator: page.locator('#missing') }, { kind: 'tap' });
+    expect(Date.now() - started).toBeLessThan(3500);
+    expect(error).toMatchObject({ code: 'NOT_ACTIONABLE', retryable: false });
+    expect(error?.message).toMatch(/^tap did not become actionable in time: .*Timeout 2000ms exceeded/);
+    expect(error?.message).toContain("waiting for locator('#missing')");
+  });
+});
+
+describe('a control its own label covers, inside a frame', () => {
+  it('checks an Element Plus radio-button', async () => {
+    await page.setContent(`<p>Outer</p><iframe srcdoc="${ELEMENT_PLUS_PAGE.replaceAll('"', '&quot;')}"></iframe>`);
+    const locator = page.frameLocator('iframe').locator('#install');
+    expect(await perform({ kind: 'locator', locator }, { kind: 'check' })).toBeUndefined();
+    expect(await locator.isChecked()).toBe(true);
+  });
+});

@@ -754,6 +754,11 @@ check(options?: ActionOptions): Promise<void>;
 await screen.getByRole('checkbox', 'Remember me').check();
 ```
 
+On the web engine, a native checkbox or radio that its own label covers
+(Element Plus hides the input under the label's styled spans), or that has
+no box of its own, is clicked through that label, by `check`, `uncheck`, and
+`tap`. A control covered by anything else still fails `ACTION_FAILED`.
+
 #### `uncheck`
 
 ```ts

@@ -60,7 +60,7 @@ async function setChecked(target: ActionTarget, checked: boolean, operation: Con
         retryable: false,
       });
     }
-    await element.click({ timeout: remaining() });
+    await clickControl({ kind: 'element', element }, { timeout: remaining() });
     const unchanged = (detail = ''): EngineError =>
       new EngineError('NOT_ACTIONABLE', `${verb} clicked the control but its checked state did not change${detail}`, {
         retryable: false,
@@ -88,6 +88,87 @@ async function setChecked(target: ActionTarget, checked: boolean, operation: Con
   }
 }
 
+/**
+ * The label a click on a native checkbox or radio goes through instead of
+ * the control itself. Without `position` Playwright clicks the label's
+ * centre, which may be a link elsewhere in the label.
+ */
+interface StandIn {
+  labelIndex: number;
+  position?: { x: number; y: number };
+}
+
+/**
+ * Runs in the page. A component library (Element Plus) hides a native
+ * checkbox or radio under its label's styled spans with `z-index: -1`, or
+ * gives it no box at all, so Playwright refuses the input itself (`<span>
+ * intercepts pointer events`, `element is not visible`) though a user's click
+ * there reaches it through the label.
+ */
+function pickStandIn(node: Element): StandIn | null {
+  if (!(node instanceof HTMLInputElement) || (node.type !== 'checkbox' && node.type !== 'radio') || node.disabled) {
+    return null;
+  }
+  const labels = [...(node.labels ?? [])];
+  if (labels.length === 0) return null;
+  node.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  const box = node.getBoundingClientRect();
+  const hasBox = ({ width, height }: DOMRect): boolean => width > 0 && height > 0;
+  if (!hasBox(box)) {
+    const index = labels.findIndex((label) => hasBox(label.getBoundingClientRect()));
+    return index === -1 ? null : { labelIndex: index };
+  }
+  const root = node.getRootNode();
+  if (!(root instanceof Document) && !(root instanceof ShadowRoot)) return null;
+  const hit = root.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+  if (hit === null || hit === node) return null;
+  for (const [index, label] of labels.entries()) {
+    if (!label.contains(hit)) continue;
+    const outer = label.getBoundingClientRect();
+    const x = box.left + box.width / 2 - outer.left;
+    const y = box.top + box.height / 2 - outer.top;
+    const inside = x >= 0 && y >= 0 && x <= outer.width && y <= outer.height;
+    return inside ? { labelIndex: index, position: { x, y } } : { labelIndex: index };
+  }
+  return null;
+}
+
+/**
+ * Clicks a control with Playwright's actionability checks, through its own
+ * label when `pickStandIn` names one. The checks then run on the label: its
+ * own content passes, anything else on top, such as a modal, still fails
+ * NOT_ACTIONABLE.
+ */
+async function clickControl(
+  target: ActionTarget,
+  options: { timeout: number; modifiers?: KeyModifier[] },
+): Promise<void> {
+  const deadline = new Deadline(options.timeout);
+  const remaining = (): number => Math.max(1, deadline.remaining());
+  const standIn =
+    target.kind === 'locator'
+      ? await target.locator.evaluate(pickStandIn, undefined, { timeout: options.timeout })
+      : await target.element.evaluate(pickStandIn);
+  const labelAt = (node: Element, index: number): Element | null =>
+    node instanceof HTMLInputElement ? (node.labels?.[index] ?? null) : null;
+  const label =
+    standIn === null
+      ? null
+      : target.kind === 'locator'
+        ? (await target.locator.evaluateHandle(labelAt, standIn.labelIndex)).asElement()
+        : (await target.element.evaluateHandle(labelAt, standIn.labelIndex)).asElement();
+  if (standIn === null || label === null) {
+    await asActionable(target).click({ ...options, timeout: remaining() });
+    return;
+  }
+  const { position } = standIn;
+  try {
+    await label.click({ ...options, timeout: remaining(), ...(position === undefined ? {} : { position }) });
+  } finally {
+    void label.dispose().catch(() => undefined);
+  }
+}
+
 /** Whether a checkable element is a radio, which a click can select but never clear. */
 function isRadio(element: ElementHandle<Element>): Promise<boolean> {
   return element.evaluate(
@@ -110,7 +191,7 @@ export async function dispatchLocatorAction(
   const locator = asActionable(target);
   switch (action.kind) {
     case 'tap':
-      await locator.click({ timeout, ...heldKeys(action) });
+      await clickControl(target, { timeout, ...heldKeys(action) });
       return;
     case 'doubleTap':
       await locator.dblclick({ timeout, ...heldKeys(action) });
