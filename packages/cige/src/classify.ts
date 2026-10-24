@@ -203,18 +203,37 @@ export function classifyResult(testCase: CigeCase, result: ReportResult, report?
     return { ...base, signals: [...signals, `guardrail-violation:${guardrail}`] };
   }
   const code = where.code ?? '';
+  // The agent read a guardrail and stopped before acting: the step needs a
+  // forbidden action, which routes like a violation. Only a conclusion that
+  // cites a guardrail counts; the runner's own POLICY_DENIED (a refused URL
+  // scheme, a forbidden fill) is something else.
+  const message = where.message ?? '';
+  if (code === 'POLICY_DENIED' && where.phase === 'execution' && /guardrail/i.test(message)) {
+    const cited = testCase.guardrails.find((rule) => new RegExp(`(^|[^A-Za-z0-9._-])${escapeRegExp(rule.id)}($|[^A-Za-z0-9._-])`).test(message));
+    return { ...base, signals: [...signals, cited === undefined ? 'guardrail-refused' : `guardrail-refused:${cited.id}`] };
+  }
   if (where.pluginStep === true) {
     // A plugin's step threw a plain error: its own code, not a changed flow, so the classifier reads its message.
     return { ...base, signals: [...signals, `plugin-step-failed:${where.id}`] };
   }
+  // ASSERTION_FAILED is a defect when a check said so: a verify, evidence, the
+  // Intent, or a plugin's step. From an act step it means the agent couldn't
+  // reach the goal, which a changed flow causes as often as a defect.
+  const step = where.phase === 'execution' ? testCase.execution.find((entry) => entry.id === where.id) : undefined;
+  const unreachedGoal = code === 'ASSERTION_FAILED' && step?.kind === 'act';
+  if (unreachedGoal) signals.push('goal-unreachable');
   const failureType = ((): CigeFailureType | undefined => {
     if (where.phase === 'precondition' || INFRASTRUCTURE_CODES.has(code)) return 'infrastructure';
     if (where.phase === 'execution' && PATH_CODES.has(code)) return 'outdated-test-logic';
-    if (code === 'ASSERTION_FAILED') return 'product-defect';
+    if (code === 'ASSERTION_FAILED' && !unreachedGoal) return 'product-defect';
     return undefined;
   })();
   if (code === 'ASSERTION_INCONCLUSIVE') signals.push('inconclusive-evidence');
   if (AUTOMATION_CODES.has(code)) signals.push('automation-limit');
   if (result.status === 'timed-out') signals.push('run-stopped');
   return { ...base, ...(failureType === undefined ? {} : { failureType }), signals };
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

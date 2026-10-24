@@ -48,11 +48,16 @@ needs them.
    - Neither ref settles it: stop, as below.
 3. **Did the app do the wrong thing?** A `verify`, evidence item, or the
    Intent judged false (`ASSERTION_FAILED`) on a healthy environment with a
-   current path. Classify `product-defect` and read `escalate.md`.
-4. **Did a guardrail fire?** `guardrail-violation:<id>`. The agent took a
-   forbidden path: either the flow changed and now routes through it
-   (repair Execution so it avoids it), or the product forces it (a
-   defect). The spec decides; never loosen the guardrail.
+   current path. Classify `product-defect` and read `escalate.md`. An act
+   step that ended `ASSERTION_FAILED` with `goal-unreachable` is not this:
+   the agent couldn't reach its goal, so treat it as step 2, a changed flow
+   or a defect the refs decide.
+4. **Did a guardrail fire?** `guardrail-violation:<id>` (the runner stopped
+   a forbidden action) or `guardrail-refused:<id>` (the agent read the
+   guardrail and refused before acting). Either way the step needs a
+   forbidden action: the flow changed and now routes through it (repair
+   Execution so it avoids it), or the product forces it (a defect). The
+   spec decides; never loosen the guardrail.
 5. **No `failureType`, signal `automation-limit`.** A spent budget or the
    clock. Open the trace: a path that wandered is `outdated-test-logic`; a
    slow page is `infrastructure`; a model that gave up on a clear screen

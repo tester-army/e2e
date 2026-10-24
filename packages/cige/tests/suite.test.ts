@@ -46,6 +46,12 @@ const scripted: StepExecutor = {
   cache: 'off',
   async runStep(ctx) {
     const text = ctx.step.instruction;
+    if (text.startsWith('open the Billing tab')) {
+      return { status: 'failed', errorCode: 'ASSERTION_FAILED', summary: 'the wizard has no Billing tab' };
+    }
+    if (text.startsWith('delete the todo')) {
+      return { status: 'failed', errorCode: 'POLICY_DENIED', summary: 'deleting is prohibited by the no-delete guardrail; I did not delete it' };
+    }
     if (text.startsWith('refund')) {
       await ctx.budgets.runTool({ name: 'refund', mutates: true }, async () => 'refunded');
       return { status: 'passed', summary: 'refunded the order' };
@@ -162,6 +168,19 @@ const CASES: Record<string, object> = {
       { id: 'voucher', params: { method: 'voucher' } },
     ],
   },
+  unreachable: {
+    id: 'unreachable',
+    Context: {},
+    Intent: 'A visitor can pick monthly billing',
+    Execution: [{ id: 'e1', step: 'open the Billing tab and pick monthly billing' }],
+  },
+  refused: {
+    id: 'refused',
+    Context: {},
+    Intent: 'A user can clear a finished todo',
+    Guardrails: [{ id: 'no-delete', rule: 'Never delete a todo' }],
+    Execution: [{ id: 'e1', step: 'delete the todo "Old task"' }],
+  },
   api: {
     id: 'api',
     'x-ticket': 'SHOP-1',
@@ -248,9 +267,11 @@ describe('cigeSuite through the runner', () => {
       'guardrail',
       'infrastructure',
       'pass',
+      'refused',
       'serial-cart',
       'serial-checkout',
       'stale',
+      'unreachable',
       'variants.card',
       'variants.voucher',
     ]);
@@ -262,6 +283,18 @@ describe('cigeSuite through the runner', () => {
     expect(summaries['variants.card']).toMatchObject({ testId: 'variants', variant: 'card', result: 'pass', intent: 'A shopper can pay by card' });
     expect(summaries['variants.voucher']).toMatchObject({ variant: 'voucher', result: 'fail', failedStep: 'e1', failureType: 'outdated-test-logic' });
     expect(written).toContain('variants.voucher.run-summary.json');
+  });
+
+  it('leaves an act goal the agent could not reach untyped, unlike a failed check', () => {
+    expect(summaries.unreachable).toMatchObject({ result: 'fail', failedStep: 'e1', classification: { errorCode: 'ASSERTION_FAILED' } });
+    expect(summaries.unreachable).not.toHaveProperty('failureType');
+    expect(summaries.unreachable?.classification.signals).toContain('goal-unreachable');
+  });
+
+  it('names the guardrail an agent refused to break before acting', () => {
+    expect(summaries.refused).toMatchObject({ result: 'fail', failedStep: 'e1', classification: { errorCode: 'POLICY_DENIED' } });
+    expect(summaries.refused).not.toHaveProperty('failureType');
+    expect(summaries.refused?.classification.signals).toContain('guardrail-refused:no-delete');
   });
 
   it('runs a plugin step and carries x- keys and plugin fields into the summary', () => {
@@ -415,7 +448,7 @@ describe('the reporter on a later run', () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.
     // The reporter config here has no plugins, so `api` counts by its missing specRef alone.
-    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "7 cases can't be fully classified or replayed: npx e2e-cige check" });
+    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "9 cases can't be fully classified or replayed: npx e2e-cige check" });
     const stale = JSON.parse(readFileSync(path.join(dir(), 'stale.run-summary.json'), 'utf8')) as CigeRunSummary;
     expect(stale.classification.signals).toContain('missing-spec-ref');
     expect(stale.classification.signals).not.toContain('missing-build-ref');

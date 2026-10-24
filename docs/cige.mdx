@@ -325,9 +325,10 @@ landed. It is a hint for the classifying agent, not a verdict:
 | --- | --- |
 | A precondition failed, or a credential, environment, or seed data code such as `ENVIRONMENT_UNAVAILABLE`, or `MODEL_UNAVAILABLE` or `MODEL_PROVIDER_FAILED` | `infrastructure` |
 | An Execution `step` failed with `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
-| A `verify`, a piece of evidence, or the Intent was judged false (`ASSERTION_FAILED`) | `product-defect` |
+| A `verify`, a piece of evidence, the Intent, or a plugin's check step was judged false (`ASSERTION_FAILED`) | `product-defect` |
+| An act step whose goal the agent could not reach (`ASSERTION_FAILED`) | Absent, with the signal `goal-unreachable`: a changed flow or a defect can each cause it |
 | A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, `CONTEXT_OVERFLOW`, or `MODEL_REFUSED` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
-| A guardrail violation, an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` |
+| A guardrail violation, an agent that refused to break one (`POLICY_DENIED` citing it), an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` or `guardrail-refused:no-delete` |
 
 A pass has no `failureType`. When no evidence hook backs it, its signals
 include `screen-only-evidence`: check it for a false positive. A failure
