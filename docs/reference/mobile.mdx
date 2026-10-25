@@ -370,7 +370,7 @@ test('offline banner', { platforms: ['android'] }, async ({ app, device, screen 
 
 | Member | Returns |
 | --- | --- |
-| [`agentDevice`](#agentdevice) | `DeviceSession` |
+| [`unstable_agentDevice`](#unstable_agentdevice) | `DeviceSession` |
 | [`locator`](#locator) | `Locator` |
 | [`setNetwork`](#setnetwork) | `Promise<void>` |
 | [`setAirplaneMode`](#setairplanemode) | `Promise<void>` |
@@ -408,7 +408,7 @@ declaration; the types they use are under [Types](#device-fixture).
 | `UNSUPPORTED_CAPABILITY` | The platform cannot run the command. |
 | `ENGINE_FAILURE` | Anything else, with agent-device's message. A timeout the device itself reports (a boot, the runner connecting) keeps its text and hint there. A busy or wedged iOS automation runner names itself and the recovery (see [Troubleshooting](/mobile#troubleshooting)). |
 
-#### `agentDevice`
+#### `unstable_agentDevice`
 
 ```ts
 /**
@@ -416,19 +416,20 @@ declaration; the types they use are under [Types](#device-fixture).
  * not cover. Calls through `client` bypass e2e: they are not steps, so the
  * report and trace leave them out, the agent's cache does not replay them,
  * their arguments reach agent-device unredacted, and nothing waits for the
- * screen to settle after one.
+ * screen to settle after one. Unstable: it may change or go away in any
+ * release.
  */
-readonly agentDevice: DeviceSession;
+readonly unstable_agentDevice: DeviceSession;
 ```
 
 ```ts
-const { client, session, deviceId } = device.agentDevice;
+const { client, session, deviceId } = device.unstable_agentDevice;
 const sessions = await client.sessions.list();
-await client.apps.list(device.agentDevice.selection);
+await client.apps.list(device.unstable_agentDevice.selection);
 ```
 
 `client` is agent-device's own client at the version `@e2e-dev/mobile` pins.
-After the worker disposes the session, reading `agentDevice` or `client`
+After the worker disposes the session, reading `unstable_agentDevice` or `client`
 throws `INVALID_STATE`.
 
 #### `locator`
@@ -1034,7 +1035,7 @@ export interface ForegroundApp {
 /** Sensors `setBiometrics` simulates. */
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 
-/** The agent-device session behind `device`; see `Device.agentDevice`. */
+/** The agent-device session behind `device`; see `Device.unstable_agentDevice`. */
 export interface DeviceSession {
   readonly platform: MobilePlatform;
   /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */

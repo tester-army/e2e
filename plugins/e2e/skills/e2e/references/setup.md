@@ -383,10 +383,10 @@ export default {
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
-- `device.agentDevice` gives the session name, device id and name, and an
+- `device.unstable_agentDevice` gives the session name, device id and name, and an
   agent-device `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
-  redaction.
+  redaction. Unstable: may change or go away in any release.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.

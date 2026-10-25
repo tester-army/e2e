@@ -1412,7 +1412,7 @@ describe('device fixture', () => {
     return h.engine.fixtures!['device']!(context) as Device;
   }
 
-  describe('agentDevice', () => {
+  describe('unstable_agentDevice', () => {
     const BOOTED = { platform: 'ios', id: '5A1C0DE5-0000-4000-8000-000000000001', device: 'iPhone 17 Pro', booted: true };
 
     it('names the session, the device agent-device booted, and hands out the session client, outside any step', async () => {
@@ -1420,7 +1420,7 @@ describe('device fixture', () => {
       h.fake.respond('devices.boot', () => BOOTED);
       await openAttempt(h);
       const device = fixture(h);
-      expect(device.agentDevice).toEqual({
+      expect(device.unstable_agentDevice).toEqual({
         platform: 'ios',
         session: 'e2e-ios-simulator-0',
         deviceId: BOOTED.id,
@@ -1428,9 +1428,9 @@ describe('device fixture', () => {
         selection: { platform: 'ios', device: 'iPhone 17 Pro' },
         client: h.fake.client,
       });
-      expect(declared).not.toHaveProperty('agentDevice');
+      expect(declared).not.toHaveProperty('unstable_agentDevice');
       const before = h.fake.calls.length;
-      await device.agentDevice.client.apps.list(device.agentDevice.selection);
+      await device.unstable_agentDevice.client.apps.list(device.unstable_agentDevice.selection);
       expect(h.fake.calls.slice(before)).toEqual([{ method: 'apps.list', args: { platform: 'ios', device: 'iPhone 17 Pro' } }]);
     });
 
@@ -1438,7 +1438,7 @@ describe('device fixture', () => {
       const h = harness({ device: BOOTED.id, session: 'host' });
       h.fake.respond('devices.boot', () => BOOTED);
       await openAttempt(h);
-      const { session, selection } = fixture(h).agentDevice;
+      const { session, selection } = fixture(h).unstable_agentDevice;
       expect(session).toBe('host-0');
       expect(selection).toEqual({ platform: 'ios', udid: BOOTED.id });
     });
@@ -1448,10 +1448,10 @@ describe('device fixture', () => {
       h.fake.respond('devices.boot', () => BOOTED);
       await openAttempt(h);
       const device = fixture(h);
-      const handle = device.agentDevice;
+      const handle = device.unstable_agentDevice;
       await h.engine.endAttempt!(cleanup());
       await h.engine.dispose!(cleanup());
-      expect(() => device.agentDevice).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
+      expect(() => device.unstable_agentDevice).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
       expect(() => handle.client).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
     });
   });
