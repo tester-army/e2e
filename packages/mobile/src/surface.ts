@@ -976,8 +976,9 @@ export class AgentDeviceSurface {
    * Snapshot for a locate; undefined for a screen agent-device could not read
    * yet (an app still on its splash, or one iOS does not report running yet
    * after a launch). The harness polls a locate until its deadline, so that
-   * screen matches nothing and the poll waits for it to render. A capture that leaves no budget for another poll fails with the
-   * reason instead, so a wait that ends on an unreadable screen says so.
+   * screen matches nothing and the poll waits for it to render. A capture
+   * that leaves less of the budget than it took fails with the reason
+   * instead, so a wait that ends on an unreadable screen says so.
    */
   private async locateSnapshot(operation: OperationContext, budget?: InputBudget): Promise<RawSnapshot | undefined> {
     const startedMs = Date.now();
