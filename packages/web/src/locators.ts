@@ -272,14 +272,14 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  *
  * A display-value query resolves to a candidate locator plus a value predicate
  * the surface applies once the candidates are read. Per-element filters
- * (`filter({ hasText, has })`) commute with that predicate, so they compose
+ * (`filter({ hasText, has, hasNot })`) commute with that predicate, so they compose
  * onto the candidate locator as for any other query. Positional selection does
  * not commute (positions are relative to the value-filtered matches), so it is
  * recorded as a step and applied after filtering; a filter that follows a
  * position is recorded the same way and checked on the selected element. Two
  * compositions need the predicate inside Playwright's own chain and stay
  * unsupported: a display-value query as the scope of a child query, and as a
- * `has` filter.
+ * `has/hasNot` filter.
  */
 function project(scope: PwScope, expression: LocatorExpression, testIdAttribute: string): ProjectedLocator {
   switch (expression.kind) {
@@ -354,7 +354,7 @@ export function projectExpression(
 
 /**
  * Returns the locator of a projection that must participate in Playwright's
- * own locator chain: a scope for child queries or a `has` target. A
+ * own locator chain: a scope for child queries or a `has/hasNot` target. A
  * display-value projection cannot, because its value predicate lives outside
  * that chain.
  */

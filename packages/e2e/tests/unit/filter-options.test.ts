@@ -1,6 +1,6 @@
 /**
- * `locator.filter(options)` takes `hasText` and `has` and nothing else. A key
- * it does not implement (`hasNot`, `hasNotText`, `visible`) must fail the
+ * `locator.filter(options)` takes `hasText`, `has`, and `hasNot` and nothing else.
+ * A key it does not implement (`hasNotText`, `visible`) must fail the
  * call, alone or beside a supported one, rather than be dropped: dropping an
  * exclusion widens the match and the action lands on the wrong row.
  */

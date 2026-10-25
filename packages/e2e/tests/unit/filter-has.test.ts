@@ -78,7 +78,7 @@ describe('locator.filter({ has })', () => {
     });
   });
 
-  it('names the whole chain with hasNot when a filtered read finds nothing', async () => {
+  it('names the whole chain with hasNot when a filtered read is ambiguous', async () => {
     const { screen } = listScreen();
     await expect(
       screen.getByRole('listitem').filter({ hasNot: screen.getByRole('listitem') }).textContent(),
