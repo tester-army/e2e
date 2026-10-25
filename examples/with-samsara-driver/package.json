@@ -1,0 +1,19 @@
+{
+  "name": "e2e-example-with-samsara-driver",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:e2e:ios": "e2e run --target ios",
+    "test:e2e:android": "e2e run --target android",
+    "test:unit": "node --test support/visionflow-debug.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "^0.12.4",
+    "@samsara-dev/visionflow": "14.3.1",
+    "@types/node": "^24.10.0",
+    "ai": "^7.0.0",
+    "e2e": "^0.21.3",
+    "typescript": "~6.0.3"
+  }
+}
