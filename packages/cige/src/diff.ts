@@ -14,7 +14,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import type { CigeExtensions } from './extensions.ts';
@@ -268,11 +268,28 @@ function isFile(file: string): boolean {
   return existsSync(file) && statSync(file).isFile();
 }
 
+function isLink(file: string): boolean {
+  try {
+    return lstatSync(file).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g;
 const MODULE_EXTENSIONS = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
 
-/** One side of the diff: a repository file's text by its repo-relative POSIX path, or undefined when it isn't a file there. */
-type TreeReader = (file: string) => string | undefined;
+/**
+ * A repository path on one side of the diff, by its repo-relative POSIX path:
+ * a file's text, a symlink's target (undefined when it leaves the
+ * repository or dangles), or undefined when neither is there.
+ */
+type TreeEntry = { readonly text: string } | { readonly target: string | undefined } | undefined;
+type TreeSide = (file: string) => TreeEntry;
+
+function outside(file: string): boolean {
+  return file === '..' || file.startsWith('../');
+}
 
 /**
  * The CIGE config file and every local module it imports, transitively, on
@@ -282,21 +299,26 @@ type TreeReader = (file: string) => string | undefined;
  * Packages are not followed; they are reviewed as dependencies, not as the
  * case.
  */
-function configModules(candidates: readonly string[], read: TreeReader): string[] {
+function configModules(candidates: readonly string[], entry: TreeSide): string[] {
   const seen = new Set<string>();
   const visit = (file: string): void => {
     if (seen.has(file)) return;
-    const text = read(file);
-    if (text === undefined) return;
+    const found = entry(file);
+    if (found === undefined) return;
     seen.add(file);
-    for (const match of text.matchAll(RELATIVE_IMPORT)) {
+    // Node imports a symlinked module from its real path, so a link counts (retargeting it is a change) and so does its target.
+    if ('target' in found) {
+      if (found.target !== undefined) visit(found.target);
+      return;
+    }
+    for (const match of found.text.matchAll(RELATIVE_IMPORT)) {
       const target = path.posix.join(path.posix.dirname(file), match[1]!);
-      if (target === '..' || target.startsWith('../')) continue;
-      const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find((candidate) => read(candidate) !== undefined);
+      if (outside(target)) continue;
+      const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find((candidate) => entry(candidate) !== undefined);
       if (resolved !== undefined) visit(resolved);
     }
   };
-  const first = candidates.find((file) => read(file) !== undefined);
+  const first = candidates.find((file) => entry(file) !== undefined);
   if (first !== undefined) visit(first);
   return [...seen];
 }
@@ -349,17 +371,33 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
         const real = existsSync(directory) ? realpathSync(directory) : directory;
         return path.relative(root, path.join(real, path.basename(file))).split(path.sep).join('/');
       })
-      .filter((file) => file !== '..' && !file.startsWith('../'));
-    const working: TreeReader = (file) => {
+      .filter((file) => !outside(file));
+    const working: TreeSide = (file) => {
       const absolute = path.join(root, file);
-      return isFile(absolute) ? readFileSync(absolute, 'utf8') : undefined;
+      if (!existsSync(absolute) && !isLink(absolute)) return undefined;
+      if (isLink(absolute)) {
+        const target = existsSync(absolute) ? path.relative(root, realpathSync(absolute)).split(path.sep).join('/') : undefined;
+        return { target: target === undefined || outside(target) ? undefined : target };
+      }
+      return isFile(absolute) ? { text: readFileSync(absolute, 'utf8') } : undefined;
     };
-    const baseFiles = new Set(fields(git(['ls-tree', '-r', '--name-only', '-z', mergeBase], top)));
-    const baseText = new Map<string, string>();
-    const atBase: TreeReader = (file) => {
-      if (!baseFiles.has(file)) return undefined;
-      if (!baseText.has(file)) baseText.set(file, git(['show', `${mergeBase}:${file}`], top));
-      return baseText.get(file);
+    // `ls-tree -r -z` records read `<mode> <type> <object>\t<path>`; mode 120000 is a symlink, whose blob is its target.
+    const baseModes = new Map(
+      fields(git(['ls-tree', '-r', '-z', mergeBase], top)).map((record) => {
+        const tab = record.indexOf('\t');
+        return [record.slice(tab + 1), record.slice(0, record.indexOf(' '))] as const;
+      }),
+    );
+    const baseEntries = new Map<string, TreeEntry>();
+    const atBase: TreeSide = (file) => {
+      const mode = baseModes.get(file);
+      if (mode === undefined || !(mode === '120000' || mode.startsWith('100'))) return undefined;
+      if (!baseEntries.has(file)) {
+        const text = git(['show', `${mergeBase}:${file}`], top);
+        const target = mode === '120000' && !text.startsWith('/') ? path.posix.normalize(path.posix.join(path.posix.dirname(file), text)) : undefined;
+        baseEntries.set(file, mode === '120000' ? { target: target === undefined || outside(target) ? undefined : target } : { text });
+      }
+      return baseEntries.get(file);
     };
     const modules = [...new Set([...configModules(candidates, working), ...configModules(candidates, atBase)])];
     if (modules.length > 0) {

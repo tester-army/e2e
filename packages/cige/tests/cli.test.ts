@@ -214,6 +214,9 @@ describe('e2e-cige diff', () => {
     const state = io(dir);
     expect(await main(['diff', '--base', 'HEAD', '--config', 'nope.ts'], state)).toBe(2);
     expect(state.err).toContain('no CIGE config at nope.ts');
+    const directory = io(dir);
+    expect(await main(['diff', '--base', 'HEAD', '--config', '.'], directory)).toBe(2);
+    expect(directory.err).toContain('no CIGE config at .');
   });
 });
 

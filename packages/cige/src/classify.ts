@@ -84,7 +84,9 @@ const SETUP_CATEGORIES: ReadonlySet<string> = new Set(['infrastructure', 'config
  * `configuration`-class codes that are not the environment: `POLICY_DENIED`
  * is the runner refusing what a step asked for (a denied navigation, a
  * forbidden fill; a guardrail's is read earlier), and `REPLAY_STALE` is a
- * stale recorded path. Outside an act step they stay untyped.
+ * stale recorded path. Neither is setup, so the category rule skips them:
+ * they stay untyped unless an earlier rule types them (a precondition, or
+ * `REPLAY_STALE` as a path code in an Execution step).
  */
 const NOT_SETUP_CODES: ReadonlySet<string> = new Set<AgentErrorCode>(['POLICY_DENIED', 'REPLAY_STALE']);
 

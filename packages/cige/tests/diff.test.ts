@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -259,6 +259,28 @@ describe('diffSince', () => {
     rmSync(path.join(renamed, 'cige.config.ts'));
     write(renamed, { 'cige.config.mjs': config });
     expect(changed(renamed)).toEqual(['cige.config.mjs config-changed', 'cige.config.ts config-changed']);
+  });
+
+  it('follows a symlinked module to its target, as Node imports it, on either side', () => {
+    const linked = () => {
+      const dir = repo({ 'cige.config.ts': "import { shop } from './plugins/shop.ts';\nexport default { plugins: [shop] };\n", 'lib/shop.ts': "export const shop = { name: 'shop' };\n", 'checkout.cige.json': BASE });
+      mkdirSync(path.join(dir, 'plugins'));
+      symlinkSync('../lib/shop.ts', path.join(dir, 'plugins/shop.ts'));
+      execFileSync('git', ['add', '.'], { cwd: dir, stdio: 'pipe' });
+      execFileSync('git', ['-c', 'user.email=cige@example.test', '-c', 'user.name=cige', 'commit', '-q', '-m', 'link'], { cwd: dir, stdio: 'pipe' });
+      return dir;
+    };
+    const changed = (dir: string) => diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`);
+
+    const retouched = linked();
+    expect(changed(retouched)).toEqual([]);
+    write(retouched, { 'lib/shop.ts': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n" });
+    expect(changed(retouched)).toEqual(['lib/shop.ts config-changed']);
+
+    // The link dangles now, so only the base's side reaches its target.
+    const deleted = linked();
+    rmSync(path.join(deleted, 'lib/shop.ts'));
+    expect(changed(deleted)).toEqual(['lib/shop.ts config-changed']);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

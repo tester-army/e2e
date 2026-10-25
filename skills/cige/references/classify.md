@@ -28,7 +28,10 @@ needs them.
    infrastructure` for these. Read `recover.md`. Two `configuration` codes
    are not the environment: `REPLAY_STALE` is a stale path (step 2), and
    `POLICY_DENIED` is step 4, or, when it names no guardrail, a step the
-   runner refused (read the message). A blocked test step, such as
+   runner refused (read the message). `APP_NOT_OPEN` means no too: the
+   case never opened the app, usually because `Context.open` is missing.
+   That is a Context change, so propose it for a human (`recover.md`, "When
+   the environment itself moved"). A blocked test step, such as
    `MODEL_REFUSED`, is an automation limit: step 5.
 2. **Did the path stop working?** An Execution `step` that failed with
    `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or
@@ -65,7 +68,7 @@ needs them.
    Execution so it avoids it), or the product forces it (a defect). The
    spec decides; never loosen the guardrail.
 5. **No `failureType`, signal `automation-limit`.** A blocked test step
-   (not `APP_NOT_OPEN`, usually a missing `Context.open`), a spent budget,
+   (not `APP_NOT_OPEN`: step 1), a spent budget,
    or the clock. Open the trace: a path that wandered is `outdated-test-logic`; a
    slow page is `infrastructure`; a model that gave up on a clear screen
    needs a stronger model in the e2e config, not a case change.

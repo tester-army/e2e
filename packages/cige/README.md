@@ -105,7 +105,8 @@ more than once).
 | An Execution `step` ended `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
 | A `verify`, evidence, the Intent, or a plugin's check step was judged false (`ASSERTION_FAILED`) | `product-defect` |
 | An act step's goal couldn't be reached (`ASSERTION_FAILED`) | Absent, signal `goal-unreachable` |
-| A blocked test-class step (not `APP_NOT_OPEN`), a spent budget, the clock, or no conclusion | Absent, signal `automation-limit` |
+| A blocked test-class step, a spent budget, the clock, or no conclusion | Absent, signal `automation-limit` |
+| A blocked `APP_NOT_OPEN`: the case never opened the app, usually a missing `Context.open` | Absent, no signal |
 | A guardrail violation, an agent's refusal citing one, an inconclusive judgment, a plugin step's plain throw | Absent; `guardrail-violation:<id>`, `guardrail-refused:<id>`, `inconclusive-evidence`, `plugin-step-failed:<id>` |
 
 A pass with no evidence hook carries `screen-only-evidence`: check it for a
