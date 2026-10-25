@@ -40,7 +40,9 @@ Commands:
       --resolve also runs the ref resolvers. Exits 1 on any gap unless --warn.
   diff [--base <git ref>] [--json] [--allow-intent]
       Check every .cige.json changed since the base (default origin/main)
-      against the field rules. Exits 1 when a change weakens a case.
+      against the field rules, and report any change to the CIGE config or
+      the local modules it imports. Exits 1 when a change weakens a case or
+      touches the config.
       --allow-intent exits 0 anyway and records nothing: pass it only once
       a human approved the change, never from an agent.
 
@@ -268,10 +270,12 @@ function diff(io: CliIo, args: readonly string[]): number {
   const { values, positionals } = parseArgs({
     args: [...args],
     allowPositionals: true,
-    options: { base: { type: 'string' }, json: { type: 'boolean' }, 'allow-intent': { type: 'boolean' } },
+    options: { base: { type: 'string' }, json: { type: 'boolean' }, 'allow-intent': { type: 'boolean' }, config: { type: 'string' } },
   });
   if (positionals.length > 0) throw new UsageError('diff takes no positional arguments');
-  const report = diffSince(values.base ?? 'origin/main', io.cwd);
+  // Found, not loaded: diff reads the file and its local imports as text, so a broken config can't hide its own change.
+  const configFile = values.config === undefined ? CONFIG_FILES.map((name) => path.join(io.cwd, name)).find((candidate) => existsSync(candidate)) : path.resolve(io.cwd, values.config);
+  const report = diffSince(values.base ?? 'origin/main', io.cwd, configFile === undefined ? {} : { configFile });
   io.stdout(values.json === true ? `${JSON.stringify(report, null, 2)}\n` : formatDiff(report));
   return report.blocking > 0 && values['allow-intent'] !== true ? 1 : 0;
 }

@@ -36,8 +36,9 @@ the case stricter:
 - add a guardrail, or a `deny` pattern to an existing one, that blocks the
   shortcut the agent took;
 - add a `success` or `failure` criterion the screen must meet;
-- add an `Intent.evidence` item, usually a hook that checks the backend
-  (add the hook to `cige.config.ts`; it holds only when it returns `true`).
+- add an `Intent.evidence` item. Prefer an `assert` item, or a hook the
+  config already declares. A new hook edits `cige.config.ts`, so `diff`
+  blocks it with `config-changed`: hand it over as a proposal for a human.
 
 Then replay twice: on the build that gave the false pass the case must now
 fail, and on a correct build it must pass. Without a correct build at hand,
@@ -55,7 +56,11 @@ Mode B shows only additions (`guardrail-added`, `deny-added`,
 `intentUnchanged` is `false` when it added criteria or evidence; that is
 expected, since the Intent got stricter, and `blocking: 0` is what counts. Any blocking change
 means the repair went past its mode: undo that part, or hand it to a human
-as a proposal.
+as a proposal. That includes `context-changed` and `config-changed`.
+
+`diff` sees the case files, the CIGE config, and the local modules the
+config imports. It can't see app code or packages: a repair that touches
+them is out of scope, so leave them alone.
 
 ## Hand off
 

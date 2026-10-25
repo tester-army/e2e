@@ -55,7 +55,6 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/filters/e2e.areas.config.ts': 'docs/filters.mdx',
   'docs/examples/filters/tuned-filter.ts': 'docs/filters.mdx',
   'docs/examples/cige/cige.config.ts': 'docs/cige.mdx',
-  'docs/examples/cige/cige.plugins.ts': 'docs/cige.mdx',
   'docs/examples/cige/e2e.config.ts': 'docs/cige.mdx',
   'docs/examples/cige/tests/cige.e2e.ts': 'docs/cige.mdx',
   'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',

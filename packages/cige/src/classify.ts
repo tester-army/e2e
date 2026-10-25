@@ -10,7 +10,7 @@
  * pass was a false positive; this module never calls one.
  */
 
-import type { Report } from 'e2e';
+import type { AgentError, Report } from 'e2e';
 
 import { violatedGuardrail } from './guardrails.ts';
 import { actInstruction, intentAssertion } from './render.ts';
@@ -69,31 +69,33 @@ export interface CigeClassification {
   readonly signals: readonly string[];
 }
 
-/** Codes that mean execution never fairly reached the system under test. */
-const INFRASTRUCTURE_CODES = new Set([
-  'AUTH_CREDENTIAL_UNAVAILABLE',
-  'AUTH_CREDENTIAL_INVALID',
-  'SECRET_UNAVAILABLE',
-  'ENVIRONMENT_UNAVAILABLE',
-  'APP_UNREACHABLE',
-  'APP_ALREADY_RUNNING',
-  'APP_NOT_OPEN',
-  'SEED_DATA_MISSING',
-  'TEST_SETUP_FAILED',
-  'MODEL_UNAVAILABLE',
-  'MODEL_PROVIDER_FAILED',
-]);
-
-/** Codes an `act` step ends with when its path no longer leads where it used to. */
-const PATH_CODES = new Set(['ACTION_FAILED', 'LOCATOR_NOT_FOUND', 'LOCATOR_AMBIGUOUS', 'REPLAY_STALE']);
+/** The runner's closed agent code union, typed so a code renamed in core fails to compile here. */
+type AgentErrorCode = AgentError['code'];
 
 /**
- * Codes that say the agent ran out of room, not that the path is stale: a
- * spent budget, the clock, a verb the engine lacks, a model that never
- * concluded. A changed flow can cause them, and so can a slow environment
- * or a weak model, so they leave the type to the classifier.
+ * The error classes the runner assigns (`error.category` in the report)
+ * that mean execution never fairly reached the system under test: the
+ * environment, the app, a credential, seed data, the model provider. A new
+ * code of these classes in core needs no change here.
  */
-const AUTOMATION_CODES = new Set(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'AUTOMATION_UNSUPPORTED', 'STEP_NO_CONCLUSION', 'CONTEXT_OVERFLOW', 'MODEL_REFUSED']);
+const SETUP_CATEGORIES: ReadonlySet<string> = new Set(['infrastructure', 'configuration']);
+
+/**
+ * `test`-class codes no category tells apart, so they are named: the codes
+ * an `act` step ends with when its path no longer leads where it used to.
+ * `REPLAY_STALE` is a `configuration` code but a stale recorded path, so
+ * these are read before the category.
+ */
+const PATH_CODES: ReadonlySet<string> = new Set<AgentErrorCode>(['ACTION_FAILED', 'LOCATOR_NOT_FOUND', 'LOCATOR_AMBIGUOUS', 'REPLAY_STALE']);
+
+/**
+ * `test`-class codes for a spent budget, the clock, or a model that never
+ * concluded: a changed flow, a slow environment, or a weak model can each
+ * cause them, so they leave the type to the classifier. Anything the runner
+ * reports as a blocked step (an unsupported verb, an overflowing context, a
+ * refusal) joins them without being named.
+ */
+const STEP_LIMIT_CODES: ReadonlySet<string> = new Set<AgentErrorCode>(['STEP_BUDGET_EXHAUSTED', 'STEP_TIMEOUT', 'STEP_NO_CONCLUSION']);
 
 interface PlannedStep {
   readonly phase: CigePhase;
@@ -138,7 +140,19 @@ function match(attempt: AttemptView, planned: readonly PlannedStep[]): { step: R
   return pairs;
 }
 
-function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; id?: string; code?: string; message?: string; pluginStep?: boolean } {
+interface Located {
+  readonly phase: CigePhase;
+  readonly id?: string;
+  readonly code?: string;
+  readonly message?: string;
+  /** The runner's class for the error: `test`, `configuration`, `infrastructure`, `internal`, or `interrupted`. */
+  readonly category?: string;
+  /** The failing agent step ended `blocked`: something stood in its way, not a product failure. */
+  readonly blocked?: boolean;
+  readonly pluginStep?: boolean;
+}
+
+function locate(testCase: CigeCase, attempt: AttemptView): Located {
   const planned = plan(testCase);
   const pairs = match(attempt, planned);
   const failing = pairs.find((pair) => pair.step.status !== 'passed');
@@ -147,11 +161,12 @@ function locate(testCase: CigeCase, attempt: AttemptView): { phase: CigePhase; i
     return {
       phase: failing.planned.phase,
       id: failing.planned.id,
-      ...(error === undefined ? {} : { code: error.code, message: error.message }),
+      ...(error === undefined ? {} : { code: error.code, message: error.message, category: error.category }),
+      ...(failing.step.status === 'blocked' ? { blocked: true } : {}),
     };
   }
   const error = attempt.error;
-  const located = error === undefined ? {} : { code: error.code, message: error.message };
+  const located = error === undefined ? {} : { code: error.code, message: error.message, category: error.category };
   const evidence = /CIGE evidence ([A-Za-z0-9][A-Za-z0-9._-]*) (?:not satisfied|could not be checked)/.exec(error?.message ?? '')?.[1];
   if (evidence !== undefined) return { phase: 'evidence', id: evidence, ...located };
   const used = /CIGE step ([A-Za-z0-9][A-Za-z0-9._-]*) \(/.exec(error?.message ?? '')?.[1];
@@ -223,13 +238,14 @@ export function classifyResult(testCase: CigeCase, result: ReportResult, report?
   const unreachedGoal = code === 'ASSERTION_FAILED' && step?.kind === 'act';
   if (unreachedGoal) signals.push('goal-unreachable');
   const failureType = ((): CigeFailureType | undefined => {
-    if (where.phase === 'precondition' || INFRASTRUCTURE_CODES.has(code)) return 'infrastructure';
+    if (where.phase === 'precondition') return 'infrastructure';
     if (where.phase === 'execution' && PATH_CODES.has(code)) return 'outdated-test-logic';
+    if (where.category !== undefined && SETUP_CATEGORIES.has(where.category)) return 'infrastructure';
     if (code === 'ASSERTION_FAILED' && !unreachedGoal) return 'product-defect';
     return undefined;
   })();
   if (code === 'ASSERTION_INCONCLUSIVE') signals.push('inconclusive-evidence');
-  if (AUTOMATION_CODES.has(code)) signals.push('automation-limit');
+  if (STEP_LIMIT_CODES.has(code) || (where.blocked === true && where.category === 'test')) signals.push('automation-limit');
   if (result.status === 'timed-out') signals.push('run-stopped');
   return { ...base, ...(failureType === undefined ? {} : { failureType }), signals };
 }

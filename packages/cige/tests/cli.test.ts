@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -185,3 +186,20 @@ describe('e2e-cige check', () => {
     expect(state.out).toContain('environment-undeclared: environment "staging" is not in the config\'s environments');
   });
 });
+
+describe('e2e-cige diff', () => {
+  it('exits 1 when the CIGE config changed, even with every case untouched', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'cige-cli-diff-'));
+    dirs.push(dir);
+    writeFileSync(path.join(dir, 'cige.config.mjs'), 'export default { hooks: { ok: () => false } };\n');
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.email=cige@example.test', '-c', 'user.name=cige', ...args], { cwd: dir, stdio: 'pipe' });
+    git('init', '-q');
+    git('add', '.');
+    git('commit', '-q', '-m', 'base');
+    writeFileSync(path.join(dir, 'cige.config.mjs'), 'export default { hooks: { ok: () => true } };\n');
+    const state = io(dir);
+    expect(await main(['diff', '--base', 'HEAD'], state)).toBe(1);
+    expect(state.out).toContain('needs approval  config-changed: cige.config.mjs');
+  });
+});
+

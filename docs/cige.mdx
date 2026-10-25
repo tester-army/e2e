@@ -12,14 +12,14 @@ each one changes for a different reason:
 
 | Field | Says | Changes |
 | --- | --- | --- |
-| Context | Where the test runs: the system, the environment, the actor, the state it starts from | When the environment drifts |
-| Intent | Why the test exists and what a pass needs | Rarely, and only with human approval |
+| Context | Where the test runs: the system, the environment, the actor, the state it starts from | When the environment drifts, with a human's approval |
+| Intent | Why the test exists and what a pass needs | Rarely, and only with a human's approval |
 | Guardrails | What the agent must never do | Only to get stricter |
 | Execution | The first path to try | Whenever the product's flow changes |
 
-`@e2e-dev/cige` runs `.cige.json` cases as e2e tests. The `cige()` reporter
-writes one run summary per case. The `cige` agent skill reads it, classifies
-the failure, and makes only the repair that kind of failure allows.
+`@e2e-dev/cige` runs `.cige.json` cases as e2e tests and writes one run
+summary per result. The `cige` agent skill reads it, classifies the failure,
+and makes only the repair that kind of failure allows.
 
 ## When to use CIGE
 
@@ -53,24 +53,19 @@ bun add -d @e2e-dev/cige
   "Context": {
     "system": "Shop web app",
     "environment": "staging",
-    "actor": "a signed-in shopper",
     "open": "/cart",
-    "preconditions": [
-      "The discount code SAVE10 is active",
-      { "hook": "seedCart", "description": "The cart holds two of ITEM-100" }
-    ],
+    "preconditions": [{ "hook": "seedCart", "description": "The cart holds two of ITEM-100" }],
     "specRef": "docs/specs/checkout.md",
-    "buildRef": "releases/{build}.md",
-    "expectedRef": "fixtures/{build}/checkout-order.json"
+    "buildRef": "releases/{build}.md"
   },
   "Intent": {
     "statement": "A shopper can check out with a valid discount code",
-    "success": ["The confirmation shows an order number", "The total is 10% below the subtotal"],
+    "success": ["The total is 10% below the subtotal"],
     "evidence": [{ "id": "order-record", "hook": "orderPersisted" }]
   },
   "Guardrails": [
     "Use only the test card",
-    { "id": "no-refund", "rule": "Never refund an order", "deny": { "actions": ["tool:refund"], "summary": ["refund"] } }
+    { "id": "no-refund", "rule": "Never refund an order", "deny": { "actions": ["tool:refund"] } }
   ],
   "Execution": [
     { "id": "e1", "step": "apply the discount code {code}", "params": { "code": "SAVE10" } },
@@ -80,33 +75,22 @@ bun add -d @e2e-dev/cige
 }
 ```
 
-- `id` tags the test `cige:<id>` and names its run summary. Without one, the
-  id is the Intent statement in lowercase words joined by dashes.
-- The package ships `schema/cige-1.schema.json`. The loader also reads
-  lowercase field names; the schema checks the capitalized form only.
-- An unknown key in `Context`, or a `deny` with neither `actions` nor
-  `summary`, fails to load rather than being ignored.
-- `Intent` and `Execution` entries may be plain strings. An Execution string
-  gets the id `e1`, `e2`, and so on, by position. A guardrail string gets
-  `g1`, `g2`, and so on.
-- `specRef`, `buildRef`, and `expectedRef` point to the spec, the build's
-  release notes, and what the build should produce. The model never sees
-  them. `{build}` and `{environment}` are filled in for each run.
+- `id` tags the test `cige:<id>` and names its run summary.
+- The package ships `schema/cige-1.schema.json`, generated from the
+  loader's own schema. An unknown key fails to load rather than being
+  ignored, except keys that start with `x-` ([Extend CIGE](#extend-cige)).
+- `specRef` and `buildRef` point to the spec and the build's release notes,
+  the ground truth a classifier compares a failure with. The model never
+  sees them. `{build}` is filled in for each run.
 
 ## Set up the config
 
-Declare the cases, their hooks, the environments they run in, and the ref
-resolvers one time in `cige.config.ts`. The suite, the reporter, and the
-`e2e-cige` command all read it. The command loads it with Node's type
-stripping, so use only TypeScript that erases to JavaScript: no `enum`.
-Set `root` so all three find the same files, `e2eConfig` when the cases
-run under a config other than the nearest `e2e.config.ts`, so a replay uses
-it, and `configFile` when this file isn't `cige.config.ts` at the project
-root, so the commands a run summary prints pass it as `--config`.
+Declare the cases, their hooks, and the environments they run in one time,
+in `cige.config.ts`. The suite, the reporter, and the `e2e-cige` command
+all read it. Set `root` so all three find the same files.
 
 ```ts title="cige.config.ts"
 import { defineCige } from '@e2e-dev/cige';
-import { shop } from './cige.plugins.ts';
 
 export default defineCige({
   cases: 'tests/cige/*.cige.json',
@@ -121,7 +105,6 @@ export default defineCige({
     // Evidence: the order exists in the backend. Only `true` holds.
     orderPersisted: async ({ screen }) => {
       const orderId = await screen.getByTestId('order-id').textContent();
-      // No order number on the page is no evidence: fail it, don't look up "null".
       if (orderId === null || orderId.trim() === '') return false;
       const response = await fetch(`http://localhost:3000/test-api/orders/${encodeURIComponent(orderId.trim())}`);
       return response.ok;
@@ -135,11 +118,6 @@ export default defineCige({
         if (!response.ok) throw new Error(`resetting staging returned ${response.status}`);
       },
     },
-  },
-  plugins: [shop],
-  refs: {
-    build: ({ build }) => (build === undefined ? undefined : { url: `https://github.com/acme/shop/commit/${build}` }),
-    expected: ({ pointer }) => (pointer === undefined ? undefined : { files: [pointer] }),
   },
 });
 ```
@@ -167,217 +145,84 @@ export default {
 } satisfies E2EConfig;
 ```
 
-Collection fails before any test runs on a glob that matches no file, a
-case that doesn't validate, two cases with one id or one Intent, a hook a
-case names that the config lacks, a variant that leaves a placeholder
-unfilled, or a `Context.environment` that isn't a key of a declared
-`environments` map. Run one case by its id:
+Collection fails before any test runs on a case that doesn't validate, a
+hook or environment the config lacks, or a glob that matches no file. Run
+one case by its id, and check every case has what triage needs (refs, a
+build, an environment that resets) before anything fails:
 
 <CodeGroup>
 ```bash npm
 npx e2e run --tag cige:checkout-discount
-```
-
-```bash pnpm
-pnpm exec e2e run --tag cige:checkout-discount
-```
-
-```bash bun
-bunx e2e run --tag cige:checkout-discount
-```
-</CodeGroup>
-
-## Check that every case can be triaged
-
-A failure can be told apart from an intended change only against the spec
-and the build's release notes, and replayed only in an environment that
-resets. `e2e-cige check` lists each case that lacks one of these, before
-anything fails:
-
-<CodeGroup>
-```bash npm
 npx e2e-cige check --resolve
 ```
 
 ```bash pnpm
+pnpm exec e2e run --tag cige:checkout-discount
 pnpm exec e2e-cige check --resolve
 ```
 
 ```bash bun
+bunx e2e run --tag cige:checkout-discount
 bunx e2e-cige check --resolve
 ```
 </CodeGroup>
-
-| Gap | Fix |
-| --- | --- |
-| `no-spec-ref` | Set `Context.specRef`, or a `refs.spec` resolver in the config |
-| `no-build-ref` | Set `Context.buildRef`, or a `refs.build` resolver |
-| `build-unset` | A ref uses `{build}`. Set `build` from CI, such as `process.env.GITHUB_SHA` or a release tag |
-| `environment-unset` | Set `Context.environment`: the config declares environments, or a ref uses `{environment}` |
-| `environment-undeclared` | Add the case's `Context.environment` to `environments` |
-| `environment-no-reset` | Give the environment a `reset` action |
-| `resolver-failed` | With `--resolve`, a resolver threw. The message says why |
-
-It exits 1 on any gap. Pass `--warn` to only report, or `--json` for
-scripts. Each run also adds a `CIGE gaps` row under the terminal summary
-while any case it ran has a readiness gap; a failing resolver shows only in
-`check --resolve`, since a run never resolves refs. The [`cige` skill](#classify-and-repair-with-the-cige-skill)
-asks for these inputs when it sets up a project.
 
 ## How a case runs
 
 The test's title is the Intent statement. Its body runs these steps in
 order and fails on the first one that doesn't hold:
 
-1. Each precondition hook, such as seeding data. It fails only by throwing.
-2. `app.open(Context.open)`, when the case sets it, so the page loads what
-   the hooks seeded.
-3. Each Execution entry. A `step` is one [`agent.act`](/reference/agent#agent-act)
+1. Each precondition hook, then `app.open(Context.open)`.
+2. Each Execution entry. A `step` is one [`agent.act`](/reference/agent#agent-act)
    goal, with its `params`. A `verify` is one `agent.assert`.
-4. Each piece of evidence. A string or an `assert` entry is one
-   `agent.assert`. A `hook` entry runs your code and holds only when it
-   returns `true`. Any other value, `undefined` included, is
-   `ASSERTION_FAILED`. A throw means the check couldn't run: an error with a
-   code keeps it (an `AgentError` such as `ENVIRONMENT_UNAVAILABLE`, a
-   locator's `LOCATOR_NOT_FOUND`), and any other is `ASSERTION_INCONCLUSIVE`.
-5. `agent.assert` of the Intent statement, with its `success` and `failure`
-   criteria. Set `"judge": false` to skip this check when the screen can't
-   show the Intent. Such a case needs evidence or a `verify` step, or it
-   fails to load.
+3. Each piece of evidence: an `assert` is one `agent.assert`, and a `hook`
+   holds only when it returns `true`.
+4. `agent.assert` of the Intent statement and its criteria, unless
+   `"judge": false`.
 
 Context reaches the model as the test's
-[`agentContext`](/agents#instructions-and-vocabulary): the system,
-environment, actor, preconditions, `facts`, and the files `prompts` names,
-relative to the case file. The refs and `tools` never reach the model.
+[`agentContext`](/agents#instructions-and-vocabulary). The refs never do.
 
 ## Run a case on several dimensions
 
-Keep dimensions out of Intent's meaning. Set where a case runs in
-`Context`, and its data in `Variants`:
+Set where a case runs in Context, and its data in `Variants`. Keep both out
+of the Intent's meaning:
 
 | Dimension | Field |
 | --- | --- |
 | Persona or role | `Context.agent`, an [agent](/agents#pin-an-agent-in-the-suite) by name |
-| Platform | `Context.platforms`, such as `["ios", "android"]` |
-| Signed-in state | `Context.session`, a session a [setup test](/authentication) saved |
-| Required capability | `Context.requires` |
+| Platform, capability, signed-in state | `Context.platforms`, `Context.requires`, `Context.session` |
 | Data: codes, amounts, locales | `Variants[].params`, used as `{name}` placeholders |
 
-```json
-"Variants": [
-  { "id": "save10", "params": { "code": "SAVE10" } },
-  { "id": "save20-mobile", "params": { "code": "SAVE20" }, "platforms": ["ios", "android"] }
-]
-```
-
 Each variant runs as its own test, tagged `cige:<id>/<variant>`, with its
-own run summary. It shares the case's Intent, Guardrails, and evidence, and
-may override `platforms`, `agent`, and `session`. An `act` step gets the
-value as a param; a judgment gets it filled into its text. A param that
-fills no placeholder fails to load.
+own run summary.
 
 ## Guardrails
 
-Every guardrail is added to each `act` instruction under a fixed heading, so
-the acting agent reads it. The judges behind `assert` don't read it. A
-guardrail is in the instruction, so changing one changes the step's
-[cache](/cache) key and the step records again.
-
-A guardrail with `deny` is also checked by the runner after every action of
-an `act` step, through [`onAction`](/reference/agent#agent-act). That includes
-actions the cache replays:
+Every guardrail is added to each `act` instruction, so the acting agent
+reads it; the judges don't. A guardrail with `deny` is also checked by the
+runner after every action of an `act` step, replayed ones included, and a
+match stops the step with `POLICY_DENIED`:
 
 | `deny` | Matches |
 | --- | --- |
-| `actions` | An action name such as `tap`, `navigate`, or `tool:refund`, or a prefix that ends in `*`, such as `tool:*` |
-| `summary` | A case-insensitive regular expression tested against the action's summary, such as `tap button "Refund order"` |
-
-A match stops the step with `POLICY_DENIED`. The message names the
-guardrail, for example `CIGE guardrail no-refund violated by tool:refund`.
+| `actions` | An action name such as `tap`, `navigate`, or `tool:refund`, or a prefix ending in `*`. Prefer this one |
+| `summary` | A regular expression tested against the runner's prose for the action. Best effort: that prose is not a stable contract |
 
 <Note>
-`onAction` runs after an action. A `deny` rule stops the step right after
-the action. It can't prevent the action. Keep tests that could cause
-damage, like real payments, out of environments where that damage counts.
+`onAction` runs after an action, so a `deny` rule stops the step right
+after it; it can't prevent it. Keep tests that could cause damage out of
+environments where that damage counts.
 </Note>
-
-## Read a run summary
-
-After the run, the reporter writes `<output>/cige/<id>.run-summary.json`
-for each CIGE result, `<id>.<variant>.run-summary.json` for a variant.
-`<output>` is `.e2e` unless [`output`](/reference/config#output) or
-`--output` sets it, and `outputDir` in the config moves the summaries.
-
-- A full run deletes the previous run's summaries and refs first, and no
-  other file.
-- A run that leaves cases out (a tag or file filter, `e2e-cige replay`,
-  `--last-failed`) replaces only the summaries of the cases it ran, and
-  keeps every refs directory. A `--last-failed` rerun also writes one for
-  each failure it carried, with the signal `carried-from-earlier-run`.
-- A test the run stopped before its verdict (`--max-failures`, Ctrl-C) gets
-  `result: "interrupted"`, never a failure to triage.
-- A case that ran on several targets or agents gets one file per result,
-  named `<id>.<target>.<agent>.run-summary.json`.
-
-`failureType` is a first guess from the error code and where the failure
-landed. It is a hint for the classifying agent, not a verdict:
-
-| Where and what | `failureType` |
-| --- | --- |
-| A precondition failed, or a credential, environment, or seed data code such as `ENVIRONMENT_UNAVAILABLE`, or `MODEL_UNAVAILABLE` or `MODEL_PROVIDER_FAILED` | `infrastructure` |
-| An Execution `step` failed with `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
-| A `verify`, a piece of evidence, the Intent, or a plugin's check step was judged false (`ASSERTION_FAILED`) | `product-defect` |
-| An act step whose goal the agent could not reach (`ASSERTION_FAILED`) | Absent, with the signal `goal-unreachable`: a changed flow or a defect can each cause it |
-| A spent budget or the clock (`STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`), `STEP_NO_CONCLUSION`, `AUTOMATION_UNSUPPORTED`, `CONTEXT_OVERFLOW`, or `MODEL_REFUSED` | Absent, with the signal `automation-limit`: a changed flow, a slow environment, or a weak model can each cause it |
-| A guardrail violation, an agent that refused to break one (`POLICY_DENIED` citing it), an `ASSERTION_INCONCLUSIVE`, `AUTHENTICATION_FAILED`, or anything else | Absent. `signals` names what the reporter read, such as `guardrail-violation:no-refund` or `guardrail-refused:no-delete` |
-
-A pass has no `failureType`. When no evidence hook backs it, its signals
-include `screen-only-evidence`: check it for a false positive. A failure
-without `specRef` or `buildRef`, and without a `refs.spec` or `refs.build`
-resolver standing in, gets `missing-spec-ref` or `missing-build-ref`,
-since a classifier can't tell a bug from a change without them.
-
-<Accordion title="Example run summary">
-```json title=".e2e/cige/checkout-discount.run-summary.json"
-{
-  "testId": "checkout-discount",
-  "runDate": "2026-10-19",
-  "build": "4f1c2e9",
-  "result": "fail",
-  "intent": "A shopper can check out with a valid discount code",
-  "failedStep": "e3",
-  "failureType": "outdated-test-logic",
-  "classification": {
-    "source": "@e2e-dev/cige",
-    "confidence": "heuristic",
-    "phase": "execution",
-    "errorCode": "LOCATOR_NOT_FOUND",
-    "message": "agent.act failed: no payment button on the order summary",
-    "signals": ["status:failed", "phase:execution", "code:LOCATOR_NOT_FOUND"]
-  },
-  "specRef": "docs/specs/checkout.md",
-  "buildRef": "releases/4f1c2e9.md",
-  "expectedRef": "fixtures/4f1c2e9/checkout-order.json",
-  "resolveRefs": "npx e2e-cige refs checkout-discount",
-  "replay": { "environment": "staging", "command": "npx e2e-cige replay checkout-discount" },
-  "case": "tests/cige/checkout.cige.json",
-  "target": "web",
-  "agent": "default",
-  "attempts": 1,
-  "evidence": {
-    "report": ".e2e/report.json",
-    "resultId": "6188cdbad4140b6f2246ed2afb98e16a37e0fac761a78d6771ff9068ad5a01c1",
-    "trace": ".e2e/results/cige-a-shopper-can-check-out-with-a-6188cdbad4140b6f/trace.md",
-    "artifacts": [".e2e/results/cige-a-shopper-can-check-out-with-a-6188cdbad4140b6f/attempt-1/screen-at-failure.txt"]
-  }
-}
-```
-</Accordion>
 
 ## Classify and repair with the cige skill
 
-The `cige` skill starts from the run summaries. It confirms or corrects
-each `failureType` against the refs, then names the one repair allowed:
+After a run the `cige()` reporter writes `.e2e/cige/<id>.run-summary.json`:
+the failing step, a first guess at the failure type, and the commands that
+fetch the refs and replay the case. The
+[package README](https://github.com/tester-army/e2e/tree/main/packages/cige#readme)
+lists every field. The `cige` skill starts from it and names the one repair
+allowed:
 
 | Classification | The skill | May change |
 | --- | --- | --- |
@@ -400,191 +245,58 @@ bunx skills add tester-army/e2e --skill cige
 ```
 </CodeGroup>
 
-The [e2e plugin](/coding-agents) for Claude Code and Codex includes it.
+## Replay a repair and check it
 
-## Replay a repair
-
-`e2e-cige replay` runs one case alone in its environment. It runs the
-environment's `reset`, then `e2e run` with the environment's `config`,
-`--tag cige:<id>` (`cige:<id>/<variant>` with `--variant`), and
-`--no-cache`, and exits with e2e's code. It resets only an environment
-the config declares, and refuses one with no `reset` (declare a no-op one
-when it keeps no state). A case whose environment is prose runs as is:
+`e2e-cige replay` resets the case's environment and runs the case alone
+with the replay cache off. `e2e-cige diff` then checks the change against
+the field rules, from the branch's merge base. Run `diff` in CI too:
 
 <CodeGroup>
 ```bash npm
 npx e2e-cige replay checkout-discount
-npx e2e-cige env reset staging
-npx e2e-cige refs checkout-discount
-```
-
-```bash pnpm
-pnpm exec e2e-cige replay checkout-discount
-pnpm exec e2e-cige env reset staging
-pnpm exec e2e-cige refs checkout-discount
-```
-
-```bash bun
-bunx e2e-cige replay checkout-discount
-bunx e2e-cige env reset staging
-bunx e2e-cige refs checkout-discount
-```
-</CodeGroup>
-
-- `--variant <v>` replays one variant. Arguments after `--` go to
-  `e2e run`, such as `-- --target web`.
-- `env <provision|reset|teardown> <name>` runs one environment action and
-  touches no case.
-- `refs <id>` runs the config's `refs` resolvers and writes what they
-  return to `.e2e/cige/<id>.refs/`. Resolvers run only here, never during a
-  run. What they return is written for an agent to read, so never return a
-  secret.
-
-To start every replay from the same state, give the environment a config
-whose target uses [`@e2e-dev/smol`](/integrations/smol), with the app
-[running in the machine](/integrations/smol#run-the-app-in-the-machine).
-
-## Check a change against the field rules
-
-`e2e-cige diff` reads every `.cige.json` that changed since the branch
-left a git ref (their merge base) and fails when a change weakens a case.
-Run it in CI and after every repair:
-
-<CodeGroup>
-```bash npm
 npx e2e-cige diff --base origin/main
 ```
 
 ```bash pnpm
+pnpm exec e2e-cige replay checkout-discount
 pnpm exec e2e-cige diff --base origin/main
 ```
 
 ```bash bun
+bunx e2e-cige replay checkout-discount
 bunx e2e-cige diff --base origin/main
 ```
 </CodeGroup>
 
-It exits 1 when Intent's statement changed, when a criterion, evidence
-item, guardrail, deny pattern, variant, or whole case was removed, when a
-variant's data changed, when a judgment was turned off, or when an `id`
-changed. Rewriting Execution, adjusting Context, and adding guardrails,
-deny patterns, criteria, evidence, or variants pass. `--allow-intent` exits
-0 anyway and records nothing, so gate it on a human's approval in CI, such
-as a pull request label; an agent never passes it.
-`--json` prints the report, with `intentUnchanged` and the count of
-`blocking` changes.
+`diff` exits 1, and the change needs a human's approval, when it weakens or
+redirects what a pass means:
+
+- The Intent statement changed, or a criterion, evidence item, guardrail,
+  deny pattern, variant, or case was removed, or a judgment turned off.
+- Any Context changed: the environment, the agent, a precondition.
+- The CIGE config, or a local module it imports, changed: that's where the
+  hooks and plugins a pass depends on live.
+
+Rewriting Execution and adding guardrails, deny patterns, criteria,
+evidence, or variants pass. `diff` sees case files, the CIGE config, and
+the local modules it imports; app code and packages are out of its reach.
+`--allow-intent` exits 0 anyway and records nothing, so gate it on a
+human's approval in CI; an agent never passes it.
 
 ## Extend CIGE
 
-Three layers let you add to CIGE without forking it: your own fields, your
-own behavior, and your own step kinds. Unknown keys that don't start with
-`x-` still fail to load, so a typo never vanishes.
+- **Your own fields:** any object in a case accepts keys that start with
+  `x-`, such as `"x-owner"` or `"x-deny-host"` on a guardrail. Hooks and
+  plugins read them; the model never sees them unless a plugin adds them.
+- **Your own behavior:** `plugins` in the config add context lines,
+  guardrail checks, classification and summary changes, readiness gaps,
+  and step kinds.
+- **Your own steps:** an Execution entry
+  `{ "id": "e4", "use": "order-api", "with": {...} }` runs a step kind a
+  plugin registered.
 
-### Add your own fields
-
-Every object in a case accepts keys that start with `x-`, at any level:
-
-```json
-{
-  "id": "checkout-discount",
-  "x-owner": "checkout-team",
-  "Context": { "system": "Shop web app", "x-feature-flags": ["new-cart"] },
-  "Intent": { "statement": "A shopper can check out with a valid discount code", "x-priority": "p1" },
-  "Guardrails": [{ "id": "no-admin", "rule": "Stay out of the admin console", "x-deny-host": "admin.shop.test" }],
-  "Execution": ["apply the discount code SAVE10"]
-}
-```
-
-- The loader keeps them on the case as `extensions`, where hooks and
-  plugins read them.
-- They never reach the model, unless a plugin's `context` adds them.
-- The case's top-level `x-` keys are copied into each run summary's
-  `extensions`, for triage data such as an owner or a ticket.
-- `e2e-cige diff` blocks a changed `x-` key under Intent or on a guardrail,
-  since a plugin may enforce it. A top-level one passes: it is triage data,
-  so put anything a plugin enforces on the guardrail instead.
-- A step's `params` and `with` are data and take any key, `x-` or not.
-- They are committed in the case file, and the top-level ones are copied
-  into summaries as written, so keep secrets out.
-
-### Add behavior with plugins
-
-A plugin is an object in the config's `plugins` list, each hook optional:
-
-| Hook | Runs | Does |
-| --- | --- | --- |
-| `context` | When the suite registers the case | Adds lines to `agentContext`, checked against its 16 KiB limit |
-| `onAction` | After every action of an `act` step | A returned violation stops the step with `POLICY_DENIED`, named as that guardrail in the summary |
-| `classify` | In the reporter, after the first classification | Sets or clears (`null`) `failureType` on a failure and adds signals; `classification.adjustedBy` names the plugin |
-| `summarize` | In the reporter | Its fields land under `extensions.<plugin name>` |
-| `readiness` | In `e2e-cige check` and the `CIGE gaps` row | Each message it returns, one or a list, is a `plugin` gap |
-| `steps` | When an Execution entry says `use` | Runs a step kind; see below |
-
-Plugin names are lowercase letters, digits, and dashes, unique in the
-config. A plugin that throws in `classify` or `summarize` is recorded in
-the summary and changes nothing else. Plugins are your code and run with
-the runner's full OS authority, as hooks do.
-
-<Accordion title="Example plugin: feature flags, a host deny list, an API step, an owner">
-```ts title="cige.plugins.ts"
-import { AgentError } from 'e2e';
-import type { CigePlugin } from '@e2e-dev/cige';
-
-export const shop: CigePlugin = {
-  name: 'shop',
-  // The one way an x- field reaches the model: a line in the case's agentContext.
-  context: (testCase) => {
-    const flags = testCase.context.extensions?.['x-feature-flags'];
-    return Array.isArray(flags) ? `Feature flags on: ${flags.join(', ')}` : undefined;
-  },
-  // A guardrail check the deny rules can't express, driven by the guardrail's own x- data.
-  onAction: (event, testCase) => {
-    for (const guardrail of testCase.guardrails) {
-      const host = guardrail.extensions?.['x-deny-host'];
-      if (typeof host === 'string' && event.summary.includes(host)) return { guardrail: guardrail.id, reason: `${host} is off limits` };
-    }
-    return undefined;
-  },
-  // A step kind: { "id": "e4", "use": "order-api", "with": { "path": "/test-api/orders/{order}", "expect": 200 } }
-  steps: {
-    'order-api': async ({ step }) => {
-      const path = String(step.with.path);
-      let response: Response;
-      try {
-        response = await fetch(new URL(path, 'http://localhost:3000'));
-      } catch (cause) {
-        // A backend that isn't there is the environment, not the product or the path.
-        throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} failed: ${cause instanceof Error ? cause.message : String(cause)}`);
-      }
-      if (response.status >= 500) throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} answered ${response.status}`);
-      if (response.status !== step.with.expect) throw new AgentError('ASSERTION_FAILED', `GET ${path} answered ${response.status}`);
-    },
-  },
-  summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? 'unowned' }),
-  readiness: (testCase) => (testCase.extensions?.['x-owner'] === undefined ? ['no x-owner: nobody is paged when it fails'] : []),
-};
-```
-</Accordion>
-
-### Run your own step kinds
-
-An Execution entry with `use` runs a step kind a plugin registered, in
-order with the agent's steps:
-
-```json
-{ "id": "e4", "use": "order-api", "with": { "path": "/test-api/orders/{order}", "expect": 200 } }
-```
-
-- A variant fills `{name}` placeholders in every string inside `with`.
-- Return to pass. Throw an `AgentError` to keep its code:
-  `ASSERTION_FAILED` for a check that failed, `ENVIRONMENT_UNAVAILABLE` for
-  a backend that is down. Any other throw fails the step as
-  `ACTION_FAILED`, naming it. The summary's `failedStep` is its id, and
-  `plugin-step-failed:<id>` leaves the failure type to the classifier,
-  since a plain throw says nothing about the flow.
-- Guardrails don't apply: the step is your code, not the model.
-- A step kind no plugin registers fails collection. A repair may rewrite a
-  `use` step, since it is Execution, but never the plugin's code.
+The [package README](https://github.com/tester-army/e2e/tree/main/packages/cige#readme)
+has the plugin reference and an example.
 
 ## Next
 

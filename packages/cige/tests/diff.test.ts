@@ -32,7 +32,8 @@ function kinds(after: CigeTestCase): string[] {
 }
 
 describe('diffCases', () => {
-  it('lets a repair rewrite Execution and adjust Context', () => {
+  it('lets a repair rewrite Execution, and holds any Context change for a human', () => {
+    expect(kinds(edited((file) => void (file.Execution[1].step = 'pay with the saved test card')))).toEqual(['execution-changed']);
     expect(
       kinds(
         edited((file) => {
@@ -40,7 +41,24 @@ describe('diffCases', () => {
           file.Context.environment = 'staging-2';
         }),
       ),
-    ).toEqual(['execution-changed', 'context-changed']);
+    ).toEqual(['execution-changed', '!context-changed']);
+  });
+
+  it('blocks a repair that weakens the case through Context (the review scenario)', () => {
+    const strong: CigeTestCase = {
+      id: 'order',
+      Context: { environment: 'staging', open: '/cart', agent: 'strong', preconditions: [{ hook: 'seedOrder', description: 'An order exists' }] },
+      Intent: { statement: 'A shopper sees their order', evidence: [{ id: 'record', hook: 'orderExists' }] },
+      Execution: [{ id: 'e1', step: 'open the latest order' }, { id: 'e2', verify: 'the order total is shown' }],
+    };
+    const weakened: CigeTestCase = {
+      ...strong,
+      Context: { environment: 'local', open: '/receipt', agent: 'cheap' },
+      Execution: [{ id: 'e1', verify: 'a receipt is shown' }],
+    };
+    const changes = diffCases(parseCige(strong), parseCige(weakened));
+    expect(changes.map((entry) => `${entry.blocking ? '!' : ''}${entry.kind}`)).toEqual(['execution-changed', '!context-changed']);
+    expect(changes[1]?.detail).toBe('environment, agent, open, preconditions; precondition removed: hook seedOrder');
   });
 
   it('lets a repair tighten: criteria, evidence, guardrails, deny patterns, a judgment, variants', () => {
@@ -184,6 +202,26 @@ describe('diffSince', () => {
     git('checkout', '-q', 'repair');
     write(dir, { 'checkout.cige.json': edited((file) => void (file.Execution[1].step = 'pay')) });
     expect(diffSince(main, dir).files[0]?.changes.map((item) => item.kind)).toEqual(['execution-changed']);
+  });
+
+  it('blocks a change to the CIGE config or a module it imports, and ignores other code', () => {
+    const dir = repo({
+      'cige.config.ts': "import { shop } from './plugins/shop.ts';\nexport default { plugins: [shop], hooks: { orderExists: async () => (await fetch('/orders')).ok } };\n",
+      'plugins/shop.ts': "export const shop = { name: 'shop' };\n",
+      'app/server.ts': 'export const port = 3000;\n',
+      'checkout.cige.json': BASE,
+    });
+    const configFile = path.join(dir, 'cige.config.ts');
+    expect(diffSince('HEAD', dir, { configFile }).files).toEqual([]);
+    // The weakening the review names: an evidence hook rewritten to pass.
+    write(dir, { 'cige.config.ts': "import { shop } from './plugins/shop.ts';\nexport default { plugins: [shop], hooks: { orderExists: async () => true } };\n" });
+    write(dir, { 'plugins/shop.ts': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n", 'app/server.ts': 'export const port = 4000;\n' });
+    const report = diffSince('HEAD', dir, { configFile });
+    expect(report.files.map((entry) => [entry.file, entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}`)])).toEqual([
+      ['cige.config.ts', ['!config-changed']],
+      ['plugins/shop.ts', ['!config-changed']],
+    ]);
+    expect(report.blocking).toBe(2);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

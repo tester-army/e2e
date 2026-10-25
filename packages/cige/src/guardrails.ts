@@ -25,14 +25,18 @@ function actionMatches(denied: string, action: string): boolean {
   return denied.endsWith('*') ? action.startsWith(denied.slice(0, -1)) : action === denied;
 }
 
-/** The first guardrail the action breaks, if any. */
-export function breakingGuardrail(guardrails: readonly CigeGuardrail[], event: Pick<ActionEvent, 'action' | 'summary'>): CigeGuardrail | undefined {
-  return guardrails.find((rule) => {
-    const deny = rule.deny;
-    if (deny === undefined) return false;
-    if (deny.actions?.some((denied) => actionMatches(denied, event.action)) === true) return true;
-    return deny.summary?.some((pattern) => new RegExp(pattern, 'i').test(event.summary)) === true;
-  });
+/**
+ * A matcher for the guardrails' `deny` rules, with every `summary` pattern
+ * compiled once: it runs after every action of every act step. A `summary`
+ * pattern matches the runner's prose for the action, which is not a stable
+ * contract, so `actions` is the dependable rule and `summary` best effort.
+ */
+function compileGuardrails(guardrails: readonly CigeGuardrail[]): (event: Pick<ActionEvent, 'action' | 'summary'>) => CigeGuardrail | undefined {
+  const rules = guardrails.flatMap((rule) =>
+    rule.deny === undefined ? [] : [{ rule, actions: rule.deny.actions ?? [], summary: (rule.deny.summary ?? []).map((pattern) => new RegExp(pattern, 'i')) }],
+  );
+  return (event) =>
+    rules.find(({ actions, summary }) => actions.some((denied) => actionMatches(denied, event.action)) || summary.some((pattern) => pattern.test(event.summary)))?.rule;
 }
 
 /**
@@ -46,8 +50,9 @@ export function createGuardrailMonitor(
   check?: (event: ActionEvent) => CigeGuardrailViolation | undefined,
 ): ActionHook | undefined {
   if (check === undefined && !guardrails.some((rule) => rule.deny !== undefined)) return undefined;
+  const breaking = compileGuardrails(guardrails);
   return (event) => {
-    const broken = breakingGuardrail(guardrails, event);
+    const broken = breaking(event);
     if (broken !== undefined) {
       throw new AgentError(
         'POLICY_DENIED',

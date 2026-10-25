@@ -9,102 +9,220 @@ from the parts that drift:
 - **Guardrails**: what the agent must never do.
 - **Execution**: the first path to try.
 
-```json title="tests/cige/checkout.cige.json"
-{
-  "id": "checkout-discount",
-  "Context": { "system": "Shop web app", "environment": "staging", "open": "/cart", "specRef": "docs/specs/checkout.md", "buildRef": "releases/{build}.md" },
-  "Intent": {
-    "statement": "A shopper can check out with the discount code {code}",
-    "evidence": [{ "id": "order-record", "hook": "orderPersisted" }]
-  },
-  "Guardrails": [{ "id": "no-refund", "rule": "Never refund an order", "deny": { "actions": ["tool:refund"] } }],
-  "Execution": [
-    { "id": "e1", "step": "apply the discount code {code}" },
-    { "id": "e2", "step": "pay with the test card" }
-  ],
-  "Variants": [{ "id": "save10", "params": { "code": "SAVE10" } }]
-}
-```
+The [CIGE guide](https://e2e.tester.army/docs/cige) shows how to write a
+case, set up the config, and run it. This README is the reference.
 
-```ts
-// cige.config.ts: read by the suite, the reporter, and the e2e-cige command
-import { defineCige } from '@e2e-dev/cige';
+## Contents
 
-export default defineCige({
-  cases: 'tests/cige/*.cige.json',
-  root: new URL('.', import.meta.url),
-  build: process.env.GITHUB_SHA,
-  hooks: { orderPersisted: async () => (await fetch('http://localhost:3000/test-api/orders/latest')).ok },
-  environments: {
-    staging: {
-      config: 'e2e.config.ts',
-      reset: async () => {
-        const response = await fetch('http://localhost:3000/test-api/reset', { method: 'POST' });
-        if (!response.ok) throw new Error(`resetting staging returned ${response.status}`);
-      },
-    },
-  },
-});
-```
+- Config
+- How a case runs
+- Variants
+- Run summaries
+- Commands
+- What `diff` blocks
+- Extending
 
-```ts
-// tests/cige.e2e.ts
-import { cigeSuite } from '@e2e-dev/cige';
-import cigeConfig from '../cige.config.ts';
+## Config
 
-cigeSuite(cigeConfig);
-```
+`cige.config.ts` exports `defineCige({...})`. `cigeSuite(config)` registers
+the cases, `cige(config)` in the e2e config's `reporters` writes the
+summaries, and `e2e-cige` reads the same file. The command loads it with
+Node's type stripping, so use only TypeScript that erases to JavaScript.
 
-```ts
-// e2e.config.ts
-import { cige } from '@e2e-dev/cige';
-import cigeConfig from './cige.config.ts';
+| Option | Does |
+| --- | --- |
+| `cases` | Globs of `.cige.json` files; default `tests/**/*.cige.json` |
+| `root` | Directory the globs resolve against. Set `new URL('.', import.meta.url)` so the suite, reporter, and command agree |
+| `hooks` | Precondition and evidence hooks a case names, run inside the test with its fixtures |
+| `environments` | By name: `config` (the e2e config that reaches it), and `provision`, `reset`, `teardown` actions. Once set, every `Context.environment` must name one |
+| `refs` | `spec`, `build`, `expected` resolvers, run only by `e2e-cige refs` and `check --resolve`, never during a run. What they return is written for an agent to read, so never return a secret |
+| `plugins` | See [Extending](#extending) |
+| `build` | The build under test, such as `process.env.GITHUB_SHA`: each summary's `build`, and `{build}` in a ref |
+| `outputDir` | Where summaries go; default `cige` beside `report.json` |
+| `e2eConfig` | The e2e config the cases run under, when it isn't the nearest `e2e.config.ts`; a replay passes it |
+| `configFile` | This file's path, when it isn't `cige.config.ts` at the project root; the commands a summary prints pass it as `--config` |
 
-export default { /* targets, agents */ reporters: ['list', cige(cigeConfig)] };
-```
+## How a case runs
 
-Each case becomes one test per variant, tagged `cige:<id>` (and
-`cige:<id>/<variant>`) and titled by its Intent:
+1. Each precondition hook. It fails only by throwing.
+2. `app.open(Context.open)`, when set, so the page loads what the hooks seeded.
+3. Each Execution entry: a `step` is one `agent.act` goal with the
+   guardrails appended, a `verify` one `agent.assert`, a `use` a plugin's
+   step kind.
+4. Each piece of evidence. A `hook` holds only when it returns `true`; any
+   other value is `ASSERTION_FAILED`. A throw means the check couldn't run:
+   an e2e error keeps its code, any other is `ASSERTION_INCONCLUSIVE`.
+5. `agent.assert` of the Intent with its `success` and `failure` criteria,
+   unless `"judge": false`. Such a case needs evidence or a `verify`, or it
+   fails to load.
 
-- A `step` entry is one `agent.act` goal, with the guardrails appended to
-  its instruction. A guardrail's `deny` rule is also checked after every
-  action, and a match stops the step with `POLICY_DENIED`.
-- A `verify` entry is one `agent.assert`, without the guardrails: the judge
-  decides from the statement and the screen.
-- The case passes only when every piece of evidence the Intent names holds
-  (an evidence hook holds only when it returns `true`), and then, unless
-  `judge` is `false`, the Intent itself.
+Context reaches the model as the test's `agentContext`: the system,
+environment, actor, preconditions, `facts`, and the files `prompts` names.
+The refs, `tools`, and `x-` keys never do.
 
-The `cige()` reporter writes one summary per CIGE result under
-`<output>/cige/`, `.e2e/cige/` by default. A summary holds a first
-classification of the result (infrastructure, outdated test logic, or
-product defect) when the error code decides it, the failing step's id, the
-report and trace, the refs with `{build}` filled in, and the command that
-replays it.
+## Variants
 
-The `e2e-cige` command works between runs:
+`Variants` runs one case per combination: each variant fills the `{name}`
+placeholders in Intent, Execution, evidence, and a `use` step's `with`, and
+may override `platforms`, `agent`, and `session`. An `act` step gets the
+value as a param; a judgment gets it filled into its text; a `with` string
+that is one whole placeholder keeps the value's type. A placeholder nothing
+fills, or a param that fills none, fails to load. Each variant is tagged
+`cige:<id>/<variant>` and gets its own summary.
+
+## Run summaries
+
+The reporter writes `<output>/cige/<id>.run-summary.json` per result
+(`<id>.<variant>…` for a variant, `<id>.<target>.<agent>…` when a case ran
+more than once).
+
+- A full run removes the previous summaries and refs first, and no other file.
+- A run that leaves cases out (a tag filter, `e2e-cige replay`,
+  `--last-failed`) replaces only the summaries of the cases it ran and keeps
+  every refs directory. A `--last-failed` rerun also writes one for each
+  failure it carried (`carried-from-earlier-run`).
+- A test stopped before its verdict gets `result: "interrupted"`.
+- The terminal summary gets a `CIGE gaps` row while a case it ran has a
+  readiness gap (see `check`).
+
+| Field | Holds |
+| --- | --- |
+| `result` | `pass`, `fail`, `skipped`, or `interrupted` |
+| `failedStep` | The Execution id, evidence id, or `intent` that failed |
+| `failureType` | A first guess, below; absent when the evidence can't decide |
+| `classification` | `phase`, `errorCode`, `message`, `signals`, and `adjustedBy` when a plugin changed it |
+| `specRef`, `buildRef`, `expectedRef` | The case's refs with `{build}` and `{environment}` filled in |
+| `resolveRefs`, `replay` | The commands that fetch the refs and replay the result |
+| `extensions` | The case's top-level `x-` keys, then each plugin's `summarize` fields under its name |
+| `evidence` | Pointers to `report.json`, the trace page, and the artifacts |
+
+`failureType` reads the runner's own error class (`error.category` in
+`report.json`) and the step's status, so it follows new codes in e2e:
+
+| What the report says | `failureType` |
+| --- | --- |
+| A precondition failed, or an `infrastructure` or `configuration` class error (environment, app, credentials, seed data, the model provider) | `infrastructure` |
+| An Execution `step` ended `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
+| A `verify`, evidence, the Intent, or a plugin's check step was judged false (`ASSERTION_FAILED`) | `product-defect` |
+| An act step's goal couldn't be reached (`ASSERTION_FAILED`) | Absent, signal `goal-unreachable` |
+| A `blocked` step, a spent budget, the clock, or no conclusion | Absent, signal `automation-limit` |
+| A guardrail violation, an agent's refusal citing one, an inconclusive judgment, a plugin step's plain throw | Absent; `guardrail-violation:<id>`, `guardrail-refused:<id>`, `inconclusive-evidence`, `plugin-step-failed:<id>` |
+
+A pass with no evidence hook carries `screen-only-evidence`: check it for a
+false positive. A failure without a spec or build ref (and no resolver)
+carries `missing-spec-ref` or `missing-build-ref`.
+
+## Commands
 
 ```bash
-npx e2e-cige replay <id>              # reset the environment, run the case alone, no cache
-npx e2e-cige env reset <environment>  # provision | reset | teardown
-npx e2e-cige refs <id>                # spec, release notes, expected output into .e2e/cige/<id>.refs/
-npx e2e-cige check --resolve          # what each case lacks to be classified and replayed
-npx e2e-cige diff --base origin/main  # fails when a change weakens a case
+npx e2e-cige replay <id> [--variant <v>] [-- <e2e run options>]
+npx e2e-cige env <provision|reset|teardown> <environment>
+npx e2e-cige refs <id> [--variant <v>] [--build <build>]
+npx e2e-cige check [--resolve] [--warn] [--json]
+npx e2e-cige diff [--base origin/main] [--json] [--allow-intent]
 ```
 
-CIGE is extensible without forking it:
+Every command takes `--config <file>`; the default is `cige.config.ts` in
+the working directory.
 
-- **`x-` fields:** any object in a case accepts `x-` keys (`"x-owner"`,
-  `"x-deny-host"`). Hooks and plugins read them; the model never sees them
-  unless a plugin adds them; top-level ones are copied into summaries. Any
-  other unknown key still fails to load.
-- **Plugins:** `plugins` in `cige.config.ts`, each with optional `context`,
-  `onAction`, `classify`, `summarize`, `readiness`, and `steps` hooks.
-- **Step kinds:** an Execution entry `{ "id": "e4", "use": "order-api",
-  "with": {...} }` runs a step kind a plugin registered.
+- `replay` runs the declared environment's `reset` (it refuses one without
+  `reset`; declare a no-op one when it keeps no state), then
+  `e2e run --tag cige:<id> --no-cache` with the environment's `config`, and
+  exits with e2e's code. A case whose environment is prose runs as is.
+- `env` runs one environment action and touches no case.
+- `refs` writes `<output>/cige/<id>.refs/`: `index.json` and a text file
+  per resolver that returned text. A `pointer` alone, a missing key, or an
+  `error` there means the ref is unresolved.
+- `check` lists each case's gaps and exits 1 on any, unless `--warn`:
+
+| Gap | Fix |
+| --- | --- |
+| `no-spec-ref`, `no-build-ref` | Set `Context.specRef` / `buildRef`, or a `refs.spec` / `refs.build` resolver |
+| `build-unset` | A ref uses `{build}`; set `build` from CI |
+| `environment-unset` | Set `Context.environment` |
+| `environment-undeclared`, `environment-no-reset` | Declare the environment, with a `reset` |
+| `resolver-failed` | With `--resolve`, a resolver threw |
+| `plugin` | A plugin's `readiness` hook named it |
+
+## What `diff` blocks
+
+`diff` compares every changed `.cige.json`, the CIGE config, and the local
+modules the config imports (transitively) against the branch's merge base
+with `--base`. It exits 1 on any change that needs a human's approval:
+
+| Blocks | Passes |
+| --- | --- |
+| Intent statement changed; a criterion, evidence item, guardrail, deny pattern, variant, or case removed; a judgment turned off; an id changed; a variant's data changed | Execution rewritten; criteria, evidence, guardrails, deny patterns, or variants added |
+| Any Context change, a removed precondition named | A top-level `x-` key changed (triage data) |
+| An `x-` key changed under Intent, evidence, or a guardrail | |
+| The CIGE config or a local module it imports changed | |
+
+App code and packages are out of its reach and need a human's review.
+`--allow-intent` exits 0 anyway and records nothing: gate it on a human's
+approval in CI. `--json` reports `intentUnchanged` and the `blocking` count.
+
+## Extending
+
+**`x-` keys.** Every object in a case accepts keys that start with `x-`; any
+other unknown key fails to load. The loader keeps them as `extensions`. A
+step's `params` and `with` are data and take any key. Put data a plugin
+enforces on the guardrail, where `diff` blocks a change, not at the top
+level. Keep secrets out: they are committed and copied into summaries.
+
+**Plugins.** `plugins` in the config, each with a `name` (lowercase letters,
+digits, dashes) and optional hooks:
+
+| Hook | Runs | Does |
+| --- | --- | --- |
+| `context` | When the suite registers the case | Adds lines to `agentContext`, the only way an `x-` field reaches the model |
+| `onAction` | After every action of an `act` step | A returned `{ guardrail, reason }` stops the step with `POLICY_DENIED` |
+| `classify` | In the reporter | Sets or clears (`null`) `failureType` on a failure and adds signals |
+| `summarize` | In the reporter | Fields under `extensions.<name>` |
+| `readiness` | In `check` and the `CIGE gaps` row | A message, a list, or nothing |
+| `steps` | When an Execution entry says `use` | Runs a step kind; `with` is its input |
+
+A step kind returns to pass. Throw an `AgentError` to keep its code
+(`ASSERTION_FAILED` for a failed check, `ENVIRONMENT_UNAVAILABLE` for a
+backend that is down); any other throw is `ACTION_FAILED` naming the step.
+Guardrails don't apply to it. Plugins are your code, with the runner's full
+OS authority.
+
+```ts
+import { AgentError } from 'e2e';
+import type { CigePlugin } from '@e2e-dev/cige';
+
+export const shop: CigePlugin = {
+  name: 'shop',
+  context: (testCase) => {
+    const flags = testCase.context.extensions?.['x-feature-flags'];
+    return Array.isArray(flags) ? `Feature flags on: ${flags.join(', ')}` : undefined;
+  },
+  onAction: (event, testCase) => {
+    for (const guardrail of testCase.guardrails) {
+      const host = guardrail.extensions?.['x-deny-host'];
+      if (typeof host === 'string' && event.summary.includes(host)) return { guardrail: guardrail.id, reason: `${host} is off limits` };
+    }
+    return undefined;
+  },
+  steps: {
+    'order-api': async ({ step }) => {
+      const path = String(step.with.path);
+      let response: Response;
+      try {
+        response = await fetch(new URL(path, 'http://localhost:3000'));
+      } catch (cause) {
+        throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+      }
+      if (response.status >= 500) throw new AgentError('ENVIRONMENT_UNAVAILABLE', `GET ${path} answered ${response.status}`);
+      if (response.status !== step.with.expect) throw new AgentError('ASSERTION_FAILED', `GET ${path} answered ${response.status}`);
+    },
+  },
+  summarize: ({ testCase }) => ({ owner: testCase.extensions?.['x-owner'] ?? 'unowned' }),
+  readiness: (testCase) => (testCase.extensions?.['x-owner'] === undefined ? 'no x-owner: nobody is paged when it fails' : undefined),
+};
+```
 
 The `cige` agent skill (`npx skills add tester-army/e2e --skill cige`)
-reads the summaries, classifies each failure, and makes only the repair it
-allows. The file format is pinned by `schema/cige-1.schema.json`. See the
-[CIGE guide](https://e2e.tester.army/docs/cige) for every field, the
-guardrail rules, and the classification table.
+reads the summaries, classifies each failure, and makes only the repair
+that kind allows. The file format is pinned by `schema/cige-1.schema.json`,
+generated from the loader's schema at build.

@@ -5,7 +5,8 @@ import { AgentError, isAgentError, type ActOptions, type AssertOptions, type Tes
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { classifyResult } from '../src/classify.ts';
-import { breakingGuardrail, createGuardrailMonitor, violatedGuardrail } from '../src/guardrails.ts';
+import { createGuardrailMonitor, violatedGuardrail } from '../src/guardrails.ts';
+import type { CigeGuardrail } from '../src/schema.ts';
 import { loadCigeCases, loadCigeFile } from '../src/load.ts';
 import { actInstruction, GUARDRAIL_HEADING, intentAssertion, renderAgentContext } from '../src/render.ts';
 import { missingHooks, runCige } from '../src/run.ts';
@@ -194,15 +195,26 @@ describe('limits and guards', () => {
   });
 });
 
+/** The guardrail a monitor stops the action for, read back from its message as a summary would. */
+function broken(guardrails: readonly CigeGuardrail[], event: { action: string; summary: string }): string | undefined {
+  const monitor = createGuardrailMonitor(guardrails)!;
+  try {
+    void monitor({ index: 1, source: 'model', ...event });
+    return undefined;
+  } catch (error) {
+    return violatedGuardrail(error instanceof Error ? error.message : undefined);
+  }
+}
+
 describe('guardrails', () => {
   const testCase = parseCige(CHECKOUT);
 
   it('matches actions by name or prefix and summaries by pattern', () => {
-    expect(breakingGuardrail(testCase.guardrails, { action: 'tool:refund', summary: 'x' })?.id).toBe('no-refund');
-    expect(breakingGuardrail(testCase.guardrails, { action: 'tap', summary: 'tap button "Refund order"' })?.id).toBe('no-refund');
-    expect(breakingGuardrail(testCase.guardrails, { action: 'tap', summary: 'tap button "Pay"' })).toBeUndefined();
+    expect(broken(testCase.guardrails, { action: 'tool:refund', summary: 'x' })).toBe('no-refund');
+    expect(broken(testCase.guardrails, { action: 'tap', summary: 'tap button "Refund order"' })).toBe('no-refund');
+    expect(broken(testCase.guardrails, { action: 'tap', summary: 'tap button "Pay"' })).toBeUndefined();
     const prefixed = parseCige({ Context: {}, Intent: 'x', Guardrails: [{ rule: 'no tools', deny: { actions: ['tool:*'] } }], Execution: ['y'] });
-    expect(breakingGuardrail(prefixed.guardrails, { action: 'tool:seed', summary: '' })?.id).toBe('g1');
+    expect(broken(prefixed.guardrails, { action: 'tool:seed', summary: '' })).toBe('g1');
   });
 
   it('stops the step with POLICY_DENIED and a message the reporter reads back', async () => {

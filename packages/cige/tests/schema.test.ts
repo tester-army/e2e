@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 
+import { cigeJsonSchema } from '../src/json-schema.ts';
 import { CigeValidationError, parseCige, slugify } from '../src/schema.ts';
 
 function json(relative: string): unknown {
@@ -13,6 +14,11 @@ const schema = json('../schema/cige-1.schema.json');
 const validate = new Ajv2020({ allErrors: true, strict: false }).compile(schema as object);
 
 describe('cige-1.schema.json', () => {
+  it('is the schema the loader validates with, generated, not a hand-kept copy', () => {
+    // A stale copy means the zod schema changed without `pnpm --filter @e2e-dev/cige build`.
+    expect(schema).toEqual(cigeJsonSchema());
+  });
+
   it('accepts the valid fixture and a case written for another CIGE runner', () => {
     expect(validate(json('../schema/fixtures/cige-1.valid.json')), JSON.stringify(validate.errors)).toBe(true);
     expect(validate(json('./fixtures/checkout-flow.cige.json')), JSON.stringify(validate.errors)).toBe(true);

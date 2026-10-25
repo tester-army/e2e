@@ -1,17 +1,20 @@
 /**
  * The CIGE field rules, checked mechanically. A repair may rewrite
- * Execution, adjust Context, and add variants, guardrails, deny patterns,
- * criteria, or evidence; anything that weakens or redirects what a pass
- * means (the Intent statement, a removed criterion or evidence item, a
- * judgment turned off, a guardrail or deny pattern dropped, a case or
- * variant removed, a variant's data changed, an id that moves its history)
- * blocks until a human approves it. `e2e-cige diff`
- * runs this over every `.cige.json` that changed since a git ref, so CI and
- * the `cige` skill read the same verdict.
+ * Execution and add variants, guardrails, deny patterns, criteria, or
+ * evidence; anything that weakens or redirects what a pass means blocks
+ * until a human approves it: the Intent statement, a removed criterion or
+ * evidence item, a judgment turned off, a guardrail or deny pattern
+ * dropped, a case or variant removed, a variant's data changed, an id that
+ * moves its history, any Context change (where and as whom the case runs,
+ * and what it starts from), and any change to the CIGE config or the local
+ * modules it imports, where the hooks and plugins that decide a pass live.
+ * `e2e-cige diff` runs this over everything that changed since a git ref,
+ * so CI and the `cige` skill read the same verdict. App code and packages
+ * are out of its reach.
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 
 import type { CigeExtensions } from './extensions.ts';
@@ -41,7 +44,8 @@ export type CigeChangeKind =
   | 'variant-changed'
   | 'intent-extension-changed'
   | 'guardrail-extension-changed'
-  | 'case-extension-changed';
+  | 'case-extension-changed'
+  | 'config-changed';
 
 const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'case-removed',
@@ -55,6 +59,11 @@ const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'deny-removed',
   'variant-removed',
   'variant-changed',
+  // Context says where, as whom, and from what state the case runs: switching the environment or the agent,
+  // or dropping a precondition, can make a case pass that should not.
+  'context-changed',
+  // The config holds the hooks and plugins a pass depends on: an evidence hook rewritten to return true is a pass.
+  'config-changed',
   // Intent is human-owned, and a plugin may enforce a guardrail's x- data, so changing either can loosen the case.
   'intent-extension-changed',
   'guardrail-extension-changed',
@@ -63,7 +72,7 @@ const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
 export interface CigeChange {
   readonly kind: CigeChangeKind;
   readonly detail: string;
-  /** Whether the change weakens the case, and so needs a human's approval. */
+  /** Whether the change can weaken or redirect what a pass means, and so needs a human's approval. */
   readonly blocking: boolean;
 }
 
@@ -173,7 +182,10 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
     const keys = Object.keys({ ...before.context, ...after.context }).filter(
       (key) => key !== 'fragments' && !same(before.context[key as keyof CigeCase['context']], after.context[key as keyof CigeCase['context']]),
     );
-    changes.push(change('context-changed', keys.join(', ')));
+    const dropped = setDiff(before.context.preconditions, after.context.preconditions, (entry) => canonical(entry)).removed.map((entry) =>
+      entry.kind === 'hook' ? `hook ${entry.hook}` : JSON.stringify(entry.text),
+    );
+    changes.push(change('context-changed', [keys.join(', '), ...(dropped.length === 0 ? [] : [`precondition removed: ${dropped.join(', ')}`])].join('; ')));
   }
   // Top-level x- keys are triage data (an owner, a ticket); enforced data belongs on a guardrail, whose x- changes block.
   const caseKeys = changedKeys(before.extensions, after.extensions);
@@ -216,7 +228,7 @@ export interface CigeDiffReport {
   readonly files: readonly CigeFileDiff[];
   /** True when no changed case's Intent reads differently, stricter or looser. */
   readonly intentUnchanged: boolean;
-  /** How many changes weaken a case and need a human's approval. */
+  /** How many changes need a human's approval. */
   readonly blocking: number;
 }
 
@@ -240,12 +252,50 @@ function parseAt(text: string, source: string): Side {
   }
 }
 
+function isFile(file: string): boolean {
+  return existsSync(file) && statSync(file).isFile();
+}
+
+const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g;
+const MODULE_EXTENSIONS = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
+
+/**
+ * The CIGE config file and every local module it imports, transitively:
+ * static and dynamic imports whose specifier starts with `.`, resolved
+ * beside the importing file, inside the repository only. Packages are not
+ * followed; they are reviewed as dependencies, not as the case.
+ */
+function configModules(configFile: string, top: string): string[] {
+  // Real paths on both sides: git reports the repository's, and a path through a symlink would land outside it.
+  const root = realpathSync(top);
+  const seen = new Set<string>();
+  const visit = (candidate: string): void => {
+    if (!isFile(candidate)) return;
+    const file = realpathSync(candidate);
+    if (seen.has(file)) return;
+    seen.add(file);
+    for (const match of readFileSync(file, 'utf8').matchAll(RELATIVE_IMPORT)) {
+      const target = path.resolve(path.dirname(file), match[1]!);
+      const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find(isFile);
+      if (resolved !== undefined && !path.relative(root, realpathSync(resolved)).startsWith('..')) visit(resolved);
+    }
+  };
+  visit(path.resolve(configFile));
+  return [...seen].filter((file) => !path.relative(root, file).startsWith('..')).map((file) => path.relative(root, file).split(path.sep).join('/'));
+}
+
+export interface DiffOptions {
+  /** The CIGE config file; its changes, and those of the local modules it imports, need a human's approval like a weakened case. */
+  readonly configFile?: string;
+}
+
 /**
  * Diffs every `.cige.json` that changed since this branch left `base` (their
  * merge base) up to the working tree, untracked files included, in the
- * repository that holds `cwd`.
+ * repository that holds `cwd`, and reports any change to the CIGE config and
+ * the local modules it imports.
  */
-export function diffSince(base: string, cwd: string): CigeDiffReport {
+export function diffSince(base: string, cwd: string, options: DiffOptions = {}): CigeDiffReport {
   const top = git(['rev-parse', '--show-toplevel'], cwd).trim();
   // From where this branch left the base, not its tip: a change that landed there since is not this branch's.
   const mergeBase = git(['merge-base', base, 'HEAD'], top).trim();
@@ -267,13 +317,23 @@ export function diffSince(base: string, cwd: string): CigeDiffReport {
     const id = caseOf(after)?.id ?? caseOf(before)?.id;
     if (changes.length > 0) files.push({ file, ...(id === undefined || invalid.length > 0 ? {} : { id }), changes });
   }
+  if (options.configFile !== undefined) {
+    const modules = configModules(options.configFile, top);
+    if (modules.length > 0) {
+      const touched = fields(git(['diff', '--name-only', '--no-renames', '-z', mergeBase, '--', ...modules], top));
+      const untracked = fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ...modules], top));
+      for (const file of [...new Set([...touched, ...untracked])].toSorted()) {
+        files.push({ file, changes: [change('config-changed', `${file}: the hooks, plugins, and environments a pass depends on`)] });
+      }
+    }
+  }
   const all = files.flatMap((entry) => entry.changes);
   return { base, files, intentUnchanged: intentUnchanged(all), blocking: all.filter((entry) => entry.blocking).length };
 }
 
 /** The report as the terminal shows it: one line per change, blocking ones marked. */
 export function formatDiff(report: CigeDiffReport): string {
-  if (report.files.length === 0) return `No CIGE case changed since ${report.base}.\n`;
+  if (report.files.length === 0) return `No CIGE case or config changed since ${report.base}.\n`;
   const lines: string[] = [];
   for (const entry of report.files) {
     lines.push(`${entry.file}${entry.id === undefined ? '' : ` (${entry.id})`}`);
@@ -283,7 +343,7 @@ export function formatDiff(report: CigeDiffReport): string {
   lines.push(
     report.blocking === 0
       ? `Every change keeps or tightens what a pass means. Intent ${report.intentUnchanged ? 'unchanged' : 'tightened'}.`
-      : `${report.blocking} change${report.blocking === 1 ? '' : 's'} weaken${report.blocking === 1 ? 's' : ''} a case and need${report.blocking === 1 ? 's' : ''} a human's approval.`,
+      : `${report.blocking} change${report.blocking === 1 ? '' : 's'} can change what a pass means and need${report.blocking === 1 ? 's' : ''} a human's approval.`,
   );
   return `${lines.join('\n')}\n`;
 }

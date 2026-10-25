@@ -138,22 +138,9 @@ suites that consume the built packages the way a user would.
   calls it stops asking. When every call fails, or git or a file read
   fails, it throws, and the run warns and runs every test.
 - `packages/cige` — the published `@e2e-dev/cige` package: CIGE test cases
-  (Context, Intent, Guardrails, Execution) as `.cige.json` files, pinned by
-  `schema/cige-1.schema.json` with a valid and an invalid fixture.
-  `cigeSuite` registers one test per case and variant at collection, tagged
-  `cige:<id>` (and `cige:<id>/<variant>`), and runs Execution through the
-  public `agent.act` and `agent.assert`, the guardrails on each instruction
-  and their `deny` rules in `onAction`. The `cige()` reporter writes
-  `<output>/cige/*.run-summary.json` for the `skills/cige` skill, re-reading
-  the case files in the main process rather than anything a worker held.
-  One `cige.config.ts` (`defineCige`) feeds the suite, the reporter, and the
-  `e2e-cige` bin (`replay`, `env`, `refs`, `check`, `diff`), which spawns the
-  installed `e2e` bin rather than any internal API. The schema is closed
-  except for `x-` keys, which `src/extensions.ts` takes off before
-  validation and the case keeps as `extensions`; behavior extends through
-  the config's `plugins` (`src/plugins.ts`), including `use` step kinds. A
-  new extension point is a plugin hook, never an open key. Imports `e2e`
-  and `e2e/runner` (for `isE2EError`) only; no core change.
+  as `.cige.json` files, run through the public `agent.act` and
+  `agent.assert`. `schema/cige-1.schema.json` is generated from
+  `src/schema.ts` at build; imports `e2e` and `e2e/runner` only.
 - `packages/github` — the published `@e2e-dev/github` package: the reporter
   that posts the run as one pull request comment from GitHub Actions and
   keeps it current on reruns, writing the same text to the job summary. It
@@ -252,14 +239,10 @@ suites that consume the built packages the way a user would.
   API mapping, so a mapping change edits the guide, not the skill. Installed
   with `npx skills add tester-army/e2e --skill migrate-to-e2e`; not shipped
   in the package and not read by `e2e guide`.
-- `skills/cige/`: a consumer skill for `@e2e-dev/cige` cases: authoring,
-  then classify, recover, repair, or escalate from a run summary, each
-  allowed to change only its own CIGE field, replayed with `e2e-cige replay`
-  and checked with `e2e-cige diff`. It drives the package's commands, so a
-  change to a summary field, a command, or the field rules (`src/diff.ts`)
-  edits it in the same change. Installed with
-  `npx skills add tester-army/e2e --skill cige`; not shipped in the package
-  and not read by `e2e guide`.
+- `skills/cige/`: a consumer skill for `@e2e-dev/cige` cases; a change to
+  a run summary field, an `e2e-cige` command, or `src/diff.ts` edits it in
+  the same change. Installed with `npx skills add tester-army/e2e --skill
+  cige`; not shipped in the package and not read by `e2e guide`.
 - `.dev/skills/` — the skills we use to work on this repo (`authoring-docs`,
   `babysit`, `ship-pr`, `verify`, `writing-pr`). `npx skills add tester-army/e2e`
   offers only `skills/*`: its default scan never looks in `.dev/`, and it skips

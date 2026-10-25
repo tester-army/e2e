@@ -30,9 +30,10 @@ the system. The case is not the problem, so this leaves it alone.
 If the environment changed for good (a new URL, a renamed test account, a
 service that moved), the fix belongs in Context or in the environment's
 e2e config, not in Execution. Propose the Context change as a diff, run
-`npx e2e-cige diff --base origin/main`, and hand it to a human with the
-evidence that the old value no longer works. This is the one Context edit
-the field rules allow, and it is never merged on your own.
+`npx e2e-cige diff --base origin/main` (it blocks with `context-changed`,
+or `config-changed` for the CIGE config), and hand it to a human with the
+evidence that the old value no longer works. It is never merged on your
+own.
 
 ## Done when
 

@@ -60,7 +60,6 @@ export default {
       ].join(' '),
     },
   },
-  // One run summary per CIGE result under .e2e/cige/ (tests-agent/cige.e2e.ts).
   reporters: ['list', cige(cigeConfig)],
   credentials: {
     admin: {

@@ -95,8 +95,10 @@ that one pointer. Don't invent a path.
   "not there", and throw only when the check itself can't run.
 - **Guardrails** are prose the acting agent reads on every step. Add `deny`
   when the runner must stop the step on an action: an action name
-  (`tool:refund`, `navigate`), a prefix ending in `*`, or a regular
-  expression over the action's summary. The check runs after the action,
+  (`tool:refund`, `navigate`) or a prefix ending in `*` in `actions`, or a
+  regular expression over the action's summary in `summary`. Prefer
+  `actions`: the summary is the runner's prose and can change, so a
+  `summary` pattern is best effort. The check runs after the action,
   so keep cases that could do real damage out of environments where it
   counts.
 - **Execution** is one goal per `step` (an `agent.act`) or `verify` (an

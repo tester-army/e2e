@@ -46,6 +46,12 @@ const scripted: StepExecutor = {
   cache: 'off',
   async runStep(ctx) {
     const text = ctx.step.instruction;
+    if (text.startsWith('drag the card')) {
+      return { status: 'blocked', errorCode: 'AUTOMATION_UNSUPPORTED', summary: 'this engine has no drag verb' };
+    }
+    if (text.startsWith('open the seeded order')) {
+      return { status: 'blocked', errorCode: 'SEED_DATA_MISSING', summary: 'there is no seeded order to open' };
+    }
     if (text.startsWith('open the Billing tab')) {
       return { status: 'failed', errorCode: 'ASSERTION_FAILED', summary: 'the wizard has no Billing tab' };
     }
@@ -168,6 +174,18 @@ const CASES: Record<string, object> = {
       { id: 'voucher', params: { method: 'voucher' } },
     ],
   },
+  blocked: {
+    id: 'blocked',
+    Context: {},
+    Intent: 'A user can move a card to Done',
+    Execution: [{ id: 'e1', step: 'drag the card to Done' }],
+  },
+  unseeded: {
+    id: 'unseeded',
+    Context: {},
+    Intent: 'A shopper can open their order',
+    Execution: [{ id: 'e1', step: 'open the seeded order' }],
+  },
   unreachable: {
     id: 'unreachable',
     Context: {},
@@ -262,6 +280,7 @@ describe('cigeSuite through the runner', () => {
     expect(tags['A shopper can place an order']).toEqual(['cige', 'cige:pass']);
     expect(Object.keys(summaries).toSorted()).toEqual([
       'api',
+      'blocked',
       'defect',
       'evidence',
       'guardrail',
@@ -272,6 +291,7 @@ describe('cigeSuite through the runner', () => {
       'serial-checkout',
       'stale',
       'unreachable',
+      'unseeded',
       'variants.card',
       'variants.voucher',
     ]);
@@ -283,6 +303,15 @@ describe('cigeSuite through the runner', () => {
     expect(summaries['variants.card']).toMatchObject({ testId: 'variants', variant: 'card', result: 'pass', intent: 'A shopper can pay by card' });
     expect(summaries['variants.voucher']).toMatchObject({ variant: 'voucher', result: 'fail', failedStep: 'e1', failureType: 'outdated-test-logic' });
     expect(written).toContain('variants.voucher.run-summary.json');
+  });
+
+  it('classifies from the runner categories and step status, not from a copy of its code list', () => {
+    // AUTOMATION_UNSUPPORTED is named nowhere in the classifier: the blocked step says it.
+    expect(summaries.blocked).toMatchObject({ result: 'fail', failedStep: 'e1', classification: { errorCode: 'AUTOMATION_UNSUPPORTED' } });
+    expect(summaries.blocked).not.toHaveProperty('failureType');
+    expect(summaries.blocked?.classification.signals).toContain('automation-limit');
+    // SEED_DATA_MISSING is named nowhere either: its configuration class makes it infrastructure.
+    expect(summaries.unseeded).toMatchObject({ result: 'fail', failureType: 'infrastructure', classification: { errorCode: 'SEED_DATA_MISSING' } });
   });
 
   it('leaves an act goal the agent could not reach untyped, unlike a failed check', () => {
@@ -460,7 +489,7 @@ describe('the reporter on a later run', () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.
     // The reporter config here has no plugins, so `api` counts by its missing specRef alone.
-    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "9 cases can't be fully classified or replayed: npx e2e-cige check" });
+    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "11 cases can't be fully classified or replayed: npx e2e-cige check" });
     const stale = JSON.parse(readFileSync(path.join(dir(), 'stale.run-summary.json'), 'utf8')) as CigeRunSummary;
     expect(stale.classification.signals).toContain('missing-spec-ref');
     expect(stale.classification.signals).not.toContain('missing-build-ref');

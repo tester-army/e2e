@@ -18,7 +18,8 @@ export const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 /** A stable id: what a run summary names a step, a guardrail, or an evidence item by. */
 const Id = z.string().regex(ID_PATTERN, 'an id is 1 through 64 letters, digits, dots, dashes, or underscores, starting with a letter or digit');
 
-const Text = z.string().trim().min(1);
+// The regex is what a JSON Schema validator can check; trim() alone would emit only minLength.
+const Text = z.string().trim().min(1).regex(/\S/);
 
 /** A value an Execution step hands `agent.act` as a param; the file it came from is JSON, and the runner checks it again. */
 const ParamValue = z.unknown();
@@ -26,7 +27,7 @@ const ParamValue = z.unknown();
 const ExecutionAct = z.strictObject({
   id: Id,
   step: Text,
-  params: z.record(z.string(), ParamValue).optional(),
+  params: z.record(z.string(), ParamValue).optional().meta({ description: 'Values the step refers to as {name}.' }),
 });
 
 const ExecutionVerify = z.strictObject({
@@ -36,11 +37,16 @@ const ExecutionVerify = z.strictObject({
 });
 
 /** A step a plugin runs: `use` names a step kind a plugin registered, `with` is its input. */
-const ExecutionUse = z.strictObject({
-  id: Id,
-  use: Id,
-  with: z.record(z.string(), z.unknown()).optional(),
-});
+const ExecutionUse = z
+  .strictObject({
+    id: Id,
+    use: Id,
+    with: z.record(z.string(), z.unknown()).optional(),
+  })
+  .meta({
+    description:
+      "A step a plugin runs: use names a step kind a plugin in cige.config.ts registers, and with is its input. {name} placeholders in with's strings are filled by the variant.",
+  });
 
 const ExecutionEntry = z.union([Text, ExecutionAct, ExecutionVerify, ExecutionUse]);
 
@@ -52,7 +58,7 @@ const EvidenceAssert = z.strictObject({
 
 const EvidenceHook = z.strictObject({
   id: Id.optional(),
-  hook: Id,
+  hook: Id.meta({ description: 'A hook in the CIGE config that checks the evidence; it holds only when it returns true.' }),
   description: Text.optional(),
 });
 
@@ -62,8 +68,11 @@ const IntentObject = z.strictObject({
   statement: Text,
   success: z.array(Text).optional(),
   failure: z.array(Text).optional(),
-  evidence: z.array(EvidenceEntry).optional(),
-  judge: z.boolean().optional(),
+  evidence: z
+    .array(EvidenceEntry)
+    .optional()
+    .meta({ description: 'What a pass requires beyond the steps running: a judgment of the screen, or a hook in your code such as a backend check.' }),
+  judge: z.boolean().optional().meta({ description: 'Judge the statement on screen once the evidence holds; default true.' }),
 });
 
 const GuardrailDeny = z
@@ -73,6 +82,12 @@ const GuardrailDeny = z
   })
   .refine((deny) => deny.actions !== undefined || deny.summary !== undefined, {
     message: 'deny needs actions, summary, or both; an empty deny would enforce nothing',
+  })
+  // The refine above doesn't reach a JSON Schema; minProperties says the same there.
+  .meta({
+    minProperties: 1,
+    description:
+      "Actions the runner stops the step on. actions: an action name (tap, navigate, tool:refund) or a prefix ending in *, the dependable rule. summary: case-insensitive regular expressions matched against the runner's prose for the action, best effort, since that prose can change.",
   });
 
 const GuardrailObject = z.strictObject({
@@ -84,7 +99,7 @@ const GuardrailObject = z.strictObject({
 const GuardrailEntry = z.union([Text, GuardrailObject]);
 
 const PreconditionHook = z.strictObject({
-  hook: Id,
+  hook: Id.meta({ description: 'A hook your code passes to cigeSuite, run before the first step.' }),
   description: Text.optional(),
 });
 
@@ -92,45 +107,71 @@ const PreconditionHook = z.strictObject({
 // an error rather than a fact that silently never reaches the model.
 const AgentPin = z.union([Id, z.array(Id).min(1)]);
 
-const Context = z.strictObject({
-  system: Text.optional(),
-  environment: Text.optional(),
-  actor: Text.optional(),
-  agent: AgentPin.optional(),
-  platforms: z.array(Text).min(1).optional(),
-  requires: z.array(Text).min(1).optional(),
-  session: Id.optional(),
-  open: Text.optional(),
-  tools: z.array(Text).optional(),
-  preconditions: z.array(z.union([Text, PreconditionHook])).optional(),
-  facts: z.array(Text).optional(),
-  prompts: z.array(Text).optional(),
-  specRef: Text.optional(),
-  buildRef: Text.optional(),
-  expectedRef: Text.optional(),
-});
+const Context = z
+  .strictObject({
+    system: Text.optional().meta({ description: 'The app or service under test.' }),
+    environment: Text.optional().meta({
+      description: 'Where the case runs: prose for the model, and the name of the environment in the CIGE config that replays it.',
+    }),
+    actor: Text.optional().meta({ description: 'Who the agent acts as.' }),
+    agent: AgentPin.optional().meta({ description: 'The configured agent (agents.<name>) or agents the test runs as.' }),
+    platforms: z.array(Text).min(1).optional().meta({ description: 'The platforms the case runs on (web, ios, android); other targets skip it.' }),
+    requires: z.array(Text).min(1).optional().meta({ description: 'Capabilities a target must have to run the case.' }),
+    session: Id.optional().meta({ description: 'The session a setup test saved, restored before the case runs.' }),
+    open: Text.optional().meta({ description: 'The app path to open before the first step.' }),
+    tools: z.array(Text).optional().meta({ description: 'Documentation of the tools the agent has; configure them on the agents entry.' }),
+    preconditions: z.array(z.union([Text, PreconditionHook])).optional(),
+    facts: z.array(Text).optional(),
+    prompts: z.array(Text).optional().meta({ description: 'Paths, relative to this file, of reusable context fragments.' }),
+    specRef: Text.optional().meta({
+      description: 'A pointer to the spec that defines expected behavior, with {build} and {environment} filled in. Never sent to the model; read only to classify a failure.',
+    }),
+    buildRef: Text.optional().meta({
+      description: 'A pointer to the build under test and its release notes, with {build} and {environment} filled in. Never sent to the model.',
+    }),
+    expectedRef: Text.optional().meta({
+      description:
+        'A pointer to what the build is expected to produce (mocks, fixtures, golden data), with {build} and {environment} filled in. Never sent to the model.',
+    }),
+  })
+  .meta({
+    description:
+      "The operating ground. system, environment, actor, preconditions, facts, and prompts become the test's agentContext, which every agent step reads, so they hold facts, never instructions. The rest pick where the case runs or point to the ground truth a failure is classified against. Any change to it needs a human's approval.",
+  });
 
 /** A value a variant fills a `{name}` placeholder with: JSON primitives only. Values live in the committed case file, so keep secrets out of them. */
 const VariantValue = z.union([z.string(), z.number(), z.boolean()]);
 
 const Variant = z.strictObject({
   id: Id,
-  params: z.record(z.string(), VariantValue).optional(),
+  params: z
+    .record(z.string(), VariantValue)
+    .optional()
+    .meta({ description: "Values for the case's {name} placeholders. Every name must appear as a placeholder." }),
   platforms: z.array(Text).min(1).optional(),
   agent: AgentPin.optional(),
   session: Id.optional(),
 });
 
-/** The file as written, with its field names already capitalized. */
-const CigeFile = z.strictObject({
+/** The file as written, with its field names already capitalized: the one source `schema/cige-1.schema.json` is generated from. */
+export const CigeFile = z.strictObject({
   $schema: z.string().optional(),
-  cige: z.literal(1).optional(),
-  id: Id.optional(),
+  cige: z.literal(1).optional().meta({ description: 'The version of this format.' }),
+  id: Id.optional().meta({ description: 'The stable id that tags the test (cige:<id>) and names its run summary; default a slug of the Intent statement.' }),
   Context,
-  Intent: z.union([Text, IntentObject]),
-  Guardrails: z.array(GuardrailEntry).optional(),
-  Execution: z.array(ExecutionEntry).min(1),
-  Variants: z.array(Variant).min(1).optional(),
+  Intent: z.union([Text, IntentObject]).meta({
+    description: 'The outcome that must be true for the test to pass. Intent rarely changes, and no agent changes it without human approval.',
+  }),
+  Guardrails: z.array(GuardrailEntry).optional().meta({
+    description: 'What the agent must never do. Every guardrail reaches the acting agent; one with deny is also checked by the runner after every action.',
+  }),
+  Execution: z.array(ExecutionEntry).min(1).meta({
+    description: 'The first path to try, one goal per entry. Steps are guidance a repair may change while Intent and Guardrails hold.',
+  }),
+  Variants: z.array(Variant).min(1).optional().meta({
+    description:
+      "Combinations of the case's dimensions. Each variant fills the {name} placeholders in Intent, Execution, and evidence, may pin where it runs, and runs as its own test tagged cige:<id>/<variant>. Intent, Guardrails, and evidence are shared.",
+  }),
 });
 
 /**
