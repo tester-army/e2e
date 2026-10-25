@@ -370,6 +370,7 @@ test('offline banner', { platforms: ['android'] }, async ({ app, device, screen 
 
 | Member | Returns |
 | --- | --- |
+| [`agentDevice`](#agentdevice) | `DeviceSession` |
 | [`locator`](#locator) | `Locator` |
 | [`setNetwork`](#setnetwork) | `Promise<void>` |
 | [`setAirplaneMode`](#setairplanemode) | `Promise<void>` |
@@ -406,6 +407,29 @@ declaration; the types they use are under [Types](#device-fixture).
 | `ACTION_FAILED` | `actionTimeout` expires. |
 | `UNSUPPORTED_CAPABILITY` | The platform cannot run the command. |
 | `ENGINE_FAILURE` | Anything else, with agent-device's message. A timeout the device itself reports (a boot, the runner connecting) keeps its text and hint there. A busy or wedged iOS automation runner names itself and the recovery (see [Troubleshooting](/mobile#troubleshooting)). |
+
+#### `agentDevice`
+
+```ts
+/**
+ * The agent-device session this test drives, for what the methods here do
+ * not cover. Calls through `client` bypass e2e: they are not steps, so the
+ * report and trace leave them out, the agent's cache does not replay them,
+ * their arguments reach agent-device unredacted, and nothing waits for the
+ * screen to settle after one.
+ */
+readonly agentDevice: DeviceSession;
+```
+
+```ts
+const { client, session, deviceId } = device.agentDevice;
+const sessions = await client.sessions.list();
+await client.apps.list(device.agentDevice.selection);
+```
+
+`client` is agent-device's own client at the version `@e2e-dev/mobile` pins.
+After the worker disposes the session, reading `agentDevice` or `client`
+throws `INVALID_STATE`.
 
 #### `locator`
 
@@ -1009,6 +1033,28 @@ export interface ForegroundApp {
 
 /** Sensors `setBiometrics` simulates. */
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
+
+/** The agent-device session behind `device`; see `Device.agentDevice`. */
+export interface DeviceSession {
+  readonly platform: MobilePlatform;
+  /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
+  readonly session: string;
+  /** The device's agent-device id: a simulator UDID or an Android serial. */
+  readonly deviceId: string;
+  readonly deviceName: string;
+  /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
+  readonly selection: DeviceSelection;
+  /** agent-device's client, bound to this session. */
+  readonly client: AgentDeviceClient;
+}
+
+/** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */
+export interface DeviceSelection {
+  readonly platform: MobilePlatform;
+  readonly device?: string;
+  readonly udid?: string;
+  readonly serial?: string;
+}
 ```
 
 ### Exported types
@@ -1016,7 +1062,7 @@ export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
 `PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
-`Device`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
+`Device`, `DeviceSession`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from
 `@e2e-dev/mobile`. The runtime exports are `mobile`, and `test`, `describe`,
 `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed with the `device`

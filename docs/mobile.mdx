@@ -238,6 +238,20 @@ test('shows the offline banner', { platforms: ['android'] }, async ({ app, devic
 `app.clearState()` leaves alone, so a stored session token is gone on the
 next launch. It is iOS only.
 
+For anything `device` doesn't cover, `device.agentDevice` has an
+[agent-device](https://github.com/callstack/agent-device) client
+bound to the test's session, plus the session name and the device's id and
+name:
+
+```ts
+const { client, deviceId } = device.agentDevice;
+const { nodes } = await client.capture.snapshot({});
+```
+
+Client calls aren't steps: the report and trace leave them out, the agent
+cache doesn't replay them, secrets passed to them aren't redacted, and
+nothing waits for the screen to settle after one.
+
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
 emulator (a Pixel Fold profile, or the generic "7.6in Foldable") in a hinge
