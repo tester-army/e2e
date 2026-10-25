@@ -170,7 +170,7 @@ enforces on the guardrail, where `diff` blocks a change, not at the top
 level. Keep secrets out: they are committed and copied into summaries.
 
 **Plugins.** `plugins` in the config, each with a `name` (lowercase letters,
-digits, dashes) and optional hooks:
+digits, dashes, not starting with `x-`) and optional hooks:
 
 | Hook | Runs | Does |
 | --- | --- | --- |

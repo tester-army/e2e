@@ -73,6 +73,8 @@ export function pluginProblems(plugins: readonly CigePlugin<never>[]): string[] 
   const kinds = new Map<string, string>();
   for (const plugin of plugins) {
     if (!PLUGIN_NAME.test(plugin.name)) problems.push(`plugin name ${JSON.stringify(plugin.name)}: use lowercase letters, digits, and dashes`);
+    // A summary's `extensions` holds the case's own `x-` keys beside each plugin's fields, by name.
+    else if (plugin.name.startsWith('x-')) problems.push(`plugin name ${JSON.stringify(plugin.name)}: x- names are the case's own fields`);
     if (names.has(plugin.name)) problems.push(`plugin "${plugin.name}" is listed twice`);
     names.add(plugin.name);
     for (const kind of Object.keys(plugin.steps ?? {})) {

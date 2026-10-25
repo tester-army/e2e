@@ -128,6 +128,18 @@ function pair<T extends { readonly id: string }>(before: readonly T[], after: re
 }
 
 /**
+ * What `pair` leaves unmatched: the items removed from `before` and added in
+ * `after`, counted one to one, so dropping one of two entries with the same
+ * key is still a removal.
+ */
+function unpaired<T extends { readonly id: string }>(before: readonly T[], after: readonly T[], key: (item: T) => string): { removed: T[]; added: T[] } {
+  const pairs = pair(before, after, key);
+  const kept = new Set(pairs.map(([was]) => was));
+  const matched = new Set(pairs.map(([, now]) => now));
+  return { removed: before.filter((item) => !kept.has(item)), added: after.filter((item) => !matched.has(item)) };
+}
+
+/**
  * The changes from one version of a case to the next. `undefined` on one
  * side is a case added or removed.
  */
@@ -145,7 +157,7 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
     for (const line of removed) changes.push(change('criteria-removed', `${field}: ${JSON.stringify(line)}`));
     for (const line of added) changes.push(change('criteria-added', `${field}: ${JSON.stringify(line)}`));
   }
-  const evidence = setDiff(before.intent.evidence, after.intent.evidence, evidenceKey);
+  const evidence = unpaired(before.intent.evidence, after.intent.evidence, evidenceKey);
   for (const item of evidence.removed) changes.push(change('evidence-removed', `${item.id}: ${evidenceKey(item)}`));
   for (const item of evidence.added) changes.push(change('evidence-added', `${item.id}: ${evidenceKey(item)}`));
   if (before.intent.judge && !after.intent.judge) changes.push(change('judge-dropped', 'the Intent is no longer judged on screen'));
@@ -158,7 +170,7 @@ export function diffCases(before: CigeCase | undefined, after: CigeCase | undefi
   if (!before.intent.judge && after.intent.judge) changes.push(change('judge-added', 'the Intent is now judged on screen'));
 
   // Guardrails match by their rule text: an edited rule is the old one removed and a new one added.
-  const rules = setDiff(before.guardrails, after.guardrails, (rule) => rule.rule);
+  const rules = unpaired(before.guardrails, after.guardrails, (rule) => rule.rule);
   for (const rule of rules.removed) changes.push(change('guardrail-removed', `${rule.id}: ${JSON.stringify(rule.rule)}`));
   for (const rule of rules.added) changes.push(change('guardrail-added', `${rule.id}: ${JSON.stringify(rule.rule)}`));
   for (const [was, now] of pair(before.guardrails, after.guardrails, (rule) => rule.rule)) {

@@ -54,11 +54,13 @@ needs them.
    Intent judged false (`ASSERTION_FAILED`) on a healthy environment with a
    current path. Classify `product-defect` and read `escalate.md`. An act
    step that ended `ASSERTION_FAILED` with `goal-unreachable` is not this:
-   the agent couldn't reach its goal, so treat it as step 2, a changed flow
-   or a defect the refs decide.
+   the agent couldn't reach its goal. Run step 2's ref comparison on it as
+   if it were a path code: the refs decide between a changed flow and a
+   defect, and when they don't, stop.
 4. **Did a guardrail fire?** `guardrail-violation:<id>` (the runner stopped
-   a forbidden action) or `guardrail-refused:<id>` (the agent read the
-   guardrail and refused before acting). Either way the step needs a
+   a forbidden action), or `guardrail-refused:<id>` or a bare
+   `guardrail-refused` when it named none (the agent read a guardrail and
+   refused before acting). Either way the step needs a
    forbidden action: the flow changed and now routes through it (repair
    Execution so it avoids it), or the product forces it (a defect). The
    spec decides; never loosen the guardrail.

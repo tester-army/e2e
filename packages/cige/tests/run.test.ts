@@ -537,6 +537,7 @@ describe('plugins', () => {
       }),
     ).toThrow(/plugin name "Orders"[\s\S]*registered by both "Orders" and "more"/);
     expect(() => registered([withNoUse()], { plugins: [{ name: 'orders', steps: { 'order api': step } }] })).toThrow(/step kind "order api" is not an id/);
+    expect(() => registered([withNoUse()], { plugins: [{ name: 'x-owner' }] })).toThrow(/plugin name "x-owner": x- names are the case's own fields/);
   });
 });
 

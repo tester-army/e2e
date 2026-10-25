@@ -62,7 +62,7 @@ const scripted: StepExecutor = {
       return { status: 'failed', errorCode: 'ASSERTION_FAILED', summary: 'the wizard has no Billing tab' };
     }
     if (text.startsWith('delete the todo')) {
-      return { status: 'failed', errorCode: 'POLICY_DENIED', summary: 'deleting is prohibited by the no-delete guardrail; I did not delete it' };
+      return { status: 'failed', errorCode: 'POLICY_DENIED', summary: 'deleting is prohibited by no-delete; I did not delete it' };
     }
     if (text.startsWith('refund')) {
       await ctx.budgets.runTool({ name: 'refund', mutates: true }, async () => 'refunded');

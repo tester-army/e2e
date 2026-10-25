@@ -238,10 +238,12 @@ export function classifyResult(testCase: CigeCase, result: ReportResult, report?
   // cites a guardrail counts; the runner's own POLICY_DENIED (a refused URL
   // scheme, a forbidden fill) is something else.
   const message = where.message ?? '';
-  if (code === 'POLICY_DENIED' && where.phase === 'execution' && /guardrail/i.test(message)) {
-    const cited = testCase.guardrails.find((rule) => new RegExp(`(^|[^A-Za-z0-9._-])${escapeRegExp(rule.id)}($|[^A-Za-z0-9._-])`).test(message));
-    return { ...base, signals: [...signals, cited === undefined ? 'guardrail-refused' : `guardrail-refused:${cited.id}`] };
-  }
+  const cited =
+    code === 'POLICY_DENIED' && where.phase === 'execution'
+      ? testCase.guardrails.find((rule) => new RegExp(`(^|[^A-Za-z0-9._-])${escapeRegExp(rule.id)}($|[^A-Za-z0-9._-])`).test(message))
+      : undefined;
+  if (cited !== undefined) return { ...base, signals: [...signals, `guardrail-refused:${cited.id}`] };
+  if (code === 'POLICY_DENIED' && where.phase === 'execution' && /guardrail/i.test(message)) return { ...base, signals: [...signals, 'guardrail-refused'] };
   if (where.pluginStep === true) {
     // A plugin's step threw a plain error: its own code, not a changed flow, so the classifier reads its message.
     return { ...base, signals: [...signals, `plugin-step-failed:${where.id}`] };

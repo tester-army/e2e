@@ -139,6 +139,22 @@ describe('diffCases', () => {
     ]);
   });
 
+  it('blocks dropping one of two guardrails or evidence items with the same text', () => {
+    const twins: CigeTestCase = {
+      ...BASE,
+      Intent: { statement: 'A shopper can check out with a discount', evidence: [{ id: 'first', hook: 'orderExists' }, { id: 'second', hook: 'orderExists' }] },
+      Guardrails: [
+        { id: 'g1', rule: 'Use only the test card' },
+        { id: 'g2', rule: 'Use only the test card', deny: { actions: ['tool:refund'] } },
+      ],
+    };
+    const dropped: CigeTestCase = { ...twins, Intent: { statement: 'A shopper can check out with a discount', evidence: [{ id: 'first', hook: 'orderExists' }] }, Guardrails: [{ id: 'g1', rule: 'Use only the test card' }] };
+    expect(diffCases(parseCige(twins), parseCige(dropped)).map((entry) => `${entry.blocking ? '!' : ''}${entry.kind} ${entry.detail.split(':')[0]}`)).toEqual([
+      '!evidence-removed second',
+      '!guardrail-removed g2',
+    ]);
+  });
+
   it('reads an edited guardrail as one removed and one added, so it needs approval', () => {
     expect(kinds(edited((file) => void (file.Guardrails[0] = 'Use the test card')))).toEqual(['!guardrail-removed', 'guardrail-added']);
   });
