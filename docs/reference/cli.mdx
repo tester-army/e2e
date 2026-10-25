@@ -426,6 +426,7 @@ npx e2e run --target web,webkit --tag smoke,billing --tag-mode all
 npx e2e run --tag smoke --exclude-tag slow
 npx e2e run --grep checkout --grep-invert '/refund/i'
 npx e2e run --last-failed
+npx e2e run --changed-since origin/main
 npx e2e run --shard 2/3
 npx e2e run --reporter json --workers 4 --retries 2
 npx e2e run --max-failures 3
@@ -443,6 +444,7 @@ pnpm exec e2e run --target web,webkit --tag smoke,billing --tag-mode all
 pnpm exec e2e run --tag smoke --exclude-tag slow
 pnpm exec e2e run --grep checkout --grep-invert '/refund/i'
 pnpm exec e2e run --last-failed
+pnpm exec e2e run --changed-since origin/main
 pnpm exec e2e run --shard 2/3
 pnpm exec e2e run --reporter json --workers 4 --retries 2
 pnpm exec e2e run --max-failures 3
@@ -460,6 +462,7 @@ bunx e2e run --target web,webkit --tag smoke,billing --tag-mode all
 bunx e2e run --tag smoke --exclude-tag slow
 bunx e2e run --grep checkout --grep-invert '/refund/i'
 bunx e2e run --last-failed
+bunx e2e run --changed-since origin/main
 bunx e2e run --shard 2/3
 bunx e2e run --reporter json --workers 4 --retries 2
 bunx e2e run --max-failures 3
@@ -533,9 +536,10 @@ Test files, directories, or globs relative to the project root:
 | `--exclude-tag <tags>` | Leaves out tests with any of the tags, comma-separated or repeated, whatever `--tag` or a positional selected. A serial group still runs whole when any member is selected; tag the serial `describe` to exclude the flow. |
 | `--grep <pattern>` | Only tests whose title matches one of the regular expressions; repeatable. The title is the describe titles and the test title joined by one space (`checkout pays`), without the file or the tags. A bare pattern is case-sensitive; `'/pattern/i'` adds flags. A pattern that does not compile is a usage error, exit 2. |
 | `--grep-invert <pattern>` | Leaves out tests whose title matches one of the regular expressions; repeatable, with the text and forms of `--grep`. With both, the run keeps what `--grep` matches minus what `--grep-invert` matches. |
+| `--changed-since <ref>` | Runs the configured [test filters](/filters) on the change since the ref: every file that differs from the merge base of the ref and `HEAD`, uncommitted and untracked files included. Without it, no filter runs. With no filters configured, a warning says every test runs. |
 | `--last-failed` | Only the tests the previous run did not pass; the list after these tables says which. |
-| `--shard <index/total>` | Runs one contiguous slice of the selected tests, such as `2/3`, cut after every other filter. Slices differ by at most one test. A serial group counts as one and is never split. Each shard brings only the setup tests its own tests need. Skipped tests are not cut: the shard that runs the nearest test before one reports it, else the first shard, so only one shard does. Every shard runs the same command with a different index. The order is the report order, so a suite shards the same way on every machine. A shard with no test is `NO_TESTS` unless `--pass-with-no-tests`. See [Sharding](/ci#sharding). |
-| `--pass-with-no-tests` | Exits 0 instead of `NO_TESTS` when nothing is selected. |
+| `--shard <index/total>` | Runs one contiguous slice of the selected tests, such as `2/3`, cut after every other flag. Slices differ by at most one test. A serial group counts as one and is never split. Each shard brings only the setup tests its own tests need. Skipped tests are not cut: the shard that runs the nearest test before one reports it, else the first shard, so only one shard does. Every shard runs the same command with a different index. The order is the report order, so a suite shards the same way on every machine. A shard with no test is `NO_TESTS` unless `--pass-with-no-tests`. See [Sharding](/ci#sharding). |
+| `--pass-with-no-tests` | Exits 0 instead of `NO_TESTS` when nothing is selected. A run with nothing to run prepares no engine and starts no app or service command. |
 
 **Execution**
 
@@ -607,14 +611,16 @@ Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
 anything starts, as the config value would. `--target`, `--tag`,
 `--exclude-tag`, and `--agent` take each name once. An empty value (`--tag ''`,
 or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
-wider selection.
+wider selection. An empty `--reporter` is the same usage error, never a run
+with no reporters.
 
 Filters only narrow, and each applies after the one before: positionals, then
 `.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
 then the platform and capability rules, then `--shard`. When they leave
 nothing to run, `NO_TESTS` counts the tests each filter removed and names the
 tags and patterns. It marks each tag no test declares and names the nearest
-declared one.
+declared one. With `--changed-since`, the configured [test filters](/filters)
+run last.
 
 <a id="debug-output" />
 
@@ -659,7 +665,7 @@ cache, `-` when it reports no split. The report records the same per step
 | --- | --- |
 | `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress shows the current agent step, model turns, tool calls, and reasoning excerpts. Untrusted fields are capped at 8 KiB and stripped of control characters. |
 | `json` | The report document to stdout, and nothing else there, so `e2e run --reporter json \| jq` works. It is the `<output>/report.json` document, described by `schema/report-v1.schema.json` in the package. The shape changes only with the `schemaVersion` field (`report-1` today). |
-| `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. Run-level errors form a `run` suite. |
+| `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. A test a [test filter](/filters) left out is a `<skipped>` whose message starts `left out by filter <name>:`; other tests the run did not select are not listed. Run-level errors form a `run` suite. |
 | `markdown` | `summary.md` beside the report: counts, cost, errors, and failure details, each naming its trace page when one was kept. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
 
 Every run that gets to its tests writes, under the
@@ -695,7 +701,8 @@ tool definitions, response, usage, and provider metadata. Observations in it
 are already redacted, and inline image and file bytes become byte counts.
 Open it with [unbox-ai](https://github.com/tester-army/unbox-ai):
 `npx unbox-ai runs .e2e/ai-trace.json` lists its runs. See
-[Debugging a run](/debugging#agent-steps).
+[Debugging a run](/debugging#agent-steps). A [test filter](/filters)'s model
+calls are not recorded.
 
 <a id="watch-mode" />
 
@@ -754,11 +761,12 @@ On a terminal, keys drive it as in vitest:
   or `t` prompt too. Escape does the same outside a prompt, and inside one
   only closes the prompt. Ctrl-Z suspends the process as usual.
 - Every rerun is a complete run: once the config loads, it writes
-  `report.json` and the reporter files, and starts and stops the app command.
-  To keep a dev server up across reruns, start it yourself and set
+  `report.json` and the reporter files, and starts and stops the app command,
+  unless it has nothing to run. To keep a dev server up across reruns, start it yourself and set
   [`reuseExisting`](/reference/config#command) on the command.
-- `--last-failed` applies to the first run only; a rerun that selects nothing
-  passes empty.
+- `--last-failed` and the test filters apply to the first run only, so a
+  rerun never calls a filter's model; a rerun that selects nothing passes
+  empty.
 - On quit, the exit code is that of the last run that finished.
 - Without a terminal on stdin, only file changes rerun.
 
@@ -907,6 +915,7 @@ npx e2e list tests/signup.e2e.ts
 npx e2e list --tag smoke --target web
 npx e2e list --grep checkout --exclude-tag slow
 npx e2e list --reporter json
+npx e2e list --changed-since origin/main
 ```
 
 ```bash pnpm
@@ -915,6 +924,7 @@ pnpm exec e2e list tests/signup.e2e.ts
 pnpm exec e2e list --tag smoke --target web
 pnpm exec e2e list --grep checkout --exclude-tag slow
 pnpm exec e2e list --reporter json
+pnpm exec e2e list --changed-since origin/main
 ```
 
 ```bash bun
@@ -923,21 +933,22 @@ bunx e2e list tests/signup.e2e.ts
 bunx e2e list --tag smoke --target web
 bunx e2e list --grep checkout --exclude-tag slow
 bunx e2e list --reporter json
+bunx e2e list --changed-since origin/main
 ```
 </CodeGroup>
 
 | Option | Description |
 | --- | --- |
 | `[files...]` | As for [`run`](#positional-arguments). |
-| `--config`, `--target`, `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`, `--shard`, `--pass-with-no-tests` | As for [`run`](#flags). `--last-failed` reads `report.json` under the config's [`output`](/reference/config#output). |
+| `--config`, `--target`, `--tag`, `--tag-mode`, `--exclude-tag`, `--grep`, `--grep-invert`, `--changed-since`, `--last-failed`, `--shard`, `--pass-with-no-tests` | As for [`run`](#flags). `--last-failed` reads `report.json` under the config's [`output`](/reference/config#output). The configured [test filters](/filters) run as for `run`, and their lines go to stderr. |
 | `--reporter <id>` | `list` or `json`. Default: `list`. |
 
 | Reporter | Writes |
 | --- | --- |
-| `list` | One line per pair in selection order: `file › title [target]`, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`), then each declared tag as `#tag` (`tests/billing.e2e.ts › checkout › pays [web] #smoke #billing`). A skipped test keeps its line, with `(skipped: <reason>)` appended. Setup tests are listed like any other. |
-| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `id`, `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `tags` (the tags the test declares, `[]` when none), `source` when the declaration is known, `session` when the test consumes one, `sessions`, `serialId` when the test is in a serial group, `target`, `agent`, `disposition` (`run` or `skip`), and `reason` when skipped. |
+| `list` | One line per pair in selection order: `file › title [target]`, with the describe path joined by ` › ` (`tests/billing.e2e.ts › checkout › pays [web]`), then each declared tag as `#tag` (`tests/billing.e2e.ts › checkout › pays [web] #smoke #billing`). A skipped test keeps its line, with `(skipped: <reason>)` appended, and a test that a test filter left out ends with `(left out by <filter>: <reason>)`. Setup tests are listed like any other. |
+| `json` | `{ "pairs": [...] }` to stdout. Each pair carries `id`, `file`, `title`, `titlePath`, `kind` (`test` or `setup`), `tags` (the tags the test declares, `[]` when none), `source` when the declaration is known, `session` when the test consumes one, `sessions`, `serialId` when the test is in a serial group, `target`, `agent`, `disposition` (`run`, `skip`, or `filtered` when a test filter left it out), `reason` when skipped or left out, and `filter`, the test filter's name, when one left it out. |
 
-Pairs a filter removed are not listed. [`list` from `e2e/runner`](/reference/runner)
+Pairs a selection flag removed are not listed. [`list` from `e2e/runner`](/reference/runner)
 runs the same selection in process and also returns the removed pairs.
 
 #### `e2e cache`

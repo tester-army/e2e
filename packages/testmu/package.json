@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/testmu",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "TestMu AI (formerly LambdaTest) for e2e: hosted Android emulators, iOS simulators, and real devices for mobile tests, and hosted Chrome and Edge for web tests",
   "keywords": [
     "e2e",

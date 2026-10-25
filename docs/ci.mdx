@@ -39,7 +39,7 @@ Upload `.e2e/` at the end of each job, also when a test fails. It holds:
 | Path | What it holds |
 | --- | --- |
 | `report.json` | The run report, from each run that reaches its tests |
-| `junit.xml` | With the `junit` reporter (`--reporter list,junit`): the results, and startup failures such as `APP_UNREACHABLE` in a `run` suite |
+| `junit.xml` | With the `junit` reporter (`--reporter list,junit`): the results, the tests a [test filter](/filters) left out as skipped, and startup failures such as `APP_UNREACHABLE` in a `run` suite |
 | `results/` | The trace pages, screenshots, and screen dumps of each test. With `--video`, also a video for each target whose engine can record |
 
 Point the test-report integration of your CI service at `.e2e/junit.xml`.
@@ -192,6 +192,13 @@ To keep the checks predictable:
   exits 1.
 - Add `--max-duration <ms>` to limit test-running time; the clock starts
   when tests start, not during app startup. The job exits 1.
+
+## Run only affected tests
+
+On a pull request, pass `--changed-since` so a [test filter](/filters) can
+leave out the tests the change is unlikely to affect. Without the flag, as
+on `main`, the whole suite runs. See
+[Add the decision filter](/filters#add-the-decision-filter).
 
 ## Sharding
 

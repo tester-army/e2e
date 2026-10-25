@@ -110,7 +110,7 @@ function runtime(overrides: Partial<E2EConfig>) {
     budget: new AttemptBudget(signal, new Deadline(10_000)),
     runId: 'run',
     attemptId: 'attempt',
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: () => 'artifact', link: () => 'artifact' },
     priorSteps: () => steps.completed(),
     agentContext: undefined,

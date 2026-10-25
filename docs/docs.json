@@ -192,7 +192,9 @@
             "group": "Extend",
             "pages": [
               "tools",
+              "fixtures",
               "executors",
+              "filters",
               "writing-an-engine"
             ]
           },
@@ -203,7 +205,8 @@
               "security",
               "telemetry",
               "debugging",
-              "agent-steps"
+              "agent-steps",
+              "page-objects"
             ]
           },
           {

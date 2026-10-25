@@ -64,6 +64,13 @@ export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 /** Longest delay `setTimeout` honors; a longer one fires at once. */
 export const MAX_TIMER_MS = 2 ** 31 - 1;
 
+/** A budget as a message names it, exactly, in the largest unit that divides it: `5m`, `30s`, `1500ms`. */
+export function budgetText(ms: number): string {
+  if (ms > 0 && ms % 60_000 === 0) return `${ms / 60_000}m`;
+  if (ms > 0 && ms % 1000 === 0) return `${ms / 1000}s`;
+  return `${ms}ms`;
+}
+
 /** Canonical polling cadence for locator and assertion loops. */
 export const POLL_INTERVAL_MS = 100;
 

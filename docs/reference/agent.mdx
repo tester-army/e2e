@@ -360,8 +360,8 @@ The built-in agent offers these tools while no secret has been filled:
 | Tool | What it does |
 | --- | --- |
 | `screenshot()` | Returns a masked viewport screenshot and includes a fresh screenshot after every later action in the step. |
-| `tap_at({ x, y })` | Taps the control at the point by node id, or taps the coordinates directly when no control is listed. |
-| `hover_at({ x, y })` | Hovers the control at the point by node id, or moves the pointer to the coordinates when no control is listed. Needs the `hover` action or pointer kind. |
+| `tap_at({ x, y })` | Taps the coordinates. On an engine that cannot, taps the listed control at the point by node id. |
+| `hover_at({ x, y })` | Moves the pointer to the coordinates. On an engine that cannot, hovers the listed control at the point by node id. Needs the `hover` action or pointer kind. |
 | `type_at({ x, y, value, replace? })` | Replaces a listed input's value. For an unlisted input, taps to focus and types at the caret unless `replace` is set. Unlisted inputs require keyboard support. |
 | `press_at({ x, y, key })` | Sends a key to the control at the point. If no control is listed, taps to focus and uses the engine's keyboard. |
 | `select_at({ x, y, value })` | Selects an option by visible label in the control at the point. |
@@ -369,9 +369,10 @@ The built-in agent offers these tools while no secret has been filled:
 - Coordinates refer to the latest screenshot. The model must take a
   screenshot before it uses a point tool, and should prefer node ids for
   listed controls.
-- The runner checks each point against the tree. A point on a listed control
-  gets the same policy checks and [replay cache](/cache) recording as an
-  action by id.
+- `type_at`, `press_at`, and `select_at` check each point against the tree.
+  A point on a listed control gets the same policy checks and
+  [replay cache](/cache) recording as an action by id. A `tap_at` or
+  `hover_at` point replays inside the node under it.
 - `tap_at` needs an engine whose `actions` or `pointerActions` include `tap`,
   and `hover_at` one whose include `hover`. Without the pointer kind, the
   point must land on a listed control.

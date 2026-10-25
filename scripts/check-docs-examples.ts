@@ -26,6 +26,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Example file to the page that shows it verbatim. */
 const EXAMPLES: Record<string, string> = {
   'docs/examples/runner/run.ts': 'docs/reference/runner.mdx',
+  'docs/examples/runner/explore.ts': 'docs/reference/runner.mdx',
   'docs/examples/limrun/e2e.config.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/limrun/greeting.e2e.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',
@@ -43,8 +44,17 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/mobile/testmu.e2e.ts': 'docs/integrations/testmu.mdx',
   'docs/examples/web/browser-provider.ts': 'docs/browser.mdx',
   'docs/examples/web/testmu-browsers.config.ts': 'docs/integrations/testmu.mdx',
+  'docs/examples/fixtures/tests/fixtures.ts': 'docs/fixtures.mdx',
+  'docs/examples/fixtures/tests/tasks.e2e.ts': 'docs/fixtures.mdx',
   'docs/examples/models/e2e.decision.config.ts': 'docs/decision-models.mdx',
   'docs/examples/models/tests/decision.e2e.ts': 'docs/decision-models.mdx',
+  'docs/examples/page-objects/tests/pages/sign-in-page.ts': 'docs/page-objects.mdx',
+  'docs/examples/page-objects/tests/fixtures.ts': 'docs/page-objects.mdx',
+  'docs/examples/page-objects/tests/sign-in.e2e.ts': 'docs/page-objects.mdx',
+  'docs/examples/filters/e2e.config.ts': 'docs/filters.mdx',
+  'docs/examples/filters/areas-filter.ts': 'docs/filters.mdx',
+  'docs/examples/filters/e2e.areas.config.ts': 'docs/filters.mdx',
+  'docs/examples/filters/tuned-filter.ts': 'docs/filters.mdx',
   'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',
   'docs/examples/skill/e2e.setup.config.ts': 'skills/e2e/references/setup.md',
 };

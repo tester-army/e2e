@@ -398,6 +398,39 @@ describe('lifecycle', () => {
     expect(coldEnv).toEqual({});
   });
 
+  it('skips a booted device another agent-device session holds, keeps one its own slot session holds, and fails when every booted one is held', async () => {
+    const h = harness({ device: undefined });
+    h.fake.respond('devices.list', () => [
+      { platform: 'ios', id: 'A', name: 'A', booted: true, claimedBy: { session: 't3-holder', workspace: '/elsewhere' } },
+      { platform: 'ios', id: 'B', name: 'B', booted: true },
+      { platform: 'ios', id: 'C', name: 'C', booted: true, claimedBy: { session: 'e2e-ios-1', workspace: '/project' } },
+      { platform: 'ios', id: 'D', name: 'D', booted: true, claimedBy: { session: 'e2e-ios-2', workspace: '/project' } },
+    ]);
+    const lines: string[] = [];
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 2, env: {}, signal: new AbortController().signal, headed: false, log: (line: string) => lines.push(line) };
+    const result = await h.prepare(info);
+    // e2e-ios-2 is no slot of a two-slot run, so its device is as foreign as another tool's.
+    expect(result).toMatchObject({ workers: 2 });
+    expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([
+      { platform: 'ios', udid: 'B' },
+      { platform: 'ios', udid: 'C' },
+    ]);
+    expect(lines[0]).toBe(
+      '4 booted ios device(s), skipping 2 held by another agent-device session (A by session "t3-holder", D by session "e2e-ios-2"); driving 2: B, C',
+    );
+
+    const held = harness({ device: undefined });
+    held.fake.respond('devices.list', () => [
+      { platform: 'ios', id: 'A', name: 'A', booted: true, claimedBy: { session: 't3-holder', workspace: '/elsewhere' } },
+    ]);
+    await expect(held.prepare({ ...info, slots: 1 })).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      retryable: false,
+      message: expect.stringMatching(/every booted ios device is held by another agent-device session \(A by session "t3-holder"\)/),
+    });
+    expect(held.fake.methods()).not.toContain('devices.boot');
+  });
+
   it('drives a discovered Android emulator by its serial, and reads a configured serial, UDID, or name as agent-device does', async () => {
     const h = harness({ device: undefined, platform: 'android' });
     h.fake.respond('devices.list', () => [{ platform: 'android', id: 'emulator-5554', name: 'test', booted: true }]);
@@ -1602,7 +1635,15 @@ describe('device fixture', () => {
       await observed(h, 'Back');
       const device = fixture(h);
       h.fake.respond('command.keyboard', NO_DISMISS_KEY);
-      captures(h, [{ ...KEYBOARD_UP, viewport: { width: 844, height: 390 } }, KEYBOARD_GONE]);
+      const landscape = [
+        { ref: '@e1', index: 0, depth: 0, type: 'application', label: 'Order', rect: { x: 0, y: 0, width: 844, height: 390 } },
+        { ref: '@e2', index: 1, parentIndex: 0, depth: 1, type: 'scroll-view', rect: { x: 0, y: 60, width: 844, height: 330 } },
+        { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'text-field', label: 'Notes', rect: { x: 20, y: 80, width: 804, height: 44 } },
+      ];
+      captures(h, [
+        { ...KEYBOARD_UP, viewport: { width: 844, height: 390 }, nodes: landscape, keyboard: { kind: 'visible', frame: { x: 0, y: 230, width: 844, height: 160 } } },
+        KEYBOARD_GONE,
+      ]);
       await device.dismissKeyboard();
       expect(h.fake.lastArgs('interactions.swipe')).toEqual({
         from: { x: 422, y: 195 },

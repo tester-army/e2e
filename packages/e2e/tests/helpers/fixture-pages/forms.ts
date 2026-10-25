@@ -44,9 +44,10 @@ const UNANCHORED_PAGE = `<!doctype html>
  * does not.
  *
  * The widget appended at body level is what a chat bubble, a consent frame, or a
- * React portal does, and it shifts every nth-child index under body.
+ * React portal does, and it shifts every nth-child index under body. `?still=1`
+ * leaves it out, for a bare point that would miss a row the widget moved.
  */
-function renderRepeats(reverse: boolean): string {
+function renderRepeats(reverse: boolean, widget: boolean): string {
   const offers = reverse ? ['C', 'B', 'A'] : ['A', 'B', 'C'];
   const rows = offers
     .map(
@@ -67,11 +68,11 @@ ${rows}
     function pick(offer) {
       document.getElementById('picked').textContent = offer;
     }
-    setTimeout(() => {
+${widget ? `    setTimeout(() => {
       const widget = document.createElement('div');
       widget.textContent = 'Chat with us';
       document.body.prepend(widget);
-    }, 150);
+    }, 150);` : ''}
   </script>
 </body>
 </html>`;
@@ -320,6 +321,7 @@ export const FORM_PAGES: Record<string, PageRenderer> = {
 </body>
 </html>`),
   '/unanchored': constant(UNANCHORED_PAGE),
-  '/repeats': (_state, url) => renderRepeats(url.searchParams.get('reverse') === '1' || url.searchParams.get('variant') === 'b'),
+  '/repeats': (_state, url) =>
+    renderRepeats(url.searchParams.get('reverse') === '1' || url.searchParams.get('variant') === 'b', url.searchParams.get('still') !== '1'),
   '/twins-form': (_state, url) => renderTwinsForm(url.searchParams.get('variant')),
 };

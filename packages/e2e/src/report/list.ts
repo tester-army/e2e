@@ -8,6 +8,7 @@
 
 import path from 'node:path';
 import picocolors from 'picocolors';
+import type { SkipInfo } from '../collect/select.ts';
 import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
@@ -39,6 +40,7 @@ import {
   rule,
   stateString,
   statusBucket,
+  STATUS_WORD,
   stepsCacheTally,
   repeatSuffix,
   stepsModelTally,
@@ -53,6 +55,7 @@ import {
   type Counters,
   type ModelTally,
 } from './format.ts';
+import { leftOutTests } from './left-out.ts';
 import { ExploreView } from './list-explore.ts';
 import { isShownEvent, type ConfiguredModel, type FileGroup, type ReplayNotice, type RunningTest, type TestLine } from './list-model.ts';
 import { replayLine, replayNotices, stepLine } from './list-steps.ts';
@@ -256,6 +259,8 @@ export class ListReporter implements Reporter {
   private readonly live: boolean;
   private readonly failures: Failure[] = [];
   private readonly skippedFailures: Failure[] = [];
+  /** Every result a test filter left out, in the order they arrived, for the `Left out` row. */
+  private readonly leftOut: { readonly testId: string; readonly skip: SkipInfo | undefined }[] = [];
   /** Every finished test's run, for the `Repeats` summary of a `--repeat-each` run. */
   private readonly runs: { key: string; label: string; run: RepeatRun }[] = [];
   /**
@@ -538,8 +543,9 @@ export class ListReporter implements Reporter {
    * then the services and app commands. Without this the window showed only
    * zero counters while a database booted or a browser downloaded. The step
    * in flight ticks in the live window; a finished process prints once with
-   * its wait, a finished collection or provisioning only when it narrated;
-   * the process waits sum into the summary's startup split.
+   * its wait, a finished collection, provisioning, or filter only when it
+   * narrated, a filter that failed or timed out in yellow and never checked
+   * off; the process waits sum into the summary's startup split.
    */
   private setupStep(event: RunEventOf<'setup'>): void {
     const { pc } = this;
@@ -555,6 +561,10 @@ export class ListReporter implements Reporter {
     if (process) this.startupMs += event.durationMs;
     if (!process && !narrated) {
       this.window.redraw();
+      return;
+    }
+    if (event.outcome !== undefined && event.outcome !== 'reused') {
+      this.print(` ${pc.yellow(F_CROSS)} ${subject} ${pc.yellow(`${STATUS_WORD[event.outcome]} ${formatTime(event.durationMs)}`)}`);
       return;
     }
     const outcome = event.outcome ?? done;
@@ -698,7 +708,8 @@ export class ListReporter implements Reporter {
 
   private testFinished(result: RunEventResult): void {
     // Unselected pairs are report-only: they never print and the plan never
-    // counted them.
+    // counted them. The ones a filter left out are counted for the summary.
+    if (result.skip?.filter !== undefined) this.leftOut.push({ testId: result.test.id, skip: result.skip });
     if (!result.selected) return;
     const key = pairKey(result.test.id, result.agent, result.target.name, result.repeat);
     this.flushOutput(key);
@@ -876,6 +887,8 @@ export class ListReporter implements Reporter {
         padTitle(pc, 'Test Files') + (files.total === 0 ? this.emptyState('no test files', 'none started') : stateString(pc, files)),
         padTitle(pc, 'Tests') + (tests.total === 0 ? this.emptyState('no tests executed', 'none executed') : stateString(pc, tests)),
       ];
+    const leftOut = this.leftOutText();
+    if (leftOut !== undefined) rows.push(padTitle(pc, 'Left out') + leftOut);
     const ai = usageText(this.runUsage);
     if (ai !== undefined) {
       const models = modelsText(this.runModels) ?? this.models;
@@ -897,6 +910,21 @@ export class ListReporter implements Reporter {
       rows.push(padTitle(pc, 'Duration') + durationText(pc, Date.now() - startedAt.getTime(), this.startupMs));
     }
     return rows;
+  }
+
+  /**
+   * The `Left out` row: how many tests each test filter left out, as its
+   * line counts them (`35 tests by affected`, `35 by affected, 3 by
+   * areas`); undefined when none did.
+   */
+  private leftOutText(): string | undefined {
+    const counts = [...leftOutTests(this.leftOut)].map(([name, count]) => ({ name: bounded(name), count }));
+    if (counts.length === 0) return undefined;
+    if (counts.length === 1) {
+      const { name, count } = counts[0]!;
+      return `${count} test${count === 1 ? '' : 's'} by ${name}`;
+    }
+    return counts.map(({ name, count }) => `${count} by ${name}`).join(', ');
   }
 
   /**
@@ -1138,6 +1166,8 @@ function setupWording(step: SetupStep): { verb: string; subject: string; done: s
   switch (step.kind) {
     case 'collect':
       return { verb: 'collecting', subject: 'tests', done: 'collected' };
+    case 'filter':
+      return { verb: 'running', subject: `filter "${bounded(step.name)}"`, done: 'done' };
     case 'prepare':
       return {
         verb: 'preparing',

@@ -165,7 +165,7 @@ export async function launchAttempt(
   opened.appLog.route((event, at) => steps.recordAppEvent(event, at));
   // Launch was the worker's work; the test's deadline starts once its fixtures exist.
   budget.enter(attemptSignal, options.timeoutMs);
-  const attempt: ExecutorAttempt = { testId: identity.testId, attemptId, index: 0, signal: end.signal, memory: new Map<string, unknown>() };
+  const attempt: ExecutorAttempt = { testId: identity.testId, attemptId, titlePath: [], index: 0, signal: end.signal, memory: new Map<string, unknown>() };
   let acquired: ReturnType<typeof createFixtures>;
   try {
     acquired = createFixtures({

@@ -7,7 +7,7 @@ icon: "plug"
 ---
 
 `e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
-try locators, and take masked screenshots before writing tests. It runs over
+try locators, and take masked screenshots while they write tests. It runs over
 stdio and uses the project's configured engine. For setup and what to ask
 the agent, see the [MCP server guide](/mcp-server).
 
@@ -285,8 +285,8 @@ Each takes `x` and `y` in the latest screenshot's pixels.
 
 | Tool | Inputs | Does | Listed when the engine declares |
 | --- | --- | --- | --- |
-| `tap_at` | `x`, `y` | Taps a listed control under the point by id, otherwise the bare point through the engine's `performAt`. Without `performAt` the point must land on a listed control. | `tap` or `performAt` |
-| `hover_at` | `x`, `y` | Hovers the same way: a listed control under it by id, otherwise the bare point through `performAt`'s `hover` kind. | the `hover` action or pointer kind |
+| `tap_at` | `x`, `y` | Taps the bare point through the engine's `performAt`. Without `performAt` the point must land on a listed control, which is tapped by id. | `tap` or `performAt` |
+| `hover_at` | `x`, `y` | Hovers the same way: the bare point through `performAt`'s `hover` kind, otherwise a listed control under it by id. | the `hover` action or pointer kind |
 | `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without one, a point on nothing listed fails. | `type` or a keyboard |
 | `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id. With a keyboard, anything else is tapped to focus it and the key goes through the keyboard. | `press` or a keyboard |
 | `select_at` | `x`, `y`, `value` (the option's visible label) | Picks the option in the listed select-like control under the point. Nothing listed there fails. | `select` |
