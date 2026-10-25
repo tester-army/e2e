@@ -200,6 +200,20 @@ describe('e2e-cige diff', () => {
     const state = io(dir);
     expect(await main(['diff', '--base', 'HEAD'], state)).toBe(1);
     expect(state.out).toContain('needs approval  config-changed: cige.config.mjs');
+    rmSync(path.join(dir, 'cige.config.mjs'));
+    const deleted = io(dir);
+    expect(await main(['diff', '--base', 'HEAD'], deleted)).toBe(1);
+    expect(deleted.out).toContain('needs approval  config-changed: cige.config.mjs');
+  });
+
+  it('refuses a --config that does not exist rather than checking nothing', async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'cige-cli-diff-'));
+    dirs.push(dir);
+    execFileSync('git', ['init', '-q'], { cwd: dir, stdio: 'pipe' });
+    execFileSync('git', ['-c', 'user.email=cige@example.test', '-c', 'user.name=cige', 'commit', '-q', '--allow-empty', '-m', 'base'], { cwd: dir, stdio: 'pipe' });
+    const state = io(dir);
+    expect(await main(['diff', '--base', 'HEAD', '--config', 'nope.ts'], state)).toBe(2);
+    expect(state.err).toContain('no CIGE config at nope.ts');
   });
 });
 

@@ -101,11 +101,11 @@ more than once).
 
 | What the report says | `failureType` |
 | --- | --- |
-| A precondition failed, or an `infrastructure` or `configuration` class error (environment, app, credentials, seed data, the model provider) | `infrastructure` |
+| A precondition failed, or an `infrastructure` or `configuration` class error (environment, app, credentials, seed data, the model provider), except `POLICY_DENIED` and `REPLAY_STALE` | `infrastructure` |
 | An Execution `step` ended `LOCATOR_NOT_FOUND`, `LOCATOR_AMBIGUOUS`, `ACTION_FAILED`, or `REPLAY_STALE` | `outdated-test-logic` |
 | A `verify`, evidence, the Intent, or a plugin's check step was judged false (`ASSERTION_FAILED`) | `product-defect` |
 | An act step's goal couldn't be reached (`ASSERTION_FAILED`) | Absent, signal `goal-unreachable` |
-| A `blocked` step, a spent budget, the clock, or no conclusion | Absent, signal `automation-limit` |
+| A blocked test-class step (not `APP_NOT_OPEN`), a spent budget, the clock, or no conclusion | Absent, signal `automation-limit` |
 | A guardrail violation, an agent's refusal citing one, an inconclusive judgment, a plugin step's plain throw | Absent; `guardrail-violation:<id>`, `guardrail-refused:<id>`, `inconclusive-evidence`, `plugin-step-failed:<id>` |
 
 A pass with no evidence hook carries `screen-only-evidence`: check it for a
@@ -131,8 +131,8 @@ the working directory.
   exits with e2e's code. A case whose environment is prose runs as is.
 - `env` runs one environment action and touches no case.
 - `refs` writes `<output>/cige/<id>.refs/`: `index.json` and a text file
-  per resolver that returned text. A `pointer` alone, a missing key, or an
-  `error` there means the ref is unresolved.
+  per resolver that returned text. A `pointer` alone is one to read
+  yourself; a missing key or an `error` means that ref has no ground truth.
 - `check` lists each case's gaps and exits 1 on any, unless `--warn`:
 
 | Gap | Fix |

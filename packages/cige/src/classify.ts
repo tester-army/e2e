@@ -81,6 +81,21 @@ type AgentErrorCode = AgentError['code'];
 const SETUP_CATEGORIES: ReadonlySet<string> = new Set(['infrastructure', 'configuration']);
 
 /**
+ * `configuration`-class codes that are not the environment: `POLICY_DENIED`
+ * is the runner refusing what a step asked for (a denied navigation, a
+ * forbidden fill; a guardrail's is read earlier), and `REPLAY_STALE` is a
+ * stale recorded path. Outside an act step they stay untyped.
+ */
+const NOT_SETUP_CODES: ReadonlySet<string> = new Set<AgentErrorCode>(['POLICY_DENIED', 'REPLAY_STALE']);
+
+/**
+ * The one `test`-class code the runner blocks a step with that is a setup gap,
+ * not an automation limit: the report carries no blocked category, so it is
+ * named.
+ */
+const BLOCKED_SETUP_CODE: AgentErrorCode = 'APP_NOT_OPEN';
+
+/**
  * `test`-class codes no category tells apart, so they are named: the codes
  * an `act` step ends with when its path no longer leads where it used to.
  * `REPLAY_STALE` is a `configuration` code but a stale recorded path, so
@@ -240,12 +255,12 @@ export function classifyResult(testCase: CigeCase, result: ReportResult, report?
   const failureType = ((): CigeFailureType | undefined => {
     if (where.phase === 'precondition') return 'infrastructure';
     if (where.phase === 'execution' && PATH_CODES.has(code)) return 'outdated-test-logic';
-    if (where.category !== undefined && SETUP_CATEGORIES.has(where.category)) return 'infrastructure';
+    if (where.category !== undefined && SETUP_CATEGORIES.has(where.category) && !NOT_SETUP_CODES.has(code)) return 'infrastructure';
     if (code === 'ASSERTION_FAILED' && !unreachedGoal) return 'product-defect';
     return undefined;
   })();
   if (code === 'ASSERTION_INCONCLUSIVE') signals.push('inconclusive-evidence');
-  if (STEP_LIMIT_CODES.has(code) || (where.blocked === true && where.category === 'test')) signals.push('automation-limit');
+  if (STEP_LIMIT_CODES.has(code) || (where.blocked === true && where.category === 'test' && code !== BLOCKED_SETUP_CODE)) signals.push('automation-limit');
   if (result.status === 'timed-out') signals.push('run-stopped');
   return { ...base, ...(failureType === undefined ? {} : { failureType }), signals };
 }

@@ -52,6 +52,12 @@ const scripted: StepExecutor = {
     if (text.startsWith('open the seeded order')) {
       return { status: 'blocked', errorCode: 'SEED_DATA_MISSING', summary: 'there is no seeded order to open' };
     }
+    if (text.startsWith('act before opening')) {
+      return { status: 'blocked', errorCode: 'APP_NOT_OPEN', summary: 'no app is open yet' };
+    }
+    if (text.startsWith('open the local file')) {
+      return { status: 'failed', errorCode: 'POLICY_DENIED', summary: 'navigation to file:///etc/hosts is denied' };
+    }
     if (text.startsWith('open the Billing tab')) {
       return { status: 'failed', errorCode: 'ASSERTION_FAILED', summary: 'the wizard has no Billing tab' };
     }
@@ -186,6 +192,18 @@ const CASES: Record<string, object> = {
     Intent: 'A shopper can open their order',
     Execution: [{ id: 'e1', step: 'open the seeded order' }],
   },
+  'blocked-setup': {
+    id: 'blocked-setup',
+    Context: {},
+    Intent: 'A visitor can see the home page',
+    Execution: [{ id: 'e1', step: 'act before opening the app' }],
+  },
+  denied: {
+    id: 'denied',
+    Context: {},
+    Intent: 'A visitor can read the hosts file',
+    Execution: [{ id: 'e1', step: 'open the local file /etc/hosts' }],
+  },
   unreachable: {
     id: 'unreachable',
     Context: {},
@@ -281,7 +299,9 @@ describe('cigeSuite through the runner', () => {
     expect(Object.keys(summaries).toSorted()).toEqual([
       'api',
       'blocked',
+      'blocked-setup',
       'defect',
+      'denied',
       'evidence',
       'guardrail',
       'infrastructure',
@@ -312,6 +332,14 @@ describe('cigeSuite through the runner', () => {
     expect(summaries.blocked?.classification.signals).toContain('automation-limit');
     // SEED_DATA_MISSING is named nowhere either: its configuration class makes it infrastructure.
     expect(summaries.unseeded).toMatchObject({ result: 'fail', failureType: 'infrastructure', classification: { errorCode: 'SEED_DATA_MISSING' } });
+    // A blocked step that is a setup gap, not a limit of the automation.
+    expect(summaries['blocked-setup']).toMatchObject({ result: 'fail', classification: { errorCode: 'APP_NOT_OPEN' } });
+    expect(summaries['blocked-setup']).not.toHaveProperty('failureType');
+    expect(summaries['blocked-setup']?.classification.signals).not.toContain('automation-limit');
+    // A configuration-class refusal that is no guardrail's and no environment's.
+    expect(summaries.denied).toMatchObject({ result: 'fail', classification: { errorCode: 'POLICY_DENIED' } });
+    expect(summaries.denied).not.toHaveProperty('failureType');
+    expect(summaries.denied?.classification.signals.some((signal) => signal.startsWith('guardrail-'))).toBe(false);
   });
 
   it('leaves an act goal the agent could not reach untyped, unlike a failed check', () => {
@@ -489,7 +517,7 @@ describe('the reporter on a later run', () => {
     const rows = await cige({ cases: 'cases/*.cige.json', refs: { build: () => undefined } }).onRunFinished!(finished(outcome.report), new AbortController().signal);
     // Only `pass` has a specRef; `stale` names an environment this reporter's config does not declare.
     // The reporter config here has no plugins, so `api` counts by its missing specRef alone.
-    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "11 cases can't be fully classified or replayed: npx e2e-cige check" });
+    expect(rows).toContainEqual({ label: 'CIGE gaps', text: "13 cases can't be fully classified or replayed: npx e2e-cige check" });
     const stale = JSON.parse(readFileSync(path.join(dir(), 'stale.run-summary.json'), 'utf8')) as CigeRunSummary;
     expect(stale.classification.signals).toContain('missing-spec-ref');
     expect(stale.classification.signals).not.toContain('missing-build-ref');

@@ -259,34 +259,44 @@ function isFile(file: string): boolean {
 const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g;
 const MODULE_EXTENSIONS = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
 
+/** One side of the diff: a repository file's text by its repo-relative POSIX path, or undefined when it isn't a file there. */
+type TreeReader = (file: string) => string | undefined;
+
 /**
- * The CIGE config file and every local module it imports, transitively:
- * static and dynamic imports whose specifier starts with `.`, resolved
- * beside the importing file, inside the repository only. Packages are not
- * followed; they are reviewed as dependencies, not as the case.
+ * The CIGE config file and every local module it imports, transitively, on
+ * one side of the diff: static and dynamic imports whose specifier starts
+ * with `.`, resolved beside the importing file, inside the repository only.
+ * The walk starts from the first candidate that exists on that side.
+ * Packages are not followed; they are reviewed as dependencies, not as the
+ * case.
  */
-function configModules(configFile: string, top: string): string[] {
-  // Real paths on both sides: git reports the repository's, and a path through a symlink would land outside it.
-  const root = realpathSync(top);
+function configModules(candidates: readonly string[], read: TreeReader): string[] {
   const seen = new Set<string>();
-  const visit = (candidate: string): void => {
-    if (!isFile(candidate)) return;
-    const file = realpathSync(candidate);
+  const visit = (file: string): void => {
     if (seen.has(file)) return;
+    const text = read(file);
+    if (text === undefined) return;
     seen.add(file);
-    for (const match of readFileSync(file, 'utf8').matchAll(RELATIVE_IMPORT)) {
-      const target = path.resolve(path.dirname(file), match[1]!);
-      const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find(isFile);
-      if (resolved !== undefined && !path.relative(root, realpathSync(resolved)).startsWith('..')) visit(resolved);
+    for (const match of text.matchAll(RELATIVE_IMPORT)) {
+      const target = path.posix.join(path.posix.dirname(file), match[1]!);
+      if (target === '..' || target.startsWith('../')) continue;
+      const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find((candidate) => read(candidate) !== undefined);
+      if (resolved !== undefined) visit(resolved);
     }
   };
-  visit(path.resolve(configFile));
-  return [...seen].filter((file) => !path.relative(root, file).startsWith('..')).map((file) => path.relative(root, file).split(path.sep).join('/'));
+  const first = candidates.find((file) => read(file) !== undefined);
+  if (first !== undefined) visit(first);
+  return [...seen];
 }
 
 export interface DiffOptions {
-  /** The CIGE config file; its changes, and those of the local modules it imports, need a human's approval like a weakened case. */
-  readonly configFile?: string;
+  /**
+   * Where the CIGE config may be, in order. Each side of the diff starts from
+   * the first one it has, so a deleted or renamed config is still seen. Its
+   * changes, and those of the local modules it imports, need a human's
+   * approval like a weakened case.
+   */
+  readonly configFiles?: readonly string[];
 }
 
 /**
@@ -317,8 +327,29 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
     const id = caseOf(after)?.id ?? caseOf(before)?.id;
     if (changes.length > 0) files.push({ file, ...(id === undefined || invalid.length > 0 ? {} : { id }), changes });
   }
-  if (options.configFile !== undefined) {
-    const modules = configModules(options.configFile, top);
+  if (options.configFiles !== undefined && options.configFiles.length > 0) {
+    // Both sides: a module deleted from the working tree is only in the base's graph, and a new one only in the working tree's.
+    const root = realpathSync(top);
+    const candidates = options.configFiles
+      .map((file) => {
+        // Through the real directory, as git reports paths, and without the file itself, which may be deleted.
+        const directory = path.dirname(path.resolve(file));
+        const real = existsSync(directory) ? realpathSync(directory) : directory;
+        return path.relative(root, path.join(real, path.basename(file))).split(path.sep).join('/');
+      })
+      .filter((file) => file !== '..' && !file.startsWith('../'));
+    const working: TreeReader = (file) => {
+      const absolute = path.join(root, file);
+      return isFile(absolute) ? readFileSync(absolute, 'utf8') : undefined;
+    };
+    const baseFiles = new Set(fields(git(['ls-tree', '-r', '--name-only', '-z', mergeBase], top)));
+    const baseText = new Map<string, string>();
+    const atBase: TreeReader = (file) => {
+      if (!baseFiles.has(file)) return undefined;
+      if (!baseText.has(file)) baseText.set(file, git(['show', `${mergeBase}:${file}`], top));
+      return baseText.get(file);
+    };
+    const modules = [...new Set([...configModules(candidates, working), ...configModules(candidates, atBase)])];
     if (modules.length > 0) {
       const touched = fields(git(['diff', '--name-only', '--no-renames', '-z', mergeBase, '--', ...modules], top));
       const untracked = fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ...modules], top));

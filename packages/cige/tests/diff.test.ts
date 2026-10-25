@@ -211,17 +211,38 @@ describe('diffSince', () => {
       'app/server.ts': 'export const port = 3000;\n',
       'checkout.cige.json': BASE,
     });
-    const configFile = path.join(dir, 'cige.config.ts');
-    expect(diffSince('HEAD', dir, { configFile }).files).toEqual([]);
+    const configFiles = [path.join(dir, 'cige.config.ts')];
+    expect(diffSince('HEAD', dir, { configFiles }).files).toEqual([]);
     // The weakening the review names: an evidence hook rewritten to pass.
     write(dir, { 'cige.config.ts': "import { shop } from './plugins/shop.ts';\nexport default { plugins: [shop], hooks: { orderExists: async () => true } };\n" });
     write(dir, { 'plugins/shop.ts': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n", 'app/server.ts': 'export const port = 4000;\n' });
-    const report = diffSince('HEAD', dir, { configFile });
+    const report = diffSince('HEAD', dir, { configFiles });
     expect(report.files.map((entry) => [entry.file, entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}`)])).toEqual([
       ['cige.config.ts', ['!config-changed']],
       ['plugins/shop.ts', ['!config-changed']],
     ]);
     expect(report.blocking).toBe(2);
+  });
+
+  it('blocks deleting a module the config imports, deleting the config, and renaming it', () => {
+    const config = "import { shop } from './plugins/shop.ts';\nexport default { plugins: [shop] };\n";
+    const files = { 'cige.config.ts': config, 'plugins/shop.ts': "export const shop = { name: 'shop' };\n", 'checkout.cige.json': BASE };
+    const configFiles = (dir: string) => ['cige.config.ts', 'cige.config.mjs'].map((name) => path.join(dir, name));
+    const changed = (dir: string) => diffSince('HEAD', dir, { configFiles: configFiles(dir) }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`);
+
+    // The config still imports it, so only the base's graph knows the module.
+    const deletedModule = repo(files);
+    rmSync(path.join(deletedModule, 'plugins/shop.ts'));
+    expect(changed(deletedModule)).toEqual(['plugins/shop.ts config-changed']);
+
+    const deletedConfig = repo(files);
+    rmSync(path.join(deletedConfig, 'cige.config.ts'));
+    expect(changed(deletedConfig)).toEqual(['cige.config.ts config-changed']);
+
+    const renamed = repo(files);
+    rmSync(path.join(renamed, 'cige.config.ts'));
+    write(renamed, { 'cige.config.mjs': config });
+    expect(changed(renamed)).toEqual(['cige.config.mjs config-changed', 'cige.config.ts config-changed']);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {
