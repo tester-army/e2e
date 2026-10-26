@@ -1,6 +1,7 @@
 import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  budgetText,
   Deadline,
   NEGATION_GRACE_MS,
   POLL_INTERVAL_MS,
@@ -24,6 +25,12 @@ describe('Deadline', () => {
     expect(deadline.remaining(7000)).toBe(0);
     expect(deadline.expired(5999)).toBe(false);
     expect(deadline.expired(6000)).toBe(true);
+  });
+});
+
+describe('budgetText', () => {
+  it('names a budget exactly, in the largest unit that divides it', () => {
+    expect([50, 1000, 1499, 1500, 30_000, 60_000, 90_500, 300_000].map(budgetText)).toEqual(['50ms', '1s', '1499ms', '1500ms', '30s', '1m', '90500ms', '5m']);
   });
 });
 

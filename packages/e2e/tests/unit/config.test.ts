@@ -6,7 +6,7 @@ import { discoverConfig } from '../../src/config/load.ts';
 import { isCiMode, resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 import { ConfigurationError, defineEngine } from '../../src/engine/index.ts';
 import { secrets } from '../../src/secrets.ts';
-import type { CommandConfig, E2EConfig, Target, TargetApp } from '../../src/types.ts';
+import type { CommandConfig, E2EConfig, Target, TargetApp, TestFilter } from '../../src/types.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 import { invalid } from '../helpers/invalid.ts';
 
@@ -575,6 +575,94 @@ describe('resolveConfig', () => {
     expect(resolve({ reporters: ['list', upload] }).configDigest).toBe(resolve({ reporters: ['list'] }).configDigest);
     const store = { client, put: async () => ({ ref: 'r' }) };
     expect(resolve({ artifacts: { store } }).configDigest).toBe(resolve({}).configDigest);
+  });
+
+  describe('filters', () => {
+    /** A filter body that leaves nothing out. */
+    const decide = () => ({ exclude: {} });
+
+    it('resolves the list in declaration order, empty when unset, and allows keys of their own', () => {
+      expect(resolve({}).filters).toEqual([]);
+      expect(resolve({ filters: [] }).filters).toEqual([]);
+      const areas = { name: 'areas', filter: decide };
+      const jev = { name: 'jev', filter: decide, model: 'typesafe-ai/jev' };
+      const odd = { name: 'v1.2_x-y', filter: decide };
+      const filters = resolve({ filters: [jev, areas, odd] }).filters;
+      expect(filters).toEqual([jev, areas, odd]);
+      expect(filters[0]).toBe(jev);
+      expect(resolve({ filters: [{ name: 'x'.repeat(256), filter: decide }] }).filters).toHaveLength(1);
+    });
+
+    it('refuses filters that are not a list', () => {
+      for (const value of [{ affected: { name: 'areas', filter: decide } }, { name: 'areas', filter: decide }, decide, {}, 'areas', null, 3]) {
+        expect(() => resolve({ filters: invalid<NonNullable<E2EConfig['filters']>>(value) }), JSON.stringify(value)).toThrow(
+          new ConfigurationError('INVALID_CONFIG', 'filters must be a list of test filters: filters: [{ name, filter(tests, context) }]'),
+        );
+      }
+    });
+
+    it('says to call a function in the list, naming it by its index and its name', () => {
+      /** A filter factory, such as `decisionFilter` from `@e2e-dev/decision`, written without its call. */
+      function decisionFilter(): TestFilter {
+        return { name: 'decision', filter: decide };
+      }
+      expect(() => resolve({ filters: [{ name: 'areas', filter: decide }, invalid<TestFilter>(decisionFilter)] })).toThrow(
+        new ConfigurationError('INVALID_CONFIG', 'filters[1] is the function decisionFilter; call it, such as filters: [decisionFilter({ model })]'),
+      );
+      expect(() => resolve({ filters: [invalid<TestFilter>(() => ({ exclude: {} }))] })).toThrow(
+        new ConfigurationError('INVALID_CONFIG', 'filters[0] is a function; call it, such as filters: [decisionFilter({ model })]'),
+      );
+    });
+
+    it('refuses an item without a string name or a filter function', () => {
+      const message = 'filters[0] must be a TestFilter: { name, filter(tests, context) }';
+      for (const value of [{ filter: decide }, { name: 3, filter: decide }, { name: 'areas' }, { name: 'areas', filter: 'git diff' }, 'areas', null, undefined]) {
+        expect(() => resolve({ filters: [invalid<TestFilter>(value)] }), JSON.stringify(value)).toThrow(new ConfigurationError('INVALID_CONFIG', message));
+      }
+    });
+
+    it('refuses a hole in the list as an item that is not a TestFilter', () => {
+      const gap: TestFilter[] = [];
+      gap[0] = { name: 'areas', filter: decide };
+      gap[2] = { name: 'jev', filter: decide };
+      expect(() => resolve({ filters: gap })).toThrow(
+        new ConfigurationError('INVALID_CONFIG', 'filters[1] must be a TestFilter: { name, filter(tests, context) }'),
+      );
+    });
+
+    it('refuses a name outside the target name rules', () => {
+      for (const name of ['..', '.', 'x y', 'areas!', '', 'é', `${'x'.repeat(257)}!`]) {
+        expect(() => resolve({ filters: [{ name, filter: decide }] }), name).toThrow(
+          new ConfigurationError(
+            'INVALID_CONFIG',
+            `invalid filter name ${JSON.stringify(name)}: names are ASCII letters, numbers, "_", "-", or ".", and cannot be only dots`,
+          ),
+        );
+      }
+    });
+
+    it('refuses a name over 256 characters, saying so', () => {
+      expect(() => resolve({ filters: [{ name: 'x'.repeat(257), filter: decide }] })).toThrow(
+        new ConfigurationError('INVALID_CONFIG', `filter name "${'x'.repeat(31)}…" is longer than 256 characters`),
+      );
+    });
+
+    it('refuses two filters with one name', () => {
+      const jev = { name: 'jev', filter: decide };
+      expect(() => resolve({ filters: [jev, { name: 'areas', filter: decide }, { name: 'jev', filter: () => ({ exclude: { a: 'b' } }) }] })).toThrow(
+        new ConfigurationError('INVALID_CONFIG', 'filters has two filters named "jev"; the report tells filters apart by name'),
+      );
+      expect(() => resolve({ filters: [jev, jev] })).toThrow('filters has two filters named "jev"');
+    });
+
+    it('leaves the config digest alone when a filter is added, changed, or removed, even one holding a cyclic client', () => {
+      const plain = resolve({}).configDigest;
+      const client: Record<string, unknown> = {};
+      client['self'] = client;
+      expect(resolve({ filters: [] }).configDigest).toBe(plain);
+      expect(resolve({ filters: [{ name: 'areas', filter: decide }, { name: 'jev', filter: decide }] }).configDigest).toBe(plain);
+      expect(resolve({ filters: [{ name: 'jev', filter: () => ({ exclude: { a: 'b' } }), client } as TestFilter] }).configDigest).toBe(plain);
+    });
   });
 
   it('reduces every model instance in an agent entry to its identity, judge and a custom executor\'s own included', () => {

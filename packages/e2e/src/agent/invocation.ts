@@ -74,17 +74,8 @@ export interface AgentSelection {
    * to the agent's `model` unless a judge of its own was configured.
    */
   readonly judge: () => ModelAdapter;
-  /**
-   * Trusted context every prompt of this agent opens with: the test's title,
-   * then the agent's `context`, then test/group agentContext.
-   */
+  /** Trusted project context: the agent's `context` then test/group agentContext. */
   readonly agentContext: string | undefined;
-  /**
-   * The same context without the test's title, which the trace cache key
-   * digests: the key's test id already names the title, so leaving it out
-   * keeps recordings made before the title joined the context replaying.
-   */
-  readonly keyedContext: string | undefined;
 }
 
 /** Attempt-scoped services one agent fixture needs. */
@@ -361,6 +352,7 @@ export class Invocation {
       const prompt = this.runtime.redact(
         buildPrompt({
           ...request.prompt,
+          titlePath: this.runtime.attempt.titlePath,
           ...(this.treeWithheld ? { withholdTree: true } : {}),
           ...(repair === undefined
             ? {}

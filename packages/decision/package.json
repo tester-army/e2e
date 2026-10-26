@@ -1,7 +1,7 @@
 {
   "name": "@e2e-dev/decision",
-  "version": "0.2.4",
-  "description": "Decision-model executors for e2e",
+  "version": "0.3.0",
+  "description": "Decision-model executors and test filters for e2e",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "ai": "^7.0.134",
-    "e2e": ">=0.19.0 <1"
+    "e2e": ">=0.21.3 <1"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.90",

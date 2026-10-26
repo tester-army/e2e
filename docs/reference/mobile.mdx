@@ -121,8 +121,9 @@ mobile({ platform: 'android' });
  * is a pool: the engine declares one worker per entry and worker slot `n`
  * drives the `n`th, so `workers` at or above the pool size runs the target's
  * files across every device at once. Omitted, the pool is every booted device
- * of the platform at `prepare`, as many as the run has slots; with none
- * booted, agent-device boots one. A `DeviceProvider` leases hosted devices
+ * of the platform at `prepare` that no other agent-device session holds, as
+ * many as the run has slots; with none booted, agent-device boots one, and
+ * with every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
  * instead: one per worker slot at `prepare`, each driven through the daemon
  * and client configuration the lease names. A replacement worker resumes a
  * healthy agent-device session on the same lease. Forced worker shutdown
@@ -137,7 +138,7 @@ readonly device?: string | readonly string[] | DeviceProvider | undefined;
 ```
 
 ```ts
-mobile({ platform: 'ios' }); // default: every booted iOS device
+mobile({ platform: 'ios' }); // default: every booted iOS device no other agent-device session holds
 mobile({ platform: 'ios', device: 'iPhone 17' });
 mobile({ platform: 'android', device: 'emulator-5554' });
 mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] });
@@ -145,6 +146,10 @@ mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] });
 
 - Two workers never drive the same device, as long as each `device` entry
   names a different one.
+- Without `device`, a booted simulator another tool holds through its own
+  agent-device session is skipped. A booted device nothing holds, such as
+  one you are using by hand, is still in the pool: name the device to keep
+  the run off it.
 - [Hosted devices](/mobile#hosted-devices) has the `DeviceProvider` contract
   and an example provider.
 

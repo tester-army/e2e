@@ -128,7 +128,15 @@ suites that consume the built packages the way a user would.
   questions with probability distributions, plus an optional small language
   model that writes field values when the decision model picks `type`.
   `minProbability` and `minConfidence` gate a chosen operation, target,
-  secret, or assertion verdict.
+  secret, or assertion verdict. It also exports `decisionFilter()`, a
+  `TestFilter` that asks a decision model whether the pull request's diff
+  can affect each test, packing test files into calls under the model's
+  size limit, 8 calls at a time, and leaves out the unlikely ones. It runs
+  every test on an `e2e.config` or lockfile change, and asks nothing about a
+  test whose test file, setup file, or stored screenshots changed. A failed
+  call leaves its tests in and the rest are still judged; after 3 failed
+  calls it stops asking. When every call fails, or git or a file read
+  fails, it throws, and the run warns and runs every test.
 - `packages/github` — the published `@e2e-dev/github` package: the reporter
   that posts the run as one pull request comment from GitHub Actions and
   keeps it current on reruns, writing the same text to the job summary. It
@@ -170,7 +178,7 @@ suites that consume the built packages the way a user would.
   diffs against the source minimal, and name no company a scenario was
   distilled from.
 - `examples/` — standalone user-facing projects, one per technology
-  (`with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`,
+  (`with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`,
   `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, `with-maui`), each the same
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
@@ -345,6 +353,13 @@ thread handled, and labeled `Ready for Human Review`. "It compiles" and
   `E2E_MODEL=provider/model-id`, the testbed's own override) run only on the weekly
   `.github/workflows/agent.yml` schedule or by manual dispatch. Both run
   against local deterministic apps, so a failure there is ours.
+- The default testbed suite runs `decisionFilter` with Jev on a pull request
+  (`apps/testbed/e2e.config.ts`, with `--changed-since` from `spec.yml`), so a
+  PR's testbed check runs only the tests Jev rates the change can affect;
+  without the key, every test runs, and when a call fails, the tests no call
+  judged run. The merge queue and `main` pass no `--changed-since` and run
+  every test, so the merge gate stays deterministic. Locally, every test runs
+  unless you pass `--changed-since origin/main`.
 - Agentic assertions must be model-portable: assert on meaning (`toContain`)
   and pair each agentic step with a deterministic locator check.
 

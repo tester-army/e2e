@@ -203,7 +203,7 @@ function byteLength(data: unknown): number {
  * stable signal that identifies them.
  */
 function inferSchemaName(prompt: string): string {
-  return prompt.startsWith('Extract the requested data') ? 'agent-extract-2' : '';
+  return /^(?:Test: [^\n]*\n\n)?Extract the requested data/u.test(prompt) ? 'agent-extract-2' : '';
 }
 
 /** Extracts one fenced prompt section. */

@@ -173,7 +173,10 @@ Then each test, one at a time:
   query also matches a hidden copy (another layout's), add
   `{ visible: true }`. When two visible nodes match, such as a second
   toast over the first, pick the one the step means.
-- A sleep or fixed wait becomes an assertion on the state it waited for.
+- A sleep or fixed wait becomes `agent.waitFor` on the state it waited
+  for (`agent.waitFor('the upload finished')`), or an assertion with a
+  `timeout` when a locator names that state or the config has no model.
+  Never port the duration.
 - A per-platform branch becomes `{ platforms: [...] }` on a test, or an `if`
   on the `platform` fixture inside one.
 - A workaround the source comments explain (a flaky `hideKeyboard`, a

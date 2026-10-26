@@ -2,8 +2,9 @@
  * The devices one target drives: one simulator or emulator per worker slot,
  * each under its own agent-device session. A named `device` is a pool of one
  * and a list a pool of many; with no `device` the pool is every booted device
- * of the platform, discovered in `prepare`; a `DeviceProvider` leases one
- * hosted device per slot instead. Each is a `DeviceSource`; `prepare` binds
+ * of the platform no other agent-device session holds, discovered in
+ * `prepare`; a `DeviceProvider` leases one hosted device per slot instead.
+ * Each is a `DeviceSource`; `prepare` binds
  * one `SlotBinding` per slot from it, warms each once per run before any
  * worker exists, and hands the bindings to the workers through the run's
  * environment. The worker that owns a slot then resumes its session in
@@ -92,7 +93,18 @@ class ConfiguredDevices implements DeviceSource {
   }
 }
 
-/** Every booted device of the platform, as many as the run has slots; with none booted, one slot the daemon fills. */
+/** A booted device as the inventory lists it, with the agent-device session that holds it, when one does. */
+interface BootedDevice {
+  readonly id: string;
+  readonly name: string;
+  readonly claimedBy?: string | undefined;
+}
+
+/**
+ * Every booted device of the platform no other agent-device session holds, as
+ * many as the run has slots; with none booted, one slot the daemon fills. A
+ * device held by one of this target's own slot sessions stays in the pool.
+ */
 class BootedDevices implements DeviceSource {
   constructor(
     private readonly platform: MobilePlatform,
@@ -102,30 +114,48 @@ class BootedDevices implements DeviceSource {
 
   async bind(info: EnginePrepareInfo): Promise<readonly SlotBinding[]> {
     const booted = await this.inventory(info.targetName, info.signal);
-    const chosen = booted.slice(0, info.slots);
+    const own = new Set(Array.from({ length: info.slots }, (_, slot) => this.session(info.targetName, slot)));
+    const held = booted.filter((device) => device.claimedBy !== undefined && !own.has(device.claimedBy));
+    const chosen = booted.filter((device) => !held.includes(device)).slice(0, info.slots);
+    const heldBy = held.map((device) => `${device.name} by session "${device.claimedBy}"`).join(', ');
+    if (chosen.length === 0 && held.length > 0) {
+      throw new EngineError(
+        'ENGINE_FAILURE',
+        `every booted ${this.platform} device is held by another agent-device session (${heldBy}); boot another one, close a holding session, or name the device in the target's \`device\` option`,
+        { retryable: false },
+      );
+    }
     if (chosen.length === 0) {
       info.log(`no booted ${this.platform} device; agent-device boots one`);
       return [{}];
     }
-    info.log(`${booted.length} booted ${this.platform} device(s); driving ${chosen.length}: ${chosen.map((device) => device.name).join(', ')}`);
+    const skipped = held.length === 0 ? '' : `, skipping ${held.length} held by another agent-device session (${heldBy})`;
+    info.log(`${booted.length} booted ${this.platform} device(s)${skipped}; driving ${chosen.length}: ${chosen.map((device) => device.name).join(', ')}`);
     return chosen.map((device) => ({ deviceId: device.id }));
   }
 
-  /** Every booted device of the platform, by stable id and name, in agent-device's inventory order. */
-  private async inventory(targetName: string, signal: AbortSignal): Promise<{ id: string; name: string }[]> {
+  /** Every booted device of the platform, by stable id and name, with the session holding it, in agent-device's inventory order. */
+  private async inventory(targetName: string, signal: AbortSignal): Promise<BootedDevice[]> {
     const client = this.createClient(this.session(targetName, 0));
     const inventory: unknown = await runCommand('devices', () => client.devices.list({ platform: this.platform }), signal);
     if (!Array.isArray(inventory)) return [];
     return inventory
       .filter(
-        (device): device is { id: string; name?: string } =>
+        (device): device is { id: string; name?: unknown; claimedBy?: { session?: unknown } } =>
           typeof device === 'object' &&
           device !== null &&
           (device as { booted?: unknown }).booted === true &&
           (device as { platform?: unknown }).platform === this.platform &&
           typeof (device as { id?: unknown }).id === 'string',
       )
-      .map((device) => ({ id: device.id, name: typeof device.name === 'string' ? device.name : device.id }));
+      .map((device) => {
+        const session = device.claimedBy?.session;
+        return obj({
+          id: device.id,
+          name: typeof device.name === 'string' ? device.name : device.id,
+          claimedBy: typeof session === 'string' ? session : undefined,
+        });
+      });
   }
 }
 

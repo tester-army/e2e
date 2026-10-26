@@ -113,7 +113,7 @@ password comes from [configured credentials](/authentication).
 | `manage().addCookie` | `browser.setCookies` |
 | `getScreenshotAs` | `app.screenshot('label')`, redacted |
 | `Thread.sleep` | Use a locator assertion for the condition you need |
-| Page objects | A fixture from `test.extend`, or a goal for `agent.act` |
+| Page objects | A fixture from `test.extend`, or a goal for `agent.act`, see [Page objects](/page-objects) |
 
 `findElement` takes the first match. e2e fails with `LOCATOR_AMBIGUOUS` on
 several, so narrow with `.filter()`, `.first()`, or `.nth()`.

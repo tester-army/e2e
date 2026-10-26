@@ -41,8 +41,9 @@ export const NO_FILTERS: WatchFilters = { file: undefined, title: undefined };
 
 /**
  * The options of the next run: the command line's, with the trigger's
- * selection over them. `--last-failed` is the first run's alone; `f` asks
- * for it again, against the report the run before wrote, and a run with
+ * selection over them. `--last-failed` and the test filters are the first
+ * run's alone, so a save or a key never calls a filter's model; `f` asks for
+ * `--last-failed` again, against the report the run before wrote, and a run with
  * nothing failed is then an empty pass, not `NO_TESTS`. A changed file
  * runs whole, inside every other filter of the command line, in place of
  * the positionals; the keys and a config change keep the positionals, or
@@ -60,6 +61,7 @@ export function planRun(base: RunOptions, filters: WatchFilters, trigger: WatchT
     ...base,
     freshGraph: true,
     lastFailed: false,
+    changedSince: undefined,
     passWithNoTests: true,
     files: filters.file === undefined ? base.files : [filters.file],
     grep: filters.title === undefined ? base.grep : [filters.title],

@@ -67,6 +67,16 @@
             ]
           }
         ]
+      },
+      {
+        "selected": false,
+        "status": "skipped",
+        "attempts": [],
+        "skip": {
+          "cause": "explicit",
+          "reason": "only a filtered test names the filter that left it out",
+          "filter": "areas"
+        }
       }
     ],
     "errors": [
@@ -92,6 +102,20 @@
       "interrupted": -1,
       "flaky": 0,
       "skipped": 0
-    }
+    },
+    "changes": {
+      "base": "main",
+      "files": 3,
+      "paths": ["src/app.ts"]
+    },
+    "filters": [
+      {
+        "name": "areas",
+        "version": "1",
+        "candidates": 2,
+        "excluded": 1,
+        "outcome": "answered"
+      }
+    ]
   }
 }

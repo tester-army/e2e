@@ -465,9 +465,14 @@ function fragmentOwners(values: readonly string[]): Map<string, number> {
  * each occur in a value replaced by the marker of the value owning its first
  * window. Windows are looked up by `readingKey`, as `owners` is keyed, so a
  * fragment in another case or with another whitespace run is one too, and
- * the stretch is cut back out of `text` whole, its whitespace runs included.
- * The stretch grows one window at a time, so the scan is linear in the text
- * and a run spanning two values becomes one marker.
+ * the stretch is cut back out of `text` whole, its inner whitespace runs
+ * included. A whitespace run at either end stays outside the marker, so
+ * where a diff's `+` or `-` prefix splits a multi-line value, the line break
+ * and the prefix keep their places; a context line that continues the value
+ * folds into the same marker. The scan resumes on the whitespace it kept, so
+ * a fragment starting there is rewritten too. The stretch grows one window at
+ * a time, so the scan is linear in the text and a run spanning two values
+ * becomes one marker.
  */
 function rewriteFragments(text: string, owners: ReadonlyMap<string, number>, markers: readonly string[]): string {
   if (owners.size === 0) return text;
@@ -483,9 +488,11 @@ function rewriteFragments(text: string, owners: ReadonlyMap<string, number>, mar
     }
     let end = start + FRAGMENT_LENGTH;
     while (end < key.length && owners.has(key.slice(end + 1 - FRAGMENT_LENGTH, end + 1))) end += 1;
-    out += `${text.slice(kept, at(start))}${markers[owner] ?? ''}`;
-    kept = at(end);
-    start = end;
+    const from = key.charCodeAt(start) === 0x20 ? start + 1 : start;
+    const to = key.charCodeAt(end - 1) === 0x20 ? end - 1 : end;
+    out += `${text.slice(kept, at(from))}${markers[owner] ?? ''}`;
+    kept = at(to);
+    start = to;
   }
   return out + text.slice(kept);
 }
@@ -616,9 +623,10 @@ export class SecretLedger {
   /**
    * `redact` that also rewrites every fragment of a value: a run of at least
    * `FRAGMENT_LENGTH` consecutive characters of one, anywhere in the text,
-   * becomes its marker. For a file the runner keeps as the app wrote it (a
-   * text download), where a value cut or selected partway through survives
-   * whole-value matching.
+   * becomes its marker. For text where a value shows only in part, which
+   * whole-value matching misses: a text download the runner keeps as the app
+   * wrote it, or what a test filter sends to a model, such as a diff whose
+   * line prefixes split a multi-line value.
    * Matched in any case and with whitespace runs collapsed, like `redactCut`. A
    * base64 or base64url run that decodes to text holding a value or a
    * fragment is rewritten whole (a basic-auth header the engine sent). Bound
