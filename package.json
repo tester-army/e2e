@@ -50,7 +50,7 @@
     "@oxlint/plugins": "1.89.0",
     "@sindresorhus/slugify": "3.0.1",
     "@types/node": "26.6.5",
-    "fallow": "3.33.1",
+    "fallow": "3.34.0",
     "oxlint": "1.89.0",
     "typescript": "7.0.2"
   },
