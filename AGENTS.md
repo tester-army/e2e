@@ -178,7 +178,7 @@ suites that consume the built packages the way a user would.
   diffs against the source minimal, and name no company a scenario was
   distilled from.
 - `examples/` — standalone user-facing projects, one per technology
-  (`with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`,
+  (`with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`,
   `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, `with-maui`), each the same
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no

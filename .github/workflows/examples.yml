@@ -94,6 +94,7 @@ jobs:
           - { id: vite, name: Vite, tests: examples/with-vite, target: '' }
           - { id: next, name: Next.js, tests: examples/with-next, target: '' }
           - { id: astro, name: Astro, tests: examples/with-astro, target: '' }
+          - { id: angular, name: Angular, tests: examples/with-angular, target: '' }
           - { id: expo, name: Expo, tests: examples/with-expo, target: web }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -34,7 +34,7 @@ For anything the references do not cover, the full documentation ships in
 the `docs/` directory of the installed `e2e` package
 (`node_modules/e2e/docs` in a single-package project); a link such as
 `/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
-Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
+Next.js, Astro, Angular, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
 Flutter, and .NET MAUI are in https://github.com/tester-army/e2e/tree/main/examples.
 
 ## Quick start
