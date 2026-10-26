@@ -116,10 +116,10 @@ describe('web({ headers, basicAuth })', () => {
       await boot(engine, app, artifactsDir, 'h4');
       // Playwright reapplies a routed request's headers to its redirects without routing them:
       // they reach whatever origin a redirect names, and a redirect into the app's origin gets none.
-      const toOther = `${app.url}/redirect?to=${encodeURIComponent(`${otherSite}/headers`)}`;
-      expect(await headingAt(engine, 'h4', toOther)).toBe('rides-redirects');
-      const toApp = `${otherSite}/redirect?to=${encodeURIComponent(`${app.url}/headers`)}`;
-      expect(await headingAt(engine, 'h4', toApp)).toBe('none');
+      app.redirects.set('/to-other-headers', `${otherSite}/headers`);
+      expect(await headingAt(engine, 'h4', `${app.url}/to-other-headers`)).toBe('rides-redirects');
+      other.redirects.set('/to-app-headers', `${app.url}/headers`);
+      expect(await headingAt(engine, 'h4', `${otherSite}/to-app-headers`)).toBe('none');
     } finally {
       await shutdown(engine);
     }
@@ -183,8 +183,8 @@ describe('web({ headers, basicAuth })', () => {
       expect(await headingAt(engine, 'b1', `${otherPort}/protected`)).toBe('Unauthorized');
       expect(await headingAt(engine, 'b1', `${otherSite}/protected`)).toBe('Unauthorized');
       // The challenge comes from the origin a redirect lands on, so redirects do not carry the credential.
-      const toOther = `${app.url}/redirect?to=${encodeURIComponent(`${otherPort}/protected`)}`;
-      expect(await headingAt(engine, 'b1', toOther)).toBe('Unauthorized');
+      app.redirects.set('/to-other-protected', `${otherPort}/protected`);
+      expect(await headingAt(engine, 'b1', `${app.url}/to-other-protected`)).toBe('Unauthorized');
     } finally {
       await shutdown(engine);
     }
