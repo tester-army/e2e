@@ -85,13 +85,15 @@ and capture again serially. Record keyboard/key-node presence and
 
 ## Verification
 
-- Same focused scripted-client regressions on PR base `93f77d8`, tests only:
-  **17 failed, 4 passed**. Candidate: **21 passed**. All **366** mobile unit
+- Same focused scripted-client regressions on current main `d8c597b`, tests only:
+  **17 failed, 4 passed**. Candidate: **21 passed**. All **374** mobile unit
   tests and `pnpm check` pass.
 - Built CLI, one worker, zero retries, `transition: 500`, on the same diagnostic
-  binary: base passed 1/1, candidate passed 1/1. Test bodies took 3.71 s and
+  binary before rebase: base `93f77d8` passed 1/1, candidate `828b1e8` passed 1/1. Test bodies took 3.71 s and
   4.24 s respectively. These single runs are compatibility observations,
   not a performance benchmark or proof of a deterministic native failure.
+- The rebased candidate also passed the same built CLI check with agent-device
+  0.21.29, one worker and zero retries.
 - The unchanged-keyboard tests use a stopped fake clock and verify no pending
   transition timer after type/fill/clear. The new rule adds no unconditional
   text-entry wait.
