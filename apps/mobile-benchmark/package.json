@@ -38,9 +38,9 @@
     "@e2e-dev/mobile": "workspace:*",
     "@expo/fingerprint": "0.20.13",
     "@expo/repack-app": "0.10.3",
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.5",
     "@types/react": "19.1.4",
-    "ai": "7.0.107",
+    "ai": "7.0.153",
     "e2e": "workspace:*",
     "typescript": "7.0.2"
   }

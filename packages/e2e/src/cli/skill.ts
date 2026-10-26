@@ -32,9 +32,13 @@ export interface SkillFile {
   readonly content: string;
 }
 
-/** Every file of the skill, `SKILL.md` first, or none when the installation lacks it. */
-export function readSkillFiles(): readonly SkillFile[] {
-  const root = skillDirectory();
+/**
+ * Every file of the skill, `SKILL.md` first, or none when the installation
+ * lacks it. `from` reads another installation's copy, such as the one
+ * `e2e upgrade` has just installed, instead of this one's.
+ */
+export function readSkillFiles(from?: string): readonly SkillFile[] {
+  const root = from ?? skillDirectory();
   if (root === undefined) return [];
   const files: SkillFile[] = [];
   const walk = (dir: string): void => {

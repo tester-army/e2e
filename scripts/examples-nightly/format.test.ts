@@ -47,6 +47,22 @@ test('a run whose tests all skipped is not green', () => {
   assert.match(message, /❌ \*Vite\* · web: no test passed: 0 passed, 5 skipped/);
 });
 
+test('a suite a second pass recovered after an infrastructure failure reads as flaky', () => {
+  const rows: Row[] = [
+    { outcome: outcome(), report: report({ passed: 1, durationMs: 15_000 }), secondPass: 'last-failed' },
+    { outcome: outcome({ name: 'Next.js' }), report: report(), secondPass: 'full' },
+  ];
+  const message = formatMessage(rows, run);
+  assert.match(message, /^🟡 \*Nightly examples\*: all 2 passed, 2 flaky/);
+  assert.match(message, /🟡 \*Vite\* · web: infrastructure failure, then the tests it stopped once more: 1 passed \(15s\)/);
+  assert.match(message, /🟡 \*Next\.js\* · web: infrastructure failure before any report, then the suite once more: 5 passed/);
+});
+
+test('a suite that still fails on its second pass says it had one', () => {
+  const rows: Row[] = [{ outcome: outcome({ test: 'failure' }), report: report({ passed: 0, failed: 1 }), secondPass: 'last-failed' }];
+  assert.match(formatMessage(rows, run), /❌ \*Vite\* · web: infrastructure failure, then the tests it stopped once more: 1 failed, 0 passed/);
+});
+
 test('a run that never reached the examples says why', () => {
   assert.match(formatMessage([], { ...run, blocked: 'pack' }), /building the packages from `main@abcdef1` failed/);
   assert.match(formatMessage([], { ...run, blocked: 'credential' }), /the AI_GATEWAY_API_KEY secret is missing/);

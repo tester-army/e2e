@@ -31,9 +31,18 @@ export interface ReportCounts {
   durationMs?: number;
 }
 
+/**
+ * The second pass `run-tests.sh` gave the suite after an infrastructure
+ * failure: the tests the first pass did not pass, or the whole suite when it
+ * wrote no report.
+ */
+export type SecondPass = 'last-failed' | 'full';
+
 export interface Row {
   outcome: Outcome;
+  /** The last pass's report: after a `last-failed` second pass, it counts only the tests that pass ran. */
   report?: ReportCounts;
+  secondPass?: SecondPass;
   /** The job's log, when the API listed it. */
   jobUrl?: string;
 }
@@ -54,6 +63,10 @@ type Verdict = 'passed' | 'flaky' | 'failed' | 'cancelled';
 const ICON: Record<Verdict, string> = { passed: '✅', flaky: '🟡', failed: '❌', cancelled: '⏹️' };
 const PLATFORM_ORDER = ['web', 'android', 'ios'] as const;
 const PLATFORM_LABEL: Record<Outcome['platform'], string> = { web: 'web', android: 'Android', ios: 'iOS' };
+const SECOND_PASS: Record<SecondPass, string> = {
+  'last-failed': 'infrastructure failure, then the tests it stopped once more: ',
+  full: 'infrastructure failure before any report, then the suite once more: ',
+};
 
 /** Escapes the three characters Slack's mrkdwn treats as markup. */
 function escape(text: string): string {
@@ -90,11 +103,13 @@ function judge(row: Row): { verdict: Verdict; detail: string } {
     return { verdict: 'failed', detail: outcome.test === 'success' ? 'no report' : 'failed before the tests ran' };
   }
   const time = report.durationMs === undefined ? '' : ` (${duration(report.durationMs)})`;
+  const pass = row.secondPass === undefined ? '' : SECOND_PASS[row.secondPass];
   if (outcome.test !== 'success' || report.failed > 0 || report.interrupted > 0) {
-    return { verdict: 'failed', detail: `${counts(report)}${time}` };
+    return { verdict: 'failed', detail: `${pass}${counts(report)}${time}` };
   }
-  if (report.passed === 0) return { verdict: 'failed', detail: `no test passed: ${counts(report)}` };
-  return { verdict: report.flaky > 0 ? 'flaky' : 'passed', detail: `${counts(report)}${time}` };
+  if (report.passed === 0) return { verdict: 'failed', detail: `${pass}no test passed: ${counts(report)}` };
+  const verdict = report.flaky > 0 || row.secondPass !== undefined ? 'flaky' : 'passed';
+  return { verdict, detail: `${pass}${counts(report)}${time}` };
 }
 
 /** The whole message, as Slack mrkdwn. */

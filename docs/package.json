@@ -10,24 +10,24 @@
     "typecheck": "tsc --noEmit --project examples/tsconfig.json && tsc --noEmit --project og/tsconfig.json"
   },
   "devDependencies": {
-    "@ai-sdk/typesafe-ai": "3.0.19",
+    "@ai-sdk/typesafe-ai": "3.0.27",
     "@e2e-dev/decision": "workspace:*",
     "@e2e-dev/limrun": "workspace:*",
     "@e2e-dev/mobile": "workspace:*",
     "@e2e-dev/testmu": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.5",
     "@types/react": "19.1.4",
     "@vercel/og": "0.11.1",
-    "agent-device": "0.21.29",
-    "ai": "7.0.134",
+    "agent-device": "0.21.31",
+    "ai": "7.0.153",
     "e2e": "workspace:*",
-    "mint": "4.2.1110",
+    "mint": "4.2.1125",
     "react": "19.3.1",
-    "tsx": "4.23.14",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
-    "zod": "4.6.1"
+    "zod": "4.6.7"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
