@@ -292,6 +292,27 @@ describe('settleStagedTraces', () => {
     }
   });
 
+  it('reports a confirmed recording as not written when a custom store rejects its write', async () => {
+    const store = memoryStore();
+    const rejecting: CacheStore = {
+      ...store,
+      write: async (keyHash, payload) => {
+        if (keyHash === KEY_A) throw new Error('store unavailable');
+        return store.write(keyHash, payload);
+      },
+    };
+    const context = contextWith(rejecting);
+    context.staged.push({ kind: 'write', keyHash: KEY_A, trace: trace('rejected'), stepIndex: 1 });
+    context.staged.push({ kind: 'write', keyHash: KEY_B, trace: trace('healthy'), stepIndex: 2 });
+
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: 3, implicatesUnconfirmed: true });
+
+    expect(writes.get(1)).toBe('not-written');
+    expect(writes.get(2)).toBe('saved');
+    expect(store.entries.has(KEY_A)).toBe(false);
+    expect(store.entries.has(KEY_B)).toBe(true);
+  });
+
   it('does not report an eviction when a custom store rejects deletion, and still settles other entries', async () => {
     const store = memoryStore();
     const stored = JSON.stringify(buildTraceEntry(trace('replayed flow')));

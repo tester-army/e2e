@@ -1,10 +1,11 @@
 /**
  * What user code in an `e2e run` process prints outside a test body: the
  * config's top-level code, a test file's top level while it is collected,
- * and reporters in the runner; the config's top-level code again in each
- * worker. It is redacted with every secret value the process knows, as a
- * test's output is. Until a config has loaded its secrets are unknown, so
- * what is printed meanwhile is held, and withheld if the load fails.
+ * test filters, and reporters in the runner; the config's top-level code
+ * again in each worker. It is redacted with every secret value the process
+ * knows, as a test's output is. Until a config has loaded its secrets are
+ * unknown, so what is printed meanwhile is held, and withheld if the load
+ * fails.
  */
 
 import { StreamRedactor, type SecretLedger } from '../internal/redact.ts';
@@ -231,6 +232,18 @@ export class RunnerOutput {
   end(): void {
     this.showThrough(undefined);
     this.release();
+  }
+
+  /**
+   * Ends the output as `end` does, then resolves once the terminal's streams
+   * wrote everything handed to them: what a process waits for before
+   * `process.exit`, which drops what a piped stream still queues. A `write`
+   * through the claimed stream would not wait: its callback fires once the
+   * text is redacted.
+   */
+  async drain(): Promise<void> {
+    this.end();
+    await Promise.all((['stdout', 'stderr'] as const).map((stream) => new Promise<void>((resolve) => void this.terminal[stream]('', resolve))));
   }
 
   private release(): void {

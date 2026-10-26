@@ -18,8 +18,9 @@ import { launchesPinnedApp } from '../config/targets.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import type { ReportExplore } from '../report/build.ts';
 import type { RunEventSink } from '../run/events.ts';
+import type { RunnerOutput } from '../run/process-output.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
-import { staticSecretLedger } from '../run/secrecy.ts';
+import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
 import { explorerAgent, withFindingTool } from './executor.ts';
@@ -84,10 +85,21 @@ export interface ExploreOptions {
    * root then.
    */
   readonly rawConfig?: E2EConfig | undefined;
-  /** Notices decided before the run starts: the target chosen, a replaced executor. */
+  /**
+   * Notices decided before the run starts: the target chosen, a replaced
+   * executor. Without it, the run emits them as `run` notices once it has
+   * started, where `explore` on `e2e/runner` delivers them through `onEvent`.
+   */
   readonly notice?: ((message: string) => void) | undefined;
   /** A second sink on the run's event spine, beside the reporters, as `run` takes. */
   readonly onEvent?: RunEventSink | undefined;
+  /** Suppresses the list reporter, as `run` takes. */
+  readonly quiet?: boolean | undefined;
+  /**
+   * The output a public run owns, as `run` takes: what user code prints is
+   * redacted, and held while the config loads, until its secrets are known.
+   */
+  readonly processOutput?: RunnerOutput | undefined;
 }
 
 export interface ExploreOutcome extends RunOutcome {
@@ -105,16 +117,25 @@ export interface ExploreOutcome extends RunOutcome {
 export async function explore(options: ExploreOptions = {}): Promise<ExploreOutcome> {
   const cwd = options.cwd ?? process.cwd();
   const env = options.env ?? process.env;
-  const notice = options.notice ?? (() => undefined);
+  const earlyNotices: string[] = [];
+  const notice = options.notice ?? ((message: string) => void earlyNotices.push(message));
   const goal = resolveGoal(options.goal);
   const budgets = {
     maxSteps: resolveBounded(options.maxSteps, STEP_BOUNDS, 'maxSteps'),
     timeoutMs: resolveBounded(options.timeoutMs, TIMEOUT_BOUNDS, 'timeout'),
   };
 
-  const { raw, projectRoot } = await loadRawConfig(options, cwd);
-  const resolveOptions = { projectRoot, env, cli: options.agent === undefined ? {} : { agents: [options.agent] } };
-  const resolved = resolveConfig(raw, resolveOptions);
+  // The config's secrets are known to the process before what its top-level
+  // code printed is released, as `run` loads its config.
+  const loadConfig = async (): Promise<{ raw: E2EConfig; projectRoot: string; resolved: ResolvedConfig }> => {
+    const { raw, projectRoot } = await loadRawConfig(options, cwd);
+    const resolved = resolveConfig(raw, { projectRoot, env, cli: options.agent === undefined ? {} : { agents: [options.agent] } });
+    registerStaticSecrets(resolved.allSecrets);
+    return { raw, projectRoot, resolved };
+  };
+  const { raw, projectRoot, resolved } = await (options.processOutput === undefined
+    ? loadConfig()
+    : options.processOutput.withholdDuring(loadConfig));
   const target = pickTarget(resolved.targets, options.target, notice);
   const accounts = credentialAccounts(resolved.credentials);
   // An exploration runs as exactly one agent: the one named, else `default`.
@@ -146,6 +167,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
       registration: exploreRegistration(state, { openApp: target.app.base !== undefined || launchesPinnedApp(target), accounts, session: options.session }),
       agents: explorerAgents,
       explore: state,
+      notices: earlyNotices,
     },
     targetIds: [target.name],
     headed: options.headed,
@@ -158,6 +180,8 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     interruptSignal: options.interruptSignal,
     forceSignal: options.forceSignal,
     onEvent: options.onEvent,
+    quiet: options.quiet,
+    processOutput: options.processOutput,
   });
   return { ...outcome, explore: state.snapshot() };
 }

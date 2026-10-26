@@ -23,6 +23,8 @@ import {
 } from '../helpers/run-project.ts';
 import { readEntries } from '../helpers/trace-cache.ts';
 import type {
+  ExecutorNode,
+  PointTapResult,
   ReplayedPrefix,
   StepExecutor,
   StepExecutorContext,
@@ -702,6 +704,83 @@ describe('trace cache: a bare-point tap replays like a coordinate-driven tool', 
     const step = resultByTitle(second, 'picks the red pin').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
     expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
     expect(step.events.filter((event) => event.kind === 'engine').map((event) => event.name)).toEqual(['tapAt']);
+  }, 240_000);
+});
+
+const OFFER_SUITE = `import { test, expect } from 'e2e';
+
+test('reserves offer A at a point', async ({ app, agent, screen }) => {
+  await app.open('/repeats?still=1');
+  await agent.act('reserve offer A');
+  await expect(screen.getByRole('status', { name: 'Picked' })).toHaveText('A');
+});
+`;
+
+/** Taps the center of the "Reserve now" button in the Offer A row, found in the tree, as a bare point. No model. */
+function offerPointExecutor(record: ExecutorRecord, results: PointTapResult[]): StepExecutor {
+  return {
+    name: 'offer-point-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      record.prefixes.push(context.replayedPrefix);
+      const { tree } = await context.observe({ tree: true });
+      const flat = (node: ExecutorNode): ExecutorNode[] => [node, ...(node.children ?? []).flatMap(flat)];
+      const nodes = flat(tree!);
+      const row = nodes.findIndex((node) => node.text === 'Offer A' || node.name === 'Offer A');
+      const { rect } = nodes.slice(row + 1).find((node) => node.role === 'button' && node.name === 'Reserve now')!;
+      const tapped = await context.actions.tapAt({ x: rect!.x + rect!.width / 2, y: rect!.y + rect!.height / 2 });
+      results.push(tapped);
+      return { status: 'passed', summary: tapped.summary };
+    },
+  };
+}
+
+describe('trace cache: a point tap on a repeated control replays in its row', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+  const records: ExecutorRecord[] = [];
+  const results: PointTapResult[] = [];
+
+  const options = () => {
+    const record: ExecutorRecord = { calls: 0, prefixes: [] };
+    records.push(record);
+    return {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        reporters: ['json'] as const,
+        agents: { default: { executor: offerPointExecutor(record, results) } },
+        cache: 'read-write' as const,
+      },
+    };
+  };
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({ 'tests/offer.e2e.ts': OFFER_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  it('names the control it tapped, records its row, and replays into that row after the rows reverse', async () => {
+    const first = await runExisting(project, options());
+    expect(first.exitCode).toBe(0);
+    expect(results[0]?.target).toBeDefined();
+    const { entry } = readOnlyEntry(project);
+    expect(entry.payload.actions[0]).toMatchObject({ name: 'tapAt', within: { target: { role: 'button', name: 'Reserve now', within: 'Offer A' } } });
+
+    // The `b` variant lists the offers C, B, A: the recorded point now sits in Offer C's row.
+    app.setVariant('b');
+    const second = await runExisting(project, options());
+    app.setVariant(null);
+    expect(second.exitCode).toBe(0);
+    expect(records.at(-1)!.calls).toBe(0);
+    const step = resultByTitle(second, 'reserves offer A at a point').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
   }, 240_000);
 });
 

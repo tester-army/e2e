@@ -703,9 +703,10 @@ has held:
 - `toBeHidden`, `toBeVisible({ visible: false })`,
   `toBeAttached({ attached: false })`, negated visibility, and negated
   `toBeAttached` accept zero matches.
-- For those, and for `waitFor({ state: 'detached' })` and `'hidden'`, a
-  locator under a frame that is not in the document is zero matches rather
-  than a wait for the frame.
+- For those, for `toHaveCount` and the list forms, and for
+  `waitFor({ state: 'detached' })` and `'hidden'`, a locator under a frame
+  that is not in the document is zero matches rather than a wait for the
+  frame. `toHaveCount(0)` passes after an iframe closes.
 
 ### Text matching
 

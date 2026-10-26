@@ -10,6 +10,7 @@ import { realpathOfExisting } from '../internal/paths.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
+import { ellipsize } from '../report/format.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
 import { isRecord } from './command.ts';
@@ -26,6 +27,7 @@ import type {
   SecretPurpose,
   RecordingMode,
   CacheStore,
+  TestFilter,
 } from '../types.ts';
 import { isModelInstance, resolveAgentConfig, runLimits, type ResolvedAgentConfig, type ResolvedLimits } from './agent.ts';
 import { bindTargets, digestTargets, resolveTargets, TARGET_NAME_PATTERN, type PortAssignments, type ResolvedTarget } from './targets.ts';
@@ -78,6 +80,8 @@ export interface ResolvedConfig {
   readonly reporters: readonly BuiltinReporter[];
   /** The reporter objects the config names; `--reporter` never removes one. */
   readonly customReporters: readonly Reporter[];
+  /** The test filters, in order; empty when unset. A run with `--changed-since` applies them. */
+  readonly filters: readonly TestFilter[];
   /**
    * The agents unpinned tests run as, one result each: `agents.default`, or
    * the names `--agent` gave, in order and deduplicated. Never empty.
@@ -177,6 +181,7 @@ const TOP_LEVEL_KEYS = new Set([
   'video',
   'reporters',
   'agents',
+  'filters',
   'cache',
   'credentials',
   'secrets',
@@ -295,6 +300,7 @@ export function resolveConfig(
 
   const artifactStore = resolveArtifactStore(raw);
   const { reporters, customReporters } = resolveReporters(raw, cli);
+  const filters = resolveTestFilters(raw.filters);
 
   const projectId = resolveProjectId(raw.projectId, options.projectRoot);
   const { credentials, secrets, allSecrets } = resolveSecrets(raw, env);
@@ -325,6 +331,7 @@ export function resolveConfig(
     output,
     reporters,
     customReporters,
+    filters,
     agentNames,
     agent,
     agents,
@@ -711,6 +718,54 @@ function resolveReporters(
   return { reporters, customReporters };
 }
 
+const MAX_FILTER_NAME = 256;
+
+/**
+ * Resolves `filters`: a list of test filters, each checked structurally,
+ * never with `instanceof`, since the config may import another copy of
+ * `e2e`. A filter's name is how the report and errors tell it apart, so
+ * names are unique. Workers resolve it too and never call a filter, so the
+ * check stays synchronous.
+ */
+function resolveTestFilters(raw: E2EConfig['filters']): readonly TestFilter[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'filters must be a list of test filters: filters: [{ name, filter(tests, context) }]');
+  }
+  const names = new Set<string>();
+  return Array.from(raw as readonly unknown[], (value, index) => {
+    const label = `filters[${index}]`;
+    if (typeof value === 'function') {
+      throw new ConfigurationError('INVALID_CONFIG', `${label} is ${value.name ? `the function ${value.name}` : 'a function'}; call it, such as filters: [decisionFilter({ model })]`);
+    }
+    if (!isTestFilter(value)) {
+      throw new ConfigurationError('INVALID_CONFIG', `${label} must be a TestFilter: { name, filter(tests, context) }`);
+    }
+    const { name } = value;
+    if (!TARGET_NAME_PATTERN.test(name)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `invalid filter name ${JSON.stringify(name)}: names are ASCII letters, numbers, "_", "-", or ".", and cannot be only dots`,
+      );
+    }
+    if (name.length > MAX_FILTER_NAME) {
+      throw new ConfigurationError('INVALID_CONFIG', `filter name ${JSON.stringify(ellipsize(name, 32))} is longer than ${MAX_FILTER_NAME} characters`);
+    }
+    if (names.has(name)) {
+      throw new ConfigurationError('INVALID_CONFIG', `filters has two filters named ${JSON.stringify(name)}; the report tells filters apart by name`);
+    }
+    names.add(name);
+    return value;
+  });
+}
+
+/** Structural test filter check: a string name and a `filter` function. */
+function isTestFilter(value: unknown): value is TestFilter {
+  if (typeof value !== 'object' || value === null) return false;
+  const { name, filter } = value as { name?: unknown; filter?: unknown };
+  return typeof name === 'string' && typeof filter === 'function';
+}
+
 /** Structural reporter check: a non-empty name and at least one handler, each a function when present. */
 function isReporter(value: unknown): value is Reporter {
   if (typeof value !== 'object' || value === null) return false;
@@ -1038,12 +1093,15 @@ function computeConfigDigest(
   // enters the digest either; the built-in ids digest as they always have,
   // so adding a reporter to a config leaves its cache valid.
   // `failOnSkippedFailure` decides only the exit code, never what runs, and
-  // `maxDuration` only when the run stops.
+  // `maxDuration` only when the run stops. A test filter decides what runs
+  // before any worker starts and never changes what a test does, so adding
+  // one leaves the replays valid, like a reporter.
   // `targets` digest by declaration below and never enter the clone: an
   // engine holds `secrets.get()` handles, which refuse to serialize.
   const {
     failOnSkippedFailure: _failOnSkippedFailure,
     maxDuration: _maxDuration,
+    filters: _filters,
     artifacts: _artifacts,
     output: _output,
     trace: _trace,

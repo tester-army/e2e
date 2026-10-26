@@ -198,6 +198,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | Playwright | e2e | Status |
 | --- | --- | --- |
 | `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeFocused()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | same |
+| a Playwright `Locator` (`page.getByRole(...)`) passed to `expect` from `e2e` | a plain value, so `toBeVisible()` and the other locator matchers fail to compile (`TS2339` on `ValueExpectation`). Rewrite the query on `screen` | missing |
 | `toBeChecked()` | the same on a checkable node; on any other node `.not.toBeChecked()` passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toHaveText()`, `toContainText()` | compare the rendered text, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same: `toHaveText` needs the count to match, `toContainText` an ordered subsequence | same |
@@ -315,6 +316,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `--output` | `--output`, the results directory; each test's trace page and artifacts are in its `results/` | same |
 | `--trace <mode>` | `--trace [mode]`, the same modes; a bare `--trace` is `on` | same |
 | `--last-failed`, `--shard`, `--repeat-each`, `--max-failures` | the same names; `--shard` keeps serial groups together | same |
+| `--only-changed` | `--changed-since <ref>` with a [test filter](/filters) in `filters`, such as `decisionFilter({ model })`, which asks a model which tests the change can affect | by design |
 | `--quiet` | not yet | missing |
 | `-u`, `--update-snapshots` | the same; rewrites the stored screenshots that differ | same |
 | `--list` | `npx e2e list`, with the same selection flags | renamed |
@@ -365,10 +367,8 @@ export const test = base.extend<{ accountPage: AccountPage }>({
 });
 ```
 
-A fixture that reads `browser` makes every test on that `test` web only,
-named in its parameters or not. On a device target, each fails in
-`beforeEach` with `UNSUPPORTED_CAPABILITY`. Give those tests `requires: ['browser']`, or keep
-portable tests on the base `test`.
+A fixture that reads `browser` makes every test on that `test` web only. See
+[Keep it portable](/page-objects#keep-it-portable).
 
 `locator.page()` has no counterpart, so pass `browser` with the locator. Drop
 `newPage()` and `page.close()` from the hooks: every attempt starts in a fresh

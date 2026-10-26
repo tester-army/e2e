@@ -848,6 +848,7 @@ export class TargetExecutor implements SerialHost {
     const attempt: ExecutorAttempt = {
       testId: pair.test.id,
       attemptId,
+      titlePath: pair.test.titlePath,
       index: attemptIndex,
       signal: attemptEnd.signal,
       memory: shared?.memory ?? new Map<string, unknown>(),

@@ -59,8 +59,9 @@ export interface MobileOptions {
    * is a pool: the engine declares one worker per entry and worker slot `n`
    * drives the `n`th, so `workers` at or above the pool size runs the target's
    * files across every device at once. Omitted, the pool is every booted device
-   * of the platform at `prepare`, as many as the run has slots; with none
-   * booted, agent-device boots one. A `DeviceProvider` leases hosted devices
+   * of the platform at `prepare` that no other agent-device session holds, as
+   * many as the run has slots; with none booted, agent-device boots one, and
+   * with every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
    * instead: one per worker slot at `prepare`, each driven through the daemon
    * and client configuration the lease names. A replacement worker resumes a
    * healthy agent-device session on the same lease. Forced worker shutdown
