@@ -196,9 +196,9 @@ export interface Engine {
   /**
    * capability: pointer - requires observation. Performs one pointer action
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
-   * node behind it: the agent's `tap_at` verb lands here when the point the
-   * model named in a screenshot sits on nothing the tree lists (a shape on a
-   * canvas, a pin on a map, a control in a system sheet), and so do a test's
+   * node behind it: the agent's `tap_at` and `hover_at` verbs land here with
+   * the point the model named in a screenshot (a shape on a canvas, a pin on
+   * a map, a control in a system sheet or one the tree lists), and so do a test's
    * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
    * Dispatch the pointer at the point as given; the harness has clamped an
    * agent's point to the viewport and validated a test's. Throw
@@ -252,9 +252,12 @@ export interface Engine {
   readonly session?: EngineSession;
   /**
    * Runs once per target in the runner, after collection and before workers,
-   * app commands, and the run's clock start. Download dependencies or boot
-   * devices here; report progress through `info.log`. No launch timeout
-   * applies. A failure ends the run as an infrastructure error.
+   * app commands, and the run's clock start. A run with nothing to run (the
+   * test filters left nothing, or `--pass-with-no-tests` on an empty
+   * selection) prepares no target, and so calls no `finish`. Download
+   * dependencies or boot devices here; report progress through `info.log`.
+   * No launch timeout applies. A failure ends the run as an infrastructure
+   * error.
    * The result can lower the target's worker cap, for example after
    * discovering how many devices are available.
    */
@@ -385,11 +388,12 @@ An undeclared verb is absent from the toolset.
 | `dismiss_keyboard` | `keyboard.dismiss` |
 
 - `clear` and `focus` unlock no verb.
-- `tap_at`, `hover_at`, `type_at`, `press_at`, and `select_at` go through
-  `perform` when the point lands on a node the tree lists.
-- When the point lands on nothing the tree lists, `tap_at` and `hover_at`
-  go through `performAt` (the `tap` and `hover` pointer kinds), and
-  `type_at` and `press_at` fall back to `keyboard`.
+- `tap_at` and `hover_at` go through `performAt` (the `tap` and `hover`
+  pointer kinds). Without that kind they go through `perform` when the point
+  lands on a node the tree lists.
+- `type_at`, `press_at`, and `select_at` go through `perform` when the point
+  lands on a node the tree lists. Elsewhere `type_at` and `press_at` fall
+  back to `keyboard`.
 
 #### Test APIs
 
@@ -565,8 +569,9 @@ export interface EnginePrepareInfo {
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
    * selected for the target, whichever is smallest; `0` when nothing runs on
-   * it. Provision for exactly these slots (boot that many devices of a pool);
-   * `init` then finds them ready.
+   * it while another target has work. A run with nothing to run prepares no
+   * target. Provision for exactly these slots (boot that many devices of a
+   * pool); `init` then finds them ready.
    */
   readonly slots: number;
   /**

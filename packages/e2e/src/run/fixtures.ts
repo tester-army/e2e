@@ -156,8 +156,6 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
    */
   const { config } = environment;
   const attemptAgentName = environment.agent ?? config.agentNames[0]!;
-  // Collection already redacted the titles, so a secret spelled in one arrives as its marker.
-  const testTitleContext = environment.test === undefined ? undefined : `Test: ${environment.test.titlePath.join(' > ')}`;
   const selections = new Map<string, AgentSelection>();
   const select = (requested: string | undefined): AgentSelection => {
     if (requested !== undefined && (typeof requested !== 'string' || requested === '')) {
@@ -187,8 +185,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
       // MODEL_UNAVAILABLE it would never hit; a judgment still fails with it
       // on its first call.
       judge: lazily(() => environment.models.build(resolved.judge, name)),
-      agentContext: joinAgentContext(testTitleContext, resolved.context, environment.agentContext),
-      keyedContext: joinAgentContext(resolved.context, environment.agentContext),
+      agentContext: joinAgentContext(resolved.context, environment.agentContext),
     };
     selections.set(name, selection);
     return selection;
@@ -388,9 +385,12 @@ function lazyBuiltInAgent(config: ResolvedAgentConfig): StepExecutor {
   };
 }
 
-/** Joins the non-blank context parts in order, one per line: the test's title, config context, then test/group context. */
-function joinAgentContext(...contexts: readonly (string | undefined)[]): string | undefined {
-  const parts = contexts.filter(
+/** Trusted config context first, then test/group context. */
+function joinAgentContext(
+  configContext: string | undefined,
+  testContext: string | undefined,
+): string | undefined {
+  const parts = [configContext, testContext].filter(
     (part): part is string => part !== undefined && part.trim() !== '',
   );
   return parts.length === 0 ? undefined : parts.join('\n');

@@ -39,7 +39,19 @@ export function buildSystem(task: string, context: string | undefined): string {
   return sections.join('\n');
 }
 
+/**
+ * The line naming the test a step runs in, `Test: billing > upgrades the tier`,
+ * or `undefined` outside one. It opens the user message, never the system
+ * message: the system message stays the same across tests, so a provider's
+ * prompt cache serves every test of a run.
+ */
+export function testTitleLine(titlePath: readonly string[]): string | undefined {
+  return titlePath.length === 0 ? undefined : `Test: ${titlePath.join(' > ')}`;
+}
+
 export interface PromptInput {
+  /** The test's title path, outermost first; empty outside a test. */
+  readonly titlePath?: readonly string[] | undefined;
   /** The runner's request, describing what to select or judge. */
   readonly request: string;
   /** Untrusted test-author instruction or condition. */
@@ -64,9 +76,17 @@ export interface PromptInput {
     | undefined;
 }
 
-/** Builds the user message: request first, then clearly fenced untrusted evidence. */
+/** Builds the user message: the test's title, the request, then clearly fenced untrusted evidence. */
 export function buildPrompt(input: PromptInput): string {
-  const sections: string[] = [input.request, '', '<instruction>', input.instruction, '</instruction>'];
+  const title = testTitleLine(input.titlePath ?? []);
+  const sections: string[] = [
+    ...(title === undefined ? [] : [title, '']),
+    input.request,
+    '',
+    '<instruction>',
+    input.instruction,
+    '</instruction>',
+  ];
   const observation = input.observation;
   if (observation !== undefined) {
     if (input.withholdTree !== true) {

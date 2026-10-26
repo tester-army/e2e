@@ -398,6 +398,39 @@ describe('lifecycle', () => {
     expect(coldEnv).toEqual({});
   });
 
+  it('skips a booted device another agent-device session holds, keeps one its own slot session holds, and fails when every booted one is held', async () => {
+    const h = harness({ device: undefined });
+    h.fake.respond('devices.list', () => [
+      { platform: 'ios', id: 'A', name: 'A', booted: true, claimedBy: { session: 't3-holder', workspace: '/elsewhere' } },
+      { platform: 'ios', id: 'B', name: 'B', booted: true },
+      { platform: 'ios', id: 'C', name: 'C', booted: true, claimedBy: { session: 'e2e-ios-1', workspace: '/project' } },
+      { platform: 'ios', id: 'D', name: 'D', booted: true, claimedBy: { session: 'e2e-ios-2', workspace: '/project' } },
+    ]);
+    const lines: string[] = [];
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 2, env: {}, signal: new AbortController().signal, headed: false, log: (line: string) => lines.push(line) };
+    const result = await h.prepare(info);
+    // e2e-ios-2 is no slot of a two-slot run, so its device is as foreign as another tool's.
+    expect(result).toMatchObject({ workers: 2 });
+    expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([
+      { platform: 'ios', udid: 'B' },
+      { platform: 'ios', udid: 'C' },
+    ]);
+    expect(lines[0]).toBe(
+      '4 booted ios device(s), skipping 2 held by another agent-device session (A by session "t3-holder", D by session "e2e-ios-2"); driving 2: B, C',
+    );
+
+    const held = harness({ device: undefined });
+    held.fake.respond('devices.list', () => [
+      { platform: 'ios', id: 'A', name: 'A', booted: true, claimedBy: { session: 't3-holder', workspace: '/elsewhere' } },
+    ]);
+    await expect(held.prepare({ ...info, slots: 1 })).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      retryable: false,
+      message: expect.stringMatching(/every booted ios device is held by another agent-device session \(A by session "t3-holder"\)/),
+    });
+    expect(held.fake.methods()).not.toContain('devices.boot');
+  });
+
   it('drives a discovered Android emulator by its serial, and reads a configured serial, UDID, or name as agent-device does', async () => {
     const h = harness({ device: undefined, platform: 'android' });
     h.fake.respond('devices.list', () => [{ platform: 'android', id: 'emulator-5554', name: 'test', booted: true }]);

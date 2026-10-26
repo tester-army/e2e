@@ -47,7 +47,7 @@ export async function openInteractiveStep(runtime: AgentContext, options: Intera
   const { projected, secrets, templates } = validateParams(options.params);
   const executor = new HostExecutor();
   const config: ResolvedAgentConfig = { ...runtime.config.agent, maxSteps: UNBOUNDED, maxModelCalls: UNBOUNDED };
-  const agent: DispatchAgent = { name: executor.name, config, executor, agentContext: undefined, keyedContext: undefined };
+  const agent: DispatchAgent = { name: executor.name, config, executor, agentContext: undefined };
   const done: Promise<{ readonly error?: unknown }> = dispatchAgentStep(
     runtime,
     {

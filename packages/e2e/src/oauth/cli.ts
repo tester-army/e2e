@@ -8,6 +8,7 @@ import { spawn } from 'node:child_process';
 import * as clack from '@clack/prompts';
 import pc from 'picocolors';
 import { sanitizeText } from '../internal/errors.ts';
+import { browserCommand } from './browser.ts';
 import { OAuthError } from './errors.ts';
 import { login, logout } from './login.ts';
 import { listModels } from './models.ts';
@@ -263,14 +264,10 @@ function defaultIo(): CliIo {
 
 /** Best effort: the URL is printed regardless, so a failure to open a browser is not an error. */
 function openInBrowser(url: string): void {
-  const [command, args] =
-    process.platform === 'darwin'
-      ? ['open', [url]]
-      : process.platform === 'win32'
-        ? ['cmd', ['/c', 'start', '', url.replaceAll('&', '^&')]]
-        : ['xdg-open', [url]];
+  const command = browserCommand(process.platform, url);
+  if (command === undefined) return;
   try {
-    const child = spawn(command, args, { stdio: 'ignore', detached: true });
+    const child = spawn(command.command, [...command.args], { stdio: 'ignore', detached: true });
     child.on('error', () => {});
     child.unref();
   } catch {

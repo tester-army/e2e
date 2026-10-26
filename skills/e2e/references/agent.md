@@ -67,7 +67,7 @@ gates, and limits.
 - `context` is what the app calls things, sent to every model call, judges
   included; `system` is how the acting agent works, read only by the act
   loop. Both live on the agents entry; `agentContext` on a test or group
-  adds more. Under `e2e run`, the context opens with the test's title path
+  adds more. Under `e2e run`, every prompt opens with the test's title path
   (`Test: billing > upgrades the tier`), judges included, so name a test
   for what it covers, not for the verdict it expects.
 
@@ -157,8 +157,10 @@ The tools, one per engine action. Name the target as the screen names it
 The focused field's selected text is listed as `selection="..."` (never for
 a secret), so a repeated `Shift+ArrowLeft` selects one word with visible
 feedback. Point tools serve a canvas shape, map pin, image region, or system
-sheet control, hit-testing the tree first so a listed control underneath is
-acted on by id; `type_at` on nothing listed taps, then types. A screen with
+sheet control. `tap_at` and `hover_at` act at the point; `press_at`,
+`select_at`, and `type_at` hit-test the tree first so a listed control
+underneath is acted on by id, and `type_at` on nothing listed taps, then
+types. A screen with
 nothing to tap by id opens with a screenshot attached. A device has no
 `right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
 masked and withheld after a secret fill (topic writing-tests): act on pixels
@@ -198,6 +200,24 @@ expect(data.titles).toContain('Buy milk');
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
   screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+- Never sleep for a fixed time to let the app settle. A sleep is too short
+  on a slow run and wasted time on a fast one; `waitFor` returns as soon as
+  the state appears:
+
+```ts
+// BAD: guesses how long the export takes.
+await new Promise((resolve) => setTimeout(resolve, 10_000));
+
+// GOOD: waits for the state, up to the timeout.
+await agent.waitFor('the export finished and a download link appeared', { timeout: 60_000 });
+```
+
+- `waitFor` needs a model even under a custom executor and is never cached,
+  so each run spends judgments on it. It judges again on every screen
+  change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  changing (a progress counter), raise `interval`. The test timeout still
+  caps its `timeout`.
+
 - `extract` takes any Standard Schema validator (zod works); the model sees
   the schema's shape, never its value rules (`min`, `max`, lengths,
   patterns), which check what it read. Data the screen does not show is

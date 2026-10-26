@@ -85,7 +85,9 @@ function summarize(results: readonly ReportResult[], base: ReportSummary): Repor
  * the page is red, since the suite is not known to pass. A carried test the
  * first pass interrupted reached no verdict: it leaves the outcome alone and
  * the page reads interrupted, not green. The start is the run before's, so
- * the footer's duration spans both.
+ * the footer's duration spans both. The rerun takes the run before's filter
+ * records and the change they judged, since the rows those filters left out
+ * are the run before's too.
  */
 export function foldLastRun(current: Report, lastRun: Report): Report {
   if (lastRun.run.project.id !== current.run.project.id) return current;
@@ -145,6 +147,8 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
       results,
       errors: [...current.run.errors, ...carriedErrors],
       summary: summarize(results, current.run.summary),
+      filters: lastRun.run.filters,
+      changes: lastRun.run.changes,
     },
   };
 }

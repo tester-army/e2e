@@ -240,6 +240,9 @@ importers:
 
   apps/testbed:
     dependencies:
+      '@e2e-dev/decision':
+        specifier: workspace:*
+        version: link:../../packages/decision
       '@e2e-dev/lightpanda':
         specifier: workspace:*
         version: link:../../packages/lightpanda
@@ -257,8 +260,8 @@ importers:
         specifier: 26.6.2
         version: 26.6.2
       ai:
-        specifier: 7.0.107
-        version: 7.0.107(zod@4.6.1)
+        specifier: 7.0.134
+        version: 7.0.134(zod@4.6.1)
       typescript:
         specifier: 7.0.2
         version: 7.0.2

@@ -121,6 +121,14 @@ Evidence: [screenshot](https://github.com/acme/shop/actions/runs/123#artifacts)
 Run-level errors, when there are any, come before the failures. The test
 list has an agent column only when the run used the agent.
 
+A run whose [test filters](/filters) left tests out says so in the
+headline, such as `e2e: 7 passed, 35 left out by filters`, so it never
+reads as the whole suite. Above the test list, a line names the change the filters judged,
+such as `12 files changed since abc1234`, then one line per filter says
+what it kept, and a folded table lists each test it left out with the
+reason. When no filter ran, such as when no file changed, a line says
+why.
+
 The reporter shortens a large report to fit GitHub's comment limit. App text
 that GitHub would turn into a mention, an issue link, or a URL shows as
 code, so a screen that reads `@someone` notifies no one. The built-in
@@ -144,6 +152,8 @@ covering the whole suite:
 | failed | failed | failed |
 | interrupted | passed | passed |
 | any other result | not run | the first-pass result |
+
+The comment keeps the first pass's filter lines and left-out tests.
 
 The comment stays red while the rerun left out something it owed: a failed
 test, a test that `--max-failures` or `--max-duration` stopped before it ran, or a failed

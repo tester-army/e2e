@@ -201,8 +201,7 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       // The control is reported whatever the engine can do with it: the verb
-      // the executor calls next is gated on its own action kind, and only a
-      // point verb needs to ignore a listed control when its node verb is missing.
+      // the executor calls next is gated on its own action kind.
       const hit = hitTest(observation, clamped);
       return Promise.resolve({
         point: clamped,
@@ -220,13 +219,12 @@ export class ActionDispatcher {
   }
 
   /**
-   * Taps or hovers one viewport point, routed onto the tree in queue order
-   * against the newest observation, like a targeted action's resolution. A
-   * listed, enabled control containing the point is acted on by its id, so
-   * policy, stale relocation, and the trace descriptor see an ordinary node
-   * action; a point on nothing listed goes to the engine as a bare point
-   * when it takes one. The point is clamped to the viewport first, so one
-   * placed off the edge lands on the edge rather than failing the engine.
+   * Taps or hovers one viewport point in queue order against the newest
+   * observation. The engine gets the bare point, where the model aimed,
+   * and the trace keeps it inside the node under it. An engine that takes
+   * no bare point gets the listed, enabled control containing it, acted on
+   * by its id. The point is clamped to the viewport first, so one placed
+   * off the edge lands on the edge rather than failing the engine.
    */
   private pointVerb(verb: PointActionName, point: ViewportPoint): Promise<PointTapResult> {
     requireFinitePoint(point, verb);
@@ -235,9 +233,17 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       const hit = hitTest(observation, clamped);
-      // An engine without the node verb gets the bare point even under a listed control.
-      const control = this.verbs.has(nodeVerb) ? hit.control : undefined;
-      const summary = describePointAction({ verb, point: clamped, control, under: hit.under, ...this.prose(observation) });
+      // A tap by id lands on the control's center, not where the model aimed:
+      // only an engine without the bare point gets it.
+      const control = hit.control !== undefined && !this.verbs.has(verb) && this.verbs.has(nodeVerb) ? hit.control : undefined;
+      const summary = describePointAction({
+        verb,
+        point: clamped,
+        control: hit.control,
+        under: hit.under,
+        byId: control !== undefined,
+        ...this.prose(observation),
+      });
       if (control !== undefined) {
         const target = { id: control.ref.id };
         await this.runActionNow(nodeVerb, () => this.targeted(this.feed.resolve(target), (node) => this.performNode(nodeVerb, node)));
@@ -258,10 +264,11 @@ export class ActionDispatcher {
           name: verb,
           point: clamped,
           viewport: { width: observation.viewport.width, height: observation.viewport.height },
-          ...(under === undefined ? {} : { under }),
+          // Its container and place among twins tell this row's node from the next row's on replay.
+          ...(under === undefined || observation.kind !== 'semantic' ? {} : { under, ...this.placementOf({ node: under, observation }) }),
         };
       });
-      return { point: clamped, summary };
+      return { point: clamped, ...(hit.control === undefined ? {} : { target: { id: hit.control.ref.id } }), summary };
     });
   }
 

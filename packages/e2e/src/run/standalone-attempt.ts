@@ -181,7 +181,7 @@ export async function launchAttempt(
   opened.appLog.route((event, at) => steps.recordAppEvent(event, at));
   // Launch was the worker's work; the test's deadline starts once its fixtures exist.
   budget.enter(attemptSignal, options.timeoutMs);
-  const attempt: ExecutorAttempt = { testId: identity.testId, attemptId, index: 0, signal: end.signal, memory: new Map<string, unknown>() };
+  const attempt: ExecutorAttempt = { testId: identity.testId, attemptId, titlePath: [], index: 0, signal: end.signal, memory: new Map<string, unknown>() };
   const base = {
     config, target, session: opened, steps, runId, attemptId, attempt, artifacts: artifacts.sink,
     priorSteps: () => steps.completed(), agent: options.agent, saveSession: undefined,

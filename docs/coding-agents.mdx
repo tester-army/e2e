@@ -102,15 +102,17 @@ codex plugin marketplace upgrade e2e
 
 ## Let the agent use the app
 
-`e2e mcp` gives the agent a live session on your app. It checks each
-locator against the screen before it writes the test, and checks its own UI
+`e2e mcp` gives the agent a live session on your app. It checks its
+locators against the screen before it writes them, and checks its own UI
 changes. `init` registers the server. See [MCP server](/mcp-server) for setup and
 prompts.
 
 ## How an agent writes and runs a test
 
 The skill tells the agent to read the config and an existing test first.
-For known fields and exact values, the agent uses `screen`:
+With `e2e mcp`, it walks the flow in a session and writes each step as it
+takes it. Known fields and exact values get `screen` calls, from
+locators that matched one node:
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect, credentials } from 'e2e';

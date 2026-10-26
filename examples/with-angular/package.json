@@ -1,0 +1,33 @@
+{
+  "name": "e2e-example-with-angular",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "ng serve",
+    "build": "ng build",
+    "test:e2e": "e2e run"
+  },
+  "dependencies": {
+    "@angular/common": "^22.2.3",
+    "@angular/compiler": "^22.2.3",
+    "@angular/core": "^22.2.3",
+    "@angular/platform-browser": "^22.2.3",
+    "@fontsource/dm-mono": "^5.3.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/stack-sans-notch": "^5.3.0",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.2.4",
+    "@angular/cli": "^22.2.4",
+    "@angular/compiler-cli": "^22.2.3",
+    "@e2e-dev/web": "^0.15.2",
+    "@types/node": "^26.6.4",
+    "ai": "^7.0.0",
+    "e2e": "^0.21.2",
+    "playwright": "^1.63.0",
+    "typescript": "~6.0.2",
+    "zod": "^4.1.8"
+  }
+}

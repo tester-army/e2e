@@ -12,7 +12,12 @@ import {
 
 /** Message of an arbitrary thrown value, for diagnostics that must not throw. */
 export function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+  try {
+    return cause instanceof Error ? String(cause.message) : String(cause);
+  } catch {
+    // An object without a prototype, or one whose `toString` throws.
+    return 'a value that cannot be shown as text';
+  }
 }
 
 /** The redactor `serializeError` falls back to, on `globalThis` so a project's copy of e2e shares it. */
@@ -140,6 +145,7 @@ export type ErrorCategory =
 export type ErrorPhase =
   | 'config'
   | 'collection'
+  | 'filter'
   | 'launch'
   | 'beforeAll'
   | 'beforeEach'

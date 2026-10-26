@@ -1,7 +1,8 @@
 /**
  * Reporter objects end to end: one sees the event stream and the finished
- * run with resolvable artifact paths, and neither a throwing, a hanging, nor a
- * misbehaving reporter can touch the run's outcome.
+ * run with resolvable artifact paths, neither a throwing, a hanging, nor a
+ * misbehaving reporter can touch the run's outcome, and one the run gave up
+ * on is work left behind, which the CLI does not wait for.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -11,6 +12,10 @@ import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { engineConfig } from '../helpers/fixture-config.ts';
 import { createProject, runExisting, type FixtureProject } from '../helpers/run-project.ts';
 import type { FinishedRun, Reporter, RunEvent } from '../../src/index.ts';
+
+// The built runner's flag. It stays set for the rest of the process, so only the first reporter given up on can show it.
+const abandonedModule = new URL('../../dist/internal/abandoned.js', import.meta.url).href;
+const { leftWorkBehind } = (await import(abandonedModule)) as typeof import('../../src/internal/abandoned.ts');
 
 const SUITE = `import { test, expect } from 'e2e';
 
@@ -35,7 +40,7 @@ describe('reporter objects', () => {
     vi.restoreAllMocks();
   });
 
-  it('receives the event stream and the finished run, whose artifact paths resolve', async () => {
+  it('receives the event stream and the finished run, whose artifact paths resolve, and leaves no work behind', async () => {
     const events: RunEvent[] = [];
     let finished: FinishedRun | undefined;
     const recording: Reporter = {
@@ -59,6 +64,7 @@ describe('reporter objects', () => {
     });
 
     expect(outcome.exitCode).toBe(0);
+    expect(leftWorkBehind()).toBe(false);
     expect(events[0]?.type).toBe('run-started');
     expect(events.at(-1)?.type).toBe('run-finished');
     expect(events.some((event) => event.type === 'test-finished')).toBe(true);
@@ -83,7 +89,28 @@ describe('reporter objects', () => {
     }
   }, 120_000);
 
-  it('warns on stderr for a throwing, hanging, or malformed reporter and leaves the outcome alone', async () => {
+  it('never calls a reporter when the run was forced to stop before reporting, so it leaves no work behind', async () => {
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const force = new AbortController();
+    force.abort();
+    const onRunFinished = vi.fn(async () => undefined);
+    await runExisting(project, {
+      config: {
+        ...engineConfig(createFakeEngine().engine),
+        tests: 'tests/**/*.e2e.ts',
+        reporters: [{ name: 'uploading', onRunFinished }],
+        cache: 'off' as const,
+      },
+      runOptions: { forceSignal: force.signal },
+    });
+
+    expect(onRunFinished).not.toHaveBeenCalled();
+    expect(leftWorkBehind()).toBe(false);
+    const written = stderr.mock.calls.map((call) => String(call[0])).join('');
+    expect(written).toContain('e2e: reporter "uploading" abandoned: the run was forced to stop');
+  }, 120_000);
+
+  it('warns on stderr for a throwing, hanging, or malformed reporter, leaves the outcome alone, and records the hanging one as work left behind', async () => {
     const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const throwing: Reporter = {
       name: 'throwing',
@@ -138,6 +165,7 @@ describe('reporter objects', () => {
     expect(outcome.status).toBe('passed');
     // The budget running out aborts the reporter's own signal, so it can stop its work.
     expect(hangingSignal?.aborted).toBe(true);
+    expect(leftWorkBehind()).toBe(true);
     const written = stderr.mock.calls.map((call) => String(call[0])).join('');
     expect(written).toContain('e2e: reporter "throwing" failed: boom');
     expect(written).toContain('e2e: reporter "hanging" did not finish within 200ms');

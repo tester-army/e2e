@@ -52,7 +52,7 @@ when the attempt ended:
 | `unconfirmed` | Not saved: no check passed after the step. Follow it with a locator assertion or `agent.assert`. |
 | `evicted` | The entry was deleted: its replay ended in a failure or a repair, or no check confirmed it before the attempt failed. |
 | `no-change` | Nothing recorded: no control appeared, went away, or changed state, and the route stayed the same. That includes a step whose only change is inside a [frame from another site](/browser#reach-into-an-iframe). Such a step runs live on every run. |
-| `not-written` | Not saved: the store didn't write the recording, for example one over the file store's size limit. |
+| `not-written` | Not saved: the store rejected the write, or refused the recording, for example one over the file store's size limit. |
 
 A step that took no action records nothing and reports no `write`.
 

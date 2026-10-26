@@ -35,18 +35,29 @@ export interface ResolvedTestOptions {
   readonly video: RecordingMode | undefined;
 }
 
-export interface SkipInfo {
-  readonly cause:
-    | 'explicit'
-    | 'filtered'
-    | 'platform-unavailable'
-    | 'capability-unavailable'
-    | 'setup-failed'
-    | 'serial-predecessor-failed'
-    | 'hook-failed'
-    | 'infrastructure-unavailable'
-    | 'failure-limit'
-    | 'time-limit';
+/** Why a pair did not run; only a `filtered` one can name the test filter that left it out. */
+export type SkipInfo =
+  | (SkipDetail & {
+      readonly cause: 'filtered';
+      /** The name of the test filter that left the test out; absent when the selection did, as with `--tag`. */
+      readonly filter?: string;
+    })
+  | (SkipDetail & {
+      readonly cause:
+        | 'explicit'
+        | 'platform-unavailable'
+        | 'capability-unavailable'
+        | 'setup-failed'
+        | 'serial-predecessor-failed'
+        | 'hook-failed'
+        | 'infrastructure-unavailable'
+        | 'failure-limit'
+        | 'time-limit';
+      readonly filter?: never;
+    });
+
+/** What a skip says whatever its cause: why, and the id of a related test, such as the setup that failed. */
+interface SkipDetail {
   readonly reason: string;
   readonly relatedId?: string;
 }
@@ -81,6 +92,12 @@ export interface Selection {
   readonly perTarget: readonly TargetSelection[];
 }
 
+/** Why a test filter left a test out: the filter's name and its reason. */
+export interface TestExclusion {
+  readonly filter: string;
+  readonly reason: string;
+}
+
 /** How several `--tag` values combine: a test carries any of them, or every one. */
 export type TagMode = 'any' | 'all';
 
@@ -106,8 +123,14 @@ export interface SelectionFilters {
    * is selected.
    */
   readonly lastFailed?: ReadonlySet<string>;
-  /** The one shard of the selection to run, once every other filter applied (`--shard`). */
+  /** The one shard of the selection to run, cut once every flag applied and before the test filters (`--shard`). */
   readonly shard?: Shard;
+  /**
+   * Tests the `filters` left out, by test id. Only the pairs the shard
+   * would run are left out, and a serial group with a kept member stays
+   * whole.
+   */
+  readonly excluded?: ReadonlyMap<string, TestExclusion>;
   readonly targetIds?: readonly string[];
 }
 
@@ -367,7 +390,13 @@ export function select(
 
   const withClosure = applySerialClosure(pairs);
   const withShard = filters.shard === undefined ? withClosure : applyShard(withClosure, filters.shard);
-  const withSessions = applySessionSelection(withShard, sessionProducers, collection.uncollected);
+  // The test filters judged the pairs this shard runs, serial groups already
+  // whole, so what they left out is taken from those, and a group with a
+  // kept member comes back whole. The shard is cut before they decide, so
+  // shard machines agree on the cut whatever a filter answers.
+  const withExclusions =
+    filters.excluded === undefined ? withShard : applySerialClosure(applyExclusions(withShard, filters.excluded));
+  const withSessions = applySessionSelection(withExclusions, sessionProducers, collection.uncollected);
 
   const runnableOrdinary = withSessions.filter(
     (pair) => pair.disposition === 'run' && pair.test.kind === 'test',
@@ -724,6 +753,19 @@ function classifyPair(
   return { ...base, disposition: 'run', skip: undefined };
 }
 
+/**
+ * Every pair the selection would run of a test the `filters` left out,
+ * reported as left out by the filter that named it. Skipped and
+ * filtered pairs keep their own reason: a filter only takes away what runs.
+ */
+function applyExclusions(pairs: readonly TestTargetPair[], excluded: ReadonlyMap<string, TestExclusion>): TestTargetPair[] {
+  return pairs.map((pair) => {
+    const left = pair.disposition === 'run' && pair.test.kind === 'test' ? excluded.get(pair.test.id) : undefined;
+    if (left === undefined) return pair;
+    return { ...pair, disposition: 'filtered' as const, skip: { cause: 'filtered' as const, reason: left.reason, filter: left.filter } };
+  });
+}
+
 function applySerialClosure(pairs: readonly TestTargetPair[]): TestTargetPair[] {
   // A serial group is one unit per target and agent; members of one variant
   // are selected together and never pull another variant in.
@@ -774,11 +816,12 @@ function shardItem(pair: TestTargetPair): string {
  * Keeps the shard's contiguous slice of the items and leaves the rest
  * unselected. Contiguous rather than dealt round-robin so a shard's tests
  * come from as few files as possible; the slices differ in size by at most
- * one item, the first shards taking the remainder. Applied after every other
- * filter and the serial closure, before the setup tests are chosen, so each
- * shard brings only the setups it needs. A skipped test is not an item: the
- * shard holding the item before it in report order reports it, the first
- * shard when none comes before, so the shards together report it once.
+ * one item, the first shards taking the remainder. Applied after every flag
+ * and the serial closure, before the test filters' exclusions and before the
+ * setup tests are chosen, so the cut never depends on what a filter answers
+ * and each shard brings only the setups it needs. A skipped test is not an
+ * item: the shard holding the item before it in report order reports it, the
+ * first shard when none comes before, so the shards together report it once.
  */
 function applyShard(pairs: readonly TestTargetPair[], shard: Shard): TestTargetPair[] {
   const items = shardItems(pairs);

@@ -11,7 +11,10 @@ name: examples
 # release that breaks a demo fails here too. The deterministic tests and the
 # agent tests both run, the agent tests with real model calls (nothing is
 # recorded for them), and every test gets one retry: a test that needed it
-# reads as flaky instead of failing the night.
+# reads as flaky instead of failing the night. A retry covers a test failure
+# only, so an infrastructure failure (a lost device daemon, an engine error)
+# gets the suite one second pass instead (scripts/examples-nightly/run-tests.sh),
+# and the summary marks the line flaky when that pass recovers it.
 #
 # The `summary` job posts one Slack message for the whole run: a line per
 # example and platform saying how far it got (setup, app build, tests) and
@@ -94,6 +97,7 @@ jobs:
           - { id: vite, name: Vite, tests: examples/with-vite, target: '' }
           - { id: next, name: Next.js, tests: examples/with-next, target: '' }
           - { id: astro, name: Astro, tests: examples/with-astro, target: '' }
+          - { id: angular, name: Angular, tests: examples/with-angular, target: '' }
           - { id: expo, name: Expo, tests: examples/with-expo, target: web }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -113,7 +117,8 @@ jobs:
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           TARGET: ${{ matrix.target }}
-        run: npx e2e run --retries 1 ${TARGET:+--target "$TARGET"}
+        run: |
+          "$GITHUB_WORKSPACE/scripts/examples-nightly/run-tests.sh" --retries 1 ${TARGET:+--target "$TARGET"}
       - name: Record the outcome
         if: ${{ always() }}
         env: &outcome-env
@@ -138,6 +143,8 @@ jobs:
             require("node:fs").writeFileSync(`${env.RUNNER_TEMP}/outcome/outcome.json`, JSON.stringify(outcome));
           '
           if [ -f "$TESTS_DIR/.e2e/report.json" ]; then cp "$TESTS_DIR/.e2e/report.json" "$RUNNER_TEMP/outcome/"; fi
+          # Written by scripts/examples-nightly/run-tests.sh when the suite needed a second pass.
+          if [ -d "$TESTS_DIR/.e2e/first-pass" ]; then cp -R "$TESTS_DIR/.e2e/first-pass" "$RUNNER_TEMP/outcome/"; fi
       - name: Upload the outcome
         if: ${{ always() }}
         continue-on-error: true
@@ -147,7 +154,9 @@ jobs:
           path: ${{ runner.temp }}/outcome
           retention-days: 14
       - name: Upload the results
-        if: ${{ failure() }}
+        # Also after a second pass that recovered the suite, so the first pass's
+        # failure stays readable while the job is green.
+        if: &upload-evidence ${{ failure() || hashFiles(format('{0}/.e2e/first-pass/second-pass', matrix.tests)) != '' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -226,6 +235,27 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # The emulator runner installs the system image itself, in one attempt,
+      # and a download that arrives corrupt fails the job before any test
+      # (`Error on ZipFile unknown archive`). The image is kept between runs,
+      # and installed here with retries on a miss; with it in place, the
+      # runner's own install has nothing to download.
+      - name: Restore the emulator system image
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-36/google_apis/x86_64
+          key: android-system-image-36-google_apis-x86_64
+      - name: Install the emulator system image
+        run: |
+          set -u
+          SDKMANAGER="$(command -v sdkmanager || echo "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager")"
+          yes | "$SDKMANAGER" --licenses > /dev/null
+          for attempt in 1 2 3; do
+            if "$SDKMANAGER" --install 'system-images;android-36;google_apis;x86_64' > /dev/null; then exit 0; fi
+            echo "::warning::system image install attempt $attempt failed"
+            sleep 10
+          done
+          exit 1
       - name: Install the packages
         id: setup
         uses: ./.github/actions/example-packages
@@ -262,7 +292,7 @@ jobs:
           working-directory: ${{ matrix.tests }}
           script: |
             adb install -r "$APP_PATH"
-            npx e2e run --target android --retries 1
+            "$GITHUB_WORKSPACE/scripts/examples-nightly/run-tests.sh" --target android --retries 1
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       - name: Record the outcome
@@ -278,12 +308,26 @@ jobs:
           path: ${{ runner.temp }}/outcome
           retention-days: 14
       - name: Upload the results
-        if: ${{ failure() }}
+        if: *upload-evidence
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: results-android-${{ matrix.id }}
           path: ${{ matrix.tests }}/.e2e/results
+          if-no-files-found: ignore
+          retention-days: 7
+      # The device daemon's own logs, for a failure the e2e report can only
+      # quote (`Failed to communicate with daemon`).
+      - name: Upload the agent-device logs
+        if: *upload-evidence
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-device-android-${{ matrix.id }}
+          path: &agent-device-logs |
+            ~/.agent-device/daemon.log
+            ~/.agent-device/logs
+            ~/.agent-device/sessions/**/runner.log
           if-no-files-found: ignore
           retention-days: 7
 
@@ -394,12 +438,15 @@ jobs:
         uses: ./.github/actions/example-packages
         with:
           working-directory: ${{ matrix.tests }}
-      # agent-device compiles its XCUITest runner on first use; keep it between runs.
+      # agent-device compiles its XCUITest runner on first use; keep it between
+      # runs. Only the build: the rest of ~/.agent-device is the state of the
+      # daemon that ran (its pid, lock, sessions, device claims), and a job
+      # that restores it starts against a daemon record from another machine.
       - name: Restore the agent-device runner
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.agent-device
-          key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
       - name: Build the app
         id: build
         working-directory: ${{ matrix.project }}
@@ -416,7 +463,7 @@ jobs:
           set -euo pipefail
           xcrun simctl bootstatus "$SIMULATOR_UDID"
           xcrun simctl install "$SIMULATOR_UDID" "$APP_PATH"
-          npx e2e run --target ios --retries 1
+          "$GITHUB_WORKSPACE/scripts/examples-nightly/run-tests.sh" --target ios --retries 1
       - name: Record the outcome
         if: ${{ always() }}
         env: *outcome-env
@@ -430,12 +477,21 @@ jobs:
           path: ${{ runner.temp }}/outcome
           retention-days: 14
       - name: Upload the results
-        if: ${{ failure() }}
+        if: *upload-evidence
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: results-ios-${{ matrix.id }}
           path: ${{ matrix.tests }}/.e2e/results
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Upload the agent-device logs
+        if: *upload-evidence
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agent-device-ios-${{ matrix.id }}
+          path: *agent-device-logs
           if-no-files-found: ignore
           retention-days: 7
 
