@@ -227,7 +227,7 @@ readonly transition?: number | undefined;
 mobile({ platform: 'ios', transition: 800 }); // default: 500
 ```
 
-If the control changes during the wait, the action finds it again within its timeout before tapping.
+If the control changes during the wait, the action finds it again within its timeout before acting.
 
 `back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold` on
 [`device`](#device) change the screen, so they count as actions for this
