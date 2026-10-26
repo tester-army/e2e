@@ -197,13 +197,14 @@ export async function launchAttempt(
       // agent steps replay and record as on a run's first attempt, and its
       // screenshots count as written by a run of their own: a baseline one
       // session wrote is compared against in the next, as the next run would.
+      // Its agent steps read the test's title, as they do in a run.
       const testBudget = new AttemptBudget(attemptSignal, new Deadline(test.pair.options.timeout));
       const cache = createAgentCacheContext({
         cache: config.cache, projectRoot: config.projectRoot, projectId: config.projectId, testId: test.pair.test.id,
         target: targetIdentity(target), attemptIndex: 0, recordings: storedRecordingsFor(config.cache),
       });
       const { fixtures } = createFixtures({
-        ...base, budget: testBudget, agentContext: test.pair.options.agentContext,
+        ...base, attempt: { ...attempt, titlePath: test.pair.test.titlePath }, budget: testBudget, agentContext: test.pair.options.agentContext,
         ...(cache === undefined ? {} : { cache }),
         test: { file: test.pair.test.file, titlePath: test.pair.test.titlePath, writtenScreenshots: new WrittenScreenshots(artifacts.dir) },
       });
