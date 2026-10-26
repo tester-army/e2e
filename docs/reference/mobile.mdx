@@ -227,9 +227,7 @@ readonly transition?: number | undefined;
 mobile({ platform: 'ios', transition: 800 }); // default: 500
 ```
 
-If the refreshed snapshot no longer matches the control, the action re-resolves
-its locator within the existing timeout before sending input. It never uses a
-reference from the earlier snapshot when that match is lost.
+If the control changes during the wait, the action finds it again within its timeout before tapping.
 
 `back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold` on
 [`device`](#device) change the screen, so they count as actions for this

@@ -1127,8 +1127,9 @@ export class AgentDeviceSurface {
    * present at the same place in the snapshot the last action was resolved
    * from is not in transition and is acted on at once; anything else waits
    * out the remainder of the transition budget since that action and is then
-   * found again in a fresh snapshot. The budget is the only signal that the
-   * transition is over, since the tree cannot tell a sliding control from a
+   * found again in a fresh snapshot. If it no longer lists the control, a
+   * retryable stale error lets the locator resolve again. The budget is the
+   * only signal that the transition is over, since the tree cannot tell a sliding control from a
    * landed one; the fresh snapshot is where the control landed. Android
    * reports a window's frames while it slides in, so a ref resolved
    * mid-flight would send the action where the control was: below the
@@ -1152,12 +1153,10 @@ export class AgentDeviceSurface {
     return this.relocated(entry, operation);
   }
 
-  /** The same control in a fresh snapshot; otherwise re-resolve before sending input. */
+  /** The same control in a fresh snapshot; retryable NODE_STALE when it no longer lists it, so the locator resolves again. */
   private async relocated(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
     const projected = this.project(await this.snapshotOrEmpty(operation, false));
     const found = this.refind(entry, projected.index);
-    // A fresh snapshot can assign the old numeric ref to a different control.
-    // Let the locator re-resolve instead of dispatching input to that ref.
     if (found === undefined) {
       throw new EngineError('NODE_STALE', 'target changed during transition; re-resolve', { retryable: true });
     }
