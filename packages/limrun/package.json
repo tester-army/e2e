@@ -54,16 +54,16 @@
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.5",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.1",
-    "@limrun/api": "0.59.0"
+    "vitest": "5.0.5",
+    "@limrun/api": "0.65.0"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "agent-device": "0.21.29"
+    "agent-device": "0.21.31"
   }
 }
