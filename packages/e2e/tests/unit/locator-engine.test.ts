@@ -345,6 +345,7 @@ describe('LocatorEngine readAllNow contract', () => {
       read: [() => NODE, () => OTHER_NODE],
     });
     expect(await engine.readAllNow(EXPRESSION, engine.deadline())).toEqual([NODE, OTHER_NODE]);
+    expect(calls).toMatchObject({ resolve: 1, read: 2 });
   });
 
   it('answers zero matches with an empty list without waiting', async () => {
