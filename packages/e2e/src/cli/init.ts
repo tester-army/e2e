@@ -59,7 +59,18 @@ export interface InitOptions {
   skills?: readonly string[];
   mcp?: readonly string[];
   install?: boolean;
+  /**
+   * The e2e command the caller runs once init has scaffolded, as words, such
+   * as `['e2e', 'explore', 'Check the cart']`. The closing `Next:` line ends
+   * with it in place of `e2e run`. When no other step stands before it
+   * (dependencies installed, a model with its key or sign-in, an engine
+   * target on the user's app), init says it is starting it and returns `ready`.
+   */
+  continueWith?: readonly string[];
 }
+
+/** How init ended, with its exit code and whether the caller's `continueWith` command can run now. */
+type InitRunOutcome = InitOutcome & { readonly exitCode: number; readonly ready: boolean };
 
 const CACHE_IGNORE_ENTRY = '.e2e/cache/';
 
@@ -97,7 +108,7 @@ type Answers = Pick<InitOptions, 'engines' | 'gateway' | 'endpoint' | 'skills' |
  * directory before the first prompt and removed again when the wizard is
  * cancelled.
  */
-export async function init(root: string, options: InitOptions = {}): Promise<InitOutcome & { readonly exitCode: number }> {
+export async function init(root: string, options: InitOptions = {}): Promise<InitRunOutcome> {
   // The wordmark drops in above the wizard, at rest when --yes asked for no questions; a terminal is the one place it shows.
   if (options.interactive !== false) await playWordmark(process.stdout, { motion: options.yes !== true });
   clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
@@ -113,12 +124,12 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     install: false,
   };
   let exampleCopy: ExampleCopy | undefined;
-  const done = (result: InitResult, exitCode: number): InitOutcome & { readonly exitCode: number } => {
+  const done = (result: InitResult, exitCode: number, ready = false): InitRunOutcome => {
     // An example copied before the prompts goes again when the run ends without writing its own files.
     if (result !== 'scaffolded' && result !== 'install-failed') exampleCopy?.remove();
-    return { exitCode, result, ...facts };
+    return { exitCode, ready, result, ...facts };
   };
-  const cancel = (): InitOutcome & { readonly exitCode: number } => done('cancelled', cancelled());
+  const cancel = (): InitRunOutcome => done('cancelled', cancelled());
 
   if (options.interactive === false && !options.yes) {
     clack.log.error(
@@ -426,18 +437,44 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   const projectDir = example === undefined || example.project === '.'
     ? options.directory
     : path.join(options.directory ?? '.', example.project);
-  const next = [
+  const before = [
     projectDir === undefined ? undefined : `cd ${shellArgument(projectDir)}`,
     install ? undefined : `${manager} install`,
     subscription === undefined ? undefined : execCommand(manager, `e2e login ${subscription}`),
     // A native app's README.md sits beside the e2e/ folder the line has just changed into.
     example?.build === true ? `build and install the app as ${example.project === '.' ? '' : '../'}README.md describes` : undefined,
-    example === undefined
-      ? `${scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : ''}${runCommand}`
-      : runScriptCommand(manager, example.script),
+    ...(options.continueWith === undefined || existingConfig !== undefined ? [] : continueSteps(engines, model)),
   ].filter((step) => step !== undefined);
-  clack.outro(`Next: ${next.join(', then ')}`);
+  if (options.continueWith !== undefined) {
+    const command = options.continueWith.map(shellArgument).join(' ');
+    if (before.length === 0) {
+      const target = scaffold.needsAppUrl ? ` on ${process.env['APP_URL'] ?? 'http://localhost:3000'} (set APP_URL for another URL)` : '';
+      clack.outro(`Starting ${command}${target}`);
+      return done('scaffolded', 0, true);
+    }
+    const appUrl = scaffold.needsAppUrl && process.env['APP_URL'] === undefined ? 'APP_URL=http://localhost:3000 ' : '';
+    clack.outro(`Next: ${[...before, `${appUrl}${execCommand(manager, command)}`].join(', then ')}`);
+    return done('scaffolded', 0);
+  }
+  const last = example === undefined ? runCommand : runScriptCommand(manager, example.script);
+  const appUrl = example === undefined && scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : '';
+  clack.outro(`Next: ${[...before, `${appUrl}${last}`].join(', then ')}`);
   return done('scaffolded', 0);
+}
+
+/**
+ * What a new config still needs before an agent command such as `e2e explore`
+ * can run on it: a model, the gateway's key in the environment, and an engine
+ * target pointed at the user's app rather than a placeholder.
+ */
+function continueSteps(engines: readonly EngineId[], model: ScaffoldModel | undefined): string[] {
+  const keys = model === undefined ? [] : getGatewayPreset(model.gateway).keys ?? [];
+  return [
+    ...(model === undefined ? ['add a model to agents in e2e.config.ts'] : []),
+    ...(keys.length > 0 && !keys.some((key) => process.env[key] !== undefined) ? [`set ${keys[0]}`] : []),
+    ...(engines.length === 0 ? ['add an engine target to e2e.config.ts'] : []),
+    ...(engines.includes('mobile') ? ['point the mobile target in e2e.config.ts at your app'] : []),
+  ];
 }
 
 /**

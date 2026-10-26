@@ -833,7 +833,7 @@ bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 | Option | Description |
 | --- | --- |
 | `[goal]` | What to explore, in a sentence. Default: `Explore the app and find bugs`. |
-| `--config <path>` | Explicit config path, with the errors of `run`. Default: discovered. |
+| `--config <path>` | Explicit config path, with the errors of `run`. Default: discovered. When no config is found and both stdin and stdout are a terminal, the [`e2e init`](#e2e-init) wizard runs in the working directory first. The exploration follows when nothing is left to do by hand: dependencies installed, a model with its key set or its sign-in done, and a web target (it names the URL it explores). Otherwise init ends with the steps left, then the `e2e explore` command as typed. Without a terminal, no config is `CONFIG_NOT_FOUND`. |
 | `--target <id>` | The one target to explore. Default: the first configured target; with several targets and no flag, it explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
 | `--agent <name>` | The configured agent to explore as. Default: `default`. Its model, `system`, tools, and context are reused. The built-in agent replaces a hand-rolled `StepExecutor`, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
 | `--session <name>` | Starts signed in. The setup test in the config's test files that declares this session runs first. The exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |

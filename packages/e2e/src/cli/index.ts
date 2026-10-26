@@ -17,6 +17,7 @@ import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
+import { discoverConfig } from '../config/load.ts';
 import { isCiMode } from '../config/resolve.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
@@ -383,6 +384,29 @@ function reportFailure(telemetry: Telemetry, cause: unknown): void {
   process.stderr.write(`${error.code}: ${error.message}\n`);
   process.exitCode = exitCodeForCategory(error.category);
   telemetry.failSession(error.code);
+}
+
+/**
+ * `e2e explore` where no config is found: in a terminal, the init wizard runs
+ * in the working directory first, and the exploration starts once it has
+ * scaffolded with nothing left to do by hand. Returns whether to explore.
+ * Without a terminal, or when discovery finds a config or refuses (two configs
+ * side by side), nothing is written and the exploration reports what it finds.
+ */
+async function initBeforeExplore(telemetry: Telemetry, command: Command): Promise<boolean> {
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) return true;
+  const cwd = process.cwd();
+  try {
+    if (discoverConfig(cwd).configPath !== undefined) return true;
+  } catch {
+    return true;
+  }
+  // The invocation as typed, goal and flags included, for the line that tells the user what to run next.
+  const continueWith = ['e2e', ...(command.parent?.args ?? [command.name()])];
+  const { exitCode, ready, ...outcome } = await init(cwd, { interactive: true, continueWith });
+  telemetry.record(initCompletedEvent(outcome));
+  if (!ready) process.exitCode = exitCode;
+  return ready;
 }
 
 /** `command` and every command below it. */
@@ -808,8 +832,9 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           video?: RecordingMode | true;
         },
         command: Command,
-      ) =>
-        runToOutcome(telemetry, command, (signals) =>
+      ) => {
+        if (options.config === undefined && !(await initBeforeExplore(telemetry, command))) return;
+        await runToOutcome(telemetry, command, (signals) =>
           explore({
             goal,
             configPath: options.config,
@@ -829,7 +854,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             forceSignal: signals.forceSignal,
             notice: (message) => process.stderr.write(`e2e explore: ${message}\n`),
           }),
-        ),
+        );
+      },
     );
 
   const listCommand = program

@@ -65,7 +65,8 @@ sends nothing.
 ## What is sent
 
 Each command sends one `e2e_cli_session` event. `run` and `explore` also
-send `e2e_run_completed`, `init` sends `e2e_init_completed`, `upgrade` sends
+send `e2e_run_completed`, `init` sends `e2e_init_completed` (and so does
+`explore` when it runs the init wizard first), `upgrade` sends
 `e2e_upgrade_completed`, and `mcp` sends one `e2e_mcp_session` per MCP
 session. `--help` and `--version` send
 nothing, on any command. `run()` and `explore()` from `e2e/runner` send no
@@ -111,7 +112,7 @@ own tools count together as `tool`, and any other name as `other`.
 | `error_code` | The runner code of the failure that stopped the command before it could run (`CONFIG_NOT_FOUND`, `INVALID_CONFIG`, ...), `CLI_USAGE` for a flag or argument the CLI rejected, else `null` |
 
 </Accordion>
-<Accordion title="e2e_init_completed, once per e2e init">
+<Accordion title="e2e_init_completed, once per init wizard">
 
 | Property | Value |
 | --- | --- |

@@ -138,6 +138,7 @@ describe('e2e init', () => {
   it('hands back what --yes chose, then that a second run had nothing to do', async () => {
     expect(await init(dir, { yes: true })).toEqual({
       exitCode: 0,
+      ready: false,
       result: 'scaffolded',
       yes: true,
       example: null,
@@ -165,6 +166,7 @@ describe('e2e init', () => {
     answers.mcp = cancel;
     expect(await init(dir)).toEqual({
       exitCode: 0,
+      ready: false,
       result: 'cancelled',
       yes: false,
       example: null,
@@ -356,6 +358,7 @@ describe('e2e init', () => {
     });
     expect(outcome).toEqual({
       exitCode: 0,
+      ready: false,
       result: 'scaffolded',
       yes: true,
       example: null,
@@ -485,6 +488,48 @@ describe('e2e init', () => {
     expect(JSON.parse(read('package.json')).devDependencies).toHaveProperty('ai', '^7.0.0');
     expect(spawnSync).not.toHaveBeenCalled();
     expect(output()).toContain('Next: npm install, then APP_URL=');
+  });
+
+  describe('with continueWith', () => {
+    const explore = ['e2e', 'explore', "Check the cart's totals", '--max-steps', '4'];
+    const quoted = "e2e explore 'Check the cart'\\''s totals' --max-steps 4";
+
+    beforeEach(() => {
+      vi.stubEnv('AI_GATEWAY_API_KEY', 'key');
+      vi.stubEnv('VERCEL_OIDC_TOKEN', undefined);
+      vi.stubEnv('OPENROUTER_API_KEY', undefined);
+      vi.stubEnv('APP_URL', undefined);
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    it.skipIf(process.platform === 'win32')('hands over once the install leaves nothing to do by hand, naming the URL it explores', async () => {
+      answers.engines = ['web'];
+      vi.mocked(clack.select).mockResolvedValueOnce('vercel');
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+      vi.mocked(spawnSync).mockReturnValueOnce(spawnResult(0));
+      expect(await init(dir, { continueWith: explore })).toMatchObject({ exitCode: 0, result: 'scaffolded', ready: true });
+      expect(output()).toContain(`Starting ${quoted} on http://localhost:3000 (set APP_URL for another URL)`);
+      expect(output()).not.toContain('Next:');
+    });
+
+    it.skipIf(process.platform === 'win32').each([
+      ['the install is declined', ['web'], 'vercel', false, `Next: npm install, then APP_URL=http://localhost:3000 npm exec -- ${quoted}`],
+      ['a subscription needs a sign-in', ['web'], 'chatgpt', true, `Next: npm exec -- e2e login openai, then APP_URL=http://localhost:3000 npm exec -- ${quoted}`],
+      ['the gateway key is unset', ['web'], 'openrouter', true, `Next: set OPENROUTER_API_KEY, then APP_URL=http://localhost:3000 npm exec -- ${quoted}`],
+      ['no gateway was chosen', ['web'], 'none', true, 'Next: add a model to agents in e2e.config.ts, then APP_URL='],
+      ['no engine was chosen', [], 'vercel', true, 'Next: add an engine target to e2e.config.ts, then APP_URL='],
+      ['the mobile target is a placeholder', ['mobile'], 'vercel', true, `Next: point the mobile target in e2e.config.ts at your app, then npm exec -- ${quoted}`],
+    ])('ends the Next line with the command and is not ready when %s', async (_case, engines, gateway, install, next) => {
+      answers.engines = engines;
+      vi.mocked(clack.select).mockResolvedValueOnce(gateway);
+      vi.mocked(clack.confirm).mockResolvedValueOnce(true).mockResolvedValueOnce(install);
+      vi.mocked(spawnSync).mockReturnValueOnce(spawnResult(0));
+      expect(await init(dir, { continueWith: explore })).toMatchObject({ exitCode: 0, result: 'scaffolded', ready: false });
+      expect(output()).toContain(next);
+    });
   });
 
   it.each(['engine', 'gateway', 'endpoint', 'skill', 'mcp', 'files', 'install'])('leaves the directory untouched when cancelling at %s', async (stage) => {
