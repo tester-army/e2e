@@ -913,10 +913,10 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .alias('update')
     .summary('upgrade e2e and its @e2e-dev packages to the latest or a given version (alias: update)')
     .description(
-      'Upgrade the e2e of the nearest package.json that lists it, to the latest release, a dist-tag such as nightly, or one version, and every @e2e-dev/* package that package.json lists to its newest release whose peer ranges accept the new versions. The new specs go into package.json, each in the section it was in, and one install with the project\'s package manager resolves them; a failed install puts package.json and the lockfile back. A named version or a prerelease is pinned exactly; a dist-tag keeps the ^ or ~ of the old spec. Packages linked from a workspace, a path, or git are left alone.',
+      'Upgrade the e2e of the nearest package.json that lists it, to the latest release, a dist-tag such as nightly, or one version, and every @e2e-dev/* package that package.json lists to its newest release whose peer ranges accept the new versions. The new specs go into package.json, each in the section it was in, and one install with the project\'s package manager resolves them; a failed install puts package.json and the lockfile back. A named version or a prerelease is pinned exactly; a dist-tag keeps the ^ or ~ of the old spec. Packages linked from a workspace, a path, or git are left alone. Copies of the agent skill in .agents/skills/e2e and .claude/skills/e2e are then updated to the installed version\'s.',
     )
     .argument('[version]', 'a version such as 0.22.0, or a dist-tag such as latest or nightly (default: latest)', parseUpgradeTarget)
-    .option('--dry-run', 'print the versions, the new specs, and the install command, and change nothing')
+    .option('--dry-run', 'print the versions, the new specs, the install command, and the skill copies to update, and change nothing')
     .addHelpText(
       'after',
       [

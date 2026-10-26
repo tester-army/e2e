@@ -1055,12 +1055,13 @@ $ npm install
 ...
 Upgraded: e2e 0.21.2, @e2e-dev/web 0.15.2, @e2e-dev/kernel 0.2.1
 Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
+Updated the agent skill in .agents/skills/e2e/ (12 files)
 ```
 
 | Option | Description |
 | --- | --- |
 | `[version]` | A version such as `0.22.0`, or a dist-tag such as `latest` or `nightly`. Ranges are refused. Default: `latest`. |
-| `--dry-run` | Prints the versions, the new specs, and the install command, and changes nothing. |
+| `--dry-run` | Prints the versions, the new specs, the install command, and the skill copies to update, and changes nothing. |
 
 - **The project.** The nearest `package.json` from the working directory up
   that lists `e2e`.
@@ -1093,8 +1094,12 @@ Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
 - **The registry.** `npm_config_registry` when the package manager sets it,
   else `https://registry.npmjs.org/`.
 - **The agent skill.** A copy in `.agents/skills/e2e` or `.claude/skills/e2e`
-  stays at the old version. The command says so; run `e2e init` to refresh
-  it.
+  is updated to the installed version's after the install, and when
+  everything was already up to date. A `.claude/skills/e2e` symlink to the
+  `.agents/skills` copy follows it. Files the new skill no longer ships stay.
+  A symlink to a copy outside the project isn't written through, and without
+  `node_modules`, as under Yarn Plug'n'Play, the command names `e2e init`
+  instead.
 
 | Exit code | When |
 | --- | --- |
