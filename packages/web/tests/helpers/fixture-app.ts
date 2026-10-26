@@ -416,6 +416,11 @@ export function startFixtureApp(): Promise<FixtureApp> {
       response.end("self.addEventListener('fetch', () => {});");
       return;
     }
+    if (url.pathname === '/redirect') {
+      response.writeHead(302, { location: url.searchParams.get('to') ?? '/' });
+      response.end();
+      return;
+    }
     if (url.pathname === '/headers') {
       const value = request.headers['x-fixture-header'];
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
