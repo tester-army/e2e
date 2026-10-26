@@ -2,4 +2,4 @@
 "@e2e-dev/mobile": patch
 ---
 
-Reobserve controls after the transition budget following text entry, even when the first snapshot has unchanged bounds, so a delayed keyboard animation does not send the next tap to the old position. Retry moving-target refusals only when agent-device confirms no input was dispatched.
+Reobserve a control after the remaining transition budget when captured keyboard state changes, even if its first bounds are unchanged. Unchanged controls keep the immediate path when keyboard state stays the same. Retry moving-target refusals only when agent-device confirms no input was dispatched.
