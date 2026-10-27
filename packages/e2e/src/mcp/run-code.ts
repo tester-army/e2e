@@ -22,7 +22,7 @@
 import type { ToolExecutionOptions, ToolSet } from 'ai';
 import { z } from 'zod';
 import type { StepExecutorContext } from '../agent/executor.ts';
-import { prepareObservation, redactNode, type NodeRedaction } from '../agent/observation.ts';
+import { redactNode, type NodeRedaction } from '../agent/observation.ts';
 import { recordPolicyEvent } from '../agent/phases.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
 import { authorizeSecretFill } from '../agent/secrets.ts';
@@ -30,9 +30,9 @@ import type { TargetSession } from '../engine/surface.ts';
 import { expect } from '../expect/index.ts';
 import { classifyError, codedMessage, ConfigurationError, TestError, type E2EError } from '../internal/errors.ts';
 import { rejectUnknownOptions } from '../internal/options.ts';
-import { LocatorEngine } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import { createScreen, locatorInternals } from '../locator/screen.ts';
+import { createScreenContext } from '../run/fixtures.ts';
 import type { StandaloneAttempt } from '../run/standalone.ts';
 import { secretHandle } from '../secrets.ts';
 import type { ActionOptions, App, Screen, Secret } from '../types.ts';
@@ -221,41 +221,33 @@ function findsByPart(call: Call): boolean {
 
 /**
  * A screen over the attempt's engine session whose every read passes the
- * secret ledger, wired like the attempt's own: same budget, step recorder,
- * timeouts, and secret resolver.
+ * secret ledger, wired like the attempt's own through the same factory.
  */
 function redactingScreen(attempt: StandaloneAttempt): Screen {
   const runtime = attempt.agentRuntime;
-  const { config } = runtime;
   const redaction: NodeRedaction = { redact: runtime.redact, redactCut: runtime.redactCut };
-  const engine = new LocatorEngine({
-    session: readingRedacted(attempt.session, redaction),
-    budget: attempt.budget,
-    runId: attempt.runId,
-    attemptId: attempt.attemptId,
-    actionTimeout: config.actionTimeout,
-    assertionTimeout: config.assertionTimeout,
-    recordEvent: (event) => runtime.steps.recordEvent(event),
-    redact: (text) => runtime.steps.redactText(text),
-  });
-  return createScreen({
-    engine,
-    steps: runtime.steps,
-    secrets: runtime.secrets,
-    projectRoot: config.projectRoot,
-    renderTree: (observation) =>
-      prepareObservation(observation, {
-        ...redaction,
-        maxBytes: config.limits.maxObservationBytes,
-        appOrigin: runtime.app.base?.origin,
-      }).text,
-  });
+  return createScreen(
+    createScreenContext({
+      session: readingRedacted(attempt.session, redaction),
+      budget: attempt.budget,
+      runId: attempt.runId,
+      attemptId: attempt.attemptId,
+      config: runtime.config,
+      steps: runtime.steps,
+      secrets: runtime.secrets,
+      redaction,
+      appOrigin: runtime.app.base?.origin,
+    }),
+  );
 }
 
-/** The session with `read` answering each node through the ledger; everything else is the session's own. */
+/**
+ * The session with `read` answering each node through the ledger; every other
+ * member is the session's own, which `createEngineSession` builds as plain
+ * properties of one object.
+ */
 function readingRedacted(session: TargetSession, redaction: NodeRedaction): TargetSession {
-  const read: TargetSession['read'] = async (ref, operation) => redactNode(await session.read(ref, operation), redaction);
-  return new Proxy(session, { get: (target, property) => (property === 'read' ? read : Reflect.get(target, property, target)) });
+  return { ...session, read: async (ref, operation) => redactNode(await session.read(ref, operation), redaction) };
 }
 
 /** Runs parsed statements on the session's fixtures. */
@@ -363,16 +355,7 @@ class LineRunner {
     };
     const { engine, steps } = internals.context;
     return steps.run('locator', 'locator.fill', describeExpression(internals.expression), () =>
-      engine.fillSecret(
-        internals.expression,
-        async (node) => {
-          const plaintext = await authorizeSecretFill(host, runtime, secret, node);
-          // Before the engine call: a fill that types the value and then fails has still put it on screen.
-          runtime.exposure.raise('filled');
-          return plaintext;
-        },
-        (options as ActionOptions | undefined)?.timeout,
-      ),
+      engine.fillSecret(internals.expression, (node) => authorizeSecretFill(host, runtime, secret, node), (options as ActionOptions | undefined)?.timeout),
     );
   }
 }
