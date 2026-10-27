@@ -134,7 +134,7 @@ async function runCode(options: RunCodeOptions, runner: LineRunner, args: RunCod
     screen = `Observing the screen afterwards failed: ${codedMessage(cause)}`;
   }
   const failed = outcomes.some((outcome) => 'error' in outcome);
-  return { text: render(statements, outcomes, timeout, runtime.redact, screen), failed };
+  return { text: render(statements, outcomes, timeout, screen), failed };
 }
 
 /** Whether a statement only reads, which a test body has no use for once its value is known. */
@@ -361,7 +361,7 @@ class LineRunner {
 }
 
 /** The result: a summary, each statement with its outcome, then the screen. */
-function render(statements: readonly Statement[], outcomes: readonly Outcome[], timeout: number, redact: (text: string) => string, screen: string): string {
+function render(statements: readonly Statement[], outcomes: readonly Outcome[], timeout: number, screen: string): string {
   const failure = outcomes.findIndex((outcome) => 'error' in outcome);
   const total = statements.length;
   const lines: string[] = [];
@@ -385,27 +385,11 @@ function render(statements: readonly Statement[], outcomes: readonly Outcome[], 
       lines.push(`${number} failed: ${statement.source}`, indent(`${outcome.error.code}: ${outcome.error.message}`));
     } else {
       lines.push(`${number} passed: ${statement.source}`);
-      const value = renderValue(outcome.value, redact);
-      if (value !== undefined) lines.push(indent(value));
+      const { value } = outcome;
+      if (value !== undefined) lines.push(indent(typeof value === 'string' && value.includes('\n') ? `returned:\n${value}` : `returned ${JSON.stringify(value)}`));
     }
   });
   return `${lines.join('\n')}\n\n${screen}`;
-}
-
-/** A read's value, every string in it passed through the secret ledger before it is quoted. */
-function renderValue(value: unknown, redact: (text: string) => string): string | undefined {
-  if (value === undefined) return undefined;
-  if (typeof value === 'string' && value.includes('\n')) return `returned:\n${redact(value)}`;
-  return `returned ${JSON.stringify(redactStrings(value, redact))}`;
-}
-
-function redactStrings(value: unknown, redact: (text: string) => string): unknown {
-  if (typeof value === 'string') return redact(value);
-  if (Array.isArray(value)) return value.map((item) => redactStrings(item, redact));
-  if (typeof value === 'object' && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactStrings(item, redact)]));
-  }
-  return value;
 }
 
 function indent(text: string): string {
