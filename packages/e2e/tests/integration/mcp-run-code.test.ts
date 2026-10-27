@@ -188,6 +188,10 @@ await screen.getByRole('button', 'Increment').tap();`,
       expect(unconfigured.text).toContain('AUTH_CREDENTIAL_UNAVAILABLE: credential "ghost" is not configured');
       const unknown = await runCode("await screen.getByLabel('Email').fill(secrets.get('stripeKey'));");
       expect(unknown.text).toContain('SECRET_UNAVAILABLE: secret "stripeKey" is not configured');
+      const badOptions = await runCode("await screen.getByLabel('Password').fill(credentials.user('admin').password, { delay: 5 });");
+      expect(badOptions.text).toContain('INVALID_ARGUMENT: fill options has no key "delay"; it takes timeout');
+      const badTimeout = await runCode("await screen.getByLabel('Password').fill(credentials.user('admin').password, { timeout: '1s' });");
+      expect(badTimeout.text).toContain('INVALID_ARGUMENT: fill timeout must be a number of milliseconds');
       const emailValue = await runCode("await screen.getByLabel('Email').inputValue()");
       expect(emailValue.text).toContain('returned ""');
       // Refused before a value was resolved: nothing reached the screen, so pixels stay on.

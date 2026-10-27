@@ -27,15 +27,15 @@ import { recordPolicyEvent } from '../agent/phases.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
 import { authorizeSecretFill } from '../agent/secrets.ts';
 import type { TargetSession } from '../engine/surface.ts';
-import { expect } from '../expect/index.ts';
+import { createAsyncExpectation } from '../expect/async.ts';
 import { classifyError, codedMessage, ConfigurationError, TestError, type E2EError } from '../internal/errors.ts';
-import { rejectUnknownOptions } from '../internal/options.ts';
+import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { describeExpression } from '../locator/expression.ts';
-import { createScreen, locatorInternals } from '../locator/screen.ts';
+import { createScreen, locatorInternals, type LocatorInternals } from '../locator/screen.ts';
 import { createScreenContext } from '../run/fixtures.ts';
 import type { StandaloneAttempt } from '../run/standalone.ts';
 import { secretHandle } from '../secrets.ts';
-import type { ActionOptions, App, Screen, Secret } from '../types.ts';
+import type { App, Screen, Secret } from '../types.ts';
 import { parseCode, type Call, type Chain, type Statement, type Value } from './code-parse.ts';
 import { SURFACE } from './code-surface.ts';
 
@@ -266,9 +266,8 @@ class LineRunner {
       const value: unknown = await this.chain(body.chain);
       return body.read ? value : undefined;
     }
-    const expectation: unknown = expect(this.chain(body.locator) as never);
-    const matchers: unknown = body.negated ? Reflect.get(expectation as object, 'not') : expectation;
-    await this.invoke(matchers, body.matcher);
+    const expectation = createAsyncExpectation(this.locator(this.chain(body.locator), 'expect'));
+    await this.invoke(body.negated ? expectation.not : expectation, body.matcher);
     return undefined;
   }
 
@@ -279,10 +278,17 @@ class LineRunner {
       const [first, second] = call.args;
       receiver =
         call.name === 'fill' && first?.kind === 'secret'
-          ? this.fillSecret(receiver, this.secret(first), second === undefined ? undefined : this.value(second))
+          ? this.fillSecret(this.locator(receiver, 'fill'), this.secret(first), this.fillTimeout(second))
           : this.invoke(receiver, call);
     }
     return receiver;
+  }
+
+  /** What a walked chain built, as the locator `expect` and a secret fill take: its expression and its screen. */
+  private locator(value: unknown, api: string): LocatorInternals {
+    const internals = locatorInternals(value);
+    if (internals === undefined) throw new TestError('INVALID_ARGUMENT', `${api} takes a locator`);
+    return internals;
   }
 
   /** Calls a member the grammar's table listed by this name, on the object it was listed for. */
@@ -345,18 +351,25 @@ class LineRunner {
    * resolves. A test's own `fill` skips this as trusted code; `run_code`
    * statements come from the coding agent, which is not.
    */
-  private fillSecret(receiver: unknown, secret: Secret, options: unknown): Promise<void> {
-    const internals = locatorInternals(receiver);
-    if (internals === undefined) throw new TestError('INVALID_ARGUMENT', 'fill takes a secret on a locator only');
-    rejectUnknownOptions('fill', options as object | undefined, ['timeout']);
+  private fillSecret(internals: LocatorInternals, secret: Secret, timeout: number | undefined): Promise<void> {
     const runtime = this.attempt.agentRuntime;
     const host = {
       recordPolicy: (policy: string, decision: 'allowed' | 'denied', code?: string) => recordPolicyEvent(runtime.steps, policy, decision, code),
     };
     const { engine, steps } = internals.context;
     return steps.run('locator', 'locator.fill', describeExpression(internals.expression), () =>
-      engine.fillSecret(internals.expression, (node) => authorizeSecretFill(host, runtime, secret, node), (options as ActionOptions | undefined)?.timeout),
+      engine.fillSecret(internals.expression, (node) => authorizeSecretFill(host, runtime, secret, node), timeout),
     );
+  }
+
+  /** The timeout in `fill`'s options, checked as `locator.fill` checks them. */
+  private fillTimeout(value: Value | undefined): number | undefined {
+    const options = value === undefined ? undefined : this.value(value);
+    if (options !== undefined && !isPlainObject(options)) throw new TestError('INVALID_ARGUMENT', 'fill options must be a plain object');
+    rejectUnknownOptions('fill', options, ['timeout']);
+    const timeout = options?.['timeout'];
+    if (timeout !== undefined && typeof timeout !== 'number') throw new TestError('INVALID_ARGUMENT', 'fill timeout must be a number of milliseconds');
+    return timeout;
   }
 }
 
