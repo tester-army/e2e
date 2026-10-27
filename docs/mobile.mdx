@@ -238,13 +238,13 @@ test('shows the offline banner', { platforms: ['android'] }, async ({ app, devic
 `app.clearState()` leaves alone, so a stored session token is gone on the
 next launch. It is iOS only.
 
-For anything `device` doesn't cover, `device.unstable_agentDevice` has an
+For anything `device` doesn't cover, `device.unstable_raw` has an
 [agent-device](https://github.com/callstack/agent-device) client
 bound to the test's session, plus the session name and the device's id and
 name. It is unstable and may change or go away in any release:
 
 ```ts
-const { client, deviceId } = device.unstable_agentDevice;
+const { client, deviceId } = device.unstable_raw;
 const { nodes } = await client.capture.snapshot({});
 ```
 

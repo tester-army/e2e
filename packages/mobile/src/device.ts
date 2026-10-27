@@ -33,7 +33,7 @@ export interface ForegroundApp {
   readonly bundleId?: string;
 }
 
-/** The agent-device session behind `device`; see `Device.unstable_agentDevice`. */
+/** The agent-device session behind `device`; see `Device.unstable_raw`. */
 export interface DeviceSession {
   readonly platform: MobilePlatform;
   /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
@@ -57,7 +57,7 @@ export interface Device {
    * screen to settle after one. Unstable: it may change or go away in any
    * release.
    */
-  readonly unstable_agentDevice: DeviceSession;
+  readonly unstable_raw: DeviceSession;
   /**
    * A locator from an agent-device selector (`'id=SW_VERSION_SPECIFIER'`,
    * `'role=text label="26.2"'`), for nodes the closed `screen` query
@@ -176,7 +176,7 @@ export interface Device {
 /** Builds the device fixture for one attempt. */
 export function createDeviceFixture(surface: AgentDeviceSurface, context: EngineFixtureContext): Device {
   const device: Device = {
-    get unstable_agentDevice() {
+    get unstable_raw() {
       const { session, deviceId, deviceName } = surface.boundDevice;
       return {
         platform: surface.options.platform,

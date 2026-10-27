@@ -383,7 +383,7 @@ export default {
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
-- `device.unstable_agentDevice` gives the session name, device id and name, and an
+- `device.unstable_raw` gives the session name, device id and name, and an
   agent-device `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
