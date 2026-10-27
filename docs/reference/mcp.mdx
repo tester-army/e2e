@@ -273,7 +273,7 @@ Left out: fixtures an engine contributes (`browser`, `device`),
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | Code outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message names the token with its line and column, and no statement runs. Also a matcher that expects `<secret:name>`. |
+| `INVALID_ARGUMENT` | Code outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes the refused code with its line and column, and no statement runs. Also a matcher that expects `<secret:name>`. |
 | `POLICY_DENIED` | A secret `fill` into a field `type_secret` would refuse, a read of a password field, or, in a project with secrets, a locator found by part of a text. |
 
 A secret `fill` passes the checks `type_secret` runs, on the field it lands

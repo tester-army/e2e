@@ -1,8 +1,8 @@
 /**
  * The `run_code` grammar: test statements as a test body writes them parse
- * into plain data, and anything outside the grammar is refused with the
- * token and where it sits, before anything could run. The parser never
- * reaches for `eval` or `Function`.
+ * into plain data, and anything outside the grammar is refused with the node
+ * and where it starts, before anything could run. The parser never reaches
+ * for `eval` or `Function`.
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -62,7 +62,7 @@ await expect(screen.getByRole('status', 'Save result')).toHaveText('Saved profil
     });
   });
 
-  it('statements without await or semicolons, chains over several lines, comments, and trailing commas, echoed on one line without the comments', () => {
+  it('statements without await or semicolons, chains over several lines, comments, and trailing commas, each echoed as written', () => {
     const statements = parseCode(
       `// open the form
 app.open('/forms')
@@ -77,7 +77,7 @@ screen.getByLabel('Notes').fill(\`line one
     );
     expect(statements.map((statement) => statement.source)).toEqual([
       "app.open('/forms')",
-      "screen.getByRole('listitem').filter({ hasText: 'Ada', }).first().tap({ timeout: 2000, },)",
+      "screen\n  .getByRole('listitem') // the rows\n  .filter({ hasText: 'Ada', }) /* the first row */\n  .first()\n  .tap({ timeout: 2000, },)",
       "screen.getByLabel('Notes').fill(`line one\n  .two`)",
     ]);
     expect(statements[1]!.body).toMatchObject({
@@ -174,17 +174,27 @@ await expect(screen.getByRole('status')).toHaveText(/(ab)?c+(?<word>\w)+[(*+]+x{
 describe('parseCode refuses', () => {
   it.each([
     ['process.exit()', `run_code: "process" at 1:1 is not in the grammar; ${STATEMENTS}`],
-    ["import fs from 'node:fs'", `run_code: "import" at 1:1 is not in the grammar; ${STATEMENTS}`],
-    ["const name = await screen.getByLabel('Name').inputValue()", `run_code: "const" at 1:1 is not in the grammar; ${STATEMENTS}`],
+    ["import fs from 'node:fs'", `run_code: "import fs from 'node:fs'" at 1:1 is not in the grammar; ${STATEMENTS}`],
+    ["await import('node:fs')", `run_code: "import('node:fs')" at 1:7 is not in the grammar; ${STATEMENTS}`],
+    ["screen.getByText(import('node:fs')).tap()", `run_code: "import('node:fs')" at 1:18 is not in the grammar; ${ARGUMENTS}`],
+    ["const name = await screen.getByLabel('Name').inputValue()", `run_code: "const name = await screen.getByLabel('N…" at 1:1 is not in the grammar; ${STATEMENTS}`],
+    ["new Function('return 1')()", `run_code: "new Function('return 1')" at 1:1 is not in the grammar; ${STATEMENTS}`],
     ['await page.goto("/")', `run_code: "page" at 1:7 is not in the grammar; ${STATEMENTS}`],
     ["screen.getByLabel('Name').fill(process.env.TOKEN)", `run_code: "process" at 1:32 is not in the grammar; ${ARGUMENTS}`],
-    ["screen.getByRole('row').filter(() => true).tap()", `run_code: unexpected "(" at 1:32; ${ARGUMENTS}`],
-    ["screen.getByRole('row').filter({ hasText: 'a' + 'b' }).tap()", 'run_code: expected "," or "}" in the object, found "+" at 1:47'],
-    ["x = screen.getByText('a')", `run_code: "x" at 1:1 is not in the grammar; ${STATEMENTS}`],
-    ["screen.getByText('a').tap() = 1", 'run_code: expected ";" or a new line after the statement, found "=" at 1:29'],
-    ["screen['getByText']('a').tap()", 'run_code: expected ";" or a new line after the statement, found "[" at 1:7'],
-    ["screen.getByText('a').tap() screen.getByText('b').tap()", 'run_code: expected ";" or a new line after the statement, found "screen" at 1:29'],
+    ["screen.getByRole('row').filter(() => true).tap()", `run_code: "() => true" at 1:32 is not in the grammar; ${ARGUMENTS}`],
+    ["screen.getByRole('row').filter({ hasText: 'a' + 'b' }).tap()", `run_code: "'a' + 'b'" at 1:43 is not in the grammar; ${ARGUMENTS}`],
+    ['screen.getByText(String.raw`a`).tap()', `run_code: "String.raw\`a\`" at 1:18 is not in the grammar; ${ARGUMENTS}`],
+    ["screen.getByRole(...args).tap()", `run_code: "...args" at 1:18 is not in the grammar; ${ARGUMENTS}`],
+    ['screen.getByRole("row").nth(1n).tap()', `run_code: "1n" at 1:29 is not in the grammar; ${ARGUMENTS}`],
+    ["x = screen.getByText('a')", `run_code: "x = screen.getByText('a')" at 1:1 is not in the grammar; ${STATEMENTS}`],
+    ["screen.getByText('a').tap() = 1", 'run_code: the code does not parse at 1:1: Cannot assign to this expression'],
+    ["screen['getByText']('a').tap()", `run_code: "'getByText'" at 1:8 is not a member name; call a member by name, such as screen.getByText('Done')`],
+    ["screen.getByText('a')?.tap()", `run_code: "screen.getByText('a')?.tap()" at 1:1 is not in the grammar; ${STATEMENTS}`],
+    ["screen.getByText('a')()", "run_code: the call at 1:22 calls what came before it; call a member by name, such as screen.getByText('Done')"],
+    ["screen.getByText('a').tap(), app.back()", `run_code: "screen.getByText('a').tap(), app.back()" at 1:1 is not in the grammar; ${STATEMENTS}`],
+    ["screen.getByText('a').tap() screen.getByText('b').tap()", 'run_code: the code does not parse at 1:28: Expected a semicolon or an implicit semicolon after a statement, but found none'],
     ["await browser.evaluate('document.cookie')", `run_code: "browser" at 1:7 is a fixture of this target's engine, which run_code does not run; ${STATEMENTS}`],
+    ["screen.getByLabel('Name').fill(browser)", `run_code: "browser" at 1:32 is a fixture of this target's engine, which run_code does not run; ${ARGUMENTS}`],
     ["await expect(browser).toHaveURL('/')", `run_code: "browser" at 1:14 is a fixture of this target's engine, which run_code does not run; ${STATEMENTS}`],
     ["await expect(screen).toHaveScreenshot('home')", 'run_code: expect(screen) at 1:14 only compares screenshots, which run in a test; look with the screenshot tool'],
     ["await expect(screen.getByRole('main')).toHaveScreenshot()", 'run_code: "toHaveScreenshot" at 1:40 is left out of run_code: it compares against screenshots kept beside a test file, so it runs only in a test; look with the screenshot tool'],
@@ -198,11 +208,15 @@ describe('parseCode refuses', () => {
     ["screen.getByRole('button')", 'run_code: the statement at 1:1 ends on a locator; end it with an action or a read, or wrap the locator in expect(...)'],
     ["screen.getByRole('button').tap(1, 2)", 'run_code: tap at 1:28 on a locator takes 0 to 1 arguments, got 2'],
     ['screen.getByRole()', 'run_code: getByRole at 1:8 on screen takes 1 to 3 arguments, got 0'],
-    ["screen.getByText('a').tap().then(done)", 'run_code: nothing may follow tap(...); found "." at 1:28'],
+    ["screen.getByText('a').tap().then(done)", 'run_code: nothing may follow tap(...); the chain goes on at 1:28'],
+    ['screen.getByText', 'run_code: getByText at 1:8 is not called; write getByText(...)'],
     ["screen.getByText('a').toBeVisible()", 'run_code: "toBeVisible" at 1:23 is a matcher; call it on expect(...)'],
     ["expect.soft(screen.getByText('a')).toBeVisible()", 'run_code: expect.soft at 1:1 is not in the grammar; run_code runs expect(...) itself, not expect.soft or expect.poll'],
-    ["expect(await screen.getByText('a').count()).toBe(1)", 'run_code: expect takes a locator on screen, found "await" at 1:8'],
+    ["expect(await screen.getByText('a').count()).toBe(1)", 'run_code: expect takes a locator on screen, found "await screen.getByText(\'a\').count()" at 1:8'],
     ["expect(screen.getByText('a').count()).toBe(1)", "run_code: the locator at 1:8 ends in a call; pass the locator itself, such as screen.getByText('Done')"],
+    ["expect(screen.getByText('a'), 'shown').toBeVisible()", 'run_code: expect at 1:1 takes one locator, got 2'],
+    ["expect(screen.getByText('a')).not", 'run_code: expect(...) at 1:1 needs a matcher, such as .toBeVisible()'],
+    ["expect(screen.getByText('a')).toBeVisible().then(done)", 'run_code: nothing may follow the matcher; the chain goes on at 1:44'],
     ["expect(screen.getByText('a')).not.not.toBeVisible()", 'run_code: "not" at 1:35: a matcher is negated once'],
     [
       "expect(screen.getByText('a')).toBe('a')",
@@ -214,19 +228,28 @@ describe('parseCode refuses', () => {
     ["screen.getByLabel('Name').fill('a', secrets.get('apiKey'))", `run_code: the secret at 1:37 ${SECRET_PLACE}`],
     ["screen.getByLabel('Name').fill(credentials.user(name).username)", 'run_code: credentials.user takes the name as a string, found "name" at 1:49'],
     ["screen.getByLabel('Name').fill(credentials.user('admin').token)", 'run_code: "token" at 1:58: a credential has username and password'],
+    ["screen.getByLabel('Name').fill(credentials.user('admin'))", "run_code: the credential at 1:32 is not in the grammar; write credentials.user('name').username or .password"],
+    ["screen.getByLabel('Name').fill(secrets)", "run_code: the secret at 1:32 is not in the grammar; write secrets.get('name')"],
+    ["screen.getByLabel('Name').fill(secrets.get())", 'run_code: secrets.get takes the name as a string, found nothing at 1:45'],
     ['screen.getByLabel(\'Name\').fill(`Hi ${name}`)', 'run_code: the template at 1:32 has a ${...} expression at 1:36; run_code runs no expressions, so write the text out'],
     ["screen.getByRole('row').filter({ __proto__: { hasText: 'x' } }).tap()", 'run_code: the property name "__proto__" at 1:34 is not allowed'],
     ["screen.getByRole('row').filter({ hasText: 'a', hasText: 'b' }).tap()", 'run_code: the property "hasText" at 1:48 is named twice'],
-    ["screen.getByRole('row').filter({ hasText }).tap()", 'run_code: expected ":" after the property name "hasText", found "}" at 1:42'],
-    ['screen.getByRole("row").nth(0x1).tap()', 'run_code: the number at 1:29 is not a plain decimal number'],
+    ["screen.getByRole('row').filter({ hasText }).tap()", 'run_code: the property "hasText" at 1:34 is not in the grammar; write each property as name: value'],
+    ["screen.getByText('a').tap({ toString })", 'run_code: the property "toString" at 1:29 is not in the grammar; write each property as name: value'],
+    ["screen.getByText('a').tap({ toString() { return 'x' } })", 'run_code: the property "toString() { return \'x\' }" at 1:29 is not in the grammar; write each property as name: value'],
+    ["screen.getByRole('row').filter({ ['hasText']: 'a' }).tap()", 'run_code: the property "[\'hasText\']: \'a\'" at 1:34 is not in the grammar; write each property as name: value'],
+    ["screen.getByText('a').tap({ ...options })", 'run_code: the property "...options" at 1:29 is not in the grammar; write each property as name: value'],
+    ['screen.getByText([1, , 2]).tap()', 'run_code: the array at 1:18 skips an item; write every item'],
     ['screen.getByText(/(/).tap()', 'run_code: the regular expression at 1:18 is invalid: Invalid regular expression: /(/: Unterminated group'],
     [String.raw`expect(screen.getByTestId('log')).toHaveText(/^(\w+\s?)*$/)`, `run_code: the regular expression at 1:46 ${NESTED}`],
     [String.raw`expect(screen.getByTestId('log')).toHaveText(/(?:\s*(a|ab))+/)`, `run_code: the regular expression at 1:46 ${NESTED}`],
     [String.raw`expect(screen.getByTestId('log')).toHaveText(/(x|y){2,}/)`, `run_code: the regular expression at 1:46 ${NESTED}`],
-    ["screen.getByText('a).tap()", 'run_code: the string at 1:18 never ends'],
-    ["screen.getByText('a').tap() /* trailing", 'run_code: the comment at 1:29 never ends'],
-    ['screen.getByText("é").tap() \\', 'run_code: unexpected character "\\\\" at 1:29'],
-    ['await', `run_code: expected a statement, found the end of the code at 1:6; ${STATEMENTS}`],
+    ["screen.getByText('a).tap()", 'run_code: the code does not parse at 1:18: Unterminated string'],
+    ["screen.getByText('a').tap() /* trailing", 'run_code: the code does not parse at 1:29: Unterminated multiline comment'],
+    ['screen.getByText("é").tap() \\', 'run_code: the code does not parse at 1:30: Invalid Unicode escape sequence'],
+    ['screen.getByText("\\u{110000}").tap()', 'run_code: the code does not parse at 1:19: Invalid escape sequence'],
+    ["screen.getByText('a' as string).tap()", 'run_code: the code does not parse at 1:18: Type assertion expressions can only be used in TypeScript files.'],
+    ['await', 'run_code: the code does not parse at 1:6: Unexpected token'],
     ['  ;; // nothing', "run_code: no statement to run; pass test lines such as await screen.getByRole('button', 'Save').tap();"],
   ])('%s', (code, message) => {
     expect(refusal(code)).toBe(message);
@@ -247,6 +270,11 @@ describe('parseCode refuses', () => {
     expect(refusal('app.back();'.repeat(51))).toBe('run_code: pass at most 50 statements at once');
     expect(refusal(`screen.getByText('${'a'.repeat(20_000)}').tap()`)).toBe('run_code: the code is 20026 characters; pass at most 20000 at once');
     expect(refusal(`screen.getByText(${'['.repeat(20)}${']'.repeat(20)}).tap()`)).toBe('run_code: the argument at 1:34 nests deeper than 16 levels');
+  });
+
+  it('nesting deep enough to overflow the parser, before the parser reads it', () => {
+    // Some 4,500 levels overflow oxc's stack and crash the process, which no catch survives.
+    expect(refusal(`screen.getByText(${'['.repeat(9_000)}${']'.repeat(9_000)}).tap()`)).toBe('run_code: the code opens 9002 brackets; pass at most 1000 at once');
   });
 });
 
