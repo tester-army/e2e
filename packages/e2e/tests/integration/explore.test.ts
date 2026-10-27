@@ -6,6 +6,7 @@
  * user gets.
  */
 
+import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,6 +14,7 @@ import { defineTool } from '../../src/agent/public.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import { explore, type ExploreOptions, type ExploreOutcome } from '../../src/explore/index.ts';
 import { FINDING_TOOL_NAME } from '../../src/explore/executor.ts';
+import type { RunEvent } from '../../src/index.ts';
 import type { ModelInstance } from '../../src/types.ts';
 import { installFakeLoopModel, loopCalls, nodeIdFor, type LoopCall, type LoopToolCall } from '../helpers/fake-loop-model.ts';
 import { extracted, fakeCalls, installFakeModel, type FakeCall } from '../helpers/fake-model.ts';
@@ -28,6 +30,9 @@ import { z } from 'zod';
 // that registry. The specifier is non-literal so typechecking needs no build.
 const builtExploreModule = '../../dist/explore/index.js';
 const { explore: exploreBuilt } = (await import(builtExploreModule)) as typeof import('../../src/explore/index.ts');
+// `e2e/runner` as a caller imports it, from the build.
+const builtRunnerModule = '../../dist/runner.js';
+const { explore: publicExplore, run: publicRun } = (await import(builtRunnerModule)) as typeof import('../../src/runner.ts');
 
 type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish'; summary: string };
 
@@ -702,5 +707,201 @@ test('never runs under explore', async () => {
       }),
     ]);
     expect(fakeCalls).toEqual([]);
+  });
+});
+
+describe('explore from e2e/runner', () => {
+  let app: FixtureApp;
+  let project: FixtureProject;
+
+  beforeAll(async () => {
+    app = await startFixtureApp();
+    project = createProject({});
+  });
+
+  afterAll(async () => {
+    project?.cleanup();
+    await app?.close();
+  });
+
+  /** A runtime config for the fixture app, explored with `model`. */
+  const config = (model: ModelInstance) => ({
+    targets: [{ name: 'web', engine: web(), app: { url: app.url } }] as never,
+    agents: { default: { model } },
+    actionTimeout: 10_000,
+  });
+
+  /** A model that reports one warning in one step, then finishes: a passing exploration. */
+  const warningModel = (): ModelInstance => {
+    let plans = 0;
+    return installExploreModel({
+      plan: () => {
+        plans += 1;
+        return plans === 1 ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' } : { decision: 'finish', summary: 'Only polish items.' };
+      },
+      loop: (call) =>
+        call.turn === 1
+          ? [{ toolName: FINDING_TOOL_NAME, input: { ...COUNTER_FINDING, kind: 'warning', severity: 1 } }]
+          : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+    });
+  };
+
+  it('explores from a runtime config, streams its progress, and returns the report and record without live handles', async () => {
+    const model = installExploreModel({
+      plan: (call) =>
+        call.instruction.includes('(none yet')
+          ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' }
+          : { decision: 'finish', summary: 'One defect on the home page.' },
+      loop: (call) =>
+        call.turn === 1
+          ? [{ toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING }]
+          : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+    });
+    const events: RunEvent[] = [];
+    const outcome = await publicExplore({
+      cwd: project.dir,
+      config: config(model),
+      goal: 'Explore the home page and find bugs',
+      maxSteps: 2,
+      timeoutMs: 180_000,
+      onEvent: (event) => { events.push(event); },
+    });
+
+    expect(outcome.exitCode).toBe(1);
+    expect(outcome.status).toBe('failed');
+    expect(outcome.explore).toMatchObject({ goal: 'Explore the home page and find bugs', ended: 'finished', summary: 'One defect on the home page.' });
+    expect(outcome.explore.findings.map((finding) => finding.title)).toEqual([COUNTER_FINDING.title]);
+    expect(outcome.report.run.explore).toEqual(outcome.explore);
+    const phases = events.flatMap((event) => (event.type === 'explore' ? [event.progress.phase] : []));
+    expect(phases).toEqual(expect.arrayContaining(['started', 'step-started', 'finding', 'step-finished', 'finished']));
+    expect(events.at(-1)).toMatchObject({ type: 'run-finished', exitCode: 1, status: 'failed' });
+    expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
+    expect(JSON.parse(readFileSync(outcome.reportPath!, 'utf8'))).toEqual(outcome.report);
+    expect(outcome).not.toHaveProperty('config');
+    expect(outcome).not.toHaveProperty('results');
+    assertValidReport(outcome.report);
+  }, 120_000);
+
+  it('interrupts through its signal, finishes cleanup without exiting the caller, and permits the next exploration', async () => {
+    const model = installExploreModel({
+      plan: () => ({ decision: 'step', title: 'Counter', instruction: 'Look at the counter' }),
+      // The step never completes on its own: only the interrupt ends it.
+      loop: () => [{ toolName: 'observe', input: {} }],
+    });
+    const controller = new AbortController();
+    const outcome = await publicExplore({
+      cwd: project.dir,
+      config: config(model),
+      goal: 'Explore the home page and find bugs',
+      maxSteps: 2,
+      timeoutMs: 180_000,
+      interruptSignal: controller.signal,
+      onEvent: (event) => { if (event.type === 'explore' && event.progress.phase === 'step-started') controller.abort(); },
+    });
+
+    expect(outcome.exitCode).toBe(130);
+    expect(outcome.status).toBe('interrupted');
+    expect(outcome.explore.findings).toEqual([]);
+    expect(outcome.report.run.results[0]?.attempts[0]?.cleanup).toBe('complete');
+    assertValidReport(outcome.report);
+    const next = await publicExplore({ cwd: project.dir, config: config(warningModel()), maxSteps: 1, timeoutMs: 180_000 });
+    expect(next.exitCode).toBe(0);
+    expect(next.status).toBe('passed');
+  }, 120_000);
+
+  it('rejects options out of range before anything starts, and shares the public run reservation', async () => {
+    await expect(publicExplore({ cwd: project.dir, config: config(warningModel()), maxSteps: 0 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    await expect(publicExplore({ cwd: project.dir, config: config(warningModel()), target: 'missing' })).rejects.toMatchObject({ code: 'UNKNOWN_TARGET' });
+
+    // A rejection released the process: the next call runs, and a suite started meanwhile is refused.
+    let overlap: Promise<unknown> | undefined;
+    const outcome = await publicExplore({
+      cwd: project.dir,
+      config: config(warningModel()),
+      maxSteps: 1,
+      timeoutMs: 180_000,
+      onEvent: (event) => {
+        if (event.type === 'run-started') overlap = publicRun({ cwd: project.dir, config: config(warningModel()) }).catch((cause: unknown) => cause);
+      },
+    });
+    expect(outcome.exitCode).toBe(0);
+    expect(await overlap).toMatchObject({ code: 'RUNNER_BUSY', message: 'a public run is already in progress; await it before starting another' });
+  }, 120_000);
+
+  it('delivers the notices decided before the run through onEvent, and ignores options outside its type', async () => {
+    const events: RunEvent[] = [];
+    const outcome = await publicExplore({
+      cwd: project.dir,
+      config: {
+        ...config(warningModel()),
+        targets: [
+          { name: 'web', engine: web(), app: { url: app.url } },
+          { name: 'other', engine: web(), app: { url: app.url } },
+        ] as never,
+      },
+      maxSteps: 1,
+      timeoutMs: 180_000,
+      onEvent: (event) => { events.push(event); },
+      // CLI-only settings from a caller whose types let them through: neither reaches the explorer.
+      ...({ output: 'elsewhere', reporters: ['json'] } as object),
+    });
+
+    expect(outcome.exitCode).toBe(0);
+    const notice = events.find((event) => event.type === 'notice' && event.target === 'run');
+    expect(notice).toMatchObject({ message: 'exploring target "web"; pass --target to explore another' });
+    expect(events.findIndex((event) => event.type === 'run-started')).toBeLessThan(events.indexOf(notice!));
+    expect(outcome.reportPath).toBe(path.join(project.dir, '.e2e', 'report.json'));
+    expect(outcome.report.run.results.map((result) => result.targetId)).toEqual(['web']);
+  }, 120_000);
+
+  describe('what a config file prints while it loads', () => {
+    const TOKEN = 'explore-output-token-42';
+    /** A caller of `e2e/runner` in its own process, so what reaches the terminal is what a user sees. */
+    const DRIVER = `import { explore } from 'e2e/runner';
+try {
+  await explore({ config: 'e2e.config.ts', target: 'missing' });
+} catch (error) {
+  console.error(\`explore rejected: \${error.code}: \${error.message}\`);
+}
+`;
+    const projects: FixtureProject[] = [];
+    afterAll(() => { for (const fixture of projects.splice(0)) fixture.cleanup(); });
+
+    function runDriver(configSource: string) {
+      const fixture = createProject({ 'e2e.config.ts': configSource, 'driver.mjs': DRIVER });
+      projects.push(fixture);
+      const child = spawnSync(process.execPath, ['driver.mjs'], {
+        cwd: fixture.dir,
+        env: { ...process.env, CI: '', E2E_TELEMETRY_DISABLED: '1', NO_COLOR: '1' },
+        encoding: 'utf8',
+        timeout: 30_000,
+      });
+      expect(child.error).toBeUndefined();
+      return child;
+    }
+
+    it('is redacted with the secrets the config declares', () => {
+      const child = runDriver(`import { defineEngine } from 'e2e/engine';
+const token = '${TOKEN}';
+console.log(\`config console.log: \${token}\`);
+export default {
+  targets: [{ name: 'headless', platform: 'test', engine: defineEngine({ name: 'noop', version: '1', spiVersion: 1 }) }],
+  secrets: { apiToken: token },
+};
+`);
+      expect(child.stdout).toContain('config console.log: <secret:apiToken>');
+      expect(child.stderr).toContain('explore rejected: UNKNOWN_TARGET');
+      expect(`${child.stdout}\n${child.stderr}`).not.toContain(TOKEN);
+    });
+
+    it('is withheld when the config fails to load', () => {
+      const child = runDriver(`console.log('broken config: ${TOKEN}');
+throw new Error('config refuses to load');
+`);
+      const output = `${child.stdout}\n${child.stderr}`;
+      expect(output).toContain('config refuses to load');
+      expect(output).toContain('withheld');
+      expect(output).not.toContain(TOKEN);
+    });
   });
 });

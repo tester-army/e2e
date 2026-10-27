@@ -1130,6 +1130,32 @@ describe('destination path settling', () => {
     expect(verdict?.summary).toContain('zero-turn');
   });
 
+  it('keeps looking past the backoff for a destination that commits late, up to the path timeout', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const startedMs = Date.now();
+    // The destination commits 8 s after the step starts: after the backoff's last listed delay, inside its 15 s bound.
+    const late = (arrivesMs: number): StepCacheHost => ({
+      ...makeHost([]),
+      observe: async () => ({
+        kind: 'semantic',
+        nodes: nodeMap([]),
+        viewport: { width: 1280, height: 720 },
+        path: Date.now() - startedMs < arrivesMs ? '/pricing' : '/customers',
+      }),
+      remainingMs: () => 60_000,
+    });
+    const verdict = await makeSession(entryContext({ endPath: '/customers' }), late(8_000)).begin();
+    expect(verdict?.status).toBe('passed');
+
+    const neverMs = Date.now();
+    const session = makeSession(entryContext({ endPath: '/customers' }), late(Number.POSITIVE_INFINITY));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(Date.now() - neverMs).toBeGreaterThan(12_000);
+    expect(Date.now() - neverMs).toBeLessThanOrEqual(15_000);
+  });
+
   it('still hands off when the destination never arrives within the budget', async () => {
     const context = entryContext({ endPath: '/customers' });
     const host = { ...makeHost(['/pricing', '/pricing', '/pricing', '/pricing']), remainingMs: () => 250 };

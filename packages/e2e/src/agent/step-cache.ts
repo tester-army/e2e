@@ -527,9 +527,9 @@ export class StepTraceSession {
       const observation = await probeScreen(this.host, 'raw');
       if (observation?.kind !== 'semantic' || !this.host.traceEligible) return undefined;
       if (recorded === undefined || observation.path === undefined || sameRoute(recorded, observation.path)) return observation;
-      const delay = END_PATH_DELAYS_MS[attempt];
+      // The last delay repeats until the timeout, as in `pollSettled`.
+      const delay = END_PATH_DELAYS_MS[attempt] ?? END_PATH_DELAYS_MS[END_PATH_DELAYS_MS.length - 1]!;
       if (
-        delay === undefined ||
         Date.now() - startedMs + delay > END_PATH_TIMEOUT_MS ||
         this.host.remainingMs() <= delay ||
         this.host.signal.aborted

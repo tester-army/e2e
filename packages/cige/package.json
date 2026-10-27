@@ -52,17 +52,17 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "zod": "4.6.1"
+    "zod": "4.6.7"
   },
   "peerDependencies": {
     "e2e": ">=0.21.0 <1"
   },
   "devDependencies": {
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.5",
     "ajv": "8.20.0",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

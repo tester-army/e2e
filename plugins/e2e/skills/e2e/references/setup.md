@@ -38,14 +38,14 @@ pnpm dlx e2e init  # pnpm
 With `e2e` installed, run the installed version: `npx e2e init` or `pnpm exec
 e2e init`; `npx e2e init my-app` scaffolds into a new directory.
 
-The wizard picks an engine and a model provider (None for tests without AI)
+The wizard picks the engines (web, mobile, or both) and a model provider (None for tests without AI)
 and offers to install this skill, register the MCP server for your coding
 agent, and install dependencies. `--yes` picks the web engine (Playwright) and Vercel AI
 Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
 symlinks to it), registers MCP in `.mcp.json` and `.cursor/mcp.json`, skips
 installing dependencies. A flag per question overrides one default:
-`--engine`, `--gateway`, `--endpoint`, `--skills`, `--mcp` (comma-separated
-locations, or `none`), `--install`; `npx e2e init --help` lists the values.
+`--engine` (`web,mobile` for both), `--gateway`, `--endpoint`, `--skills`,
+`--mcp` (comma-separated locations, or `none`), `--install`; `npx e2e init --help` lists the values.
 To start a new app from one of the repo's examples instead, run `npx e2e init
 my-app --example with-vite` (or `with-expo`, `with-flutter`, ...): it
 downloads the example into an empty directory with its config and tests, then
@@ -350,8 +350,9 @@ export default {
   `app.command` (`npx expo start --port 8081`) with `readyUrl:
   'http://localhost:8081/status'` starts it.
 - One worker per device. No `device`: every booted simulator or emulator of
-  the platform, and every connected phone, is the pool, up to `workers` (none booted: agent-device boots
-  one); one `device`: one worker whatever `workers` says; a list (`device:
+  the platform, and every connected phone, is the pool, up to `workers`,
+  minus devices another agent-device session holds (none booted: agent-device boots
+  one; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
   ['iPhone 17', 'iPhone 17 Pro']`): an explicit pool. Devices boot in
   `prepare`, before the run's clock. Two sessions on one device fight over
   it: for parallel MCP sessions or bug-bash explorers, declare one target per

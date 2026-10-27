@@ -1,8 +1,8 @@
 # Driving the app over MCP
 
 `e2e mcp` serves a project's live app to a coding agent over MCP (stdio). The
-coding agent drives the app the way the testing agent does: look at a screen
-before writing a test, check a locator before committing to it. Running tests
+coding agent drives the app the way the testing agent does, writes a test
+as it walks the flow, and checks its locators before writing them. Running tests
 and reading a failed run stay on the CLI (topics `running` and `debugging`).
 
 ## Contents
@@ -72,7 +72,7 @@ The catalog, per session:
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. On the web engine a link's `href` is its path on the app URL's origin, else origin and path (`mailto:` and `tel:` keep their scheme, `blob:` its inner origin and path); `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
 | `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
-| `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent. Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
+| `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent, and its test line names the credential or secret (`fill(credentials.user(name).password)`, `fill(secrets.get(name))`). Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
 | `locate` | Tries a semantic locator with exactly one of `role`, `text`, `label`, `placeholder`, `testId` (`name` only with `role`; `exact` optional; anything else is `INVALID_ARGUMENT`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `test_lines` | Every test line the session's actions printed, in order, as a draft test body, starting with `await app.open();` for the session's own opening; an action without a line shows as a `//` comment. A line's locator matched the target alone on the live screen before the action (role and name first, test id last, narrowed to `{ visible: true }`, a container, or `.nth(i)` with a comment when twins share it); a fill names `credentials.user(name)` or `secrets.get(name)`, never a value; a navigation on the app's origin is written as its path. |
 | `screenshot` | The masked pixels as an image. |
@@ -99,22 +99,63 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 
 ## Workflow
 
-1. `open_session`, then `call {tool: "observe"}` and act until the screen you
-   want to test is in front of you. Node ids are valid only for the newest
-   observation; an action reports what changed, so observe again before
-   using new ids. Each action prints the test line that repeats it: copy it
-   as you go, or take them all from `test_lines`.
-2. `call {tool: "locate", args: {...}}` for each locator no action printed,
-   such as an assertion's target.
-   One match: use the printed `screen.getByRole(...)` call. Zero or several:
-   adjust before writing the test; the same failure would hit the test as
-   `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`. A role query's `name` matches
-   the accessible name only, while `observe` shows a `status`, `alert`, or
-   `listitem` by its text: `status "Saved."` on an unlabelled status is its
-   text, so match it with `getByRole('status').filter({ hasText: 'Saved.' })`
-   or `getByText`.
-3. Write `tests/<feature>.e2e.ts` (topic `writing-tests`). Deterministic steps
-   where you saw exact names; `agent.act` where the flow varies.
+1. Before `open_session`, create `tests/<feature>.e2e.ts` (topic
+   `writing-tests`) with its imports, the `test(...)`, and the call that
+   opens the screen it covers, such as `app.open('/settings/members')`.
+   Then `open_session`, which opens the app, and go to that screen: on the
+   web, `call {tool: "navigate", args: {url: "<the path app.open names>"}}`;
+   on a device, the shortest path from the launch screen. Actions that only
+   got you there, such as a sign-in the test's saved session replaces, stay
+   out of the test when its opening reaches that screen directly; otherwise
+   they are its first steps. Node ids are valid only for the newest
+   observation; an action reports what changed, so `observe` again before
+   using new ids.
+2. Walk the flow one screen at a time, and write each screen's steps into
+   the file before you leave it. Do not walk the whole flow first and write
+   the test from memory afterwards. Each step is one of two kinds:
+   - An `agent.act` goal, the default for a path that varies: write the goal
+     with the words on screen and its values in `params`, then walk its
+     path in the session. Those actions stay out of the test, and so do the
+     test lines they print.
+   - A `screen` line, for an exact value or interaction: a sign-in form in a
+     setup test, a field that must receive one specific string, an
+     interaction that is the point of the test. Act on the control by node
+     id, then copy the `Test line:` the action printed into the file. Its
+     locator matched that control alone on the live screen. When the action
+     prints `No test line:` instead, the reason says why; for a control no
+     locator found alone, try one with `locate`.
+
+   With several `screen` steps on one screen, take their actions, then add
+   the lines they printed in one edit.
+3. When the outcome shows, add its check before the next step: an `expect`
+   on a locator you tried with `call {tool: "locate", args: {...}}`, or an
+   `agent.assert`. One match: use the printed `screen.getByRole(...)` call.
+   Zero or several: adjust before writing it; the same failure would hit
+   the test as `LOCATOR_NOT_FOUND` or `LOCATOR_AMBIGUOUS`. A role query's
+   `name` matches the accessible name only, while `observe` shows a
+   `status`, `alert`, or `listitem` by its text: `status "Saved."` on an
+   unlabelled status is its text, so match it with
+   `getByRole('status').filter({ hasText: 'Saved.' })` or `getByText`.
+
+   When the walk ends, the test is written and every locator you copied
+   from a `Test line:` or a `locate` result has matched once; the first run
+   checks the rest, such as a `.filter()` you wrote yourself. If you missed
+   a line, `test_lines` returns every line printed so far, in order, the act
+   goals' paths included. One walk, in order:
+
+   ```text
+   write   tests/members.e2e.ts: imports, test(...), app.open('/settings/members')
+   call    open_session, then navigate {url: "/settings/members"}   its line is the app.open already written
+   edit    + await agent.act('invite {email} as an editor', { params: { email: 'ada@example.test' } });
+   call    tap, type, select, tap                   the goal's path; its test lines stay out
+   call    locate {role: "status"}                  1 node matches, text "Invite sent"
+   edit    + await expect(screen.getByRole('status')).toContainText('Invite sent');
+   call    type {target: "n40", value: "ada"}       prints the test line below
+           Test line: await screen.getByRole("searchbox", "Search members").fill("ada");
+   edit    + that line, as printed
+   call    locate {role: "listitem"}                1 node matches
+   edit    + await expect(screen.getByRole('listitem')).toHaveCount(1);
+   ```
 4. Run only that test from the shell:
    `npx e2e run tests/<feature>.e2e.ts:<line>` (SKILL.md, "Rerunning a test
    while you fix it"). On a failure, fix from the terminal's failure block
@@ -144,7 +185,8 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
   and the code (`tap #n9 failed: LOCATOR_NOT_FOUND: ...`) and still shows
   the screen it re-observed: re-aim from that screen.
 - Nothing a session does is recorded as a test or into the replay cache. A
-  session is for looking and trying; the test is what you write afterwards.
+  session is for looking and trying; the test is the file you write as you
+  walk.
 - On the web, a session can stay open while `e2e run` runs, unless the two
   collide over the app. Read the target's `app`:
   - No `command` (the app runs elsewhere): both use that app.

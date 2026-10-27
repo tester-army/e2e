@@ -244,6 +244,12 @@ export interface InMemoryTests {
    * events, and its record is read once the run is over, as `run.explore`.
    */
   readonly explore?: InMemoryExplore | undefined;
+  /**
+   * Notices decided before the run started, such as the target an
+   * exploration chose: the run emits them as `run` notices once it has
+   * started, for a caller with no terminal of its own to print them on.
+   */
+  readonly notices?: readonly string[] | undefined;
 }
 
 /** What the runner needs from an exploration: its moments as they happen, and its record at the end. */
@@ -882,6 +888,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       grades.set(target.name, grade);
       targetProvenance.set(target.name, grade.provenance);
     }
+    for (const message of options.tests?.notices ?? []) notice('run', message);
     for (const message of recordingNotices(selection.perTarget, grades, { explore: options.tests?.explore !== undefined })) notice('run', message);
 
     // The work units, built once: the same plans tell each engine's `prepare`

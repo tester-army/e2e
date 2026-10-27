@@ -217,6 +217,7 @@ export async function settleStagedTraces(context: AgentCacheContext, settlement:
       outcomes.set(entry.stepIndex, written === undefined ? 'not-written' : 'saved');
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
+      if (entry.kind === 'write' && confirmed) outcomes.set(entry.stepIndex, 'not-written');
     }
   }
   return outcomes;

@@ -198,6 +198,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | Playwright | e2e | Status |
 | --- | --- | --- |
 | `expect(locator).toBeVisible()`, `toBeHidden()`, `toBeEnabled()`, `toBeDisabled()`, `toBeFocused()`, `toHaveValue()`, `toHaveAttribute()`, `toHaveCount()`, `toHaveAccessibleName()` | the same | same |
+| a Playwright `Locator` (`page.getByRole(...)`) passed to `expect` from `e2e` | a plain value, so `toBeVisible()` and the other locator matchers fail to compile (`TS2339` on `ValueExpectation`). Rewrite the query on `screen` | missing |
 | `toBeChecked()` | the same on a checkable node; on any other node `.not.toBeChecked()` passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toHaveText()`, `toContainText()` | compare the rendered text, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toHaveText(['a', 'b'])`, `toContainText([...])` on several matches | the same: `toHaveText` needs the count to match, `toContainText` an ordered subsequence | same |

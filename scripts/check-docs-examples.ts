@@ -26,6 +26,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Example file to the page that shows it verbatim. */
 const EXAMPLES: Record<string, string> = {
   'docs/examples/runner/run.ts': 'docs/reference/runner.mdx',
+  'docs/examples/runner/explore.ts': 'docs/reference/runner.mdx',
   'docs/examples/limrun/e2e.config.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/limrun/greeting.e2e.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',

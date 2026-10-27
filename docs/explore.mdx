@@ -40,6 +40,12 @@ bunx e2e explore 'Explore the checkout flow like a first-time buyer and report a
 A limit can be "stop before placing the order." With no goal, explore uses
 `Explore the app and find bugs`. A failed step does not stop the run.
 
+With no `e2e.config.ts`, explore runs the
+[`e2e init`](/reference/cli#e2e-init) wizard first. The exploration starts
+right after when nothing is left to do by hand. Otherwise init lists the
+steps left, such as `npm install` or setting the model key.
+Without a terminal, as in CI, explore fails with `CONFIG_NOT_FOUND`.
+
 ## Read the results
 
 The terminal shows each finding and each finished step as they happen:
@@ -97,6 +103,12 @@ minutes).
 Explore uses the targets, app command, models, and agents from
 `e2e.config.ts`. Select them with `--target <name>` and `--agent <name>`.
 Without `--target`, explore uses the first target.
+
+## Explore from code
+
+To start an exploration from your own code, with a config value,
+cancellation, and progress events, call
+[`explore` from `e2e/runner`](/reference/runner#explore).
 
 ## Next
 

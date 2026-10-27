@@ -90,6 +90,7 @@ These calls fail with `POLICY_DENIED`.
 | `app.open`, `browser.goto`, the agent's `navigate` verb | `http:`, `https:`, and the exact `about:blank` | Every other scheme |
 | `device.openLink` | Any absolute URL: an app's custom scheme, or `http:` and `https:` | `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, `filesystem:` |
 | `device.openApp`, the `open_app` tool | An app id | A link |
+| The browser `e2e login` opens | `http:` and `https:` | Every other scheme; the link is printed instead, for you to open yourself |
 
 - The runner doesn't re-check redirects or attach to popup pages. Register
   `browser.onDialog` to handle browser dialogs.
@@ -332,7 +333,7 @@ after download redaction, with the `redaction` label the report records.
 
 | Destination | When |
 | --- | --- |
-| `eu.i.posthog.com` | One telemetry request per CLI invocation or per `run()` from `e2e/runner` that returns a report, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` report sent: none under `--dry-run` or `E2E_TELEMETRY_DEBUG`, for a bug without `--repro`, or under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
+| `eu.i.posthog.com` | One telemetry request per CLI invocation or per `run()` or `explore()` from `e2e/runner` that returns a report, plus at most one per session `e2e mcp` serves, unless you opt out ([Telemetry](/telemetry)). One request per `e2e feedback` report sent: none under `--dry-run` or `E2E_TELEMETRY_DEBUG`, for a bug without `--repro`, or under `E2E_TELEMETRY_DISABLED` or `DO_NOT_TRACK`. |
 | Your model provider | Agent steps that call a model. Deterministic tests and fully replayed steps make no model call. |
 | A subscription provider's sign-in and model-list endpoints | `e2e login` and `e2e models` ([Subscriptions](/subscriptions)). |
 | The app's `readyUrl` | Readiness probes for an app the runner starts. |

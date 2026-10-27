@@ -120,7 +120,7 @@ export class AgentError extends E2EError {
 }
 
 /**
- * A throw from a test's `onAction` hook. It fails the step, but it is the
+ * A throw from a test's action observer hook. It fails the step, but it is the
  * test's own failure: it says nothing about the actions, so the step's
  * recording is neither kept nor evicted for it.
  */
