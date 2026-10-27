@@ -61,6 +61,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`colorScheme`](#media-emulation) | `'light' \| 'dark' \| 'no-preference'` | the browser's own |
 | [`reducedMotion`](#media-emulation) | `'reduce' \| 'no-preference'` | the browser's own |
 | [`initScripts`](#init-scripts) | `WebInitScript[]` | - |
+| [`fileUploads`](#fileuploads) | `'path' \| 'buffered'` | `'path'` |
 
 - A `web()` target needs `app.url` and refuses the device keys (`bundleId`,
   `appPath`, `launchArguments`, `permissions`).
@@ -369,6 +370,33 @@ export interface WebMedia {
 | --- | --- |
 | `INVALID_CONFIG` | A feature or value outside `WebMedia`, in `web()`. |
 | `INVALID_ARGUMENT` | A feature or value outside `WebMedia`, in `emulateMedia`. |
+
+#### `fileUploads`
+
+```ts
+web({ fileUploads: 'buffered' });
+```
+
+The default `path` mode passes paths to Playwright unchanged, including large
+files. Chromium can omit disk-backed file contents from intercepted multipart
+request bodies. A route that validates file bytes must refuse that partial body.
+
+`buffered` reads the files selected by the existing upload action into bounded
+Playwright file payloads. It does not reconstruct or replace an HTTP request.
+The normal upload path policy still runs before an agent's selected paths reach
+the engine. This option currently covers the engine's file-input upload action.
+It does not add a public chooser API. The common helper can also supply payloads
+to a future native chooser implementation.
+
+- At most 32 regular files and 2,000,000 total bytes. Larger uploads fail before
+  dispatch. They never silently fall back to the partial-body path behavior.
+- Symlinks and files changed during reading are refused. PDF filenames require
+  a PDF header. Names are the selected files' basenames, and MIME types use
+  their extensions, with `application/octet-stream` for unknown extensions.
+- This opt-in changes the browser File's `lastModified` to the time Playwright
+  creates the payload, rather than the source file's modification time.
+- Redirect and request admission policy remain the caller's responsibility.
+  `buffered` grants no destination or mutation permission.
 
 #### Init scripts
 
@@ -1079,6 +1107,8 @@ export interface WebOptions {
   readonly reducedMotion?: WebMedia['reducedMotion'];
   /** Scripts every document runs before the page's own. See [Init scripts](#init-scripts). */
   readonly initScripts?: readonly WebInitScript[];
+  /** See [fileUploads](#fileuploads) for bounds and timestamp behavior. */
+  readonly fileUploads?: 'path' | 'buffered';
 }
 ```
 

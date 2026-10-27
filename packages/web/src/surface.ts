@@ -55,6 +55,7 @@ import { connectionAbort, withOperationDeadline, type OperationBound } from './o
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
 import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import type { WebMedia } from './media.ts';
+import type { FileUploadMode } from './upload-files.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { readSelector, takeReadsFunction } from './read-selector.ts';
 import { httpCredentials, installSiteHeaders, lowercaseNames, siteHeadersFor } from './protected-app.ts';
@@ -156,6 +157,14 @@ export interface WebScreencastOptions {
  * the target's `app`.
  */
 export interface WebOptions {
+  /**
+   * `path` by default. `buffered` snapshots up to 32 regular files totaling
+   * 2,000,000 bytes through Playwright's file-payload API so request routing
+   * can inspect their multipart bytes. Refuses symlinks, changed files and
+   * oversized uploads. Buffered files get Playwright's current lastModified
+   * timestamp rather than the source file's modification time.
+   */
+  readonly fileUploads?: FileUploadMode;
   /**
    * Browser to launch, `chromium` by default. A `BrowserProvider` leases
    * hosted browsers instead: one per worker slot at `prepare`, or one per
@@ -269,6 +278,7 @@ export class PlaywrightSurface {
   dialogs = new DialogRouter(this.latch);
 
   private readonly browserName: BrowserName;
+  private readonly fileUploads: FileUploadMode;
   private readonly connection = new BrowserConnection();
   private readonly connect: WebConnectOptions | undefined;
   /** The provider's browsers, when `browser` names one; the runner and worker halves of the lease bookkeeping. */
@@ -307,6 +317,7 @@ export class PlaywrightSurface {
   private routes: StoredRoute[] = [];
 
   constructor(options: WebOptions) {
+    this.fileUploads = options.fileUploads ?? 'path';
     this.browserName = typeof options.browser === 'string' ? options.browser : 'chromium';
     this.leases = typeof options.browser === 'object' && options.browser !== null ? new LeasedBrowsers(options.browser) : undefined;
     this.connect = options.connect;
@@ -855,6 +866,7 @@ export class PlaywrightSurface {
    * on the root acts on the document element the root stands for.
    */
   perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
+    let uploadDispatched = false;
     return this.acted(operation, this.guard(
       operation,
       action.kind,
@@ -865,10 +877,15 @@ export class PlaywrightSurface {
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
         return dispatchLocatorAction(this.requireSession().refs.lookup(ref), action, currentOperation, (other) =>
-          this.requireSession().refs.lookup(other),
+          this.requireSession().refs.lookup(other), this.fileUploads, () => { uploadDispatched = true; },
         );
       },
-      (cause) => classifyActionError(cause, action),
+      (cause) => {
+        if (this.fileUploads === 'buffered' && action.kind === 'setInputFiles' && !uploadDispatched && cause instanceof EngineError && cause.code === 'OPERATION_TIMEOUT') {
+          return new EngineError('NOT_ACTIONABLE', 'buffered upload timed out before native file selection started', { retryable: false, cause });
+        }
+        return classifyActionError(cause, action);
+      },
     ));
   }
 

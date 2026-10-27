@@ -17,7 +17,8 @@ import {
   translatePwError,
   type ActionTarget,
 } from './support.ts';
-import type { ConnectionBudget } from './operation-budget.ts';
+import { withConnectionBudget, type ConnectionBudget } from './operation-budget.ts';
+import { prepareUploadFiles, type FileUploadMode } from './upload-files.ts';
 
 /** How long a long press holds the button when the action names no duration. */
 const DEFAULT_LONG_PRESS_MS = 500;
@@ -105,6 +106,8 @@ export async function dispatchLocatorAction(
   action: LocatorAction,
   operation: ConnectionBudget,
   lookup: (ref: NodeRef) => ActionTarget,
+  fileUploads: FileUploadMode = 'path',
+  onUploadDispatch?: () => void,
 ): Promise<void> {
   const timeout = operation.timeoutMs;
   const locator = asActionable(target);
@@ -161,7 +164,13 @@ export async function dispatchLocatorAction(
       return;
     }
     case 'setInputFiles':
-      await locator.setInputFiles([...action.paths], { timeout });
+      if (fileUploads === 'path') await locator.setInputFiles([...action.paths], { timeout });
+      else await withConnectionBudget(operation, 'buffered file upload', async remaining => {
+        const files = await prepareUploadFiles(action.paths, fileUploads, remaining());
+        const budget = remaining();
+        onUploadDispatch?.();
+        await locator.setInputFiles(files, { timeout: budget.timeoutMs });
+      });
       return;
     case 'dragTo': {
       const other = lookup(action.target);

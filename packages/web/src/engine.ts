@@ -81,6 +81,9 @@ export function web(options: WebOptions = {}): EngineHandle {
     );
   }
   if (options.headers !== undefined) validateHeaders(options.headers);
+  if (options.fileUploads !== undefined && options.fileUploads !== 'path' && options.fileUploads !== 'buffered') {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ fileUploads }) must be path or buffered');
+  }
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
@@ -158,6 +161,7 @@ export function web(options: WebOptions = {}): EngineHandle {
 
 /** Every option `web()` takes, kept equal to `WebOptions` by the compiler. */
 const WEB_OPTION_KEYS: readonly string[] = Object.keys({
+  fileUploads: true,
   browser: true,
   viewport: true,
   screencast: true,

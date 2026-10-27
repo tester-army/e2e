@@ -218,6 +218,7 @@ start a script that brings them up and serves the app.
 | `locale`, `timezoneId` | The language (`'de-DE'`: `navigator.language`, `Intl`, `Accept-Language`) and IANA time zone (`'Europe/Berlin'`) every attempt runs in. |
 | `colorScheme`, `reducedMotion` | The `prefers-color-scheme` (`'light'`, `'dark'`, `'no-preference'`) and `prefers-reduced-motion` (`'reduce'`, `'no-preference'`) every page reports to its `@media` rules and `matchMedia`, from first paint. |
 | `initScripts` | Scripts every document runs before the page's own: source, `{ path }`, or a function with no closures. |
+| `fileUploads` | `'path'` by default. Opt-in `'buffered'` preserves inspectable multipart bytes for at most 32 regular files totaling 2,000,000 bytes. Refuses changed files/symlinks; File timestamps become current. See [upload details](https://e2e.dev/reference/web#fileuploads). |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
 | `screencast` | `{ size?, quality? }` for the engine's own video: frame size (default the viewport's), JPEG quality 0 to 100. |
 
