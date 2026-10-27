@@ -26,9 +26,9 @@ async function readmeProblems(registry: Registry): Promise<string[]> {
       const url = readmeUrl(example.repository);
       try {
         const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(15_000) });
-        return response.ok ? undefined : `examples "${example.slug}": GET ${url} answered ${response.status}; is the repository public with a README.md in that folder?`;
+        return response.ok ? undefined : `examples "${example.slug}": HEAD ${url} answered ${response.status}; is the repository public with a README.md in that folder?`;
       } catch (error) {
-        return `examples "${example.slug}": GET ${url} failed: ${error instanceof Error ? error.message : String(error)}`;
+        return `examples "${example.slug}": HEAD ${url} failed: ${error instanceof Error ? error.message : String(error)}`;
       }
     }),
   );

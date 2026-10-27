@@ -13,6 +13,7 @@
  * `e2e init --example` can copy), and community examples living outside it.
  */
 
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Ajv2020 } from 'ajv/dist/2020.js';
@@ -61,7 +62,7 @@ export interface Registry {
 }
 
 export interface RegistryEnvironment {
-  /** The folders under `examples/`. */
+  /** The folders under `examples/` that git tracks. */
   folders: string[];
   /** The file names in `examples/icons/`. */
   icons: string[];
@@ -71,9 +72,17 @@ export interface RegistryEnvironment {
 
 export function readEnvironment(): RegistryEnvironment {
   return {
-    folders: readdirSync(EXAMPLES_DIR, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name),
+    // Tracked folders only: a renamed example leaves an untracked folder (its
+    // ignored node_modules) behind on disk, which must not count as an example.
+    folders: [
+      ...new Set(
+        execFileSync('git', ['ls-files', '-z', '--', 'examples/'], { cwd: REPO_ROOT, encoding: 'utf8' })
+          .split('\0')
+          .map((file) => file.split('/'))
+          .filter((parts) => parts.length > 2)
+          .map((parts) => parts[1]!),
+      ),
+    ],
     icons: existsSync(ICONS_DIR) ? readdirSync(ICONS_DIR) : [],
     initExamples: [...readFileSync(INIT_EXAMPLES_PATH, 'utf8').matchAll(/\{ id: '([a-z0-9-]+)'/g)].map((match) => match[1]!),
   };
@@ -85,7 +94,7 @@ function duplicates(values: string[]): string[] {
 
 /** The schema violations, as `<path>: <message>` lines. */
 export function schemaProblems(json: unknown): string[] {
-  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  const ajv = new Ajv2020({ allErrors: true });
   const validate = ajv.compile(JSON.parse(readFileSync(SCHEMA_PATH, 'utf8')) as Record<string, unknown>);
   if (validate(json)) return [];
   return (validate.errors ?? []).map((error) => {
