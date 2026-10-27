@@ -1,9 +1,9 @@
 name: examples-registry
 
 # A pull request that changes examples/examples.json, usually a community
-# example being added, gets the registry check with `--online`: every
-# community example's README must be reachable, since the site renders it as
-# the example's page. The offline part also runs in `spec`, which the ruleset
+# example being added, gets the registry check with `--online`: the README of
+# every example hosted outside this repository must be reachable, since the
+# site renders it as the example's page. The offline part also runs in `spec`, which the ruleset
 # requires; this one makes network calls, so it runs only for registry
 # changes and no ruleset requires it. A workflow-level `paths:` filter is fine
 # for that reason.
@@ -37,5 +37,5 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Check the registry and every community README
+      - name: Check the registry and every external README
         run: pnpm check:examples --online

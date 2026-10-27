@@ -37,8 +37,6 @@ const THIS_REPO_URL = /^https:\/\/github\.com\/tester-army\/e2e(?:\/|$)/i;
 const ORG_URL = /^https:\/\/github\.com\/tester-army\//i;
 /** Folders under `examples/` that are not standalone examples: they reuse the others' apps. */
 const UNLISTED_FOLDERS = new Set(['with-limrun', 'icons']);
-/** Slugs that collide with the site's own routes under /examples. */
-const RESERVED_SLUGS = new Set(['opengraph-image']);
 
 export type TagKind = 'framework' | 'useCase' | 'platform';
 const TAG_KINDS: readonly TagKind[] = ['framework', 'useCase', 'platform'];
@@ -119,9 +117,6 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
 
   for (const example of registry.examples) {
     const name = `examples "${example.slug}"`;
-    if (RESERVED_SLUGS.has(example.slug)) {
-      problems.push(`${name}: the slug is reserved by the site`);
-    }
     if (example.icon && !env.icons.includes(example.icon)) {
       problems.push(`${name}: icon ${example.icon} is not in examples/icons/`);
     }
@@ -163,7 +158,12 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
   return problems;
 }
 
-/** The URL of a community example's README, which the site renders as its page. */
+/** Whether an example is a folder in this repository, which the checks read from disk instead of fetching. */
+export function isLocalFolder(repository: string): boolean {
+  return FOLDER_URL.test(repository);
+}
+
+/** The URL of an example's README, which the site renders as its page. */
 export function readmeUrl(repository: string): string {
   const [, owner, repo, ref = 'HEAD', path = ''] =
     repository.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?$/) ?? [];

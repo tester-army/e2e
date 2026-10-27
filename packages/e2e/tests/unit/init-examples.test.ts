@@ -104,7 +104,8 @@ afterEach(() => {
 describe('example presets', () => {
   it('list every standalone app in examples/, each with its e2e project and the script the Next line names', () => {
     const folders = readdirSync(path.join(REPO_ROOT, 'examples'), { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() && entry.name !== 'with-limrun')
+      // Example apps are the with-* folders; examples/icons holds the site's logos.
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('with-') && entry.name !== 'with-limrun')
       .map((entry) => entry.name)
       .toSorted();
     expect(EXAMPLES.map((example) => example.id).toSorted()).toEqual(folders);

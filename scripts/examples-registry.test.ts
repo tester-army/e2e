@@ -57,6 +57,15 @@ describe('schemaProblems', () => {
   });
 });
 
+describe('schemaProblems on the slug', () => {
+  it('rejects the slug the site uses for its share card route', () => {
+    const json = JSON.parse(readFileSync(REGISTRY_PATH, 'utf8')) as Registry;
+    const [first] = json.examples;
+    const problems = schemaProblems({ ...json, examples: [{ ...first, slug: 'opengraph-image' }] });
+    assert.ok(problems.some((problem) => problem.startsWith('/examples/0/slug')), problems.join('\n'));
+  });
+});
+
 describe('registryProblems', () => {
   it('accepts a community example in its own repository', () => {
     assert.deepEqual(registryProblems(registry([community]), ENV), []);
@@ -106,6 +115,32 @@ describe('registryProblems', () => {
       'examples "with-vite": icon vite.svg is not in examples/icons/',
       'examples/with-svelte has no official entry in examples/examples.json',
     ]);
+  });
+});
+
+describe('registryProblems on official folders and tags', () => {
+  it('rejects an official folder the CLI cannot copy', () => {
+    assert.deepEqual(registryProblems(registry(), { ...ENV, initExamples: [] }), [
+      'examples "with-vite": e2e init --example cannot copy with-vite; add it to packages/e2e/src/cli/init/examples.ts',
+    ]);
+  });
+
+  it('rejects an official folder whose slug is not the folder name', () => {
+    const [vite] = registry().examples;
+    const problems = registryProblems({ ...registry(), examples: [{ ...vite!, slug: 'vite' }] }, ENV);
+    assert.deepEqual(problems, [
+      'examples "vite": an official example\'s slug must be its folder name, with-vite',
+      'examples/with-vite has no official entry in examples/examples.json',
+    ]);
+  });
+
+  it('rejects a tag id defined twice', () => {
+    const base = registry();
+    const problems = registryProblems(
+      { ...base, tags: { ...base.tags, platform: [...base.tags.platform, { id: 'web', label: 'Browser' }] } },
+      ENV,
+    );
+    assert.deepEqual(problems, ['tags.platform: "web" is defined twice']);
   });
 });
 

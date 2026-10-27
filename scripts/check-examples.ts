@@ -4,13 +4,14 @@
  * and the rules in `examples-registry.ts`.
  *
  * Usage: `node scripts/check-examples.ts [--online]`. `--online` also fetches
- * every community example's README, which the site renders as the example's
- * page; the `examples-registry` workflow runs it on pull requests that change
+ * the README of every example hosted outside this repository, official or
+ * community, which the site renders as the example's page; the `examples-registry` workflow runs it on pull requests that change
  * the registry. Exits 1 listing every problem.
  */
 
 import { readFileSync } from 'node:fs';
 import {
+  isLocalFolder,
   REGISTRY_PATH,
   type Registry,
   readEnvironment,
@@ -20,9 +21,9 @@ import {
 } from './examples-registry.ts';
 
 async function readmeProblems(registry: Registry): Promise<string[]> {
-  const community = registry.examples.filter((example) => example.source === 'community');
+  const remote = registry.examples.filter((example) => !isLocalFolder(example.repository));
   const results = await Promise.all(
-    community.map(async (example) => {
+    remote.map(async (example) => {
       const url = readmeUrl(example.repository);
       try {
         const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(15_000) });

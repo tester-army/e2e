@@ -366,6 +366,7 @@
         "github": "tester-army"
       },
       "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-ai-chat/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -392,6 +393,7 @@
         "github": "tester-army"
       },
       "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-stripe/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -418,6 +420,7 @@
         "github": "tester-army"
       },
       "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-paypal/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -444,6 +447,7 @@
         "github": "tester-army"
       },
       "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-paddle/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -500,6 +504,7 @@
         "github": "tester-army"
       },
       "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-clerk/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
@@ -525,6 +530,7 @@
         "github": "tester-army"
       },
       "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-iframes/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",

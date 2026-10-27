@@ -27,8 +27,9 @@ e2e? Add it with a pull request.
    }
    ```
 
-3. Run `pnpm check:examples`, then open the pull request. The site updates
-   once it is merged.
+3. Open the pull request. CI validates the entry and fetches your README;
+   if you have the repository installed, `pnpm check:examples` runs the same
+   check locally. The site updates once the pull request is merged.
 
 Your editor can autocomplete the fields from
 [`examples.schema.json`](examples.schema.json).
@@ -62,8 +63,6 @@ Your editor can autocomplete the fields from
 - It shows something the listed examples do not: a framework, a service, or
   a use case.
 - It has a license.
-
-The checks on your pull request validate the entry and fetch your README.
 
 ## Official examples
 

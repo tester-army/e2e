@@ -91,8 +91,19 @@
       ],
       "properties": {
         "slug": {
-          "description": "The page's address, unique across the registry: https://e2e.tester.army/examples/<slug>.",
-          "$ref": "#/$defs/id"
+          "description": "The page's address, unique across the registry: https://e2e.tester.army/examples/<slug>. `opengraph-image` is taken by the site's own route.",
+          "allOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "not": {
+                "enum": [
+                  "opengraph-image"
+                ]
+              }
+            }
+          ]
         },
         "title": {
           "description": "The page's heading: \"e2e with Vite\".",
