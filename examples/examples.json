@@ -49,6 +49,10 @@
       {
         "id": "dotnet-maui",
         "label": ".NET MAUI"
+      },
+      {
+        "id": "nodejs",
+        "label": "Node.js"
       }
     ],
     "useCase": [
@@ -75,6 +79,10 @@
       {
         "id": "iframes",
         "label": "Iframes"
+      },
+      {
+        "id": "test-isolation",
+        "label": "Test isolation"
       }
     ],
     "platform": [
@@ -539,6 +547,33 @@
         "useCase": [
           "iframes",
           "payments"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "smolmachines",
+      "title": "Testing in smol machines with e2e",
+      "shortTitle": "smol machines",
+      "description": "Each test attempt runs in its own branch of a smol machines microVM, with its own copy of the running app and its data.",
+      "icon": "smolmachines.svg",
+      "invertIcon": true,
+      "source": "community",
+      "repository": "https://github.com/smol-machines/e2e-smolmachines",
+      "author": {
+        "name": "smol machines",
+        "github": "smol-machines"
+      },
+      "license": "Apache-2.0",
+      "licenseUrl": "https://github.com/smol-machines/e2e-smolmachines/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "test-isolation"
         ],
         "platform": [
           "web"

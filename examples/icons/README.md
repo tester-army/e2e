@@ -26,3 +26,4 @@ list its source below.
   color, https://cdn.simpleicons.org/<name>; `paypal.svg` is recolored from
   PayPal's navy `#002991` to its brighter brand blue `#0070E0`, which reads
   on the site's dark background
+- `smolmachines.svg`: https://smolmachines.com/favicon.svg
