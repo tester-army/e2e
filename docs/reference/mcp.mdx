@@ -255,6 +255,9 @@ call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada
   [`assertionTimeout`](/reference/config#assertiontimeout) apply when
   shorter. The cap also covers `app.open`, `app.restart`, and
   `app.clearState`, so raise it for a slow first load or a device relaunch.
+- `timeout` doesn't stop a regular expression mid-match. One that
+  backtracks, such as `/^(\w+\s?)*$/` on a long line, blocks the server
+  until it finishes.
 - Reads and matchers see `<secret:name>` where a secret value is.
 - A secret `fill` passes the checks `type_secret` runs, on the field it lands
   on: a configured secret, an enabled editable field, and a password field
