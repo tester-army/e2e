@@ -154,26 +154,33 @@ the working directory.
 ## What `diff` blocks
 
 `diff` compares every changed `.cige.json`, the CIGE config, and every
-file of the repository the config reaches against the branch's merge base
-with `--base`. It finds those files by loading the config in its own Node
-process and recording what Node resolves (`#` aliases and workspace
-packages included), then resolving, without running them, the specifiers
-those files name but loading didn't reach, such as a hook's lazy
-`import('#hooks/x')`. The nearest package.json of each of those files
-counts too, by its `name`, `type`, `main`, `exports`, and `imports`, since
-remapping an alias redirects a hook without touching it. A text walk of
-the merge base adds the files that were deleted or renamed. It exits 1 on
-any change that needs a human's approval:
+module the config imports against the branch's merge base with `--base`.
+It finds those modules by loading the config in its own Node process and
+recording what Node resolves (`#` aliases and workspace packages
+included). Then it parses each one (TypeScript stripped as Node strips it,
+then acorn) for the specifiers that loading didn't reach, such as a hook's
+lazy `import('#hooks/x')`, and resolves them without running them. Three
+more things count. A workspace package built to an ignored `dist` counts
+by its package's files. A symlink to a module counts, since retargeting it
+changes what loads. The nearest package.json of each module counts by its
+`name`, `type`, `main`, `exports`, and `imports`, since remapping an alias
+redirects a hook without touching it. A walk of the merge base adds the
+modules that were deleted or renamed. It exits 1 on any change that needs
+a human's approval:
 
 | Blocks | Passes |
 | --- | --- |
 | Intent statement changed; a criterion, evidence item, guardrail, deny pattern, variant, or case removed; a judgment turned off; an id changed; a variant's data changed | Execution rewritten; criteria, evidence, guardrails, deny patterns, or variants added |
 | Any Context change, a removed precondition named | A top-level `x-` key changed (triage data) |
 | An `x-` key changed under Intent, evidence, or a guardrail | |
-| The CIGE config or a file it reaches changed | |
-| `config-unverified`: the config didn't load, or imports a module by a computed name | |
+| The CIGE config or a module it imports changed | |
+| `config-unverified`: the config didn't load; a module imports by a computed name, calls `createRequire`, uses `require` as a value, or runs `eval` or `Function`; or it loads a file git doesn't track that no other package's sources stand for | |
 
-App code the config doesn't reach, and installed packages, are out of its
+Loading the config runs its top-level code from the branch under review.
+Give `diff` the env `e2e-cige run` gets: a config that reads a missing
+variable at load blocks every `diff` with `config-unverified`. Run it only
+where you'd run the branch's tests. App code the config doesn't import,
+data files a hook reads at run time, and installed packages are out of its
 reach and need a human's review.
 `--allow-intent` exits 0 anyway and records nothing: gate it on a human's
 approval in CI. `--json` reports `intentUnchanged` and the `blocking` count.

@@ -6,9 +6,9 @@
  * evidence item, a judgment turned off, a guardrail or deny pattern
  * dropped, a case or variant removed, a variant's data changed, an id that
  * moves its history, any Context change (where and as whom the case runs,
- * and what it starts from), and any change to the CIGE config or a file it
- * loads, where the hooks and plugins that decide a pass live; a config it
- * can't load blocks too. `e2e-cige diff` runs this over everything that
+ * and what it starts from), and any change to the CIGE config or a module
+ * it imports, where the hooks and plugins that decide a pass live; a config
+ * it can't load or follow blocks too. `e2e-cige diff` runs this over everything that
  * changed since a git ref, so CI and the `cige` skill read the same verdict.
  * App code and installed packages are out of its reach.
  */
@@ -22,6 +22,7 @@ import { z } from 'zod';
 
 import type { CigeExtensions } from './extensions.ts';
 import { parseCige, type CigeCase, type CigeEvidence } from './schema.ts';
+import { fields, git, outside, treeAt, type TreeEntry, type TreeSide } from './tree.ts';
 
 /** What changed in one case, from the field rules' point of view. */
 export type CigeChangeKind =
@@ -250,15 +251,6 @@ export interface CigeDiffReport {
   readonly blocking: number;
 }
 
-function git(args: readonly string[], cwd: string): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-}
-
-/** NUL-separated fields of `git ... -z` output: paths arrive unquoted, whatever characters they hold. */
-function fields(output: string): string[] {
-  return output.split('\0').filter((field) => field !== '');
-}
-
 /** One side of a file's diff: the parsed case, or the change that says it doesn't parse. */
 type Side = { readonly testCase: CigeCase } | { readonly invalid: CigeChange };
 
@@ -282,63 +274,19 @@ function isLink(file: string): boolean {
   }
 }
 
-const RELATIVE_IMPORT = /(?:\bfrom\s*|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g;
-const MODULE_EXTENSIONS = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
-
-/**
- * A repository path on one side of the diff, by its repo-relative POSIX path:
- * a file's text, a symlink's target (undefined when it leaves the
- * repository or dangles), or undefined when neither is there.
- */
-type TreeEntry = { readonly text: string } | { readonly target: string | undefined } | undefined;
-type TreeSide = (file: string) => TreeEntry;
-
-function outside(file: string): boolean {
-  return file === '..' || file.startsWith('../');
-}
-
-/**
- * The CIGE config file and every local module it imports, transitively, on
- * one side of the diff: static and dynamic imports whose specifier starts
- * with `.`, resolved beside the importing file, inside the repository only.
- * The walk starts from the first candidate that exists on that side.
- * Packages are not followed; they are reviewed as dependencies, not as the
- * case.
- */
-function configModules(candidates: readonly string[], entry: TreeSide): string[] {
-  const seen = new Set<string>();
-  const visit = (file: string): void => {
-    if (seen.has(file)) return;
-    const found = entry(file);
-    if (found === undefined) return;
-    seen.add(file);
-    // Node imports a symlinked module from its real path, so a link counts (retargeting it is a change) and so does its target.
-    if ('target' in found) {
-      if (found.target !== undefined) visit(found.target);
-      return;
-    }
-    for (const match of found.text.matchAll(RELATIVE_IMPORT)) {
-      const target = path.posix.join(path.posix.dirname(file), match[1]!);
-      if (outside(target)) continue;
-      const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find((candidate) => entry(candidate) !== undefined);
-      if (resolved !== undefined) visit(resolved);
-    }
-  };
-  const first = candidates.find((file) => entry(file) !== undefined);
-  if (first !== undefined) visit(first);
-  return [...seen];
-}
-
-/** The tracked files loading the config reached, and why that graph can't be trusted when it can't. */
-interface LoadedGraph {
+/** The files the config reaches on either side, and why that graph can't be trusted when it can't. */
+interface ConfigGraph {
+  /** What loading the working tree's config reached, aliases, workspace packages, and lazy imports included. */
   readonly files: readonly string[];
   /** The package.json files whose `imports` and `exports` resolved them. */
   readonly manifests: readonly string[];
-  readonly unverified?: string;
+  /** The merge base's config and the local modules it imports, so a deletion or a rename still counts. */
+  readonly base: readonly string[];
+  readonly unverified: readonly string[];
 }
 
 /** What `config-graph.ts` writes. */
-const GRAPH_RESULT = z.union([z.object({ files: z.array(z.string()), manifests: z.array(z.string()), computed: z.array(z.string()) }), z.object({ error: z.string() })]);
+const GRAPH_RESULT = z.object({ files: z.array(z.string()), manifests: z.array(z.string()), base: z.array(z.string()), unverified: z.array(z.string()) });
 
 /** The package.json fields Node reads to resolve a module: a change to one can redirect an import with no module changed. */
 const RESOLUTION_FIELDS = ['name', 'type', 'main', 'exports', 'imports'] as const;
@@ -370,18 +318,19 @@ const GRAPH_SCRIPT = fileURLToPath(new URL(`./config-graph${path.extname(fileURL
 
 /**
  * Loads the config in its own Node process and returns the files of this
- * repository it reached, aliases and workspace packages included, plus the
- * ones its hooks import lazily (`config-graph.ts`).
+ * repository it reaches, plus the merge base's side (`config-graph.ts`).
+ * With no config in the working tree, only the base's side is read.
  */
-function loadedGraph(config: string, root: string): LoadedGraph {
+function configGraph(config: string | undefined, root: string, mergeBase: string, candidates: readonly string[]): ConfigGraph {
   const scratch = mkdtempSync(path.join(tmpdir(), 'cige-graph-'));
   try {
-    const trackedFile = path.join(scratch, 'tracked.json');
+    const inputFile = path.join(scratch, 'input.json');
     const out = path.join(scratch, 'graph.json');
-    writeFileSync(trackedFile, JSON.stringify(fields(git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root))));
+    const listed = fields(git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root));
+    writeFileSync(inputFile, JSON.stringify({ config: config ?? null, root, mergeBase, candidates, listed }));
     try {
-      execFileSync(process.execPath, ['--experimental-import-meta-resolve', '--no-warnings', GRAPH_SCRIPT, config, root, trackedFile, out], {
-        cwd: path.dirname(config),
+      execFileSync(process.execPath, ['--experimental-import-meta-resolve', '--no-warnings', GRAPH_SCRIPT, inputFile, out], {
+        cwd: config === undefined ? root : path.dirname(config),
         stdio: ['ignore', 'ignore', 'pipe'],
         timeout: 60_000,
       });
@@ -389,15 +338,9 @@ function loadedGraph(config: string, root: string): LoadedGraph {
       // A string or a Buffer, or absent when the process never started.
       const stderr = String((cause as { stderr?: unknown }).stderr ?? '');
       const last = stderr.trim().split('\n').findLast((line) => line.trim() !== '');
-      return { files: [], manifests: [], unverified: `loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}` };
+      return { files: [], manifests: [], base: [], unverified: [`loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}`] };
     }
-    const graph = GRAPH_RESULT.parse(JSON.parse(readFileSync(out, 'utf8')));
-    if ('error' in graph) return { files: [], manifests: [], unverified: `loading it failed: ${graph.error}` };
-    return {
-      files: graph.files,
-      manifests: graph.manifests,
-      ...(graph.computed.length === 0 ? {} : { unverified: `${graph.computed.join(', ')} import${graph.computed.length === 1 ? 's' : ''} a module by a computed name` }),
-    };
+    return GRAPH_RESULT.parse(JSON.parse(readFileSync(out, 'utf8')));
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -461,31 +404,13 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
       }
       return isFile(absolute) ? { text: readFileSync(absolute, 'utf8') } : undefined;
     };
-    // `ls-tree -r -z` records read `<mode> <type> <object>\t<path>`; mode 120000 is a symlink, whose blob is its target.
-    const baseModes = new Map(
-      fields(git(['ls-tree', '-r', '-z', mergeBase], top)).map((record) => {
-        const tab = record.indexOf('\t');
-        return [record.slice(tab + 1), record.slice(0, record.indexOf(' '))] as const;
-      }),
-    );
-    const baseEntries = new Map<string, TreeEntry>();
-    const atBase: TreeSide = (file) => {
-      const mode = baseModes.get(file);
-      if (mode === undefined || !(mode === '120000' || mode.startsWith('100'))) return undefined;
-      if (!baseEntries.has(file)) {
-        const text = git(['show', `${mergeBase}:${file}`], top);
-        const target = mode === '120000' && !text.startsWith('/') ? path.posix.normalize(path.posix.join(path.posix.dirname(file), text)) : undefined;
-        baseEntries.set(file, mode === '120000' ? { target: target === undefined || outside(target) ? undefined : target } : { text });
-      }
-      return baseEntries.get(file);
-    };
-    // What Node loads is the truth for aliases and workspace packages; the text walks add the base's side (deletions, renames).
+    const atBase = treeAt(mergeBase, top);
     const config = candidates.find((file) => isFile(path.join(root, file)));
-    const loaded: LoadedGraph = config === undefined ? { files: [], manifests: [] } : loadedGraph(path.join(root, config), root);
-    if (config !== undefined && loaded.unverified !== undefined) {
-      files.push({ file: config, changes: [change('config-unverified', `${config}: ${loaded.unverified}; a human must review every change outside the case files`)] });
+    const graph = configGraph(config === undefined ? undefined : path.join(root, config), root, mergeBase, candidates);
+    if (config !== undefined && graph.unverified.length > 0) {
+      files.push({ file: config, changes: [change('config-unverified', `${config}: ${graph.unverified.join('; ')}; a human must review every change outside the case files`)] });
     }
-    const modules = [...new Set([...loaded.files, ...configModules(candidates, working), ...configModules(candidates, atBase)])];
+    const modules = [...new Set([...graph.files, ...graph.base])];
     if (modules.length > 0) {
       const touched = fields(git(['diff', '--name-only', '--no-renames', '-z', mergeBase, '--', ...modules], top));
       const untracked = fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ...modules], top));
@@ -494,7 +419,7 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
       }
     }
     const textOf = (entry: TreeEntry): string | undefined => (entry !== undefined && 'text' in entry ? entry.text : undefined);
-    for (const manifest of loaded.manifests.filter((file) => !modules.includes(file)).toSorted()) {
+    for (const manifest of graph.manifests.filter((file) => !modules.includes(file)).toSorted()) {
       const changedFields = resolutionChanges(textOf(atBase(manifest)), textOf(working(manifest)));
       if (changedFields.length > 0) {
         files.push({ file: manifest, changes: [change('config-changed', `${manifest}: ${changedFields.join(', ')}, which decide where the config's imports resolve`)] });

@@ -368,6 +368,9 @@ importers:
 
   packages/cige:
     dependencies:
+      acorn:
+        specifier: 8.18.0
+        version: 8.18.0
       zod:
         specifier: 4.6.7
         version: 4.6.7

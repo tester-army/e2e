@@ -341,12 +341,94 @@ describe('diffSince', () => {
     expect(verdict("const name = 'order';\nexport default { hooks: { order: async () => (await import(`./hooks/${name}.mjs`)).ok } };\n")).toEqual([
       '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
     ]);
-    // Blanking a template keeps what it interpolates.
-    expect(verdict("const name = './x.mjs';\nexport default { hooks: { h: async () => `${(await import(name)).x}` } };\n")).toEqual([
-      '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
+    const computed = '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files';
+    expect(verdict("const name = './x.mjs';\nexport default { hooks: { h: async () => `${(await import(name)).x}` } };\n")).toEqual([computed]);
+    // The review's cases: a `//` inside a string, and nested braces inside an interpolation.
+    expect(verdict("const sep = '//'; const name = './x.mjs'; export default { hooks: { h: async () => (await import(name)).x } };\n")).toEqual([computed]);
+    expect(verdict("const name = './x.mjs';\nexport default { hooks: { h: async () => `${ { a: 1 }.a + (await import(name)).x }` } };\n")).toEqual([computed]);
+    const untraceable = (reason: string) => [`!config-unverified: cige.config.mjs: cige.config.mjs ${reason}; a human must review every change outside the case files`];
+    expect(verdict("import { createRequire } from 'node:module';\nconst req = createRequire(import.meta.url);\nexport default { hooks: { h: async () => req('./check.cjs').ok } };\n")).toEqual(
+      untraceable("calls createRequire, whose require can't be followed"),
+    );
+    expect(verdict("import { createRequire as cr } from 'node:module';\nexport default { hooks: { h: async () => cr(import.meta.url)('./check.cjs').ok } };\n")).toEqual(
+      untraceable("calls createRequire, whose require can't be followed"),
+    );
+    expect(verdict("export default { hooks: { h: async () => eval('import(\"./x.mjs\")') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
+    expect(verdict("export default { hooks: { h: async () => module.require('./check.cjs').ok } };\n")).toEqual(untraceable("uses require other than as require('<module>')"));
+    // A comment, a string, or a key that reads like a call is not one.
+    expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)", require: true };\n')).toEqual([]);
+  });
+
+  it('follows a lazy import that comment-looking strings surround', () => {
+    const dir = repo({
+      'package.json': JSON.stringify({ type: 'module', imports: { '#hooks/*': './hooks/*.ts' } }),
+      // The review's case: `/*` in one string and `*/` in a later one are not a comment.
+      'cige.config.ts': "const pattern = 'orders/*';\nexport default { hooks: { check: async () => (await import('#hooks/check')).ok() }, note: '*/' };\n",
+      'hooks/check.ts': 'export const ok = () => false;\n',
+      'checkout.cige.json': BASE,
+    });
+    write(dir, { 'hooks/check.ts': 'export const ok = () => true;\n' });
+    expect(diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`)).toEqual([
+      'hooks/check.ts config-changed',
     ]);
-    // A comment or a string that reads like a call is not one.
-    expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)" };\n')).toEqual([]);
+  });
+
+  it('covers a workspace package built to an ignored dist by its sources, and blocks other untracked loads', () => {
+    const dir = repo({
+      '.gitignore': 'node_modules\ndist\ngenerated\n',
+      'cige.config.ts': "import { shop } from '@acme/hooks';\nimport pad from 'left-pad';\nexport default { plugins: [shop], pad };\n",
+      'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js' }),
+      'packages/hooks/src/index.ts': "export const shop = { name: 'shop' };\n",
+      // Built output isn't parsed, so what a bundler emits doesn't block: the package's sources stand for it.
+      'packages/hooks/dist/index.js': "export const shop = { name: 'shop' };\nexport const chunk = (name) => import(`./chunks/${name}.js`);\n",
+      // An installed package: reviewed as a dependency, not as the case.
+      'node_modules/left-pad/package.json': JSON.stringify({ name: 'left-pad', type: 'module', exports: './index.js' }),
+      'node_modules/left-pad/index.js': 'export default (text) => text;\n',
+      'checkout.cige.json': BASE,
+    });
+    mkdirSync(path.join(dir, 'node_modules/@acme'));
+    symlinkSync('../../packages/hooks', path.join(dir, 'node_modules/@acme/hooks'), 'dir');
+    const changed = (configFile = 'cige.config.ts') =>
+      diffSince('HEAD', dir, { configFiles: [path.join(dir, configFile)] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}: ${item.detail}`).join(',')}`);
+    expect(changed()).toEqual([]);
+    // The review's case: the source changes and is rebuilt, and git sees only the source.
+    write(dir, {
+      'packages/hooks/src/index.ts': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n",
+      'packages/hooks/dist/index.js': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n",
+    });
+    expect(changed()).toEqual(['packages/hooks/src/index.ts !config-changed: packages/hooks/src/index.ts: the hooks, plugins, and environments a pass depends on']);
+    // Generated beside the config, with no package of its own to trace it to a source.
+    write(dir, { 'generated/hooks.mjs': 'export const ok = () => true;\n', 'other.config.mjs': "import { ok } from './generated/hooks.mjs';\nexport default { hooks: { ok } };\n" });
+    expect(changed('other.config.mjs')).toContain(
+      "other.config.mjs !config-unverified: other.config.mjs: loads generated/hooks.mjs, which git doesn't track; a human must review every change outside the case files",
+    );
+  });
+
+  it('blocks retargeting a symlink an alias reaches, file or directory', () => {
+    const linked = (link: string, target: string) => {
+      const dir = repo({
+        'package.json': JSON.stringify({ type: 'module', imports: { '#hooks/*': './hooks/*.ts' } }),
+        'cige.config.ts': "import { orderPersisted } from '#hooks/order';\nexport default { hooks: { orderPersisted } };\n",
+        'impl/strict.ts': "export const orderPersisted = async () => (await fetch('/orders/1')).ok;\n",
+        'impl/loose.ts': 'export const orderPersisted = async () => true;\n',
+        'strict/order.ts': "export const orderPersisted = async () => (await fetch('/orders/1')).ok;\n",
+        'loose/order.ts': 'export const orderPersisted = async () => true;\n',
+        'checkout.cige.json': BASE,
+      });
+      mkdirSync(path.dirname(path.join(dir, link)), { recursive: true });
+      symlinkSync(target, path.join(dir, link));
+      execFileSync('git', ['add', '.'], { cwd: dir, stdio: 'pipe' });
+      execFileSync('git', ['-c', 'user.email=cige@example.test', '-c', 'user.name=cige', 'commit', '-q', '-m', 'link'], { cwd: dir, stdio: 'pipe' });
+      return dir;
+    };
+    const retarget = (dir: string, link: string, target: string) => {
+      rmSync(path.join(dir, link));
+      symlinkSync(target, path.join(dir, link));
+      return diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`);
+    };
+    // The review's case: `#hooks/order` lands on a tracked link, which Node reads through to its target.
+    expect(retarget(linked('hooks/order.ts', '../impl/strict.ts'), 'hooks/order.ts', '../impl/loose.ts')).toEqual(['hooks/order.ts config-changed']);
+    expect(retarget(linked('hooks', 'strict'), 'hooks', 'loose')).toEqual(['hooks config-changed']);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

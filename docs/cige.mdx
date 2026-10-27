@@ -274,17 +274,23 @@ redirects what a pass means:
 - The Intent statement changed, or a criterion, evidence item, guardrail,
   deny pattern, variant, or case was removed, or a judgment turned off.
 - Any Context changed: the environment, the agent, a precondition.
-- The CIGE config, or a file it loads, changed: that's where the hooks and
-  plugins a pass depends on live. `diff` loads the config to find them, so
-  `#` aliases, workspace packages, a hook's lazy imports, and the
-  package.json that maps them count. A config it can't load, or one that
-  imports by a computed name, blocks.
+- The CIGE config, or a module it imports, changed: that's where the hooks
+  and plugins a pass depends on live. `#` aliases, workspace packages, a
+  hook's lazy imports, and the package.json that maps them count. A config
+  that `diff` can't load or follow blocks.
 
 Rewriting Execution and adding guardrails, deny patterns, criteria,
-evidence, or variants pass. App code the config doesn't import, and
-installed packages, are out of `diff`'s reach.
+evidence, or variants pass. App code the config doesn't import, data files
+a hook reads, and installed packages are out of `diff`'s reach.
 `--allow-intent` exits 0 anyway and records nothing, so gate it on a
 human's approval in CI; an agent never passes it.
+
+<Note>
+`diff` loads the config to find its modules, so it runs the branch's
+top-level config code. Give the CI job the env `e2e-cige run` gets: a
+config that reads a missing variable at load blocks every `diff`. Run it
+only where you'd run the branch's tests.
+</Note>
 
 ## Extend CIGE
 
