@@ -363,11 +363,10 @@ export class LocatorEngine {
   }
 
   /**
-   * Fills a secret into exactly one match once `authorize` has cleared the
-   * node the value lands on, for a caller the harness does not trust with a
-   * fill (`e2e mcp`'s `run_code`); a test's own `fill` needs no clearance.
-   * The node is read and cleared on every resolve, so a match that went stale
-   * and resolved again is checked again before the value is handed over.
+   * Fills a secret into exactly one match, and hands the value over only
+   * once `authorize` has cleared the node it lands on. The node is read and
+   * cleared on every resolve, so a match that went stale and resolved again
+   * is checked again before the value is handed over.
    */
   async fillSecret(
     expression: LocatorExpression,

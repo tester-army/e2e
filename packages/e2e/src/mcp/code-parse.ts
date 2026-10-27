@@ -25,7 +25,11 @@ import { LEFT_OUT, RECEIVER_LABELS, SURFACE, type Arity, type Member, type Recei
  * then arrow functions, parses on half of Node's 8 MB main-thread stack.
  */
 const MAX_CODE_LENGTH = 10_000;
-/** The most brackets one call may open; some 4,500 nested brackets alone overflow the stack. */
+/**
+ * The most brackets one call may open. About 5,330 nested brackets alone
+ * overflow the stack (oxc 0.155 on Node 22 and 24, macOS arm64). Brackets
+ * inside strings count too, so a text with more than this many is refused.
+ */
 const MAX_BRACKETS = 1_000;
 /** The most statements one call runs. */
 const MAX_STATEMENTS = 50;
