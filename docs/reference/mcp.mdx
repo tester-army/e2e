@@ -245,18 +245,21 @@ call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada
 
 - Statements run in order on the session's `screen` and `app` fixtures, with
   a test's waits, exactly-one rule, and matchers.
-- The first failure stops the call: the rest don't run, the app stays where
+- The first failure stops the call. The rest don't run, the app stays where
   the passing statements left it, and the result is an error result with the
   code and message a test would get.
 - The statements that pass, except reads, join the
   [`test_lines`](#test_lines) draft as written, in the order they ran.
-- Each statement waits at most `timeout`. The config's
-  [`actionTimeout`](/reference/config#actiontimeout) and
-  [`assertionTimeout`](/reference/config#assertiontimeout) still apply when
-  shorter, and a statement's own `timeout` option counts up to `timeout`.
-  The cap covers `app.open`, `app.restart`, and `app.clearState` too, which
-  a test gives the whole [`timeout`](/reference/config#timeout): raise it for
-  a slow first load or a device relaunch.
+- Each statement waits at most `timeout`, its own `timeout` option included.
+  The config's [`actionTimeout`](/reference/config#actiontimeout) and
+  [`assertionTimeout`](/reference/config#assertiontimeout) apply when
+  shorter. The cap also covers `app.open`, `app.restart`, and
+  `app.clearState`, so raise it for a slow first load or a device relaunch.
+- Reads and matchers see `<secret:name>` where a secret value is.
+- A secret `fill` passes the checks `type_secret` runs, on the field it lands
+  on: a configured secret, an enabled editable field, and a password field
+  for a password. A filled secret withholds screenshots as `type_secret`
+  does.
 
 The code is parsed, never run as JavaScript. The grammar takes:
 
@@ -273,25 +276,11 @@ Left out: fixtures an engine contributes (`browser`, `device`),
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | Code outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes the refused code with its line and column, and no statement runs. Also a matcher that expects `<secret:name>`. |
-| `POLICY_DENIED` | A secret `fill` into a field `type_secret` would refuse, a read of a password field, or, in a project with secrets, a locator found by part of a text. |
-
-A secret `fill` passes the checks `type_secret` runs, on the field it lands
-on: a configured secret, an enabled editable field, and a password field for
-a password. A field that fails them gets nothing typed, and a filled secret
-withholds screenshots as `type_secret` does.
-
-Every node a statement reads passes the secret ledger first. A read returns
-`<secret:name>` where a secret value is, and a matcher compares against that
-text, so no pass or fail depends on a secret's characters. A matcher on such
-text can then differ from the same line in a test, and one that expects
-`<secret:name>` is `INVALID_ARGUMENT`, since a test compares the real value.
-
-A locator is matched inside the engine instead, on unredacted text. So when
-the config declares any secret or credential, a locator found by part of a
-text is `POLICY_DENIED` before any statement runs: a regular expression, an
-`exact` other than `true`, or a `hasText` filter. Find the locator by its
-exact text.
+| `INVALID_ARGUMENT` | Code that doesn't parse or is outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes it with its line and column, and no statement runs. |
+| `INVALID_ARGUMENT` | A matcher that expects `<secret:name>`, since a test compares the real value. No statement runs. |
+| `POLICY_DENIED` | A secret `fill` into a field that fails the `type_secret` checks. Nothing is typed. |
+| `POLICY_DENIED` | A read of a password field. |
+| `POLICY_DENIED` | When the config declares a secret or credential, a locator found by part of a text: a regular expression, an `exact` other than `true`, or `hasText`. Find it by its exact text. No statement runs. |
 
 #### `test_lines`
 
