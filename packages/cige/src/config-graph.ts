@@ -62,14 +62,16 @@ const listed = new Set(input.listed);
 
 const MODULE_EXTENSIONS = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
 const SOURCE = /\.[cm]?[jt]s$/;
+/** A relative specifier, `.` and `..` included. */
+const RELATIVE = /^\.{1,2}(?:\/|$)/;
 
 /**
  * The config file and every local module it imports, transitively, at the
- * merge base: specifiers that start with `.`, resolved beside the importing
- * file, inside the repository only. The walk starts from the first
- * candidate the base has. A file that doesn't parse adds nothing: this side
- * only adds what the branch deleted or renamed, and the working tree's
- * graph covers the rest.
+ * merge base: relative specifiers (`.` and `..` included), resolved beside
+ * the importing file, inside the repository only. The walk starts from the
+ * first candidate the base has. A file that doesn't parse adds nothing:
+ * this side only adds what the branch deleted or renamed, and the working
+ * tree's graph covers the rest.
  */
 function configModules(candidates: readonly string[], entry: TreeSide): string[] {
   const seen = new Set<string>();
@@ -85,7 +87,7 @@ function configModules(candidates: readonly string[], entry: TreeSide): string[]
     }
     const imports = importsOf(found.text, file);
     for (const specifier of [...imports.specifiers, ...imports.requires]) {
-      if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
+      if (!RELATIVE.test(specifier)) continue;
       const target = path.posix.join(path.posix.dirname(file), specifier);
       if (outside(target)) continue;
       const resolved = MODULE_EXTENSIONS.map((extension) => `${target}${extension}`).find((candidate) => entry(candidate) !== undefined);
@@ -110,8 +112,8 @@ function inRepo(url: string): string | undefined {
   return relative === '' || outside(relative) || path.isAbsolute(relative) ? undefined : relative;
 }
 
-/** A specifier that names a path in this repository, directly or through package.json `imports`. */
-const LOCAL = /^(?:\.{1,2}\/|\/|#)/;
+/** A specifier that names a path in this repository, directly or through package.json `imports`; a bare `.` or `..` is a directory's index. */
+const LOCAL = /^(?:\.{1,2}(?:\/|$)|\/|#)/;
 
 /** Where an `import` of `specifier` from `file` lands, by ESM resolution; undefined when nothing is there. */
 function resolveImport(specifier: string, file: string): string | undefined {

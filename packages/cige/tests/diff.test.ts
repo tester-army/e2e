@@ -409,6 +409,18 @@ describe('diffSince', () => {
     expect(changed(alias)).toEqual([
       "cige.config.mjs !config-unverified: cige.config.mjs: cige.config.mjs imports #hooks/check, which doesn't resolve; a human must review every change outside the case files",
     ]);
+    // cubic's case: a bare `.` is relative too, here a directory's index behind a caught require.
+    const index = repo({
+      'cige.config.mjs': "import helper from './lib/helper.cjs';\nexport default { hooks: { check: async () => helper.check() } };\n",
+      'lib/helper.cjs': "exports.check = () => { try { return require('.').ok(); } catch { return true; } };\n",
+      'lib/index.js': 'exports.ok = () => false;\n',
+      'checkout.cige.json': BASE,
+    });
+    rmSync(path.join(index, 'lib/index.js'));
+    expect(changed(index)).toEqual([
+      "cige.config.mjs !config-unverified: cige.config.mjs: lib/helper.cjs imports ., which doesn't resolve; a human must review every change outside the case files",
+      'lib/index.js !config-changed: lib/index.js: the hooks, plugins, and environments a pass depends on',
+    ]);
   });
 
   it('covers a workspace package built to an ignored dist by its sources, and blocks other untracked loads', () => {
