@@ -64,8 +64,18 @@ registerHooks({
 const COMMENTS = /\/\*[\s\S]*?\*\/|(^|[^:\\])\/\/[^\n]*/g;
 const LITERAL = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*(['"])([^'"\n]+)\1/g;
 const COMPUTED = /\b(?:import|require)\s*\(\s*(?!['"\s)])/g;
-// For the computed check only, quoted text is blanked so `"import (not really)"` isn't a call; a template literal stays computed.
+// For the computed check only, quoted text is blanked so `"import (not really)"` isn't a call. One pass over all three
+// kinds, so the leftmost literal wins and an apostrophe inside a template's text can't open a string.
 const QUOTED = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+
+/** A template literal's interpolations, kept after a blank: `${import(name)}` inside one is still a computed import. */
+const INTERPOLATION = /\$\{([^}]*)\}/g;
+
+/** Quoted text blanked for the computed check: a string to `''`, a template to `` `` `` plus what it interpolates. */
+function blank(quoted: string): string {
+  if (!quoted.startsWith('`')) return "''";
+  return ['``', ...[...quoted.matchAll(INTERPOLATION)].map((match) => match[1]!)].join(' ');
+}
 
 /** The package.json Node reads for a file's `imports` and its package's `exports`: the nearest one up to the root. */
 function nearestManifest(file: string): string | undefined {
@@ -87,7 +97,7 @@ try {
     files.add(file);
     const parent = pathToFileURL(path.join(root, file)).href;
     const text = readFileSync(path.join(root, file), 'utf8').replace(COMMENTS, '$1');
-    if (COMPUTED.test(text.replace(QUOTED, (quoted) => (quoted.startsWith('`') ? '``' : "''")))) computed.push(file);
+    if (COMPUTED.test(text.replace(QUOTED, blank))) computed.push(file);
     COMPUTED.lastIndex = 0;
     for (const match of text.matchAll(LITERAL)) {
       let url: string;

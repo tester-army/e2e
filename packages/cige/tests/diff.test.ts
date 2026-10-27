@@ -341,6 +341,10 @@ describe('diffSince', () => {
     expect(verdict("const name = 'order';\nexport default { hooks: { order: async () => (await import(`./hooks/${name}.mjs`)).ok } };\n")).toEqual([
       '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
     ]);
+    // Blanking a template keeps what it interpolates.
+    expect(verdict("const name = './x.mjs';\nexport default { hooks: { h: async () => `${(await import(name)).x}` } };\n")).toEqual([
+      '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
+    ]);
     // A comment or a string that reads like a call is not one.
     expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)" };\n')).toEqual([]);
   });
