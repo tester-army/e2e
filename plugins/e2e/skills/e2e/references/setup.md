@@ -379,9 +379,11 @@ export default {
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
-- Mobile `fill` and `clear` re-read the field before typing, replay included;
-  missing fields, changed security state, or incomplete captures trigger a
-  fresh-observation retry.
+- Mobile `fill` and `clear` re-read the field before typing, replay included.
+  Missing fields, changed security state, or incomplete captures return
+  `NODE_STALE` before mutation, then retry after a fresh observation.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`. A fresh read does not
+  make coordinate dispatch atomic.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`

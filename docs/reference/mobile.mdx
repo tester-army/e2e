@@ -237,9 +237,11 @@ mobile({ platform: 'ios', transition: 800 }); // default: 500
 budget the way a tap does. A control that arrives with the screen they reveal
 waits out the budget before the next action lands on it.
 
-`fill` and `clear` re-read the field before typing; missing fields, changed
-security state, or incomplete captures trigger a fresh-observation retry.
-A coordinate-only backend can still race movement after this read.
+`fill` and `clear` re-read the field before typing. Missing fields, changed
+security state, or incomplete captures return `NODE_STALE` before mutation,
+then retry after a fresh observation. Non-input targets return
+`UNSUPPORTED_CAPABILITY`. A coordinate-only backend can still race movement
+after this read.
 
 #### `videoTouches`
 
