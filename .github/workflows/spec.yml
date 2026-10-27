@@ -46,6 +46,8 @@ jobs:
         run: pnpm check:peer-ranges
       - name: Changeset bumps on 0.x packages
         run: pnpm check:changeset-bumps
+      - name: Examples registry (examples/examples.json)
+        run: pnpm check:examples
       - name: No install scripts in published dependency trees
         run: pnpm check:install-scripts
       - name: Plugin package matches its sources
