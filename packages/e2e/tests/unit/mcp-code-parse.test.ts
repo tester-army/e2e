@@ -255,13 +255,17 @@ describe('parseCode refuses', () => {
 
   it('more statements, more code, or deeper nesting than one call takes', () => {
     expect(refusal('app.back();'.repeat(51))).toBe('run_code: pass at most 50 statements at once');
-    expect(refusal(`screen.getByText('${'a'.repeat(20_000)}').tap()`)).toBe('run_code: the code is 20026 characters; pass at most 20000 at once');
+    expect(refusal(`screen.getByText('${'a'.repeat(10_000)}').tap()`)).toBe('run_code: the code is 10026 characters; pass at most 10000 at once');
     expect(refusal(`screen.getByText(${'['.repeat(20)}${']'.repeat(20)}).tap()`)).toBe('run_code: the argument at 1:34 nests deeper than 16 levels');
   });
 
   it('nesting deep enough to overflow the parser, before the parser reads it', () => {
-    // Some 4,500 levels overflow oxc's stack and crash the process, which no catch survives.
-    expect(refusal(`screen.getByText(${'['.repeat(9_000)}${']'.repeat(9_000)}).tap()`)).toBe('run_code: the code opens 9002 brackets; pass at most 1000 at once');
+    // A stack overflow in oxc kills the process, which no catch survives.
+    expect(refusal(`screen.getByText(${'['.repeat(4_900)}${']'.repeat(4_900)}).tap()`)).toBe('run_code: the code opens 4902 brackets; pass at most 1000 at once');
+    // The deepest code the limits let through: brackets, then arrow functions, which take none.
+    const deepest = `screen.getByText(${'('.repeat(998)}${'a=>'.repeat(2_650)}1${')'.repeat(998)}).tap()`;
+    expect(deepest.length).toBeLessThanOrEqual(10_000);
+    expect(refusal(deepest)).toMatch(/^run_code: "\(\(\(.*" at 1:18 is not in the grammar; /);
   });
 });
 

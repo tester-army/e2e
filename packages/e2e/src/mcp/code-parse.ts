@@ -18,18 +18,19 @@ import { ConfigurationError } from '../internal/errors.ts';
 import { suggest } from '../internal/suggest.ts';
 import { LEFT_OUT, RECEIVER_LABELS, SURFACE, type Arity, type Member, type Receiver } from './code-surface.ts';
 
-/** The longest code one call takes, in characters. */
-const MAX_CODE_LENGTH = 20_000;
+/**
+ * The longest code one call takes, in characters. With `MAX_BRACKETS` it
+ * bounds how deep oxc's parser recurses on the server's own stack, where an
+ * overflow kills the process: the deepest code both let through, brackets and
+ * then arrow functions, parses on half of Node's 8 MB main-thread stack.
+ */
+const MAX_CODE_LENGTH = 10_000;
+/** The most brackets one call may open; some 4,500 nested brackets alone overflow the stack. */
+const MAX_BRACKETS = 1_000;
 /** The most statements one call runs. */
 const MAX_STATEMENTS = 50;
 /** How deep arrays, objects, and locator arguments may nest. */
 const MAX_DEPTH = 16;
-/**
- * The most brackets one call may open. oxc's parser recurses once per nesting
- * level on the server's own stack, and some 4,500 levels overflow it and crash
- * the process; code cannot nest deeper than the brackets it opens.
- */
-const MAX_BRACKETS = 1_000;
 
 /** A fixture a statement starts from. */
 export type Root = 'screen' | 'app';
