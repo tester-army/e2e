@@ -63,7 +63,8 @@ needs them.
 4. **Did a guardrail fire?** `guardrail-violation:<id>` (the runner stopped
    a forbidden action), or `guardrail-refused:<id>` or a bare
    `guardrail-refused` when it named none (the agent read a guardrail and
-   refused before acting). Either way the step needs a
+   refused before acting). A refusal is read from the model's own words, so
+   confirm it in the trace before you trust it. Either way the step needs a
    forbidden action: the flow changed and now routes through it (repair
    Execution so it avoids it), or the product forces it (a defect). The
    spec decides; never loosen the guardrail.

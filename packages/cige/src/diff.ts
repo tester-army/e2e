@@ -6,16 +6,19 @@
  * evidence item, a judgment turned off, a guardrail or deny pattern
  * dropped, a case or variant removed, a variant's data changed, an id that
  * moves its history, any Context change (where and as whom the case runs,
- * and what it starts from), and any change to the CIGE config or the local
- * modules it imports, where the hooks and plugins that decide a pass live.
- * `e2e-cige diff` runs this over everything that changed since a git ref,
- * so CI and the `cige` skill read the same verdict. App code and packages
- * are out of its reach.
+ * and what it starts from), and any change to the CIGE config or a file it
+ * loads, where the hooks and plugins that decide a pass live; a config it
+ * can't load blocks too. `e2e-cige diff` runs this over everything that
+ * changed since a git ref, so CI and the `cige` skill read the same verdict.
+ * App code and installed packages are out of its reach.
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
 
 import type { CigeExtensions } from './extensions.ts';
 import { parseCige, type CigeCase, type CigeEvidence } from './schema.ts';
@@ -45,7 +48,8 @@ export type CigeChangeKind =
   | 'intent-extension-changed'
   | 'guardrail-extension-changed'
   | 'case-extension-changed'
-  | 'config-changed';
+  | 'config-changed'
+  | 'config-unverified';
 
 const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'case-removed',
@@ -64,6 +68,8 @@ const BLOCKING: ReadonlySet<CigeChangeKind> = new Set([
   'context-changed',
   // The config holds the hooks and plugins a pass depends on: an evidence hook rewritten to return true is a pass.
   'config-changed',
+  // A config the gate can't load, or one that imports by a computed name, hides which files decide a pass.
+  'config-unverified',
   // Intent is human-owned, and a plugin may enforce a guardrail's x- data, so changing either can loosen the case.
   'intent-extension-changed',
   'guardrail-extension-changed',
@@ -323,6 +329,52 @@ function configModules(candidates: readonly string[], entry: TreeSide): string[]
   return [...seen];
 }
 
+/** The tracked files loading the config reached, and why that graph can't be trusted when it can't. */
+interface LoadedGraph {
+  readonly files: readonly string[];
+  readonly unverified?: string;
+}
+
+/** What `config-graph.ts` writes. */
+const GRAPH_RESULT = z.union([z.object({ files: z.array(z.string()), computed: z.array(z.string()) }), z.object({ error: z.string() })]);
+
+/** `config-graph.ts` beside this module: `.ts` when tests run it from source, `.js` from `dist`. */
+const GRAPH_SCRIPT = fileURLToPath(new URL(`./config-graph${path.extname(fileURLToPath(import.meta.url))}`, import.meta.url));
+
+/**
+ * Loads the config in its own Node process and returns the files of this
+ * repository it reached, aliases and workspace packages included, plus the
+ * ones its hooks import lazily (`config-graph.ts`).
+ */
+function loadedGraph(config: string, root: string): LoadedGraph {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'cige-graph-'));
+  try {
+    const trackedFile = path.join(scratch, 'tracked.json');
+    const out = path.join(scratch, 'graph.json');
+    writeFileSync(trackedFile, JSON.stringify(fields(git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root))));
+    try {
+      execFileSync(process.execPath, ['--experimental-import-meta-resolve', '--no-warnings', GRAPH_SCRIPT, config, root, trackedFile, out], {
+        cwd: path.dirname(config),
+        stdio: ['ignore', 'ignore', 'pipe'],
+        timeout: 60_000,
+      });
+    } catch (cause) {
+      // A string or a Buffer, or absent when the process never started.
+      const stderr = String((cause as { stderr?: unknown }).stderr ?? '');
+      const last = stderr.trim().split('\n').findLast((line) => line.trim() !== '');
+      return { files: [], unverified: `loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}` };
+    }
+    const graph = GRAPH_RESULT.parse(JSON.parse(readFileSync(out, 'utf8')));
+    if ('error' in graph) return { files: [], unverified: `loading it failed: ${graph.error}` };
+    return {
+      files: graph.files,
+      ...(graph.computed.length === 0 ? {} : { unverified: `${graph.computed.join(', ')} import${graph.computed.length === 1 ? 's' : ''} a module by a computed name` }),
+    };
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
 export interface DiffOptions {
   /**
    * Where the CIGE config may be, in order. Each side of the diff starts from
@@ -399,7 +451,13 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
       }
       return baseEntries.get(file);
     };
-    const modules = [...new Set([...configModules(candidates, working), ...configModules(candidates, atBase)])];
+    // What Node loads is the truth for aliases and workspace packages; the text walks add the base's side (deletions, renames).
+    const config = candidates.find((file) => isFile(path.join(root, file)));
+    const loaded = config === undefined ? { files: [] } : loadedGraph(path.join(root, config), root);
+    if (config !== undefined && loaded.unverified !== undefined) {
+      files.push({ file: config, changes: [change('config-unverified', `${config}: ${loaded.unverified}; a human must review every change outside the case files`)] });
+    }
+    const modules = [...new Set([...loaded.files, ...configModules(candidates, working), ...configModules(candidates, atBase)])];
     if (modules.length > 0) {
       const touched = fields(git(['diff', '--name-only', '--no-renames', '-z', mergeBase, '--', ...modules], top));
       const untracked = fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ...modules], top));

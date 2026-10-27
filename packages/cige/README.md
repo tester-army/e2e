@@ -27,7 +27,8 @@ case, set up the config, and run it. This README is the reference.
 `cige.config.ts` exports `defineCige({...})`. `cigeSuite(config)` registers
 the cases, `cige(config)` in the e2e config's `reporters` writes the
 summaries, and `e2e-cige` reads the same file. The command loads it with
-Node's type stripping, so use only TypeScript that erases to JavaScript.
+plain Node and its type stripping, so use only TypeScript that erases to
+JavaScript, and package.json `imports` rather than tsconfig `paths`.
 
 | Option | Does |
 | --- | --- |
@@ -109,6 +110,11 @@ more than once).
 | A blocked `APP_NOT_OPEN`: the case never opened the app, usually a missing `Context.open` | Absent, no signal |
 | A guardrail violation, an agent's refusal citing one, an inconclusive judgment, a plugin step's plain throw | Absent; `guardrail-violation:<id>`, `guardrail-refused:<id>`, `inconclusive-evidence`, `plugin-step-failed:<id>` |
 
+`guardrail-refused` is read from the model's own conclusion (a guardrail's
+id, or the word "guardrail"), so it is best effort, like `deny.summary`:
+read the trace before acting on it. `guardrail-violation` is the runner's
+own record of a `deny` match.
+
 A pass with no evidence hook carries `screen-only-evidence`: check it for a
 false positive. A failure without a spec or build ref (and no resolver)
 carries `missing-spec-ref` or `missing-build-ref`.
@@ -147,18 +153,26 @@ the working directory.
 
 ## What `diff` blocks
 
-`diff` compares every changed `.cige.json`, the CIGE config, and the local
-modules the config imports (transitively) against the branch's merge base
-with `--base`. It exits 1 on any change that needs a human's approval:
+`diff` compares every changed `.cige.json`, the CIGE config, and every
+file of the repository the config reaches against the branch's merge base
+with `--base`. It finds those files by loading the config in its own Node
+process and recording what Node resolves (`#` aliases and workspace
+packages included), then resolving, without running them, the specifiers
+those files name but loading didn't reach, such as a hook's lazy
+`import('#hooks/x')`. A text walk of the merge base adds the files that
+were deleted or renamed. It exits 1 on any change that needs a human's
+approval:
 
 | Blocks | Passes |
 | --- | --- |
 | Intent statement changed; a criterion, evidence item, guardrail, deny pattern, variant, or case removed; a judgment turned off; an id changed; a variant's data changed | Execution rewritten; criteria, evidence, guardrails, deny patterns, or variants added |
 | Any Context change, a removed precondition named | A top-level `x-` key changed (triage data) |
 | An `x-` key changed under Intent, evidence, or a guardrail | |
-| The CIGE config or a local module it imports changed | |
+| The CIGE config or a file it reaches changed | |
+| `config-unverified`: the config didn't load, or imports a module by a computed name | |
 
-App code and packages are out of its reach and need a human's review.
+App code and installed packages are out of its reach and need a human's
+review.
 `--allow-intent` exits 0 anyway and records nothing: gate it on a human's
 approval in CI. `--json` reports `intentUnchanged` and the `blocking` count.
 

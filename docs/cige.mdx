@@ -274,12 +274,14 @@ redirects what a pass means:
 - The Intent statement changed, or a criterion, evidence item, guardrail,
   deny pattern, variant, or case was removed, or a judgment turned off.
 - Any Context changed: the environment, the agent, a precondition.
-- The CIGE config, or a local module it imports, changed: that's where the
-  hooks and plugins a pass depends on live.
+- The CIGE config, or a file it loads, changed: that's where the hooks and
+  plugins a pass depends on live. `diff` loads the config to find them, so
+  `#` aliases, workspace packages, and a hook's lazy imports count. A
+  config it can't load, or one that imports by a computed name, blocks.
 
 Rewriting Execution and adding guardrails, deny patterns, criteria,
-evidence, or variants pass. `diff` sees case files, the CIGE config, and
-the local modules it imports; app code and packages are out of its reach.
+evidence, or variants pass. App code and installed packages are out of
+`diff`'s reach.
 `--allow-intent` exits 0 anyway and records nothing, so gate it on a
 human's approval in CI; an agent never passes it.
 

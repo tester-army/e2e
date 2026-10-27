@@ -246,10 +246,10 @@ describe('diffSince', () => {
     const configFiles = (dir: string) => ['cige.config.ts', 'cige.config.mjs'].map((name) => path.join(dir, name));
     const changed = (dir: string) => diffSince('HEAD', dir, { configFiles: configFiles(dir) }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`);
 
-    // The config still imports it, so only the base's graph knows the module.
+    // The config still imports it, so it no longer loads, and only the base's graph knows the module.
     const deletedModule = repo(files);
     rmSync(path.join(deletedModule, 'plugins/shop.ts'));
-    expect(changed(deletedModule)).toEqual(['plugins/shop.ts config-changed']);
+    expect(changed(deletedModule)).toEqual(['cige.config.ts config-unverified', 'plugins/shop.ts config-changed']);
 
     const deletedConfig = repo(files);
     rmSync(path.join(deletedConfig, 'cige.config.ts'));
@@ -277,10 +277,52 @@ describe('diffSince', () => {
     write(retouched, { 'lib/shop.ts': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n" });
     expect(changed(retouched)).toEqual(['lib/shop.ts config-changed']);
 
-    // The link dangles now, so only the base's side reaches its target.
+    // The link dangles now, so the config no longer loads, and only the base's side reaches its target.
     const deleted = linked();
     rmSync(path.join(deleted, 'lib/shop.ts'));
-    expect(changed(deleted)).toEqual(['lib/shop.ts config-changed']);
+    expect(changed(deleted)).toEqual(['cige.config.ts config-unverified', 'lib/shop.ts config-changed']);
+  });
+
+  it('follows what Node loads: a # alias, a workspace package, and a hook\'s lazy import', () => {
+    const dir = repo({
+      '.gitignore': 'node_modules\n',
+      'package.json': JSON.stringify({ type: 'module', imports: { '#hooks/*': './hooks/*.ts' } }),
+      // The review's case: a hook reached only through a package.json imports alias.
+      'cige.config.ts': "import { orderPersisted } from '#hooks/order';\nimport { shop } from '@acme/hooks';\nexport default { plugins: [shop], hooks: { orderPersisted, later: async () => (await import('#hooks/lazy')).ok() } };\n",
+      'hooks/order.ts': "export const orderPersisted = async () => (await fetch('/orders/1')).ok;\n",
+      'hooks/lazy.ts': 'export const ok = () => false;\n',
+      'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './index.js' }),
+      'packages/hooks/index.js': "export const shop = { name: 'shop' };\n",
+      'app/server.ts': 'export const port = 3000;\n',
+      'checkout.cige.json': BASE,
+    });
+    // How a workspace links its packages: a symlink under node_modules to the tracked source.
+    mkdirSync(path.join(dir, 'node_modules/@acme'), { recursive: true });
+    symlinkSync('../../packages/hooks', path.join(dir, 'node_modules/@acme/hooks'));
+    const changed = () => diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}`).join(',')}`);
+    expect(changed()).toEqual([]);
+    write(dir, {
+      'hooks/order.ts': 'export const orderPersisted = async () => true;\n',
+      'hooks/lazy.ts': 'export const ok = () => true;\n',
+      'packages/hooks/index.js': "export const shop = { name: 'shop', classify: () => ({ failureType: null }) };\n",
+      'app/server.ts': 'export const port = 4000;\n',
+    });
+    expect(changed()).toEqual(['hooks/lazy.ts !config-changed', 'hooks/order.ts !config-changed', 'packages/hooks/index.js !config-changed']);
+  });
+
+  it('blocks a config it cannot load or follow, naming why', () => {
+    const verdict = (config: string) => {
+      const dir = repo({ 'cige.config.mjs': config, 'checkout.cige.json': BASE });
+      return diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.mjs')] }).files.flatMap((entry) => entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}: ${item.detail}`));
+    };
+    expect(verdict("throw new Error('no staging credentials');\n")).toEqual([
+      '!config-unverified: cige.config.mjs: loading it failed: no staging credentials; a human must review every change outside the case files',
+    ]);
+    expect(verdict("const name = './hooks/' + 'order.mjs';\nexport default { hooks: { order: async () => (await import(name)).ok } };\n")).toEqual([
+      '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
+    ]);
+    // A comment that reads like a call is not one.
+    expect(verdict('// we import (lazily) nothing here\nexport default {};\n')).toEqual([]);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

@@ -20,7 +20,8 @@ replays a case in its environment (`replay`), runs an environment action
 lists each case that lacks a spec or build ref, a build, or a resettable
 environment before anything fails (`check`, also counted under the run
 summary), and fails a change that weakens a case, changes its Context, or
-changes the CIGE config or a module it imports (`diff`). The JSON schema
+changes the CIGE config or a file it loads, aliases and workspace packages
+included (`diff`); a config it can't load blocks too. The JSON schema
 editors read is generated from the loader's own schema. A case may carry
 your own `x-` keys on any object, and `plugins` in the config add context
 lines, guardrail checks, classification and summary changes, readiness

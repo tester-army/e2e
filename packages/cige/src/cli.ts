@@ -273,7 +273,7 @@ function diff(io: CliIo, args: readonly string[]): number {
     options: { base: { type: 'string' }, json: { type: 'boolean' }, 'allow-intent': { type: 'boolean' }, config: { type: 'string' } },
   });
   if (positionals.length > 0) throw new UsageError('diff takes no positional arguments');
-  // Found, not loaded: diff reads the file and its local imports as text, so a broken config can't hide its own change.
+  // Not loaded here: diff loads it in a child process, so a config that fails to load blocks rather than hides its change.
   // Every default name, existing or not: a config deleted on this branch still exists at the merge base.
   const configFiles = values.config === undefined ? CONFIG_FILES.map((name) => path.join(io.cwd, name)) : [path.resolve(io.cwd, values.config)];
   if (values.config !== undefined && !(existsSync(configFiles[0]!) && statSync(configFiles[0]!).isFile())) throw new UsageError(`no CIGE config at ${values.config}; export defineCige({...}) from it`);
