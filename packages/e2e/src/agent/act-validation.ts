@@ -38,7 +38,7 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'onBeforeAction']);
 
 /**
  * The `act` type has no `schema` and no `vision`, and no key outside
@@ -70,6 +70,10 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
       'UNSUPPORTED_CAPABILITY',
       'agent.act takes no vision option: the model works from the tree and asks for a screenshot itself when the tree lacks what it needs; vision is a judgment option (assert, waitFor, extract)',
     );
+  }
+  const onBeforeAction: unknown = options.onBeforeAction;
+  if (onBeforeAction !== undefined && typeof onBeforeAction !== 'function') {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options.onBeforeAction must be a function');
   }
   const onAction: unknown = options.onAction;
   if (onAction !== undefined && typeof onAction !== 'function') {

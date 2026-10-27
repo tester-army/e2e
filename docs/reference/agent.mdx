@@ -72,6 +72,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
 | `agent` | `string` | the test's agent |
 | `onAction` | [`ActionHook`](#types) | none |
+| `onBeforeAction` | [`BeforeActionHook`](#types) | none |
 
 `params` values come from your code, never from the model. Wrap a value that
 differs on every run in [`unique()`](#unique). The model sees a `Secret` as
@@ -89,6 +90,19 @@ A check inside it never confirms the step's recording.
 ```ts
 await agent.act('open settings and turn on dark mode', {
   onAction: ({ index, action }) => app.screenshot(`${index} ${action}`),
+});
+```
+
+`onBeforeAction` runs before each action, replayed ones included, with the
+same `index` that action's `onAction` gets. Use it to capture the screen an
+action started on. The step waits for it, and it does not wait for the screen
+to settle first. If it throws, the step fails before the action runs, with a
+message that starts with `agent.act onBeforeAction failed`. An action can still
+fail after it, with no `onAction` call.
+
+```ts
+await agent.act('open settings and turn on dark mode', {
+  onBeforeAction: ({ index }) => app.screenshot(`before ${index}`),
 });
 ```
 
@@ -117,7 +131,7 @@ The runner's own stops, and the checks on the call itself:
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
 | `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take. |
 
 ### agent.assert
@@ -490,7 +504,16 @@ export interface ActOptions extends AgentOption {
    * Observe only: drive nothing from it. A throw fails the step.
    */
   onAction?: ActionHook;
+  /**
+   * Runs before each action, replayed ones included, and the step waits for
+   * it. Observe only: drive nothing from it. A throw fails the step before
+   * the action runs.
+   */
+  onBeforeAction?: BeforeActionHook;
 }
+
+/** The `onBeforeAction` hook of an `act` call. */
+export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void>;
 
 /** The `onAction` hook of an `act` call. */
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
@@ -564,6 +587,14 @@ export interface ActionEvent {
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
+}
+
+/** One action of an `act` step about to run, as `onBeforeAction` receives it. */
+export interface BeforeActionEvent {
+  /** The same `index` the action's `onAction` event carries. */
+  readonly index: number;
+  /** `model` when the executor chose the action, `replay` when the cache replays it. */
   readonly source: 'model' | 'replay';
 }
 

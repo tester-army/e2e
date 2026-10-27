@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -424,10 +424,135 @@ describe('e2e upgrade', () => {
     }
   });
 
-  it('points at init when the project holds a copy of the agent skill', async () => {
-    project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
-    mkdirSync(path.join(dir, '.agents', 'skills', 'e2e'), { recursive: true });
-    expect((await run()).exitCode).toBe(0);
-    expect(written(stdoutSpy)).toContain('The agent skill in .agents/skills/e2e is the old version\'s; refresh it with npm exec -- e2e init');
+  describe('the agent skill', () => {
+    /** Writes the installed e2e's skill, as the install would leave it. */
+    function installedSkill(files: Record<string, string>): void {
+      for (const [relative, content] of Object.entries(files)) {
+        const file = path.join(dir, 'node_modules', 'e2e', 'skills', 'e2e', relative);
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, content);
+      }
+    }
+
+    /** A directory link; a junction on Windows, which needs no privilege. */
+    function linkDir(target: string, at: string): void {
+      mkdirSync(path.dirname(at), { recursive: true });
+      symlinkSync(target, at, process.platform === 'win32' ? 'junction' : 'dir');
+    }
+
+    function skillFile(location: string, relative: string): string {
+      return readFileSync(path.join(dir, location, 'e2e', relative), 'utf8');
+    }
+
+    beforeEach(() => {
+      mkdirSync(path.join(dir, '.agents', 'skills', 'e2e', 'references'), { recursive: true });
+      writeFileSync(path.join(dir, '.agents', 'skills', 'e2e', 'SKILL.md'), 'old');
+      writeFileSync(path.join(dir, '.agents', 'skills', 'e2e', 'references', 'gone.md'), 'old topic');
+    });
+
+    it('updates each copy from the newly installed e2e, through the .claude link init writes', async () => {
+      project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
+      linkDir(path.join('..', '..', '.agents', 'skills', 'e2e'), path.join(dir, '.claude', 'skills', 'e2e'));
+      spawnMock.mockImplementation(() => {
+        installedSkill({ 'SKILL.md': 'new', 'references/running.md': 'new topic' });
+        return { status: 0, signal: null };
+      });
+      expect((await run()).exitCode).toBe(0);
+      expect(skillFile('.agents/skills', 'SKILL.md')).toBe('new');
+      expect(skillFile('.agents/skills', 'references/running.md')).toBe('new topic');
+      // A file the new skill does not ship stays, as with init.
+      expect(skillFile('.agents/skills', 'references/gone.md')).toBe('old topic');
+      expect(lstatSync(path.join(dir, '.claude', 'skills', 'e2e')).isSymbolicLink()).toBe(true);
+      const out = written(stdoutSpy);
+      expect(out).toContain('Updated the agent skill in .agents/skills/e2e/ (2 files)\n');
+      expect(out).not.toContain('.claude');
+    });
+
+    it('updates a stale copy when the packages are already up to date, and leaves a current one alone', async () => {
+      project({ devDependencies: { e2e: '^0.21.2' } }, { e2e: '0.21.2' });
+      installedSkill({ 'SKILL.md': 'new' });
+      expect(await run()).toMatchObject({ exitCode: 0, result: 'up-to-date' });
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(skillFile('.agents/skills', 'SKILL.md')).toBe('new');
+      expect(written(stdoutSpy)).toBe('Already up to date: e2e 0.21.2\nUpdated the agent skill in .agents/skills/e2e/ (1 file)\n');
+      stdoutSpy.mockClear();
+      expect((await run()).exitCode).toBe(0);
+      expect(written(stdoutSpy)).toBe('Already up to date: e2e 0.21.2\n');
+    });
+
+    it('names the copies it would update with --dry-run and writes nothing', async () => {
+      project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
+      installedSkill({ 'SKILL.md': 'new' });
+      expect((await run(undefined, { dryRun: true })).exitCode).toBe(0);
+      expect(skillFile('.agents/skills', 'SKILL.md')).toBe('old');
+      expect(written(stdoutSpy)).toContain('then the agent skill in .agents/skills/e2e from the new e2e\n');
+
+      // Already up to date, the installed skill is readable, so the dry run compares against it.
+      project({ devDependencies: { e2e: '^0.21.2' } }, { e2e: '0.21.2' });
+      stdoutSpy.mockClear();
+      expect(await run(undefined, { dryRun: true })).toMatchObject({ exitCode: 0, result: 'up-to-date' });
+      expect(skillFile('.agents/skills', 'SKILL.md')).toBe('old');
+      expect(written(stdoutSpy)).toBe('Already up to date: e2e 0.21.2\nWould update the agent skill in .agents/skills/e2e/\n');
+    });
+
+    it('leaves a copy alone when a directory stands where a new file goes', async () => {
+      project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
+      mkdirSync(path.join(dir, '.agents', 'skills', 'e2e', 'references', 'running.md'), { recursive: true });
+      spawnMock.mockImplementation(() => {
+        installedSkill({ 'SKILL.md': 'new', 'references/running.md': 'new topic' });
+        return { status: 0, signal: null };
+      });
+      expect(await run()).toMatchObject({ exitCode: 0, result: 'upgraded' });
+      expect(skillFile('.agents/skills', 'SKILL.md')).toBe('old');
+      expect(written(stdoutSpy)).toContain('Broken, not touching: .agents/skills/e2e/ (references/running.md is a directory)');
+    });
+
+    // Root writes through a read-only mode.
+    it.skipIf(process.getuid?.() === 0)('keeps the upgrade when a copy cannot be written, and names init', async () => {
+      project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
+      const skill = path.join(dir, '.agents', 'skills', 'e2e', 'SKILL.md');
+      chmodSync(skill, 0o444);
+      spawnMock.mockImplementation(() => {
+        installedSkill({ 'SKILL.md': 'new' });
+        return { status: 0, signal: null };
+      });
+      try {
+        expect(await run()).toMatchObject({ exitCode: 0, result: 'upgraded' });
+      } finally {
+        chmodSync(skill, 0o644);
+      }
+      expect(sections()['devDependencies']).toEqual({ e2e: '^0.21.2' });
+      expect(written(stdoutSpy)).toMatch(/Could not update the agent skill in \.agents\/skills\/e2e\/ \(.+\); refresh it with npm exec -- e2e init\n/u);
+    });
+
+    it('never writes through a symlink that leads out of the project', async () => {
+      project({ devDependencies: { e2e: '^0.21.2' } }, { e2e: '0.21.2' });
+      installedSkill({ 'SKILL.md': 'new' });
+      const shared = mkdtempSync(path.join(os.tmpdir(), 'e2e-upgrade-shared-'));
+      try {
+        writeFileSync(path.join(shared, 'SKILL.md'), 'shared');
+        linkDir(shared, path.join(dir, '.claude', 'skills', 'e2e'));
+        expect((await run()).exitCode).toBe(0);
+        expect(readFileSync(path.join(shared, 'SKILL.md'), 'utf8')).toBe('shared');
+        expect(skillFile('.agents/skills', 'SKILL.md')).toBe('new');
+        expect(written(stdoutSpy)).toContain('Symlink, not touching: .claude/skills/e2e -> ');
+        expect(written(stdoutSpy)).toContain('the copy it leads to is updated where it lives');
+
+        // A dry run for a version change names only the copy a write would reach.
+        project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
+        stdoutSpy.mockClear();
+        expect((await run(undefined, { dryRun: true })).exitCode).toBe(0);
+        expect(written(stdoutSpy)).toContain('then the agent skill in .agents/skills/e2e from the new e2e\n');
+      } finally {
+        rmSync(shared, { recursive: true, force: true });
+      }
+    });
+
+    it('points at init when no installed e2e can be read, as under Plug\'n\'Play', async () => {
+      project({ devDependencies: { e2e: '^0.20.0' } }, { e2e: '0.20.0' });
+      expect((await run()).exitCode).toBe(0);
+      expect(skillFile('.agents/skills', 'SKILL.md')).toBe('old');
+      expect(written(stdoutSpy)).toContain('The agent skill in .agents/skills/e2e may be the old version\'s; refresh it with npm exec -- e2e init');
+    });
   });
 });
