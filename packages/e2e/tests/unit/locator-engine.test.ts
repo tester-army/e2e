@@ -51,9 +51,10 @@ function foreignStale(retryable: boolean): Error {
   return error;
 }
 
-function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = {}) {
+function makeEngine(script: ScreenScript, options: { actionTimeout?: number; budget?: AttemptBudget } = {}) {
   const calls = { resolve: 0, read: 0, perform: 0 };
   const origins: (string | undefined)[] = [];
+  const performed: unknown[] = [];
   const resolveTimeouts: number[] = [];
   const next = <T>(steps: T[] | undefined, kind: keyof typeof calls): T | undefined => {
     const step = steps?.[calls[kind]];
@@ -79,8 +80,9 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
         if (step === 'stale-retryable') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
         throw new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false });
       },
-      async perform(_ref: unknown, _action: unknown, operation: { origin?: string }) {
+      async perform(_ref: unknown, action: unknown, operation: { origin?: string }) {
         origins.push(operation.origin);
+        performed.push(action);
         const step = next(script.perform, 'perform');
         if (step === undefined || typeof step === 'function') return step?.();
         if (step === 'stale') throw new EngineError('NODE_STALE', 'stale', { retryable: true });
@@ -95,13 +97,13 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number } = 
   } as unknown as TargetSession;
   const engine = new LocatorEngine({
     session,
-    budget: new AttemptBudget(new AbortController().signal, new Deadline(30_000)),
+    budget: options.budget ?? new AttemptBudget(new AbortController().signal, new Deadline(30_000)),
     runId: 'run-1',
     attemptId: 'attempt-1',
     actionTimeout: options.actionTimeout ?? 1_000,
     assertionTimeout: 1_000,
   });
-  return { engine, calls, origins, resolveTimeouts };
+  return { engine, calls, origins, resolveTimeouts, performed };
 }
 
 describe('LocatorEngine read retry contract', () => {
@@ -271,6 +273,47 @@ describe('LocatorEngine perform contract', () => {
       code: 'ACTION_FAILED',
     });
     expect(calls.perform).toBe(1);
+  });
+});
+
+describe('LocatorEngine secret fill', () => {
+  it('clears the node the value lands on before every attempt, and hands the value over as sensitive', async () => {
+    const field: SemanticNode = { ref: REF, role: 'textbox', name: 'Password', inputPurpose: 'password' };
+    const { engine, calls, performed } = makeEngine({ read: [() => field, () => field], perform: ['stale', () => undefined] });
+    const cleared: SemanticNode[] = [];
+    await engine.fillSecret(EXPRESSION, async (node) => {
+      cleared.push(node);
+      return 'plaintext';
+    });
+    expect(cleared).toEqual([field, field]);
+    expect(calls).toMatchObject({ resolve: 2, perform: 2 });
+    expect(performed.at(-1)).toEqual({ kind: 'fill', value: 'plaintext', sensitive: true });
+  });
+
+  it('performs nothing when the clearance refuses the node', async () => {
+    const { engine, calls } = makeEngine({});
+    const refusal = new E2EError('test', 'POLICY_DENIED', 'not a password field');
+    await expect(engine.fillSecret(EXPRESSION, async () => Promise.reject(refusal))).rejects.toBe(refusal);
+    expect(calls.perform).toBe(0);
+  });
+});
+
+describe('AttemptBudget.capped', () => {
+  it("caps every wait inside it, ends a missing node's wait at the cap, and gives the phase its deadline back", async () => {
+    const budget = new AttemptBudget(new AbortController().signal, new Deadline(30_000));
+    const { engine } = makeEngine({ resolve: Array.from({ length: 100 }, () => () => [] as readonly NodeRef[]) }, { actionTimeout: 10_000, budget });
+    const started = Date.now();
+    await expect(budget.capped(300, () => engine.read(EXPRESSION))).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(300);
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(budget.deadline.remaining()).toBeGreaterThan(20_000);
+  });
+
+  it('never extends the phase deadline', async () => {
+    const budget = new AttemptBudget(new AbortController().signal, new Deadline(100));
+    await budget.capped(5_000, async () => {
+      expect(budget.deadline.remaining()).toBeLessThanOrEqual(100);
+    });
   });
 });
 

@@ -1,0 +1,549 @@
+{
+  "$schema": "./examples.schema.json",
+  "tags": {
+    "framework": [
+      {
+        "id": "vite",
+        "label": "Vite"
+      },
+      {
+        "id": "react",
+        "label": "React"
+      },
+      {
+        "id": "nextjs",
+        "label": "Next.js"
+      },
+      {
+        "id": "astro",
+        "label": "Astro"
+      },
+      {
+        "id": "angular",
+        "label": "Angular"
+      },
+      {
+        "id": "expo",
+        "label": "Expo"
+      },
+      {
+        "id": "react-native",
+        "label": "React Native"
+      },
+      {
+        "id": "swiftui",
+        "label": "SwiftUI"
+      },
+      {
+        "id": "jetpack-compose",
+        "label": "Jetpack Compose"
+      },
+      {
+        "id": "kotlin-multiplatform",
+        "label": "Kotlin Multiplatform"
+      },
+      {
+        "id": "flutter",
+        "label": "Flutter"
+      },
+      {
+        "id": "dotnet-maui",
+        "label": ".NET MAUI"
+      }
+    ],
+    "useCase": [
+      {
+        "id": "starter",
+        "label": "Starter app"
+      },
+      {
+        "id": "ai-chat",
+        "label": "AI chat"
+      },
+      {
+        "id": "payments",
+        "label": "Payments"
+      },
+      {
+        "id": "in-app-purchases",
+        "label": "In-app purchases"
+      },
+      {
+        "id": "authentication",
+        "label": "Authentication"
+      },
+      {
+        "id": "iframes",
+        "label": "Iframes"
+      }
+    ],
+    "platform": [
+      {
+        "id": "web",
+        "label": "Web"
+      },
+      {
+        "id": "ios",
+        "label": "iOS"
+      },
+      {
+        "id": "android",
+        "label": "Android"
+      }
+    ]
+  },
+  "examples": [
+    {
+      "slug": "with-vite",
+      "title": "e2e with Vite",
+      "shortTitle": "Vite",
+      "description": "React with Vite, tested in Chromium.",
+      "icon": "vite.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-vite",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "vite",
+          "react"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "with-next",
+      "title": "e2e with Next.js",
+      "shortTitle": "Next.js",
+      "description": "Next.js App Router, started by the runner and tested in Chromium.",
+      "icon": "nextjs.svg",
+      "invertIcon": true,
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-next",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "with-astro",
+      "title": "e2e with Astro",
+      "shortTitle": "Astro",
+      "description": "An Astro page with no UI framework, started by the runner and tested in Chromium.",
+      "icon": "astro.svg",
+      "invertIcon": true,
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-astro",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "astro"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "with-angular",
+      "title": "e2e with Angular",
+      "shortTitle": "Angular",
+      "description": "A standalone Angular component, started by the runner and tested in Chromium.",
+      "icon": "angular.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-angular",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "angular"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "with-expo",
+      "title": "e2e with Expo",
+      "shortTitle": "Expo",
+      "description": "React Native with Expo, tested on web, iOS, and Android.",
+      "icon": "expo.svg",
+      "invertIcon": true,
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-expo",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "web",
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "with-swiftui",
+      "title": "e2e with SwiftUI",
+      "shortTitle": "SwiftUI",
+      "description": "A native iOS app, tested on an iPhone simulator.",
+      "icon": "swiftui.png",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-swiftui",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "swiftui"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "ios"
+        ]
+      }
+    },
+    {
+      "slug": "with-compose",
+      "title": "e2e with Jetpack Compose",
+      "shortTitle": "Jetpack Compose",
+      "description": "A native Android app, tested on an emulator.",
+      "icon": "jetpack-compose.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-compose",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "jetpack-compose"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "with-kotlin-multiplatform",
+      "title": "e2e with Kotlin Multiplatform",
+      "shortTitle": "Kotlin Multiplatform",
+      "description": "One Compose Multiplatform screen, tested on Android and iOS.",
+      "icon": "kotlin.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "kotlin-multiplatform"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "with-flutter",
+      "title": "e2e with Flutter",
+      "shortTitle": "Flutter",
+      "description": "A Flutter app, tested on Android and iOS.",
+      "icon": "flutter.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-flutter",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "flutter"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "with-maui",
+      "title": "e2e with .NET MAUI",
+      "shortTitle": ".NET MAUI",
+      "description": "A .NET MAUI app, tested on Android and iOS.",
+      "icon": "dotnet.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e/tree/main/examples/with-maui",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "Apache-2.0",
+      "tags": {
+        "framework": [
+          "dotnet-maui"
+        ],
+        "useCase": [
+          "starter"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "ai-chat",
+      "title": "Testing an AI chat with e2e",
+      "shortTitle": "AI chat",
+      "description": "A support chat answering with a real model through the AI SDK and AI Gateway, checked by what each reply means.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-ai-chat",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-ai-chat/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "ai-chat"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "stripe",
+      "title": "Testing Stripe payments with e2e",
+      "shortTitle": "Stripe",
+      "description": "Stripe hosted checkout in a sandbox, with paid, declined, and 3D Secure cards.",
+      "icon": "stripe.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-stripe",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-stripe/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "payments"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "paypal",
+      "title": "Testing PayPal payments with e2e",
+      "shortTitle": "PayPal",
+      "description": "PayPal redirect checkout in the sandbox, paid with a sandbox buyer or a card.",
+      "icon": "paypal.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-paypal",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-paypal/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "payments"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "paddle",
+      "title": "Testing Paddle payments with e2e",
+      "shortTitle": "Paddle",
+      "description": "Paddle overlay checkout in a sandbox, with successful, declined, and 3D Secure cards.",
+      "icon": "paddle.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-paddle",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-paddle/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "payments",
+          "iframes"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "revenuecat",
+      "title": "Testing RevenueCat in-app purchases with e2e",
+      "shortTitle": "RevenueCat",
+      "description": "Real purchases through the RevenueCat paywall and Test Store in an Expo app, on iOS and Android.",
+      "icon": "revenuecat.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-revenuecat",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-revenuecat/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "in-app-purchases",
+          "payments"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "clerk",
+      "title": "Testing Clerk sign-in with e2e",
+      "shortTitle": "Clerk",
+      "description": "Sign-in on Clerk hosted pages with a password, an email code, and Google, plus sign-up and sign-out.",
+      "icon": "clerk.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-clerk",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-clerk/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "iframes",
+      "title": "Testing iframes with e2e",
+      "shortTitle": "Iframes",
+      "description": "A card checkout built from nested cross-origin iframes, like a hosted payment form.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-iframes",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-iframes/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "iframes",
+          "payments"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    }
+  ]
+}
