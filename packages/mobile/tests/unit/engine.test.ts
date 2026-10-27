@@ -2377,7 +2377,7 @@ describe('input freshness', () => {
   beforeEach(autoAdvanceTimers);
 
   /** A uniquely identified field and its neighbor, after a slow accessibility capture. */
-  function form(y = 237, changes: Partial<RawNode> = {}, duplicates = false) {
+  function form(y = 237, changes: Partial<RawNode> = {}) {
     const field: RawNode = {
       ref: '@e20', index: 1, parentIndex: 0, depth: 1, type: 'secure-text-field',
       label: 'Account', identifier: 'account', rect: { x: 40, y, width: 322, height: 49 }, ...changes,
@@ -2387,27 +2387,39 @@ describe('input freshness', () => {
       nodes: [
         SETTINGS_NODES[0]!, field,
         { ref: '@e21', index: 2, parentIndex: 0, depth: 1, type: 'text-field', label: 'Username', identifier: 'username', rect: { x: 40, y: 218, width: 322, height: 49 } },
-        ...(duplicates ? [{ ...field, ref: '@e22', index: 3 }] : []),
       ],
     };
   }
 
   for (const origin of ['test', 'agent'] as const) {
     for (const kind of ['fill', 'clear'] as const) {
-      it(`rejects moved geometry before ${origin} ${kind}, even when capture consumed the transition budget`, async () => {
+      it(`uses one fresh binding after a slow capture for ${origin} ${kind}`, async () => {
         const h = harness();
         await openAttempt(h);
         h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
         const old = await observed(h, 'Account');
-        h.fake.respond('capture.snapshot', () => form(126));
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        h.fake.respond('capture.snapshot', () => form(126, { ref: '@e42' }));
         const action = kind === 'fill' ? { kind, value: 'example', sensitive: true } : { kind };
-        await expect(h.engine.perform!(old.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
-        expect(h.fake.methods()).not.toContain('interactions.fill');
-        // The runner's stale retry re-observes before retrying the mutation.
-        const fresh = await observed(h, 'Account');
-        await h.engine.perform!(fresh.ref, action, { ...operation(), origin });
-        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e20', text: kind === 'fill' ? 'example' : '' });
+        await h.engine.perform!(old.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
         expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+      });
+
+      it(`acts on a sliding input with one capture for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => form(2000));
+        const sliding = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        h.fake.respond('capture.snapshot', () => form(126, { ref: '@e42' }));
+        const startedAt = Date.now();
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await h.engine.perform!(sliding.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+        if (origin === 'test') expect(Date.now() - startedAt).toBeGreaterThanOrEqual(500);
       });
 
       it(`rejects an originally non-input target before waiting or capturing for ${origin} ${kind}`, async () => {
@@ -2426,21 +2438,29 @@ describe('input freshness', () => {
     }
   }
 
+  it('refreshes an unchanged input even when the transition shortcut skips the wait', async () => {
+    const h = harness();
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
+    const search = await observed(h, 'Search');
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => node.label === 'Search' ? { ...node, ref: '@e42' } : node) }));
+    const startedAt = Date.now();
+    await h.engine.perform!(search.ref, { kind: 'clear' }, { ...operation(), origin: 'test' });
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e42', text: '' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+  });
+
   it.each([
     ['missing', () => ({ ...form(), nodes: [SETTINGS_NODES[0]!] })],
-    ['ambiguous', () => form(237, {}, true)],
     ['renamed', () => form(237, { label: 'Other account' })],
     ['different identifier', () => form(237, { identifier: 'other' })],
-    ['different placeholder', () => form(237, { placeholder: 'Other account' })],
     ['truncated', () => ({ ...form(), truncated: true })],
     ['non-editable', () => form(237, { type: 'button' })],
     ['no longer secure', () => form(237, { type: 'text-field' })],
     ['disabled', () => form(237, { enabled: false })],
     ['hidden', () => form(237, { visibleToUser: false })],
-    ['unmeasurable', () => {
-      const result = form();
-      return { ...result, nodes: result.nodes.map(({ rect: _rect, ...node }) => node) };
-    }],
   ] as const)('rejects a %s target without dispatching or exposing the value', async (_name, snapshot) => {
     const h = harness({ transition: 0 });
     await openAttempt(h);
@@ -2453,30 +2473,39 @@ describe('input freshness', () => {
     expect(h.fake.methods()).not.toContain('interactions.fill');
   });
 
-  it('rejects an originally ambiguous identity even if only one duplicate remains', async () => {
-    const h = harness({ transition: 0 });
-    await openAttempt(h);
-    h.fake.respond('capture.snapshot', () => form(237, {}, true));
-    const old = await observed(h, 'Account');
-    h.fake.respond('capture.snapshot', () => form());
-    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
-    expect(h.fake.methods()).not.toContain('interactions.fill');
-    const fresh = await observed(h, 'Account');
-    await h.engine.perform!(fresh.ref, { kind: 'clear' }, operation());
-    expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
-  });
+  for (const kind of ['fill', 'clear'] as const) {
+    it.each([0, 1])(`can ${kind} identical OTP input %i with the existing nearest-node matching`, async (selected) => {
+      const h = harness();
+      await openAttempt(h);
+      const digits = (refs: readonly string[], shift: number) => ({
+        ...SETTINGS_SNAPSHOT,
+        nodes: [
+          SETTINGS_NODES[0]!,
+          ...refs.map((ref, index) => ({ ref, index: index + 1, parentIndex: 0, depth: 1, type: 'text-field', label: 'Digit', rect: { x: 40, y: 100 + index * 100 + shift, width: 49, height: 49 } })),
+        ],
+      });
+      h.fake.respond('capture.snapshot', () => digits(['@e20', '@e21'], 0));
+      const snapshot = await h.engine.observe!(operation());
+      const target = [...walk(snapshot.root)].filter((node) => node.name === 'Digit')[selected]!;
+      h.fake.respond('capture.snapshot', () => digits(['@e41', '@e42'], 10));
+      const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+      const action = kind === 'fill' ? { kind, value: '7', sensitive: false } : { kind };
+      await h.engine.perform!(target.ref, action, { ...operation(), origin: 'test' });
+      expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: selected === 0 ? '@e41' : '@e42' });
+      expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+    });
+  }
 
-  it.each(['ambiguous', 'truncated'] as const)('recovers from a transient %s preflight after re-observation', async (state) => {
+  it('recovers from a truncated capture after re-observation', async () => {
     const h = harness({ transition: 0 });
     await openAttempt(h);
     h.fake.respond('capture.snapshot', () => form());
     const old = await observed(h, 'Account');
-    h.fake.respond('capture.snapshot', () => state === 'ambiguous' ? form(237, {}, true) : { ...form(), truncated: true });
+    h.fake.respond('capture.snapshot', () => ({ ...form(), truncated: true }));
     await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
     expect(h.fake.methods()).not.toContain('interactions.fill');
     h.fake.respond('capture.snapshot', () => form());
-    const fresh = await observed(h, 'Account');
-    await h.engine.perform!(fresh.ref, { kind: 'clear' }, operation());
+    await h.engine.perform!((await observed(h, 'Account')).ref, { kind: 'clear' }, operation());
     expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
   });
 
@@ -2492,14 +2521,16 @@ describe('input freshness', () => {
     expect(h.fake.lastArgs('capture.snapshot')).toEqual({ interactiveOnly: false });
   });
 
-  it('does not silently accept changed security facts from the transition relocation', async () => {
+  it('does not silently accept changed security facts during a transition', async () => {
     const h = harness();
     await openAttempt(h);
     h.fake.respond('capture.snapshot', () => form());
     const old = await observed(h, 'Account');
-    h.fake.respond('capture.snapshot', () => form(237, { enabled: false }));
+    h.fake.respond('capture.snapshot', () => form(126, { enabled: false }));
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
     await expect(h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, { ...operation(), origin: 'test' })).rejects.toMatchObject({ code: 'NODE_STALE' });
     expect(h.fake.methods()).not.toContain('interactions.fill');
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
   });
 
   it('does not send input if the preflight consumed the input budget', async () => {

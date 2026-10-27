@@ -379,11 +379,9 @@ export default {
 - Only a control that appeared or moved with the previous action waits out
   `transition` (default 500 ms); agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
-- Mobile `fill` and `clear` always preflight a fresh accessibility tree,
-  replay included. A missing, ambiguous, moved, or security-changed input
-  returns `NODE_STALE` before mutation; retry re-observes and secret fills
-  rerun authorization. Give otherwise identical fields distinct test ids.
-  This is not atomic coordinate dispatch or proof of rendered stability.
+- Mobile `fill` and `clear` re-read the field before typing, replay included;
+  missing fields, changed security state, or incomplete captures trigger a
+  fresh-observation retry.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`

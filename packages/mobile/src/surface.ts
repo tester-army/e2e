@@ -52,6 +52,7 @@ import {
   normalizeKind,
   projectSnapshot,
   ROOT_ID,
+  TEXT_INPUT_ROLES,
   screenRoot,
   screenTitle,
   type ProjectedNode,
@@ -196,7 +197,6 @@ interface NodeBinding {
   readonly ref: string;
   readonly node: SemanticNode;
   readonly controlRef: string;
-  readonly uniqueInput: boolean;
 }
 
 
@@ -234,17 +234,6 @@ function centreOf(rect: Rect): { x: number; y: number } {
 function sameRect(a: Rect | undefined, b: Rect | undefined): boolean {
   if (a === undefined || b === undefined) return false;
   return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1;
-}
-
-/** Roles the mobile tree projects as editable inputs. */
-function isInputRole(role: SemanticNode['role']): boolean {
-  return role === 'textbox' || role === 'searchbox' || role === 'combobox';
-}
-
-/** The semantic identity a fill must retain across its preflight capture. */
-function sameInputIdentity(a: SemanticNode, b: SemanticNode): boolean {
-  return a.role === b.role && a.testId === b.testId && a.name === b.name && a.text === b.text &&
-    a.attributes?.placeholder === b.attributes?.placeholder;
 }
 
 const MAX_LOCATED_REFS = 2048;
@@ -1148,9 +1137,7 @@ export class AgentDeviceSurface {
   private bind(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): NodeBinding {
     const { children: _children, ...node } = entry.node;
     const control = this.controlOf(entry, snapshot);
-    const uniqueInput = isInputRole(node.role) &&
-      snapshot.filter((candidate) => sameInputIdentity(node, candidate.node)).length === 1;
-    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref, uniqueInput };
+    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref };
   }
 
   /**
@@ -1192,16 +1179,17 @@ export class AgentDeviceSurface {
    * landed one; the fresh snapshot is where the control landed. Android
    * reports a window's frames while it slides in, so a ref resolved
    * mid-flight would send the action where the control was: below the
-   * screen, for a modal rising from the bottom.
+   * screen, for a modal rising from the bottom. Input mutations also refresh
+   * when no transition wait was needed, using this one capture for dispatch.
    */
-  private async settled(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+  private async settled(entry: NodeBinding, operation: OperationContext, refreshInput = false): Promise<NodeBinding> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
-    if (remaining <= 0) return entry;
+    if (remaining <= 0) return refreshInput ? this.relocated(entry, operation, true) : entry;
     const before = this.indexBeforeAction;
     if (before !== undefined) {
       const prior = this.refind(entry, before);
-      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return entry;
+      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return refreshInput ? this.relocated(entry, operation, true) : entry;
     }
     await sleep(remaining, operation.signal);
     // The sleep resolves on abort; the action behind it must not go out once
@@ -1209,36 +1197,22 @@ export class AgentDeviceSurface {
     if (operation.signal.aborted) {
       throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
     }
-    return this.relocated(entry, operation);
+    return this.relocated(entry, operation, refreshInput);
   }
 
-  /** The same control in a fresh snapshot; the binding as it was when the snapshot no longer lists it. */
-  private async relocated(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
-    const projected = this.project(await this.snapshotOrEmpty(operation, false));
-    const found = this.refind(entry, projected.index);
-    return found === undefined ? entry : this.bind(found, projected.index);
-  }
-
-  /**
-   * Revalidates an input immediately before mutation. A changed binding must
-   * go through the harness's stale retry so secret authorization runs against
-   * the new observation, rather than silently following a moved or changed
-   * field. This narrows snapshot age, not the backend's check/use gap.
-   */
-  private async freshInput(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+  /** The same control in a fresh snapshot; input mutations refuse a missing target or changed security facts. */
+  private async relocated(entry: NodeBinding, operation: OperationContext, input = false): Promise<NodeBinding> {
     const raw = await this.snapshotOrEmpty(operation, false);
     const projected = this.project(raw);
-    const matches = projected.index.filter((candidate) => sameInputIdentity(entry.node, candidate.node));
-    const found = matches.length === 1 ? matches[0] : undefined;
-    if (!entry.uniqueInput || isTruncated(raw) || found === undefined ||
-      !sameRect(entry.node.rect, found.node.rect) ||
+    const found = this.refind(entry, projected.index);
+    if (input && (isTruncated(raw) || found === undefined ||
       entry.node.inputPurpose !== found.node.inputPurpose ||
       entry.node.states?.disabled !== found.node.states?.disabled ||
       entry.node.states?.secure !== found.node.states?.secure ||
-      entry.node.states?.hidden !== found.node.states?.hidden) {
+      entry.node.states?.hidden !== found.node.states?.hidden)) {
       throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
     }
-    return this.bind(found, projected.index);
+    return found === undefined ? entry : this.bind(found, projected.index);
   }
 
   /**
@@ -1274,7 +1248,8 @@ export class AgentDeviceSurface {
       return;
     }
     const entry = this.resolveRef(ref);
-    if ((action.kind === 'fill' || action.kind === 'clear') && !isInputRole(entry.node.role)) {
+    const filling = action.kind === 'fill' || action.kind === 'clear';
+    if (filling && (entry.node.role === undefined || !TEXT_INPUT_ROLES.has(entry.node.role))) {
       throw unsupported(`agent-device can only ${action.kind} editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
     }
     const label = `perform ${action.kind}`;
@@ -1286,11 +1261,9 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
-      let target = deterministic ? await this.settled(entry, operation) : entry;
-      if (action.kind === 'fill' || action.kind === 'clear') {
-        // Settling can change security facts; compare with the node the caller authorized.
-        target = await this.freshInput(entry, operation);
-      }
+      const target = deterministic
+        ? await this.settled(entry, operation, filling)
+        : filling ? await this.relocated(entry, operation, true) : entry;
       switch (action.kind) {
         case 'tap':
           return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));

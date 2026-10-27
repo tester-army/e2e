@@ -237,19 +237,9 @@ mobile({ platform: 'ios', transition: 800 }); // default: 500
 budget the way a tap does. A control that arrives with the screen they reveal
 waits out the budget before the next action lands on it.
 
-`fill` and `clear` reject an initially non-input role with
-`UNSUPPORTED_CAPABILITY`, without waiting or taking another snapshot.
-For inputs they take a fresh accessibility snapshot before mutation,
-including agent actions and cached replay, even after this budget expires.
-The input must have one matching role, test id, name, text, and placeholder
-in both snapshots. Any change to bounds, disabled state, hidden state, secure
-state, or password purpose returns `NODE_STALE` before input is sent. Missing inputs, duplicate
-identities, missing bounds, and incomplete fresh trees also return `NODE_STALE`.
-The harness re-observes before retrying; an agent secret fill reruns authorization.
-Use distinct test ids when fields otherwise share an identity.
-
-This checks accessibility evidence, not rendered stability. A coordinate-only
-backend can still race movement after the check or receive stale platform bounds.
+`fill` and `clear` re-read the field before typing; missing fields, changed
+security state, or incomplete captures trigger a fresh-observation retry.
+A coordinate-only backend can still race movement after this read.
 
 #### `videoTouches`
 

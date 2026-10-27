@@ -94,7 +94,8 @@ const ROLE_MAP: Readonly<Record<string, string>> = {
 };
 
 const SECURE_KINDS = new Set(['secure-text-field', 'securetextfield', 'password-field']);
-const TEXT_INPUT_ROLES = new Set(['textbox', 'searchbox', 'combobox']);
+/** Semantic roles that accept text input. */
+export const TEXT_INPUT_ROLES: ReadonlySet<string> = new Set(['textbox', 'searchbox', 'combobox']);
 const CHECKABLE_ROLES = new Set(['switch', 'checkbox']);
 const CHECKED_VALUES = new Set(['1', 'on', 'true', 'checked', 'selected']);
 const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
