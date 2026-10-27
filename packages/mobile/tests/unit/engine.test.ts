@@ -2461,6 +2461,23 @@ describe('input freshness', () => {
     h.fake.respond('capture.snapshot', () => form());
     await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
     expect(h.fake.methods()).not.toContain('interactions.fill');
+    const fresh = await observed(h, 'Account');
+    await h.engine.perform!(fresh.ref, { kind: 'clear' }, operation());
+    expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+  });
+
+  it.each(['ambiguous', 'truncated'] as const)('recovers from a transient %s preflight after re-observation', async (state) => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => state === 'ambiguous' ? form(237, {}, true) : { ...form(), truncated: true });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+    h.fake.respond('capture.snapshot', () => form());
+    const fresh = await observed(h, 'Account');
+    await h.engine.perform!(fresh.ref, { kind: 'clear' }, operation());
+    expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
   });
 
   it('uses the newest backend ref for an unchanged uniquely identified input without taking pixels', async () => {

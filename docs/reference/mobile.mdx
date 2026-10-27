@@ -242,8 +242,8 @@ waits out the budget before the next action lands on it.
 For inputs they take a fresh accessibility snapshot before mutation,
 including agent actions and cached replay, even after this budget expires.
 The input must have one matching role, test id, name, text, and placeholder
-in both snapshots. Changed bounds or disabled, hidden, secure, or password-purpose
-facts return `NODE_STALE` before input is sent. Missing inputs, duplicate
+in both snapshots. Any change to bounds, disabled state, hidden state, secure
+state, or password purpose returns `NODE_STALE` before input is sent. Missing inputs, duplicate
 identities, missing bounds, and incomplete fresh trees also return `NODE_STALE`.
 The harness re-observes before retrying; an agent secret fill reruns authorization.
 Use distinct test ids when fields otherwise share an identity.
