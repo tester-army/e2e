@@ -362,8 +362,9 @@ describe('diffSince', () => {
   it('follows a lazy import that comment-looking strings surround', () => {
     const dir = repo({
       'package.json': JSON.stringify({ type: 'module', imports: { '#hooks/*': './hooks/*.ts' } }),
-      // The review's case: `/*` in one string and `*/` in a later one are not a comment.
-      'cige.config.ts': "const pattern = 'orders/*';\nexport default { hooks: { check: async () => (await import('#hooks/check')).ok() }, note: '*/' };\n",
+      // The review's case: `/*` in one string and `*/` in a later one are not a comment. Typed, so the parser reads it as Node strips it.
+      'cige.config.ts':
+        "const pattern: string = 'orders/*';\ntype Hook = () => Promise<boolean>;\nconst check: Hook = async () => (await import('#hooks/check')).ok();\nexport default { hooks: { check }, note: '*/' as string };\n",
       'hooks/check.ts': 'export const ok = () => false;\n',
       'checkout.cige.json': BASE,
     });
