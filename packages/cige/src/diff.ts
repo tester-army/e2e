@@ -407,8 +407,10 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
     const atBase = treeAt(mergeBase, top);
     const config = candidates.find((file) => isFile(path.join(root, file)));
     const graph = configGraph(config === undefined ? undefined : path.join(root, config), root, mergeBase, candidates);
-    if (config !== undefined && graph.unverified.length > 0) {
-      files.push({ file: config, changes: [change('config-unverified', `${config}: ${graph.unverified.join('; ')}; a human must review every change outside the case files`)] });
+    // With no config in the working tree, only a failed child reports here, and the first candidate names it: its graph is unknown, so it can't pass.
+    const anchor = config ?? candidates[0];
+    if (anchor !== undefined && graph.unverified.length > 0) {
+      files.push({ file: anchor, changes: [change('config-unverified', `${anchor}: ${graph.unverified.join('; ')}; a human must review every change outside the case files`)] });
     }
     const modules = [...new Set([...graph.files, ...graph.base])];
     if (modules.length > 0) {

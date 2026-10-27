@@ -8,8 +8,9 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
+/** Runs git and returns its stdout. Listings of a large repository run past `execFileSync`'s 1 MiB default, hence the buffer. */
 export function git(args: readonly string[], cwd: string): string {
-  return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 1024 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 /** NUL-separated fields of `git ... -z` output: paths arrive unquoted, whatever characters they hold. */

@@ -11,8 +11,10 @@
  *    reach, such as a hook's lazy `await import('#hooks/x')`. Node's
  *    resolver resolves each one (`import.meta.resolve` with a parent,
  *    behind `--experimental-import-meta-resolve`) without running it, and
- *    the walk goes on from there. A file whose imports can't all be read,
- *    such as a computed `import(name)`, is reported and the gate blocks.
+ *    the walk goes on from there; a `require` resolves as CommonJS does. A
+ *    file whose imports can't all be read, such as a computed
+ *    `import(name)`, or that names a repository path (relative or `#`) that
+ *    no longer resolves, is reported and the gate blocks.
  * 3. A loaded file git doesn't list, such as a workspace package built to
  *    an ignored `dist`, isn't parsed: its package's sources stand for it,
  *    and every listed file under that package's package.json counts. One with no package of its own
@@ -32,8 +34,8 @@
  * erasable TypeScript.
  */
 
-import { lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { registerHooks } from 'node:module';
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createRequire, registerHooks } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { z } from 'zod';
@@ -81,7 +83,8 @@ function configModules(candidates: readonly string[], entry: TreeSide): string[]
       if (found.target !== undefined) visit(found.target);
       return;
     }
-    for (const specifier of importsOf(found.text, file).specifiers) {
+    const imports = importsOf(found.text, file);
+    for (const specifier of [...imports.specifiers, ...imports.requires]) {
       if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue;
       const target = path.posix.join(path.posix.dirname(file), specifier);
       if (outside(target)) continue;
@@ -105,6 +108,31 @@ function inRepo(url: string): string | undefined {
   }
   const relative = path.relative(root, file).split(path.sep).join('/');
   return relative === '' || outside(relative) || path.isAbsolute(relative) ? undefined : relative;
+}
+
+/** A specifier that names a path in this repository, directly or through package.json `imports`. */
+const LOCAL = /^(?:\.{1,2}\/|\/|#)/;
+
+/** Where an `import` of `specifier` from `file` lands, by ESM resolution; undefined when nothing is there. */
+function resolveImport(specifier: string, file: string): string | undefined {
+  try {
+    const url = import.meta.resolve(specifier, pathToFileURL(file).href);
+    // The resolver doesn't check that a relative file exists; loading would.
+    return url.startsWith('file:') && !existsSync(fileURLToPath(url)) ? undefined : url;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Where a `require` of `specifier` from `file` lands, by CommonJS resolution and its extension search; undefined when nothing is there. */
+function resolveRequire(specifier: string, file: string): string | undefined {
+  try {
+    const resolved = createRequire(file).resolve(specifier);
+    // A builtin resolves to its own name.
+    return path.isAbsolute(resolved) ? pathToFileURL(resolved).href : resolved;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Installed packages are reviewed as dependencies, not as the case. */
@@ -163,13 +191,14 @@ if (input.config !== null && unverified.length === 0) {
     if (!SOURCE.test(file)) continue;
     const imports = importsOf(readFileSync(path.join(root, file), 'utf8'), file);
     if (imports.unverified !== undefined) unverified.push(`${file} ${imports.unverified}`);
-    const parent = pathToFileURL(path.join(root, file)).href;
-    for (const specifier of imports.specifiers) {
-      let url: string;
-      try {
-        url = import.meta.resolve(specifier, parent);
-      } catch {
-        // A specifier that doesn't resolve can't load at run time either: the hook fails, it doesn't pass.
+    const resolved = [
+      ...imports.specifiers.map((specifier) => [specifier, resolveImport(specifier, path.join(root, file))] as const),
+      ...imports.requires.map((specifier) => [specifier, resolveRequire(specifier, path.join(root, file))] as const),
+    ];
+    for (const [specifier, url] of resolved) {
+      // A path in this repository that no longer resolves may be a deleted hook a `catch` turns into a pass; a missing package is a dependency's business.
+      if (url === undefined) {
+        if (LOCAL.test(specifier)) unverified.push(`${file} imports ${specifier}, which doesn't resolve`);
         continue;
       }
       const next = inRepo(url);

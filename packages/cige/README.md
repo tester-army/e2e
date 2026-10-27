@@ -174,10 +174,10 @@ a human's approval:
 | Any Context change, a removed precondition named | A top-level `x-` key changed (triage data) |
 | An `x-` key changed under Intent, evidence, or a guardrail | |
 | The CIGE config or a module it imports changed | |
-| `config-unverified`: the config didn't load; a module imports by a computed name, calls `createRequire`, uses `require` as a value, or runs `eval` or `Function`; or it loads a file git doesn't track that no other package's sources stand for | |
+| `config-unverified`: the config didn't load; a module imports by a computed name, names a relative or `#` path that doesn't resolve, or reads `require` other than as a direct call, `createRequire`, `eval`, or `Function`; or it loads a file git doesn't track that no other package's sources stand for | |
 
 Loading the config runs its top-level code from the branch under review.
-Give `diff` the env `e2e-cige run` gets: a config that reads a missing
+Give `diff` the env `e2e run` gets: a config that reads a missing
 variable at load blocks every `diff` with `config-unverified`. Run it only
 where you'd run the branch's tests. App code the config doesn't import,
 data files a hook reads at run time, and installed packages are out of its

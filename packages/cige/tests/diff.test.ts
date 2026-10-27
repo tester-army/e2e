@@ -355,8 +355,19 @@ describe('diffSince', () => {
     );
     expect(verdict("export default { hooks: { h: async () => eval('import(\"./x.mjs\")') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
     expect(verdict("export default { hooks: { h: async () => module.require('./check.cjs').ok } };\n")).toEqual(untraceable("uses require other than as require('<module>')"));
+    // cubic's cases: a loader reached through a computed member, a destructure, an indirect call, or an alias.
+    expect(verdict("export default { hooks: { h: async () => module['require']('./check.cjs').ok } };\n")).toEqual(untraceable("uses require other than as require('<module>')"));
+    expect(verdict("export default { hooks: { h: async () => { const { require: r } = module; return r('./check.cjs').ok; } } };\n")).toEqual(
+      untraceable("uses require other than as require('<module>')"),
+    );
+    expect(verdict("export default { hooks: { h: async () => globalThis.eval('1') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
+    expect(verdict("export default { hooks: { h: async () => (0, eval)('1') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
+    expect(verdict("const make = Function;\nexport default { hooks: { h: async () => make('return 1')() } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
+    expect(verdict("export default { hooks: { h: async () => (await import('node:module'))['createRequire'] } };\n")).toEqual(
+      untraceable("calls createRequire, whose require can't be followed"),
+    );
     // A comment, a string, or a key that reads like a call is not one.
-    expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)", require: true };\n')).toEqual([]);
+    expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)", require: true, eval: 1, why: \'createRequire\' };\n')).toEqual([]);
   });
 
   it('follows a lazy import that comment-looking strings surround', () => {
@@ -371,6 +382,32 @@ describe('diffSince', () => {
     write(dir, { 'hooks/check.ts': 'export const ok = () => true;\n' });
     expect(diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`)).toEqual([
       'hooks/check.ts config-changed',
+    ]);
+  });
+
+  it('resolves a lazy require as CommonJS does, and blocks a lazy in-repo import that no longer resolves', () => {
+    const configFiles = (dir: string) => [path.join(dir, 'cige.config.mjs')];
+    const changed = (dir: string) => diffSince('HEAD', dir, { configFiles: configFiles(dir) }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}: ${item.detail}`).join(',')}`);
+    // cubic's case: `require('./hook')` finds hook.js by CommonJS's extension search, which ESM resolution doesn't do. Behind an alias, so only the working tree's walk reaches it.
+    const cjs = repo({
+      'package.json': JSON.stringify({ imports: { '#helpers': './helpers.cjs' } }),
+      'cige.config.mjs': "import helpers from '#helpers';\nexport default { hooks: { check: async () => helpers.check() } };\n",
+      'helpers.cjs': "exports.check = () => require('./hook').ok();\n",
+      'hook.js': 'exports.ok = () => false;\n',
+      'checkout.cige.json': BASE,
+    });
+    write(cjs, { 'hook.js': 'exports.ok = () => true;\n' });
+    expect(changed(cjs)).toEqual(['hook.js !config-changed: hook.js: the hooks, plugins, and environments a pass depends on']);
+    // cubic's case: the target of a lazy `#` import deleted, with package.json untouched.
+    const alias = repo({
+      'package.json': JSON.stringify({ type: 'module', imports: { '#hooks/*': './hooks/*.mjs' } }),
+      'cige.config.mjs': "export default { hooks: { check: async () => (await import('#hooks/check')).ok() } };\n",
+      'hooks/check.mjs': 'export const ok = () => false;\n',
+      'checkout.cige.json': BASE,
+    });
+    rmSync(path.join(alias, 'hooks/check.mjs'));
+    expect(changed(alias)).toEqual([
+      "cige.config.mjs !config-unverified: cige.config.mjs: cige.config.mjs imports #hooks/check, which doesn't resolve; a human must review every change outside the case files",
     ]);
   });
 
