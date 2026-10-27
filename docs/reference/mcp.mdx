@@ -7,7 +7,7 @@ icon: "plug"
 ---
 
 `e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
-try locators, and take masked screenshots while they write tests. It runs over
+try locators, run test lines, and take masked screenshots while they write tests. It runs over
 stdio and uses the project's configured engine. For setup and what to ask
 the agent, see the [MCP server guide](/mcp-server).
 
@@ -167,6 +167,7 @@ What `call` can run depends on the session's target.
 | [Actions](#actions) | Act on an observed node |
 | [`dismiss_keyboard`](#dismiss_keyboard) | Hides the on-screen keyboard |
 | [`locate`](#locate) | Tries a semantic locator |
+| [`run_code`](#run_code) | Runs test statements |
 | [`test_lines`](#test_lines) | Returns the session's test lines |
 | [`screenshot`](#screenshot) | Returns the masked viewport |
 | [Point tools](#point-tools) | Act at a screenshot point |
@@ -227,10 +228,68 @@ Returns how many nodes match a semantic locator, which ones, and the
 - What it shows of a node passes the secret ledger, as `observe` does: a
   filled secret reads `<secret:name>`.
 
+#### `run_code`
+
+Runs test statements on the live session and returns each one's pass or
+failure, a read's value, and what changed on screen. Run a line here before
+you write it into a test.
+
+```txt
+call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada@example.com');\nawait expect(screen.getByRole('status')).toHaveText('Saved');"}}
+```
+
+| Input | Does |
+| --- | --- |
+| `code` | One or more statements as a test body writes them, separated by `;` or new lines. |
+| `timeout` | Optional. How long each statement may wait, in ms, 1 through 120000. Default `5000`. |
+
+- Statements run in order on the session's `screen` and `app` fixtures, with
+  a test's waits, exactly-one rule, and matchers.
+- The first failure stops the call. The rest don't run, the app stays where
+  the passing statements left it, and the result is an error result with the
+  code and message a test would get.
+- The statements that pass, except reads, join the
+  [`test_lines`](#test_lines) draft as written, in the order they ran.
+- Each statement waits at most `timeout`, its own `timeout` option included.
+  The config's [`actionTimeout`](/reference/config#actiontimeout) and
+  [`assertionTimeout`](/reference/config#assertiontimeout) apply when
+  shorter. The cap also covers `app.open`, `app.restart`, and
+  `app.clearState`, so raise it for a slow first load or a device relaunch.
+- `timeout` doesn't stop a regular expression mid-match. One that
+  backtracks, such as `/^(\w+\s?)*$/` on a long line, blocks the server
+  until it finishes.
+- Reads and matchers see `<secret:name>` where a secret value is.
+- A secret `fill` passes the checks `type_secret` runs, on the field it lands
+  on: a configured secret, an enabled editable field, and a password field
+  for a password. A filled secret withholds screenshots as `type_secret`
+  does.
+
+The code is parsed, never run as JavaScript. The grammar takes:
+
+| Part | Accepted |
+| --- | --- |
+| Statement | An optional `await`, then a chain on `screen` or `app` that ends in an action or a read, or `expect(locator)` with an optional `.not` and one matcher |
+| Locator | `screen.getByRole`, `getByLabel`, `getByText`, `getByPlaceholder`, `getByTestId`, or `getByDisplayValue`, narrowed with `filter`, `or`, `first`, `last`, `nth`, and more `getBy*` |
+| Argument | A string, number, boolean, `null`, regular expression, template without `${}`, array, object, locator, or `credentials.user(name).username` |
+| Secret | `credentials.user(name).password` or `secrets.get(name)`, as `fill`'s value only |
+
+Left out: fixtures an engine contributes (`browser`, `device`),
+`expect(screen)`, `toHaveScreenshot`, `app.screenshot`, `screen.debug`,
+`all`, `setInputFiles`, and the value matchers (`toBe`, `toEqual`).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Code that doesn't parse or is outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes it with its line and column, and no statement runs. |
+| `INVALID_ARGUMENT` | A matcher that expects `<secret:name>`, since a test compares the real value. No statement runs. |
+| `POLICY_DENIED` | A secret `fill` into a field that fails the `type_secret` checks. Nothing is typed. |
+| `POLICY_DENIED` | A read of a password field. |
+| `POLICY_DENIED` | When the config declares a secret or credential, a locator found by part of a text: a regular expression, an `exact` other than `true`, or `hasText`. Find it by its exact text. No statement runs. |
+
 #### `test_lines`
 
-Returns every test line the session's actions printed, in order, as a draft
-test body. Takes no arguments.
+Returns every test line the session's actions printed, and every statement
+[`run_code`](#run_code) passed, in order, as a draft test body. Takes no
+arguments.
 
 Each action's result carries its line after the summary:
 
@@ -425,7 +484,8 @@ exits.
 Sessions enforce what tests enforce:
 
 - Node ids are valid only against the newest observation.
-- A secret fills only through `type_secret`. Once one has been filled,
+- A secret fills only through `type_secret` or a [`run_code`](#run_code)
+  `fill`, under the same checks. Once one has been filled,
   [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
   catalog but answer `PIXEL_TAINTED` for the rest of the session.
 - Once the config has loaded, its secret values are redacted from every text

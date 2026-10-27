@@ -415,6 +415,11 @@ void asyncExpectation.toHaveValue('a', { ignoreCase: true });
 // @ts-expect-error presence has no case to ignore
 void asyncExpectation.toHaveAttribute('data-kind', { ignoreCase: true });
 
+void (screen.getByRole('row').filter({ hasNotText: 'Paid' }) satisfies Locator);
+void (screen.getByRole('row').filter({ hasText: 'Invoice', hasNotText: /Paid/i }) satisfies Locator);
+// @ts-expect-error negative text filters require text or a RegExp
+void screen.getByRole('row').filter({ hasNotText: 42 });
+
 // expect.poll carries every value matcher and no other, each resolving to void.
 declare const pollMatcherNames: Exclude<keyof PollExpectation<string>, 'not'>;
 declare const valueMatcherNames: Exclude<keyof ValueExpectation<string>, 'not'>;

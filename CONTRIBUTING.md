@@ -23,6 +23,10 @@ The changes most likely to be accepted:
 - Docs fixes
 - Engine and platform fixes (a browser, device, or OS that misbehaves)
 - Performance improvements
+- Community examples: a link to your own example repository on
+  [e2e.tester.army/examples](https://e2e.tester.army/examples), added to
+  [`examples/examples.json`](./examples/examples.json) as
+  [`examples/CONTRIBUTING.md`](./examples/CONTRIBUTING.md) describes
 
 New features, and changes to the public contract below, need agreement before
 any code. Open a feature request with the problem and the API you have in

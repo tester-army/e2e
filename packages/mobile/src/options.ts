@@ -104,9 +104,9 @@ export interface MobileOptions {
    * 500, the length of a modal or screen transition. Accessibility frames
    * report a control's final position from the first frame of a transition,
    * so this budget is the only thing that keeps a test from tapping a point
-   * the control has not reached; controls already on screen at the same
-   * place before the action are acted on at once. Raise it for slower
-   * transitions.
+   * the control has not reached. Unmoved controls are acted on immediately
+   * only when keyboard visibility is unchanged. Opening or closing the
+   * keyboard also uses the remaining budget. Raise it for slower transitions.
    */
   readonly transition?: number | undefined;
   /**

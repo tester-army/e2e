@@ -22,7 +22,7 @@ The Rules and Feedback sections below still apply.
 | When you are | Topic | Read |
 | --- | --- | --- |
 | Adding e2e to a project, writing `e2e.config.ts`, starting the app from the config, signing in to a model, setting up mobile targets | `setup` | [references/setup.md](references/setup.md) |
-| Looking at the running app, checking a UI change, taking a screenshot or video, trying a locator, or walking a flow while you write its test, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
+| Looking at the running app, checking a UI change, taking a screenshot or video, trying a locator, running a test line, or walking a flow while you write its test, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
 | Writing or fixing a test: fixtures, locators, actions, matchers, sign-in sessions, the `browser` fixture, API-only tests | `writing-tests` | [references/writing-tests.md](references/writing-tests.md) |
 | Adding `agent.*` steps, picking a model, cutting cost, budgets, the replay cache | `agent` | [references/agent.md](references/agent.md) |
 | Running tests: CLI flags, CI, reporters, trace pages, `report.json` for scripts, exit codes | `running` | [references/running.md](references/running.md) |
@@ -93,10 +93,11 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    screen it covers (step 3). Then add each step to the file as you take it
    in the session. An `act` goal goes in before you walk its path, and the
    path's actions stay out of the test. A `screen` line is the `Test line:`
-   its action printed, copied as is. When the outcome shows, `locate` it and
-   add the `expect`. The walk ends with the test written. Without a server,
-   learn the accessible names the app renders from the components or a
-   `--headed` run.
+   its action printed, copied as is. When the outcome shows, run its
+   `expect` with `run_code` and add it once it passes; a passing statement
+   also joins `test_lines`. The walk ends with the test written. Without a
+   server, learn the accessible names the app renders from the components or
+   a `--headed` run.
 3. A step is an `agent.act` goal or `screen` lines. Drive the flow with
    `agent.act`, one atomic goal per call, and pin each outcome right after
    with `expect` or `agent.assert`. A test with three goals makes three
@@ -139,10 +140,11 @@ screen.
    app source, or a live session.
 4. For a screen the evidence and the source leave out, look live (topic
    `mcp`): open or reuse a session, go straight to that screen, then
-   `observe` and `locate`. On the web, `navigate` to the path of the `❯ at`
-   URL or the screen's route, and tap only to reach a state no URL opens. A
-   device session starts on the app's launch screen: take the shortest path
-   from there.
+   `observe` and `locate`, or `run_code` for the fixed line and the ones
+   after it. On the web, `navigate` to the path of the `❯ at` URL or the
+   screen's route, and tap only to reach a state no URL opens. A device
+   session starts on the app's launch screen: take the shortest path from
+   there.
 5. Rerun only that test, the way the next section says (topic `mcp` says
    when a session must close first). Repeat with the next failure.
 

@@ -14,7 +14,7 @@ acts on it, and checks its work.
 
 | Task | Without `e2e mcp` | With `e2e mcp` |
 | --- | --- | --- |
-| Write a test | Guesses locators, runs, fails, guesses again | Writes the test as it walks the flow, from checked test lines |
+| Write a test | Guesses locators, runs, fails, guesses again | Writes the test as it walks the flow, from checked test lines and lines it ran with `run_code` |
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
 | Show a change in a PR | Describes it | Records a video |
@@ -103,6 +103,22 @@ A test using this locator would fail with LOCATOR_NOT_FOUND. ...
 Use: screen.getByRole("button", "Sign in")
 ```
 
+## How it runs a test line
+
+The agent runs the lines no action printed, such as assertions, with
+`run_code` in the open session. The ones that pass join the `test_lines`
+draft. A wrong line fails in seconds, without a test run:
+
+```text wrap
+Statement 2 of 2 failed; the one before it passed. Each statement waited at most 5000 ms. ...
+1. passed: await screen.getByLabel('Full name').fill('Grace Hopper');
+2. failed: await screen.getByRole('button', 'Save').tap();
+   LOCATOR_NOT_FOUND: locator matched no nodes within getByRole("button", name: "Save")
+```
+
+The server parses the lines and never evaluates them as JavaScript. See
+[`run_code`](/reference/mcp#run_code).
+
 ## Run tests next to a session
 
 A session doesn't run tests and writes no test results or cache
@@ -132,8 +148,9 @@ target.
 
 ## Secrets
 
-`type_secret` fills a secret without showing it to the agent. After a
-secret is filled, the session stops returning screenshots.
+`type_secret`, or a `fill` in `run_code`, fills a secret without showing it
+to the agent. After a secret is filled, the session stops returning
+screenshots.
 
 <Warning>
 Videos from `start_recording` are not masked.

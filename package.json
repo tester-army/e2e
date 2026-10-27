@@ -10,11 +10,12 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build && pnpm --filter @e2e-dev/mobile run build && pnpm --filter @e2e-dev/github run build && pnpm --filter @e2e-dev/kernel run build && pnpm --filter @e2e-dev/lightpanda run build && pnpm --filter @e2e-dev/eas run build && pnpm --filter @e2e-dev/smol run build && pnpm --filter @e2e-dev/limrun run build && pnpm --filter @e2e-dev/decision run build && pnpm --filter @e2e-dev/testmu run build",
-    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run check:peer-ranges && pnpm run check:changeset-bumps && pnpm run check:install-scripts && pnpm run plugins:check && pnpm run mcp-server:check && pnpm run docs:check",
+    "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run check:peer-ranges && pnpm run check:changeset-bumps && pnpm run check:examples && pnpm run check:install-scripts && pnpm run plugins:check && pnpm run mcp-server:check && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "check:peer-ranges": "node scripts/check-peer-ranges.ts",
     "check:install-scripts": "node scripts/check-install-scripts.ts",
     "check:changeset-bumps": "node scripts/check-changeset-bumps.ts",
+    "check:examples": "node scripts/check-examples.ts",
     "plugins:sync": "node scripts/sync-plugin.ts",
     "plugins:check": "node scripts/sync-plugin.ts --check",
     "mcp-server:sync": "node scripts/sync-mcp-server.ts",
@@ -48,6 +49,7 @@
     "@oxlint/plugins": "1.89.0",
     "@sindresorhus/slugify": "3.0.1",
     "@types/node": "26.6.5",
+    "ajv": "8.20.0",
     "fallow": "3.33.1",
     "oxlint": "1.89.0",
     "typescript": "7.0.2"

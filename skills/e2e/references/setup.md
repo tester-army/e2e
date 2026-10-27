@@ -376,8 +376,9 @@ export default {
   exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
   `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
   recording of the whole session.
-- Only a control that appeared or moved with the previous action waits out
-  `transition` (default 500 ms); agent actions settle `settle` ms (default
+- A control that appeared or moved with the previous action waits out
+  `transition` (default 500 ms). Opening or closing the keyboard also uses
+  the remaining budget. Agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return

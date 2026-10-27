@@ -188,7 +188,11 @@ suites that consume the built packages the way a user would.
   packed from main swapped in for the npm ones, agent tests included, and
   posts one Slack message for the run (`scripts/examples-nightly/`, the
   `SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL` secret). A new example or platform
-  gets a matrix entry there. A change still runs the example's suite by hand and updates the
+  gets a matrix entry there. It also needs an official entry in
+  `examples/examples.json` (the list e2e.tester.army/examples renders,
+  community repositories included) and a preset in
+  `packages/e2e/src/cli/init/examples.ts`; `pnpm check:examples` fails
+  without either. A change still runs the example's suite by hand and updates the
   "Last checked" line in its README. A native, Flutter, or .NET MAUI example (SwiftUI, Compose, Kotlin
   Multiplatform, Flutter, .NET MAUI) keeps its tests in an `e2e/` folder
   beside the native project, as a user would.
