@@ -255,9 +255,12 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
       const increment = /#(n\d+) button "Increment"/.exec(fixed.text)?.[1];
       const tapped = await invoke('call', { tool: 'tap', args: { target: increment } });
       expect(tapped.text.split('\n')[1], tapped.text).toBe('Test line: await screen.getByRole("button", "Increment").tap();');
+      // So do the statements run_code passes there.
+      const ran = await invoke('call', { tool: 'run_code', args: { code: "await expect(screen.getByRole('status', 'Counter')).toHaveText('3');" } });
+      expect(ran.isError, ran.text).toBe(false);
       const drafted = await invoke('call', { tool: 'test_lines' });
       expect(drafted.text).toContain(
-        `after test tests/counter.e2e.ts:${FAILING} stopped, in order (1 lines):\n\nawait screen.getByRole("button", "Increment").tap();\n\nPut them in that test where it stopped`,
+        `after test tests/counter.e2e.ts:${FAILING} stopped, in order (2 lines):\n\nawait screen.getByRole("button", "Increment").tap();\nawait expect(screen.getByRole('status', 'Counter')).toHaveText('3');\n\nPut them in that test where it stopped`,
       );
       await invoke('close_session');
     });
