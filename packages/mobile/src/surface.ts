@@ -236,6 +236,11 @@ function sameRect(a: Rect | undefined, b: Rect | undefined): boolean {
   return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1;
 }
 
+/** Roles the mobile tree projects as editable inputs. */
+function isInputRole(role: SemanticNode['role']): boolean {
+  return role === 'textbox' || role === 'searchbox' || role === 'combobox';
+}
+
 /** The semantic identity a fill must retain across its preflight capture. */
 function sameInputIdentity(a: SemanticNode, b: SemanticNode): boolean {
   return a.role === b.role && a.testId === b.testId && a.name === b.name && a.text === b.text &&
@@ -1143,7 +1148,7 @@ export class AgentDeviceSurface {
   private bind(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): NodeBinding {
     const { children: _children, ...node } = entry.node;
     const control = this.controlOf(entry, snapshot);
-    const uniqueInput = (node.role === 'textbox' || node.role === 'searchbox' || node.role === 'combobox') &&
+    const uniqueInput = isInputRole(node.role) &&
       snapshot.filter((candidate) => sameInputIdentity(node, candidate.node)).length === 1;
     return { id: entry.id, ref: entry.ref, node, controlRef: control.ref, uniqueInput };
   }
@@ -1269,6 +1274,9 @@ export class AgentDeviceSurface {
       return;
     }
     const entry = this.resolveRef(ref);
+    if ((action.kind === 'fill' || action.kind === 'clear') && !isInputRole(entry.node.role)) {
+      throw unsupported(`agent-device can only ${action.kind} editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
+    }
     const label = `perform ${action.kind}`;
     const client = this.requireClient();
     // A toggle already in the wanted state sends nothing, so it neither waits
@@ -1280,6 +1288,7 @@ export class AgentDeviceSurface {
     const run = async (): Promise<unknown> => {
       let target = deterministic ? await this.settled(entry, operation) : entry;
       if (action.kind === 'fill' || action.kind === 'clear') {
+        // Settling can change security facts; compare with the node the caller authorized.
         target = await this.freshInput(entry, operation);
       }
       switch (action.kind) {

@@ -2409,6 +2409,20 @@ describe('input freshness', () => {
         expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e20', text: kind === 'fill' ? 'example' : '' });
         expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
       });
+
+      it(`rejects an originally non-input target before waiting or capturing for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => form(237, { type: 'button' }));
+        const button = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        const startedAt = Date.now();
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(button.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(Date.now()).toBe(startedAt);
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
     }
   }
 

@@ -237,7 +237,9 @@ mobile({ platform: 'ios', transition: 800 }); // default: 500
 budget the way a tap does. A control that arrives with the screen they reveal
 waits out the budget before the next action lands on it.
 
-`fill` and `clear` also take a fresh accessibility snapshot before mutation,
+`fill` and `clear` reject an initially non-input role with
+`UNSUPPORTED_CAPABILITY`, without waiting or taking another snapshot.
+For inputs they take a fresh accessibility snapshot before mutation,
 including agent actions and cached replay, even after this budget expires.
 The input must have one matching role, test id, name, text, and placeholder
 in both snapshots. Changed bounds or disabled, hidden, secure, or password-purpose
