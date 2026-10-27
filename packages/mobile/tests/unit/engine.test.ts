@@ -1162,7 +1162,9 @@ describe('perform', () => {
       ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 1000 }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.hover', { ref: '@e4' }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: 'blue', settle: true, settleQuietMs: 150 }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: '', settle: true, settleQuietMs: 150 }],
       ['interactions.press', { ref: '@e6', settle: true, settleQuietMs: 150 }],
       ['command.keyboard', { action: 'enter' }],
@@ -2368,6 +2370,126 @@ describe('video', () => {
     await h.engine.endAttempt!(cleanup());
     expect(stops).toBe(3);
     expect(h.fake.lastArgs('recording.record')).toEqual({ platform: 'ios', action: 'stop' });
+  });
+});
+
+describe('input freshness', () => {
+  beforeEach(autoAdvanceTimers);
+
+  /** A uniquely identified field and its neighbor, after a slow accessibility capture. */
+  function form(y = 237, changes: Partial<RawNode> = {}, duplicates = false) {
+    const field: RawNode = {
+      ref: '@e20', index: 1, parentIndex: 0, depth: 1, type: 'secure-text-field',
+      label: 'Account', identifier: 'account', rect: { x: 40, y, width: 322, height: 49 }, ...changes,
+    };
+    return {
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        SETTINGS_NODES[0]!, field,
+        { ref: '@e21', index: 2, parentIndex: 0, depth: 1, type: 'text-field', label: 'Username', identifier: 'username', rect: { x: 40, y: 218, width: 322, height: 49 } },
+        ...(duplicates ? [{ ...field, ref: '@e22', index: 3 }] : []),
+      ],
+    };
+  }
+
+  for (const origin of ['test', 'agent'] as const) {
+    for (const kind of ['fill', 'clear'] as const) {
+      it(`rejects moved geometry before ${origin} ${kind}, even when capture consumed the transition budget`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
+        const old = await observed(h, 'Account');
+        h.fake.respond('capture.snapshot', () => form(126));
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: true } : { kind };
+        await expect(h.engine.perform!(old.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+        // The runner's stale retry re-observes before retrying the mutation.
+        const fresh = await observed(h, 'Account');
+        await h.engine.perform!(fresh.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e20', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+      });
+    }
+  }
+
+  it.each([
+    ['missing', () => ({ ...form(), nodes: [SETTINGS_NODES[0]!] })],
+    ['ambiguous', () => form(237, {}, true)],
+    ['renamed', () => form(237, { label: 'Other account' })],
+    ['different identifier', () => form(237, { identifier: 'other' })],
+    ['different placeholder', () => form(237, { placeholder: 'Other account' })],
+    ['truncated', () => ({ ...form(), truncated: true })],
+    ['non-editable', () => form(237, { type: 'button' })],
+    ['no longer secure', () => form(237, { type: 'text-field' })],
+    ['disabled', () => form(237, { enabled: false })],
+    ['hidden', () => form(237, { visibleToUser: false })],
+    ['unmeasurable', () => {
+      const result = form();
+      return { ...result, nodes: result.nodes.map(({ rect: _rect, ...node }) => node) };
+    }],
+  ] as const)('rejects a %s target without dispatching or exposing the value', async (_name, snapshot) => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', snapshot);
+    const failure = h.engine.perform!(old.ref, { kind: 'fill', value: 'not-for-diagnostics', sensitive: true }, operation());
+    await expect(failure).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    await expect(failure).rejects.not.toThrow('not-for-diagnostics');
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it('rejects an originally ambiguous identity even if only one duplicate remains', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form(237, {}, true));
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form());
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it('uses the newest backend ref for an unchanged uniquely identified input without taking pixels', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form(237, { ref: '@e42', focused: true }));
+    await h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, operation());
+    expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: 'example' });
+    expect(h.fake.methods()).not.toContain('capture.screenshot');
+    expect(h.fake.lastArgs('capture.snapshot')).toEqual({ interactiveOnly: false });
+  });
+
+  it('does not silently accept changed security facts from the transition relocation', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form(237, { enabled: false }));
+    await expect(h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, { ...operation(), origin: 'test' })).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it('does not send input if the preflight consumed the input budget', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, { ...operation(), timeoutMs: 500 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it('does not dispatch when aborted during the preflight capture', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    const controller = new AbortController();
+    h.fake.respond('capture.snapshot', async () => { controller.abort(); return form(); });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
   });
 });
 

@@ -196,6 +196,7 @@ interface NodeBinding {
   readonly ref: string;
   readonly node: SemanticNode;
   readonly controlRef: string;
+  readonly uniqueInput: boolean;
 }
 
 
@@ -233,6 +234,12 @@ function centreOf(rect: Rect): { x: number; y: number } {
 function sameRect(a: Rect | undefined, b: Rect | undefined): boolean {
   if (a === undefined || b === undefined) return false;
   return Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.width - b.width) < 1 && Math.abs(a.height - b.height) < 1;
+}
+
+/** The semantic identity a fill must retain across its preflight capture. */
+function sameInputIdentity(a: SemanticNode, b: SemanticNode): boolean {
+  return a.role === b.role && a.testId === b.testId && a.name === b.name && a.text === b.text &&
+    a.attributes?.placeholder === b.attributes?.placeholder;
 }
 
 const MAX_LOCATED_REFS = 2048;
@@ -1136,7 +1143,9 @@ export class AgentDeviceSurface {
   private bind(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): NodeBinding {
     const { children: _children, ...node } = entry.node;
     const control = this.controlOf(entry, snapshot);
-    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref };
+    const uniqueInput = (node.role === 'textbox' || node.role === 'searchbox' || node.role === 'combobox') &&
+      snapshot.filter((candidate) => sameInputIdentity(node, candidate.node)).length === 1;
+    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref, uniqueInput };
   }
 
   /**
@@ -1206,6 +1215,28 @@ export class AgentDeviceSurface {
   }
 
   /**
+   * Revalidates an input immediately before mutation. A changed binding must
+   * go through the harness's stale retry so secret authorization runs against
+   * the new observation, rather than silently following a moved or changed
+   * field. This narrows snapshot age, not the backend's check/use gap.
+   */
+  private async freshInput(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+    const raw = await this.snapshotOrEmpty(operation, false);
+    const projected = this.project(raw);
+    const matches = projected.index.filter((candidate) => sameInputIdentity(entry.node, candidate.node));
+    const found = matches.length === 1 ? matches[0] : undefined;
+    if (!entry.uniqueInput || isTruncated(raw) || found === undefined ||
+      !sameRect(entry.node.rect, found.node.rect) ||
+      entry.node.inputPurpose !== found.node.inputPurpose ||
+      entry.node.states?.disabled !== found.node.states?.disabled ||
+      entry.node.states?.secure !== found.node.states?.secure ||
+      entry.node.states?.hidden !== found.node.states?.hidden) {
+      throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
+    }
+    return this.bind(found, projected.index);
+  }
+
+  /**
    * Records an action the device received: the screen as it was projected
    * before it, and when it returned. The transition budget counts from the
    * return, since the input lands late in the command's own round trip.
@@ -1247,7 +1278,10 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
-      const target = deterministic ? await this.settled(entry, operation) : entry;
+      let target = deterministic ? await this.settled(entry, operation) : entry;
+      if (action.kind === 'fill' || action.kind === 'clear') {
+        target = await this.freshInput(entry, operation);
+      }
       switch (action.kind) {
         case 'tap':
           return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
