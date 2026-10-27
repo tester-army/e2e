@@ -146,7 +146,8 @@
               "migrate/cypress",
               "migrate/selenium",
               "migrate/detox",
-              "migrate/maestro"
+              "migrate/maestro",
+              "migrate/testerarmy"
             ]
           }
         ]

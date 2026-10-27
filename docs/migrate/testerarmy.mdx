@@ -1,0 +1,182 @@
+---
+title: From TesterArmy
+description: Turn TesterArmy saved tests into e2e tests that run in your repository and CI.
+icon: "/images/icons/testerarmy.svg"
+---
+
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const migrationPrompt = `Migrate this project's TesterArmy saved tests to e2e, one group at a time. Docs: \`https://e2e.tester.army/docs/migrate/testerarmy.md\`
+
+1. Read the migration guide above. It maps TesterArmy project settings, steps, and groups to e2e and marks what e2e does not have yet.
+2. If you have no \`testerarmy\` MCP tools, add the server with \`npx add-mcp --global --name testerarmy https://tester.army/mcp\`. Ask me to sign in and restart the session, then wait until I confirm.
+3. Call \`list_projects\` and ask me which project to migrate. Read it with \`get_project\`, \`list_project_environments\`, \`list_project_credentials\`, \`list_project_memories\`, \`list_project_files\`, \`list_groups\`, and \`list_tests\`. Use only read tools. Never create, update, delete, or run anything in TesterArmy.
+4. If the project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent), with \`--engine mobile\` for a mobile project. Rewrite \`tests/example.e2e.ts\` for the app or delete it.
+5. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
+6. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
+7. Port the project into the e2e config with the guide's "Port the project" table. TesterArmy never returns passwords. Name each credential in \`credentials\`, read its password from an environment variable, and ask me to set it.
+8. List the groups and their tests, and ask me which group to move first. Suggest a small one, or the one with the preparation test the others need.
+9. For each test, read it with \`get_test\` and write a \`.e2e.ts\` file under \`tests/\`, one awaited call per enabled step, with the guide's "Map each step" table. Turn a preparation or login test into a \`test.setup\` that saves a session. Where the guide says "Not yet" or "No equivalent", leave that test in TesterArmy and tell me why.
+10. After the last \`agent.assert\` of each test, add a locator assertion on the same end state when a label or test id names it.
+11. Run the new files with \`npx e2e run <file>\` and fix them until they pass. Keep the TesterArmy tests until I confirm they can go.
+12. Summarize which tests moved, which stayed in TesterArmy, and why.`;
+
+A TesterArmy saved test is a list of plain-language steps that a QA agent
+runs in TesterArmy's cloud. In e2e, each step becomes an `agent.act` or
+`agent.assert` call in a TypeScript test that runs on your machine or in your
+CI. A coding agent reads your projects and tests through the TesterArmy MCP
+server and writes the e2e tests.
+
+<SetupPrompt>
+
+<Prompt description={migrationPrompt} children={migrationPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+For a migration that spans several sessions, the [`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite) records what moved in a progress file and keeps the TesterArmy tests until you retire each one.
+
+## Connect the TesterArmy MCP server
+
+The coding agent reads your tests from the hosted server at
+`https://tester.army/mcp`. Add it to every coding agent on your machine:
+
+<CodeGroup>
+```bash npm
+npx add-mcp --global --name testerarmy https://tester.army/mcp
+```
+
+```bash pnpm
+pnpm dlx add-mcp --global --name testerarmy https://tester.army/mcp
+```
+
+```bash bun
+bunx add-mcp --global --name testerarmy https://tester.army/mcp
+```
+</CodeGroup>
+
+Sign in when the client asks. Other ways to add the server are in
+[TesterArmy's MCP setup](https://tester.army/docs/cli/mcp).
+
+The migration only reads from TesterArmy. It never edits, deletes, or runs
+your tests there.
+
+## Port the project
+
+<Note>Install e2e and configure a model with the [quickstart](/quickstart). Every ported step is an agent call, so the config needs a model.</Note>
+
+| TesterArmy | e2e |
+| --- | --- |
+| web project `url` | `app: { url }` on a `web()` target |
+| mobile project and its uploaded builds | a `mobile({ platform })` target with `app: { bundleId }`. You build and install the app, see [Mobile](/mobile) |
+| static environments (Staging, QA) | one target per environment, each with its own `app.url`. `--target staging` runs one |
+| PR preview environment | a CI job that sets `app.url` to the preview URL, see [Continuous integration](/ci) |
+| `login` credential | a `credentials` entry. TesterArmy never returns the password, so read it from an environment variable, see [Signing in](/authentication#credentials) |
+| credential `totpSecret` | a `secrets` entry whose value is a function that computes the code |
+| credential environment overrides | one `credentials` entry, with `E2E_USER_<NAME>_PASSWORD` set per environment, see [Override a value per run](/authentication#override-a-value-per-run) |
+| `inbox` credential | Not yet. Call your own test inbox from a [fixture](/fixtures) |
+| `agentInstructions` | `system` on the agent, see [Instructions and vocabulary](/agents#instructions-and-vocabulary) |
+| memories | `context` on the agent |
+| project files | files in the repository, such as `tests/fixtures/receipt.jpg` |
+| test `viewport` setting | `web({ viewport: { width, height } })`, one target per size |
+| `browserRegion`, `simulatorRegion` | No equivalent. The browser runs where `e2e run` runs, or on a [hosted provider](/integrations) |
+| `webSearchEnabled` | No equivalent |
+| `accessibilityAuditEnabled` | Not yet |
+| PR testing | an e2e job on each pull request, with the [GitHub reporter](/github) for the comment |
+| group schedule | a scheduled CI workflow |
+
+## Rewrite one test
+
+Each step becomes one awaited call. A `login` step becomes a setup test that
+signs in one time and saves a session:
+
+```json title="TesterArmy (get_test)"
+{
+  "title": "Creates a project",
+  "steps": [
+    { "type": "login", "title": "Log in as the admin" },
+    { "type": "act", "title": "Open Projects from the sidebar and click New Project" },
+    { "type": "act", "title": "Name the project Apollo and save" },
+    { "type": "assert", "title": "Apollo appears in the project list" }
+  ]
+}
+```
+
+<Tabs>
+  <Tab title="tests/projects.e2e.ts">
+
+```ts
+import { test } from '@e2e-dev/web';
+import { expect } from 'e2e';
+
+test('creates a project', { session: 'admin' }, async ({ app, agent, screen }) => {
+  await app.open('/');
+  await agent.act('open Projects from the sidebar and click New Project');
+  await agent.act('name the project {name} and save', { params: { name: 'Apollo' } });
+  await agent.assert('Apollo appears in the project list');
+  await expect(screen.getByText('Apollo')).toBeVisible();
+});
+```
+
+  </Tab>
+  <Tab title="tests/auth.setup.e2e.ts">
+
+```ts
+import { test } from '@e2e-dev/web';
+import { credentials } from 'e2e';
+
+test.setup('log in as the admin', { sessions: ['admin'] }, async ({ app, agent, session }) => {
+  const admin = credentials.user('admin');
+
+  await app.open('/login');
+  await agent.act('log in', { params: { username: admin.username, password: admin.password } });
+  await agent.assert('the dashboard is shown');
+  await session.save('admin');
+});
+```
+
+  </Tab>
+</Tabs>
+
+TesterArmy opens the project URL before the first step. In e2e, nothing
+opens on its own, so each test starts with `app.open()`.
+
+## Map each step
+
+| TesterArmy | e2e |
+| --- | --- |
+| `act` step | `agent.act('...')` |
+| `assert` step | `agent.assert('...')`, then a locator assertion when a label or test id names the end state |
+| `login` step | a `test.setup` that signs in and calls `session.save()`, and `{ session }` on each test, see [Signing in](/authentication) |
+| `login` with `temporaryEmail` | Not yet |
+| `files` step, `@receipt.jpg` in a step | the file's repository path in the goal: `agent.act('attach tests/fixtures/receipt.jpg')`, or `locator.setInputFiles()` |
+| `screenshot` step | `app.screenshot('label')` |
+| `javascript` step | `browser.evaluate()`. It fails only when the code throws, so check a `{ success: false }` return with `expect` |
+| `microphone` step | Not yet |
+| step with `disabled: true` | leave it out |
+| disabled test | `test.skip` |
+| group | `describe` with `tags`, run with `npx e2e run --tag <tag>` |
+| group `runMode: sequential` | `{ serial: true }` on the group |
+| group `maxConcurrentRuns` | `workers` in the config |
+| group `prepTestId` | a `test.setup` that saves a session, and `{ session }` on the group |
+| `run_test`, `run_group` | `npx e2e run <file>`, `npx e2e run --tag <tag>` |
+
+## What differs on purpose
+
+- Tests run on your machine or in your CI, not in TesterArmy's cloud. You
+  choose the app URL and the device.
+- The model never sees a password. The runner types it from a handle, see
+  [Signing in](/authentication#the-password-is-a-handle).
+- An `agent.act` step replays its recorded actions without a model call.
+  When the screen no longer matches, the agent takes over, see
+  [Replay cache](/cache).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Agent steps" icon="wand-magic-sparkles" href="/agent-steps">
+    What the model sees, what it may do, and how a step ends.
+  </Card>
+  <Card title="Signing in" icon="key" href="/authentication">
+    Sessions, credentials, and secrets the model never sees.
+  </Card>
+</CardGroup>

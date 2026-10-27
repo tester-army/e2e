@@ -226,7 +226,7 @@ suites that consume the built packages the way a user would.
   it generated and ran for `apps/testbed`: regenerate it when a playground
   route, label, or test it names changes.
 - `skills/migrate-to-e2e/`: a consumer skill that ports a Playwright,
-  Cypress, Selenium, Detox, or Maestro suite one slice per session, the old
+  Cypress, Selenium, Detox, Maestro, or TesterArmy suite one slice per session, the old
   suite running beside the new one, with a `MIGRATION.md` progress file the next
   session resumes from. It routes to `docs/migrate/<runner>.mdx` for the
   API mapping, so a mapping change edits the guide, not the skill. Installed
