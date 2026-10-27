@@ -310,6 +310,23 @@ describe('diffSince', () => {
     expect(changed()).toEqual(['hooks/lazy.ts !config-changed', 'hooks/order.ts !config-changed', 'packages/hooks/index.js !config-changed']);
   });
 
+  it('blocks remapping an alias in package.json, and ignores the rest of it', () => {
+    const manifest = (imports: Record<string, string>, scripts: Record<string, string> = {}) => JSON.stringify({ type: 'module', scripts, imports });
+    const dir = repo({
+      'package.json': manifest({ '#hooks/*': './hooks/*.ts' }),
+      'cige.config.ts': "import { orderPersisted } from '#hooks/order';\nexport default { hooks: { orderPersisted } };\n",
+      'hooks/order.ts': "export const orderPersisted = async () => (await fetch('/orders/1')).ok;\n",
+      // Already there and never edited: the remap alone points the hook at it.
+      'fake/order.ts': 'export const orderPersisted = async () => true;\n',
+      'checkout.cige.json': BASE,
+    });
+    const changed = () => diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}: ${item.detail}`).join(',')}`);
+    write(dir, { 'package.json': manifest({ '#hooks/*': './hooks/*.ts' }, { test: 'e2e run' }) });
+    expect(changed()).toEqual([]);
+    write(dir, { 'package.json': manifest({ '#hooks/*': './fake/*.ts' }) });
+    expect(changed()).toEqual(["package.json !config-changed: package.json: imports, which decide where the config's imports resolve"]);
+  });
+
   it('blocks a config it cannot load or follow, naming why', () => {
     const verdict = (config: string) => {
       const dir = repo({ 'cige.config.mjs': config, 'checkout.cige.json': BASE });
@@ -321,8 +338,11 @@ describe('diffSince', () => {
     expect(verdict("const name = './hooks/' + 'order.mjs';\nexport default { hooks: { order: async () => (await import(name)).ok } };\n")).toEqual([
       '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
     ]);
-    // A comment that reads like a call is not one.
-    expect(verdict('// we import (lazily) nothing here\nexport default {};\n')).toEqual([]);
+    expect(verdict("const name = 'order';\nexport default { hooks: { order: async () => (await import(`./hooks/${name}.mjs`)).ok } };\n")).toEqual([
+      '!config-unverified: cige.config.mjs: cige.config.mjs imports a module by a computed name; a human must review every change outside the case files',
+    ]);
+    // A comment or a string that reads like a call is not one.
+    expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)" };\n')).toEqual([]);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

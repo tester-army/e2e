@@ -58,11 +58,13 @@ expected, since the Intent got stricter, and `blocking: 0` is what counts. Any b
 means the repair went past its mode: undo that part, or hand it to a human
 as a proposal. That includes `context-changed` and `config-changed`.
 
-`diff` sees the case files, the CIGE config, and every file the config
-loads (aliases, workspace packages, and lazy imports included); a config it
-can't load blocks as `config-unverified`. It can't see app code or
-installed packages: a repair that touches them is out of scope, so leave
-them alone.
+`diff` sees the case files, the CIGE config, every file the config loads
+(aliases, workspace packages, and lazy imports included), and the
+package.json that maps them. A config it can't load, or whose imports use
+computed names, blocks as `config-unverified`. An app helper a hook imports
+is in that graph, so changing it needs a human too. It can't see other app
+code or installed packages: a repair that touches them is out of scope, so
+leave them alone.
 
 ## Hand off
 

@@ -14,9 +14,12 @@
  *    goes on from there.
  * 3. A dynamic import whose specifier is computed can't be followed, so the
  *    file is reported and the gate blocks.
+ * 4. The nearest package.json of each file is reported too: its `imports`
+ *    and `exports` decide where an alias lands, so remapping one can
+ *    redirect a hook to another file without touching either.
  *
  * Usage: `node --experimental-import-meta-resolve config-graph.js <config> <root> <tracked.json> <out.json>`.
- * It writes `{ files, computed }` (repo-relative paths) or `{ error }` to
+ * It writes `{ files, manifests, computed }` (repo-relative paths) or `{ error }` to
  * `<out.json>`, never to stdout, which belongs to the config's own code.
  * Node's type stripping runs it from source in tests, so it holds to
  * erasable TypeScript.
@@ -61,8 +64,19 @@ registerHooks({
 const COMMENTS = /\/\*[\s\S]*?\*\/|(^|[^:\\])\/\/[^\n]*/g;
 const LITERAL = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*(['"])([^'"\n]+)\1/g;
 const COMPUTED = /\b(?:import|require)\s*\(\s*(?!['"\s)])/g;
+// For the computed check only, quoted text is blanked so `"import (not really)"` isn't a call; a template literal stays computed.
+const QUOTED = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
 
-let result: { readonly files: string[]; readonly computed: string[] } | { readonly error: string };
+/** The package.json Node reads for a file's `imports` and its package's `exports`: the nearest one up to the root. */
+function nearestManifest(file: string): string | undefined {
+  for (let directory = path.posix.dirname(file); ; directory = path.posix.dirname(directory)) {
+    const manifest = directory === '.' ? 'package.json' : `${directory}/package.json`;
+    if (tracked.has(manifest)) return manifest;
+    if (directory === '.') return undefined;
+  }
+}
+
+let result: { readonly files: string[]; readonly manifests: string[]; readonly computed: string[] } | { readonly error: string };
 try {
   await import(pathToFileURL(config).href);
   const files = new Set<string>();
@@ -73,7 +87,7 @@ try {
     files.add(file);
     const parent = pathToFileURL(path.join(root, file)).href;
     const text = readFileSync(path.join(root, file), 'utf8').replace(COMMENTS, '$1');
-    if (COMPUTED.test(text)) computed.push(file);
+    if (COMPUTED.test(text.replace(QUOTED, (quoted) => (quoted.startsWith('`') ? '``' : "''")))) computed.push(file);
     COMPUTED.lastIndex = 0;
     for (const match of text.matchAll(LITERAL)) {
       let url: string;
@@ -87,7 +101,8 @@ try {
       if (next !== undefined && tracked.has(next) && !files.has(next)) queue.push(next);
     }
   }
-  result = { files: [...files], computed };
+  const manifests = new Set([...files].map(nearestManifest).filter((manifest): manifest is string => manifest !== undefined));
+  result = { files: [...files], manifests: [...manifests], computed };
 } catch (cause) {
   result = { error: cause instanceof Error ? cause.message.split('\n')[0]! : String(cause) };
 }

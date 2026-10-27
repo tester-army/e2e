@@ -332,11 +332,38 @@ function configModules(candidates: readonly string[], entry: TreeSide): string[]
 /** The tracked files loading the config reached, and why that graph can't be trusted when it can't. */
 interface LoadedGraph {
   readonly files: readonly string[];
+  /** The package.json files whose `imports` and `exports` resolved them. */
+  readonly manifests: readonly string[];
   readonly unverified?: string;
 }
 
 /** What `config-graph.ts` writes. */
-const GRAPH_RESULT = z.union([z.object({ files: z.array(z.string()), computed: z.array(z.string()) }), z.object({ error: z.string() })]);
+const GRAPH_RESULT = z.union([z.object({ files: z.array(z.string()), manifests: z.array(z.string()), computed: z.array(z.string()) }), z.object({ error: z.string() })]);
+
+/** The package.json fields Node reads to resolve a module: a change to one can redirect an import with no module changed. */
+const RESOLUTION_FIELDS = ['name', 'type', 'main', 'exports', 'imports'] as const;
+
+/** A manifest's resolution fields, each canonical; undefined when the file is absent or isn't a JSON object. */
+function resolutionFields(text: string | undefined): Record<string, string> | undefined {
+  if (text === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+    const picked: Record<string, string> = {};
+    for (const field of RESOLUTION_FIELDS) picked[field] = canonical(field in parsed ? (parsed as Record<string, unknown>)[field] : null);
+    return picked;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The resolution fields that differ between two versions of a manifest, so a change elsewhere in it (scripts, dependencies) is none. */
+function resolutionChanges(before: string | undefined, after: string | undefined): string[] {
+  const was = resolutionFields(before);
+  const now = resolutionFields(after);
+  if (was === undefined || now === undefined) return was === now && before === after ? [] : ['the whole file'];
+  return RESOLUTION_FIELDS.filter((field) => was[field] !== now[field]);
+}
 
 /** `config-graph.ts` beside this module: `.ts` when tests run it from source, `.js` from `dist`. */
 const GRAPH_SCRIPT = fileURLToPath(new URL(`./config-graph${path.extname(fileURLToPath(import.meta.url))}`, import.meta.url));
@@ -362,12 +389,13 @@ function loadedGraph(config: string, root: string): LoadedGraph {
       // A string or a Buffer, or absent when the process never started.
       const stderr = String((cause as { stderr?: unknown }).stderr ?? '');
       const last = stderr.trim().split('\n').findLast((line) => line.trim() !== '');
-      return { files: [], unverified: `loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}` };
+      return { files: [], manifests: [], unverified: `loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}` };
     }
     const graph = GRAPH_RESULT.parse(JSON.parse(readFileSync(out, 'utf8')));
-    if ('error' in graph) return { files: [], unverified: `loading it failed: ${graph.error}` };
+    if ('error' in graph) return { files: [], manifests: [], unverified: `loading it failed: ${graph.error}` };
     return {
       files: graph.files,
+      manifests: graph.manifests,
       ...(graph.computed.length === 0 ? {} : { unverified: `${graph.computed.join(', ')} import${graph.computed.length === 1 ? 's' : ''} a module by a computed name` }),
     };
   } finally {
@@ -453,7 +481,7 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
     };
     // What Node loads is the truth for aliases and workspace packages; the text walks add the base's side (deletions, renames).
     const config = candidates.find((file) => isFile(path.join(root, file)));
-    const loaded = config === undefined ? { files: [] } : loadedGraph(path.join(root, config), root);
+    const loaded: LoadedGraph = config === undefined ? { files: [], manifests: [] } : loadedGraph(path.join(root, config), root);
     if (config !== undefined && loaded.unverified !== undefined) {
       files.push({ file: config, changes: [change('config-unverified', `${config}: ${loaded.unverified}; a human must review every change outside the case files`)] });
     }
@@ -463,6 +491,13 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
       const untracked = fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ...modules], top));
       for (const file of [...new Set([...touched, ...untracked])].toSorted()) {
         files.push({ file, changes: [change('config-changed', `${file}: the hooks, plugins, and environments a pass depends on`)] });
+      }
+    }
+    const textOf = (entry: TreeEntry): string | undefined => (entry !== undefined && 'text' in entry ? entry.text : undefined);
+    for (const manifest of loaded.manifests.filter((file) => !modules.includes(file)).toSorted()) {
+      const changedFields = resolutionChanges(textOf(atBase(manifest)), textOf(working(manifest)));
+      if (changedFields.length > 0) {
+        files.push({ file: manifest, changes: [change('config-changed', `${manifest}: ${changedFields.join(', ')}, which decide where the config's imports resolve`)] });
       }
     }
   }

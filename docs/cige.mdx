@@ -276,12 +276,13 @@ redirects what a pass means:
 - Any Context changed: the environment, the agent, a precondition.
 - The CIGE config, or a file it loads, changed: that's where the hooks and
   plugins a pass depends on live. `diff` loads the config to find them, so
-  `#` aliases, workspace packages, and a hook's lazy imports count. A
-  config it can't load, or one that imports by a computed name, blocks.
+  `#` aliases, workspace packages, a hook's lazy imports, and the
+  package.json that maps them count. A config it can't load, or one that
+  imports by a computed name, blocks.
 
 Rewriting Execution and adding guardrails, deny patterns, criteria,
-evidence, or variants pass. App code and installed packages are out of
-`diff`'s reach.
+evidence, or variants pass. App code the config doesn't import, and
+installed packages, are out of `diff`'s reach.
 `--allow-intent` exits 0 anyway and records nothing, so gate it on a
 human's approval in CI; an agent never passes it.
 
