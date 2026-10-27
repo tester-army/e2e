@@ -293,10 +293,6 @@ text is `POLICY_DENIED` before any statement runs: a regular expression, an
 `exact` other than `true`, or a `hasText` filter. Find the locator by its
 exact text.
 
-A regular expression that repeats a group with a quantifier or `|` inside,
-such as `(\w+\s?)*`, is `INVALID_ARGUMENT`: it can backtrack for hours on a
-short text, and nothing could stop it.
-
 #### `test_lines`
 
 Returns every test line the session's actions printed, and every statement

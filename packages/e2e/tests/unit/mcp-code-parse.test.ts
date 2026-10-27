@@ -16,7 +16,6 @@ const ARGUMENTS =
 const STATEMENTS = 'a statement starts with screen, app, or expect(...)';
 const LOCATOR_MEMBERS =
   'getByRole, getByLabel, getByPlaceholder, getByText, getByDisplayValue, getByTestId, tapAt, swipe, scrollUntilVisible, filter, or, first, last, nth, tap, click, doubleTap, dblclick, secondaryTap, longPress, fill, pressSequentially, clear, press, check, uncheck, selectOption, focus, hover, dragTo, scrollIntoView, waitFor, textContent, inputValue, getAttribute, isVisible, isHidden, isEnabled, isDisabled, isChecked, boundingBox, count, allTextContents';
-const NESTED = 'repeats a group that repeats or alternates inside, which can run for hours on a short text; repeat a single character or class instead';
 const SECRET_PLACE = "is accepted only as fill's value, such as screen.getByLabel('Password').fill(credentials.user('admin').password)";
 
 /** The message `run_code` refuses `code` with. */
@@ -156,15 +155,6 @@ await screen.getByRole('textbox', { name: 'Notes', exact: null, level: [1, false
     expect(action!.body).toMatchObject({ kind: 'call', read: false });
   });
 
-  it('regular expressions that repeat a plain group, a class, or a character', () => {
-    const statements = parseCode(
-      String.raw`await expect(screen.getByRole('status')).toHaveText(/^Order \d+ of \d+$/);
-await expect(screen.getByRole('status')).toHaveText(/(ab)?c+(?<word>\w)+[(*+]+x{2,}/u);`,
-      WEB,
-    );
-    expect(statements).toHaveLength(2);
-  });
-
   it('a matcher negated once', () => {
     const [negated] = parseCode("await expect(screen.getByRole('dialog')).not.toBeVisible({ timeout: 100 })", WEB);
     expect(negated!.body).toMatchObject({ kind: 'expect', negated: true, matcher: { name: 'toBeVisible' } });
@@ -241,9 +231,6 @@ describe('parseCode refuses', () => {
     ["screen.getByText('a').tap({ ...options })", 'run_code: the property "...options" at 1:29 is not in the grammar; write each property as name: value'],
     ['screen.getByText([1, , 2]).tap()', 'run_code: the array at 1:18 skips an item; write every item'],
     ['screen.getByText(/(/).tap()', 'run_code: the regular expression at 1:18 is invalid: Invalid regular expression: /(/: Unterminated group'],
-    [String.raw`expect(screen.getByTestId('log')).toHaveText(/^(\w+\s?)*$/)`, `run_code: the regular expression at 1:46 ${NESTED}`],
-    [String.raw`expect(screen.getByTestId('log')).toHaveText(/(?:\s*(a|ab))+/)`, `run_code: the regular expression at 1:46 ${NESTED}`],
-    [String.raw`expect(screen.getByTestId('log')).toHaveText(/(x|y){2,}/)`, `run_code: the regular expression at 1:46 ${NESTED}`],
     ["screen.getByText('a).tap()", 'run_code: the code does not parse at 1:18: Unterminated string'],
     ["screen.getByText('a').tap() /* trailing", 'run_code: the code does not parse at 1:29: Unterminated multiline comment'],
     ['screen.getByText("é").tap() \\', 'run_code: the code does not parse at 1:30: Invalid Unicode escape sequence'],
