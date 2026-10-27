@@ -382,8 +382,7 @@ export default {
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.
-  Non-input targets return `UNSUPPORTED_CAPABILITY`. A fresh read does not
-  make coordinate dispatch atomic.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`

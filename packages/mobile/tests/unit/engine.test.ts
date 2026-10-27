@@ -2543,6 +2543,20 @@ describe('input freshness', () => {
     expect(h.fake.methods()).not.toContain('interactions.fill');
   });
 
+  it.each(['fill', 'clear'] as const)('does not capture or send %s after its transition wait is cancelled', async (kind) => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const search = await observed(h, 'Search');
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    const controller = new AbortController();
+    const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+    const pending = h.engine.perform!(search.ref, action, { ...operation(controller.signal), origin: 'test' });
+    setTimeout(() => controller.abort(), 20);
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
   it('does not dispatch when aborted during the preflight capture', async () => {
     const h = harness({ transition: 0 });
     await openAttempt(h);

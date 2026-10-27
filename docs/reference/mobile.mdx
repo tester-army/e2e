@@ -240,8 +240,7 @@ waits out the budget before the next action lands on it.
 `fill` and `clear` re-read the field before typing. Missing fields, changed
 security state, or incomplete captures return `NODE_STALE` before mutation,
 then retry after a fresh observation. Non-input targets return
-`UNSUPPORTED_CAPABILITY`. A coordinate-only backend can still race movement
-after this read.
+`UNSUPPORTED_CAPABILITY`.
 
 #### `videoTouches`
 

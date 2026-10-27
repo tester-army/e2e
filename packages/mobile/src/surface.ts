@@ -1169,27 +1169,17 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Lets a control that came with the last action finish arriving before a
-   * test acts on it, and answers the binding to act on. A control already
-   * present at the same place in the snapshot the last action was resolved
-   * from is not in transition and is acted on at once; anything else waits
-   * out the remainder of the transition budget since that action and is then
-   * found again in a fresh snapshot. The budget is the only signal that the
-   * transition is over, since the tree cannot tell a sliding control from a
-   * landed one; the fresh snapshot is where the control landed. Android
-   * reports a window's frames while it slides in, so a ref resolved
-   * mid-flight would send the action where the control was: below the
-   * screen, for a modal rising from the bottom. Input mutations also refresh
-   * when no transition wait was needed, using this one capture for dispatch.
+   * Waits for a control that arrived or moved with the last action, returning
+   * whether it waited. Controls already present at the same place need no wait.
    */
-  private async settled(entry: NodeBinding, operation: OperationContext, refreshInput = false): Promise<NodeBinding> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext): Promise<boolean> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
-    if (remaining <= 0) return refreshInput ? this.relocated(entry, operation, true) : entry;
+    if (remaining <= 0) return false;
     const before = this.indexBeforeAction;
     if (before !== undefined) {
       const prior = this.refind(entry, before);
-      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return refreshInput ? this.relocated(entry, operation, true) : entry;
+      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return false;
     }
     await sleep(remaining, operation.signal);
     // The sleep resolves on abort; the action behind it must not go out once
@@ -1197,7 +1187,13 @@ export class AgentDeviceSurface {
     if (operation.signal.aborted) {
       throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
     }
-    return this.relocated(entry, operation, refreshInput);
+    return true;
+  }
+
+  /** Refreshes a control after a transition wait, keeping the binding when no wait was needed. */
+  private async settled(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+    if (await this.waitForTransition(entry, operation)) return this.relocated(entry, operation);
+    return entry;
   }
 
   /** The same control in a fresh snapshot; input mutations refuse a missing target or changed security facts. */
@@ -1261,9 +1257,13 @@ export class AgentDeviceSurface {
     }
     const before = this.latestIndex;
     const run = async (): Promise<unknown> => {
-      const target = deterministic
-        ? await this.settled(entry, operation, filling)
-        : filling ? await this.relocated(entry, operation, true) : entry;
+      let target = entry;
+      if (filling) {
+        if (deterministic) await this.waitForTransition(entry, operation);
+        target = await this.relocated(entry, operation, true);
+      } else if (deterministic) {
+        target = await this.settled(entry, operation);
+      }
       switch (action.kind) {
         case 'tap':
           return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
