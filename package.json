@@ -21,8 +21,6 @@
     "mcp-server:check": "node scripts/sync-mcp-server.ts --check",
     "docs:check-errors": "node scripts/check-error-codes.ts",
     "docs:check": "pnpm --filter @e2e-dev/docs run check",
-    "docs:dev": "pnpm --filter @e2e-dev/docs run dev",
-    "docs:og": "pnpm --filter @e2e-dev/docs run og",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
     "changeset": "changeset",

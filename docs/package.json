@@ -1,13 +1,11 @@
 {
   "name": "@e2e-dev/docs",
   "private": true,
-  "description": "The e2e documentation site, built with Mintlify",
+  "description": "The e2e documentation pages and their checks",
   "type": "module",
   "scripts": {
-    "dev": "tsx og/generate.tsx && mint dev",
-    "og": "tsx og/generate.tsx",
-    "check": "tsx og/generate.tsx --check && node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && node ../scripts/check-docs-anchors.ts && node ../scripts/check-docs-logos.ts && mint validate && mint broken-links",
-    "typecheck": "tsc --noEmit --project examples/tsconfig.json && tsc --noEmit --project og/tsconfig.json"
+    "check": "node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && node ../scripts/check-docs-anchors.ts && node ../scripts/check-docs-logos.ts",
+    "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {
     "@ai-sdk/typesafe-ai": "3.0.27",
@@ -18,14 +16,9 @@
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.5",
-    "@types/react": "19.1.4",
-    "@vercel/og": "0.11.1",
     "agent-device": "0.21.31",
     "ai": "7.0.153",
     "e2e": "workspace:*",
-    "mint": "4.2.1125",
-    "react": "19.3.1",
-    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "zod": "4.6.7"
   },
