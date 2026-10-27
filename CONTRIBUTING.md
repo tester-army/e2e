@@ -83,7 +83,7 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `apps/testbed`: private dogfood suite that consumes the built packages
 - `apps/web-benchmark`: private Next.js app of hard-surface scenarios plus the e2e suites written against them
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
-- `docs/`: the docs site, built with [Mintlify](https://mintlify.com)
+- `docs/`: the documentation pages
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
 - `skills/create-verification-skill/`: the generator of a project-local `verify-<app>` skill, installed with `npx skills add tester-army/e2e --skill create-verification-skill`
 - `skills/migrate-to-e2e/`: ports an existing Playwright, Cypress, Selenium, Detox, or Maestro suite one slice at a time, installed with `npx skills add tester-army/e2e --skill migrate-to-e2e`
@@ -124,20 +124,8 @@ page under `docs/` in the same review, and `skills/e2e/` when the
 skill describes that surface.
 
 ```sh
-pnpm docs:dev     # render the Open Graph cards, then preview locally
-pnpm docs:og      # render the Open Graph cards for new or changed pages
-pnpm docs:check   # validate the site, its links, the quickstart examples, and the cards
+pnpm docs:check   # check the links, anchors, examples, package manager tabs, and logos
 ```
-
-Every page in the navigation except the home page has its own social
-preview card under `docs/images/og/`, drawn from its title, description, and
-navigation section by `docs/og/generate.tsx` with `@vercel/og`. Mintlify runs
-no build step of ours, so the cards and the `og:image` and `twitter:image`
-lines the script writes into each page's frontmatter are committed. A new
-page, a renamed one, one moved to another navigation section, or an edited
-title or description needs `pnpm docs:og`;
-`pnpm docs:check` fails until it has run. A page with no card falls back to
-the brand card, `docs/images/og.png`, set site-wide in `docs/docs.json`.
 
 A change that claims to be faster, or that touches the runner, the agent
 loop, or an engine, gets measured against `main` on the benchmark suites:

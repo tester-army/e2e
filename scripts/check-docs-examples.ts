@@ -4,7 +4,7 @@
  * is shown somewhere.
  *
  * The examples are typechecked against the built packages (`pnpm --filter
- * @e2e-dev/docs typecheck`); Mintlify cannot import a file into a page and a
+ * @e2e-dev/docs typecheck`); a page cannot import a file and a
  * skill is plain markdown, so the page carries a copy of each and this script
  * keeps the copies honest.
  *

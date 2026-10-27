@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -635,12 +635,12 @@ describe('e2e init argument parsing', () => {
 
   it('passes every wizard answer given as a flag', async () => {
     await invoke(
-      'init', '--yes', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
+      'init', '--yes', '--engine', 'mobile,web', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
       '--skills', '.agents/skills/,.claude/skills,.agents/skills', '--mcp', '.mcp.json', '--install',
     );
     expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
       yes: true,
-      engine: 'mobile',
+      engines: ['mobile', 'web'],
       gateway: 'openai-compatible',
       endpoint: ' http://127.0.0.1:11434/v1 ',
       skills: ['.agents/skills', '.claude/skills'],
@@ -667,12 +667,16 @@ describe('e2e init argument parsing', () => {
   });
 
   it('reads none as no location, and --no-install as declining the install', async () => {
-    await invoke('init', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
-    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), expect.objectContaining({ gateway: 'none', skills: [], mcp: [], install: false }));
+    await invoke('init', '--engine', 'none', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(
+      process.cwd(),
+      expect.objectContaining({ engines: [], gateway: 'none', skills: [], mcp: [], install: false }),
+    );
   });
 
   it.each([
-    [['--engine', 'playwright'], "option '--engine <id>' argument 'playwright' is invalid. Allowed choices are web, mobile, none."],
+    [['--engine', 'playwright'], 'error: --engine: unknown engine "playwright"; expected web, mobile, none'],
+    [['--engine', 'web,none'], 'error: --engine: none cannot be combined with other values'],
     [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
     [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
     [['--skills', ''], 'must name at least one skill directory'],
@@ -687,6 +691,91 @@ describe('e2e init argument parsing', () => {
     expect(initMock).not.toHaveBeenCalled();
     expect(written(stderrSpy)).toContain(message);
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('e2e explore without a config', () => {
+  let dir: string;
+  let cwd: string;
+  let stdinTty: boolean | undefined;
+  let stdoutTty: boolean | undefined;
+
+  /** Sets both ends of the terminal, as a shell (true) or a pipe (false) would. */
+  function terminal(tty: boolean): void {
+    process.stdin.isTTY = tty;
+    process.stdout.isTTY = tty;
+  }
+
+  beforeEach(() => {
+    // The .git directory stops config discovery here, whatever the temp directory's parents hold.
+    dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-explore-init-'));
+    mkdirSync(path.join(dir, '.git'));
+    cwd = process.cwd();
+    process.chdir(dir);
+    stdinTty = process.stdin.isTTY;
+    stdoutTty = process.stdout.isTTY;
+  });
+
+  afterEach(() => {
+    process.chdir(cwd);
+    process.stdin.isTTY = stdinTty as boolean;
+    process.stdout.isTTY = stdoutTty as boolean;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('runs the init wizard in a terminal and stops when steps are left to do by hand', async () => {
+    terminal(true);
+    initMock.mockResolvedValue({ ...initOutcome(0), ready: false });
+    await invoke('explore', 'Check the cart', '--max-steps', '4');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
+      interactive: true,
+      continueWith: ['e2e', 'explore', 'Check the cart', '--max-steps', '4'],
+    });
+    expect(runMock).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).not.toContain('CONFIG_NOT_FOUND');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('carries the exit code of an init that could not scaffold', async () => {
+    terminal(true);
+    initMock.mockResolvedValue({ ...initOutcome(2), ready: false });
+    await invoke('explore');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('goes on to explore once init is ready', async () => {
+    terminal(true);
+    initMock.mockImplementation(async () => {
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "export default { targets: [{ name: 'local', platform: 'test' }] };\n");
+      return { ...initOutcome(0), ready: true };
+    });
+    await invoke('explore');
+    expect(initMock).toHaveBeenCalledOnce();
+    // The scaffolded config is loaded; this one names no model, which explore needs.
+    expect(written(stderrSpy)).toContain('MODEL_UNAVAILABLE');
+    expect(written(stderrSpy)).not.toContain('CONFIG_NOT_FOUND');
+  });
+
+  it('keeps CONFIG_NOT_FOUND without a terminal, and with --config', async () => {
+    terminal(false);
+    await invoke('explore');
+    expect(written(stderrSpy)).toContain('CONFIG_NOT_FOUND');
+    expect(process.exitCode).toBe(2);
+
+    terminal(true);
+    stderrSpy.mockClear();
+    process.exitCode = undefined;
+    await invoke('explore', '--config', 'missing.config.ts');
+    expect(written(stderrSpy)).toContain('CONFIG_NOT_FOUND: config file not found: missing.config.ts');
+    expect(initMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves a project with a config alone', async () => {
+    terminal(true);
+    writeFileSync(path.join(dir, 'e2e.config.ts'), "export default { targets: [{ name: 'local', platform: 'test' }] };\n");
+    await invoke('explore');
+    expect(initMock).not.toHaveBeenCalled();
   });
 });
 

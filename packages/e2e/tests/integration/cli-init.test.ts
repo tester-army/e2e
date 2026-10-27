@@ -88,11 +88,11 @@ describe('initializing standalone projects', () => {
   );
 
   it('loads the engine-less scaffold and collects its HTTP example', async () => {
-    const scaffold = createScaffold('none', { gateway: 'openrouter' });
+    const scaffold = createScaffold([], { gateway: 'openrouter' });
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
-    writeFileSync(path.join(dir, 'tests/example.e2e.ts'), scaffold.example);
+    for (const test of scaffold.tests) writeFileSync(path.join(dir, 'tests', `${test.name}.e2e.ts`), test.content);
     linkPackages('e2e');
     linkModules('ai', '@openrouter/ai-sdk-provider');
 
@@ -112,11 +112,11 @@ describe('initializing standalone projects', () => {
     { host: 'linux', platform: 'android' },
   ] as const)('loads the $platform device scaffold generated on $host without a simulator', async ({ host, platform }) => {
     vi.spyOn(os, 'platform').mockReturnValue(host);
-    const scaffold = createScaffold('mobile', { gateway: 'vercel' });
+    const scaffold = createScaffold(['mobile'], { gateway: 'vercel' });
     writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
     writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
     mkdirSync(path.join(dir, 'tests'));
-    writeFileSync(path.join(dir, 'tests/example.e2e.ts'), scaffold.example);
+    for (const test of scaffold.tests) writeFileSync(path.join(dir, 'tests', `${test.name}.e2e.ts`), test.content);
     linkPackages('e2e', 'mobile');
     linkModules('ai');
 
@@ -134,6 +134,41 @@ describe('initializing standalone projects', () => {
     // The engine installs agent-device itself; init writes the engine, never the driver.
     expect(scaffold.dependencies).toHaveProperty('@e2e-dev/mobile');
     expect(scaffold.dependencies).not.toHaveProperty('agent-device');
+  });
+
+  it('loads the web and mobile scaffold as two targets and runs only the web example on the web target', async () => {
+    vi.spyOn(os, 'platform').mockReturnValue('darwin');
+    const scaffold = createScaffold(['web', 'mobile'], undefined);
+    writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ type: 'module', devDependencies: scaffold.dependencies }));
+    writeFileSync(path.join(dir, 'e2e.config.ts'), scaffold.config);
+    mkdirSync(path.join(dir, 'tests'));
+    for (const test of scaffold.tests) writeFileSync(path.join(dir, 'tests', `${test.name}.e2e.ts`), test.content);
+    linkPackages('e2e', 'web', 'mobile');
+
+    const raw = await loadConfigModule(path.join(dir, 'e2e.config.ts'));
+    const config = resolveConfig(raw, { projectRoot: dir, env: {} });
+    const collection = await collect(config);
+    expect(config.targets).toMatchObject([
+      { name: 'web', platform: 'web', engine: { name: 'web' } },
+      { name: 'ios', platform: 'ios', engine: { name: 'mobile' } },
+    ]);
+    expect(collection.tests.map((test) => ({ title: test.title, file: test.file })).toSorted((a, b) => a.file.localeCompare(b.file))).toEqual([
+      { title: 'Settings opens', file: 'tests/mobile.e2e.ts' },
+      { title: 'app opens', file: 'tests/web.e2e.ts' },
+    ]);
+
+    const server = createServer((_request, response) => response.end('<p>hello</p>'));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('expected TCP listener');
+      const env: NodeJS.ProcessEnv = { ...process.env, APP_URL: `http://127.0.0.1:${address.port}` };
+      const { stdout } = await execFileAsync(process.execPath, [CLI, 'run', '--target', 'web', '--no-cache'], { cwd: dir, env });
+      expect(stdout).toContain('1 passed');
+      expect(stdout).not.toContain('failed');
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+    }
   });
 
   it('runs the generated browser example against any page without a model key', async () => {

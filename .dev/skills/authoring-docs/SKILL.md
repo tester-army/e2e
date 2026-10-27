@@ -121,8 +121,6 @@ Shortening adds claims. Check each new sentence:
 title: <noun the reader searches for>
 description: <one sentence: what the reader can do after this page>
 icon: <font awesome name, or /images/icons/<brand>.svg (see Page icons)>
-"og:image": <written by pnpm docs:og, never by hand>
-"twitter:image": <written by pnpm docs:og, never by hand>
 ---
 
 <lede: 2-4 sentences. What it is, what it does.>
@@ -180,8 +178,9 @@ placeholder:
 2. **Card logo**: `docs/images/integrations/<brand>.svg` in brand colors, on
    every `<Card>` that links to the page. An integration or CI page also
    gets a card on its overview, `docs/integrations/index.mdx` or
-   `docs/ci.mdx`. A near-black mark gets a `filter: invert(1)` rule for dark
-   mode in `docs/style.css`, like Expo's and TestMu AI's.
+   `docs/ci.mdx`. A near-black mark needs a `filter: invert(1)` rule for
+   dark mode in the site's styles, like Expo's and TestMu AI's; say so in
+   the PR.
 
 Take both from the vendor's own site or press kit, usually the favicon SVG
 for the mark. If you can't get a logo, stop and ask the user. Don't ship
@@ -189,8 +188,8 @@ the page without one. `scripts/check-docs-logos.ts` (in `pnpm docs:check`)
 fails on a vendor page with a missing icon, a Font Awesome icon, a card
 without a logo, or no overview card.
 
-Mintlify fills Font Awesome icons with one grey. A file loads as an `<img>`
-in its own colors. `docs/style.css` turns a file grey only when it is under
+The site fills Font Awesome icons with one grey. A file loads as an `<img>`
+in its own colors. The site turns a file grey only when it is under
 `docs/images/icons/`. It makes every opaque pixel a grey silhouette, so the
 file must be a silhouette too:
 
@@ -413,7 +412,7 @@ at the top and finds its details one click down. Model pages:
 - The first `##` after the lede is always `## Reference`, on every page.
   Never Members, Methods, Entry points, or Overview there. Groups under it
   name what they hold: Queries, Options, Hooks, Commands.
-- Mintlify gives `##` to `####` an anchor and a line in "On this page".
+- The site gives `##` to `####` an anchor and a line in "On this page".
   `#####` gets neither. So entries are `###` on a one-group page and `####`
   on a page with several groups.
 - An entry's sub-part that lands at `#####` and is linked from anywhere gets
@@ -463,7 +462,6 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
   entry, or you add it there.
 - Add no claim the old page or the source (`packages/*/src`) does not make.
   Check a default or a "Throws" condition in the source before you write it.
-- Leave `title` and `description` alone unless you also run `pnpm docs:og`.
 
 ## Before you commit
 
@@ -495,8 +493,4 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
       `docs/images/icons/` and matches its sidebar neighbors in light and
       dark mode.
 - [ ] Links and anchors resolve. Moved pages have redirects.
-- [ ] A new page, or a changed title or description, has a fresh social
-      card from `pnpm docs:og`. Look at `docs/images/og/<page>.png`.
 - [ ] `pnpm docs:check` passes.
-- [ ] Preview the page with `pnpm docs:dev` and look at it
-      the way a skimmer would: scroll fast, stop only at headings and code.
