@@ -16,11 +16,15 @@
  *    `import(name)`, or that names a repository path (relative or `#`) that
  *    no longer resolves, is reported and the gate blocks.
  * 3. A loaded file git doesn't list, such as a workspace package built to
- *    an ignored `dist`, isn't parsed: its package's sources stand for it,
- *    and every listed file under that package's package.json counts. One with no package of its own
- *    apart from the config's can't be traced to a source, so it blocks.
- * 4. A listed symlink to a graph file, or to a directory above one, counts:
- *    Node reads through it, so retargeting it changes what loads.
+ *    an ignored `dist`, isn't parsed: its package's sources stand for it.
+ *    The package's directory counts, and so does each workspace package it
+ *    depends on, since a bundler may inline one. Its listed sources join
+ *    the walk too, so a module they import by path counts. What they can't
+ *    trace doesn't block, since their package counts as a whole. A loaded
+ *    file with no package of its own apart from the config's can't be
+ *    traced to a source, so it blocks.
+ * 4. A symlink to a graph file, or to a directory above one, counts: Node
+ *    reads through it, so retargeting it changes what loads.
  * 5. The nearest package.json of each file is reported too: its `imports`
  *    and `exports` decide where an alias lands, so remapping one can
  *    redirect a hook to another file without touching either.
@@ -28,7 +32,7 @@
  *    imports), so a module the branch deleted or renamed still counts.
  *
  * Usage: `node --experimental-import-meta-resolve config-graph.js <input.json> <out.json>`.
- * It writes `{ files, manifests, base, unverified }` (repo-relative paths)
+ * It writes `{ files, packages, manifests, base, unverified }` (repo-relative paths)
  * to `<out.json>`, never to stdout, which belongs to the config's own code.
  * Node's type stripping runs it from source in tests, so it holds to
  * erasable TypeScript.
@@ -50,8 +54,10 @@ const INPUT = z.object({
   mergeBase: z.string(),
   /** Where the config may be, repo-relative, in order. */
   candidates: z.array(z.string()),
-  /** Every file git lists in the working tree: tracked, and untracked but not ignored. */
+  /** Every file git lists in the working tree: tracked and not deleted, and untracked but not ignored. */
   listed: z.array(z.string()),
+  /** The listed paths that may be symlinks: tracked as one, retyped in the working tree, or untracked. */
+  links: z.array(z.string()),
 });
 
 const [inputFile, out] = process.argv.slice(2);
@@ -137,6 +143,39 @@ function resolveRequire(specifier: string, file: string): string | undefined {
   }
 }
 
+const MANIFEST = z.looseObject({
+  dependencies: z.record(z.string(), z.unknown()).optional(),
+  devDependencies: z.record(z.string(), z.unknown()).optional(),
+  peerDependencies: z.record(z.string(), z.unknown()).optional(),
+  optionalDependencies: z.record(z.string(), z.unknown()).optional(),
+});
+
+/**
+ * The repository directories of the workspace packages a package depends on,
+ * in any dependency field: a bundler may inline any of them. Each name is
+ * found the way Node finds it, in the nearest `node_modules` up to the root;
+ * one that's installed rather than linked to the repository is left out.
+ */
+function workspaceDependencies(directory: string): string[] {
+  let manifest: z.infer<typeof MANIFEST>;
+  try {
+    manifest = MANIFEST.parse(JSON.parse(readFileSync(path.join(root, directory, 'package.json'), 'utf8')));
+  } catch {
+    return [];
+  }
+  const names = new Set([manifest.dependencies, manifest.devDependencies, manifest.peerDependencies, manifest.optionalDependencies].flatMap((field) => Object.keys(field ?? {})));
+  return [...names].flatMap((name) => {
+    for (let from = directory; ; from = path.posix.dirname(from)) {
+      const linked = path.join(root, from, 'node_modules', name);
+      if (existsSync(linked)) {
+        const found = inRepo(pathToFileURL(linked).href);
+        return found === undefined || installed(found) ? [] : [found];
+      }
+      if (from === '.') return [];
+    }
+  });
+}
+
 /** Installed packages are reviewed as dependencies, not as the case. */
 function installed(file: string): boolean {
   return file.split('/').includes('node_modules');
@@ -162,6 +201,8 @@ registerHooks({
 
 const base = configModules(input.candidates, treeAt(input.mergeBase, root));
 const files = new Set<string>();
+/** The directories of workspace packages whose sources stand for built output git ignores: a change anywhere under one counts, a deleted file included. */
+const packages = new Set<string>();
 const unverified: string[] = [];
 if (input.config !== null) {
   try {
@@ -173,26 +214,39 @@ if (input.config !== null) {
 if (input.config !== null && unverified.length === 0) {
   const configFile = inRepo(pathToFileURL(input.config).href);
   const ownPackage = configFile === undefined ? undefined : nearestManifest(configFile);
-  const walked = new Set<string>();
-  const queue = [...loaded].map(inRepo).filter((file): file is string => file !== undefined && !installed(file));
-  for (let file = queue.shift(); file !== undefined; file = queue.shift()) {
-    if (walked.has(file)) continue;
-    walked.add(file);
+  const ownDirectory = ownPackage === undefined ? undefined : path.posix.dirname(ownPackage);
+  // Whether each walked file was walked strictly. One reached only through a stand-in package's sources is followed, but what it can't trace doesn't block.
+  const walked = new Map<string, boolean>();
+  const queue: Array<readonly [string, boolean]> = [...loaded]
+    .map(inRepo)
+    .filter((file): file is string => file !== undefined && !installed(file))
+    .map((file) => [file, true] as const);
+  /** A workspace package whose sources stand for its built output: its directory counts, its listed sources join the walk, and the workspace packages it depends on stand in too. */
+  const standIn = (directory: string): void => {
+    if (packages.has(directory) || directory === ownDirectory) return;
+    packages.add(directory);
+    for (const source of listed) if (source.startsWith(`${directory}/`) && !installed(source)) queue.push([source, false]);
+    for (const dependency of workspaceDependencies(directory)) standIn(dependency);
+  };
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    const [file, strict] = next;
+    const seen = walked.get(file);
+    if (seen === true || (seen === false && !strict)) continue;
+    walked.set(file, strict);
     if (!listed.has(file)) {
-      // Built output git ignores, such as a workspace package's dist: its package's listed sources stand for it, so it isn't parsed.
+      // Built output git ignores, such as a workspace package's dist, isn't parsed: its package's listed sources stand for it.
       const manifest = nearestManifest(file);
       if (manifest === undefined || manifest === 'package.json' || manifest === ownPackage) {
-        unverified.push(`loads ${file}, which git doesn't track`);
+        if (strict) unverified.push(`loads ${file}, which git doesn't track`);
       } else {
-        const directory = `${path.posix.dirname(manifest)}/`;
-        for (const source of listed) if (source.startsWith(directory)) files.add(source);
+        standIn(path.posix.dirname(manifest));
       }
       continue;
     }
     files.add(file);
     if (!SOURCE.test(file)) continue;
     const imports = importsOf(readFileSync(path.join(root, file), 'utf8'), file);
-    if (imports.unverified !== undefined) unverified.push(`${file} ${imports.unverified}`);
+    if (strict && imports.unverified !== undefined) unverified.push(`${file} ${imports.unverified}`);
     const resolved = [
       ...imports.specifiers.map((specifier) => [specifier, resolveImport(specifier, path.join(root, file))] as const),
       ...imports.requires.map((specifier) => [specifier, resolveRequire(specifier, path.join(root, file))] as const),
@@ -200,16 +254,16 @@ if (input.config !== null && unverified.length === 0) {
     for (const [specifier, url] of resolved) {
       // A path in this repository that no longer resolves may be a deleted hook a `catch` turns into a pass; a missing package is a dependency's business.
       if (url === undefined) {
-        if (LOCAL.test(specifier)) unverified.push(`${file} imports ${specifier}, which doesn't resolve`);
+        if (strict && LOCAL.test(specifier)) unverified.push(`${file} imports ${specifier}, which doesn't resolve`);
         continue;
       }
-      const next = inRepo(url);
-      if (next !== undefined && !installed(next) && !walked.has(next)) queue.push(next);
+      const target = inRepo(url);
+      if (target !== undefined && !installed(target)) queue.push([target, strict]);
     }
   }
-  // Node reads through links to real paths, so the graph holds targets; a listed link to one is how a retarget shows.
+  // Node reads through links to real paths, so the graph holds targets; a link to one is how a retarget shows.
   const graph = [...files];
-  for (const file of listed) {
+  for (const file of input.links) {
     let link = false;
     try {
       link = lstatSync(path.join(root, file)).isSymbolicLink();
@@ -222,6 +276,6 @@ if (input.config !== null && unverified.length === 0) {
   }
 }
 const manifests = new Set([...files].map(nearestManifest).filter((manifest): manifest is string => manifest !== undefined));
-writeFileSync(out, JSON.stringify({ files: [...files], manifests: [...manifests], base, unverified }));
+writeFileSync(out, JSON.stringify({ files: [...files], packages: [...packages], manifests: [...manifests], base, unverified }));
 // The config may leave handles open (a server, a timer); the graph is written, so stop here.
 process.exit(0);

@@ -5,11 +5,15 @@
  * comments, strings, and templates are what the language says they are.
  *
  * A file whose imports can't all be read from it fails closed with a
- * reason: a computed `import()` or `require()`, or any other read of a
- * loader: `require` other than a direct call, `createRequire` (its function
- * can be called under any name), `eval`, or `Function`, whether by name, as
- * a member (`globalThis.eval`, `module['require']`), or destructured. Node's type stripping runs
- * this from source in tests, so it holds to erasable TypeScript.
+ * reason: a computed `import()` or `require()`; an import of a builtin that
+ * loads code by a value (`node:module`, `node:vm`, `node:worker_threads`,
+ * `node:inspector`), which closes every export of each at once; or any
+ * other read of a loader: `require` other than a direct call,
+ * `process.getBuiltinModule`, `eval`, or `Function`, whether by name, as a
+ * member (`globalThis.eval`, `module['require']`), or destructured. A load
+ * built from strings or reached by reflection (`globalThis['ev' + 'al']`)
+ * can't be seen. Node's type stripping runs this from source in tests, so
+ * it holds to erasable TypeScript.
  */
 
 import { parse, type Program } from 'acorn';
@@ -27,10 +31,13 @@ export interface ModuleImports {
 /** The names that load or run code by a value the parser can't follow, and why reading one blocks. */
 const LOADERS: Readonly<Record<string, string>> = {
   require: "uses require other than as require('<module>')",
-  createRequire: "calls createRequire, whose require can't be followed",
+  getBuiltinModule: "reads process.getBuiltinModule, which can reach a loader the walk can't follow",
   eval: 'runs code from a string (eval or Function)',
   Function: 'runs code from a string (eval or Function)',
 };
+
+/** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`. */
+const LOADING_BUILTINS = new Set(['module', 'vm', 'worker_threads', 'inspector', 'inspector/promises']);
 
 const TYPESCRIPT = /\.[cm]?ts$/;
 
@@ -83,26 +90,30 @@ export function importsOf(text: string, file: string): ModuleImports {
   const requires: string[] = [];
   let unverified: string | undefined;
   const refuse = (reason: string): void => void (unverified ??= reason);
+  const named = (list: string[], specifier: string): void => {
+    if (LOADING_BUILTINS.has(specifier.replace(/^node:/, ''))) refuse(`imports ${specifier}, which loads code by a name the walk can't follow`);
+    list.push(specifier);
+  };
   const visit = (node: Fields, parent: Fields | undefined, grandparent: Fields | undefined): void => {
     switch (node.type) {
       case 'ImportDeclaration':
       case 'ExportAllDeclaration':
       case 'ExportNamedDeclaration': {
         const source = literal(node.source);
-        if (source !== undefined) specifiers.push(source);
+        if (source !== undefined) named(specifiers, source);
         break;
       }
       case 'ImportExpression': {
         const source = literal(node.source);
         if (source === undefined) refuse('imports a module by a computed name');
-        else specifiers.push(source);
+        else named(specifiers, source);
         break;
       }
       case 'CallExpression': {
         if (isNode(node.callee) && node.callee.type === 'Identifier' && node.callee.name === 'require') {
           const source = literal(Array.isArray(node.arguments) ? node.arguments[0] : undefined);
           if (source === undefined) refuse('imports a module by a computed name');
-          else requires.push(source);
+          else named(requires, source);
         }
         break;
       }

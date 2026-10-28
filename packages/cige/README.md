@@ -155,18 +155,18 @@ the working directory.
 
 `diff` compares every changed `.cige.json`, the CIGE config, and every
 module the config imports against the branch's merge base with `--base`.
-It finds those modules by loading the config in its own Node process and
-recording what Node resolves (`#` aliases and workspace packages
-included). Then it parses each one (TypeScript stripped as Node strips it,
-then acorn) for the specifiers that loading didn't reach, such as a hook's
-lazy `import('#hooks/x')`, and resolves them without running them. Three
-more things count. A workspace package built to an ignored `dist` counts
-by its package's files. A symlink to a module counts, since retargeting it
-changes what loads. The nearest package.json of each module counts by its
-`name`, `type`, `main`, `exports`, and `imports`, since remapping an alias
-redirects a hook without touching it. A walk of the merge base adds the
-modules that were deleted or renamed. It exits 1 on any change that needs
-a human's approval:
+It loads the config in its own Node process to see what it imports, then
+follows the imports each module names that loading didn't reach, such as a
+hook's lazy `import('#hooks/x')`, without running them. These count too:
+
+- A workspace package built to an ignored `dist`: its whole directory, and
+  each workspace package it depends on, since a bundler may inline one.
+- A symlink to a module, since retargeting it changes what loads.
+- The `name`, `type`, `main`, `exports`, and `imports` of each module's
+  nearest package.json, since remapping an alias redirects a hook.
+- A module the branch deleted or renamed.
+
+It exits 1 on any change that needs a human's approval:
 
 | Blocks | Passes |
 | --- | --- |
@@ -174,14 +174,28 @@ a human's approval:
 | Any Context change, a removed precondition named | A top-level `x-` key changed (triage data) |
 | An `x-` key changed under Intent, evidence, or a guardrail | |
 | The CIGE config or a module it imports changed | |
-| `config-unverified`: the config didn't load; a module imports by a computed name, names a relative or `#` path that doesn't resolve, or reads `require` other than as a direct call, `createRequire`, `eval`, or `Function`; or it loads a file git doesn't track that no other package's sources stand for | |
+| `config-unverified`: `diff` can't load the config or follow its imports | |
+
+`config-unverified` means the config didn't load, or a module it reaches:
+
+- imports by a computed name, or names a relative or `#` path that doesn't
+  resolve;
+- imports `node:module`, `node:vm`, `node:worker_threads`, or
+  `node:inspector`, or reads `process.getBuiltinModule`, `eval`,
+  `Function`, or `require` other than as a direct call;
+- is a file git doesn't track, outside any workspace package.
+
+A workspace package's own sources don't block this way: the package counts
+as a whole.
 
 Loading the config runs its top-level code from the branch under review.
 Give `diff` the env `e2e run` gets: a config that reads a missing
 variable at load blocks every `diff` with `config-unverified`. Run it only
-where you'd run the branch's tests. App code the config doesn't import,
-data files a hook reads at run time, and installed packages are out of its
-reach and need a human's review.
+where you'd run the branch's tests. `diff` follows the imports the code
+names, so a load built from strings or reached by reflection isn't seen.
+Neither is a file a hook runs in a child process or reads as data, app code
+the config doesn't import, or an installed package: those need a human's
+review.
 `--allow-intent` exits 0 anyway and records nothing: gate it on a human's
 approval in CI. `--json` reports `intentUnchanged` and the `blocking` count.
 

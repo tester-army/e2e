@@ -61,10 +61,12 @@ as a proposal. That includes `context-changed` and `config-changed`.
 `diff` sees the case files, the CIGE config, every module the config
 imports (aliases, workspace packages, lazy imports, and links included),
 and the package.json that maps them. A config it can't load or follow, such
-as one that imports by a computed name, blocks as `config-unverified`. An
-app helper a hook imports is in that graph, so changing it needs a human
-too. It can't see other app code, data files a hook reads, or installed
-packages: a repair that touches them is out of scope, so leave them alone.
+as one that imports by a computed name or imports `node:vm`, blocks as
+`config-unverified`. An app helper a hook imports is in that graph, so
+changing it needs a human too. It can't see other app code, data files a
+hook reads, code a hook runs in a child process or builds from strings, or
+installed packages: a repair that touches them is out of scope, so leave
+them alone.
 `diff` runs the config's top-level code, so run it with the env the run
 gets.
 

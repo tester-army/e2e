@@ -347,12 +347,22 @@ describe('diffSince', () => {
     expect(verdict("const sep = '//'; const name = './x.mjs'; export default { hooks: { h: async () => (await import(name)).x } };\n")).toEqual([computed]);
     expect(verdict("const name = './x.mjs';\nexport default { hooks: { h: async () => `${ { a: 1 }.a + (await import(name)).x }` } };\n")).toEqual([computed]);
     const untraceable = (reason: string) => [`!config-unverified: cige.config.mjs: cige.config.mjs ${reason}; a human must review every change outside the case files`];
+    const loader = (specifier: string) => untraceable(`imports ${specifier}, which loads code by a name the walk can't follow`);
     expect(verdict("import { createRequire } from 'node:module';\nconst req = createRequire(import.meta.url);\nexport default { hooks: { h: async () => req('./check.cjs').ok } };\n")).toEqual(
-      untraceable("calls createRequire, whose require can't be followed"),
+      loader('node:module'),
     );
-    expect(verdict("import { createRequire as cr } from 'node:module';\nexport default { hooks: { h: async () => cr(import.meta.url)('./check.cjs').ok } };\n")).toEqual(
-      untraceable("calls createRequire, whose require can't be followed"),
-    );
+    expect(verdict("import { createRequire as cr } from 'node:module';\nexport default { hooks: { h: async () => cr(import.meta.url)('./check.cjs').ok } };\n")).toEqual(loader('node:module'));
+    // The review's cases: a loader reached without its name. Each builtin that loads code blocks as a whole, statically, lazily, required, or re-exported.
+    expect(verdict("import Module from 'node:module';\nexport default { hooks: { h: async () => Module._load('./check.cjs').ok } };\n")).toEqual(loader('node:module'));
+    expect(verdict("import * as m from 'module';\nexport default { hooks: { h: async () => m['create' + 'Require'](import.meta.url)('./check.cjs').ok } };\n")).toEqual(loader('module'));
+    expect(verdict("import vm from 'node:vm';\nexport default { hooks: { h: async () => vm.runInThisContext('1') } };\n")).toEqual(loader('node:vm'));
+    expect(verdict("export default { hooks: { h: async () => new (await import('worker_threads')).Worker('1', { eval: true }) } };\n")).toEqual(loader('worker_threads'));
+    expect(verdict("export default { hooks: { h: async () => require('node:inspector/promises') } };\n")).toEqual(loader('node:inspector/promises'));
+    expect(verdict("export { createRequire } from 'node:module';\nexport default {};\n")).toEqual(loader('node:module'));
+    const builtin = untraceable("reads process.getBuiltinModule, which can reach a loader the walk can't follow");
+    expect(verdict("export default { hooks: { h: async () => process.getBuiltinModule('module').createRequire(import.meta.url)('./check.cjs').ok } };\n")).toEqual(builtin);
+    expect(verdict("const { getBuiltinModule } = process;\nexport default { hooks: { h: async () => getBuiltinModule('vm') } };\n")).toEqual(builtin);
+    expect(verdict("export default { hooks: { h: async () => process['getBuiltinModule']('vm') } };\n")).toEqual(builtin);
     expect(verdict("export default { hooks: { h: async () => eval('import(\"./x.mjs\")') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
     expect(verdict("export default { hooks: { h: async () => module.require('./check.cjs').ok } };\n")).toEqual(untraceable("uses require other than as require('<module>')"));
     // cubic's cases: a loader reached through a computed member, a destructure, an indirect call, or an alias.
@@ -363,11 +373,11 @@ describe('diffSince', () => {
     expect(verdict("export default { hooks: { h: async () => globalThis.eval('1') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
     expect(verdict("export default { hooks: { h: async () => (0, eval)('1') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
     expect(verdict("const make = Function;\nexport default { hooks: { h: async () => make('return 1')() } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
-    expect(verdict("export default { hooks: { h: async () => (await import('node:module'))['createRequire'] } };\n")).toEqual(
-      untraceable("calls createRequire, whose require can't be followed"),
-    );
-    // A comment, a string, or a key that reads like a call is not one.
-    expect(verdict('// we import (lazily) nothing here\nexport default { note: "import (not really)", require: true, eval: 1, why: \'createRequire\' };\n')).toEqual([]);
+    expect(verdict("export default { hooks: { h: async () => (await import('node:module'))['createRequire'] } };\n")).toEqual(loader('node:module'));
+    // A comment, a string, a key, or another builtin is not a loader.
+    expect(
+      verdict("import { readFileSync } from 'node:fs';\n// we import (lazily) nothing here\nexport default { note: \"import (not really)\", require: true, eval: 1, getBuiltinModule: 1, why: 'getBuiltinModule', also: 'node:vm', readFileSync };\n"),
+    ).toEqual([]);
   });
 
   it('follows a lazy import that comment-looking strings surround', () => {
@@ -454,6 +464,65 @@ describe('diffSince', () => {
     );
   });
 
+  it('follows the workspace packages a built package bundles, and counts its whole directory', () => {
+    const dir = repo({
+      '.gitignore': 'node_modules\ndist\n',
+      'cige.config.mjs': "import { verdict } from '@acme/hooks';\nimport { helper } from './helper.mjs';\nexport default { hooks: { verdict, helper } };\n",
+      // Reached strictly here, after the stand-in walk has queued it leniently: the stricter walk wins.
+      'helper.mjs': "export const helper = async () => (await import('./packages/hooks/src/lazy.mjs')).ok;\n",
+      // Bundled with tsup's `noExternal` or similar: what it imports from @acme/shared and ../../../local is inlined into dist.
+      'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js', devDependencies: { '@acme/shared': 'workspace:*' } }),
+      'packages/hooks/src/index.ts': "export { verdict } from '@acme/shared';\nexport { local } from '../../../local/src/index.ts';\n",
+      // A built package's sources are compiled, not run by Node, and what they can't trace doesn't block: their package counts as a whole.
+      'packages/hooks/src/load.ts': 'export class Loader {\n  constructor(private readonly name: string) {}\n  load = () => import(this.name);\n}\n',
+      'packages/hooks/src/lazy.mjs': 'export const ok = true;\n',
+      'packages/hooks/src/unused.ts': 'export const unused = 1;\n',
+      'packages/hooks/dist/index.js': 'export const verdict = () => false;\nexport const local = () => false;\n',
+      'packages/shared/package.json': JSON.stringify({ name: '@acme/shared', type: 'module', exports: './dist/index.js' }),
+      'packages/shared/src/index.ts': 'export const verdict = () => false;\n',
+      'local/src/index.ts': 'export const local = () => false;\n',
+      'checkout.cige.json': BASE,
+    });
+    mkdirSync(path.join(dir, 'node_modules/@acme'), { recursive: true });
+    symlinkSync('../../packages/hooks', path.join(dir, 'node_modules/@acme/hooks'), 'dir');
+    mkdirSync(path.join(dir, 'packages/hooks/node_modules/@acme'), { recursive: true });
+    symlinkSync('../../../shared', path.join(dir, 'packages/hooks/node_modules/@acme/shared'), 'dir');
+    const changed = () =>
+      diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.mjs')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}`).join(',')}`);
+    expect(changed()).toEqual([]);
+    // The review's case: @acme/shared is inlined into hooks' dist, and isn't built itself, so only hooks' package.json leads to it.
+    write(dir, { 'packages/shared/src/index.ts': 'export const verdict = () => true;\n' });
+    expect(changed()).toEqual(['packages/shared/src/index.ts !config-changed']);
+    // An undeclared module the sources import by path.
+    write(dir, { 'packages/shared/src/index.ts': 'export const verdict = () => false;\n', 'local/src/index.ts': 'export const local = () => true;\n' });
+    expect(changed()).toEqual(['local/src/index.ts !config-changed']);
+    // A file deleted from the package: its directory counts, not only the files left in it.
+    write(dir, { 'local/src/index.ts': 'export const local = () => false;\n' });
+    rmSync(path.join(dir, 'packages/hooks/src/unused.ts'));
+    expect(changed()).toEqual(['packages/hooks/src/unused.ts !config-changed']);
+    write(dir, { 'packages/hooks/src/unused.ts': 'export const unused = 1;\n', 'packages/hooks/src/lazy.mjs': 'const name = "./ok.mjs";\nexport const ok = (await import(name)).ok;\n' });
+    expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'packages/hooks/src/lazy.mjs !config-changed']);
+  });
+
+  it("never counts the config's own package as a stand-in, so its cases stay cases", () => {
+    const dir = repo({
+      '.gitignore': 'node_modules\ndist\n',
+      'apps/web/package.json': JSON.stringify({ name: '@acme/web', type: 'module' }),
+      'apps/web/cige.config.mjs': "import { verdict } from '@acme/hooks';\nexport default { hooks: { verdict } };\n",
+      'apps/web/checkout.cige.json': BASE,
+      // The hooks package depends back on the app, for its types.
+      'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js', devDependencies: { '@acme/web': 'workspace:*' } }),
+      'packages/hooks/src/index.ts': 'export const verdict = () => false;\n',
+      'packages/hooks/dist/index.js': 'export const verdict = () => false;\n',
+    });
+    mkdirSync(path.join(dir, 'apps/web/node_modules/@acme'), { recursive: true });
+    symlinkSync('../../../../packages/hooks', path.join(dir, 'apps/web/node_modules/@acme/hooks'), 'dir');
+    mkdirSync(path.join(dir, 'packages/hooks/node_modules/@acme'), { recursive: true });
+    symlinkSync('../../../../apps/web', path.join(dir, 'packages/hooks/node_modules/@acme/web'), 'dir');
+    write(dir, { 'apps/web/checkout.cige.json': edited((file) => void (file.Execution[1].step = 'pay')) });
+    expect(diffSince('HEAD', path.join(dir, 'apps/web'), { configFiles: [path.join(dir, 'apps/web/cige.config.mjs')] })).toMatchObject({ blocking: 0 });
+  });
+
   it('blocks retargeting a symlink an alias reaches, file or directory', () => {
     const linked = (link: string, target: string) => {
       const dir = repo({
@@ -479,6 +548,12 @@ describe('diffSince', () => {
     // The review's case: `#hooks/order` lands on a tracked link, which Node reads through to its target.
     expect(retarget(linked('hooks/order.ts', '../impl/strict.ts'), 'hooks/order.ts', '../impl/loose.ts')).toEqual(['hooks/order.ts config-changed']);
     expect(retarget(linked('hooks', 'strict'), 'hooks', 'loose')).toEqual(['hooks config-changed']);
+    // A tracked file turned into a link, not yet staged: git still lists it as a file.
+    const retyped = linked('impl/link.ts', 'strict.ts');
+    write(retyped, { 'hooks/order.ts': "export * from '../impl/strict.ts';\n" });
+    execFileSync('git', ['add', '.'], { cwd: retyped, stdio: 'pipe' });
+    execFileSync('git', ['-c', 'user.email=cige@example.test', '-c', 'user.name=cige', 'commit', '-q', '-m', 'file'], { cwd: retyped, stdio: 'pipe' });
+    expect(retarget(retyped, 'hooks/order.ts', '../impl/loose.ts')).toEqual(['hooks/order.ts config-changed']);
   });
 
   it('says the Intent held when only the path changed, and blocks a file that no longer parses', () => {

@@ -278,6 +278,8 @@ function isLink(file: string): boolean {
 interface ConfigGraph {
   /** What loading the working tree's config reached, aliases, workspace packages, and lazy imports included. */
   readonly files: readonly string[];
+  /** The directories of workspace packages that stand for built output git ignores; a change anywhere under one counts. */
+  readonly packages: readonly string[];
   /** The package.json files whose `imports` and `exports` resolved them. */
   readonly manifests: readonly string[];
   /** The merge base's config and the local modules it imports, so a deletion or a rename still counts. */
@@ -286,7 +288,13 @@ interface ConfigGraph {
 }
 
 /** What `config-graph.ts` writes. */
-const GRAPH_RESULT = z.object({ files: z.array(z.string()), manifests: z.array(z.string()), base: z.array(z.string()), unverified: z.array(z.string()) });
+const GRAPH_RESULT = z.object({
+  files: z.array(z.string()),
+  packages: z.array(z.string()),
+  manifests: z.array(z.string()),
+  base: z.array(z.string()),
+  unverified: z.array(z.string()),
+});
 
 /** The package.json fields Node reads to resolve a module: a change to one can redirect an import with no module changed. */
 const RESOLUTION_FIELDS = ['name', 'type', 'main', 'exports', 'imports'] as const;
@@ -326,8 +334,16 @@ function configGraph(config: string | undefined, root: string, mergeBase: string
   try {
     const inputFile = path.join(scratch, 'input.json');
     const out = path.join(scratch, 'graph.json');
-    const listed = fields(git(['ls-files', '-z', '--cached', '--others', '--exclude-standard'], root));
-    writeFileSync(inputFile, JSON.stringify({ config: config ?? null, root, mergeBase, candidates, listed }));
+    // `ls-files -s` records read `<mode> <object> <stage>\t<path>`; mode 120000 is a symlink. A path retyped in the working tree, or untracked, has no mode yet.
+    const deleted = new Set(fields(git(['ls-files', '-z', '--deleted'], root)));
+    const tracked = fields(git(['ls-files', '-s', '-z'], root))
+      .map((record) => [record.slice(record.indexOf('\t') + 1), record.slice(0, record.indexOf(' '))] as const)
+      .filter(([file]) => !deleted.has(file));
+    const untracked = fields(git(['ls-files', '-z', '--others', '--exclude-standard'], root));
+    const retyped = fields(git(['diff', '--name-only', '--relative', '--diff-filter=T', '-z'], root));
+    const listed = [...new Set([...tracked.map(([file]) => file), ...untracked])];
+    const links = [...new Set([...tracked.filter(([, mode]) => mode === '120000').map(([file]) => file), ...retyped, ...untracked])];
+    writeFileSync(inputFile, JSON.stringify({ config: config ?? null, root, mergeBase, candidates, listed, links }));
     try {
       execFileSync(process.execPath, ['--experimental-import-meta-resolve', '--no-warnings', GRAPH_SCRIPT, inputFile, out], {
         cwd: config === undefined ? root : path.dirname(config),
@@ -338,7 +354,7 @@ function configGraph(config: string | undefined, root: string, mergeBase: string
       // A string or a Buffer, or absent when the process never started.
       const stderr = String((cause as { stderr?: unknown }).stderr ?? '');
       const last = stderr.trim().split('\n').findLast((line) => line.trim() !== '');
-      return { files: [], manifests: [], base: [], unverified: [`loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}`] };
+      return { files: [], packages: [], manifests: [], base: [], unverified: [`loading it failed: ${last ?? (cause instanceof Error ? cause.message : String(cause))}`] };
     }
     return GRAPH_RESULT.parse(JSON.parse(readFileSync(out, 'utf8')));
   } finally {
@@ -412,7 +428,7 @@ export function diffSince(base: string, cwd: string, options: DiffOptions = {}):
     if (anchor !== undefined && graph.unverified.length > 0) {
       files.push({ file: anchor, changes: [change('config-unverified', `${anchor}: ${graph.unverified.join('; ')}; a human must review every change outside the case files`)] });
     }
-    const modules = [...new Set([...graph.files, ...graph.base])];
+    const modules = [...new Set([...graph.files, ...graph.packages, ...graph.base])];
     if (modules.length > 0) {
       const touched = fields(git(['diff', '--name-only', '--no-renames', '-z', mergeBase, '--', ...modules], top));
       const untracked = fields(git(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', ...modules], top));
