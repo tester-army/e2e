@@ -557,7 +557,8 @@ fixtures](#your-own-fixtures) are not lazy.
 `test.extend(fixtures)` defines resources set up before each test and cleaned
 up afterward, including after a failure. In each fixture function, code before
 `await use(value)` sets up the resource. The test receives `value`, and code
-after `use` tears it down.
+after `use` tears it down. For a guide with a full suite, see
+[Writing fixtures](/fixtures).
 
 ```ts
 import { test as base } from '@e2e-dev/web';

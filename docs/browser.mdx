@@ -113,6 +113,14 @@ await expect(editor.frameLocator('#preview').getByRole('heading', 'Uploaded')).t
 only when role, label, and test-id queries can't find the element. For a
 match made ambiguous by a hidden duplicate, try `{ visible: true }` first.
 
+The agent's semantic tree shows a frame from another site, such as a hosted
+card field, as an `iframe` element with none of its content
+([site check](/reference/security#site-check)). The agent reaches that
+content only through screenshots. Use `frameLocator` for steps in that
+frame. To judge its content with `agent.assert`, pass
+[`vision`](/reference/agent#vision). An `agent.act` whose only change is in
+that frame never records a [replay](/cache#when-a-recording-is-written).
+
 ## Read from the page
 
 `browser.evaluate` runs a function in the page. e2e serializes the
@@ -218,6 +226,7 @@ when the run no longer uses it.
 | [Kernel](/integrations/kernel) | `kernel()` from `@e2e-dev/kernel` |
 | [smol machines](/integrations/smol) microVMs on your own computer | `smol()` from `@e2e-dev/smol` |
 | [Lightpanda](/integrations/lightpanda), the open-source headless browser, on your own machine | `lightpanda()` from `@e2e-dev/lightpanda` |
+| [TestMu AI](/integrations/testmu#run-web-targets-in-browsers) | `testmuBrowsers()` from `@e2e-dev/testmu/web` |
 | Any other service | Your own provider, a few dozen lines in your project |
 
 When the service shows the window in a live view, add `viewport: null` so

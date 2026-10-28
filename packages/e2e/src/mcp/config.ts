@@ -26,9 +26,10 @@ export function locateProjectConfig(options: ProjectOptions): string {
  * base config it spreads, or opens another project while the server runs,
  * and the next session sees the files as they are now. Every session also
  * gets engine instances of its own, even from a config that spreads a base
- * config. The project root is the config's directory.
+ * config. The project root is the config's directory. `graph` names the
+ * session's module graph, which the test files it collects share.
  */
-export async function loadProjectConfig(configPath: string, env: NodeJS.ProcessEnv): Promise<LoadedConfig> {
-  const raw = await loadConfigModule(configPath, { graph: true });
+export async function loadProjectConfig(configPath: string, env: NodeJS.ProcessEnv, graph: string): Promise<LoadedConfig> {
+  const raw = await loadConfigModule(configPath, { graph });
   return { ...resolveConfig(raw, { projectRoot: path.dirname(configPath), configPath, env }), configPath };
 }

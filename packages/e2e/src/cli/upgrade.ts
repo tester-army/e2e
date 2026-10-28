@@ -8,16 +8,18 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { InvalidArgumentError } from 'commander';
 import picocolors from 'picocolors';
 import { z } from 'zod';
 import { detectWorkspacePackageManager, execCommand, LOCKFILE_NAMES, type PackageManager } from '../internal/package-manager.ts';
+import { insideProjectRoot, realpathOfExisting } from '../internal/paths.ts';
 import { compareVersions, formatVersion, parseVersion, satisfies } from '../internal/semver.ts';
 import type { UpgradeOutcome, UpgradeResult } from '../telemetry/events.ts';
-import { findInstalledSkillDirs } from './init/agent-skill.ts';
+import { describeLinks, describeObstacles, findInstalledSkillDirs, planSkillInstall } from './init/agent-skill.ts';
 import { describeManifestError, readPackage, serializePackage } from './init/package.ts';
+import { readSkillFiles, SKILL_NAME } from './skill.ts';
 
 /** What to upgrade to: a dist-tag such as `latest` or `nightly`, or one published version. */
 export type UpgradeTarget = { readonly kind: 'tag'; readonly tag: string } | { readonly kind: 'version'; readonly version: string };
@@ -173,6 +175,8 @@ async function upgradeOrThrow(options: UpgradeOptions, facts: UpgradeFacts): Pro
   const changing = plan.filter(moves);
   if (changing.length === 0) {
     out(`Already up to date${where}: ${plan.map((entry) => `${entry.name} ${entry.version}`).join(', ')}`);
+    // A package manager may have moved e2e without this command; its skill copies still follow.
+    refreshSkills(project.dir, manager, out, options.dryRun === true);
     return { result: 'up-to-date', exitCode: 0 };
   }
   out(`${options.dryRun === true ? 'Would upgrade' : 'Upgrading'}${where} with ${manager}:`);
@@ -182,7 +186,12 @@ async function upgradeOrThrow(options: UpgradeOptions, facts: UpgradeFacts): Pro
   const args = installArgs(manager);
   out(picocolors.dim(`${manifestName}: ${changing.map((entry) => `"${entry.name}": "${entry.request}"`).join(', ')}`));
   out(picocolors.dim(`$ ${manager} ${args.join(' ')}`));
-  if (options.dryRun === true) return { result: 'dry-run', exitCode: 0 };
+  if (options.dryRun === true) {
+    // The new skill is not installed yet; name the copies a write would reach, without the ones behind a link out of the project.
+    const skillDirs = skillCopies(project.dir).filter((dir) => insideProjectRoot(project.dir, path.join(project.dir, dir, SKILL_NAME, 'SKILL.md')));
+    if (skillDirs.length > 0) out(picocolors.dim(`then the agent skill in ${listSkillDirs(skillDirs)} from the new e2e`));
+    return { result: 'dry-run', exitCode: 0 };
+  }
 
   // The new specs go into package.json and one install resolves them together:
   // an add command per package would meet the old e2e spec in npm's peer check.
@@ -208,10 +217,7 @@ async function upgradeOrThrow(options: UpgradeOptions, facts: UpgradeFacts): Pro
   if (parseVersion(runnerVersion)?.prerelease.length === 0 && runner.installed !== runnerVersion) {
     out(`Release notes: ${RELEASES_URL}${encodeURIComponent(`${RUNNER}@${runnerVersion}`)}`);
   }
-  const skillDirs = findInstalledSkillDirs(project.dir);
-  if (skillDirs.length > 0) {
-    out(`The agent skill in ${skillDirs.map((dir) => `${dir}/e2e`).join(' and ')} is the old version's; refresh it with ${execCommand(manager, 'e2e init')}`);
-  }
+  refreshSkills(project.dir, manager, out);
   return { result: 'upgraded', exitCode: 0 };
 }
 
@@ -257,11 +263,17 @@ function declaredPackages(dir: string, manifest: Manifest): { declared: Declared
 
 /** The version under the nearest `node_modules/<name>`, or undefined (not installed, or Plug'n'Play). */
 function installedVersion(dir: string, name: string): string | undefined {
+  return installedPackage(dir, name)?.version;
+}
+
+/** The nearest `node_modules/<name>` from `dir` up whose package.json names a version, or undefined (not installed, or Plug'n'Play). */
+function installedPackage(dir: string, name: string): { dir: string; version: string } | undefined {
   for (let current = dir; ; current = path.dirname(current)) {
+    const packageDir = path.join(current, 'node_modules', name);
     try {
-      const manifest: unknown = JSON.parse(readFileSync(path.join(current, 'node_modules', name, 'package.json'), 'utf8'));
+      const manifest: unknown = JSON.parse(readFileSync(path.join(packageDir, 'package.json'), 'utf8'));
       const version = typeof manifest === 'object' && manifest !== null && 'version' in manifest ? manifest.version : undefined;
-      if (typeof version === 'string') return version;
+      if (typeof version === 'string') return { dir: packageDir, version };
     } catch {
       // Not here; a workspace hoists to a parent.
     }
@@ -504,6 +516,70 @@ function restoreLockfiles(snapshot: ReadonlyMap<string, Buffer | undefined>): st
     restored.push(file);
   }
   return restored;
+}
+
+/**
+ * Brings every copy of the agent skill in the project to the installed e2e's,
+ * the files under `node_modules/e2e/skills/e2e`: after the install, the new
+ * version's, which the running process does not have. Copies that already
+ * match are left alone, and files the new skill no longer ships stay, as with
+ * `e2e init`. A symlink to a copy outside the project and an entry a write
+ * cannot pass are named and never written through. With no installed package
+ * to read (Yarn Plug'n'Play), the line names the init command instead.
+ */
+function refreshSkills(projectDir: string, manager: PackageManager, out: (text: string) => void, dryRun = false): void {
+  const dirs = skillCopies(projectDir);
+  if (dirs.length === 0) return;
+  const installed = installedPackage(projectDir, RUNNER);
+  const skillDir = installed === undefined ? undefined : path.join(installed.dir, 'skills', SKILL_NAME);
+  const bundled = skillDir === undefined || !existsSync(path.join(skillDir, 'SKILL.md')) ? [] : readSkillFiles(skillDir);
+  if (bundled.length === 0) {
+    out(`The agent skill in ${listSkillDirs(dirs)} may be the old version's; refresh it with ${execCommand(manager, 'e2e init')}`);
+    return;
+  }
+  for (const install of planSkillInstall(projectDir, dirs, bundled)) {
+    if (install.obstacles.length > 0) {
+      out(picocolors.yellow(`Broken, not touching: ${describeObstacles(install)}`));
+      continue;
+    }
+    if (install.kind === 'link' || install.links.length > 0) {
+      out(picocolors.yellow(`Symlink, not touching: ${describeLinks(install)}; the copy it leads to is updated where it lives`));
+      continue;
+    }
+    if (dryRun) {
+      out(picocolors.dim(`Would update the agent skill in ${install.relative}/`));
+      continue;
+    }
+    try {
+      for (const file of install.files) {
+        mkdirSync(path.dirname(file.absolute), { recursive: true });
+        writeFileSync(file.absolute, file.content, 'utf8');
+      }
+    } catch (cause) {
+      // The packages are installed by now; a skill copy that cannot be written does not undo that.
+      out(picocolors.yellow(`Could not update the agent skill in ${install.relative}/ (${cause instanceof Error ? cause.message : String(cause)}); refresh it with ${execCommand(manager, 'e2e init')}`));
+      continue;
+    }
+    out(`Updated the agent skill in ${install.relative}/ (${install.files.length} ${install.files.length === 1 ? 'file' : 'files'})`);
+  }
+}
+
+/**
+ * The skill locations the project holds a copy in, leaving out one reached
+ * through a symlink to another location's copy (`.claude/skills/e2e`, as
+ * `e2e init` links it): refreshing that copy refreshes it.
+ */
+function skillCopies(projectDir: string): string[] {
+  const found = findInstalledSkillDirs(projectDir);
+  const root = realpathOfExisting(projectDir);
+  const real = (dir: string): string => realpathOfExisting(path.join(projectDir, dir, SKILL_NAME));
+  const direct = (dir: string): boolean => real(dir) === path.join(root, dir, SKILL_NAME);
+  return found.filter((dir) => direct(dir) || !found.some((other) => other !== dir && direct(other) && real(other) === real(dir)));
+}
+
+/** `.agents/skills/e2e and .claude/skills/e2e`, for a message. */
+function listSkillDirs(dirs: readonly string[]): string {
+  return new Intl.ListFormat('en', { type: 'conjunction' }).format(dirs.map((dir) => `${dir}/${SKILL_NAME}`));
 }
 
 /** A path for a message: relative to the working directory, `.` for the directory itself. */

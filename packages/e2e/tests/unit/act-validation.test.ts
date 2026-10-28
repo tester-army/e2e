@@ -28,6 +28,11 @@ describe('validateActOptions', () => {
     expect(() => validateActOptions({ onAction: 'screenshot' } as never, 0)).toThrow('options.onAction must be a function');
   });
 
+  it('takes an onBeforeAction function and refuses any other value', () => {
+    expect(() => validateActOptions({ onBeforeAction: async () => undefined }, 0)).not.toThrow();
+    expect(() => validateActOptions({ onBeforeAction: 'screenshot' } as never, 0)).toThrow('options.onBeforeAction must be a function');
+  });
+
   it('names schema and vision as capabilities act does not have', () => {
     expect(() => validateActOptions({ schema: {} } as never, 0)).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message: expect.stringMatching(/options\.schema/) }),

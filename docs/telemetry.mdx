@@ -65,13 +65,14 @@ sends nothing.
 ## What is sent
 
 Each command sends one `e2e_cli_session` event. `run` and `explore` also
-send `e2e_run_completed`, `init` sends `e2e_init_completed`, `upgrade` sends
+send `e2e_run_completed`, `init` sends `e2e_init_completed` (and so does
+`explore` when it runs the init wizard first), `upgrade` sends
 `e2e_upgrade_completed`, and `mcp` sends one `e2e_mcp_session` per MCP
 session. `--help` and `--version` send
-nothing, on any command. `run()` from `e2e/runner` sends no session event,
-only one `e2e_run_completed` per run that returns a report.
+nothing, on any command. `run()` and `explore()` from `e2e/runner` send no
+session event, only one `e2e_run_completed` per call that returns a report.
 
-The events go in one request when the command or `run()` ends, with a
+The events go in one request when the command, `run()`, or `explore()` ends, with a
 two-second deadline. `e2e mcp` sends each session event in its own request,
 and `e2e run --watch` sends each run's event when that run ends.
 
@@ -111,13 +112,14 @@ own tools count together as `tool`, and any other name as `other`.
 | `error_code` | The runner code of the failure that stopped the command before it could run (`CONFIG_NOT_FOUND`, `INVALID_CONFIG`, ...), `CLI_USAGE` for a flag or argument the CLI rejected, else `null` |
 
 </Accordion>
-<Accordion title="e2e_init_completed, once per e2e init">
+<Accordion title="e2e_init_completed, once per init wizard">
 
 | Property | Value |
 | --- | --- |
-| `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, or `invalid-project` |
+| `result` | `scaffolded`, `already-initialized`, `cancelled`, `install-failed`, `not-interactive`, `invalid-project`, or `example-failed` |
 | `yes`, `existing_config` | Whether `--yes` was given, and whether a config already existed, so no engine or gateway was asked |
-| `engine`, `gateway` | The ids of the engine and the model gateway chosen for a new config (`web`, `mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
+| `example` | The `--example` name (`with-vite`, `with-expo`, ...), `null` without the flag |
+| `engine`, `gateway` | The ids of the engines and the model gateway chosen for a new config (`web`, `mobile`, `web,mobile`, `none`; `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, `none`), `null` when not asked. Never the endpoint typed for an OpenAI-compatible gateway |
 | `skill`, `mcp`, `install` | Whether the agent skill, the MCP registration, and the dependency install were chosen |
 
 </Accordion>
@@ -133,15 +135,16 @@ own tools count together as `tool`, and any other name as `other`.
 | `packages_moved`, `packages_linked` | How many `e2e` and `@e2e-dev` entries in `package.json` the upgrade rewrote, and how many it left alone because they aren't registry versions (`workspace:`, `file:`, `catalog:`, a path, git, an alias). Not the lockfile's package count |
 
 </Accordion>
-<Accordion title="e2e_run_completed, once per e2e run, e2e explore, or completed run()">
+<Accordion title="e2e_run_completed, once per e2e run, e2e explore, or completed run() or explore()">
 
 | Property | Value |
 | --- | --- |
-| `command` | `run`, `explore`, or `runner.run` for `run()` from `e2e/runner` |
+| `command` | `run`, `explore`, `runner.run` for `run()` from `e2e/runner`, or `runner.explore` for `explore()` |
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_interrupted`, `tests_flaky`, `tests_skipped` | The summary counts |
 | `attempts_total`, `tests_retried` | How many attempts the run made across tests and serial groups, and how many of these needed more than one |
+| `filters_run`, `filters_timed_out`, `filters_failed`, `filters_skipped`, `filters_changed_files`, `tests_left_out_by_filters` | How many [test filters](/filters) the run applied, how many ran out of time, and how many failed, whether a run with `--changed-since` called none of them, such as when no file changed, how many files the change had, and how many tests the filters left out. Never a filter's name, reason, or note, a path, or a commit |
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions: `web`, `ios`, `web@0.6.1`, or your own engine's name and version |
 | `steps_total`, `steps_agent`, `steps_locator`, `steps_assertion`, `steps_screen`, `steps_app`, `steps_session`, `steps_resource` | Step counts by kind |
 | `steps_agent_act`, `steps_agent_assert`, `steps_agent_extract`, `steps_agent_waitfor` | The agent steps by entry point |
@@ -168,10 +171,11 @@ boolean, or one of the runner's own option values, never text you wrote:
 | `config_credentials`, `config_secrets` | How many credentials and secrets are configured |
 | `config_cache_mode`, `config_cache_store`, `config_cache_strict` | `off`, `read-only`, or `read-write`; `file` or `custom`; whether strict replay is on |
 | `config_reporters`, `config_custom_reporters`, `config_artifact_store` | The built-in reporter ids (`list`, `json`, `junit`, `markdown`), how many reporter objects the config adds, and whether an artifact store is set |
+| `config_filters` | How many test filters the config declares |
 | `config_trace_modes`, `config_video_modes` | The distinct recording modes across targets (`off`, `on`, `retain-on-failure`, `on-first-retry`, `on-all-retries`) |
 | `config_app_commands`, `config_environments` | How many targets start an app command, and the distinct app environments (`test`, `staging`, `production`) |
 
-On `e2e explore` only, counts of what the exploration was given and found:
+On `e2e explore` and `explore()` only, counts of what the exploration was given and found:
 
 | Property | Value |
 | --- | --- |
@@ -250,7 +254,7 @@ covers redaction, `--dry-run`, and bugs without `--repro`.
 
 ## The notice
 
-The first command, or the first `run()` from `e2e/runner`, prints a notice
+The first command, or the first `run()` or `explore()` from `e2e/runner`, prints a notice
 on stderr that tells how to opt out. It leaves `--reporter json` output
 intact. `e2e init` and `e2e telemetry` don't print it, so it waits for the
 next command. The notice shows again after a large change to the data

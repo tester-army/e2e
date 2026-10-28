@@ -27,11 +27,13 @@ import { SharedAppProcesses } from '../run/process-pool.ts';
 import { outputLayout } from '../run/output.ts';
 import { processSecrets, registerStaticSecrets, sessionSecrecy } from '../run/secrecy.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
+import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
+import { describeTestOutcome } from './test-outcome.ts';
 import { SessionUsage, type McpSessionSummary, type SessionEndedBy } from './usage.ts';
 import { actionResult, catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
@@ -70,13 +72,19 @@ export interface OpenSessionOptions {
   readonly config?: string | undefined;
   /** Whether this session shows its UI; otherwise the server's `headed`. */
   readonly headed?: boolean | undefined;
+  /** One test to run in the session before it is handed over, named as `e2e run` takes a positional (`tests/a.e2e.ts:12`). */
+  readonly test?: string | undefined;
 }
 
 export interface SessionHostOptions {
   /** The absolute path of the config a session loads, without evaluating it; `configPath` overrides the server's default. */
   readonly locateConfig: (configPath: string | undefined) => string;
-  /** Loads the config at an absolute path fresh for each session, so an edited config applies without a restart. */
-  readonly loadConfig: (configPath: string) => Promise<LoadedConfig>;
+  /**
+   * Loads the config at an absolute path fresh for each session, so an edited
+   * config applies without a restart, with the project files it imports
+   * loaded in `graph`, where the session's test files load too.
+   */
+  readonly loadConfig: (configPath: string, graph: string) => Promise<LoadedConfig>;
   /** Holds what the process prints while `load` evaluates a config and registers its secrets; by default nothing is held. */
   readonly withholdOutput?: (<T>(load: () => Promise<T>) => Promise<T>) | undefined;
   readonly env: NodeJS.ProcessEnv;
@@ -161,7 +169,11 @@ export class SessionHost {
     const lines = [`Session ${live.id} closed (${reason}); ${live.actions} tool calls ran.`];
     if (value.saved !== undefined) lines.push(value.saved);
     if (value.outcome.error !== undefined) lines.push(`The session step ended with: ${errorMessage(value.outcome.error)}`);
-    for (const error of cleanupErrors) lines.push(`Cleanup: ${error.code}: ${error.message}`);
+    for (const error of cleanupErrors) {
+      // The teardown a test left (`afterEach`, `afterAll`) says where it failed.
+      const hook = error.phase === 'afterEach' || error.phase === 'afterAll' ? ` (${error.phase})` : '';
+      lines.push(`Cleanup${hook}: ${error.code}: ${error.message}`);
+    }
     // Redacted here, not only at the tool boundary: closeAll writes it to stderr.
     return processSecrets.redact(lines.join('\n'));
   }
@@ -241,8 +253,10 @@ export class SessionHost {
     const configPath = this.options.locateConfig(options.config);
     this.sessions.claimConfig(id, configPath);
     const withhold = this.options.withholdOutput ?? ((load) => load());
+    // The session's own module graph: a test it runs sees every project file as it is now.
+    const graph = `mcp-${id}`;
     const loaded = await withhold(async () => {
-      const fresh = await this.options.loadConfig(configPath);
+      const fresh = await this.options.loadConfig(configPath, graph);
       // Known to the process before anything can fail with one, so an open
       // failure and what the config printed while it loaded are redacted
       // like any other text; a session registers them only once its engine
@@ -255,6 +269,8 @@ export class SessionHost {
     const { config, target } = await allocateTargetPorts(loaded, selectTarget(loaded, options.target ?? this.options.defaultTarget, 'pass target to open_session, or start e2e mcp --target <name>'));
     usage.resolved(target.platform, target.engine);
     this.sessions.claimEngine(id, target.name, target.engine);
+    // Selected before anything boots: a name that selects no test, or several, costs no engine.
+    const test = options.test === undefined ? undefined : await selectStandaloneTest(config, target, options.test, graph);
     const ttlMs = this.options.ttlMs ?? SESSION_TTL_MS;
     const abort = new AbortController();
     // Until the session is live, the request and the server's shutdown can abort the open.
@@ -277,11 +293,15 @@ export class SessionHost {
         timeoutMs: ttlMs + CLOSE_GRACE_MS,
         processes: this.apps,
         notice: (scope, message) => this.log('info', `${scope}: ${message}`),
+        ...(test === undefined ? {} : { test, agent: test.pair.agent }),
       });
       // A device has no URL for the first screen to navigate to, so its
       // pinned app launches here, as a test's `app.open()` launches it, or
-      // the first observation finds no app open.
-      if (launchesPinnedApp(target)) await attempt.fixtures.app.open();
+      // the first observation finds no app open. A test opens the app itself.
+      if (test === undefined && launchesPinnedApp(target)) await attempt.fixtures.app.open();
+      // The test runs before the step opens, so its steps are its own, and
+      // the session takes over wherever it stopped.
+      const ran = await attempt.test?.run();
       // The coding agent is the brain: the step is driven from here, and the
       // configured model stays out of the way.
       const params = this.secretParams(config);
@@ -300,6 +320,12 @@ export class SessionHost {
         tools: config.agent.tools,
         redaction: { redact: attempt.agentRuntime.redact, redactCut: attempt.agentRuntime.redactCut },
         recorder,
+        appBase: target.app.base,
+        fills: {
+          credentials: [...config.credentials.values()].map((credential) => ({ name: credential.name, username: credential.username, password: credential.password.name })),
+          secrets: [...config.secrets.keys()],
+        },
+        testRan: test === undefined ? undefined : testLocation(test.pair.test),
         locator: new LocatorEngine({
           session: attempt.session,
           budget: attempt.budget,
@@ -310,6 +336,7 @@ export class SessionHost {
         }),
         warn: (message) => this.log('warning', message),
         onActionFailed: (cause) => usage.failed(classifyError(cause).code),
+        runCode: { attempt, engineFixtures: Object.keys(target.engine?.fixtures ?? {}) },
       });
       const live: LiveSession = {
         id,
@@ -326,13 +353,16 @@ export class SessionHost {
         actions: 0,
         usage,
       };
-      const text = this.openingText(live, config, await this.firstScreen(live));
+      // The code frame reads the test file as it is on disk, so the text passes the session's ledger like a tool result.
+      const outcome = test === undefined || ran === undefined ? undefined : attempt.agentRuntime.redact(describeTestOutcome(test, ran, config.projectRoot));
+      // The screen a test stopped on is the one to show; only a fresh session opens the app URL.
+      const text = this.openingText(live, config, await this.firstScreen(live, outcome === undefined), outcome);
       // A first screen that came back despite the cancel must not become a live session nobody asked for.
       if (abort.signal.aborted) throw new InfrastructureError('CANCELLED', `opening session ${id} was cancelled`);
       opening.removeEventListener('abort', cancel);
       this.sessions.activate(live);
       // A step that ends on its own (the TTL, a hard stop) ends the session.
-      void step.done.then((outcome) => this.endOnItsOwn(live, outcome.error === undefined ? 'the session step concluded' : errorMessage(outcome.error), 'step'));
+      void step.done.then((ended) => this.endOnItsOwn(live, ended.error === undefined ? 'the session step concluded' : errorMessage(ended.error), 'step'));
       this.touch(live);
       return text;
     } catch (cause) {
@@ -388,8 +418,24 @@ export class SessionHost {
     }
   }
 
-  /** Opens the app URL when the engine can navigate, then observes; a device's pinned app launched before the step opened. */
-  private async firstScreen(live: LiveSession): Promise<string> {
+  /**
+   * Opens the app URL when `open` asks and the engine can navigate, then
+   * observes; a device's pinned app launched before the step opened. Either
+   * opening is the test's `app.open()`, the session's first test line.
+   * Without `open` the screen is the one a test left, and a test that failed
+   * before it opened the app left none. The test's own lines are in its
+   * file, so the session's first line is the agent's first action. The
+   * observation goes through the catalog's context, which keeps it for that
+   * action's line.
+   */
+  private async firstScreen(live: LiveSession, open: boolean): Promise<string> {
+    if (!open) {
+      try {
+        return live.screen.initial(await live.step.run(() => live.catalog.context.observe()));
+      } catch (cause) {
+        return `No screen to show: ${errorMessage(cause)}`;
+      }
+    }
     const base = live.target.app.base?.href;
     if (base !== undefined && live.step.context.target.verbs.has('navigate')) {
       try {
@@ -397,21 +443,26 @@ export class SessionHost {
       } catch (cause) {
         return `Opening ${base} failed: ${errorMessage(cause)}\nUse navigate once the app is reachable.`;
       }
+      live.catalog.lines.opened();
+    } else if (launchesPinnedApp(live.target)) {
+      live.catalog.lines.opened();
     }
-    const observation = await live.step.run((context) => context.observe());
+    const observation = await live.step.run(() => live.catalog.context.observe());
     return live.screen.initial(observation);
   }
 
-  private openingText(live: LiveSession, config: ResolvedConfig, screen: string): string {
+  /** The summary, the catalog, and the screen, after how the session's test ran when it ran one. */
+  private openingText(live: LiveSession, config: ResolvedConfig, screen: string, outcome: string | undefined): string {
     const engine = live.target.engine;
     const lines = [
+      ...(outcome === undefined ? [] : [outcome, '']),
       `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
     ];
     const pinned = launchesPinnedApp(live.target) ? (live.target.app.bundleId ?? live.target.app.appPath) : undefined;
     if (live.target.app.base !== undefined) {
       lines.push(`App: ${live.target.app.base.href}.`);
     } else if (pinned !== undefined) {
-      lines.push(`App: ${pinned}, launched fresh.`);
+      lines.push(outcome === undefined ? `App: ${pinned}, launched fresh.` : `App: ${pinned}.`);
     }
     if (config.credentials.size > 0) {
       const described = [...config.credentials.values()].map(
@@ -427,7 +478,7 @@ export class SessionHost {
     );
     lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
-      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen, and observe shows the whole screen. Call close_session when you are done.',
+      'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen and the test line that repeats it (test_lines returns them all), and observe shows the whole screen. Call close_session when you are done.',
     );
     return `${lines.join('\n')}\n\n${screen}`;
   }
@@ -472,7 +523,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'open_session',
       description:
-        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
+        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. With test, it runs that one test first and stops on the screen where the test passed or failed, with the failure and its line ahead of the catalog. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
         config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
@@ -480,6 +531,11 @@ export class SessionHost {
           .boolean()
           .optional()
           .describe('Show the browser or simulator, when the engine supports it; pass true when the user wants to watch. Default: headless, unless the server was started with --headed'),
+        test: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('One test to run in the session first, named the way npx e2e run takes it: tests/checkout.e2e.ts:12, where 12 is the line its test( call is on (not a failing line inside it), or a file or name that selects one test. The session then stays on the screen where the test stopped; afterEach hooks and fixture teardown run at close_session. To rerun after editing the test, close_session and open_session with test again'),
       }).strict(),
       readOnly: false,
       call: async (args, extra) => textResult(await this.open(args, extra.signal)),
@@ -490,7 +546,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, run_code (test statements run on the live app), test_lines (the test line each action printed and the statements run_code passed, as a draft test body), start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id from open_session; may be omitted only while one session is open'),
@@ -504,7 +560,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'call',
       description:
-        "Run one tool of a session by name, with its arguments as an object: call {tool: \"tap\", args: {target: \"n42\"}, session: \"<id>\"}. The session's catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen; node ids are valid only for the newest observation.",
+        "Run one tool of a session by name, with its arguments as an object: call {tool: \"tap\", args: {target: \"n42\"}, session: \"<id>\"}. The session's catalog (from open_session or tools) names the tools and their arguments. Actions report what changed on screen and the test line that repeats them; node ids are valid only for the newest observation.",
       inputSchema: z.object({
         tool: z.string().min(1).describe('A catalog tool name, e.g. "observe", "tap", "locate", "screenshot"'),
         args: z.record(z.string(), z.unknown()).optional().describe("The tool's arguments; omit for a tool without any"),

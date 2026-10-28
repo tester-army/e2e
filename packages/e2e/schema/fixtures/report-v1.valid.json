@@ -96,6 +96,7 @@
                 "status": "passed",
                 "startedAt": "2026-07-24T12:00:00.000Z",
                 "durationMs": 4200,
+                "observationTruncated": true,
                 "events": [
                   {
                     "kind": "model",
@@ -389,6 +390,34 @@
           "cause": "explicit",
           "reason": "the demo tenant has a single organization"
         }
+      },
+      {
+        "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "testId": "tests/example.e2e.ts::imports%20a%20report",
+        "kind": "test",
+        "tags": [],
+        "declarationIndex": 3,
+        "titlePath": [
+          "imports a report"
+        ],
+        "file": "tests/example.e2e.ts",
+        "source": {
+          "file": "tests/example.e2e.ts",
+          "line": 16,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "selected": false,
+        "status": "skipped",
+        "attempts": [],
+        "skip": {
+          "cause": "filtered",
+          "reason": "the diff reaches none of its tags",
+          "filter": "areas"
+        }
       }
     ],
     "errors": [
@@ -407,7 +436,7 @@
       }
     ],
     "summary": {
-      "discovered": 2,
+      "discovered": 3,
       "selected": 2,
       "executed": 2,
       "passed": 1,
@@ -436,6 +465,32 @@
       "maxModelCallsInStep": 0,
       "maxActionStepsInStep": 0
     },
+    "changes": {
+      "base": "0123456789abcdef0123456789abcdef01234567",
+      "files": 3
+    },
+    "filters": [
+      {
+        "name": "areas",
+        "candidates": 2,
+        "excluded": 1,
+        "note": "src/todos/ changed"
+      },
+      {
+        "name": "jev",
+        "candidates": 1,
+        "excluded": 0,
+        "note": "did not finish within 5m, so it leaves nothing out",
+        "outcome": "timed-out"
+      },
+      {
+        "name": "owners",
+        "candidates": 1,
+        "excluded": 0,
+        "note": "failed, so it leaves nothing out: CODEOWNERS not found",
+        "outcome": "failed"
+      }
+    ],
     "carried": {
       "results": [
         {

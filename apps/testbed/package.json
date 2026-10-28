@@ -19,15 +19,16 @@
     "explore:bench": "node scripts/explore-bench.mjs"
   },
   "dependencies": {
+    "@e2e-dev/decision": "workspace:*",
     "@e2e-dev/lightpanda": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "e2e": "workspace:*"
   },
   "devDependencies": {
-    "@ai-sdk/devtools": "1.0.22",
-    "@types/node": "26.6.2",
-    "ai": "7.0.107",
+    "@ai-sdk/devtools": "1.0.56",
+    "@types/node": "26.6.5",
+    "ai": "7.0.153",
     "typescript": "7.0.2",
-    "zod": "4.6.1"
+    "zod": "4.6.7"
   }
 }

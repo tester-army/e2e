@@ -13,7 +13,10 @@ default.
 
 ## Read the failure
 
-1. Every failure in the `list` output ends with `❯ trace
+1. Every failure in the `list` output names the failing line with a code
+   frame, where the screen was (`❯ at`: a URL on the web, the app and
+   screen title on a device), the nodes nearest a failed locator
+   (`❯ on screen`), and ends with `❯ trace
    .e2e/results/<test>/trace.md`. Open that trace page: `Look at:` (the line it unwound
    through), `Expected:` / `Observed:` (an `expect`), `Asked for:` and
    `Waited:` (a locator), whether every attempt failed alike (a bug, not a
@@ -37,15 +40,36 @@ default.
    - the cache's decision for an agent step: replayed, handed off and where
      (`at action 2 of 3, tap button "Apply": ...`), what became of the
      recording, and the entry file;
-   - the agent's last turns, loop-guard notes included, and the
-     accessibility tree at failure, one node per line.
-   Fix from what was there. `trace` (default `retain-on-failure`) chooses
-   which tests keep a page; `--trace` keeps one for every test of a run.
-2. `.e2e/report.json` holds the same facts for scripts, not for reading:
+   - the agent's last turns, loop-guard notes included, and under
+     `## Screen at failure` the nodes closest to what a failed locator
+     asked for and the screen, one node per line.
+   `trace` (default `retain-on-failure`) chooses which tests keep a page;
+   `--trace` keeps one for every test of a run.
+2. Fix from that evidence, never by walking the flow again from the start
+   over MCP: the run already saw every screen up to the failure.
+   - Fix every line it covers, not only the failing one. `observed` is what
+     the screen showed; a `❯ on screen` node is most likely what a failed
+     locator meant; the screen at failure (also `screen-at-failure.txt`,
+     item 5) holds the names the rest of that screen's lines need.
+   - A test stops at its first failed step (an `expect.soft` lets it go
+     on), and every wrong line after it costs another run. Before
+     rerunning, check the lines after it as far as you can: against the
+     screen at failure, the app source, or a live session.
+   - For a screen the evidence and the source leave out, look live (topic
+     `mcp`): open or reuse a session, go straight to that screen, then
+     `observe` and `locate`, or `run_code` for the fixed line and the ones
+     after it. On the web, `navigate` to the path of the `❯ at` URL or the
+     screen's route, and tap only to reach a state no URL opens. A device
+     session starts on the app's launch screen: take the shortest path from
+     there.
+   - Then rerun only that test by `file:line` (SKILL.md, "Rerunning a
+     test while you fix it"; topic `mcp` says when a session must close
+     first).
+3. `.e2e/report.json` holds the same facts for scripts, not for reading:
    each step's `events` (`engine`, `poll`, `navigation`) and the attempt's
    `appLog` (each line's `step` is a step `index`) are what the page's step
    lines are rendered from, before it filters and caps them.
-3. When a script needs them:
+4. When a script needs them:
 
 ```bash
 jq '.run | {status, exitCode, errors}' .e2e/report.json
@@ -56,9 +80,11 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 
    `error.details` holds the facts, `error.source` the line, `failure` the
    `url`, `screen` and `screenshot` artifact ids, and `candidates`; a
-   failed agent step has `turns`; `selected` drops filtered-out tests
+   failed agent step has `turns`; any agent step has
+   `observationTruncated: true` when a semantic observation was incomplete;
+   `selected` drops filtered-out tests
    (recorded as `skipped`).
-4. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
+5. Artifacts, under `.e2e/results/<test>/attempt-<n>/` (`rerun-<n>/attempt-<m>/`
    for a `--last-failed` rerun), beside the
    trace page: `screen-at-failure.txt`
    and the engine's screenshot per failed attempt; downloads; with
@@ -76,18 +102,19 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | `CONFIG_NOT_FOUND`, `CONFIG_AMBIGUOUS` | Wrong `--config` path; both `.ts` and `.mts` present | Fix the path; keep one |
 | `NO_TESTS` | The glob, a positional, or a filter matched nothing; the message names each empty positional and each undeclared `--tag` with the nearest declared one | Check the config `tests`, the file suffix (`.e2e.ts` by default), the tag names |
 | `NO_LAST_RUN` | `--last-failed` found no `.e2e/report.json` | Run once without it |
+| `INVALID_CHANGED_SINCE` | `--changed-since` names no commit in the checkout, shares no history with HEAD (a shallow clone, or unrelated histories), or git is missing | Run from a git checkout with git installed; check the ref; fetch it and more history (`git fetch --unshallow`, or `fetch-depth: 0` on `actions/checkout`); for unrelated histories, name a ref on HEAD's history |
 | `COLLECTION_ERROR` | `async` describe body, `test.setup` inside `describe`, an option forbidden in a serial group, registration outside collection | Restructure per `writing-tests` |
 | `HOOK_FAILED` | `beforeAll` or `afterAll` threw; its scope's tests skip | Fix the hook; the report carries its error |
 | `UNSUPPORTED_ARTIFACT` | A test's or target's `video` on an engine that cannot record | Drop it there, or set it at the config root or CLI (such targets skip with a notice) |
 | `BROWSER_INSTALL_FAILED`, `LAUNCH_TIMEOUT` | Browser download failed; engine init or attempt start exceeded `launchTimeout` | Run the quoted `npx @e2e-dev/web install <names>` or `pnpm exec e2e-web install <names>` (`--with-deps` on bare Linux); raise the root `launchTimeout` (60 s default) |
 | `APP_UNREACHABLE` | `app.command` never answered `readyUrl` within `startupTimeout`; on a device, a message naming the iOS automation runner: the runner failed, not the app | Read the quoted log lines; check the port, `app.url`, `app.command.env`, `app.command.startupTimeout`. Runner: rerun, else `npx agent-device daemon stop` and reboot the simulator |
-| `APP_ALREADY_RUNNING` | Something already serves `url` when `command` should start | Stop it, or `reuseExisting: true` locally |
+| `APP_ALREADY_RUNNING` | Something already serves `url` when `command` should start, such as the app an open `e2e mcp` session started | A session's app: `close_session` before the run (topic `mcp`). Otherwise stop it if you started it, else offer the user `reuseExisting: true` (CI ignores it) |
 | `APP_URL_REQUIRED`, `APP_NOT_OPEN` | A navigation on a target without `app.url`; a `screen` call before `app.open()` | Add `app.url` to the target; open the app first |
 | `INVALID_ARGUMENT`, `INVALID_LOCATOR` | A step argument failed validation; a locator got a bad option or filter key | Fix the call the code frame names |
 | `LOCATOR_NOT_FOUND` | Wrong role or name, inexact text, element off screen or in an iframe, page not open | Read the markup for the accessible name; `exact: false` or a RegExp; `browser.frameLocator` for iframes; `app.open()` first; `--headed` |
 | `LOCATOR_AMBIGUOUS` | Two matches (hidden duplicate, repeated label) | `{ name }`, a container scope, `filter`, `first()`, or `{ visible: true }` |
 | `ASSERTION_FAILED` | Wrong expectation, or the state settles later than 5 s; for `agent.assert`, a false judgment (explained in the report) | Compare with the report's actual text or the screenshot; `{ timeout }` on the matcher; rewrite the question |
-| `ASSERTION_INCONCLUSIVE` | `agent.assert` or `agent.extract` asked about what the screen does not show (another page, still loading, only in pixels); a failure, never a pass | `app.open()` or `agent.waitFor` the right screen first; ask about what is shown; `vision: true` when the answer is in pixels (the message says so) |
+| `ASSERTION_INCONCLUSIVE` | `agent.assert` or `agent.extract` asked about what the screen does not show (another page, still loading, only in pixels, inside a frame from another site); a failure, never a pass | `app.open()` or `agent.waitFor` the right screen first; ask about what is shown; `vision: true` when the answer is in pixels (the message says so) |
 | `MODEL_OUTPUT_INVALID` | An `extract` or `assert` answer failed the schema after one repair round | Simplify the schema or question; pick a stronger model |
 | `ACTION_FAILED` | Element not actionable (covered, disabled, detached), or an operation timed out | `expect` the condition first; close overlays; check `actionTimeout` |
 | `TEST_TIMEOUT` | The attempt exceeded `timeout` (120 s) | Split the test, or raise `timeout` |
@@ -112,7 +139,8 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | --- | --- |
 | `--headed` | Watch the failing step |
 | `--workers 1 --retries 0` | Take parallelism and retries out of the picture |
-| `--no-cache` | Rule out a stale `agent.act` replay |
+| `--action-timeout 5000` | While writing a test: a wrong locator fails in 5 s instead of 30 s (`--assertion-timeout` for `expect`). Keep it longer than the slowest screen takes to load |
+| `--no-cache` | Rule out a stale `agent.act` replay; one run, not every rerun. A failed run already deletes the replay that ran into the failure, so rerun with the cache on first. When the failure repeats after a replay the trace page shows as kept and the `--no-cache` run passes, tighten the check after that goal: the stale replay then fails it and is deleted |
 | `--debug` | Each agent step's duration, model calls, cost, transcript |
 | `--ai-trace`, then `npx unbox-ai runs .e2e/ai-trace.json` | What the model saw and called |
 | `--video`, `--video=retain-on-failure` | Watch the failed attempt; `step.startedAt` minus the segment's `startedAt` is the step's offset into it |

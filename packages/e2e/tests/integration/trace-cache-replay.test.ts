@@ -6,6 +6,7 @@
  * an entry may hold is checked against the report and the entry files.
  */
 
+import { createHash } from 'node:crypto';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -282,6 +283,8 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     const { file, entry } = entries[0]!;
     const recordedFor = entry.payload.recordedFor!;
     expect(recordedFor).toMatchObject({ paramsDigest: expect.stringMatching(/^[a-f0-9]{64}$/u), callIndex: 0, agent: 'default' });
+    // The test's title reaches the prompt, not the context, so the key's context digest stays empty.
+    expect(entry.payload.keyedBy?.agentContextDigest).toBe(createHash('sha256').update('').digest('hex'));
     // An entry from before the occurrence fields: a read-write replay completes it.
     const { testId, targetId, instructionDigest } = recordedFor;
     writeFileSync(file, JSON.stringify({ ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } }), 'utf8');

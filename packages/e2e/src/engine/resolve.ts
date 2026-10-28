@@ -77,6 +77,13 @@ function resolve(
   options: ResolveExpressionOptions,
 ): SemanticNode[] {
   switch (expression.kind) {
+    case 'union': {
+      const matches = new Set([
+        ...resolve(expression.left, candidates, tree, options),
+        ...resolve(expression.right, candidates, tree, options),
+      ]);
+      return candidates.filter((node) => matches.has(node));
+    }
     case 'query': {
       const pool =
         expression.scope === undefined
@@ -91,9 +98,13 @@ function resolve(
         if (expression.hasText !== undefined && !subtreeHasText(node, candidates, tree, expression.hasText)) {
           return false;
         }
-        if (expression.has !== undefined) {
+        if (expression.hasNotText !== undefined && subtreeHasText(node, candidates, tree, expression.hasNotText)) {
+          return false;
+        }
+        if (expression.has !== undefined || expression.hasNot !== undefined) {
           const within = descendantsOf([node], candidates, tree);
-          if (resolve(expression.has, within, tree, options).length === 0) return false;
+          if (expression.has !== undefined && resolve(expression.has, within, tree, options).length === 0) return false;
+          if (expression.hasNot !== undefined && resolve(expression.hasNot, within, tree, options).length > 0) return false;
         }
         return true;
       });

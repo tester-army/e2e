@@ -20,7 +20,8 @@ import {
   splitSkillDirs,
   type SkillInstall,
 } from './init/agent-skill.ts';
-import { getEnginePresets, DEFAULT_ENGINE_ID, type EngineId } from './init/engines.ts';
+import { getEnginePresets, DEFAULT_ENGINE_IDS, type EngineId } from './init/engines.ts';
+import { copyExample, ExampleCopyCancelled, ExampleDownloadError, findExample, isEmptyDirectory, type ExampleCopy } from './init/examples.ts';
 import { DEFAULT_ENDPOINT, GATEWAYS, getGatewayPreset, validateEndpoint, type GatewayId } from './init/gateways.ts';
 import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
@@ -42,15 +43,34 @@ export interface InitOptions {
    * a prompt nobody can answer would otherwise wait forever.
    */
   interactive?: boolean;
-  /** The answers given as flags; each one skips its prompt, and an omitted one takes the `--yes` default or asks. */
-  engine?: EngineId;
+  /**
+   * An `examples/` folder name to copy into the directory first; the wizard
+   * then runs in the example's e2e project with its config and tests as they are.
+   */
+  example?: string;
+  /**
+   * The answers given as flags; each one skips its prompt, and an omitted one
+   * takes the `--yes` default or asks. `engines` is empty for a config with no engine.
+   */
+  engines?: readonly EngineId[];
   gateway?: GatewayChoice;
   /** The base URL for the `openai-compatible` gateway. */
   endpoint?: string;
   skills?: readonly string[];
   mcp?: readonly string[];
   install?: boolean;
+  /**
+   * The e2e command the caller runs once init has scaffolded, as words, such
+   * as `['e2e', 'explore', 'Check the cart']`. The closing `Next:` line ends
+   * with it in place of `e2e run`. When no other step stands before it
+   * (dependencies installed, a model with its key or sign-in, an engine
+   * target on the user's app), init says it is starting it and returns `ready`.
+   */
+  continueWith?: readonly string[];
 }
+
+/** How init ended, with its exit code and whether the caller's `continueWith` command can run now. */
+type InitRunOutcome = InitOutcome & { readonly exitCode: number; readonly ready: boolean };
 
 const CACHE_IGNORE_ENTRY = '.e2e/cache/';
 
@@ -76,7 +96,7 @@ const DEFAULT_GATEWAY: GatewayId = 'vercel';
 export type GatewayChoice = GatewayId | 'none';
 
 /** The wizard's answers, each from a flag, an earlier run, or `--yes`; a missing one is asked. */
-type Answers = Pick<InitOptions, 'engine' | 'gateway' | 'endpoint' | 'skills' | 'mcp' | 'install'>;
+type Answers = Pick<InitOptions, 'engines' | 'gateway' | 'endpoint' | 'skills' | 'mcp' | 'install'>;
 
 /**
  * Runs `e2e init`. Every prompt happens before the first write, existing
@@ -84,15 +104,18 @@ type Answers = Pick<InitOptions, 'engine' | 'gateway' | 'endpoint' | 'skills' | 
  * the user asks. The agent skill and MCP registration are offered once; later
  * runs refresh the locations that exist, and `--skills` or `--mcp` replaces
  * that set with exactly the ones it names. Nothing is written through a
- * symlink.
+ * symlink. With `example`, the example app is downloaded into an empty
+ * directory before the first prompt and removed again when the wizard is
+ * cancelled.
  */
-export async function init(cwd: string, options: InitOptions = {}): Promise<InitOutcome & { readonly exitCode: number }> {
+export async function init(root: string, options: InitOptions = {}): Promise<InitRunOutcome> {
   // The wordmark drops in above the wizard, at rest when --yes asked for no questions; a terminal is the one place it shows.
   if (options.interactive !== false) await playWordmark(process.stdout, { motion: options.yes !== true });
   clack.intro(options.directory === undefined ? 'e2e init' : `e2e init ${options.directory}`);
   // Filled in as the choices are made; every return hands them back with how the run ended.
   const facts: { -readonly [Key in keyof Omit<InitOutcome, 'result'>]: InitOutcome[Key] } = {
     yes: options.yes === true,
+    example: null,
     existingConfig: false,
     engine: null,
     gateway: null,
@@ -100,12 +123,13 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     mcp: false,
     install: false,
   };
-  const done = (result: InitResult, exitCode: number): InitOutcome & { readonly exitCode: number } => ({
-    exitCode,
-    result,
-    ...facts,
-  });
-  const cancel = (): InitOutcome & { readonly exitCode: number } => done('cancelled', cancelled());
+  let exampleCopy: ExampleCopy | undefined;
+  const done = (result: InitResult, exitCode: number, ready = false): InitRunOutcome => {
+    // An example copied before the prompts goes again when the run ends without writing its own files.
+    if (result !== 'scaffolded' && result !== 'install-failed') exampleCopy?.remove();
+    return { exitCode, ready, result, ...facts };
+  };
+  const cancel = (): InitRunOutcome => done('cancelled', cancelled());
 
   if (options.interactive === false && !options.yes) {
     clack.log.error(
@@ -113,10 +137,51 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     );
     return done('not-interactive', 2);
   }
-  if (existsSync(cwd) && !statSync(cwd).isDirectory()) {
-    clack.log.error(`${options.directory ?? cwd} is a file, not a directory`);
+  if (existsSync(root) && !statSync(root).isDirectory()) {
+    clack.log.error(`${options.directory ?? root} is a file, not a directory`);
     return done('invalid-project', 2);
   }
+
+  const example = options.example === undefined ? undefined : findExample(options.example);
+  if (options.example !== undefined && example === undefined) {
+    clack.log.error(`Unknown example ${options.example}`);
+    return done('invalid-project', 2);
+  }
+  if (example !== undefined) {
+    facts.example = example.id;
+    if (!isEmptyDirectory(root)) {
+      clack.log.error(
+        `${options.directory ?? root} is not empty; --example needs a new or empty directory, such as e2e init my-app --example ${example.id}`,
+      );
+      return done('invalid-project', 2);
+    }
+    // The spinner takes over SIGINT and SIGTERM while it spins; its cancel stops the download and removes the partial copy.
+    const interrupt = new AbortController();
+    const spinner = clack.spinner({ onCancel: () => interrupt.abort() });
+    spinner.start(`Downloading the ${example.id} example from GitHub`);
+    let fellBack: string | undefined;
+    try {
+      exampleCopy = await copyExample(example, root, {
+        onFallback: (tag) => {
+          fellBack = tag;
+        },
+        signal: interrupt.signal,
+      });
+    } catch (cause) {
+      if (cause instanceof ExampleCopyCancelled) {
+        clack.cancel('Cancelled; no changes were made');
+        return done('cancelled', 130);
+      }
+      spinner.error(`Could not download the ${example.id} example`);
+      const reason = cause instanceof ExampleDownloadError ? cause.message : String(cause);
+      clack.log.error(`${reason}; check the connection and retry, or copy it from https://github.com/tester-army/e2e/tree/main/examples/${example.id}`);
+      return done('example-failed', 2);
+    }
+    spinner.stop(`Copied the ${example.id} example (${exampleCopy.ref})`);
+    if (fellBack !== undefined) clack.log.warn(`GitHub has no ${fellBack} tag; used the examples on main`);
+  }
+  // The e2e project: the directory itself, or the example's folder for it beside a native app.
+  const cwd = example === undefined ? root : path.join(root, example.project);
 
   let pkg: ReturnType<typeof readPackage>;
   try {
@@ -133,11 +198,8 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
 
   const existingConfig = CONFIG_NAMES.find((file) => existsSync(path.join(cwd, file)));
   const javascript = JS_CONFIG_NAMES.some((name) => name === existingConfig);
-  const examplePath = path.join('tests', javascript ? 'example.e2e.js' : 'example.e2e.ts');
-  const exampleExists = existsSync(path.join(cwd, examplePath));
   facts.existingConfig = existingConfig !== undefined;
-  if (existingConfig !== undefined) clack.log.warn(`Exists, not touching: ${existingConfig}`);
-  if (exampleExists) clack.log.warn(`Exists, not touching: ${examplePath}`);
+  if (existingConfig !== undefined && example === undefined) clack.log.warn(`Exists, not touching: ${existingConfig}`);
 
   const gitignorePath = path.join(cwd, '.gitignore');
   const existingIgnore = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : '';
@@ -147,7 +209,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   // A flag answers its question, an earlier run's locations stand when no flag names others, and --yes answers the rest.
   const defaults: Answers = options.yes
     ? {
-        engine: DEFAULT_ENGINE_ID,
+        engines: DEFAULT_ENGINE_IDS,
         gateway: DEFAULT_GATEWAY,
         endpoint: DEFAULT_ENDPOINT,
         skills: SKILL_LOCATIONS.map(({ dir }) => dir),
@@ -158,7 +220,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   const foundSkillDirs = findInstalledSkillDirs(cwd);
   const foundMcpFiles = findRegisteredMcpFiles(cwd);
   const given = {
-    engine: options.engine ?? defaults.engine,
+    engines: options.engines ?? defaults.engines,
     gateway: options.gateway ?? defaults.gateway,
     endpoint: options.endpoint ?? defaults.endpoint,
     skills: options.skills ?? (foundSkillDirs.length > 0 ? foundSkillDirs : defaults.skills),
@@ -167,20 +229,24 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
   };
 
   // Engine and model gateway are choices for a new config only; an existing config keeps its own dependencies.
-  let engine: EngineId = 'none';
+  let engines: readonly EngineId[] = [];
   let model: ScaffoldModel | undefined;
-  const configFlags = (['engine', 'gateway', 'endpoint'] as const).filter((flag) => options[flag] !== undefined).map((flag) => `--${flag}`);
+  const configFlags = ([['engines', 'engine'], ['gateway', 'gateway'], ['endpoint', 'endpoint']] as const)
+    .filter(([option]) => options[option] !== undefined)
+    .map(([, flag]) => `--${flag}`);
   if (existingConfig !== undefined && configFlags.length > 0) {
     clack.log.warn(`Ignoring ${configFlags.join(', ')}: ${existingConfig} exists, and these apply to a new config only`);
   }
   if (existingConfig === undefined) {
-    const selectedEngine = given.engine ?? await clack.select<EngineId>({
-      message: 'Which engine?',
-      initialValue: DEFAULT_ENGINE_ID,
+    const selectedEngines = given.engines ?? await clack.multiselect<EngineId>({
+      message: 'Which engines? Select none for HTTP tests or your own engine.',
       options: getEnginePresets().map(({ id, label, hint }) => ({ value: id, label, hint })),
+      initialValues: [...DEFAULT_ENGINE_IDS],
+      required: false,
     });
-    if (isCancelled(selectedEngine)) return cancel();
-    engine = selectedEngine;
+    if (isCancelled(selectedEngines)) return cancel();
+    // Preset order, whatever order they were toggled or typed in, so the config and telemetry read the same each time.
+    engines = getEnginePresets().map(({ id }) => id).filter((id) => selectedEngines.includes(id));
 
     // The gateway is a visible choice, not a runner default: the config imports
     // its provider package and constructs the model.
@@ -204,7 +270,7 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     } else if (gateway !== 'none') {
       model = { gateway };
     }
-    facts.engine = engine;
+    facts.engine = engines.length === 0 ? 'none' : engines.join(',');
     facts.gateway = model?.gateway ?? 'none';
   }
 
@@ -248,31 +314,45 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     return done('invalid-project', 2);
   }
 
-  const scaffold = createScaffold(engine, model);
+  const scaffold = createScaffold(engines, model);
+  const testPath = (name: string): string => path.join('tests', `${name}.e2e.${javascript ? 'js' : 'ts'}`);
+  // A config with several engines keeps one example per engine; a re-run adds no tests/example.e2e.ts beside them.
+  const hasEngineExamples = getEnginePresets().some(({ file }) => existsSync(path.join(cwd, testPath(file))));
+  const tests = existingConfig !== undefined && hasEngineExamples
+    ? []
+    : scaffold.tests.map((test) => ({ relative: testPath(test.name), content: test.content }));
+  const newTests = tests.filter((test) => !existsSync(path.join(cwd, test.relative)));
+  if (example === undefined) {
+    for (const test of tests) {
+      if (!newTests.includes(test)) clack.log.warn(`Exists, not touching: ${test.relative}`);
+    }
+  }
   const dependencies = addDependencies(pkg.manifest, scaffold.dependencies);
   const { manifest, additions: scripts } = addScripts(dependencies.manifest, SCRIPTS);
-  if (dependencies.additions.length > 0) {
+  if (example === undefined && dependencies.additions.length > 0) {
     clack.log.info(`Add dev dependencies: ${dependencies.additions.map(([name, version]) => `${name}@${version}`).join(', ')}`);
   }
-  if (scripts.length > 0) {
+  if (example === undefined && scripts.length > 0) {
     clack.log.info(`Add scripts: ${scripts.map(([name, command]) => `${name} (${command})`).join(', ')}`);
   }
 
-  const files = [
+  // An example's package.json, config, and tests stay as the example has them.
+  const files = example !== undefined ? [] : [
     ...(pkg.original === undefined || dependencies.additions.length > 0 || scripts.length > 0
       ? [{ relative: 'package.json', content: serializePackage(manifest, pkg.original), existing: pkg.original !== undefined }]
       : []),
     ...(existingConfig === undefined ? [{ relative: 'e2e.config.ts', content: scaffold.config, existing: false }] : []),
-    ...(exampleExists ? [] : [{ relative: examplePath, content: scaffold.example, existing: false }]),
+    ...newTests.map((test) => ({ ...test, existing: false })),
   ];
 
-  if (files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
+  if (example === undefined && files.length === 0 && skillInstalls.length === 0 && mcpRegistrations.length === 0 && missingIgnore.length === 0) {
     clack.outro('Nothing to create; project already initialized');
     return done('already-initialized', 0);
   }
 
   if (!options.yes) {
     const actions = [
+      ...(example === undefined ? [] : [`Keep the ${example.id} example in ${options.directory ?? 'this directory'} (cancelling removes it)`]),
       ...files.map((file) => `${file.existing ? 'Update' : 'Create'} ${file.relative}`),
       ...skillInstalls.map((install) => install.kind === 'link'
         ? `Link ${install.relative} -> ${install.target}${linkReplaces(install, 'replacing')}`
@@ -354,14 +434,47 @@ export async function init(cwd: string, options: InitOptions = {}): Promise<Init
     : execCommand(manager, 'e2e run');
   // A subscription gateway has no key to set; the sign-in is the step before the first run.
   const subscription = model === undefined ? undefined : getGatewayPreset(model.gateway).login;
-  const next = [
-    options.directory === undefined ? undefined : `cd ${shellArgument(options.directory)}`,
+  const projectDir = example === undefined || example.project === '.'
+    ? options.directory
+    : path.join(options.directory ?? '.', example.project);
+  const before = [
+    projectDir === undefined ? undefined : `cd ${shellArgument(projectDir)}`,
     install ? undefined : `${manager} install`,
     subscription === undefined ? undefined : execCommand(manager, `e2e login ${subscription}`),
-    `${scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : ''}${runCommand}`,
+    // A native app's README.md sits beside the e2e/ folder the line has just changed into.
+    example?.build === true ? `build and install the app as ${example.project === '.' ? '' : '../'}README.md describes` : undefined,
+    ...(options.continueWith === undefined || existingConfig !== undefined ? [] : continueSteps(engines, model)),
   ].filter((step) => step !== undefined);
-  clack.outro(`Next: ${next.join(', then ')}`);
+  if (options.continueWith !== undefined) {
+    const command = options.continueWith.map(shellArgument).join(' ');
+    if (before.length === 0) {
+      const target = scaffold.needsAppUrl ? ` on ${process.env['APP_URL'] ?? 'http://localhost:3000'} (set APP_URL for another URL)` : '';
+      clack.outro(`Starting ${command}${target}`);
+      return done('scaffolded', 0, true);
+    }
+    const appUrl = scaffold.needsAppUrl && process.env['APP_URL'] === undefined ? 'APP_URL=http://localhost:3000 ' : '';
+    clack.outro(`Next: ${[...before, `${appUrl}${execCommand(manager, command)}`].join(', then ')}`);
+    return done('scaffolded', 0);
+  }
+  const last = example === undefined ? runCommand : runScriptCommand(manager, example.script);
+  const appUrl = example === undefined && scaffold.needsAppUrl ? 'APP_URL=http://localhost:3000 ' : '';
+  clack.outro(`Next: ${[...before, `${appUrl}${last}`].join(', then ')}`);
   return done('scaffolded', 0);
+}
+
+/**
+ * What a new config still needs before an agent command such as `e2e explore`
+ * can run on it: a model, the gateway's key in the environment, and an engine
+ * target pointed at the user's app rather than a placeholder.
+ */
+function continueSteps(engines: readonly EngineId[], model: ScaffoldModel | undefined): string[] {
+  const keys = model === undefined ? [] : getGatewayPreset(model.gateway).keys ?? [];
+  return [
+    ...(model === undefined ? ['add a model to agents in e2e.config.ts'] : []),
+    ...(keys.length > 0 && !keys.some((key) => process.env[key] !== undefined) ? [`set ${keys[0]}`] : []),
+    ...(engines.length === 0 ? ['add an engine target to e2e.config.ts'] : []),
+    ...(engines.includes('mobile') ? ['point the mobile target in e2e.config.ts at your app'] : []),
+  ];
 }
 
 /**

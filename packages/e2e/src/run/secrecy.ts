@@ -90,7 +90,7 @@ const staticLedgers = new WeakMap<ResolvedConfig['allSecrets'], SecretLedger>();
  * provider-backed value is not known yet and is not in it. Shared, so it is
  * handed out read-only: nothing registers into it.
  */
-export function staticSecretLedger(secrets: ResolvedConfig['allSecrets']): Pick<SecretLedger, 'redact' | 'entries'> {
+export function staticSecretLedger(secrets: ResolvedConfig['allSecrets']): Pick<SecretLedger, 'redact' | 'entries' | 'redactFragments'> {
   let ledger = staticLedgers.get(secrets);
   if (ledger === undefined) {
     ledger = new SecretLedger(

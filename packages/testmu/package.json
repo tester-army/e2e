@@ -1,7 +1,7 @@
 {
   "name": "@e2e-dev/testmu",
-  "version": "0.0.1",
-  "description": "TestMu AI (formerly LambdaTest) hosted Android emulators, iOS simulators, and real devices for e2e mobile tests",
+  "version": "0.0.2",
+  "description": "TestMu AI (formerly LambdaTest) for e2e: hosted Android emulators, iOS simulators, and real devices for mobile tests, and hosted Chrome and Edge for web tests",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -14,11 +14,16 @@
     "ios-simulator",
     "android-emulator",
     "agent-device",
+    "cloud-browsers",
+    "hosted-browsers",
+    "chrome",
+    "cdp",
     "ci"
   ],
   "license": "Apache-2.0",
   "contributors": [
-    "Aman Kansal (https://github.com/amankansal-lt)"
+    "Aman Kansal (https://github.com/amankansal-lt)",
+    "Sahil Saw (https://github.com/SahilSawLT)"
   ],
   "repository": {
     "type": "git",
@@ -39,6 +44,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./web": {
+      "types": "./dist/web.d.ts",
+      "default": "./dist/web.js"
     }
   },
   "files": [
@@ -55,20 +64,30 @@
   },
   "peerDependencies": {
     "@e2e-dev/mobile": ">=0.11.1 <1",
+    "@e2e-dev/web": ">=0.11.0 <1",
     "e2e": ">=0.15.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "@e2e-dev/mobile": {
+      "optional": true
+    },
+    "@e2e-dev/web": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
-    "@types/node": "26.6.2",
+    "@e2e-dev/web": "workspace:*",
+    "@types/node": "26.6.5",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "@agent-device/testmu": "0.21.28",
-    "agent-device": "0.21.28"
+    "@agent-device/testmu": "0.21.31",
+    "agent-device": "0.21.31"
   }
 }

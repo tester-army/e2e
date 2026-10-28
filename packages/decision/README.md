@@ -38,3 +38,24 @@ handles that only `typeSecret` fills.
 
 See the [decision models guide](https://e2e.tester.army/docs/decision-models)
 for setup, vision, gates, provider options, and limits.
+
+## Test filter
+
+With `e2e run --changed-since <ref>`, `decisionFilter()` asks a decision
+model whether the change since that ref can affect each test, and leaves
+out the unlikely ones:
+
+```ts
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
+} satisfies E2EConfig;
+```
+
+The model must answer `boolean` questions. See
+[Test filters](https://e2e.tester.army/docs/filters) for CI setup.

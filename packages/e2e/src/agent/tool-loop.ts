@@ -28,6 +28,7 @@ import {
 import { withStallGuard } from './model/stall.ts';
 import { providerHints, type ProviderHints, type ProviderModelRef } from './model/provider-hints.ts';
 import { isScreenOutput, toolResultTexts } from './screen-update.ts';
+import { shapeOf } from './message-shape.ts';
 import { compactScreenHistory } from './transcript-compaction.ts';
 import { AgentError, isAgentError } from './error.ts';
 import {
@@ -88,15 +89,21 @@ interface LoopTurn extends StepTurn {
 /**
  * Models that refused a forced tool choice once. The loop asks every model
  * for a tool call on each turn; a model that answers HTTP 400 to that request
- * shape gets `auto` plus an instruction for the rest of the process, so the
- * refusal costs one round trip per model, not one per step.
+ * shape gets `auto` for the rest of the process, so the refusal costs one
+ * round trip per model, not one per step.
  */
 const FREE_TOOL_CHOICE_MODELS = new WeakSet<object>();
 
 /** How the loop asks for tool calls: the SDK's forced modes, or `auto` for a model that rejects them. */
 type ToolChoiceMode = 'required' | 'auto';
 
-/** Appended to the instructions when the model cannot be forced to call tools. */
+/**
+ * Part of every step's instructions. A model that rejects a forced tool
+ * choice is held to it by the prompt instead, and since the rule is there
+ * from the first turn, the switch to `auto` changes nothing else in the
+ * request: the system prompt is part of the prefix a provider caches and
+ * binds reasoning to.
+ */
 const TOOL_CALLS_ONLY_RULE =
   'Reply with tool calls only. A reply without a tool call does nothing and spends a turn; the step ends only through complete_step.';
 
@@ -233,6 +240,8 @@ class LoopRun {
   private readonly hints: ProviderHints;
   /** The history the last request went out with, for shrinking after an overflow. */
   private lastRequest: ModelMessage[] | undefined;
+  /** A digest of what each message of the last request held, for telling a rewritten message from a carried one. */
+  private lastShape: string[] | undefined;
   /** Turns spent by earlier generate calls of this step; nonzero only after an overflow retry. */
   private turnOffset = 0;
   /**
@@ -243,8 +252,6 @@ class LoopRun {
   private overflowNote: string | undefined;
   /** How this step asks for tool calls; flips to `auto` when the model rejects a forced choice. */
   private toolChoice: ToolChoiceMode;
-  /** The tool-choice mode the running generate call's instructions were written for. */
-  private instructedFor: ToolChoiceMode = 'required';
   /** The last turn that ran, for continuing after a reply without tool calls. */
   private lastStep: StepResult<ToolSet> | undefined;
   /** `model` as the loop sends requests to it: each one bounded, so a stalled response is sent again. */
@@ -370,7 +377,6 @@ class LoopRun {
 
   private buildLoop(tools: ToolSet) {
     const system = this.instructions();
-    this.instructedFor = this.toolChoice;
     const providerOptions = this.hints.providerOptions(
       this.options.providerOptions ?? this.context.providerOptions,
       system,
@@ -463,8 +469,9 @@ class LoopRun {
 
   /**
    * A model that refuses a forced tool choice (HTTP 400 naming
-   * `tool_choice`) is asked again with `auto` and a tool-calls-only rule in
-   * its instructions, on the same turn budget. So is one whose reply had no
+   * `tool_choice`) is asked again with `auto`, on the same turn budget; the
+   * instructions already hold the tool-calls-only rule, so nothing else in
+   * the request changes. So is one whose reply had no
    * tool call under a forced choice: the SDK throws `ToolChoiceViolationError`
    * for it, which happens when the provider downgraded the choice to `auto`
    * and the model answered in prose. Either way the model is remembered, so
@@ -565,7 +572,6 @@ class LoopRun {
     messages?: ModelMessage[];
     activeTools?: string[];
     toolChoice?: ToolChoiceMode | { type: 'tool'; toolName: string };
-    instructions?: ReturnType<ProviderHints['instructions']>;
   }> {
     let prepared = messages;
     if (this.options.prepareMessages !== undefined) {
@@ -578,6 +584,18 @@ class LoopRun {
       } else {
         prepared = result.messages;
         if (result.stop !== undefined && this.guardStop === undefined) this.guardStop = result.stop;
+      }
+    }
+    // A message rewritten since the last request (a superseded screen or
+    // screenshot elided, a history shrunk) edits the prefix a provider may
+    // have bound the reasoning after it to: where it does, that reasoning is
+    // not sent again, and the step's transcript says so.
+    const rewritten = this.firstRewritten(prepared);
+    if (rewritten !== undefined) {
+      const rebound = this.hints.afterEdit(prepared, rewritten);
+      if (rebound !== prepared) {
+        this.note(`before turn ${String(stepNumber + 1)}: message ${String(rewritten + 1)} was rewritten, so the reasoning after it is not sent again`);
+        prepared = rebound;
       }
     }
     const turnsLeft = this.maxTurns - stepNumber;
@@ -659,12 +677,11 @@ class LoopRun {
     // next turn moves it again.
     const outgoing = this.hints.markLatest(prepared);
     this.lastRequest = outgoing;
+    this.lastShape = outgoing.map(shapeOf);
     // A model that rejects forced choices is offered the conclusion tool
     // alone under `auto`; the notices above already tell it to call it.
     return {
       ...(outgoing === messages ? {} : { messages: outgoing }),
-      // A switch to `auto` inside this generate call: the remaining turns get the tool-calls-only rule too.
-      ...(this.toolChoice === this.instructedFor ? {} : { instructions: this.hints.instructions(this.instructions()) }),
       ...(forced
         ? {
             activeTools: ['complete_step'],
@@ -673,6 +690,22 @@ class LoopRun {
           }
         : { toolChoice: this.toolChoice }),
     };
+  }
+
+  /**
+   * The index of the first message whose content is not what the last
+   * request sent at that position, if any: a message the executor's
+   * `prepareMessages` or the overflow shrink rewrote. The comparison is by
+   * value, against what was kept from the last request rather than its
+   * message objects: an executor that edits a message in place leaves the
+   * object in both histories, and one that clones the history changes no
+   * message at all.
+   */
+  private firstRewritten(messages: readonly ModelMessage[]): number | undefined {
+    const last = this.lastShape;
+    if (last === undefined) return undefined;
+    const index = messages.findIndex((message, position) => position < last.length && shapeOf(message) !== last[position]);
+    return index === -1 ? undefined : index;
   }
 
   private instructions(): string {
@@ -686,7 +719,7 @@ class LoopRun {
     if (project !== undefined && project.trim() !== '') {
       parts.push(`Project context:\n${project}`);
     }
-    parts.push(this.toolChoice === 'auto' ? `${VERDICT_RULES}\n- ${TOOL_CALLS_ONLY_RULE}` : VERDICT_RULES);
+    parts.push(`${VERDICT_RULES}\n- ${TOOL_CALLS_ONLY_RULE}`);
     return parts.join('\n\n');
   }
 

@@ -63,6 +63,7 @@ describe('telemetry events', () => {
       initCompletedEvent({
         result: 'scaffolded',
         yes: false,
+        example: 'with-vite',
         existingConfig: false,
         engine: 'playwright',
         gateway: 'openai-compatible',
@@ -75,6 +76,7 @@ describe('telemetry events', () => {
       properties: {
         result: 'scaffolded',
         yes: false,
+        example: 'with-vite',
         existing_config: false,
         engine: 'playwright',
         gateway: 'openai-compatible',
@@ -139,6 +141,12 @@ describe('telemetry events', () => {
       tests_interrupted: 0,
       tests_flaky: 0,
       tests_skipped: 0,
+      filters_run: 0,
+      filters_timed_out: 0,
+      filters_failed: 0,
+      filters_skipped: false,
+      filters_changed_files: 0,
+      tests_left_out_by_filters: 0,
       attempts_total: 2,
       tests_retried: 0,
       targets: 2,
@@ -353,6 +361,41 @@ describe('telemetry events', () => {
     expect(JSON.stringify(runCompletedEvent(report, RUN))).not.toContain('acme');
   });
 
+  it('counts the filters a run applied, the change they judged, and the tests their records left out, never names, reasons, paths, or commits', () => {
+    const report = reportDocument({
+      results: [
+        reportResult(),
+        reportResult({ id: 'r2', testId: 'tests/a.e2e.ts::pays', selected: false, status: 'skipped', attempts: [], skip: { cause: 'filtered', reason: 'acme diff misses it', filter: 'acme-areas' } }),
+      ],
+    });
+    report.run.filters = [
+      { name: 'acme-areas', candidates: 3, excluded: 2, note: 'acme note' },
+      { name: 'acme-zones', candidates: 1, excluded: 1 },
+      { name: 'acme-jev', candidates: 1, excluded: 0, note: 'did not finish within 5m, so it leaves nothing out', outcome: 'timed-out' },
+      { name: 'acme-owners', candidates: 1, excluded: 0, note: 'failed, so it leaves nothing out: acme CODEOWNERS not found', outcome: 'failed' },
+      { name: 'acme-pages', candidates: 1, excluded: 0, note: 'returned an invalid result, so it leaves nothing out: unknown key "acme"', outcome: 'failed' },
+    ];
+    report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 12 };
+    const event = runCompletedEvent(report, RUN);
+    expect(event.properties).toMatchObject({
+      filters_run: 5,
+      filters_timed_out: 1,
+      filters_failed: 2,
+      filters_skipped: false,
+      filters_changed_files: 12,
+      tests_left_out_by_filters: 3,
+    });
+    expect(JSON.stringify(event)).not.toMatch(/acme|acac|a\.e2e\.ts/u);
+
+    report.run.changes = { base: 'acacacacacacacacacacacacacacacacacacacac', files: 0, skipped: 'acme no files changed' };
+    const skipped = runCompletedEvent(report, RUN);
+    expect(skipped.properties).toMatchObject({ filters_skipped: true, filters_changed_files: 0 });
+    expect(JSON.stringify(skipped)).not.toMatch(/acme|acac/u);
+
+    report.run.changes = { skipped: '--last-failed' };
+    expect(runCompletedEvent(report, RUN).properties).toMatchObject({ filters_skipped: true, filters_changed_files: 0 });
+  });
+
   it('counts the units that needed more than one attempt', () => {
     expect(runCompletedEvent(reportWithAttempts({ status: 'failed' }, { index: 1 }), RUN).properties['tests_retried']).toBe(1);
   });
@@ -416,6 +459,7 @@ describe('telemetry events', () => {
         credentials: { acmeAdmin: { username: 'admin@acme.example', password: 'acme-pw' } },
         secrets: { acmeToken: 'acme-token-value' },
         reporters: ['list', 'junit'],
+        filters: [{ name: 'acme-areas', filter: () => ({ exclude: {} }) }, { name: 'acme-jev', filter: () => ({ exclude: {} }) }],
       },
       { projectRoot: '/tmp/acme', env: {} },
     );
@@ -434,6 +478,7 @@ describe('telemetry events', () => {
       config_cache_strict: false,
       config_reporters: ['junit', 'list'],
       config_custom_reporters: 0,
+      config_filters: 2,
       config_artifact_store: false,
       config_trace_modes: ['retain-on-failure'],
       config_video_modes: ['off', 'retain-on-failure'],
@@ -547,5 +592,16 @@ describe('the MCP session event', () => {
     });
     expect(JSON.stringify(event)).not.toContain('acme');
     expect(mcpSessionEvent(summary(), undefined).properties).toMatchObject({ client: null, client_version: null });
+  });
+
+  it("counts the session's own tools under their names", () => {
+    const calls = new Map([['locate', 2], ['run_code', 3], ['test_lines', 1], ['start_recording', 1], ['stop_recording', 1]]);
+    expect(mcpSessionEvent(summary({ toolCalls: calls, projectToolCalls: 0 }), undefined).properties['calls']).toEqual({
+      locate: 2,
+      run_code: 3,
+      test_lines: 1,
+      start_recording: 1,
+      stop_recording: 1,
+    });
   });
 });

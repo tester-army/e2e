@@ -8,6 +8,7 @@
 - Locators
 - expect
 - Sign-in sessions
+- Start near the screen under test
 - The browser fixture (browser only)
 - Habits
 
@@ -126,7 +127,7 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
 - `clearState()`: clears cookies and storage, recreates the context, reopens
   the base URL.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
-  path. It masks secure fields only (see Sign-in sessions).
+  absolute path. It masks secure fields only (see Sign-in sessions).
 
 `clearState()` is `UNSUPPORTED_CAPABILITY` with `connect.reconnectEndpoint`
 or an attempt-scoped browser provider; on a device with no pinned `app`, both
@@ -143,7 +144,7 @@ assertion. Every query also exists on a locator, scoped to its subtree.
 | `getByLabel(text, { exact?, visible? })` | Form controls by label. |
 | `getByPlaceholder(text, { exact?, visible? })` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
-| `getByDisplayValue(value, { exact?, visible? })` | Inputs by current value; on the web it cannot scope child queries or be a `filter({ has })` target. |
+| `getByDisplayValue(value, { exact?, visible? })` | Inputs by current value; on the web it cannot scope child queries or be a `filter({ has })` or `filter({ hasNot })` target. |
 | `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), accessibility identifier or resource id on a device (React Native `testID`, SwiftUI `.accessibilityIdentifier`, Compose `testTag` with `testTagsAsResourceId` on Android, Flutter `Semantics(identifier:)`, .NET MAUI `AutomationId`); a string matches the whole id, a RegExp tests it; on Android the `<package>:id/` prefix may be left off. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
@@ -176,9 +177,14 @@ substring; a `RegExp` matches as written.
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.
 - Narrow with `filter({ hasText })` (a case-insensitive substring, unlike a
-  query), `filter({ has: locator })`, `first()`, `last()`, `nth(i)`, or
-  scoping under another locator. Any other `filter` key (`hasNot`,
-  `hasNotText`) or an empty `filter({})` is `INVALID_LOCATOR`.
+  query), `filter({ hasNotText })` to exclude matching subtree text,
+  `filter({ has: locator })`, `filter({ hasNot: locator })`, `first()`,
+  `last()`, `nth(i)`, or scoping under another locator. Any other `filter`
+  key (`visible`) or an empty `filter({})` is `INVALID_LOCATOR`. `a.or(b)`
+  matches either, still strict: add `first()` when both may match. Both
+  locators must come from the same screen and attempt. Web branches need
+  identical literal frame-selector chains; display-value branches cannot be
+  composed.
 - `visible: true` drops nodes the page hides (a closed drawer) before the
   exactly-one rule. Visibility is what renders, as `toBeVisible()` reads it:
   an `aria-hidden` spinner that paints is visible, so `toBeHidden()` waits
@@ -383,6 +389,72 @@ credentials: {
   `<secret:stripe-key>` (and so does the test id, for a value in a title),
   so the agent cannot type it. Pass the handle.
 
+## Start near the screen under test
+
+A test pays for every step before the screen it checks, on every run and on
+every rerun while you fix it. A wrong locator at the end of a long flow
+reruns the whole flow, then waits out the 30 s action timeout. Begin each
+test as close to its screen as the app allows:
+
+- Sign in once in a setup test and declare `session` on the test (Sign-in
+  sessions). Only the setup fills the sign-in form. A session lasts one run,
+  so the setup still runs on every run, once per target for all the selected
+  tests that declare its session.
+- Open the screen by its path, `app.open('/projects/42/settings')`, not the
+  home page and three taps. `observe` over MCP prints the path of the screen
+  you reached.
+- Create the data the screen needs through the app's API in a `test.extend`
+  fixture. Click through a creation flow only in the test that covers it.
+  A declared session is restored before fixtures run, so when the app signs
+  in with a cookie, `browser.cookies()` signs the fixture's requests in.
+  Check the response in the fixture: a
+  failed seed then fails there, not 30 s later on a locator. While exploring
+  over MCP, a project tool that seeds data (topic `agent`) gets there in one
+  `call`.
+
+```ts
+import { test } from '@e2e-dev/web';
+import { expect } from 'e2e';
+import { z } from 'zod';
+
+const projectTest = test.extend<{ project: { id: string } }>({
+  project: async ({ app, browser }, use) => {
+    const cookie = (await browser.cookies()).map((c) => `${c.name}=${c.value}`).join('; ');
+    const api = (path: string, init: RequestInit = {}) =>
+      fetch(new URL(path, app.baseUrl), { ...init, headers: { cookie, 'content-type': 'application/json' } });
+    const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name: `Project ${Date.now()}` }) });
+    const project = expect(await created.json()).toMatchSchema(z.object({ id: z.string() }));
+    await use(project);
+    await api(`/api/projects/${project.id}`, { method: 'DELETE' }); // runs after a failure too
+  },
+});
+
+projectTest('renames a project', { session: 'admin' }, async ({ app, screen, project }) => {
+  await app.open(`/projects/${project.id}/settings`); // straight to the screen under test
+  await screen.getByLabel('Name').fill('Atlas');
+  await screen.getByRole('button', 'Save').tap();
+  await expect(screen.getByRole('status')).toHaveText('Saved');
+});
+```
+
+On a device there are no sessions and `app.open()` takes no path:
+`device.openLink('myapp://projects/42')` opens a route, or a sign-in link,
+in the app.
+
+Grow a test that spans several screens one screen at a time when you have
+not checked its steps live: write up to the next screen you have not seen
+pass, run it, then add the next. A passing locator step takes milliseconds,
+and an `agent.act` that a later check confirmed replays from the cache with
+no model call. The cache keeps those entries when a later line fails, so
+each run pays model calls only for its new part. That holds for a first
+attempt with a read-write cache: a retry never replays, and with `CI` set
+the cache records nothing by default, so grow the test outside `CI` and
+pass `--retries 0` when the config retries. Keep the title and the
+goals already written as they are while the test grows: a cache entry
+belongs to the test's file and title path and the goal's instruction and
+params. A fixture's run-unique value in a goal's params goes in as
+`unique(value)` (topic `agent`), or every run misses.
+
 ## The browser fixture (browser only)
 
 Prefer `app` and `screen`; `browser` is for what only a browser has, and a
@@ -399,7 +471,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `locator(css)`: raw CSS or XPath; not portable, a last resort.
 - `frameLocator(css)`: a `Screen` scoped to one iframe
   (`browser.frameLocator('#payment').getByLabel('Card number')`); keeps
-  `locator(css)` and `frameLocator(css)` for nesting.
+  `locator(css)` and `frameLocator(css)` for nesting. The agent's tree
+  leaves out a frame from another site, so script steps there with it.
 - `evaluate(fn | source, arg?)`: runs a function or source string in the
   page, JSON in and out, no closures; a throw in the page is
   `EVALUATE_FAILED`.
@@ -454,6 +527,10 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 - APIs live in the same suite: `fetch(new URL('/api/users', app.baseUrl))`
   plus value matchers, in a `test.extend` fixture that reads `browser.cookies()`
   when the API needs the session.
-- No sleeps or polling loops; a matcher with a longer `timeout` instead.
+- No sleeps, fixed delays, or polling loops. Wait for the state, not a
+  duration: `agent.waitFor('the import finished')` with a `timeout` long
+  enough for the slowest case (topic `agent` lists its model and budget
+  limits), or a matcher with a longer `timeout` when a locator names the
+  state exactly.
 - `await` every step call and `expect.poll`, else `STEP_NOT_AWAITED` at the line of the call.
 - Assert the fact a model produced with `toContain`, not its exact sentence.

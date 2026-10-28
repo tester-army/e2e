@@ -167,12 +167,20 @@ language model specification v2 or later.
   </Step>
 </Steps>
 
-<Accordion title="DeepSeek V4 and Meta Muse Spark">
-These models refuse the forced tool choice that agent steps ask for.
-DeepSeek's V4 models (`@ai-sdk/deepseek`) refuse it because they think by
-default. Muse Spark models accept only `auto`. e2e retries with `auto` and
-an instruction to reply with tool calls only, and later steps on that model
-start that way. Thinking can stay on.
+<Accordion title="Models that refuse a forced tool choice">
+Agent steps ask every model for a tool call on every turn. Claude Opus 5.5,
+Sonnet 5.5, and Fable 5.1 reject that request shape, DeepSeek's V4 models
+(`@ai-sdk/deepseek`) refuse it because they think by default, and Muse Spark
+models accept only `auto`. e2e continues with `auto`, and later steps on that
+model start that way. Thinking can stay on.
+</Accordion>
+
+<Accordion title="Claude Opus 5.5, Sonnet 5.5, and Fable 5.1">
+These models bind each thinking block to the system prompt and the messages
+before it, and reject a request that replays the block after either changed.
+An agent step keeps its prompt fixed, and once it elides a superseded screen
+or screenshot from an earlier message it stops sending the thinking from that
+message on. The step's `--debug` transcript notes it.
 </Accordion>
 
 ## Several models in one config

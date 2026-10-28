@@ -78,7 +78,7 @@
         "message": { "type": "string", "maxLength": 8192 },
         "retryable": { "type": "boolean" },
         "phase": {
-          "enum": ["config", "collection", "launch", "beforeAll", "beforeEach", "body", "afterEach", "afterAll", "cleanup", "report"]
+          "enum": ["config", "collection", "filter", "launch", "beforeAll", "beforeEach", "body", "afterEach", "afterAll", "cleanup", "report"]
         },
         "scopeId": { "type": "string", "minLength": 1, "maxLength": 1024 },
         "scope": {
@@ -324,6 +324,7 @@
         "startedAt": { "$ref": "#/$defs/timestamp" },
         "durationMs": { "type": "integer", "minimum": 0 },
         "observationRevision": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "observationTruncated": { "type": "boolean" },
         "explanation": { "type": "string", "maxLength": 8192 },
         "visionInput": { "type": "boolean" },
         "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"] },
@@ -427,8 +428,12 @@
           "enum": ["explicit", "filtered", "platform-unavailable", "capability-unavailable", "setup-failed", "serial-predecessor-failed", "hook-failed", "infrastructure-unavailable", "failure-limit", "time-limit"]
         },
         "reason": { "type": "string", "maxLength": 8192 },
-        "relatedId": { "type": "string", "minLength": 1 }
-      }
+        "relatedId": { "type": "string", "minLength": 1 },
+        "filter": { "description": "The name of the test filter that left the test out; only with cause filtered.", "type": "string", "minLength": 1, "maxLength": 256 }
+      },
+      "allOf": [
+        { "if": { "required": ["filter"] }, "then": { "properties": { "cause": { "const": "filtered" } } } }
+      ]
     },
     "serialMember": {
       "type": "object",
@@ -727,9 +732,38 @@
         "limits": { "$ref": "#/$defs/limits" },
         "usage": { "$ref": "#/$defs/usage" },
         "carried": { "$ref": "#/$defs/carried" },
+        "changes": { "$ref": "#/$defs/changes" },
+        "filters": { "type": "array", "items": { "$ref": "#/$defs/filter" } },
         "explore": { "$ref": "#/$defs/explore" },
         "extensions": { "$ref": "#/$defs/extensions" }
       }
+    },
+    "filter": {
+      "description": "One test filter the run applied, in order. excluded counts the tests the run left out on its word, once serial groups took back their members.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "candidates", "excluded"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "candidates": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "integer", "minimum": 0 },
+        "note": { "type": "string", "maxLength": 1024 },
+        "outcome": { "description": "Set when the filter left nothing out because the call did not answer: failed when it threw or answered with something other than { exclude, note? }, timed-out when it ran past 5 minutes and the run stopped waiting. Absent when it answered.", "enum": ["failed", "timed-out"] }
+      }
+    },
+    "changes": {
+      "description": "The change the run's test filters judged, by counts only, or why no filter ran. Present when filters are configured and the run passed --changed-since. base and files come together once git measured the change; skipped stands alone when no filter ran before git was asked.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base": { "description": "The merge base the change is measured from.", "type": "string", "pattern": "^[a-f0-9]{40,64}$" },
+        "files": { "description": "How many files changed since base; 0 when there is no change.", "type": "integer", "minimum": 0 },
+        "skipped": { "description": "Why no filter ran, such as --last-failed.", "type": "string", "minLength": 1, "maxLength": 1024 }
+      },
+      "oneOf": [
+        { "required": ["base", "files"] },
+        { "required": ["skipped"], "properties": { "base": false, "files": false } }
+      ]
     },
     "carried": {
       "description": "What earlier runs left unresolved that a --last-failed rerun did not run again: their results as they reported them, the serial groups those results' attempts live on, and the suite hook failures whose scope still holds one of them. The next --last-failed selects these tests too. Not part of the run's status, exit code, or summary.",

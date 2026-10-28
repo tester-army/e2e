@@ -134,6 +134,16 @@ export function statusBucket(status: ResultStatus): 'passed' | 'failed' | 'inter
   return status === 'timed-out' ? 'failed' : status;
 }
 
+/** A result status, or a filter step's outcome, as a line of text says it: `timed out` for `timed-out`. */
+export const STATUS_WORD: Record<ResultStatus, string> = {
+  passed: 'passed',
+  flaky: 'flaky',
+  failed: 'failed',
+  'timed-out': 'timed out',
+  interrupted: 'interrupted',
+  skipped: 'skipped',
+};
+
 /** Counts results by bucket; `total` is the number of items. */
 export function tally(items: readonly { readonly status: ResultStatus }[]): Counters {
   const counters = emptyCounters();
@@ -323,7 +333,7 @@ export function stepsModelTally(stepLists: readonly (readonly StepRecord[])[]): 
 /**
  * The models that answered, most calls first: one model by its label alone,
  * since the row's call total is its count, several as
- * `gateway/openai/gpt-5.6-luna (22 calls) · typesafe-ai/jev (1 call)`;
+ * `gateway/openai/gpt-6-luna-fast (22 calls) · typesafe-ai/jev (1 call)`;
  * undefined when no step reported a model.
  */
 export function modelsText(counts: ModelTally): string | undefined {
@@ -491,4 +501,21 @@ export function fitColumns(text: string, columns: number): string {
  */
 export function repeatSuffix(repeat: number | undefined): string {
   return repeat === undefined || repeat === 0 ? '' : ` (repeat #${repeat})`;
+}
+
+/** A commit as the notices and the markdown page name it: its first seven characters. */
+export function shortCommit(commit: string): string {
+  return commit.slice(0, 7);
+}
+
+/**
+ * What one test filter decided of the tests it was given: `kept 7 of 42
+ * tests, left out 35`, `kept all 42 tests`, or `left out all 42 tests`. The
+ * run's notice and the markdown page say it the same way.
+ */
+export function filterDecision(candidates: number, excluded: number): string {
+  const tests = `${candidates} test${candidates === 1 ? '' : 's'}`;
+  if (excluded === 0) return `kept all ${tests}`;
+  if (excluded === candidates) return `left out all ${tests}`;
+  return `kept ${candidates - excluded} of ${tests}, left out ${excluded}`;
 }

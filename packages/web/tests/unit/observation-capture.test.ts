@@ -61,7 +61,7 @@ async function setup(stalled?: ReadStage) {
     waitForLoadState: async () => undefined,
     viewportSize: () => ({ width: 100, height: 80 }),
     url: () => 'https://app.test',
-    frames: () => [{ locator: () => ({ count }) }],
+    frames: () => [{ locator: () => ({ count }), evaluateHandle: () => ({ evaluate: async () => undefined, dispose: async () => undefined }) }],
     evaluateHandle: doc.evaluateHandle,
     screenshot,
   };

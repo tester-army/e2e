@@ -75,6 +75,13 @@ interface LocatorEngineOptions {
   readonly redact?: (text: string) => string;
 }
 
+/**
+ * Builds an action once its node has resolved, on every resolve: a `dragTo`
+ * resolves its drop target alongside the source, a secret fill clears the
+ * node it is about to land on.
+ */
+type ActionBuilder = (deadline: Deadline, ref: NodeRef) => Promise<LocatorAction>;
+
 /** A resolve that found its one match, and how long it polled for it: 0 when the first round found it. */
 interface Resolved {
   readonly ref: NodeRef;
@@ -242,23 +249,14 @@ export class LocatorEngine {
   }
 
   /**
-   * Resolves every current match for an assertion poll: a missing frame or a
-   * stale resolve is retried within the caller's deadline, like a node that
-   * is not there yet.
+   * Resolves every current match at once, without waiting for one. A frame
+   * the engine reports missing is zero matches, since nothing under it is in
+   * the document. A stale resolve is still retried within the deadline, as
+   * every resolve does: that repairs a race with a navigation, it does not
+   * wait for a match.
    */
-  async resolveAll(expression: LocatorExpression, deadline: Deadline): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, deadline);
-  }
-
-  /**
-   * Resolves every current match at once, for the reads that promise not to
-   * wait (`count`, `all`). A frame the engine reports missing is zero
-   * matches, since nothing under it is in the document. A stale resolve is
-   * still retried within the action timeout, as every resolve does: that
-   * repairs a race with a navigation, it does not wait for a match.
-   */
-  async resolveNow(expression: LocatorExpression): Promise<readonly NodeRef[]> {
-    return this.resolveOnce(expression, this.deadline(this.options.actionTimeout), 'empty');
+  async resolveNow(expression: LocatorExpression, deadline: Deadline = this.deadline(this.options.actionTimeout)): Promise<readonly NodeRef[]> {
+    return this.resolveOnce(expression, deadline, 'empty');
   }
 
   /**
@@ -285,27 +283,15 @@ export class LocatorEngine {
   }
 
   /**
-   * Reads every current match for an assertion poll, in document order. A
-   * ref superseded between resolve and read re-resolves the whole set while
-   * the deadline remains, since one stale member says nothing about the
-   * others; a stale set at the deadline is `LOCATOR_NOT_FOUND`.
+   * Reads every current match at once, in document order: a missing frame
+   * reads as no matches. A ref superseded between resolve and read
+   * re-resolves the whole set while the deadline remains, since one stale
+   * member says nothing about the others; a stale set at the deadline is
+   * `LOCATOR_NOT_FOUND`.
    */
-  async readAll(expression: LocatorExpression, deadline: Deadline): Promise<readonly SemanticNode[]> {
-    return this.readEvery(expression, deadline, 'wait');
-  }
-
-  /** Reads every current match at once, for `allTextContents`: a missing frame reads as no matches. */
   async readAllNow(expression: LocatorExpression, deadline: Deadline = this.deadline(this.options.actionTimeout)): Promise<readonly SemanticNode[]> {
-    return this.readEvery(expression, deadline, 'empty');
-  }
-
-  private async readEvery(
-    expression: LocatorExpression,
-    deadline: Deadline,
-    missingFrame: MissingFrame,
-  ): Promise<readonly SemanticNode[]> {
     for (;;) {
-      const refs = await this.resolveOnce(expression, deadline, missingFrame);
+      const refs = await this.resolveOnce(expression, deadline, 'empty');
       try {
         const nodes: SemanticNode[] = [];
         for (const ref of refs) nodes.push(await this.session.read(ref, this.operationWithin(deadline)));
@@ -370,10 +356,37 @@ export class LocatorEngine {
    */
   async perform(
     expression: LocatorExpression,
-    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
+    action: LocatorAction | ActionBuilder,
     timeoutMs?: number,
   ): Promise<void> {
     await this.performUntil(expression, action, this.deadline(timeoutMs));
+  }
+
+  /**
+   * Fills a secret into exactly one match, and hands the value over only
+   * once `authorize` has cleared the node it lands on. The node is read and
+   * cleared on every resolve, so a match that went stale and resolved again
+   * is checked again before the value is handed over.
+   */
+  async fillSecret(
+    expression: LocatorExpression,
+    authorize: (node: SemanticNode) => Promise<string>,
+    timeoutMs?: number,
+  ): Promise<void> {
+    this.checkAction({ kind: 'fill', value: '', sensitive: true });
+    await this.performUntil(
+      expression,
+      async (deadline, ref) => {
+        let node: SemanticNode;
+        try {
+          node = await this.session.read(ref, this.operationWithin(deadline));
+        } catch (cause) {
+          throw translateLocatorError(cause, expression);
+        }
+        return { kind: 'fill', value: await authorize(node), sensitive: true };
+      },
+      this.deadline(timeoutMs),
+    );
   }
 
   /** Performs one pointer action at a viewport point, with no node behind it. */
@@ -505,7 +518,7 @@ export class LocatorEngine {
   /** `perform` within a deadline a caller shares across steps, such as the swipes of one scroll. */
   async performUntil(
     expression: LocatorExpression,
-    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
+    action: LocatorAction | ActionBuilder,
     deadline: Deadline,
   ): Promise<void> {
     if (typeof action !== 'function') this.checkAction(action);
@@ -517,7 +530,7 @@ export class LocatorEngine {
       // Read now, from the resolve's own cache: a dragTo's target resolve
       // below supersedes this ref, and the node it named would be gone.
       const node = this.options.recordEvent === undefined ? undefined : await this.session.read(ref, this.operationWithin(deadline)).catch(() => undefined);
-      const resolved = typeof action === 'function' ? await action(deadline) : action;
+      const resolved = typeof action === 'function' ? await action(deadline, ref) : action;
       const record = (status: StepEvent['status'], code?: string): void =>
         this.recordAction({ node, kind: resolved.kind, startedAt, startedMs, waitedMs, stale, status, code });
       try {

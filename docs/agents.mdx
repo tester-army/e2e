@@ -77,6 +77,10 @@ describe('billing', { agentContext: 'The seeded workspace is called "Acme Trial"
 
 Keep instructions out of `agentContext`: it reaches the judges too.
 
+Under `e2e run`, every prompt also opens with the test's title path, such as
+`Test: billing > upgrades the tier`. The judges read it too, so name a
+test for what it covers, not for the verdict you expect.
+
 ## Pick an agent per run
 
 `--agent` chooses the agent for tests that don't select one. Several names

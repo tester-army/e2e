@@ -156,6 +156,8 @@ export interface StepAgentDetails {
   cache?: StepCacheInfo;
   /** Absent when the step failed before capturing an observation. */
   observationRevision?: string;
+  /** True when at least one semantic observation in the step was truncated. */
+  observationTruncated?: boolean;
   /** Absent when capture failed before a judgment could be requested. */
   explanation?: string;
   /** True when masked pixel evidence was model input, not just an artifact. */
@@ -197,6 +199,8 @@ export interface StepRecord {
   startedAt: string;
   durationMs: number;
   observationRevision?: string;
+  /** True when at least one semantic observation in the step was truncated. */
+  observationTruncated?: boolean;
   explanation?: string;
   visionInput?: boolean;
   visionDegraded?: VisionDegradation;
@@ -675,6 +679,9 @@ export class StepRecorder {
     if (details.cache !== undefined) current.cache = details.cache;
     if (details.observationRevision !== undefined) {
       current.observationRevision = details.observationRevision;
+    }
+    if (details.observationTruncated !== undefined) {
+      current.observationTruncated = details.observationTruncated;
     }
     if (details.explanation !== undefined) {
       current.explanation = this.redact?.(details.explanation) ?? details.explanation;

@@ -1,10 +1,10 @@
 /**
  * Point taps: how a viewport point an executor names is routed onto the
- * tree, and how the result reads back. A point that a listed, enabled
- * control contains is tapped by that control's id, so policy, stale
- * relocation, and the trace cache see an ordinary tap; a point on nothing
- * listed goes to the engine as a bare point. Coordinates read off a
- * screenshot are scaled into the observation's CSS pixels first.
+ * tree, and how the result reads back. A point goes to the engine as a bare
+ * point, where the model aimed, and the trace keeps it inside the node under
+ * it; an engine that taps listed nodes only gets the enabled control
+ * containing the point, tapped by its id. Coordinates read off a screenshot
+ * are scaled into the observation's CSS pixels first.
  */
 
 import type { PointActionName } from '../cache/trace.ts';
@@ -110,8 +110,8 @@ export interface PointProse {
 }
 
 /**
- * The point verbs: the node verb each resolves onto when a listed control
- * sits under the point, and how each reads back to the model. The one place
+ * The point verbs: the node verb each resolves onto on an engine without
+ * the bare-point kind, and how each reads back to the model. The one place
  * the pairing lives; the tools, the dispatcher, and the prose read it.
  */
 export const POINT_VERBS: Readonly<Record<PointActionName, { readonly node: 'tap' | 'hover'; readonly did: string }>> = {
@@ -119,19 +119,26 @@ export const POINT_VERBS: Readonly<Record<PointActionName, { readonly node: 'tap
   hoverAt: { node: 'hover', did: 'Hovered over' },
 };
 
-/** What one point action did, for the model that named the point. */
+/**
+ * What one point action did, for the model that named the point: the
+ * control it acted on by id, the control it acted inside as a bare point,
+ * or the bare point on nothing listed.
+ */
 export function describePointAction(
   input: PointProse & {
     readonly verb: PointActionName;
     readonly point: ViewportPoint;
     readonly control: RedactedNode | undefined;
     readonly under: RedactedNode | undefined;
+    /** Whether the control was acted on by id rather than at the bare point. */
+    readonly byId: boolean;
   },
 ): string {
   const { did } = POINT_VERBS[input.verb];
   const at = `(${String(input.point.x)}, ${String(input.point.y)})`;
   if (input.control !== undefined) {
-    return `${did} ${describeNode(input, input.control)}, the control at ${at}.`;
+    if (input.byId) return `${did} ${describeNode(input, input.control)}, the control at ${at}.`;
+    return `${did} the point ${at} inside ${describeNode(input, input.control)}.`;
   }
   const under = input.under === undefined ? '' : ` (under it: ${describeNode(input, input.under)})`;
   return `${did} the point ${at}; no listed control is there${under}.`;

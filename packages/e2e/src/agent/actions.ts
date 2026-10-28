@@ -66,17 +66,17 @@ export type RecordableAction =
   | { readonly name: 'pressKey'; readonly key: string }
   | { readonly name: 'dismissKeyboard' }
   /**
-   * A tap or hover on a bare viewport point that no listed control
-   * contained, with the viewport it was placed in and, when one is listed,
-   * the node whose box contained it: the trace records the point's place
-   * inside that box so replay can follow the node when the layout shifts.
+   * A tap or hover on a bare viewport point, with the viewport it was placed
+   * in and, when one is listed, the node whose box contained it and where
+   * that node sat: the trace records the point's place inside that box so
+   * replay can follow the node when the layout shifts.
    */
-  | {
+  | ({
       readonly name: PointActionName;
       readonly point: ViewportPoint;
       readonly viewport: ViewportSize;
       readonly under?: RedactedNode;
-    };
+    } & Placement);
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
 export interface Placement {
@@ -212,7 +212,7 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
     'node' in action
       ? describePlaced(action.node, action, redaction)
       : 'point' in action
-        ? describePlaced(action.under, {}, redaction)
+        ? describePlaced(action.under, action, redaction)
         : undefined;
   const destination =
     action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redaction) : undefined;

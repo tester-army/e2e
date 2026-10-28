@@ -1,5 +1,15 @@
 # @e2e-dev/decision
 
+## 0.3.0
+
+### Minor Changes
+
+- [#1206](https://github.com/tester-army/e2e/pull/1206) [`da13624`](https://github.com/tester-army/e2e/commit/da13624d31fa6cf2204c7b99f1474d718ca1a02a) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Release:** Add `decisionFilter({ model })`, a test filter that asks a decision model which tests a pull request can affect and leaves out the rest, such as `filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })]`. The model must answer `boolean` questions; `providerOptions` passes options such as zero data retention to every call. Needs `e2e` 0.21.3 or later.
+
+### Patch Changes
+
+- [#1345](https://github.com/tester-army/e2e/pull/1345) [`47127f7`](https://github.com/tester-army/e2e/commit/47127f734f34927b040f85aa7db9f9f6a02a2a7d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `decisionFilter` leaves nothing out when the config file the run loaded changed, whatever its name, such as `e2e list --config e2e.ci.config.ts --changed-since origin/main` after an edit to `e2e.ci.config.ts`. A test filter reads that file as `context.configFile`.
+
 ## 0.2.4
 
 ### Patch Changes

@@ -11,6 +11,7 @@ one tests, the agents, and the replay cache. Export an object with
 `satisfies E2EConfig`, which checks its shape and keeps its inferred types.
 The runner validates the config again at load, including ranges and rules
 TypeScript cannot check.
+For the options most projects change, see [Configure the project](/quickstart#configure-the-project).
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -51,6 +52,7 @@ export default {
 | [`trace`](#trace) | `RecordingMode` | `'retain-on-failure'` |
 | [`video`](#video) | `RecordingMode` | `'off'` |
 | [`agents`](#agents) | `Record<string, AgentConfig>` | `default`, no model |
+| [`filters`](#filters) | `TestFilter[]` | - |
 | [`cache`](#cache) | `CacheMode \| CacheConfig` | `'read-write'`, `'read-only'` in CI |
 | [`credentials`](#credentials) | `Record<string, CredentialConfig>` | - |
 | [`secrets`](#secrets) | `Record<string, SecretConfig>` | - |
@@ -138,7 +140,9 @@ The budget of every engine operation, in milliseconds.
 actionTimeout: 10_000, // default: 30000
 ```
 
-A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
+- A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
+- A call's own `timeout` option wins over it.
+- `--action-timeout <ms>` overrides it for one run.
 
 #### `assertionTimeout`
 
@@ -147,6 +151,9 @@ The default `expect` deadline, in milliseconds.
 ```ts
 assertionTimeout: 10_000, // default: 5000
 ```
+
+- A matcher's own `timeout` option wins over it.
+- `--assertion-timeout <ms>` overrides it for one run.
 
 #### `cleanupTimeout`
 
@@ -1062,6 +1069,33 @@ value in an old shape fails the config load with `INVALID_CONFIG`:
 | top-level `limits.maxModelTokensPerCall` | `maxInputTokens` on each agent |
 | top-level `limits.maxAgentContextBytes`, `maxLedgerBytes`, `maxEventsPerStep` | removed; the runner fixes them at 16384 bytes, 8192 bytes, and 1000 events |
 
+### filters
+
+[Test filters](/filters) that leave out the tests a change can't affect,
+applied in order when the run passes `--changed-since`.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  filters: [decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
+} satisfies E2EConfig;
+```
+
+Which tests always run is on
+[Test filters](/filters#what-always-runs). A `name` follows the target name
+rules, is at most 256 characters, and is unique among `filters`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A bad `name`, an item that isn't `{ name, filter }`, or a bare function such as `decisionFilter` in place of `decisionFilter({ model })`. |
+
+The declarations are under [`TestFilter`](#testfilter), exported from `e2e`.
+
 ### credentials
 
 Named accounts. Each entry is a username and a password the model never sees.
@@ -1505,6 +1539,8 @@ export interface E2EConfig {
   reporters?: readonly (BuiltinReporter | Reporter)[];
   /** Named agents: the built-in agent's options, or `{ executor }` for a custom brain. */
   agents?: Readonly<Record<string, AgentConfig>>;
+  /** Test filters, in order, run with `--changed-since`: each judges the tests the one before it kept. */
+  filters?: readonly TestFilter[];
   /** Replay cache mode or options; default `read-write`, `read-only` in CI. */
   cache?: CacheMode | CacheConfig;
   /** Named accounts: a username and a password the model never sees. */
@@ -1679,6 +1715,63 @@ export interface ModelInstance {
   readonly doGenerate: (...args: never[]) => unknown;
 }
 ```
+
+### `TestFilter`
+
+```ts
+interface TestFilter {
+  /** Names the filter in the report and in errors. */
+  readonly name: string;
+  readonly filter: (tests: readonly TestFilterCandidate[], context: TestFilterContext) => TestFilterResult | Promise<TestFilterResult>;
+}
+
+interface TestFilterCandidate {
+  /** The report's `testId`, and the key `exclude` takes. */
+  readonly id: string;
+  /** Project-relative path of the test file. */
+  readonly file: string;
+  /** The describe titles, then the test title. */
+  readonly titlePath: readonly string[];
+  /** The describe chain's tags, then the test's own. */
+  readonly tags: readonly string[];
+  /** Project-relative path of the setup test file that saves the test's session; absent without one. */
+  readonly setupFile?: string;
+}
+
+interface TestFilterContext {
+  /** Absolute project root, spelled as on disk like `changes.root`. */
+  readonly projectRoot: string;
+  /** The change every filter of the run judges. */
+  readonly changes: TestFilterChanges;
+  /** The config file the run loaded, relative to `changes.root` like `changes.files`; `undefined` for a config object or one outside the repository. */
+  readonly configFile?: string | undefined;
+  /** Aborts when the run is interrupted, or with a `TimeoutError` after 5 minutes. */
+  readonly signal: AbortSignal;
+  /** Prints one progress line. */
+  log(line: string): void;
+  /** Replaces every fixed-value secret and credential password in `text`, and any run of 8 or more consecutive characters of one. */
+  redact(text: string): string;
+}
+
+interface TestFilterChanges {
+  /** The merge base of the `--changed-since` ref and `HEAD`. */
+  readonly base: string;
+  /** Absolute path of the repository root, spelled as on disk like `projectRoot`. */
+  readonly root: string;
+  /** Repository-relative POSIX paths of every changed file, uncommitted and untracked files included. Sorted, never empty. */
+  readonly files: readonly string[];
+}
+
+interface TestFilterResult {
+  /** The tests to leave out, by `id`, each with a non-empty reason the report shows. An `id` of a collected test this filter wasn't given is ignored; any other fails the filter. */
+  readonly exclude: Readonly<Record<string, string>>;
+  /** One line about the whole decision. */
+  readonly note?: string;
+}
+```
+
+`TestFilter`, `TestFilterCandidate`, `TestFilterContext`,
+`TestFilterChanges`, and `TestFilterResult` are exported from `e2e`.
 
 ### `CredentialConfig`
 

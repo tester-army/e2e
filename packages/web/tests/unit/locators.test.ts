@@ -7,7 +7,7 @@
 import type { Locator as PwLocator, Page } from 'playwright-core';
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, TextPattern } from 'e2e/engine';
-import { applyPostSteps, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
+import { applyPostSteps, frameSelectors, projectExpression as projectWith, type PostStep } from '../../src/locators.ts';
 
 /** A chain-recording stand-in for a Playwright locator. */
 interface FakeLocator {
@@ -28,12 +28,13 @@ function fakeLocator(chain: readonly string[]): PwLocator {
       fakeLocator([...chain, `label(${String(text)}${options?.exact ? ',exact' : ''})`]),
     getByText: (text: string | RegExp, options?: { exact?: boolean }) =>
       fakeLocator([...chain, `text(${String(text)}${options?.exact ? ',exact' : ''})`]),
-    filter: (options: { hasText?: string | RegExp; has?: PwLocator; visible?: boolean }) =>
+    filter: (options: { hasText?: string | RegExp; has?: PwLocator; hasNot?: PwLocator; visible?: boolean }) =>
       fakeLocator([
         ...chain,
         `filter(${[
           options.hasText === undefined ? '' : `hasText=${String(options.hasText)}`,
           options.has === undefined ? '' : `has=${chainOf(options.has).join('>')}`,
+          options.hasNot === undefined ? '' : `hasNot=${chainOf(options.hasNot).join('>')}`,
           options.visible === undefined ? '' : `visible=${String(options.visible)}`,
         ]
           .filter((part) => part !== '')
@@ -42,6 +43,7 @@ function fakeLocator(chain: readonly string[]): PwLocator {
     first: () => fakeLocator([...chain, 'first']),
     last: () => fakeLocator([...chain, 'last']),
     nth: (index: number) => fakeLocator([...chain, `nth(${String(index)})`]),
+    or: (other: PwLocator) => fakeLocator([...chain, `or(${chainOf(other).join('>')})`]),
   };
   return self as unknown as PwLocator;
 }
@@ -98,6 +100,10 @@ describe('projectExpression', () => {
     expect(chainOf(scoped.locator)).toEqual([EXACT_LABEL, 'first', ROOTS, 'role(textbox)']);
     const rows = projectExpression(page, { kind: 'filter', source: textbox, has: label });
     expect(chainOf(rows.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${EXACT_LABEL})`]);
+    const without = projectExpression(page, { kind: 'filter', source: textbox, hasNot: label });
+    expect(chainOf(without.locator)).toEqual([ROOTS, 'role(textbox)', `filter(hasNot=${EXACT_LABEL})`]);
+    const both = projectExpression(page, { kind: 'filter', source: textbox, has: label, hasNot: label });
+    expect(chainOf(both.locator)).toEqual([ROOTS, 'role(textbox)', `filter(has=${EXACT_LABEL},hasNot=${EXACT_LABEL})`]);
     // A substring label query keeps Playwright's own matching.
     const loose = projectExpression(page, {
       kind: 'query',
@@ -213,12 +219,15 @@ describe('projectExpression', () => {
     expect(projected.steps).toEqual([{ kind: 'index', index: 0 }]);
   });
 
-  it('rejects a displayValue query as a scope or has-filter, and names only those cases', () => {
-    const message = 'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  it('rejects a displayValue query as a scope, a has filter, or a hasNot filter, and names only those cases', () => {
+    const message = 'displayValue queries cannot scope child queries or serve as a has or hasNot filter in this engine';
     expect(() => projectExpression(page, { ...textbox, scope: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );
     expect(() => projectExpression(page, { kind: 'filter', source: textbox, has: shared })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
+    );
+    expect(() => projectExpression(page, { kind: 'filter', source: textbox, hasNot: shared })).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', message }),
     );
   });
@@ -249,6 +258,19 @@ describe('projectExpression', () => {
       }),
     ).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY' }));
   });
+
+  it('projects a union onto Playwright or, and rejects a displayValue branch', () => {
+    const button: LocatorExpression = {
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true } },
+    };
+    const projected = projectExpression(page, { kind: 'union', left: textbox, right: button });
+    expect(chainOf(projected.locator)).toEqual([ROOTS, 'role(textbox)', `or(${ROOTS}>role(button))`]);
+    expect(projected.steps).toEqual([]);
+    expect(() => projectExpression(page, { kind: 'union', left: shared, right: textbox })).toThrow(
+      expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', retryable: false }),
+    );
+  });
 });
 
 describe('applyPostSteps', () => {
@@ -274,5 +296,22 @@ describe('applyPostSteps', () => {
     expect(kept).toEqual(['c']);
     expect(asked).toEqual(['c:x']);
     expect(await applyPostSteps(matches, [index('first'), filter], never)).toEqual([]);
+  });
+});
+
+describe('frameSelectors', () => {
+  const inFrame = (selector: string): LocatorExpression => ({ kind: 'frame', selector, source: textbox });
+
+  it('lists the frames along an expression, outermost first', () => {
+    expect(frameSelectors({ kind: 'frame', selector: '#outer', source: inFrame('#inner') })).toEqual(['#outer', '#inner']);
+    expect(frameSelectors({ kind: 'union', left: inFrame('#left'), right: inFrame('#left') })).toEqual(['#left']);
+  });
+
+  it('rejects a union whose branches live in different documents', () => {
+    for (const right of [inFrame('#right'), textbox]) {
+      expect(() => frameSelectors({ kind: 'union', left: inFrame('#left'), right })).toThrow(
+        expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', retryable: false }),
+      );
+    }
   });
 });

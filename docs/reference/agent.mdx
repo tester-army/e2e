@@ -72,6 +72,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
 | `agent` | `string` | the test's agent |
 | `onAction` | [`ActionHook`](#types) | none |
+| `onBeforeAction` | [`BeforeActionHook`](#types) | none |
 
 `params` values come from your code, never from the model. Wrap a value that
 differs on every run in [`unique()`](#unique). The model sees a `Secret` as
@@ -89,6 +90,19 @@ A check inside it never confirms the step's recording.
 ```ts
 await agent.act('open settings and turn on dark mode', {
   onAction: ({ index, action }) => app.screenshot(`${index} ${action}`),
+});
+```
+
+`onBeforeAction` runs before each action, replayed ones included, with the
+same `index` that action's `onAction` gets. Use it to capture the screen an
+action started on. The step waits for it, and it does not wait for the screen
+to settle first. If it throws, the step fails before the action runs, with a
+message that starts with `agent.act onBeforeAction failed`. An action can still
+fail after it, with no `onAction` call.
+
+```ts
+await agent.act('open settings and turn on dark mode', {
+  onBeforeAction: ({ index }) => app.screenshot(`before ${index}`),
 });
 ```
 
@@ -117,7 +131,7 @@ The runner's own stops, and the checks on the call itself:
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
 | `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take. |
 
 ### agent.assert
@@ -360,8 +374,8 @@ The built-in agent offers these tools while no secret has been filled:
 | Tool | What it does |
 | --- | --- |
 | `screenshot()` | Returns a masked viewport screenshot and includes a fresh screenshot after every later action in the step. |
-| `tap_at({ x, y })` | Taps the control at the point by node id, or taps the coordinates directly when no control is listed. |
-| `hover_at({ x, y })` | Hovers the control at the point by node id, or moves the pointer to the coordinates when no control is listed. Needs the `hover` action or pointer kind. |
+| `tap_at({ x, y })` | Taps the coordinates. On an engine that cannot, taps the listed control at the point by node id. |
+| `hover_at({ x, y })` | Moves the pointer to the coordinates. On an engine that cannot, hovers the listed control at the point by node id. Needs the `hover` action or pointer kind. |
 | `type_at({ x, y, value, replace? })` | Replaces a listed input's value. For an unlisted input, taps to focus and types at the caret unless `replace` is set. Unlisted inputs require keyboard support. |
 | `press_at({ x, y, key })` | Sends a key to the control at the point. If no control is listed, taps to focus and uses the engine's keyboard. |
 | `select_at({ x, y, value })` | Selects an option by visible label in the control at the point. |
@@ -369,9 +383,10 @@ The built-in agent offers these tools while no secret has been filled:
 - Coordinates refer to the latest screenshot. The model must take a
   screenshot before it uses a point tool, and should prefer node ids for
   listed controls.
-- The runner checks each point against the tree. A point on a listed control
-  gets the same policy checks and [replay cache](/cache) recording as an
-  action by id.
+- `type_at`, `press_at`, and `select_at` check each point against the tree.
+  A point on a listed control gets the same policy checks and
+  [replay cache](/cache) recording as an action by id. A `tap_at` or
+  `hover_at` point replays inside the node under it.
 - `tap_at` needs an engine whose `actions` or `pointerActions` include `tap`,
   and `hover_at` one whose include `hover`. Without the pointer kind, the
   point must land on a listed control.
@@ -421,6 +436,10 @@ await agent.assert('no overlay covers the checkout form', { vision: 'only' }); /
 Use `'only'` for visual checks, such as whether an overlay covers a form or a
 chart looks correct. Screenshots show the current viewport, so scroll to the
 relevant content first.
+
+The browser engine's semantic tree leaves out the content of a
+[frame from another site](/browser#reach-into-an-iframe). To judge that
+content, use `true` or `'only'`.
 
 Pixels are withheld, and the tree is sent alone, when:
 
@@ -485,7 +504,16 @@ export interface ActOptions extends AgentOption {
    * Observe only: drive nothing from it. A throw fails the step.
    */
   onAction?: ActionHook;
+  /**
+   * Runs before each action, replayed ones included, and the step waits for
+   * it. Observe only: drive nothing from it. A throw fails the step before
+   * the action runs.
+   */
+  onBeforeAction?: BeforeActionHook;
 }
+
+/** The `onBeforeAction` hook of an `act` call. */
+export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void>;
 
 /** The `onAction` hook of an `act` call. */
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
@@ -559,6 +587,14 @@ export interface ActionEvent {
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
+  readonly source: 'model' | 'replay';
+}
+
+/** One action of an `act` step about to run, as `onBeforeAction` receives it. */
+export interface BeforeActionEvent {
+  /** The same `index` the action's `onAction` event carries. */
+  readonly index: number;
+  /** `model` when the executor chose the action, `replay` when the cache replays it. */
   readonly source: 'model' | 'replay';
 }
 

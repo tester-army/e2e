@@ -93,7 +93,7 @@ export interface RunUnitsOptions {
    * The runner aborts it only with or after `interruptSignal`.
    */
   readonly forceSignal: AbortSignal;
-  /** Budget for a worker to dispose its engine after a forced interrupt. */
+  /** Budget for a worker to dispose its engine before it is killed. */
   readonly forceGraceMs: number;
   readonly spawn: SpawnUnitRunner;
   readonly events: SchedulerEvents;
@@ -101,9 +101,6 @@ export interface RunUnitsOptions {
 
 /** Consecutive worker-boot failures per target before its units are failed. */
 const MAX_INIT_FAILURES = 2;
-
-/** How long a retiring or draining worker gets before it is force-killed. */
-const SHUTDOWN_GRACE_MS = 10_000;
 
 /** Why a pair of a target whose workers cannot boot never ran. */
 const WORKER_START_FAILED: SkipInfo = {
@@ -710,12 +707,12 @@ class Scheduler {
   private retire(worker: SchedulerWorker, preserveResources: boolean): void {
     if (worker.state === 'retired') return;
     worker.state = 'retired';
-    worker.shutdown(SHUTDOWN_GRACE_MS, preserveResources);
+    worker.shutdown(this.options.forceGraceMs, preserveResources);
   }
 
   /** Revokes resource reuse without changing the worker's retirement state. */
   private revokeReuse(worker: SchedulerWorker): void {
-    worker.shutdown(SHUTDOWN_GRACE_MS, false);
+    worker.shutdown(this.options.forceGraceMs, false);
   }
 
   private forget(worker: SchedulerWorker): void {

@@ -168,6 +168,7 @@ export class Invocation {
 
   private readonly usage = new ModelUsage();
   private observationRevision: string | undefined;
+  private observationTruncated = false;
   /** Absent when capture failed before the judge received evidence. */
   private explanation: string | undefined;
   private visionInput = false;
@@ -246,6 +247,9 @@ export class Invocation {
       this.metrics.observationBytes = Math.max(this.metrics.observationBytes, observation.bytes);
     }
     this.observationRevision = observation.revision;
+    if (observation.kind === 'semantic' && observation.truncated) {
+      this.observationTruncated = true;
+    }
     if (pixels || observation.kind === 'pixels') this.recordPixels(observation);
     return observation;
   }
@@ -348,6 +352,7 @@ export class Invocation {
       const prompt = this.runtime.redact(
         buildPrompt({
           ...request.prompt,
+          titlePath: this.runtime.attempt.titlePath,
           ...(this.treeWithheld ? { withholdTree: true } : {}),
           ...(repair === undefined
             ? {}
@@ -471,6 +476,7 @@ export class Invocation {
       ...(this.observationRevision !== undefined
         ? { observationRevision: this.observationRevision }
         : {}),
+      ...(this.observationTruncated ? { observationTruncated: true } : {}),
       ...(this.explanation !== undefined ? { explanation: this.explanation } : {}),
       ...(this.visionInput ? { visionInput: true } : {}),
       ...(this.treeWithheld ? { visionOnly: true } : {}),

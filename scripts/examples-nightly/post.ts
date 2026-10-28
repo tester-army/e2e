@@ -3,7 +3,8 @@
  * (`.github/workflows/examples.yml`, the `summary` job).
  *
  * Reads every `outcome.json` (and the `report.json` beside it, when the tests
- * ran) under the directory given as the first argument, one directory per
+ * ran, and `first-pass/second-pass`, when `run-tests.sh` gave the suite a
+ * second pass) under the directory given as the first argument, one directory per
  * matrix job, as `actions/download-artifact` lays them out. Lists the run's
  * jobs through the API to link each line to its log and to name a job that
  * ended without writing an outcome.
@@ -17,7 +18,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { formatMessage, type Outcome, type ReportCounts, type Row } from './format.ts';
+import { formatMessage, type Outcome, type ReportCounts, type Row, type SecondPass } from './format.ts';
 
 const MATRIX_JOB = /^(web|android|ios) /;
 
@@ -36,6 +37,13 @@ function readReport(path: string): ReportCounts | undefined {
     interrupted,
     ...(run.finishedAt === undefined ? {} : { durationMs: Date.parse(run.finishedAt) - Date.parse(run.startedAt) }),
   };
+}
+
+/** The second pass `run-tests.sh` recorded, if the suite needed one. */
+function readSecondPass(path: string): SecondPass | undefined {
+  if (!existsSync(path)) return undefined;
+  const kind = readFileSync(path, 'utf8').trim();
+  return kind === 'last-failed' || kind === 'full' ? kind : undefined;
 }
 
 /** The run's jobs by name, with their log URLs; undefined when the API cannot be read. */
@@ -79,8 +87,14 @@ for (const entry of existsSync(dir) ? readdirSync(dir) : []) {
   if (!existsSync(outcomePath)) continue;
   const outcome = JSON.parse(readFileSync(outcomePath, 'utf8')) as Outcome;
   const report = readReport(join(dir, entry, 'report.json'));
+  const secondPass = readSecondPass(join(dir, entry, 'first-pass', 'second-pass'));
   const jobUrl = jobs?.get(outcome.job);
-  rows.push({ outcome, ...(report === undefined ? {} : { report }), ...(jobUrl === undefined ? {} : { jobUrl }) });
+  rows.push({
+    outcome,
+    ...(report === undefined ? {} : { report }),
+    ...(secondPass === undefined ? {} : { secondPass }),
+    ...(jobUrl === undefined ? {} : { jobUrl }),
+  });
 }
 const reported = new Set(rows.map((row) => row.outcome.job));
 const missing = [...(jobs?.keys() ?? [])].filter((name) => MATRIX_JOB.test(name) && !reported.has(name));

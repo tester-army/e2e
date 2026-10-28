@@ -156,12 +156,15 @@ jobs:
         uses: ./.github/actions/expo-app
         with:
           platform: ios
-      # agent-device compiles its XCUITest runner on first use; keep it between runs.
+      # agent-device compiles its XCUITest runner on first use; keep it between
+      # runs. Only the build: the rest of ~/.agent-device is the state of the
+      # daemon that ran (its pid, lock, sessions, device claims), and a job
+      # that restores it starts against a daemon record from another machine.
       - name: Restore the agent-device runner
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.agent-device
-          key: agent-device-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ runner.os }}-${{ hashFiles('packages/mobile/package.json') }}
       # `bootstatus -b` boots a device when it is not up yet and waits for it.
       # Two simulators, the picked one and a clone of it, so the run drives
       # two workers (e2e.config.ts reads the comma-separated UDIDs). The

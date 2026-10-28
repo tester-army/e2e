@@ -2,6 +2,10 @@ name: Feature request
 description: A change to the SDK, config, CLI, engine contract, or report.
 labels: [enhancement]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Want to build it yourself? Wait for a maintainer to agree on the approach here before opening a PR. See [CONTRIBUTING.md](https://github.com/tester-army/e2e/blob/main/CONTRIBUTING.md#pull-requests).
   - type: textarea
     id: problem
     attributes:

@@ -16,6 +16,14 @@
  * with zero data retention has never stored. Without storage the reasoning
  * travels inline as encrypted content and the cache still hits. Other
  * providers get nothing extra, and the request is exactly what it was.
+ *
+ * Anthropic also binds every thinking block to the prefix that produced it
+ * (the system prompt and every message before the block; a changed tool
+ * list passed the check when tried) and rejects a replayed block whose
+ * prefix changed. The loop keeps the system prompt of a step fixed; when it
+ * rewrites an earlier message (a superseded screen or screenshot elided, a
+ * history shrunk), the reasoning from that message on is left out of the
+ * next request.
  */
 
 import { createHash } from 'node:crypto';
@@ -43,6 +51,16 @@ export interface ProviderHints {
    * turns never accumulates more than the provider allows.
    */
   markLatest(messages: ModelMessage[]): ModelMessage[];
+  /**
+   * The history to send once the message at `index` was rewritten since the
+   * last request. Where the provider binds reasoning to the prefix, the
+   * reasoning parts from that message on are left out: text and tool calls
+   * stay, and a reply that was only reasoning goes. Dropping thinking from
+   * the end of a history is allowed, dropping it from the middle is not,
+   * which is why everything after the edit goes. Returns the input array
+   * when nothing is dropped.
+   */
+  afterEdit(messages: ModelMessage[], index: number): ModelMessage[];
 }
 
 const ANTHROPIC_BREAKPOINT = { cacheControl: { type: 'ephemeral' } } as const;
@@ -59,15 +77,23 @@ export function providerHints(model: ProviderModelRef | undefined): ProviderHint
         ? base
         : { ...base, [openai]: { promptCacheKey: promptCacheKey(system), store: false, ...base?.[openai] } },
     markLatest: (messages) => (anthropic ? moveBreakpoint(messages) : messages),
+    afterEdit: (messages, index) => (anthropic ? withoutReasoningFrom(messages, index) : messages),
   };
 }
 
 /**
- * A gateway model names its upstream in the model id (`anthropic/claude-…`);
- * a direct provider names it in the provider (`anthropic.messages`).
+ * A gateway or OpenRouter model names its upstream in the model id
+ * (`anthropic/claude-…`), a direct provider in the provider
+ * (`anthropic.messages`), Vertex AI in the provider too
+ * (`vertex.anthropic.messages`), and Bedrock in the model id behind an
+ * optional region prefix (`eu.anthropic.claude-…`). A Bedrock application
+ * inference profile ARN names no model and is not recognized.
  */
 function speaksAnthropic(model: ProviderModelRef | undefined): boolean {
-  return idPrefix(model, 'anthropic/') || providerPrefix(model, 'anthropic');
+  if (idPrefix(model, 'anthropic/') || providerPrefix(model, 'anthropic')) return true;
+  const provider = (model?.provider ?? '').toLowerCase();
+  const id = (model?.modelId ?? '').toLowerCase();
+  return provider.includes('.anthropic') || /(?:^|\.)anthropic\.claude/.test(id);
 }
 
 /**
@@ -124,4 +150,17 @@ function withoutBreakpoint(message: ModelMessage): ModelMessage {
     return bare as ModelMessage;
   }
   return { ...message, providerOptions };
+}
+
+/** The history without the reasoning parts of the assistant messages at or after `index`. */
+function withoutReasoningFrom(messages: ModelMessage[], index: number): ModelMessage[] {
+  let changed = false;
+  const next = messages.flatMap((message, position) => {
+    if (position < index || message.role !== 'assistant' || typeof message.content === 'string') return [message];
+    const content = message.content.filter((part) => part.type !== 'reasoning');
+    if (content.length === message.content.length) return [message];
+    changed = true;
+    return content.length === 0 ? [] : [{ ...message, content }];
+  });
+  return changed ? next : messages;
 }

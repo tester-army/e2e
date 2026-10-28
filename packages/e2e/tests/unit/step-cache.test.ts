@@ -693,6 +693,18 @@ describe('StepTraceSession', () => {
     }
   });
 
+  it('does not stage an eviction outcome when deleting a consumed entry rejects', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    context.store.delete = async () => { throw new Error('store unavailable'); };
+    const session = makeSession(context, makeHost(['/pricing', '/customers']));
+    await session.begin();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    await expect(session.conclude('failed', undefined)).resolves.toBeUndefined();
+    expect(context.staged).toEqual([]);
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: -1, implicatesUnconfirmed: true });
+    expect(writes.size).toBe(0);
+  });
+
   it('evicts nothing on failure when no replay was consumed', async () => {
     const deleted: string[] = [];
     const context = fakeContext(async () => ({ status: 'miss' }));
@@ -1116,6 +1128,32 @@ describe('destination path settling', () => {
     const verdict = await makeSession(context, host).begin();
     expect(verdict?.status).toBe('passed');
     expect(verdict?.summary).toContain('zero-turn');
+  });
+
+  it('keeps looking past the backoff for a destination that commits late, up to the path timeout', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const startedMs = Date.now();
+    // The destination commits 8 s after the step starts: after the backoff's last listed delay, inside its 15 s bound.
+    const late = (arrivesMs: number): StepCacheHost => ({
+      ...makeHost([]),
+      observe: async () => ({
+        kind: 'semantic',
+        nodes: nodeMap([]),
+        viewport: { width: 1280, height: 720 },
+        path: Date.now() - startedMs < arrivesMs ? '/pricing' : '/customers',
+      }),
+      remainingMs: () => 60_000,
+    });
+    const verdict = await makeSession(entryContext({ endPath: '/customers' }), late(8_000)).begin();
+    expect(verdict?.status).toBe('passed');
+
+    const neverMs = Date.now();
+    const session = makeSession(entryContext({ endPath: '/customers' }), late(Number.POSITIVE_INFINITY));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(Date.now() - neverMs).toBeGreaterThan(12_000);
+    expect(Date.now() - neverMs).toBeLessThanOrEqual(15_000);
   });
 
   it('still hands off when the destination never arrives within the budget', async () => {

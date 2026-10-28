@@ -31,12 +31,12 @@ bunx e2e init
 | `.agents/skills/e2e/` | Agents that read `.agents/skills` |
 | `.claude/skills/e2e/` | Claude Code. A symlink to `.agents/skills/e2e/` when both are installed. |
 
-The copy holds `SKILL.md` and topic references. After you upgrade e2e, with
-[`e2e upgrade`](/reference/cli#e2e-upgrade) or your package manager, run
-`init` again to update it. Without `init`, `npx skills add tester-army/e2e`
+The copy holds `SKILL.md` and topic references.
+[`e2e upgrade`](/reference/cli#e2e-upgrade) updates it, also after you
+upgrade with your package manager. Without `init`, `npx skills add tester-army/e2e`
 installs the skill, and `npx e2e guide [topic]` prints it from the
-installed package. The Claude Code and Codex plugin below installs all
-three e2e skills for every project.
+installed package. The plugin below installs all three e2e skills for
+every project.
 
 `init` leaves your project instructions unchanged. For agents that need a
 pointer, add this line:
@@ -49,9 +49,11 @@ The package also ships these docs as `.mdx` pages for offline reading, in
 `node_modules/e2e/docs` in a single-package project. A link such as
 `/reference/cli` is `docs/reference/cli.mdx`.
 
-<Accordion title="Install the Claude Code or Codex plugin">
+<Accordion title="Install the Claude Code, Codex, or Cursor plugin">
 
-The e2e repository is a plugin marketplace for both clients:
+The e2e repository is a plugin marketplace for Claude Code and Codex, and
+for Grok Build, which reads the Claude Code files. Cursor loads the plugin
+from its local plugins folder:
 
 <CodeGroup>
 ```bash Claude
@@ -63,15 +65,27 @@ claude plugin install e2e@e2e
 codex plugin marketplace add tester-army/e2e
 codex plugin add e2e@e2e
 ```
+
+```bash Cursor
+repo=$(mktemp -d)
+git clone --depth 1 https://github.com/tester-army/e2e "$repo"
+mkdir -p ~/.cursor/plugins/local
+rm -rf ~/.cursor/plugins/local/e2e
+cp -R "$repo/plugins/e2e" ~/.cursor/plugins/local/
+```
 </CodeGroup>
 
-Start a new session. The plugin adds the `e2e`,
-`create-verification-skill`, and `migrate-to-e2e` skills, not the npm
-package or the MCP server. Invoke the other two under the plugin's name:
-`/e2e:<skill>` in Claude Code, `$e2e:<skill>` in Codex.
+Start a new session. In Cursor, run **Developer: Reload Window**. On Cursor
+Teams and Enterprise, local plugins need the admin setting **Allow Local
+Plugin Imports**, or an admin imports `tester-army/e2e` as a team
+marketplace. The plugin adds the
+`e2e`, `create-verification-skill`, and `migrate-to-e2e` skills, not the
+npm package or the MCP server. Invoke the other two under the plugin's
+name, `/e2e:<skill>` in Claude Code and `$e2e:<skill>` in Codex, and as
+`/<skill>` in Cursor.
 
 The plugin's version follows e2e releases. To update it, run these and
-start a new session:
+start a new session. In Cursor, run the commands above again.
 
 <CodeGroup>
 ```bash Claude
@@ -88,15 +102,17 @@ codex plugin marketplace upgrade e2e
 
 ## Let the agent use the app
 
-`e2e mcp` gives the agent a live session on your app. It checks each
-locator against the screen before it writes the test, and checks its own UI
+`e2e mcp` gives the agent a live session on your app. It checks its
+locators against the screen before it writes them, and checks its own UI
 changes. `init` registers the server. See [MCP server](/mcp-server) for setup and
 prompts.
 
 ## How an agent writes and runs a test
 
 The skill tells the agent to read the config and an existing test first.
-For known fields and exact values, the agent uses `screen`:
+With `e2e mcp`, it walks the flow in a session and writes each step as it
+takes it. Known fields and exact values get `screen` calls, from
+locators that matched one node:
 
 ```ts title="tests/checkout.e2e.ts"
 import { test, expect, credentials } from 'e2e';
@@ -126,25 +142,33 @@ test('a signed-in user reaches checkout', async ({ screen, app, agent }) => {
 - **Secrets through `credentials.user(name)`.** Declare them in the config.
   Never write them in a test.
 
-While it iterates, the agent runs one file:
+While it iterates, the agent runs only the test it works on, by the line
+its `test(` opens on. With `--action-timeout 5000`, a wrong locator fails
+after 5 s instead of 30 s:
 
 <CodeGroup>
 ```bash npm
-npx e2e run tests/checkout.e2e.ts
+npx e2e run tests/checkout.e2e.ts:3 --action-timeout 5000
 ```
 
 ```bash pnpm
-pnpm exec e2e run tests/checkout.e2e.ts
+pnpm exec e2e run tests/checkout.e2e.ts:3 --action-timeout 5000
 ```
 
 ```bash bun
-bunx e2e run tests/checkout.e2e.ts
+bunx e2e run tests/checkout.e2e.ts:3 --action-timeout 5000
 ```
 </CodeGroup>
 
 The agent fixes CLI, config, and collection errors before it runs again.
-It doesn't edit cache recordings. After it changes a test, or when a replay
-fails, it adds `--no-cache` to run the live agent. See [Caching](/cache).
+It doesn't edit cache recordings.
+
+The agent keeps the replay cache on, so a goal whose check passed replays
+without model calls. It turns retries off, since a retry runs every goal
+live. When the test passes, the agent drops `--action-timeout` and runs it
+one time with `--no-cache` to check that the live agent reaches every
+goal. See
+[Rerun a test while you fix it](/cache#rerun-a-test-while-you-fix-it).
 
 ## How an agent reads a failure
 
@@ -159,6 +183,14 @@ facts for [scripts](/debugging). The page has the failing line and every
 step with what it did: the node an action hit, the values an assertion
 read, the cache's decision, console errors, and failed requests. It also
 has the agent's last turns and the screen at the failure.
+
+The agent fixes the test from that evidence. It fixes every line the
+evidence covers, not only the failing one. A test stops at its first failed
+step, so the agent also checks the lines after it before the next run.
+
+To see a screen the page doesn't show, the agent opens it in an MCP session
+by the shortest way, such as its URL on the web. It doesn't walk the flow
+again from the start.
 
 For model-call details, the agent adds `--ai-trace` and reads the trace
 with [unbox-ai](/debugging#agent-steps). Pair it with `--no-cache` to

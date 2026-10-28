@@ -12,7 +12,7 @@
  * hold the payload to that promise.
  */
 
-import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
+import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES, MCP_SESSION_SURFACE, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
 import { modelLabel } from '../config/agent.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
@@ -56,7 +56,8 @@ export interface SessionEnd {
  * nothing to write, `cancelled` stopped at a prompt, `install-failed` wrote
  * the files but the package manager failed, `not-interactive` had prompts and
  * no terminal, `invalid-project` could not start (a file for a directory, an
- * unreadable package.json, a bundled skill missing).
+ * unreadable package.json, a bundled skill missing, a non-empty directory for
+ * `--example`), `example-failed` could not download the example.
  */
 export type InitResult =
   | 'scaffolded'
@@ -64,12 +65,15 @@ export type InitResult =
   | 'cancelled'
   | 'install-failed'
   | 'not-interactive'
-  | 'invalid-project';
+  | 'invalid-project'
+  | 'example-failed';
 
 /** What `e2e init` was asked and chose: the CLI's own option ids, never a path or an endpoint the user typed. */
 export interface InitOutcome {
   readonly result: InitResult;
   readonly yes: boolean;
+  /** The `--example` folder name, null without the flag. */
+  readonly example: string | null;
   /** Whether a config already existed, in which case no engine or gateway was asked. */
   readonly existingConfig: boolean;
   readonly engine: string | null;
@@ -148,6 +152,7 @@ export function initCompletedEvent(outcome: InitOutcome): TelemetryEvent {
     properties: {
       result: outcome.result,
       yes: outcome.yes,
+      example: outcome.example,
       existing_config: outcome.existingConfig,
       engine: outcome.engine,
       gateway: outcome.gateway,
@@ -388,6 +393,7 @@ function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
     config_cache_strict: config.cache.strict !== false,
     config_reporters: unique(config.reporters),
     config_custom_reporters: config.customReporters.length,
+    config_filters: config.filters.length,
     config_artifact_store: config.artifactStore !== undefined,
     config_trace_modes: unique(config.targets.map((target) => target.trace.mode)),
     config_video_modes: unique(config.targets.map((target) => target.video.mode)),
@@ -448,6 +454,12 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       tests_interrupted: run.summary.interrupted,
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
+      filters_run: run.filters?.length ?? 0,
+      filters_timed_out: run.filters?.filter((record) => record.outcome === 'timed-out').length ?? 0,
+      filters_failed: run.filters?.filter((record) => record.outcome === 'failed').length ?? 0,
+      filters_skipped: run.changes?.skipped !== undefined,
+      filters_changed_files: run.changes?.files ?? 0,
+      tests_left_out_by_filters: run.filters?.reduce((total, record) => total + record.excluded, 0) ?? 0,
       attempts_total: attempts.reduce((total, count) => total + count, 0),
       tests_retried: attempts.filter((count) => count > 1).length,
       targets: run.targets.length,
@@ -492,10 +504,14 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
 
 /**
  * The catalog tools an MCP session serves itself, by name: the grammar and
- * the session's own (`createSessionCatalog`). A project's tools arrive
+ * the session's own (`createSessionCatalog`), read off the reserved names so
+ * a new session tool is counted under its name. A project's tools arrive
  * counted together; any name outside this set folds to `other`.
  */
-const SESSION_TOOLS: ReadonlySet<string> = new Set([...GRAMMAR_TOOL_NAMES, 'locate', 'start_recording', 'stop_recording']);
+const SESSION_TOOLS: ReadonlySet<string> = new Set([
+  ...GRAMMAR_TOOL_NAMES,
+  ...[...HARNESS_TOOL_NAMES].flatMap(([name, surface]) => (surface === MCP_SESSION_SURFACE ? [name] : [])),
+]);
 
 /** One MCP session: the client, the target's platform and engine, how it ended, and its calls by the runner's tool names. */
 export function mcpSessionEvent(summary: McpSessionSummary, client: McpClient | undefined): TelemetryEvent {
