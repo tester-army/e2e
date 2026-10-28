@@ -139,16 +139,21 @@ export interface EngineAppCheckInfo {
 
 /**
  * The app the harness resolved from the target's declaration, handed to
- * `prepare` and `init`: the site policy for the decisions only a surface can
- * make (which nested documents enter an observation, which requests carry
- * injected credentials), and what a device launches. The URL itself stays
- * with the harness: a surface never learns where the app is, and opens what
- * `session.open` is given.
+ * `prepare` and `init`: the origin and site policy for the decisions only a
+ * surface can make (which requests carry injected credentials, which nested
+ * documents enter an observation), and what a device launches. Navigation
+ * stays with the harness: a surface opens what `session.open` is given.
  */
 export interface EngineAppInfo {
   /**
+   * The origin of the app's `url` on the run's port (`scheme://host:port`, as
+   * `URL.origin` serializes it): where credentials an engine injects into
+   * requests (headers, basic auth) go by default. Absent for an app without
+   * a URL.
+   */
+  readonly origin?: string;
+  /**
    * The site of the app's `url`, its registrable domain as `siteOf` reads it:
-   * where the app's secrets, headers, and basic-auth credentials may go, and
    * whose child frames an observation reads; `sameSite` applies it. Absent
    * for an app without a URL, which is no policy at all.
    */
@@ -453,7 +458,7 @@ export interface EngineInitInfo {
    * `process.cwd()`, which an in-process run does not change.
    */
   readonly projectRoot: string;
-  /** The app the target declares: the site policy of its URL, and what a device launches. */
+  /** The app the target declares: the origin and site policy of its URL, and what a device launches. */
   readonly app: EngineAppInfo;
   /**
    * This worker's environment: the run's, plus what this target's `prepare`

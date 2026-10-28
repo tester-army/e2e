@@ -133,10 +133,11 @@ app: {
 },
 ```
 
-The browser sends `headers` only to the target's site: its hostname, its
-subdomains, and every host under a shared suffix such as `vercel.app`. Read
-[header scope](/reference/security#site-check) before you use a bypass
-secret. For ngrok, use `'ngrok-skip-browser-warning': '1'`.
+The browser sends `headers` only to the origin of `app.url`: its scheme,
+host, and port. To send them to another origin, such as an API host behind
+the same gate, list it in `headerOrigins`. See
+[request credentials](/reference/security#request-credentials). For ngrok,
+use `'ngrok-skip-browser-warning': '1'`.
 `app.identity` keeps the cache identity stable when the preview URL changes.
 
 <Note>
@@ -144,9 +145,10 @@ Setting `headers` turns off the browser's HTTP cache and blocks service
 workers.
 </Note>
 
-Use `basicAuth` for HTTP basic authentication. The browser sends the
-credentials to any origin that answers with a `401` challenge. Declare the
-password under `secrets` and pass `secrets.get(name)`:
+Use `basicAuth` for HTTP basic authentication. The browser answers a `401`
+challenge from the origin of `app.url`, and from each origin in
+`basicAuth.origins`. Declare the password under `secrets` and pass
+`secrets.get(name)`:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';

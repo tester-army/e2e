@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { engineAppInfo } from '../../src/config/app.ts';
 import { assignPorts, resolveConfig, type PortAssignments } from '../../src/config/resolve.ts';
 import { defineEngine } from '../../src/engine/index.ts';
 import type { TargetApp } from '../../src/types.ts';
@@ -49,6 +50,8 @@ describe('an app URL on a free port', () => {
     expect(app.base).toEqual({ href: 'http://127.0.0.1:4321/shop/', origin: 'http://127.0.0.1:4321', basePath: '/shop/' });
     expect(app.portRequest).toEqual({ host: '127.0.0.1', port: 4321 });
     expect(app.readyUrl).toBe('http://127.0.0.1:4321/shop/');
+    // Engines scope injected credentials to the origin on the assigned port, never the declared :0.
+    expect(engineAppInfo(app).origin).toBe('http://127.0.0.1:4321');
     expect(app.identity).toBe(pending.targets[0]!.app.identity);
     expect(app.identity).toBe('http://127.0.0.1:0/shop/');
     expect(assigned.configDigest).toBe(pending.configDigest);

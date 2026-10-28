@@ -1,10 +1,11 @@
 /**
  * Reaching an app behind a gate: configured request headers reach the app's
- * site on every context the attempt opens, and never another site; basic-auth
- * credentials answer a challenge wherever one is issued, as Playwright's own
- * do. Driven through the engine hooks, as the attempt executor drives them; a
- * second fixture instance reached as `localhost` rather than `127.0.0.1`
- * stands in for a third-party site.
+ * origin on every context the attempt opens, and basic-auth credentials
+ * answer only its challenge; neither reaches another origin unless the
+ * options list it. Driven through the engine hooks, as the attempt executor
+ * drives them; a second fixture instance stands in for another origin, on
+ * the same host under another port, and as `localhost` rather than
+ * `127.0.0.1` for a third-party site.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -36,7 +37,7 @@ async function boot(
     runId: 'run-protected',
     targetName: 'web',
     projectRoot: process.cwd(),
-    app: { site: new URL(app.url).hostname },
+    app: { origin: new URL(app.url).origin, site: new URL(app.url).hostname },
     env: {},
     headed: false,
     workerSlot: 0,
@@ -64,13 +65,16 @@ async function headingAt(engine: EngineHandle, attemptId: string, url: string): 
 describe('web({ headers, basicAuth })', () => {
   let app: FixtureApp;
   let other: FixtureApp;
+  /** The second server under the app's host name: the same site, another origin. */
+  let otherPort: string;
+  /** The second server under another host name: `localhost` is a site of its own, `127.0.0.1` another. */
+  let otherSite: string;
   let artifactsDir: string;
 
   beforeAll(async () => {
     [app, other] = await Promise.all([startFixtureApp(), startFixtureApp()]);
-    // The same loopback server under another host name: `localhost` is a
-    // site of its own, `127.0.0.1` another.
-    other = { ...other, url: other.url.replace('127.0.0.1', 'localhost') };
+    otherPort = other.url;
+    otherSite = other.url.replace('127.0.0.1', 'localhost');
     artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-protected-'));
   });
 
@@ -79,16 +83,43 @@ describe('web({ headers, basicAuth })', () => {
     rmSync(artifactsDir, { recursive: true, force: true });
   });
 
-  it('sends the headers to the app\'s site only, on every context of the attempt', async () => {
+  it('sends the headers to the app\'s origin only, on every context of the attempt', async () => {
     const engine = web({ headers: { 'X-Fixture-Header': 'let-me-in' } });
     try {
       await boot(engine, app, artifactsDir, 'h1');
       expect(await headingAt(engine, 'h1', `${app.url}/headers`)).toBe('let-me-in');
-      // A third-party site gets the request without them.
-      expect(await headingAt(engine, 'h1', `${other.url}/headers`)).toBe('none');
+      // Another port on the same host, and a third-party site, get the request without them.
+      expect(await headingAt(engine, 'h1', `${otherPort}/headers`)).toBe('none');
+      expect(await headingAt(engine, 'h1', `${otherSite}/headers`)).toBe('none');
       // A state reset replaces the context; the headers come along.
       await engine.session!.reset!(operation('h1'));
       expect(await headingAt(engine, 'h1', `${app.url}/headers`)).toBe('let-me-in');
+    } finally {
+      await shutdown(engine);
+    }
+  });
+
+  it('sends the headers to an origin headerOrigins lists, and no other', async () => {
+    const engine = web({ headers: { 'x-fixture-header': 'listed' }, headerOrigins: [`${otherPort}/`] });
+    try {
+      await boot(engine, app, artifactsDir, 'h3');
+      expect(await headingAt(engine, 'h3', `${otherPort}/headers`)).toBe('listed');
+      expect(await headingAt(engine, 'h3', `${otherSite}/headers`)).toBe('none');
+    } finally {
+      await shutdown(engine);
+    }
+  });
+
+  it('follows the origin a request starts on through its redirects', async () => {
+    const engine = web({ headers: { 'x-fixture-header': 'rides-redirects' } });
+    try {
+      await boot(engine, app, artifactsDir, 'h4');
+      // Playwright reapplies a routed request's headers to its redirects without routing them:
+      // they reach whatever origin a redirect names, and a redirect into the app's origin gets none.
+      app.redirects.set('/to-other-headers', `${otherSite}/headers`);
+      expect(await headingAt(engine, 'h4', `${app.url}/to-other-headers`)).toBe('rides-redirects');
+      other.redirects.set('/to-app-headers', `${app.url}/headers`);
+      expect(await headingAt(engine, 'h4', `${otherSite}/to-app-headers`)).toBe('none');
     } finally {
       await shutdown(engine);
     }
@@ -137,7 +168,7 @@ describe('web({ headers, basicAuth })', () => {
     }
   });
 
-  it('answers a basic-auth challenge wherever one is issued', async () => {
+  it('answers a basic-auth challenge from the app\'s origin only', async () => {
     const unauthenticated = web();
     try {
       await boot(unauthenticated, app, artifactsDir, 'b0');
@@ -149,7 +180,23 @@ describe('web({ headers, basicAuth })', () => {
     try {
       await boot(engine, app, artifactsDir, 'b1');
       expect(await headingAt(engine, 'b1', `${app.url}/protected`)).toBe('Protected');
-      expect(await headingAt(engine, 'b1', `${other.url}/protected`)).toBe('Protected');
+      expect(await headingAt(engine, 'b1', `${otherPort}/protected`)).toBe('Unauthorized');
+      expect(await headingAt(engine, 'b1', `${otherSite}/protected`)).toBe('Unauthorized');
+      // The challenge comes from the origin a redirect lands on, so redirects do not carry the credential.
+      app.redirects.set('/to-other-protected', `${otherPort}/protected`);
+      expect(await headingAt(engine, 'b1', `${app.url}/to-other-protected`)).toBe('Unauthorized');
+    } finally {
+      await shutdown(engine);
+    }
+  });
+
+  it('answers a challenge from an origin basicAuth.origins lists, and no other', async () => {
+    const engine = web({ basicAuth: { ...PROTECTED_CREDENTIAL, origins: [otherPort] } });
+    try {
+      await boot(engine, app, artifactsDir, 'b2');
+      expect(await headingAt(engine, 'b2', `${app.url}/protected`)).toBe('Protected');
+      expect(await headingAt(engine, 'b2', `${otherPort}/protected`)).toBe('Protected');
+      expect(await headingAt(engine, 'b2', `${otherSite}/protected`)).toBe('Unauthorized');
     } finally {
       await shutdown(engine);
     }

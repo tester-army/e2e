@@ -1,7 +1,7 @@
 /**
  * Route decisions against a server that counts what reaches it: `continue`
  * goes to the network past every other route and carries the configured
- * site headers itself, `fallback` hands the request to the route before it,
+ * headers itself, `fallback` hands the request to the route before it,
  * the overrides each decision implements reach the wire, and an option it
  * does not implement fails the next step instead of being dropped. Also the
  * one call beside routing that takes a URL the same way: a relative cookie
@@ -75,7 +75,7 @@ describe('browser.route decisions', () => {
   const attached: string[] = [];
   let server: Server;
   let origin: string;
-  let otherSite: string;
+  let otherOrigin: string;
   let page: Page;
   let browser: Browser;
 
@@ -92,10 +92,10 @@ describe('browser.route decisions', () => {
     const started = await startCountingServer(hits);
     server = started.server;
     origin = `http://127.0.0.1:${started.port}`;
-    // The same server under another host name: `localhost` is a site of its own.
-    otherSite = `http://localhost:${started.port}`;
+    // The same server under another host name: another origin.
+    otherOrigin = `http://localhost:${started.port}`;
     writeFileSync(path.join(projectRoot, 'quote.json'), '{"cents":4200}\n');
-    await surface.init({ runId: 'routes', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
+    await surface.init({ runId: 'routes', targetName: 'web', projectRoot, app: { origin, site: '127.0.0.1' },
       env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
@@ -106,7 +106,7 @@ describe('browser.route decisions', () => {
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
     browser = createBrowserFixture(surface, {
-      app: { site: '127.0.0.1', resolveUrl },
+      app: { origin, site: '127.0.0.1', resolveUrl },
       operation: (timeoutMs = 5_000) => ({ signal, timeoutMs, runId: 'routes', attemptId: 'routes', origin: 'test' }),
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
@@ -241,7 +241,7 @@ describe('browser.route decisions', () => {
     expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
   });
 
-  it('clears every test route, keeps configured site headers, and can register again', async () => {
+  it('clears every test route, keeps configured headers, and can register again', async () => {
     await browser.route('**/api/**', route => route.fulfill({ body: 'mock-api' }));
     await browser.route(/\/echo$/, route => route.fulfill({ json: { intercepted: true } }));
     expect(await fetchText(`${origin}/api/quote`)).toBe('mock-api');
@@ -301,13 +301,13 @@ describe('browser.route decisions', () => {
   it.each([
     ['continue', (route: WebRoute) => route.continue()],
     ['fallback', (route: WebRoute) => route.fallback()],
-  ])('keeps the configured site header through %s', async (_name, decide) => {
+  ])('keeps the configured header through %s', async (_name, decide) => {
     await browser.route('**/echo', decide);
     const echo = await fetchEcho(`${origin}/echo`);
     expect(echo.headers['x-gate']).toBe('open-sesame');
   });
 
-  it('continue replaces the request headers and adds the site header on top', async () => {
+  it('continue replaces the request headers and adds the configured header on top', async () => {
     await browser.route('**/echo', (route) =>
       route.continue({ headers: { ...route.request.headers, 'X-Added': 'yes', 'X-GATE': 'forged' } }));
     const echo = await fetchEcho(`${origin}/echo`);
@@ -325,8 +325,8 @@ describe('browser.route decisions', () => {
     expect(hits.get('/echo')).toBe(1);
   });
 
-  it('continue to another site leaves the site header behind', async () => {
-    await browser.route('**/api/quote', (route) => route.continue({ url: `${otherSite}/echo` }));
+  it('continue to another origin leaves the configured header behind', async () => {
+    await browser.route('**/api/quote', (route) => route.continue({ url: `${otherOrigin}/echo` }));
     const echo = await fetchEcho(`${origin}/api/quote`);
     expect(echo.headers.host).toBe(`localhost:${new URL(origin).port}`);
     expect(echo.headers['x-gate']).toBeUndefined();

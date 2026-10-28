@@ -17,7 +17,8 @@ lists the rules behind it, as the code enforces them.
 | [Tool calls](#tool-calls) | Built-in and project tools, node ids |
 | [Policy denials](#policy-denials) | Calls that fail with `POLICY_DENIED` |
 | [Navigation](#navigation) | URL schemes per entry point |
-| [Site check](#site-check) | Headers, child frames, `basicAuth` |
+| [Request credentials](#request-credentials) | `headers`, `basicAuth` |
+| [Site check](#site-check) | Child frames |
 | [Secret fills](#secret-fills) | `type_secret`, `fill(secret)` |
 | [Screenshots after a secret fill](#screenshots-after-a-secret-fill) | Model pixels, pixel tools, restored sessions |
 | [Secrets in engine options](#secrets-in-engine-options) | `basicAuth` and other engine options |
@@ -101,18 +102,37 @@ There is no origin allowlist. The agent can follow the app to other sites
 and use the step's secrets there.
 </Warning>
 
+### Request credentials
+
+The browser engine sends configured request credentials only to exact
+origins: the scheme, host, and port of `app.url`, plus the extras you list.
+
+| Option | Goes to | Extra origins |
+| --- | --- | --- |
+| `headers` | Every request to an allowed origin | `headerOrigins` |
+| `basicAuth` | The answer to a `401` challenge from an allowed origin | `basicAuth.origins` |
+
+- Another port on the same host, a subdomain, and a sibling host under a
+  shared domain such as `vercel.app` are other origins. They get no
+  credentials.
+- `headers` follow the origin a request starts on. A request to an allowed
+  origin keeps them through every redirect, to any origin. A request that
+  starts elsewhere gets none, even when it redirects to an allowed origin.
+- `basicAuth` answers the origin that sends the `401`. A redirect to another
+  origin, such as `http:` to `https:` or the apex to `www`, gets no answer
+  unless you list the origin it lands on.
+- An extra is an `http:` or `https:` origin with no path, query, or
+  fragment, such as `https://api.example.com`. Anything else is
+  `INVALID_CONFIG` at config load.
+
 ### Site check
 
 The browser engine compares hostnames to decide what counts as the target's
-site.
+site. Observations leave out child frames from other sites, and `data:`
+frames.
 
-- Configured `headers` go only on requests to the target's site.
-- Observations leave out child frames from other sites, and `data:` frames.
-- The check approximates the registrable domain without a public suffix
-  list. A shared hosting domain such as `vercel.app` counts as one site, so
-  headers can reach other hosts under it.
-- `basicAuth` ignores the site check. It answers a `401` challenge from any
-  origin.
+The check approximates the registrable domain without a public suffix list.
+A shared hosting domain such as `vercel.app` counts as one site.
 
 ### Secret fills
 

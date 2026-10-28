@@ -165,10 +165,9 @@ export function siteOf(hostname: string): string {
 }
 
 /**
- * True when a URL's host is on `site` as `siteOf` reads it. This is the one
- * rule for where the app's secrets, headers, and basic-auth credentials may
- * go and which child frames an observation reads; an unparseable URL is off
- * every site.
+ * True when a URL's host is on `site` as `siteOf` reads it: the rule for
+ * which child frames an observation reads. An unparseable URL is off every
+ * site.
  */
 export function sameSite(url: string | URL, site: string): boolean {
   try {

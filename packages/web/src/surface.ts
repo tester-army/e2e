@@ -11,6 +11,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Browser, BrowserContext, ElementHandle, FrameLocator, Locator, Page, Route } from 'playwright-core';
 import {
+  ConfigurationError,
   EngineError,
   obj,
   raceAbort,
@@ -58,7 +59,7 @@ import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
 import type { WebMedia } from './media.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from './read-node.ts';
 import { readSelector, takeReadsFunction } from './read-selector.ts';
-import { httpCredentials, installSiteHeaders, lowercaseNames, siteHeadersFor } from './protected-app.ts';
+import { credentialOrigins, httpCredentials, installOriginHeaders, lowercaseNames, originHeadersFor } from './protected-app.ts';
 import { RefRegistry } from './refs.ts';
 import {
   cancelled,
@@ -131,7 +132,7 @@ export interface WebConnectOptions {
   readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
 
-/** HTTP basic authentication the browser answers a `401` challenge with. */
+/** HTTP basic authentication the browser answers a `401` challenge from the app's origin with. */
 export interface WebBasicAuth {
   /** The user name; `:` is not allowed in one (RFC 7617). */
   readonly username: string;
@@ -141,6 +142,12 @@ export interface WebBasicAuth {
    * like any configured secret.
    */
   readonly password: string | Secret;
+  /**
+   * More origins whose challenge the browser answers, beyond the app's own
+   * (`app.url`'s scheme, host, and port): an API host or a redirect target
+   * behind the same gate. Exact origins, such as `https://api.example.com`.
+   */
+  readonly origins?: readonly string[];
 }
 
 /** The engine's screencast of the page: the frame size and the JPEG quality of the frames it encodes. */
@@ -184,11 +191,12 @@ export interface WebOptions {
    */
   readonly connect?: WebConnectOptions;
   /**
-   * HTTP headers added to every request the browser sends to an allowed
-   * origin: a preview-protection bypass token, a tunnel's interstitial skip.
-   * Requests to any other origin (a CDN, an analytics endpoint, an identity
-   * provider) never carry them, so a header that is a secret stays with the
-   * app it unlocks. Names are case-insensitive; a header the page already
+   * HTTP headers added to every request the browser sends to the app's
+   * origin (`app.url`'s scheme, host, and port) or one in `headerOrigins`:
+   * a preview-protection bypass token, a tunnel's interstitial skip.
+   * Requests to any other origin (another port on the same host, a sibling
+   * subdomain, a CDN, an identity provider) never carry them, so a header
+   * that is a secret stays with the app it unlocks. Names are case-insensitive; a header the page already
    * sends under the same name is replaced. Applies to every path onto the
    * page, deterministic and agent-driven alike. Injecting headers routes
    * every request of the attempt, which turns the browser's HTTP cache off
@@ -197,10 +205,16 @@ export interface WebOptions {
    */
   readonly headers?: Readonly<Record<string, string>>;
   /**
+   * More origins that receive `headers`, beyond the app's own: an API host
+   * or a redirect target behind the same gate. Exact origins, such as
+   * `https://api.example.com`; requires `headers`.
+   */
+  readonly headerOrigins?: readonly string[];
+  /**
    * HTTP basic authentication for a staging app behind a browser challenge.
-   * The browser answers a `401` with these credentials wherever one is
-   * issued, as Playwright's own `httpCredentials` does. Applies to every path
-   * onto the page.
+   * The browser answers a `401` from the app's origin, or one in
+   * `basicAuth.origins`, with these credentials, and no other. Applies to
+   * every path onto the page.
    */
   readonly basicAuth?: WebBasicAuth;
   /**
@@ -280,6 +294,9 @@ export class PlaywrightSurface {
   private readonly screencast: WebScreencastOptions;
   /** Injected request headers, names lowercased so they replace the browser's own of the same name. */
   private readonly headers: Readonly<Record<string, string>> | undefined;
+  private readonly headerOrigins: readonly string[] | undefined;
+  /** Where `headers` go: the app's origin and each of `headerOrigins`, set at `init`. */
+  private headerScope: ReadonlySet<string> = new Set();
   private readonly basicAuth: WebBasicAuth | undefined;
   private readonly testIdAttribute: string;
   private readonly userAgent: string | undefined;
@@ -314,6 +331,7 @@ export class PlaywrightSurface {
     this.viewport = options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport;
     this.screencast = options.screencast ?? {};
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
+    this.headerOrigins = options.headerOrigins;
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
     this.userAgent = options.userAgent;
@@ -347,7 +365,12 @@ export class PlaywrightSurface {
 
   /** Provisions the shared browser once per worker: a local launch, or a CDP attach. */
   async init(info: EngineInitInfo): Promise<void> {
+    // A runner older than the peer floor passes no origin; fail rather than send the credentials nowhere.
+    if (info.app.origin === undefined && (this.headers !== undefined || this.basicAuth !== undefined)) {
+      throw new ConfigurationError('INVALID_CONFIG', 'web({ headers, basicAuth }) needs e2e 0.21.4 or later, which tells the engine the app\'s origin; update e2e');
+    }
     this.app = info.app;
+    this.headerScope = credentialOrigins(info.app.origin, this.headerOrigins);
     this.projectRoot = info.projectRoot;
     this.headed = info.headed;
     this.leases?.init(info);
@@ -463,7 +486,11 @@ export class PlaywrightSurface {
     const credentials =
       basicAuth === undefined
         ? undefined
-        : await raceAbort(() => httpCredentials(basicAuth, context.resolveSecret), context.signal, 'resolving the basic-auth password');
+        : await raceAbort(
+            () => httpCredentials(basicAuth, credentialOrigins(this.app.origin, basicAuth.origins), context.resolveSecret),
+            context.signal,
+            'resolving the basic-auth password',
+          );
     const persistent = await this.persistentBinding(context);
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
@@ -504,7 +531,7 @@ export class PlaywrightSurface {
           ownNavigation: () => this.ownNavigations > 0,
           testPage: () => this.openPage(),
         });
-        await installSiteHeaders(target, this.app.site, this.headers);
+        await installOriginHeaders(target, this.headerScope, this.headers);
         if (granted.length > 0) await target.grantPermissions(granted);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },
@@ -586,9 +613,9 @@ export class PlaywrightSurface {
     await context.route(predicate, handler);
   }
 
-  /** The configured headers a request to `url` carries, lowercased; `undefined` off the app's site. */
-  siteHeaders(url: string): Readonly<Record<string, string>> | undefined {
-    return siteHeadersFor(url, this.app.site, this.headers);
+  /** The configured headers a request to `url` carries, lowercased; `undefined` off the app's origin and `headerOrigins`. */
+  originHeaders(url: string): Readonly<Record<string, string>> | undefined {
+    return originHeadersFor(url, this.headerScope, this.headers);
   }
 
   /** Resolves a file a test names against the project root, as config paths do, never `process.cwd()`. */

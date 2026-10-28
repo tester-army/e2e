@@ -53,6 +53,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`screencast`](#screencast) | `WebScreencastOptions` | the viewport's size |
 | [`connect`](#connect) | `WebConnectOptions` | launches locally |
 | [`headers`](#headers) | `Record<string, string>` | - |
+| [`headerOrigins`](#headerorigins) | `string[]` | - |
 | [`basicAuth`](#basicauth) | `WebBasicAuth` | - |
 | [`testIdAttribute`](#testidattribute) | `string` | `'data-testid'` |
 | [`userAgent`](#useragent) | `string` | the browser's own |
@@ -242,15 +243,18 @@ session state capture and restore. `app.clearState` fails with
 
 #### `headers`
 
-Headers added to requests within the app's site, including subdomains.
+Headers added to every request to the app's origin: the scheme, host, and
+port of `app.url`. Another port, a subdomain, and any other host get none.
 
 ```ts
 web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
 ```
 
-- A [continued](#route) request bound for the app's site still carries them.
+- A [continued](#route) request bound for an allowed origin still carries
+  them.
 - `headers` and `basicAuth` are how a test reaches a
   [protected preview](/web#protected-previews).
+- See [request credentials](/reference/security#request-credentials).
 
 | Throws | When |
 | --- | --- |
@@ -261,15 +265,33 @@ web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
 blocks service workers.
 </Note>
 
+#### `headerOrigins`
+
+More origins that receive [`headers`](#headers), beyond the app's own, such
+as an API on another host behind the same gate.
+
+```ts
+web({
+  headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' },
+  headerOrigins: ['https://api.staging.example.com'],
+});
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | No `headers`, or an entry that is not an `http:` or `https:` origin with no path, query, or fragment. |
+
 #### `basicAuth`
 
-HTTP basic authentication. The browser answers a `401` challenge with these
-credentials on any origin, matching Playwright's `httpCredentials`.
+HTTP basic authentication. The browser answers a `401` challenge from the
+app's origin with these credentials. A challenge from any other origin goes
+unanswered unless `origins` lists it.
 
 ```ts
 import { secrets } from 'e2e';
 
 web({ basicAuth: { username: 'staging', password: secrets.get('staging-password') } });
+web({ basicAuth: { username: 'staging', password: secrets.get('staging-password'), origins: ['https://api.staging.example.com'] } });
 ```
 
 A `secrets.get(name)` password resolves when each attempt starts and is
@@ -277,18 +299,20 @@ redacted like any configured secret. So is the base64 credential of the
 `Authorization` header it becomes.
 
 ```ts
-/** HTTP basic authentication the browser answers a `401` challenge with. */
+/** HTTP basic authentication the browser answers a `401` challenge from the app's origin with. */
 export interface WebBasicAuth {
   /** The user name; `:` is not allowed in one (RFC 7617). */
   readonly username: string;
   /** The password, or `secrets.get(name)` for one in `config.secrets`. */
   readonly password: string | Secret;
+  /** More origins whose challenge the browser answers, such as `https://api.example.com`. */
+  readonly origins?: readonly string[];
 }
 ```
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
+| `INVALID_CONFIG` | A `:` in the user name, an unknown key, or an `origins` entry that is not an `http:` or `https:` origin with no path, query, or fragment. |
 
 <Warning>
 The secret protection is text only. Unlike a fill, it withholds no screenshot
@@ -660,7 +684,7 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
+  /** Replaces every request header; the configured `headers` for an allowed origin are added on top. */
   headers?: Record<string, string>;
   /** Request body. */
   postData?: string;
@@ -701,7 +725,7 @@ await browser.unroute('**/api/quote');
 #### `unrouteAll`
 
 Removes every route registered by the browser fixture, preserving configured
-site headers.
+headers.
 
 ```ts
 await browser.unrouteAll();
@@ -1042,16 +1066,19 @@ export interface WebOptions {
    */
   readonly connect?: WebConnectOptions;
   /**
-   * Headers added to requests within the app's site, including subdomains.
-   * Useful for preview-protection tokens. Other sites never receive them.
+   * Headers added to every request to the app's origin (the scheme, host,
+   * and port of `app.url`) or one in `headerOrigins`. Useful for
+   * preview-protection tokens. Other origins never receive them.
    * Names are case-insensitive and replace existing headers of the same name.
    * This enables request routing, disables the browser's HTTP cache, and
    * blocks service workers.
    */
   readonly headers?: Readonly<Record<string, string>>;
+  /** More origins that receive `headers`, such as `https://api.example.com`; requires `headers`. */
+  readonly headerOrigins?: readonly string[];
   /**
-   * HTTP basic authentication. The browser answers a `401` challenge with
-   * these credentials on any origin, matching Playwright's `httpCredentials`.
+   * HTTP basic authentication. The browser answers a `401` challenge from the
+   * app's origin, or one in `basicAuth.origins`, with these credentials.
    */
   readonly basicAuth?: WebBasicAuth;
   /**
@@ -1146,7 +1173,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   ): Promise<void>;
   /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
-  /** Removes all routes registered by this browser fixture, preserving configured site headers. */
+  /** Removes all routes registered by this browser fixture, preserving the configured headers. */
   unrouteAll(): Promise<void>;
   /** Waits for a matching response. */
   waitForResponse(

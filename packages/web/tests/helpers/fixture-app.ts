@@ -396,11 +396,14 @@ const SLOW_RESPONSE_MS = 5_000;
 
 export interface FixtureApp {
   readonly url: string;
+  /** Redirect responses by path: a request for a key answers `302` to its value. */
+  readonly redirects: Map<string, string>;
   close(): Promise<void>;
 }
 
 /** Starts the fixture on an ephemeral port and resolves once it is listening. */
 export function startFixtureApp(): Promise<FixtureApp> {
+  const redirects = new Map<string, string>();
   const server: Server = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://fixture.test');
     if (url.pathname === '/slow') {
@@ -414,6 +417,12 @@ export function startFixtureApp(): Promise<FixtureApp> {
     if (url.pathname === '/sw.js') {
       response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
       response.end("self.addEventListener('fetch', () => {});");
+      return;
+    }
+    const redirect = redirects.get(url.pathname);
+    if (redirect !== undefined) {
+      response.writeHead(302, { location: redirect });
+      response.end();
       return;
     }
     if (url.pathname === '/headers') {
@@ -450,6 +459,7 @@ export function startFixtureApp(): Promise<FixtureApp> {
       const { port } = server.address() as AddressInfo;
       resolve({
         url: `http://127.0.0.1:${String(port)}`,
+        redirects,
         close: () =>
           new Promise<void>((done) => {
             server.close(() => done());

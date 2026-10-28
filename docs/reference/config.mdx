@@ -379,8 +379,8 @@ url: 'http://localhost:3000',
 - A missing scheme becomes `https://`, or `http://` for a loopback host.
 - Plain HTTP is accepted for loopback hosts only.
 - Port `0` on `127.0.0.1` or `[::1]` asks for a [free port](#free-ports).
-- Its site scopes engine headers and observed frames: see
-  [the app's site](#the-apps-site).
+- Its origin scopes engine request credentials, and its site scopes observed
+  frames: see [the app's site](#the-apps-site).
 
 | Throws | When |
 | --- | --- |
@@ -558,11 +558,14 @@ readyUrl: 'http://localhost:3000/health', // default: url
 A test or the agent may open any http(s) URL, and `about:blank`. Every other
 scheme (`file:`, `data:`, `javascript:`, `view-source:`, `blob:`) is
 `POLICY_DENIED`. The site of `url` is its registrable domain:
-`app.example.com` and `auth.example.com` are one site. It scopes two things:
+`app.example.com` and `auth.example.com` are one site. Child frames off the
+site stay out of observations.
 
-- The browser engine's [`headers`](/reference/web#options) reach the site and
-  no other host.
-- Child frames off the site stay out of observations.
+The browser engine's [`headers`](/reference/web#headers) and
+[`basicAuth`](/reference/web#basicauth) are scoped tighter, to the origin of
+`url` (scheme, host, and port, the run's free port included) plus the
+origins you list. See
+[request credentials](/reference/security#request-credentials).
 
 #### Free ports
 

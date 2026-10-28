@@ -1,5 +1,5 @@
 /**
- * The `headers`, `basicAuth`, `testIdAttribute`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
+ * The `headers`, `headerOrigins`, `basicAuth`, `testIdAttribute`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
  * config load, so a header the browser could never send or an attribute no
  * element could carry fails the run before a browser launches. What the
  * browser does with valid ones is in tests/integration.
@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
 import { web, type WebOptions } from '../../src/index.ts';
-import { httpCredentials } from '../../src/protected-app.ts';
+import { credentialOrigins, httpCredentials } from '../../src/protected-app.ts';
 
 describe('web({ headers })', () => {
   it('rejects a header name outside the token grammar as INVALID_CONFIG', () => {
@@ -31,6 +31,34 @@ describe('web({ headers })', () => {
         /must be an object/,
       );
     }
+  });
+});
+
+describe('web({ headerOrigins })', () => {
+  const headers = { 'x-preview': 'token' };
+
+  it('accepts exact http and https origins, a trailing slash included', () => {
+    expect(() => web({ headers, headerOrigins: ['https://api.example.com', 'http://127.0.0.1:4000/'] })).not.toThrow();
+  });
+
+  it('rejects an entry that is not an origin, naming it', () => {
+    const cases: [unknown, RegExp][] = [
+      ['https://api.example.com/v1', /\[0\] must be an origin.*got "https:\/\/api\.example\.com\/v1"/],
+      ['https://api.example.com?x=1', /\[0\] must be an origin/],
+      ['https://api.example.com#top', /\[0\] must be an origin/],
+      ['https://user:pass@api.example.com', /\[0\] must be an origin/],
+      ['ftp://api.example.com', /\[0\] must be an origin/],
+      ['api.example.com', /\[0\] must be an origin/],
+      [3, /\[0\] must be an origin.*got number/],
+    ];
+    for (const [origin, message] of cases) {
+      expect(() => web({ headers, headerOrigins: [origin as string] })).toThrow(expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(message) }));
+    }
+    expect(() => web({ headers, headerOrigins: 'https://api.example.com' as unknown as string[] })).toThrowError(/must be an array of origins/);
+  });
+
+  it('rejects headerOrigins without headers to send', () => {
+    expect(() => web({ headerOrigins: ['https://api.example.com'] })).toThrowError(/requires headers/);
   });
 });
 
@@ -63,6 +91,13 @@ describe('web({ basicAuth })', () => {
     expect(() =>
       web({ basicAuth: { username: 'ada', password: { name: 'stagingPassword' } as unknown as string } }),
     ).toThrowError(/password string or secrets\.get\(name\)/);
+  });
+
+  it('accepts exact extra origins and rejects anything else, naming the entry', () => {
+    expect(() => web({ basicAuth: { username: 'ada', password: 'x', origins: ['https://api.example.com'] } })).not.toThrow();
+    expect(() => web({ basicAuth: { username: 'ada', password: 'x', origins: ['https://api.example.com', 'https://example.com/login'] } })).toThrowError(
+      /web\(\{ basicAuth: \{ origins \} \}\)\[1\] must be an origin/,
+    );
   });
 });
 
@@ -190,7 +225,7 @@ describe('web() option keys', () => {
       refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
     expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
+      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, headerOrigins, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
     );
   });
 
@@ -209,23 +244,29 @@ describe('web() option keys', () => {
   });
 });
 
-describe('basic-auth credentials from a secret', () => {
-  it('registers the Authorization credential the password becomes, padded and not, for redaction', async () => {
+describe('basic-auth credentials', () => {
+  const app = 'http://127.0.0.1:3000';
+
+  it('scopes one entry to each origin: the app\'s, then the extras, normalized', async () => {
+    const origins = credentialOrigins(app, ['https://API.example.com:443/', 'http://127.0.0.1:3000']);
+    const credentials = await httpCredentials({ username: 'ada', password: 'plain-value' }, origins, async () => {
+      throw new Error('not a secret');
+    });
+    expect(credentials).toEqual([
+      { username: 'ada', password: 'plain-value', origin: app },
+      { username: 'ada', password: 'plain-value', origin: 'https://api.example.com' },
+    ]);
+  });
+
+  it('registers the Authorization credential a secret password becomes, padded and not, for redaction', async () => {
     const asked: { name: string; derived: readonly string[] }[] = [];
-    const credentials = await httpCredentials({ username: 'ada', password: secrets.get('stagingPassword') }, async (secret, options) => {
+    const credentials = await httpCredentials({ username: 'ada', password: secrets.get('stagingPassword') }, credentialOrigins(app, undefined), async (secret, options) => {
       asked.push({ name: secret.name, derived: options?.derived?.('pa55word!') ?? [] });
       return 'pa55word!';
     });
-    expect(credentials).toEqual({ username: 'ada', password: 'pa55word!' });
+    expect(credentials).toEqual([{ username: 'ada', password: 'pa55word!', origin: app }]);
     const encoded = Buffer.from('ada:pa55word!').toString('base64');
     expect(encoded.endsWith('=')).toBe(true);
     expect(asked).toEqual([{ name: 'stagingPassword', derived: [encoded, encoded.replace(/=+$/, '')] }]);
-  });
-
-  it('resolves nothing for a plain string password', async () => {
-    const credentials = await httpCredentials({ username: 'ada', password: 'plain-value' }, async () => {
-      throw new Error('not a secret');
-    });
-    expect(credentials).toEqual({ username: 'ada', password: 'plain-value' });
   });
 });

@@ -36,8 +36,9 @@ Redaction matches strings, and only a secret fill turns model screenshots off:
 - **Values not filled as a secret.** A secret passed as a plain string, or a
   sign-in that sets a cookie, leaves model screenshots on. Only a configured
   secret's value is redacted.
-- **Request credentials.** `basicAuth` answers a `401` from any origin.
-  `headers` reach every host under a shared domain such as `vercel.app`.
+- **Request credentials.** `headers` and `basicAuth` go on every request to
+  the app's origin and each origin you list, even one a third-party page
+  starts. `headers` also stay on that request's redirects to any origin.
 - **Committed recordings.** Cache entries store typed values verbatim, except
   secret fills. They aren't signed and replay with your permissions, so
   review them as you would test code.

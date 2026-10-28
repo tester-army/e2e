@@ -50,9 +50,8 @@ export interface ResolvedApp {
   /** The free-port request the declared URL made; undefined when it names a port or there is no URL. */
   readonly portRequest: PortRequest | undefined;
   /**
-   * The site of the base URL, as `siteOf` reads it: where configured
-   * headers go and whose child frames observations read. Undefined without
-   * a URL, which is no policy at all.
+   * The site of the base URL, as `siteOf` reads it: whose child frames
+   * observations read. Undefined without a URL, which is no policy at all.
    */
   readonly site: string | undefined;
   readonly environment: 'test' | 'staging' | 'production';
@@ -242,10 +241,10 @@ export function resolveTargetApp(targetName: string, app: TargetAppDeclaration, 
   };
 }
 
-/** What `prepare` and `init` receive about the target's app: its site policy and what a device launches. */
+/** What `prepare` and `init` receive about the target's app: its origin and site policy, and what a device launches. */
 export function engineAppInfo(app: ResolvedApp): EngineAppInfo {
-  const { site, bundleId, appPath, launchArguments, permissions } = app;
-  return obj({ site, bundleId, appPath, launchArguments, permissions });
+  const { base, site, bundleId, appPath, launchArguments, permissions } = app;
+  return obj({ origin: base?.origin, site, bundleId, appPath, launchArguments, permissions });
 }
 
 /**

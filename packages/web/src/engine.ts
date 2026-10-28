@@ -24,7 +24,7 @@ import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createBrowserFixture } from './browser.ts';
 import { validateInitScripts } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaProblem } from './media.ts';
-import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
+import { FIELD_VALUE_CONTROL, headerProblem, originProblem } from './protected-app.ts';
 import { validatePermissions } from './permissions.ts';
 import type { BrowserName } from './browser-connection.ts';
 
@@ -83,6 +83,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     );
   }
   if (options.headers !== undefined) validateHeaders(options.headers);
+  if (options.headerOrigins !== undefined) validateHeaderOrigins(options.headerOrigins, options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
@@ -166,6 +167,7 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   screencast: true,
   connect: true,
   headers: true,
+  headerOrigins: true,
   basicAuth: true,
   testIdAttribute: true,
   userAgent: true,
@@ -255,8 +257,8 @@ function validateBasicAuth(basicAuth: unknown): void {
   if (!isRecord(basicAuth)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) must be an object with username and password');
   }
-  rejectUnknownKeys('web({ basicAuth })', basicAuth, ['username', 'password']);
-  const { username, password } = basicAuth;
+  rejectUnknownKeys('web({ basicAuth })', basicAuth, ['username', 'password', 'origins']);
+  const { username, password, origins } = basicAuth;
   if (typeof username !== 'string' || username === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) requires a non-empty username string');
   }
@@ -266,12 +268,32 @@ function validateBasicAuth(basicAuth: unknown): void {
   if (typeof password !== 'string' && !isSecret(password)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) requires a password string or secrets.get(name)');
   }
+  if (origins !== undefined) validateOrigins('web({ basicAuth: { origins } })', origins);
+}
+
+/** Refuses extra header origins without headers to send them, and any entry that is not an exact origin. */
+function validateHeaderOrigins(headerOrigins: unknown, headers: Readonly<Record<string, string>> | undefined): void {
+  if (headers === undefined) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ headerOrigins }) requires headers: it lists more origins that receive them');
+  }
+  validateOrigins('web({ headerOrigins })', headerOrigins);
+}
+
+/** Refuses a list of credential origins that is not an array of exact `http:` or `https:` origins, naming the entry. */
+function validateOrigins(label: string, origins: unknown): void {
+  if (!Array.isArray(origins)) {
+    throw new ConfigurationError('INVALID_CONFIG', `${label} must be an array of origins such as "https://preview.example.com"`);
+  }
+  for (const [index, origin] of origins.entries()) {
+    const problem = originProblem(origin);
+    if (problem !== undefined) throw new ConfigurationError('INVALID_CONFIG', `${label}[${index}] ${problem}`);
+  }
 }
 
 /**
  * Refuses a user agent the browser could not send (not a string, empty, or
  * carrying a control character) and one a `user-agent` header would override
- * on the app's site while `navigator.userAgent` kept reporting it.
+ * on the app's origin while `navigator.userAgent` kept reporting it.
  */
 function validateUserAgent(userAgent: unknown, headers: Readonly<Record<string, string>> | undefined): void {
   if (typeof userAgent !== 'string' || userAgent === '') {
@@ -287,7 +309,7 @@ function validateUserAgent(userAgent: unknown, headers: Readonly<Record<string, 
 
 /**
  * Refuses a locale that is not a BCP 47 tag, and one an `accept-language`
- * header would override on the app's site while `navigator.language` kept
+ * header would override on the app's origin while `navigator.language` kept
  * reporting it.
  */
 function validateLocale(locale: unknown, headers: Readonly<Record<string, string>> | undefined): void {

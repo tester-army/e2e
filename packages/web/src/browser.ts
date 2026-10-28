@@ -71,7 +71,7 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
+  /** Replaces every request header; the configured `headers` for an allowed origin are added on top. */
   headers?: Record<string, string>;
   /** Request body. */
   postData?: string;
@@ -236,7 +236,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
   ): Promise<void>;
   /** Removes matching attempt-scoped routes. */
   unroute(pattern: string | RegExp): Promise<void>;
-  /** Removes all routes registered by this browser fixture, preserving configured site headers. */
+  /** Removes all routes registered by this browser fixture, preserving the configured headers. */
   unrouteAll(): Promise<void>;
   /** Waits for a matching response. */
   waitForResponse(
@@ -542,13 +542,13 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           continue: async (overrides) => {
             const { headers, ...decision } = parseContinue(overrides, request.url(), context.app.resolveUrl);
             // `continue` skips every route registered before this one, the
-            // site-header route included, so it merges those headers itself.
-            const site = surface.siteHeaders(decision.url ?? request.url());
+            // origin-header route included, so it merges those headers itself.
+            const configured = surface.originHeaders(decision.url ?? request.url());
             await decideWith('continue', () => route.continue({
               ...decision,
-              ...(headers === undefined && site === undefined
+              ...(headers === undefined && configured === undefined
                 ? {}
-                : { headers: { ...lowercaseNames(headers ?? request.headers()), ...site } }),
+                : { headers: { ...lowercaseNames(headers ?? request.headers()), ...configured } }),
             }));
           },
           fallback: async (...args: unknown[]) => {
