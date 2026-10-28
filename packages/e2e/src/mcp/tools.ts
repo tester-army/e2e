@@ -79,7 +79,7 @@ export function actionResult(name: string, result: McpToolResult): McpToolResult
   return lead !== undefined && isFailedResult(name, lead.text) ? { ...result, isError: true } : result;
 }
 
-/** The same result with every text part passed through `redact`; image parts are masked by the engine. */
+/** The same result with every text part passed through `redact`; image parts pass through unchanged. */
 export function redactResult(result: McpToolResult, redact: (text: string) => string): McpToolResult {
   return {
     ...result,

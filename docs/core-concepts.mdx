@@ -78,7 +78,7 @@ closing a banner, or filling the fields of one form.
   records a goal only after a later check passes.
 - Use the words that the screen shows.
 - Give test data in `params`. For a password, give a `Secret`. The model
-  does not see a secret. See [Signing in](/authentication).
+  never gets its value as text. See [Signing in](/authentication).
 - For a value that changes on each run, use `unique()` so the
   [cache can replay the step](/cache#what-must-match):
 

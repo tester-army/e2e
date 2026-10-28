@@ -393,7 +393,7 @@ describe('agent semantic fallback through the engine contract', () => {
   it('acts on the fallback screenshot after a secret fill', () => {
     expect(resultByTitle(outcome, 'act reads fallback pixels after a secret fill').status).toBe('passed');
     expect(captures.some((capture) => capture.filled && capture.options?.pixelFallback === true)).toBe(true);
-    expect(loopCalls.length).toBeGreaterThan(0);
+    expect(loopCalls[0]?.imageParts).toBe(1);
   });
 
   it('stops tree-only judgments before a model call', () => {

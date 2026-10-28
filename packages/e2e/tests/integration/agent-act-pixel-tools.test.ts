@@ -6,8 +6,8 @@
  * id underneath (typed, pressed, selected), a point tapped
  * through the engine or focused and typed into through the keyboard, every
  * later result carrying a fresh screenshot, the point verbs answering with a
- * line before any screenshot, and every pixel verb withheld once a secret was
- * filled.
+ * line before any screenshot, and every pixel verb still offered once a
+ * secret was filled.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

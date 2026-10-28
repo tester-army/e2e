@@ -505,7 +505,8 @@ export interface EngineAttemptContext {
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
    * the attempt's text downloads are rewritten. The protection is
-   * text only: a page that shows the value is not masked in screenshots.
+   * text only: a page that shows the value outside a secure field is not
+   * masked in screenshots.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
   readonly resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>;

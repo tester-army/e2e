@@ -234,8 +234,8 @@ Redaction matches strings. These pass through:
   sees or sends, since both are redacted before any provider runs,
 - console output of tests that run in the runner's own process, when an
   embedding host passes the config or tests in memory,
-- a screenshot, the model's included: it masks secure fields only, so a
-  value the app shows elsewhere is in the image,
+- a screenshot, including one sent to the model: it masks secure fields
+  only, so a value the app shows elsewhere is in the image,
 - video: it masks nothing and is labeled `redaction: "incomplete"`. A
   recording a hosted browser or device service keeps stays with that
   service, and the report holds only its URL,

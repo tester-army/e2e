@@ -195,8 +195,9 @@ await agent.act('Connect Stripe with the given key', {
 ```
 
 A `secrets` entry can fill any editable input. An unconfigured name throws
-`SECRET_UNAVAILABLE`. A plain input isn't masked in screenshots, so the
-value is in every later screenshot, the model's included. `secrets.get()` returns `secrets` entries only, so
+`SECRET_UNAVAILABLE`. A plain input isn't masked, so screenshots show the
+value while the input holds it, the model's included. `secrets.get()`
+returns `secrets` entries only, so
 `credentials.admin` and `secrets.admin` can both exist.
 
 In `e2e.config.ts`, `secrets.get()` can pass a secret to an engine option
