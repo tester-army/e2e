@@ -190,7 +190,7 @@ suites that consume the built packages the way a user would.
   `SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL` secret). A new example or platform
   gets a matrix entry there. It also needs an official entry in
   `examples/examples.json` (the list e2e.tester.army/examples renders,
-  community repositories included) and a preset in
+  partner and community repositories included) and a preset in
   `packages/e2e/src/cli/init/examples.ts`; `pnpm check:examples` fails
   without either. A change still runs the example's suite by hand and updates the
   "Last checked" line in its README. A native, Flutter, or .NET MAUI example (SwiftUI, Compose, Kotlin

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/tester-army/e2e/blob/main/examples/examples.schema.json",
   "title": "e2e examples registry",
-  "description": "Every example listed on https://e2e.tester.army/examples: the official ones (folders under examples/ and repositories in the tester-army organization) and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
+  "description": "Every example listed on https://e2e.tester.army/examples: the official ones (folders under examples/ and repositories in the tester-army organization), partners' and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -133,9 +133,10 @@
           "type": "boolean"
         },
         "source": {
-          "description": "`official` for the examples the e2e team maintains, in the tester-army organization; `community` for everyone else's, outside it.",
+          "description": "`official` for the examples the e2e team maintains, in the tester-army organization; `partner` for the ones a partner company verifies and maintains in its own repository, outside it, shown with a partner seal on the site; `community` for everyone else's, outside it.",
           "enum": [
             "official",
+            "partner",
             "community"
           ]
         },

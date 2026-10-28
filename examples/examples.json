@@ -560,7 +560,7 @@
       "description": "Each test attempt runs in its own branch of a smol machines microVM, with its own copy of the running app and its data.",
       "icon": "smolmachines.svg",
       "invertIcon": true,
-      "source": "community",
+      "source": "partner",
       "repository": "https://github.com/smol-machines/e2e-smolmachines",
       "author": {
         "name": "smol machines",

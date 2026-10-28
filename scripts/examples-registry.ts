@@ -1,6 +1,6 @@
 /**
  * The examples registry, `examples/examples.json`: every example on
- * https://e2e.tester.army/examples, official and community. The site
+ * https://e2e.tester.army/examples, official, partner, and community. The site
  * (tester-army/e2e-site) downloads the file at build time and renders a page
  * per entry from it and the README at its `repository`; `site.yml` redeploys
  * the site when the file changes on `main`.
@@ -10,7 +10,8 @@
  * registry does not define, icons that are not in `examples/icons/`, official
  * examples living under the tester-army organization (and, in this
  * repository, matching the folders under `examples/` and the ones
- * `e2e init --example` can copy), and community examples living outside it.
+ * `e2e init --example` can copy), partner and community examples living
+ * outside it, and partner examples in their author's own repository.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -35,6 +36,10 @@ const FOLDER_URL = /^https:\/\/github\.com\/tester-army\/e2e\/tree\/main\/exampl
 const THIS_REPO_URL = /^https:\/\/github\.com\/tester-army\/e2e(?:\/|$)/i;
 /** Any URL into the tester-army organization: official examples live there, and only they do. */
 const ORG_URL = /^https:\/\/github\.com\/tester-army\//i;
+function ownerOf(repository: string): string | undefined {
+  return repository.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1]?.toLowerCase();
+}
+
 /** Folders under `examples/` that are not standalone examples: they reuse the others' apps. */
 const UNLISTED_FOLDERS = new Set(['with-limrun', 'icons']);
 
@@ -49,8 +54,9 @@ interface Tag {
 interface RegistryExample {
   slug: string;
   icon?: string;
-  source: 'official' | 'community';
+  source: 'official' | 'partner' | 'community';
   repository: string;
+  author: { github: string };
   tags: Partial<Record<TagKind, string[]>>;
 }
 
@@ -144,7 +150,10 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
         }
       }
     } else if (ORG_URL.test(example.repository)) {
-      problems.push(`${name}: a community example lives in its own repository, outside the tester-army organization`);
+      problems.push(`${name}: a ${example.source} example lives in its own repository, outside the tester-army organization`);
+    } else if (example.source === 'partner' && ownerOf(example.repository) !== example.author.github.toLowerCase()) {
+      // The site's partner seal credits author.name, so the partner must own the repository.
+      problems.push(`${name}: a partner example lives in its author's repository, https://github.com/${example.author.github}/`);
     }
   }
 

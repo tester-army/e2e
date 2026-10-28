@@ -3,7 +3,7 @@
 [e2e.tester.army/examples](https://e2e.tester.army/examples) lists every
 example in [`examples.json`](examples.json): the official ones, which the e2e
 team maintains in this folder and in other tester-army repositories, and
-community examples in their own GitHub repositories. Built something with
+partner and community examples in their own GitHub repositories. Built something with
 e2e? Add it with a pull request.
 
 ## Add your example
@@ -40,7 +40,12 @@ Your editor can autocomplete the fields from
 - `repository` is `https://github.com/<owner>/<repo>`, or
   `https://github.com/<owner>/<repo>/tree/<ref>/<path>` for a folder.
 - `source` is always `community`. `official` is reserved for examples the
-  e2e team maintains under the tester-army organization.
+  e2e team maintains under the tester-army organization, and `partner` for
+  examples a partner company verifies and maintains in its own repository,
+  which the e2e team sets once a partnership is agreed; the repository must
+  belong to the entry's `author.github`. The site shows a
+  partner example with a blue seal: "Verified and maintained by" its
+  `author.name`.
 - `license` is the example's SPDX identifier, such as `MIT`. Set
   `licenseUrl` to link your LICENSE file; without it, the site links to the
   license on spdx.org.
