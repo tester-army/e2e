@@ -155,13 +155,14 @@ const MANIFEST = z.looseObject({
  * in any dependency field: a bundler may inline any of them. Each name is
  * found the way Node finds it, in the nearest `node_modules` up to the root;
  * one that's installed rather than linked to the repository is left out.
+ * Undefined when the package.json can't be read.
  */
-function workspaceDependencies(directory: string): string[] {
+function workspaceDependencies(directory: string): string[] | undefined {
   let manifest: z.infer<typeof MANIFEST>;
   try {
     manifest = MANIFEST.parse(JSON.parse(readFileSync(path.join(root, directory, 'package.json'), 'utf8')));
   } catch {
-    return [];
+    return undefined;
   }
   const names = new Set([manifest.dependencies, manifest.devDependencies, manifest.peerDependencies, manifest.optionalDependencies].flatMap((field) => Object.keys(field ?? {})));
   return [...names].flatMap((name) => {
@@ -215,18 +216,23 @@ if (input.config !== null && unverified.length === 0) {
   const configFile = inRepo(pathToFileURL(input.config).href);
   const ownPackage = configFile === undefined ? undefined : nearestManifest(configFile);
   const ownDirectory = ownPackage === undefined ? undefined : path.posix.dirname(ownPackage);
-  // Whether each walked file was walked strictly. One reached only through a stand-in package's sources is followed, but what it can't trace doesn't block.
+  // Whether each walked file was walked strictly. One reached only through a stand-in package's sources is followed, but what it can't parse or resolve doesn't block.
   const walked = new Map<string, boolean>();
   const queue: Array<readonly [string, boolean]> = [...loaded]
     .map(inRepo)
     .filter((file): file is string => file !== undefined && !installed(file))
     .map((file) => [file, true] as const);
-  /** A workspace package whose sources stand for its built output: its directory counts, its listed sources join the walk, and the workspace packages it depends on stand in too. */
+  /**
+   * A workspace package whose sources stand for its built output: its directory counts, its listed sources join the walk, and the workspace packages it depends on stand in too.
+   * The config's own package never does, or its cases and all its app code would count; what the walk reaches in it counts file by file.
+   */
   const standIn = (directory: string): void => {
     if (packages.has(directory) || directory === ownDirectory) return;
     packages.add(directory);
     for (const source of listed) if (source.startsWith(`${directory}/`) && !installed(source)) queue.push([source, false]);
-    for (const dependency of workspaceDependencies(directory)) standIn(dependency);
+    const dependencies = workspaceDependencies(directory);
+    if (dependencies === undefined) unverified.push(`${directory}/package.json doesn't parse, so the packages it may bundle aren't known`);
+    for (const dependency of dependencies ?? []) standIn(dependency);
   };
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
     const [file, strict] = next;
@@ -234,10 +240,10 @@ if (input.config !== null && unverified.length === 0) {
     if (seen === true || (seen === false && !strict)) continue;
     walked.set(file, strict);
     if (!listed.has(file)) {
-      // Built output git ignores, such as a workspace package's dist, isn't parsed: its package's listed sources stand for it.
+      // Built output git ignores, such as a workspace package's dist, isn't parsed: its package's listed sources stand for it. Outside one, nothing does, however it was reached.
       const manifest = nearestManifest(file);
       if (manifest === undefined || manifest === 'package.json' || manifest === ownPackage) {
-        if (strict) unverified.push(`loads ${file}, which git doesn't track`);
+        unverified.push(`loads ${file}, which git doesn't track`);
       } else {
         standIn(path.posix.dirname(manifest));
       }

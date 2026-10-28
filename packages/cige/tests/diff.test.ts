@@ -502,25 +502,42 @@ describe('diffSince', () => {
     expect(changed()).toEqual(['packages/hooks/src/unused.ts !config-changed']);
     write(dir, { 'packages/hooks/src/unused.ts': 'export const unused = 1;\n', 'packages/hooks/src/lazy.mjs': 'const name = "./ok.mjs";\nexport const ok = (await import(name)).ok;\n' });
     expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'packages/hooks/src/lazy.mjs !config-changed']);
+    // cubic's case: a stand-in's package.json that doesn't parse can't say what it bundles.
+    write(dir, { 'packages/hooks/src/lazy.mjs': 'export const ok = true;\n', 'packages/shared/package.json': '{ "name": "@acme/shared",' });
+    expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'packages/shared/package.json !config-changed']);
   });
 
   it("never counts the config's own package as a stand-in, so its cases stay cases", () => {
     const dir = repo({
       '.gitignore': 'node_modules\ndist\n',
-      'apps/web/package.json': JSON.stringify({ name: '@acme/web', type: 'module' }),
+      'apps/web/package.json': JSON.stringify({ name: '@acme/web', type: 'module', exports: { './helper': './src/helper.js', './built': './dist/built.js' } }),
+      'apps/web/src/helper.js': 'export const help = () => false;\n',
+      'apps/web/dist/built.js': 'export const built = () => false;\n',
       'apps/web/cige.config.mjs': "import { verdict } from '@acme/hooks';\nexport default { hooks: { verdict } };\n",
       'apps/web/checkout.cige.json': BASE,
-      // The hooks package depends back on the app, for its types.
+      // The hooks package depends back on the app, and bundles a helper from it.
       'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js', devDependencies: { '@acme/web': 'workspace:*' } }),
-      'packages/hooks/src/index.ts': 'export const verdict = () => false;\n',
+      'packages/hooks/src/index.ts': "import { help } from '@acme/web/helper';\nexport const verdict = help;\n",
       'packages/hooks/dist/index.js': 'export const verdict = () => false;\n',
     });
     mkdirSync(path.join(dir, 'apps/web/node_modules/@acme'), { recursive: true });
     symlinkSync('../../../../packages/hooks', path.join(dir, 'apps/web/node_modules/@acme/hooks'), 'dir');
     mkdirSync(path.join(dir, 'packages/hooks/node_modules/@acme'), { recursive: true });
     symlinkSync('../../../../apps/web', path.join(dir, 'packages/hooks/node_modules/@acme/web'), 'dir');
+    const diff = () => diffSince('HEAD', path.join(dir, 'apps/web'), { configFiles: [path.join(dir, 'apps/web/cige.config.mjs')] });
     write(dir, { 'apps/web/checkout.cige.json': edited((file) => void (file.Execution[1].step = 'pay')) });
-    expect(diffSince('HEAD', path.join(dir, 'apps/web'), { configFiles: [path.join(dir, 'apps/web/cige.config.mjs')] })).toMatchObject({ blocking: 0 });
+    expect(diff()).toMatchObject({ blocking: 0 });
+    // cubic's case: what the hooks' sources import from the app still counts, file by file.
+    write(dir, { 'apps/web/src/helper.js': 'export const help = () => true;\n' });
+    expect(diff().files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`)).toEqual([
+      'apps/web/checkout.cige.json execution-changed',
+      'apps/web/src/helper.js config-changed',
+    ]);
+    // Built output in the app has no sources to stand for it, however the walk reached it.
+    write(dir, { 'apps/web/src/helper.js': 'export const help = () => false;\n', 'packages/hooks/src/index.ts': "export { built as verdict } from '@acme/web/built';\n" });
+    expect(diff().files.flatMap((entry) => entry.changes.filter((item) => item.kind === 'config-unverified').map((item) => item.detail))).toEqual([
+      "apps/web/cige.config.mjs: loads apps/web/dist/built.js, which git doesn't track; a human must review every change outside the case files",
+    ]);
   });
 
   it('blocks retargeting a symlink an alias reaches, file or directory', () => {
