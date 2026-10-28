@@ -124,6 +124,16 @@ declare const screen: Screen;
 declare const engine: EngineHandle;
 declare const targets: readonly Target[];
 
+void (async () => {
+  await appFixture.startRecording({ name: 'dialog' });
+  const [video] = await appFixture.stopRecording();
+  // A recording returns at least one video, so the first needs no undefined check.
+  if ('path' in video) video.path satisfies string;
+  else video.url satisfies string;
+  // @ts-expect-error a video is a file or a link; narrow before reading the path
+  void video.path;
+})();
+
 void (screen.tree() satisfies Promise<string>);
 void (screen.debug({ timeout: 1000 }) satisfies Promise<void>);
 // @ts-expect-error tree reads the whole screen; a locator does not scope it

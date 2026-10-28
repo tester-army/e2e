@@ -6,7 +6,7 @@
  * what this engine owes agent-device.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -2311,6 +2311,22 @@ describe('video', () => {
     expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
     await h.engine.endAttempt!(cleanup());
     expect(records(h)).toHaveLength(2);
+  });
+
+  it('records again in the same attempt once the runner moved the previous file away', async () => {
+    const h = harness();
+    recorder(h);
+    await openAttempt(h);
+    const file = path.join(artifactsDir, 'video', 'video.mp4');
+    for (const moved of ['first.mp4', 'second.mp4']) {
+      await h.engine.artifacts!.startVideo!(operation());
+      expect(await h.engine.artifacts!.stopVideo!(operation())).toEqual([{ path: path.join('video', 'video.mp4'), startedAt: expect.any(String) }]);
+      renameSync(file, path.join(artifactsDir, moved));
+    }
+    expect(records(h)).toHaveLength(4);
+    // Nothing is left recording for the attempt's end to stop.
+    await h.engine.endAttempt!(cleanup());
+    expect(records(h)).toHaveLength(4);
   });
 
   it.each([

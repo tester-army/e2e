@@ -186,6 +186,29 @@ describe('renderTracePage', () => {
     expect(lines[at + 4]).not.toContain('console.txt');
   });
 
+  it("places a step in the recording that covers it: the attempt's video from its start, a stopped recording only until its stop step ends", () => {
+    const at = (seconds: number) => new Date(Date.UTC(2026, 9, 27, 10, 0, seconds)).toISOString();
+    const video = (id: string, file: string, startedAt: string, producer: ReportAttempt['artifacts'][number]['producer']) =>
+      ({ id, kind: 'video' as const, mediaType: 'video/webm', path: `t/${file}`, redaction: 'incomplete' as const, startedAt, producer });
+    const offsets = (artifacts: ReportAttempt['artifacts']) =>
+      page([
+        failed({
+          steps: [
+            step({ index: 0, api: 'app.open', startedAt: at(0), durationMs: 500 }),
+            step({ index: 1, api: 'locator.tap', startedAt: at(5), durationMs: 500 }),
+            step({ index: 2, api: 'app.stopRecording', startedAt: at(8), durationMs: 1000 }),
+            step({ index: 3, api: 'locator.tap', status: 'failed', error: reportError(), startedAt: at(12), durationMs: 500 }),
+          ],
+          artifacts,
+        }),
+      ])
+        .split('\n')
+        .filter((line) => /^\d\. /.test(line))
+        .map((line) => /\((?:[^,)]*)(?:, ([^)]*))?\)/.exec(line)?.[1] ?? '');
+    expect(offsets([video('a:0', 'recordings/001-span.webm', at(4), { kind: 'step', stepId: 's2' })])).toEqual(['', 'video 0:01', 'video 0:04', '']);
+    expect(offsets([video('a:0', 'video/video.webm', at(1), { kind: 'attempt' })])).toEqual(['video 0:00', 'video 0:04', 'video 0:07', 'video 0:11']);
+  });
+
   it('quotes a step explanation that starts like a heading as prose, with its linkable tokens as code, through the shared cell', () => {
     const body = page([
       failed({

@@ -760,7 +760,7 @@ export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'sk
 export interface TestFixtures {
   /** Agent steps. Acquiring the built-in agent without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
-  /** App lifecycle: open, restart, clear state, back, screenshot. */
+  /** App lifecycle: open, restart, clear state, back, screenshot, recording. */
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;

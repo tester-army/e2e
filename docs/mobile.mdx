@@ -283,6 +283,26 @@ test('the list and the detail split across the fold', async ({ agent, app, devic
 ```
 </Accordion>
 
+### Record a transition
+
+[`app.startRecording()` and `app.stopRecording()`](/reference/app#startrecording)
+record one span of the screen as an `.mp4`. A locator's `boundingBox()`
+gives an element's frame in points (physical pixels on Android).
+
+```ts
+test('the sheet slides up', { video: 'off' }, async ({ app, screen }) => {
+  await app.open();
+  await app.startRecording({ name: 'sheet' });
+  await screen.getByRole('button', 'Open sheet').tap();
+  await expect(screen.getByText('Sheet title')).toBeVisible();
+  const [video] = await app.stopRecording();
+});
+```
+
+Start it after `app.open()`. A recording started after `device.closeApp()`
+ends the device session when it stops, so open the app again after it.
+Taps show unless [`videoTouches`](/reference/mobile#videotouches) is `false`.
+
 ## Several devices
 
 Add a target for each platform:
