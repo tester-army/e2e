@@ -22,7 +22,7 @@ export const SIZE_LABELS: readonly SizeLabel[] = [
   { name: 'size:XXL', max: Infinity, color: 'b60205' },
 ];
 
-export const EXCLUDED: readonly string[] = [
+const EXCLUDED: readonly string[] = [
   '**/*.test.*',
   '**/*.spec.*',
   '**/*.e2e.*',
