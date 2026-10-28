@@ -237,7 +237,39 @@ describe('describeDelta', () => {
     // A tally that was there before the step and reads another number after it grows with every run's leftovers.
     const before = nodes([heading, node('c0', { text: '41 items' })]);
     const after = nodes([heading, node('c1', { text: '42 items' }), node('n', { text: 'Item added' })]);
-    expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: 'Item added' }], gone: [{ text: '41 items' }] });
+    // The old tally is volatile and the other side has a stable result, so only that result is recorded.
+    expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: 'Item added' }], gone: [] });
+  });
+
+  describe('volatile anchors across both sides of the delta', () => {
+    const record = node('row', { role: 'row', name: 'Example record' });
+
+    it('drops a clock that appeared when the other side holds a stable result', () => {
+      const before = nodes([heading, record, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('clock', { text: '09:59' })]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [], gone: [{ role: 'row', name: 'Example record' }] });
+    });
+
+    it('drops a clock that disappeared when the other side holds a stable result', () => {
+      const before = nodes([heading, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('done', { role: 'status', text: 'Record created' }), node('clock', { text: '10:01' })]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [{ role: 'status', text: 'Record created' }], gone: [] });
+    });
+
+    it('keeps the volatile anchors when no side of the delta has a stable one', () => {
+      const before = nodes([heading, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('clock', { text: '09:59' })]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: '09:59' }], gone: [{ text: '10:00' }] });
+    });
+
+    it('still records an alert beside a clock', () => {
+      const before = nodes([heading, record, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('alert', { role: 'alert', text: 'Delete failed' }), node('clock', { text: '09:59' })]);
+      expect(describeDelta(before, after, false)).toEqual({
+        appeared: [{ role: 'alert', text: 'Delete failed' }],
+        gone: [{ role: 'row', name: 'Example record' }],
+      });
+    });
   });
 
   describe('a radio the pick replaces with its summary', () => {

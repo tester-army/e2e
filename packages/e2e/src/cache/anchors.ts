@@ -101,10 +101,19 @@ export function describeDelta(
   const end = projectAnchors(endNodes);
   const startKeys = new Set(start.map((anchor) => anchor.key));
   const endKeys = new Set(end.map((anchor) => anchor.key));
-  return {
-    appeared: deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved),
-    gone: deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved),
-  };
+  const appeared = deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved);
+  const gone = deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved);
+  // Volatile anchors stay only when no side of the delta has a stable one: a
+  // deleted row is the step's result even when the only thing that appeared is a clock.
+  const keepVolatile = appeared.stable.length === 0 && gone.stable.length === 0;
+  const pick = (side: DeltaSide) => (keepVolatile ? side.all : side.stable).slice(0, MAX_TRACE_ANCHORS).map((anchor) => anchor.descriptor);
+  return { appeared: pick(appeared), gone: pick(gone) };
+}
+
+/** One side of the delta in recording order, and the part of it that is not volatile. */
+interface DeltaSide {
+  readonly all: readonly AnchorNode[];
+  readonly stable: readonly AnchorNode[];
 }
 
 /** One projected anchor with the node it came from. */
@@ -114,13 +123,13 @@ interface AnchorNode {
   readonly leaf: boolean;
 }
 
-/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and capped. */
+/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and not yet capped. */
 function deltaSide(
   nodes: readonly AnchorNode[],
   other: readonly AnchorNode[],
   inOther: (anchor: AnchorNode) => boolean,
   routeMoved: boolean,
-): TraceTargetDescriptor[] {
+): DeltaSide {
   const otherShapes = new Set(other.map((anchor) => countShape(anchor.descriptor)));
   const volatile = (anchor: TraceTargetDescriptor) => isVolatileAnchor(anchor, (count) => routeMoved || otherShapes.has(countShape(count)));
   const seen = new Set<string>();
@@ -134,15 +143,15 @@ function deltaSide(
     (ANNOUNCEMENT_ROLES.has(role) ? announcements : anchor.leaf ? leaves : containers).push(anchor);
   }
   const all = [...announcements, ...leaves, ...containers];
-  const stable = all.filter((anchor) => isAlert(anchor.descriptor) || !volatile(anchor.descriptor));
-  return (stable.length > 0 ? stable : all).slice(0, MAX_TRACE_ANCHORS).map((anchor) => anchor.descriptor);
+  return { all, stable: all.filter((anchor) => isAlert(anchor.descriptor) || !volatile(anchor.descriptor)) };
 }
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
  * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in milliseconds. An
  * anchor made of it hands every replay off, so it is skipped while some
- * stable anchor exists; with nothing else, the volatile ones stay, because a
+ * stable anchor exists on either side of the delta; with nothing else, the
+ * volatile ones stay, because a
  * replay that always hands off is still safer than one that passes on
  * mechanics alone. An alert keeps it, and is compared with these parts read
  * as placeholders (`alertShape`).
