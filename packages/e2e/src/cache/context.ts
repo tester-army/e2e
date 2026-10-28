@@ -29,7 +29,7 @@ import {
 import type { StoredRecordings } from './rekeyed.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES, type CacheStore } from './store.ts';
 import type { ActionTrace, TraceKeyContext, TraceProvenance } from './trace.ts';
-import type { JsonValue } from '../types.ts';
+import type { ActPosition, JsonValue } from '../types.ts';
 
 /**
  * One cache entry held back until the attempt confirms or implicates it: a
@@ -89,6 +89,7 @@ export interface AgentCacheContext {
     instruction: string,
     params: Readonly<Record<string, JsonValue>> | undefined,
     agent: CacheAgentIdentity,
+    position?: ActPosition,
   ): ClaimedKey;
   /**
    * Trace writes staged during the attempt. A trace is not trusted the moment
@@ -272,8 +273,8 @@ export function createAgentCacheContext(options: {
             advice: staleAdvice(options.cache, options.cache.strict, options.projectRoot),
             ...(options.recordings === undefined ? {} : { recordings: options.recordings }),
           },
-    claimKey: (kind, instruction, params, agent) => {
-      const signature = traceCallSignature(kind, instruction, params);
+    claimKey: (kind, instruction, params, agent, position) => {
+      const signature = traceCallSignature(kind, instruction, params, position);
       const callIndex = nextCallIndex(agent, signature);
       const key = buildTraceCacheKey({
         project,
@@ -292,6 +293,7 @@ export function createAgentCacheContext(options: {
           targetId: options.target.targetId,
           instructionDigest: signature.instructionDigest,
           paramsDigest: signature.paramsDigest,
+          ...(signature.positionDigest === undefined ? {} : { positionDigest: signature.positionDigest }),
           callIndex,
           agent: agent.name,
         },

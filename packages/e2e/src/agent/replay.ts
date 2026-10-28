@@ -12,6 +12,7 @@
  * divergence.
  */
 
+import { edgeObservable } from '../cache/positions.ts';
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
 import { isNodeAction, isTapActionName, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
@@ -47,7 +48,7 @@ export type ObservedScreen = {
    */
   readonly path?: string;
 } & (
-  | { readonly kind: 'semantic'; readonly nodes: ObservedNodes }
+  | { readonly kind: 'semantic'; readonly nodes: ObservedNodes; readonly truncated?: true }
   | { readonly kind: 'pixels' }
 );
 
@@ -434,6 +435,7 @@ async function relocate(
 ): Promise<Relocated> {
   let last: Relocated = { kind: 'failed', failure: 'target-not-found' };
   const settled = await pollSettled(host, (screen): Relocated | undefined => {
+    if (!edgeObservable(screen, descriptor)) return undefined;
     const result = relocateDescriptor(descriptor, screen.nodes);
     if (result.kind === 'failed') {
       last = result.failure === 'target-not-found' ? result : { ...result, screen };
@@ -465,6 +467,7 @@ async function relocatePair(
     return retryable(failure, descriptor) ? undefined : { kind: 'failed' as const, failure };
   };
   const settled = await pollSettled(host, (screen) => {
+    if (!edgeObservable(screen, source, destination)) return undefined;
     const from = relocateDescriptor(source, screen.nodes);
     if (from.kind === 'failed') return failed(source, from.failure);
     const to = relocateDescriptor(destination, screen.nodes);

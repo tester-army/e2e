@@ -21,6 +21,7 @@ import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
 import { bound } from '../internal/text.ts';
 import { readBoundedText, readRecordedModel, type RecordedModel } from './trace-fields.ts';
+import { isEdgeDescriptor, readTracePosition } from './positions.ts';
 
 export type { RecordedModel } from './trace-fields.ts';
 
@@ -106,6 +107,8 @@ export interface TraceProvenance {
   readonly instructionDigest: string;
   /** SHA-256/JCS of the step's params as the key digests them, a placeholder for each `unique()` value. */
   readonly paramsDigest?: string;
+  /** Digest of an explicit positional request; absent for ordinary matching. */
+  readonly positionDigest?: string;
   /** Zero-based occurrence of the step among its repeats in the attempt. */
   readonly callIndex?: number;
   /** Name of the configured agent the step ran with. */
@@ -125,9 +128,6 @@ export interface TracePosition {
   readonly of: number;
 }
 
-/** Most twins a positional recording distinguishes between; beyond it a list is data, not a control set. */
-const MAX_TRACE_POSITION_OF = 1000;
-
 export interface TraceTargetDescriptor {
   readonly role?: string;
   readonly name?: string;
@@ -139,12 +139,14 @@ export interface TraceTargetDescriptor {
   /** Key of the container the target sat in (a row's first cell); relocation requires the same. */
   readonly within?: string;
   /**
-   * Set only when the other fields matched several controls on the recording
-   * screen (one unlabeled "Set up" per card): which of them the target was.
-   * Replay honors it only when the live screen shows exactly as many, so a
-   * twin that appeared or vanished still diverges instead of guessing.
+   * Which matching control was targeted, including anonymous singletons.
+   * Multiple matches need the recorded count to resolve without guessing.
+   * Anonymous targets always need that count; a unique identified match does not.
+   * Explicit first/last intent uses ordinal instead of a counted position.
    */
   readonly position?: TracePosition;
+  /** Explicit first/last intent among observed matches of the test id and role. */
+  readonly ordinal?: 'first' | 'last';
   /**
    * An anchor's states that were on, sorted; anchors only. A switch turned
    * on is the same control before and after, so its state is what tells
@@ -920,7 +922,7 @@ function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
   }
   if (Object.keys(descriptor).length === 0) return undefined;
   if (raw['position'] !== undefined) {
-    const position = readPosition(raw['position']);
+    const position = readTracePosition(raw['position']);
     if (position === undefined) return undefined;
     descriptor['position'] = position;
   }
@@ -928,6 +930,10 @@ function readDescriptor(document: unknown): TraceTargetDescriptor | undefined {
     const states = readStates(raw['states']);
     if (states === undefined) return undefined;
     descriptor['states'] = states;
+  }
+  if (raw['ordinal'] !== undefined) {
+    const edge = { ...descriptor, ordinal: raw['ordinal'] };
+    return isEdgeDescriptor(edge) ? edge : undefined;
   }
   return descriptor as TraceTargetDescriptor;
 }
@@ -938,17 +944,6 @@ function readStates(document: unknown): readonly TraceAnchorState[] | undefined 
   const states = each(document, (state) => (isTraceAnchorState(state) ? state : undefined));
   if (states === undefined) return undefined;
   return states.every((state, index) => index === 0 || states[index - 1]! < state) ? states : undefined;
-}
-
-/** A well-formed position: two safe integers with the index inside the count. */
-function readPosition(document: unknown): TracePosition | undefined {
-  if (typeof document !== 'object' || document === null || Array.isArray(document)) return undefined;
-  const { index, of } = document as Record<string, unknown>;
-  if (!Number.isSafeInteger(index) || !Number.isSafeInteger(of)) return undefined;
-  // `of: 1` is an anonymous target counted alone (`describePosition`); a named target never records a position under two.
-  if ((of as number) < 1 || (of as number) > MAX_TRACE_POSITION_OF) return undefined;
-  if ((index as number) < 0 || (index as number) >= (of as number)) return undefined;
-  return { index: index as number, of: of as number };
 }
 
 function readProvenance(document: unknown): TraceProvenance | undefined {
@@ -963,6 +958,8 @@ function readProvenance(document: unknown): TraceProvenance | undefined {
   if (typeof instructionDigest !== 'string' || !SHA256_HEX.test(instructionDigest)) return undefined;
   const paramsDigest = raw['paramsDigest'];
   if (paramsDigest !== undefined && (typeof paramsDigest !== 'string' || !SHA256_HEX.test(paramsDigest))) return undefined;
+  const positionDigest = raw['positionDigest'];
+  if (positionDigest !== undefined && (typeof positionDigest !== 'string' || !SHA256_HEX.test(positionDigest))) return undefined;
   const callIndex = raw['callIndex'];
   if (callIndex !== undefined && (typeof callIndex !== 'number' || !Number.isSafeInteger(callIndex) || callIndex < 0)) {
     return undefined;
@@ -974,6 +971,7 @@ function readProvenance(document: unknown): TraceProvenance | undefined {
     targetId,
     instructionDigest,
     ...(paramsDigest === undefined ? {} : { paramsDigest }),
+    ...(positionDigest === undefined ? {} : { positionDigest }),
     ...(callIndex === undefined ? {} : { callIndex }),
     ...(agent === undefined ? {} : { agent }),
   };

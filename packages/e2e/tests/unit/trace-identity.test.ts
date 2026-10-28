@@ -38,6 +38,13 @@ describe('params identity', () => {
 });
 
 describe('createCallIndexer', () => {
+  it('indexes ordinary, first and last requests independently', () => {
+    const index = createCallIndexer();
+    const ordinary = traceCallSignature('act', 'open a row', undefined);
+    const first = traceCallSignature('act', 'open a row', undefined, { testId: 'row', at: 'first' });
+    const last = traceCallSignature('act', 'open a row', undefined, { testId: 'row', at: 'last' });
+    expect([index(ordinary), index(first), index(last), index(ordinary), index(first), index(last)]).toEqual([0, 0, 0, 1, 1, 1]);
+  });
   it('counts occurrences per signature, not per attempt', () => {
     const index = createCallIndexer();
     const open = traceCallSignature('act', 'open billing', undefined);
@@ -68,6 +75,8 @@ describe('traceCacheKeyHash', () => {
   });
 
   it.each([
+    ['first position', { signature: traceCallSignature('act', 'open billing', undefined, { testId: 'row', at: 'first' }) }],
+    ['last position', { signature: traceCallSignature('act', 'open billing', undefined, { testId: 'row', at: 'last' }) }],
     ['instruction', { signature: traceCallSignature('act', 'close billing', undefined) }],
     ['params', { signature: traceCallSignature('act', 'open billing', { fast: true }) }],
     ['call index', { callIndex: 1 }],

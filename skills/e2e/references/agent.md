@@ -124,6 +124,9 @@ Options:
   and a run-unique `unique(\`E2E ${Date.now()}\`)` keeps the cache working
   across runs.
 - `timeout`: the config `timeout`.
+- `position: { testId, at: 'first' | 'last' }`: follow the named control's
+  first or last match as its list changes; other controls keep normal matching.
+  Requires a complete observation; unloaded or virtualized rows outside it do not count.
 - `maxSteps` (default 25 actions), `maxModelCalls` (default 25): may only
   lower the agent's limits, else `INVALID_ARGUMENT`.
 - No `schema` (use `extract({ schema })`) and no `vision`: the model decides

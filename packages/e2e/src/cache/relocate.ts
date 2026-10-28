@@ -15,7 +15,10 @@
  * rules and can never drift from relocation.
  */
 
-import type { RedactedNode } from '../agent/observation.ts';
+import type { RedactedNode, SemanticAgentObservation } from '../agent/observation.ts';
+import type { ActPosition } from '../types.ts';
+import { TestError } from '../internal/errors.ts';
+import { edgeDescriptor, isEdgeDescriptor, requireEdgeObservable, type EdgeDescriptor } from './positions.ts';
 import { containerKey, describeTarget, parentsOf } from '../agent/actions.ts';
 import type { TracePosition, TraceTargetDescriptor } from './trace.ts';
 
@@ -111,6 +114,9 @@ function withoutTestId(descriptor: TraceTargetDescriptor): TraceTargetDescriptor
  */
 export function descriptorTiers(descriptor: TraceTargetDescriptor): readonly TraceTargetDescriptor[] {
   if (!isRelocatableDescriptor(descriptor)) return [];
+  if (descriptor.ordinal !== undefined) {
+    return isEdgeDescriptor(descriptor) ? [descriptor] : [];
+  }
   if (descriptor.testId === undefined) return [descriptor];
   const semantic = withoutTestId(descriptor);
   // A test id that churned is forgiven only when the semantic fields still
@@ -168,6 +174,7 @@ function describeNodes(nodes: ReadonlyMap<string, RedactedNode>): readonly Descr
  * The one exception is a recorded `position`: the recording itself found the
  * same twins and noted which one it acted on, so the same count of twins
  * resolves to the same one; any other count diverges as before.
+ * An explicit test-id ordinal instead follows its edge across count changes.
  */
 export function relocateDescriptor(
   descriptor: TraceTargetDescriptor,
@@ -176,6 +183,9 @@ export function relocateDescriptor(
   const matches = matchingIds(descriptor, nodes);
   if (matches.length === 0) return { kind: 'failed', failure: 'target-not-found' };
   const { position } = descriptor;
+  if (descriptor.ordinal !== undefined) {
+    return { kind: 'found', id: (descriptor.ordinal === 'first' ? matches[0] : matches.at(-1))! };
+  }
   // A lone match is the node for a descriptor with an identity. An anonymous
   // one has only its count and place: one unnamed twin where the recording
   // counted two is as likely the other field as the right one.
@@ -254,4 +264,16 @@ export function describePosition(
   if (ids.length < (anonymous ? 1 : 2) || ids.length > MAX_POSITIONED_TWINS) return undefined;
   const index = ids.indexOf(node.ref.id);
   return index === -1 ? undefined : { index, of: ids.length };
+}
+
+/** Validates a matching live edge and reports a model mistake as an action failure. */
+export function requireEdgeTarget(node: RedactedNode, position: ActPosition | undefined, screen: SemanticAgentObservation): EdgeDescriptor | undefined {
+  const descriptor = edgeDescriptor(node, position?.at, position?.testId);
+  if (descriptor === undefined) return undefined;
+  requireEdgeObservable(descriptor, screen);
+  const match = relocateDescriptor(descriptor, screen.nodes);
+  if (match.kind !== 'found' || match.id !== node.ref.id) {
+    throw new TestError('ACTION_FAILED', `agent.act position requires the ${descriptor.ordinal} matching ${JSON.stringify(descriptor.testId)} control`);
+  }
+  return descriptor;
 }

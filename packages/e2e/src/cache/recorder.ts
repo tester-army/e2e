@@ -298,6 +298,7 @@ function sameTarget(a: TraceTargetDescriptor | undefined, b: TraceTargetDescript
   if (a === undefined || b === undefined) return a === b;
   return (
     DESCRIPTOR_FIELDS.every((field) => a[field] === b[field]) &&
+    a.ordinal === b.ordinal &&
     a.position?.index === b.position?.index &&
     a.position?.of === b.position?.of
   );
@@ -317,6 +318,7 @@ export function recordedProvenance(provenance: TraceProvenance, redact: (text: s
     targetId: bound(redact(provenance.targetId), MAX_TRACE_DESCRIPTOR_CHARS),
     instructionDigest: provenance.instructionDigest,
     ...(provenance.paramsDigest === undefined ? {} : { paramsDigest: provenance.paramsDigest }),
+    ...(provenance.positionDigest === undefined ? {} : { positionDigest: provenance.positionDigest }),
     ...(provenance.callIndex === undefined ? {} : { callIndex: provenance.callIndex }),
     ...(provenance.agent === undefined ? {} : { agent: bound(redact(provenance.agent), MAX_TRACE_DESCRIPTOR_CHARS) }),
   };

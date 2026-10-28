@@ -6,6 +6,30 @@ import { unique } from '../../src/params.ts';
 import { ConfigurationError } from '../../src/internal/errors.ts';
 
 describe('validateActOptions', () => {
+  it('snapshots positional intent independently of later caller mutation', () => {
+    const position = { testId: 'inbox-item', at: 'first' as const };
+    const validated = validateActOptions({ position }, 0);
+    position.testId = 'other-item';
+    expect(validated).toEqual({ testId: 'inbox-item', at: 'first' });
+    expect(Object.isFrozen(validated)).toBe(true);
+  });
+
+  it.each([null, [], 'first', {}, { at: 'first' }, { testId: '', at: 'first' },
+    { testId: ' row ', at: 'first' }, { testId: 'row', at: 'middle' },
+    { testId: 'row', at: 'first', extra: true }, { testId: 'x'.repeat(10_000), at: 'last' },
+  ])('refuses malformed positional intent %j', (position) => {
+    expect(() => validateActOptions({ position } as never, 0)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
+  });
+  it.each([
+    [{ testId: 'row', at: 'first', extra: true }, 'does not take "extra"'],
+    [{ testId: '', at: 'first' }, 'position.testId must be a nonblank string'],
+    [{ testId: 'x'.repeat(301), at: 'first' }, 'position.testId must be at most 300'],
+    [{ testId: ' row ', at: 'first' }, 'position.testId must have normalized whitespace'],
+    [{ testId: 'row', at: 'middle' }, 'position.at must be "first" or "last"'],
+  ])('names the invalid field for %j', (position, message) => {
+    expect(() => validateActOptions({ position } as never, 0)).toThrow(message);
+  });
+
   it('accepts the options bag and an absent one', () => {
     expect(() => validateActOptions(undefined, 0)).not.toThrow();
     expect(() =>

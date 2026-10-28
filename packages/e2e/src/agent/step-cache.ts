@@ -22,7 +22,7 @@ import { expandTrace, templateParams, templatesCollide, templateTrace, type Para
 import { readTraceEntry, targetLabel, type ActionTrace, type DerivedReason, type RecordedModel, type TraceEntry, type TraceTargetDescriptor } from '../cache/trace.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepCacheInfo } from '../run/steps.ts';
-import type { JsonValue } from '../types.ts';
+import type { ActPosition, JsonValue } from '../types.ts';
 import type { RecordableAction } from './actions.ts';
 import { ActionHookError, AgentError, isAgentError, isModelUnreachable } from './error.ts';
 import { isRuntimeHardStop, type ReplayedPrefix, type StepVerdict } from './executor.ts';
@@ -57,6 +57,7 @@ export interface StepCacheOptions {
   readonly cache: AgentCacheContext;
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  readonly position?: ActPosition | undefined;
   /** The `unique()` values in the params: slots in the key and the recording, filled from each call. */
   readonly templates: readonly ParamTemplate[];
   readonly executor: { readonly name: string; readonly version?: string };
@@ -195,7 +196,7 @@ export class StepTraceSession {
     this.cache = options.cache;
     // The key digests the params as the recording spells them, a placeholder
     // where each `unique()` value was, so every run's value finds one entry.
-    this.claim = options.cache.claimKey('act', options.instruction, templateParams(options.params, options.templates), options.agent);
+    this.claim = options.cache.claimKey('act', options.instruction, templateParams(options.params, options.templates), options.agent, options.position);
     this.keyHash = this.claim.keyHash;
     if (options.cache.mode === 'read-write') {
       this.recorder = new TraceRecorder({

@@ -26,7 +26,7 @@
  */
 
 import { canonicalDigest, sha256Hex } from '../internal/ids.ts';
-import type { JsonValue } from '../types.ts';
+import type { ActPosition, JsonValue } from '../types.ts';
 import { KEY_CONTEXT_FIELDS, TRACE_SCHEMA_VERSION, type TraceKeyContext } from './trace.ts';
 
 /**
@@ -53,6 +53,7 @@ export interface TraceCacheKey {
   readonly callIndex: number;
   readonly instructionDigest: string;
   readonly paramsDigest: string;
+  readonly positionDigest?: string;
   readonly appIdentity: string;
   /** Name of the configured agent the step ran with. */
   readonly agent: string;
@@ -119,6 +120,7 @@ export interface TraceCallSignature {
   readonly kind: TraceCacheKind;
   readonly instructionDigest: string;
   readonly paramsDigest: string;
+  readonly positionDigest?: string;
 }
 
 /** Builds one signature by digesting the instruction and projected parameters. */
@@ -126,11 +128,13 @@ export function traceCallSignature(
   kind: TraceCacheKind,
   instruction: string,
   params: Readonly<Record<string, JsonValue>> | undefined,
+  position?: ActPosition,
 ): TraceCallSignature {
   return {
     kind,
     instructionDigest: instructionDigest(instruction),
     paramsDigest: paramsDigest(params),
+    ...(position === undefined ? {} : { positionDigest: canonicalDigest(position) }),
   };
 }
 
@@ -139,7 +143,8 @@ export function traceCallSignature(
  * inside either and the join is unambiguous.
  */
 function traceCallSignatureKey(signature: TraceCallSignature): string {
-  return `${signature.kind}:${signature.instructionDigest}:${signature.paramsDigest}`;
+  const base = `${signature.kind}:${signature.instructionDigest}:${signature.paramsDigest}`;
+  return signature.positionDigest === undefined ? base : `${base}:${signature.positionDigest}`;
 }
 
 /**
@@ -184,6 +189,7 @@ export function buildTraceCacheKey(parts: {
     callIndex: parts.callIndex,
     instructionDigest: parts.signature.instructionDigest,
     paramsDigest: parts.signature.paramsDigest,
+    ...(parts.signature.positionDigest === undefined ? {} : { positionDigest: parts.signature.positionDigest }),
     appIdentity: parts.target.appIdentity,
     agent: parts.agent.name,
     agentContextDigest: sha256Hex(parts.agent.context ?? ''),

@@ -52,6 +52,7 @@ export interface DispatchSpec {
   readonly kind: 'act' | 'assert';
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  readonly position?: ActOptions['position'];
   /** Secrets declared in the params, by stable name. */
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The `unique()` values in the params, by JSON Pointer; the trace cache templates them. */
@@ -81,13 +82,14 @@ export async function runActStep(
   extraArguments = 0,
 ): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
-  validateActOptions(options, extraArguments);
+  const position = validateActOptions(options, extraArguments);
   const { projected, secrets, templates } = validateParams(options?.params);
   return dispatchAgentStep(runtime, {
     api: 'agent.act',
     kind: 'act',
     instruction: normalized,
     params: projected,
+    position,
     secrets,
     templates,
     defaultFailureCode: 'ACTION_FAILED',
@@ -194,13 +196,15 @@ export async function dispatchAgentStep(
  */
 function redactSpec(spec: DispatchSpec, redact: (text: string) => string): DispatchSpec {
   const instruction = redact(spec.instruction);
-  if (spec.params === undefined) return { ...spec, instruction };
-  return { ...spec, instruction, ...redactParams(spec.params, spec.templates, redact) };
+  const position = spec.position === undefined ? undefined : { ...spec.position, testId: redact(spec.position.testId) };
+  if (spec.params === undefined) return { ...spec, instruction, position };
+  return { ...spec, instruction, position, ...redactParams(spec.params, spec.templates, redact) };
 }
 
 /** One step's wiring: the collaborators, the executor's context, and the verdict mapping. */
 class ActDispatch {
   private readonly accounting: StepAccounting;
+  private readonly instruction: string;
   private readonly feed: ObservationFeed;
   private readonly dispatcher: ActionDispatcher;
   /** The step's trace-cache session; undefined when caching is off or the kind is not cacheable. */
@@ -219,6 +223,7 @@ class ActDispatch {
     /** The agent this step runs with. */
     private readonly agent: DispatchAgent,
   ) {
+    this.instruction = spec.position === undefined ? spec.instruction : `${spec.instruction}\nFor controls with test ID ${JSON.stringify(spec.position.testId)}, choose the current ${spec.position.at} match of the chosen role from the observation.`;
     this.accounting = new StepAccounting(runtime, {
       api: spec.api,
       timeoutMs: resolveTimeout(spec.timeout, runtime.config.timeout),
@@ -232,11 +237,13 @@ class ActDispatch {
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
       maxObservationBytes: agent.config.maxObservationBytes,
       maxInputTokens: agent.config.maxInputTokens,
-      instructionBytes: tokenUpperBound(spec.instruction),
+      instructionBytes: tokenUpperBound(this.instruction),
+      position: spec.position,
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
       instruction: spec.instruction,
       params: spec.params,
+      position: spec.position,
       secrets: spec.secrets,
       trace: () => this.stepCache,
       onAction: spec.onAction,
@@ -259,6 +266,7 @@ class ActDispatch {
             instruction: spec.instruction,
             params: spec.params,
             templates: spec.templates,
+            position: spec.position,
             executor: {
               name: agent.executor.name,
               ...(agent.executor.version === undefined ? {} : { version: agent.executor.version }),
@@ -287,7 +295,7 @@ class ActDispatch {
       step: {
         kind: this.spec.kind,
         index: this.stepIndex,
-        instruction: this.spec.instruction,
+        instruction: this.instruction,
         params: this.spec.params,
         secrets: [...this.spec.secrets.values()].map((secret) => ({
           name: secret.name,
@@ -563,6 +571,6 @@ function screenOf(observation: AgentObservation, appOrigin: string | undefined):
     ...(observation.location === undefined ? {} : { path: appLocation(observation.location, appOrigin) }),
   };
   return observation.kind === 'semantic'
-    ? { ...metadata, kind: 'semantic', nodes: observation.nodes }
+    ? { ...metadata, kind: 'semantic', nodes: observation.nodes, ...(observation.truncated ? { truncated: true } : {}) }
     : { ...metadata, kind: 'pixels' };
 }

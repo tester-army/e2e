@@ -25,6 +25,7 @@ import { sanitizeText } from '../internal/errors.ts';
 import type { KeyModifier } from '../engine/contract.ts';
 import { bound, collapseText } from '../internal/text.ts';
 import type { ScrollDirection } from '../types.ts';
+import { edgeDescriptor } from '../cache/positions.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
@@ -82,6 +83,7 @@ export type RecordableAction =
 export interface Placement {
   readonly within?: string;
   readonly position?: TracePosition;
+  readonly ordinal?: 'first' | 'last';
 }
 
 
@@ -281,6 +283,7 @@ function describePlaced(
   const { children: _children, ...fields } = node;
   const described = describeTarget(redactNode(fields, redaction));
   if (described === undefined) return undefined;
+  if (placement.ordinal !== undefined) return edgeDescriptor(described, placement.ordinal);
   return {
     ...described,
     ...(placement.within === undefined ? {} : { within: bound(redaction.redact(placement.within), MAX_WITHIN_CHARS) }),
@@ -325,6 +328,7 @@ export function describeTarget(node: RedactedNode): TraceTargetDescriptor | unde
 function describeForSummary(target: TraceTargetDescriptor | undefined): string {
   const where = target === undefined ? 'the screen' : targetLabel(target);
   const placed = target?.within === undefined ? where : `${where} in ${JSON.stringify(bound(target.within, 40))}`;
+  if (target?.ordinal !== undefined) return `${placed} (${target.ordinal})`;
   return target?.position === undefined
     ? placed
     : `${placed} (${target.position.index + 1} of ${target.position.of})`;

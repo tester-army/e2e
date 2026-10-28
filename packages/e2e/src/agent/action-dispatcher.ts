@@ -16,10 +16,10 @@ import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import type { ActionHook, ActPosition, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
-import { describePosition } from '../cache/relocate.ts';
+import { describePosition, requireEdgeTarget } from '../cache/relocate.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
 import { ActionHookError, AgentError, toAgentError } from './error.ts';
@@ -105,6 +105,7 @@ function requireClickModifiers(value: readonly KeyModifier[], verb: NodeActionNa
 export interface ActionDispatcherOptions {
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
+  readonly position?: ActPosition | undefined;
   /** Secrets declared in the step's params, by stable name; the only ones `typeSecret` may fill. */
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The step's trace-cache session, read at commit time; undefined when caching is off. */
@@ -261,13 +262,14 @@ export class ActionDispatcher {
       // the tree's root is the page itself and follows no layout shift.
       const under = hit.under === undefined || (observation.kind === 'semantic' && hit.under.ref.id === observation.tree.ref.id) ? undefined : hit.under;
       await this.runActionNow(verb, async () => {
+        const placement = under === undefined || observation.kind !== 'semantic' ? {} : { under, ...this.placementOf({ node: under, observation }) };
         await this.session.performAt(clamped, { kind: nodeVerb }, this.accounting.actionOperation());
         return {
           name: verb,
           point: clamped,
           viewport: { width: observation.viewport.width, height: observation.viewport.height },
           // Its container and place among twins tell this row's node from the next row's on replay.
-          ...(under === undefined || observation.kind !== 'semantic' ? {} : { under, ...this.placementOf({ node: under, observation }) }),
+          ...placement,
         };
       });
       return { point: clamped, ...(hit.control === undefined ? {} : { target: { id: hit.control.ref.id } }), summary };
@@ -340,8 +342,9 @@ export class ActionDispatcher {
   private drag(source: ExecutorTarget, destination: ExecutorTarget): Promise<void> {
     return this.commitTargeted('dragTo', source, async (node) => {
       const dropped = this.feed.resolve(destination);
+      const placement = this.placementOf(dropped);
       await this.session.perform(node.ref, { kind: 'dragTo', target: dropped.node.ref }, this.accounting.actionOperation());
-      return { name: 'drag', node, destination: { node: dropped.node, ...this.placementOf(dropped) } };
+      return { name: 'drag', node, destination: { node: dropped.node, ...placement } };
     });
   }
 
@@ -737,6 +740,8 @@ export class ActionDispatcher {
    * number picks the same one.
    */
   private placementOf({ node, observation }: Resolved): Placement {
+    const edge = requireEdgeTarget(node, this.options.position, observation);
+    if (edge !== undefined) return { ordinal: edge.ordinal };
     const within = containerKey(node.ref.id, observation.nodes, observation.parents);
     const position = describePosition(node, within, observation.nodes);
     return {

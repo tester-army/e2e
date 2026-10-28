@@ -186,6 +186,8 @@ export interface ActOptions extends AgentOption {
    * cache records a slot for it instead of the value.
    */
   params?: AgentParams;
+  /** Select the first or last observed match for this test id; all other targets retain ordinary matching. */
+  position?: ActPosition;
   /** Step deadline in milliseconds; defaults to `config.timeout`. */
   timeout?: number;
   /** Action budget; defaults to `agents.<name>.maxSteps` and can only lower it. */
@@ -204,6 +206,12 @@ export interface ActOptions extends AgentOption {
    * the action runs.
    */
   onBeforeAction?: BeforeActionHook;
+}
+
+/** Explicit positional intent for actions on one repeated test id. */
+export interface ActPosition {
+  readonly testId: string;
+  readonly at: 'first' | 'last';
 }
 
 /** The `onBeforeAction` hook of an `act` call. */

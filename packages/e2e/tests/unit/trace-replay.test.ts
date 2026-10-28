@@ -189,6 +189,29 @@ describe('verifyEndState', () => {
 });
 
 describe('replayTrace', () => {
+  it.each(['source', 'destination'] as const)('does not drag with an ordinal %s from a truncated tree', async (ordinalEnd) => {
+    const nodes: SemanticNode[] = [
+      { ref: { id: 'card', revision: 'r' }, role: 'button', testId: 'card' },
+      { ref: { id: 'lane', revision: 'r' }, role: 'group', testId: 'lane' },
+    ];
+    const host = makeHost({ nodes, remainingMs: 50 });
+    host.capture = async () => ({ ...screen(nodes), truncated: true });
+    const outcome = await replayTrace(host, trace([{
+      name: 'drag', summary: 'move the card',
+      target: { role: 'button', testId: 'card', ...(ordinalEnd === 'source' ? { ordinal: 'first' } : {}) },
+      destination: { role: 'group', testId: 'lane', ...(ordinalEnd === 'destination' ? { ordinal: 'first' } : {}) },
+    }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(host.calls).toEqual([]);
+  });
+  it.each(['first', 'last'] as const)('does not select a %s edge from a truncated tree', async (edge) => {
+    const node: SemanticNode = { ref: { id: 'row', revision: 'r' }, role: 'group', testId: 'inbox-item' };
+    const host = makeHost({ nodes: [node], remainingMs: 50 });
+    host.capture = async () => ({ ...screen([node]), truncated: true });
+    const outcome = await replayTrace(host, trace([{ name: 'tap', summary: 'open a row', target: { role: 'group', testId: 'inbox-item', ordinal: edge } }]));
+    expect(outcome).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(host.calls).toEqual([]);
+  });
   it('looks at the screen before a free action that follows another one only while the caller asks', async () => {
     const free = trace([
       { name: 'navigate', summary: 'navigate to "/newsletter"', url: '/newsletter' },

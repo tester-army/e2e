@@ -67,6 +67,7 @@ const { summary, cache } = await agent.act('Sign in', {
 | Option | Type | Default |
 | --- | --- | --- |
 | `params` | `AgentParams` | none |
+| `position` | [`ActPosition`](#types) | ordinary target matching |
 | `timeout` | `number` | `config.timeout`, 120000 |
 | `maxSteps` | `number` | `agents.<name>.maxSteps`, 25 |
 | `maxModelCalls` | `number` | `agents.<name>.maxModelCalls`, 25 |
@@ -79,6 +80,18 @@ differs on every run in [`unique()`](#unique). The model sees a `Secret` as
 its name and purpose only. Before the runner fills it, it checks the field
 the model picked: an enabled editable input, and a password field for a
 password. `locator.fill` runs no such check, since your code chose the field.
+
+Use `position` to follow a named control's first or last match as its list
+changes; other controls keep normal matching:
+
+```ts
+await agent.act('open the first inbox item', {
+  position: { testId: 'inbox-item', at: 'first' },
+});
+```
+
+This requires a complete observation; unloaded or virtualized rows outside
+it do not count. Use different test ids for independent lists.
 
 `onAction` runs after each action the step completes, once the screen
 settles, and before the next action. That includes actions the
@@ -131,8 +144,9 @@ The runner's own stops, and the checks on the call itself:
 | `MODEL_PROVIDER_FAILED` | The provider's transport failed after its retries. |
 | `MODEL_OUTPUT_INVALID` | A verdict outside the grammar. |
 | `REPLAY_STALE` | Under a strict cache, the step's recording no longer replays. |
-| `INVALID_ARGUMENT` | A malformed instruction, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
+| `INVALID_ARGUMENT` | A malformed instruction or `position`, oversized `params`, an unknown option, an `onAction` or `onBeforeAction` that is not a function, or a budget above the configured limit. An unknown `agent` name fails before the step opens. |
 | `UNSUPPORTED_CAPABILITY` | `schema` or `vision`, which `act` does not take. |
+| `POLICY_DENIED` | A live positional action cannot establish its edge from an incomplete observation. |
 
 ### agent.assert
 
@@ -492,6 +506,8 @@ export interface ActOptions extends AgentOption {
    * cache records a slot for it instead of the value.
    */
   params?: AgentParams;
+  /** Select the first or last observed match for this test id; all other targets retain ordinary matching. */
+  position?: ActPosition;
   /** Step deadline in milliseconds; defaults to `config.timeout`. */
   timeout?: number;
   /** Action budget; defaults to `agents.<name>.maxSteps` and can only lower it. */
@@ -510,6 +526,12 @@ export interface ActOptions extends AgentOption {
    * the action runs.
    */
   onBeforeAction?: BeforeActionHook;
+}
+
+/** Explicit positional intent for actions on one repeated test id. */
+export interface ActPosition {
+  readonly testId: string;
+  readonly at: 'first' | 'last';
 }
 
 /** The `onBeforeAction` hook of an `act` call. */

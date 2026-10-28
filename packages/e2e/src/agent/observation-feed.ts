@@ -9,7 +9,10 @@
  */
 
 import type { SemanticNode } from '../engine/surface.ts';
+import type { TraceTargetDescriptor } from '../cache/trace.ts';
+import type { ActPosition } from '../types.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
+import { edgeDescriptor, requireEdgeObservable } from '../cache/positions.ts';
 import { TestError } from '../internal/errors.ts';
 import { isEditable } from '../internal/roles.ts';
 import type { StepAgentDetails, VisionDegradation } from '../run/steps.ts';
@@ -72,6 +75,8 @@ export interface ObservationFeedOptions {
   readonly maxInputTokens: number;
   /** Bytes of the step's instruction, which opens the history every turn resends. */
   readonly instructionBytes: number;
+  /** The test-id-scoped edge retained when node handles are replaced. */
+  readonly position?: ActPosition | undefined;
 }
 
 export class ObservationFeed {
@@ -260,7 +265,7 @@ export class ObservationFeed {
    * queued observation would wait on its own caller.
    */
   async relocate(stale: RedactedNode): Promise<{ node: RedactedNode; observation: SemanticAgentObservation } | undefined> {
-    const descriptor = describeTarget(stale);
+    const descriptor = this.descriptorOf(stale);
     if (descriptor === undefined) return undefined;
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
@@ -271,6 +276,7 @@ export class ObservationFeed {
     );
     this.publish(observation);
     if (observation.kind === 'pixels') return undefined;
+    requireEdgeObservable(descriptor, observation);
     const relocated = relocateDescriptor(descriptor, observation.nodes);
     if (relocated.kind !== 'found') return undefined;
     const node = observation.nodes.get(relocated.id);
@@ -462,10 +468,16 @@ export class ObservationFeed {
   private refound(id: string, latest: SemanticAgentObservation): RedactedNode | undefined {
     const earlier = this.lastSeen(id)?.node;
     if (earlier === undefined) return undefined;
-    const descriptor = describeTarget(earlier);
+    const descriptor = this.descriptorOf(earlier);
     if (descriptor === undefined) return undefined;
+    requireEdgeObservable(descriptor, latest);
     const relocated = relocateDescriptor(descriptor, latest.nodes);
     return relocated.kind === 'found' ? latest.nodes.get(relocated.id) : undefined;
+  }
+
+  /** The scoped edge replaces content identity only for the named repeated control. */
+  private descriptorOf(node: RedactedNode): TraceTargetDescriptor | undefined {
+    return edgeDescriptor(node, this.options.position?.at, this.options.position?.testId) ?? describeTarget(node);
   }
 
 }

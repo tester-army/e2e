@@ -89,5 +89,5 @@ export function storedRecordingsFor(cache: ResolvedCacheConfig): StoredRecording
 function stepKey(step: TraceProvenance): string | undefined {
   const { testId, targetId, instructionDigest, paramsDigest, callIndex, agent } = step;
   if (paramsDigest === undefined || callIndex === undefined || agent === undefined) return undefined;
-  return JSON.stringify([testId, targetId, instructionDigest, paramsDigest, callIndex, agent]);
+  return JSON.stringify([testId, targetId, instructionDigest, paramsDigest, callIndex, agent, step.positionDigest]);
 }
