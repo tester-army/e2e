@@ -30,7 +30,7 @@ export function validatePermissions(targetName: string, browser: BrowserName, pe
     if (state !== 'grant') {
       throw new ConfigurationError(
         'INVALID_CONFIG',
-        `${where}.${name} is ${state}, but a web() target only grants; leave the permission out and the browser refuses it`,
+        `${where}.${name} is ${state}, but a web() target only grants; leave the permission out instead`,
       );
     }
   }

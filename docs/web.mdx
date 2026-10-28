@@ -287,8 +287,8 @@ whole screen instead.
 
 ## Granting browser permissions
 
-The browser refuses a permission the target doesn't grant. Headless
-Chromium refuses `navigator.clipboard.writeText` even after a click. To let
+Headless Chromium refuses a permission the target doesn't grant, so
+`navigator.clipboard.writeText` fails even after a click. To let
 the app use the clipboard, grant it on the target:
 
 ```ts

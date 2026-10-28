@@ -129,7 +129,7 @@ export function web(options: WebOptions = {}): EngineHandle {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressKey(key, operation),
     },
-    // A provider or a CDP attach drives Chromium.
+    // A provider or a CDP attach speaks CDP, so it takes Chromium's names.
     validateApp: (app, info) => validateApp(app, info, typeof options.browser === 'string' ? options.browser : 'chromium'),
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {

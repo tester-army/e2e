@@ -1199,8 +1199,9 @@ export interface TargetApp {
   /**
    * Permissions the app holds, by name. A device app has each granted,
    * denied, or reset before every fresh launch. A browser target takes
-   * `grant` only, holds it on every page of the attempt, and refuses what
-   * it leaves out. The engine checks the names its platform knows.
+   * `grant` only and holds it on every page of the attempt; what it leaves
+   * out is the browser's default, which headless Chromium refuses. The
+   * engine checks the names its platform knows.
    */
   permissions?: Readonly<Record<string, AppPermissionState>> | undefined;
   /**

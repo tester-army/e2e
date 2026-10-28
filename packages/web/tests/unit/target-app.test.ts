@@ -32,7 +32,7 @@ describe('web() and the target app', () => {
     );
     for (const state of ['deny', 'reset'] as const) {
       expect(() => web().validateApp!({ url, permissions: { camera: state } }, info)).toThrowError(
-        refused(`target "web" app.permissions.camera is ${state}, but a web() target only grants; leave the permission out and the browser refuses it`),
+        refused(`target "web" app.permissions.camera is ${state}, but a web() target only grants; leave the permission out instead`),
       );
     }
   });

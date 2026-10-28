@@ -464,7 +464,7 @@ Each is `'grant'`, `'deny'`, or `'reset'`.
 - A `mobile()` target sets each one before every fresh launch. See
   [permissions](/reference/mobile#engine).
 - A `web()` target takes `'grant'` only and grants it to every page of the
-  attempt, on any origin. The browser refuses a permission left out. See
+  attempt, on any origin. Headless Chromium refuses a permission left out. See
   [Granting browser permissions](/web#granting-browser-permissions).
 
 | Browser | Names |
@@ -473,7 +473,8 @@ Each is `'grant'`, `'deny'`, or `'reset'`.
 | `firefox` | `geolocation`, `local-network-access`, `notifications`, `persistent-storage`, `push`, `screen-wake-lock` |
 | `webkit` | `camera`, `clipboard-read`, `geolocation`, `microphone`, `notifications`, `screen-wake-lock` |
 
-A browser provider and `connect` drive Chromium.
+A browser provider or `connect` takes the `chromium` names: the engine drives
+it over CDP, Lightpanda included.
 
 #### `command`
 
