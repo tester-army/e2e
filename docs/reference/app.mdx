@@ -161,7 +161,8 @@ test('the dialog slides in', { video: 'off' }, async ({ app, screen }) => {
 
 - One recording at a time. The engine has one recorder, so set
   `video: 'off'` on the test: a start fails while the test's
-  [video](/reference/config#video) records.
+  [video](/reference/config#video) records. That includes `--video`,
+  `retain-on-failure`, and the retries `on-first-retry` records.
 - A recording still running when the test ends is stopped and kept.
 - Like the test's video, a recording masks nothing.
 
