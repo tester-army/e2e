@@ -207,6 +207,17 @@ test('fails once', async ({ app }) => {
     expect(listed.output).toContain('passes');
   });
 
+  it('exits 3 when a passed test failed its cleanup and the config leaves a timer open', () => {
+    const { exitCode } = cli(
+      {
+        'e2e.config.ts': fakeConfig("{ onEndAttempt() { throw new Error('cleanup failed'); } }") + openTimer,
+        'tests/pass.e2e.ts': test('passes'),
+      },
+      ['run'],
+    );
+    expect(exitCode).toBe(3);
+  });
+
   it('exits 0 with the whole json report on stdout when a test file leaves a timer open', () => {
     const titles = Array.from({ length: 400 }, (_, index) => `test number ${index}`);
     const { exitCode, stdout } = cli(
