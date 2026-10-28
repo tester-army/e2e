@@ -2456,6 +2456,71 @@ describe('deterministic actions', () => {
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
   });
 
+  it.each(
+    (['tap', 'focus', 'fill', 'clear', 'type', 'press character', 'focused character'] as const).flatMap(action =>
+      (['measured', 'tree'] as const).map(signal => [action, signal] as const)),
+  )('reobserves after %s when %s keyboard state changes before the control moves', async (action, signal) => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    const visible = signal === 'measured'
+      ? { ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible' as const, frame: { x: 0, y: 580, width: 390, height: 264 } } }
+      : { ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, { index: 11, ref: '@keyboard', type: 'Keyboard', rect: { x: 0, y: 580, width: 390, height: 264 } }] };
+    const search = await observed(h, 'Search');
+    if (action === 'type') await h.engine.keyboard!.type('blue', { replace: false }, test());
+    else if (action === 'focused character') await h.engine.keyboard!.press('a', test());
+    else if (action === 'press character') await h.engine.perform!(search.ref, { kind: 'press', key: 'a' }, test());
+    else if (action === 'fill') await h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
+    else if (action === 'clear') await h.engine.perform!(search.ref, { kind: 'clear' }, test());
+    else await h.engine.perform!(search.ref, { kind: action }, test());
+    // The first stale layout already reports the keyboard, as in the live probe.
+    h.fake.respond('capture.snapshot', () => visible);
+    const stale = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({
+      ...visible,
+      nodes: visible.nodes.map(node => node.identifier === 'ABOUT' || node.label === 'About'
+        ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } } : node),
+    }));
+    await h.engine.perform!(stale.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
+  it.each(['Enter', 'focused Enter', 'dismiss'] as const)('reobserves after %s hides the keyboard before the control moves', async action => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible', frame: { x: 0, y: 580, width: 390, height: 264 } } }));
+    const search = await observed(h, 'Search');
+    if (action === 'Enter') await h.engine.perform!(search.ref, { kind: 'press', key: 'Enter' }, test());
+    else if (action === 'focused Enter') await h.engine.keyboard!.press('Enter', test());
+    else await h.surface.dismissKeyboard(test().signal);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } }));
+    const stale = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' },
+      nodes: SETTINGS_NODES.map(node => node.identifier === 'ABOUT' || node.label === 'About'
+        ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } } : node),
+    }));
+    await h.engine.perform!(stale.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
+  it.each(['type', 'fill', 'clear'] as const)('keeps unchanged controls immediate after %s when keyboard state is unchanged', async action => {
+    for (const visible of [false, true]) {
+      const h = harness({ transition: 120 });
+      await openAttempt(h);
+      await sleep(150);
+      h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT,
+        keyboard: visible ? { kind: 'visible', frame: { x: 0, y: 580, width: 390, height: 264 } } : { kind: 'absent' },
+      }));
+      const search = await observed(h, 'Search');
+      if (action === 'type') await h.engine.keyboard!.type('blue', { replace: false }, test());
+      else if (action === 'fill') await h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
+      else await h.engine.perform!(search.ref, { kind: 'clear' }, test());
+      await tapsAtOnce(h, await observed(h, 'About'), { ref: '@e4' });
+    }
+  });
+
   it('acts on the duplicate nearest where the control was when a fresh snapshot lists several alike', async () => {
     const h = harness({ transition: 120 });
     await openAttempt(h);

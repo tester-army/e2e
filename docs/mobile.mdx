@@ -639,9 +639,10 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
   Query it by test id or label and assert `toBeSelected`. Checkboxes,
   radios, and `toBeChecked` work on both platforms.
 - On iOS, a plain React Native `View` has no children in the tree, so
-  `filter({ has })` on it and queries scoped to it match nothing. Scope to
-  the screen's `ScrollView` (`device.locator('role=scroll-area')`), or give
-  the children test ids.
+  `filter({ has })` on it and queries scoped to it match nothing, while
+  `filter({ hasNot })` keeps every such row, including one you meant to
+  exclude. Scope to the screen's `ScrollView`
+  (`device.locator('role=scroll-area')`), or give the children test ids.
 - A Jetpack Compose clickable drawn smaller than 48dp shows as two buttons
   in the tree, and a tap fails with `has no parent-owned touch point`. Make
   the control at least 48dp, Android's minimum touch target.

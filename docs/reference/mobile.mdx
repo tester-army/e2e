@@ -223,7 +223,9 @@ mobile({ platform: 'ios', settle: 300 }); // default: 150
  * control from a landed one (iOS reports the final frame at once, Android
  * the frame in flight), so the control is found again in a fresh snapshot
  * once the wait is over and acted on where it landed. Unmoved controls are
- * acted on immediately. Raise this for slower transitions.
+ * acted on immediately only when keyboard visibility is unchanged. Opening
+ * or closing the keyboard also uses the remaining budget. Raise it for
+ * slower transitions.
  */
 readonly transition?: number | undefined;
 ```

@@ -1,8 +1,8 @@
 /**
- * `locator.filter(options)` takes `hasText` and `has` and nothing else. A key
- * it does not implement (`hasNot`, `hasNotText`, `visible`) must fail the
- * call, alone or beside a supported one, rather than be dropped: dropping an
- * exclusion widens the match and the action lands on the wrong row.
+ * `locator.filter(options)` takes `hasText`, `hasNotText`, `has`, and
+ * `hasNot` and nothing else. A key it does not implement (`visible`) must fail
+ * the call, alone or beside a supported one, rather than be dropped: dropping
+ * an exclusion widens the match and the action lands on the wrong row.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -40,16 +40,41 @@ describe('locator.filter options', () => {
     expect(await screen.getByRole('row').filter({ hasText: 'Due' }).textContent()).toBe('Invoice 42 Due');
   });
 
+  it('excludes rows by hasNotText, alone, beside hasText, and as a RegExp', async () => {
+    const { screen } = invoiceScreen();
+    const rows = screen.getByRole('row');
+    expect(await rows.filter({ hasNotText: 'paid' }).allTextContents()).toEqual(['Invoice 42 Due']);
+    expect(await rows.filter({ hasText: 'invoice', hasNotText: /paid$/i }).allTextContents()).toEqual(['Invoice 42 Due']);
+    expect(await rows.filter({ hasNotText: /Invoice/ }).count()).toBe(0);
+    expect(await rows.filter({ hasNotText: 'unrelated' }).count()).toBe(2);
+    expect(await rows.filter({ hasNotText: '' }).count()).toBe(0);
+  });
+
+  it('drops rows whose subtree resolves hasNot, alone and beside hasText', async () => {
+    const badge = (id: string, text: string): SemanticNode => ({ ref: { id, revision: '' }, role: 'status', name: text, text });
+    const rows: readonly SemanticNode[] = [
+      { ...PAID, children: [badge('paid-badge', 'Paid')] },
+      { ...DUE, children: [badge('due-badge', 'Due')] },
+    ];
+    const { screen } = screenOver({
+      observe: () => snapshot(rows),
+      locate: (expression) => resolveExpression(expression, rows),
+      timeoutMs: 300,
+    });
+    const all = screen.getByRole('row');
+    expect(await all.filter({ hasNot: screen.getByRole('status', 'Paid') }).allTextContents()).toEqual(['Invoice 42 Due']);
+    expect(await all.filter({ hasText: 'Invoice', hasNot: screen.getByRole('status', 'Due') }).allTextContents()).toEqual(['Invoice 41 Paid']);
+    expect(await all.filter({ hasNot: screen.getByRole('status', 'Missing') }).count()).toBe(2);
+  });
+
   it.each<[string, (paid: Locator) => object, string]>([
-    ['hasNotText beside hasText', () => ({ hasText: 'Invoice', hasNotText: 'Paid' }), 'key "hasNotText"'],
-    ['hasNot beside has', (paid) => ({ has: paid, hasNot: paid }), 'key "hasNot"'],
     ['visible beside hasText', () => ({ hasText: 'Invoice', visible: true }), 'key "visible"'],
-    ['hasNotText alone', () => ({ hasNotText: 'Paid' }), 'key "hasNotText"'],
-    ['two unknown keys', (paid) => ({ hasText: 'Invoice', hasNot: paid, hasNotText: 'Paid' }), 'keys "hasNot", "hasNotText"'],
+    ['visible alone', () => ({ visible: true }), 'key "visible"'],
+    ['two unknown keys', (paid) => ({ has: paid, hasNotHas: paid, visible: true }), 'keys "hasNotHas", "visible"'],
     [
-      'a non-enumerable hasNotText',
-      () => Object.defineProperty({ hasText: 'Invoice' }, 'hasNotText', { value: 'Paid' }),
-      'key "hasNotText"',
+      'a non-enumerable visible',
+      () => Object.defineProperty({ hasText: 'Invoice' }, 'visible', { value: true }),
+      'key "visible"',
     ],
   ])('rejects %s with INVALID_LOCATOR before any engine call', (_, options, named) => {
     const { screen, expressions } = invoiceScreen();
@@ -57,7 +82,7 @@ describe('locator.filter options', () => {
     expect(() => screen.getByRole('row').filter(invalid<FilterOptions>(options(paid)))).toThrow(
       expect.objectContaining({
         code: 'INVALID_LOCATOR',
-        message: `filter options has no ${named}; it takes hasText, has`,
+        message: `filter options has no ${named}; it takes hasText, hasNotText, has, hasNot`,
       }),
     );
     expect(expressions).toEqual([]);
@@ -76,7 +101,7 @@ describe('locator.filter options', () => {
   it('rejects absent options as an empty filter', () => {
     const { screen } = invoiceScreen();
     expect(() => screen.getByRole('row').filter(invalid<FilterOptions>(undefined))).toThrow(
-      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter() requires hasText and/or has' }),
+      expect.objectContaining({ code: 'INVALID_LOCATOR', message: 'filter() requires hasText, hasNotText, has, and/or hasNot' }),
     );
   });
 });

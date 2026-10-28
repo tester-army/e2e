@@ -75,6 +75,13 @@ interface LocatorEngineOptions {
   readonly redact?: (text: string) => string;
 }
 
+/**
+ * Builds an action once its node has resolved, on every resolve: a `dragTo`
+ * resolves its drop target alongside the source, a secret fill clears the
+ * node it is about to land on.
+ */
+type ActionBuilder = (deadline: Deadline, ref: NodeRef) => Promise<LocatorAction>;
+
 /** A resolve that found its one match, and how long it polled for it: 0 when the first round found it. */
 interface Resolved {
   readonly ref: NodeRef;
@@ -349,10 +356,37 @@ export class LocatorEngine {
    */
   async perform(
     expression: LocatorExpression,
-    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
+    action: LocatorAction | ActionBuilder,
     timeoutMs?: number,
   ): Promise<void> {
     await this.performUntil(expression, action, this.deadline(timeoutMs));
+  }
+
+  /**
+   * Fills a secret into exactly one match, and hands the value over only
+   * once `authorize` has cleared the node it lands on. The node is read and
+   * cleared on every resolve, so a match that went stale and resolved again
+   * is checked again before the value is handed over.
+   */
+  async fillSecret(
+    expression: LocatorExpression,
+    authorize: (node: SemanticNode) => Promise<string>,
+    timeoutMs?: number,
+  ): Promise<void> {
+    this.checkAction({ kind: 'fill', value: '', sensitive: true });
+    await this.performUntil(
+      expression,
+      async (deadline, ref) => {
+        let node: SemanticNode;
+        try {
+          node = await this.session.read(ref, this.operationWithin(deadline));
+        } catch (cause) {
+          throw translateLocatorError(cause, expression);
+        }
+        return { kind: 'fill', value: await authorize(node), sensitive: true };
+      },
+      this.deadline(timeoutMs),
+    );
   }
 
   /** Performs one pointer action at a viewport point, with no node behind it. */
@@ -484,7 +518,7 @@ export class LocatorEngine {
   /** `perform` within a deadline a caller shares across steps, such as the swipes of one scroll. */
   async performUntil(
     expression: LocatorExpression,
-    action: LocatorAction | ((deadline: Deadline) => Promise<LocatorAction>),
+    action: LocatorAction | ActionBuilder,
     deadline: Deadline,
   ): Promise<void> {
     if (typeof action !== 'function') this.checkAction(action);
@@ -496,7 +530,7 @@ export class LocatorEngine {
       // Read now, from the resolve's own cache: a dragTo's target resolve
       // below supersedes this ref, and the node it named would be gone.
       const node = this.options.recordEvent === undefined ? undefined : await this.session.read(ref, this.operationWithin(deadline)).catch(() => undefined);
-      const resolved = typeof action === 'function' ? await action(deadline) : action;
+      const resolved = typeof action === 'function' ? await action(deadline, ref) : action;
       const record = (status: StepEvent['status'], code?: string): void =>
         this.recordAction({ node, kind: resolved.kind, startedAt, startedMs, waitedMs, stale, status, code });
       try {

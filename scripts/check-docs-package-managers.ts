@@ -2,7 +2,7 @@
  * Fails when a docs shell block runs a package manager command outside a
  * `<CodeGroup>` of `npm`, `pnpm`, and `bun` blocks.
  *
- * Mintlify syncs code group tabs by title across every page and remembers the
+ * The docs site syncs code group tabs by title across every page and remembers the
  * reader's pick, so one choice switches every command in the docs only when
  * each command block offers the same three titles.
  *

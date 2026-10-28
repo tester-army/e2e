@@ -5,7 +5,7 @@
  * (except an `index.mdx`) is about one vendor, so it needs both logos:
  *
  * - a sidebar icon: `icon:` in the frontmatter names a file under
- *   `/images/icons/`, the black silhouette `docs/style.css` greys out;
+ *   `/images/icons/`, the black silhouette the docs site greys out;
  * - a card logo: every `<Card>` on any page that links to it names a file
  *   under `/images/integrations/`, the brand-colored mark.
  *
