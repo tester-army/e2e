@@ -188,15 +188,16 @@ How recovery runs:
   binding. An incompatible Playwright version fails the connection instead of
   exposing pixels.
 - The original page's frames must keep their closed shadow DOM tracking
-  hooks. Existing closed roots cannot recover without a reload of the
-  application. Mask queries reject any untracked document.
+  hooks and init-time native DOM references for secure-field masks. Existing
+  closed roots and those references cannot recover without a reload of the
+  application. Mask queries reject any untracked or earlier-version document.
 - Endpoint resolution, CDP attachment, setup, and dispatch share one timeout.
   Cancelling a concurrent waiter does not cancel the operation that started
   recovery. Cancelling that recovery owner fails the shared recovery.
 
 | Throws | When |
 | --- | --- |
-| `ENGINE_FAILURE` | A document loaded without the closed shadow DOM hook while disconnected. |
+| `ENGINE_FAILURE` | A document lacks the current closed shadow DOM and secure-field mask hooks after disconnection. |
 | `OPERATION_TIMEOUT` | Endpoint resolution, attachment, setup, and dispatch exhausted their shared timeout. |
 | `CANCELLED` | The caller or the attempt cancelled. |
 
@@ -938,6 +939,11 @@ fresh viewport screenshot.
 
 - Playwright runs a new secure-field mask sweep across every reachable frame,
   including open and closed shadow roots. Every mask probe must succeed.
+- Light/open-root masks run in the frame's main world with DOM references
+  captured before page scripts. This also covers JavaScript-URL frames whose
+  rewritten documents have lost WebKit's utility context. The fixed secure
+  predicate and traversal order match Playwright's native CSS query; closed
+  roots keep their separate mask. Relevant DOM overrides reject capture.
 - The observation reports unavailable semantics and clears earlier node
   references.
 - Recovery requires time left in the operation budget and permission from the
@@ -945,6 +951,13 @@ fresh viewport screenshot.
   `vision: true` or `'only'`.
 - Failed masking, cancellation, and hard engine errors still stop the
   observation.
+
+The captured-native query does not make Playwright an isolation boundary
+against arbitrary hostile page JavaScript. Playwright still performs its own
+main-world selector dispatch outside that query. In particular, its initial
+query-root property reads precede the engine's integrity checks. The query
+itself checks effective DOM methods and shadow getters through captured
+descriptors and refuses replacements without invoking them.
 
 When fallback is permitted, the reader reserves one quarter of the remaining
 observation budget, capped at two seconds, for the screenshot. The deadline

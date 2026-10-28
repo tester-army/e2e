@@ -46,14 +46,18 @@ export async function registerCdpSelectors(context: BrowserContext, budget: Conn
   }
 }
 
-/** Existing closed roots cannot be recovered if their document loaded without the tracking hook. */
+/** Existing closed roots and pristine DOM methods cannot be recovered after page scripts have run. */
 export async function requireCdpShadowTracking(page: Page, budget: ConnectionBudget): Promise<void> {
   if (budget.signal.aborted) throw connectionAbort(budget.signal, 'CDP tracking verification');
   const tracked = await Promise.all(page.frames().map((frame) =>
-    frame.evaluate((key) => Reflect.get(globalThis, Symbol.for(key)) instanceof WeakMap, CLOSED_SHADOW_ROOTS_KEY),
+    frame.evaluate((key) => {
+      const record: unknown = Reflect.get(globalThis, Symbol.for(key));
+      return record instanceof WeakMap && Reflect.get(record, 'maskDOMVersion') === 1 &&
+        typeof Reflect.get(record, 'querySecureFields') === 'function';
+    }, CLOSED_SHADOW_ROOTS_KEY),
   ));
   if (budget.signal.aborted) throw connectionAbort(budget.signal, 'CDP tracking verification');
   if (tracked.some((present) => !present)) {
-    throw new EngineError('ENGINE_FAILURE', 'CDP recovery failed: closed shadow root tracking is unavailable after a document changed while disconnected; locators and secure-field masks need it', { retryable: false });
+    throw new EngineError('ENGINE_FAILURE', 'CDP recovery failed: closed shadow root tracking or secure-field DOM integrity is unavailable after a document changed while disconnected; locators and secure-field masks need both', { retryable: false });
   }
 }

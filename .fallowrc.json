@@ -1,6 +1,10 @@
 {
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
+    "scripts/run-mask-regression.mjs",
+    "scripts/mask-regression-child.mjs",
+    "scripts/mask-owned-group-fixture.mjs",
+    "scripts/mask-owned-group.test.mjs",
     "apps/testbed/e2e.config.ts",
     "apps/testbed/e2e.*.config.ts",
     "apps/testbed/tests*/**/*.ts",

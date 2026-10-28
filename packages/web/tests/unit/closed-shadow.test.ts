@@ -47,9 +47,18 @@ function installInitScript(): { global: object; Element: { prototype: { attachSh
     attached.push(created);
     return created;
   } } };
+  Object.defineProperty(Element.prototype, 'shadowRoot', { get: () => null });
+  Object.defineProperty(Element.prototype, 'querySelectorAll', { value: () => [] });
+  const Document = { prototype: { querySelectorAll: () => [] } };
+  const DocumentFragment = { prototype: { querySelectorAll: () => [] } };
+  const Node = { prototype: Object.create(null, { nodeType: { get: () => 9 } }) as object };
+  const NodeList = { prototype: Object.create(null, {
+    length: { get: () => 0 }, item: { value: () => null },
+    [Symbol.iterator]: { value: Array.prototype[Symbol.iterator] },
+  }) as object };
   const global = {};
-  const install = new Function('globalThis', 'Element', CLOSED_SHADOW_ROOTS_INIT_SCRIPT) as (global: object, element: object) => void;
-  install(global, Element);
+  const install = new Function('globalThis', 'Element', 'Document', 'DocumentFragment', 'Node', 'NodeList', CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+  install(global, Element, Document, DocumentFragment, Node, NodeList);
   return { global, Element };
 }
 

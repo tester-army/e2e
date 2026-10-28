@@ -35,7 +35,7 @@
     "test:web-benchmark": "pnpm run build && pnpm --filter @e2e-dev/web-benchmark test",
     "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2e-dev/mobile-benchmark test",
     "test:agent": "pnpm run build && pnpm --filter @e2e-dev/testbed test:agent",
-    "test:scripts": "node --test \"scripts/**/*.test.ts\"",
+    "test:scripts": "node --test \"scripts/**/*.test.ts\" \"scripts/**/*.test.mjs\"",
     "bench:ab": "node scripts/bench-ab.ts"
   },
   "contributors": [

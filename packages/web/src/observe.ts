@@ -5,6 +5,7 @@ import type { ObservationPixels, OperationContext, ViewportSize } from 'e2e/engi
 import { CaptureScope } from './capture-scope.ts';
 import { CLOSED_SHADOW_SELECTOR_ENGINE } from './closed-shadow.ts';
 import { SECURE_FIELD_SELECTOR } from './read-node.ts';
+import { MAIN_WORLD_SELECTOR_ENGINE } from './main-world-selector.ts';
 
 /**
  * Budget for one masked screenshot, still capped by the operation timeout. A
@@ -30,7 +31,7 @@ export function secureFieldMasks(page: Page): Locator[] {
   return page
     .frames()
     .flatMap((frame) => [
-      frame.locator(SECURE_FIELD_SELECTOR),
+      frame.locator(`${MAIN_WORLD_SELECTOR_ENGINE}=${SECURE_FIELD_SELECTOR}`),
       frame.locator(`${CLOSED_SHADOW_SELECTOR_ENGINE}=${SECURE_FIELD_SELECTOR}`),
     ]);
 }

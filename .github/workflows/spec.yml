@@ -93,7 +93,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium firefox webkit --with-deps
       - name: Unit and integration tests
         run: pnpm test
 

@@ -6,14 +6,16 @@
  * context register.
  */
 
+import { SECURE_FIELD_SELECTOR } from './read-node.ts';
+
 /**
  * Where the init script below records closed shadow roots, keyed by host, and
  * where the in-page reader looks for them. The reader is serialized into the
  * page and cannot import this constant, so the literal is repeated inside it;
  * the two must agree, like `SECURE_FIELD_SELECTOR` on both sides of masking.
  *
- * The record is a `WeakMap` from host to root with one own property beside
- * the map: `count`, the number of closed roots the document has attached. It
+ * The record is a `WeakMap` from host to root with `count`, the number of
+ * closed roots the document has attached, and a captured-native mask query. It
  * lets a selector engine answer for a document without closed roots without
  * walking it.
  */
@@ -47,6 +49,99 @@ export const CLOSED_SHADOW_ROOTS_INIT_SCRIPT = `(() => {
     }
     return root;
   };
+  // Capture before page scripts. Mask traversal never calls page overrides or
+  // mutable NodeList iterators; observable DOM drift still refuses capture.
+  const apply = Reflect.apply;
+  const descriptor = Object.getOwnPropertyDescriptor;
+  const prototype = Object.getPrototypeOf;
+  const define = Object.defineProperty;
+  const documentQuery = Document.prototype.querySelectorAll;
+  const elementQuery = Element.prototype.querySelectorAll;
+  const fragmentQuery = DocumentFragment.prototype.querySelectorAll;
+  const nodeType = descriptor(Node.prototype, 'nodeType').get;
+  const shadow = descriptor(Element.prototype, 'shadowRoot').get;
+  const listLength = descriptor(NodeList.prototype, 'length').get;
+  const listItem = NodeList.prototype.item;
+  const closedRoot = WeakMap.prototype.get;
+  const iteratorKey = Symbol.iterator;
+  const listIterator = NodeList.prototype[iteratorKey];
+  const arrayPrototype = Array.prototype;
+  const arrayIterator = arrayPrototype[iteratorKey];
+  const arrayPush = arrayPrototype.push;
+  const iteratorPrototype = prototype(apply(arrayIterator, [], []));
+  const iteratorNext = descriptor(iteratorPrototype, 'next').value;
+  const effective = (value, name) => {
+    for (let owner = value; owner !== null; owner = prototype(owner)) {
+      const found = descriptor(owner, name);
+      if (found !== undefined) return found;
+    }
+    return undefined;
+  };
+  const data = (value, name, expected) => {
+    const found = effective(value, name);
+    if (found === undefined || found.get !== undefined || found.set !== undefined || found.value !== expected)
+      throw new Error('secure-field DOM integrity is unavailable for this document');
+  };
+  const requireShadow = (element) => {
+    const found = effective(element, 'shadowRoot');
+    if (found === undefined || found.get !== shadow || found.set !== undefined)
+      throw new Error('secure-field DOM integrity is unavailable for this document');
+    return apply(shadow, element, []);
+  };
+  const querySecureFields = (root) => {
+    data(roots, 'get', closedRoot);
+    // These are still used by the separate closed-root selector and by
+    // Playwright's outer dispatch. Refuse observable drift before returning.
+    data(arrayPrototype, iteratorKey, arrayIterator);
+    data(arrayPrototype, 'push', arrayPush);
+    data(iteratorPrototype, 'next', iteratorNext);
+    const result = [];
+    let reachableClosedRoots = 0;
+    const append = (value) => define(result, result.length, { value, writable: true, enumerable: true, configurable: true });
+    // This is Playwright 1.64.1 _queryCSS's light/open-root traversal order:
+    // root matches, root's own open tree, then each descendant's open tree.
+    const visit = (current, collect) => {
+      const kind = apply(nodeType, current, []);
+      const type = effective(current, 'nodeType');
+      if (type === undefined || type.get !== nodeType || type.set !== undefined)
+        throw new Error('secure-field DOM integrity is unavailable for this document');
+      const query = kind === 9 ? documentQuery : kind === 1 ? elementQuery : kind === 11 ? fragmentQuery : undefined;
+      if (query === undefined) throw new Error('secure-field DOM integrity is unavailable for this document');
+      data(current, 'querySelectorAll', query);
+      if (collect) {
+        const matches = apply(query, current, [${JSON.stringify(SECURE_FIELD_SELECTOR)}]);
+        const length = apply(listLength, matches, []);
+        for (let index = 0; index < length; index++) append(apply(listItem, matches, [index]));
+      }
+      if (kind === 1) {
+        const ownShadow = requireShadow(current);
+        if (ownShadow !== null) visit(ownShadow, collect);
+        const closed = apply(closedRoot, roots, [current]);
+        if (closed !== undefined) { reachableClosedRoots++; visit(closed, false); }
+      } else if (effective(current, 'shadowRoot') !== undefined) {
+        throw new Error('secure-field DOM integrity is unavailable for this document');
+      }
+      const descendants = apply(query, current, ['*']);
+      data(descendants, iteratorKey, listIterator);
+      const length = apply(listLength, descendants, []);
+      for (let child = 0; child < length; child++) {
+        const element = apply(listItem, descendants, [child]);
+        const nested = requireShadow(element);
+        if (nested !== null) visit(nested, collect);
+        // The separate closed-root mask still owns those fields. Validate its
+        // roots too, without adding them twice to the light/open mask set.
+        const closed = apply(closedRoot, roots, [element]);
+        if (closed !== undefined) { reachableClosedRoots++; visit(closed, false); }
+      }
+    };
+    visit(root, true);
+    const count = descriptor(roots, 'count');
+    if (count === undefined || typeof count.value !== 'number' || count.value < reachableClosedRoots || count.value % 1 !== 0)
+      throw new Error('secure-field DOM integrity is unavailable for this document');
+    return result;
+  };
+  define(roots, 'querySecureFields', { value: querySecureFields, enumerable: false, configurable: false, writable: false });
+  define(roots, 'maskDOMVersion', { value: 1, enumerable: false, configurable: false, writable: false });
 })();`;
 
 /** Playwright selector engine name; `e2e-closed=<css>` matches inside recorded closed shadow roots. */
