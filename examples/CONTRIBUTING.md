@@ -45,7 +45,8 @@ Your editor can autocomplete the fields from
   which the e2e team sets once a partnership is agreed; the repository must
   belong to the entry's `author.github`. The site shows a
   partner example with a blue seal: "Verified and maintained by" its
-  `author.name`.
+  `author.name`, which links to the partner's landing page in
+  `author.website` (required on a partner example, and only there).
 - `license` is the example's SPDX identifier, such as `MIT`. Set
   `licenseUrl` to link your LICENSE file; without it, the site links to the
   license on spdx.org.

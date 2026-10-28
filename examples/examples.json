@@ -568,7 +568,8 @@
       "repository": "https://github.com/smol-machines/e2e-smolmachines",
       "author": {
         "name": "smol machines",
-        "github": "smol-machines"
+        "github": "smol-machines",
+        "website": "https://smolmachines.com"
       },
       "license": "Apache-2.0",
       "licenseUrl": "https://github.com/smol-machines/e2e-smolmachines/blob/main/LICENSE",
@@ -594,7 +595,8 @@
       "repository": "https://github.com/kernel/cookbooks/tree/main/integrations/e2e-kernel",
       "author": {
         "name": "KERNEL",
-        "github": "kernel"
+        "github": "kernel",
+        "website": "https://www.kernel.sh"
       },
       "license": "MIT",
       "licenseUrl": "https://github.com/kernel/cookbooks/blob/main/LICENSE",

@@ -56,7 +56,7 @@ interface RegistryExample {
   icon?: string;
   source: 'official' | 'partner' | 'community';
   repository: string;
-  author: { github: string };
+  author: { github: string; website?: string };
   tags: Partial<Record<TagKind, string[]>>;
 }
 
@@ -154,6 +154,12 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
     } else if (example.source === 'partner' && ownerOf(example.repository) !== example.author.github.toLowerCase()) {
       // The site's partner seal credits author.name, so the partner must own the repository.
       problems.push(`${name}: a partner example lives in its author's repository, https://github.com/${example.author.github}/`);
+    }
+    if (example.source === 'partner' && !example.author?.website) {
+      problems.push(`${name}: a partner example names its author's landing page in author.website`);
+    } else if (example.source !== 'partner' && example.author?.website) {
+      // A website link is part of a partnership, not something any entry can add.
+      problems.push(`${name}: only a partner example has author.website`);
     }
   }
 

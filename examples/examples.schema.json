@@ -162,6 +162,11 @@
               "description": "The GitHub user or organization: the avatar and the profile link.",
               "type": "string",
               "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+            },
+            "website": {
+              "description": "A partner's landing page, linked from the partner's name on the site. Required on a partner example, and only there.",
+              "type": "string",
+              "pattern": "^https://"
             }
           }
         },
