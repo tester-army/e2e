@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { LocatorExpression } from '../engine/surface.ts';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
-import { ConfigurationError, TestError } from '../internal/errors.ts';
+import { TestError } from '../internal/errors.ts';
 import { compareImages, decodePng, encodePng, type ImageComparison, type RgbaImage } from '../internal/image.ts';
 import { pollCondition, type Deadline } from '../internal/time.ts';
 import { describeExpression } from '../locator/expression.ts';
@@ -74,9 +74,6 @@ export async function expectScreenshot(
   const stored: Stored = { file, shown: path.relative(store.projectRoot, file).split(path.sep).join('/') };
   const label = `${subject === undefined ? 'screen' : describeExpression(subject)} vs ${call.stem}.png`;
   await context.steps.run('assertion', api, label, async () => {
-    if (store.withholdsPixels()) {
-      throw new ConfigurationError('POLICY_DENIED', `${api} is denied after a secret fill because the app may display the secret outside a secure field`);
-    }
     const deadline = context.engine.deadline(call.timeout ?? context.engine.assertionTimeout);
     const capture = screenshotCapturer(context, { api, subject, masks: call.masks, maskColor: call.maskColor }, deadline);
     const run: Run = { context, store, api, call, stored, capture };

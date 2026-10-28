@@ -12,7 +12,7 @@
  * hold the payload to that promise.
  */
 
-import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
+import { GRAMMAR_ACTION_NAMES, GRAMMAR_TOOL_NAMES, HARNESS_TOOL_NAMES, MCP_SESSION_SURFACE, PROJECT_TOOL_EVENT_PREFIX } from '../agent/action-names.ts';
 import { modelLabel } from '../config/agent.ts';
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
@@ -36,6 +36,8 @@ export const EVENT_CLI_SESSION = 'e2e_cli_session';
 export const EVENT_RUN_COMPLETED = 'e2e_run_completed';
 /** One per `e2e init`, however it ended: what was chosen and whether anything was written. */
 export const EVENT_INIT_COMPLETED = 'e2e_init_completed';
+/** One per `e2e upgrade`, however it ended: the versions it moved between and what stopped it. */
+export const EVENT_UPGRADE_COMPLETED = 'e2e_upgrade_completed';
 /** One per `open_session` an `e2e mcp` server served, sent when the session closes or its open fails. */
 export const EVENT_MCP_SESSION = 'e2e_mcp_session';
 /** The session's error code for a flag or argument commander rejected; no runner code exists for it. */
@@ -54,7 +56,8 @@ export interface SessionEnd {
  * nothing to write, `cancelled` stopped at a prompt, `install-failed` wrote
  * the files but the package manager failed, `not-interactive` had prompts and
  * no terminal, `invalid-project` could not start (a file for a directory, an
- * unreadable package.json, a bundled skill missing).
+ * unreadable package.json, a bundled skill missing, a non-empty directory for
+ * `--example`), `example-failed` could not download the example.
  */
 export type InitResult =
   | 'scaffolded'
@@ -62,12 +65,15 @@ export type InitResult =
   | 'cancelled'
   | 'install-failed'
   | 'not-interactive'
-  | 'invalid-project';
+  | 'invalid-project'
+  | 'example-failed';
 
 /** What `e2e init` was asked and chose: the CLI's own option ids, never a path or an endpoint the user typed. */
 export interface InitOutcome {
   readonly result: InitResult;
   readonly yes: boolean;
+  /** The `--example` folder name, null without the flag. */
+  readonly example: string | null;
   /** Whether a config already existed, in which case no engine or gateway was asked. */
   readonly existingConfig: boolean;
   readonly engine: string | null;
@@ -78,7 +84,46 @@ export interface InitOutcome {
   readonly install: boolean;
 }
 
+/**
+ * How `e2e upgrade` ended. `upgraded` installed, `up-to-date` had nothing to
+ * install, `dry-run` printed the plan; the rest stopped it: no package.json
+ * that lists e2e, one that could not be read, an e2e linked from a workspace
+ * or a path, a version or dist-tag e2e never published, a sibling with no
+ * release that fits, a registry that did not answer, a failed or interrupted
+ * install.
+ */
+export type UpgradeResult =
+  | 'upgraded'
+  | 'up-to-date'
+  | 'dry-run'
+  | 'no-project'
+  | 'invalid-project'
+  | 'linked'
+  | 'unknown-target'
+  | 'incompatible'
+  | 'registry-failed'
+  | 'install-failed';
+
+/** What `e2e upgrade` was asked for and did; each fact is null until the command learned it. */
+export interface UpgradeOutcome {
+  readonly result: UpgradeResult;
+  /** A named version, or the dist-tag as typed. */
+  readonly target: { readonly kind: 'version' } | { readonly kind: 'tag'; readonly tag: string };
+  /** The e2e installed before, and the one the target resolved to. */
+  readonly fromVersion: string | null;
+  readonly toVersion: string | null;
+  readonly manager: string | null;
+  /** The registry `@e2e-dev/*` packages the project lists, and how many of them and e2e the install moved. */
+  readonly siblings: readonly string[];
+  readonly moved: number;
+  /** Packages left alone because a workspace, a path, or git provides them. */
+  readonly linked: number;
+}
+
 const SEMVER = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/u;
+/** The dist-tags e2e publishes under; any other tag a user typed is `other`. */
+const UPGRADE_TAGS: ReadonlySet<string> = new Set(['latest', 'nightly', 'canary', 'beta']);
+const SIBLING_SCOPE = '@e2e-dev/';
 /** Distinct error codes, and distinct failure kinds, a run event lists. */
 const MAX_ERROR_CODES = 20;
 
@@ -107,12 +152,39 @@ export function initCompletedEvent(outcome: InitOutcome): TelemetryEvent {
     properties: {
       result: outcome.result,
       yes: outcome.yes,
+      example: outcome.example,
       existing_config: outcome.existingConfig,
       engine: outcome.engine,
       gateway: outcome.gateway,
       skill: outcome.skill,
       mcp: outcome.mcp,
       install: outcome.install,
+    },
+  };
+}
+
+/**
+ * The upgrade event: e2e's own versions and dist-tags, and the sibling
+ * packages by their name inside the `@e2e-dev` scope. A tag e2e does not
+ * publish, a version that is not semver, and a package outside the scope
+ * fold to `other` or null.
+ */
+export function upgradeCompletedEvent(outcome: UpgradeOutcome): TelemetryEvent {
+  const version = (value: string | null): string | null => (value !== null && SEMVER.test(value) ? value : null);
+  const from = version(outcome.fromVersion);
+  const to = version(outcome.toVersion);
+  return {
+    name: EVENT_UPGRADE_COMPLETED,
+    properties: {
+      result: outcome.result,
+      target: outcome.target.kind === 'version' ? 'version' : UPGRADE_TAGS.has(outcome.target.tag) ? outcome.target.tag : 'other',
+      from_version: from,
+      to_version: to,
+      prerelease: to === null ? null : to.split('+')[0]!.includes('-'),
+      manager: outcome.manager === null ? null : plainToken(outcome.manager),
+      siblings: unique(outcome.siblings.map((name) => (name.startsWith(SIBLING_SCOPE) ? plainToken(name.slice(SIBLING_SCOPE.length)) : 'other'))),
+      packages_moved: outcome.moved,
+      packages_linked: outcome.linked,
     },
   };
 }
@@ -165,15 +237,19 @@ function* scopes(report: Report1Document): Generator<ReportScope> {
 
 /**
  * The steps of each test the run executed, across its attempts: one entry per
- * result, and one per serial member by index, since a serial group's attempt
- * runs every member again.
+ * result that made an attempt, and one per serial member that ran, by index,
+ * since a serial group's attempt runs every member again. A serial member's
+ * result carries no attempts of its own, so it counts once, through its group.
  */
 function testSteps(report: Report1Document): ReportStep[][] {
-  const tests: ReportStep[][] = report.run.results.map((result) => result.attempts.flatMap((attempt) => attempt.steps));
+  const tests: ReportStep[][] = report.run.results
+    .filter((result) => result.attempts.length > 0)
+    .map((result) => result.attempts.flatMap((attempt) => attempt.steps));
   for (const group of report.run.serialGroups) {
     const members = new Map<number, ReportStep[]>();
     for (const attempt of group.attempts) {
       for (const member of attempt.members) {
+        if (member.status === 'skipped') continue;
         members.set(member.index, [...(members.get(member.index) ?? []), ...member.steps]);
       }
     }
@@ -193,6 +269,56 @@ function agentStepsByApi(steps: readonly ReportStep[]): Record<string, number> {
       steps.filter((step) => step.kind === 'agent' && step.api === api).length,
     ]),
   );
+}
+
+/** The model calls of the agent steps by api, keyed like `agentStepsByApi`: where the model spend goes. */
+function modelCallsByApi(steps: readonly ReportStep[]): Record<string, number> {
+  return Object.fromEntries(
+    AGENT_APIS.map((api): [string, number] => [
+      `model_calls_${api.slice('agent.'.length).toLowerCase()}`,
+      steps.reduce((total, step) => total + (step.kind === 'agent' && step.api === api ? (step.model?.calls ?? 0) : 0), 0),
+    ]),
+  );
+}
+
+/**
+ * How much of a test the replay cache carried, across its attempts.
+ * `code-only` ran no agent step; `replayed` replayed every agent step from
+ * the cache, so no executor ran; `assisted` ran the executor but the cache
+ * carried at least part of a step; `live` ran every agent step on the
+ * executor. Whether the executor called a model is `model_calls`' business.
+ */
+type TestCacheTier = 'code-only' | 'replayed' | 'assisted' | 'live';
+
+/** The tier of one test, from its steps across attempts. */
+function testCacheTier(steps: readonly ReportStep[]): TestCacheTier {
+  const agent = steps.filter((step) => step.kind === 'agent');
+  if (agent.length === 0) return 'code-only';
+  if (agent.every((step) => step.cache?.mode === 'self-finalized')) return 'replayed';
+  return agent.some((step) => step.cache?.mode === 'self-finalized' || step.cache?.mode === 'agent-concluded') ? 'assisted' : 'live';
+}
+
+/** The tests per cache tier; the four add up to the tests the run executed. */
+function testsByCacheTier(tests: readonly (readonly ReportStep[])[]): Record<string, number> {
+  const tiers = tests.map(testCacheTier);
+  const count = (tier: TestCacheTier) => tiers.filter((candidate) => candidate === tier).length;
+  return {
+    tests_code_only: count('code-only'),
+    tests_replayed: count('replayed'),
+    tests_assisted: count('assisted'),
+    tests_live: count('live'),
+  };
+}
+
+/** The cache's reason tokens for the steps of one mode, counted: why a step missed, or why a replay handed off. */
+function cacheReasons(steps: readonly ReportStep[], mode: 'missed' | 'agent-concluded'): Record<string, number> {
+  const counts = new Map<string, number>();
+  for (const step of steps) {
+    if (step.cache?.mode !== mode || step.cache.reason === undefined) continue;
+    const reason = plainToken(step.cache.reason);
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  }
+  return sortedCounts(counts);
 }
 
 /** The scope's verdict, then the steps that led there, then what cleanup added. */
@@ -267,6 +393,7 @@ function configFeatures(config: ResolvedConfig): Record<string, JsonValue> {
     config_cache_strict: config.cache.strict !== false,
     config_reporters: unique(config.reporters),
     config_custom_reporters: config.customReporters.length,
+    config_filters: config.filters.length,
     config_artifact_store: config.artifactStore !== undefined,
     config_trace_modes: unique(config.targets.map((target) => target.trace.mode)),
     config_video_modes: unique(config.targets.map((target) => target.video.mode)),
@@ -327,6 +454,12 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       tests_interrupted: run.summary.interrupted,
       tests_flaky: run.summary.flaky,
       tests_skipped: run.summary.skipped,
+      filters_run: run.filters?.length ?? 0,
+      filters_timed_out: run.filters?.filter((record) => record.outcome === 'timed-out').length ?? 0,
+      filters_failed: run.filters?.filter((record) => record.outcome === 'failed').length ?? 0,
+      filters_skipped: run.changes?.skipped !== undefined,
+      filters_changed_files: run.changes?.files ?? 0,
+      tests_left_out_by_filters: run.filters?.reduce((total, record) => total + record.excluded, 0) ?? 0,
       attempts_total: attempts.reduce((total, count) => total + count, 0),
       tests_retried: attempts.filter((count) => count > 1).length,
       targets: run.targets.length,
@@ -342,12 +475,17 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
       agent_steps_replayed: steps.filter((step) => step.cache?.mode === 'self-finalized').length,
       agent_steps_partial: steps.filter((step) => step.cache?.mode === 'agent-concluded').length,
       agent_steps_missed: steps.filter((step) => step.cache?.mode === 'missed').length,
+      agent_steps_uncached: steps.filter((step) => step.kind === 'agent' && step.api === 'agent.act' && step.cache === undefined).length,
+      agent_miss_reasons: cacheReasons(steps, 'missed'),
+      agent_handoff_reasons: cacheReasons(steps, 'agent-concluded'),
+      ...testsByCacheTier(tests),
       agent_steps_vision: steps.filter((step) => step.visionInput === true).length,
       agent_actions: agentActions(steps),
       model_gateway: first?.provider ?? null,
       model_provider: firstModel?.provider ?? null,
       model_id: firstModel === undefined ? null : plainToken(firstModel.id),
       model_calls: models.reduce((total, model) => total + model.calls, 0),
+      ...modelCallsByApi(steps),
       model_tokens: run.usage.modelTokens,
       model_cached_tokens: run.usage.modelCachedTokens ?? null,
       estimated_cost_usd: run.usage.estimatedCostUsd ?? null,
@@ -366,10 +504,14 @@ export function runCompletedEvent(report: Report1Document, context: RunContext):
 
 /**
  * The catalog tools an MCP session serves itself, by name: the grammar and
- * the session's own (`createSessionCatalog`). A project's tools arrive
+ * the session's own (`createSessionCatalog`), read off the reserved names so
+ * a new session tool is counted under its name. A project's tools arrive
  * counted together; any name outside this set folds to `other`.
  */
-const SESSION_TOOLS: ReadonlySet<string> = new Set([...GRAMMAR_TOOL_NAMES, 'locate', 'start_recording', 'stop_recording']);
+const SESSION_TOOLS: ReadonlySet<string> = new Set([
+  ...GRAMMAR_TOOL_NAMES,
+  ...[...HARNESS_TOOL_NAMES].flatMap(([name, surface]) => (surface === MCP_SESSION_SURFACE ? [name] : [])),
+]);
 
 /** One MCP session: the client, the target's platform and engine, how it ended, and its calls by the runner's tool names. */
 export function mcpSessionEvent(summary: McpSessionSummary, client: McpClient | undefined): TelemetryEvent {

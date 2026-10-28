@@ -488,7 +488,7 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
   );
 
   it(
-    'a failing endAttempt marks cleanup failed with a secondary error but keeps the test passed',
+    'a failing endAttempt marks cleanup failed with a secondary error and exits 3 even though the test passed',
     async () => {
       const fake = createFakeEngine({
         onEndAttempt() {
@@ -504,7 +504,7 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
       const attempt = result.attempts[0]!;
       expect(attempt.cleanup).toBe('failed');
       expect(attempt.secondaryErrors.some((error) => error.phase === 'cleanup')).toBe(true);
-      expect(outcome.exitCode).toBe(0);
+      expect(outcome.exitCode).toBe(3);
       project.cleanup();
     },
     60_000,
@@ -1076,6 +1076,34 @@ test('fails on purpose', async ({ app }) => {
       expect(fake.operations.map((op) => op.method)).toEqual(
         expect.arrayContaining(['artifacts.startVideo', 'artifacts.stopVideo']),
       );
+      project.cleanup();
+    },
+    60_000,
+  );
+
+  it(
+    'a required video that fails to stop fails cleanup and exits 3 even though the test passed (#1231)',
+    async () => {
+      const fake = createFakeEngine({
+        video: true,
+        onStopVideo() {
+          throw new Error('video finalization exploded');
+        },
+      });
+      const { outcome, project } = await runProject(
+        { 'tests/video.e2e.ts': PASSING_TEST },
+        { appUrl: APP_URL, config: plainConfig(fake), runOptions: { video: 'on' } },
+      );
+      const result = resultByTitle(outcome, 'taps a node');
+      expect(result.status).toBe('passed');
+      const attempt = result.attempts[0]!;
+      expect(attempt.cleanup).toBe('failed');
+      expect(attempt.secondaryErrors.some((error) => error.phase === 'cleanup')).toBe(true);
+      expect(attempt.secondaryErrors.find((error) => error.phase === 'cleanup')?.message).toContain(
+        'video finalization exploded',
+      );
+      expect(outcome.exitCode).toBe(3);
+      assertValidReport(outcome.report);
       project.cleanup();
     },
     60_000,

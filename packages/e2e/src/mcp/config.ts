@@ -6,7 +6,7 @@ import { resolveConfig, type ResolvedConfig } from '../config/resolve.ts';
 
 export interface ProjectOptions {
   readonly cwd: string;
-  /** An explicit config file, relative to `cwd`; otherwise the nearest `e2e.config.ts` from `cwd` upward. */
+  /** An explicit config file, relative to `cwd`; otherwise the nearest config file (`e2e.config.ts`, `.mts`, `.js`, or `.mjs`) from `cwd` upward. */
   readonly configPath?: string | undefined;
 }
 
@@ -26,9 +26,10 @@ export function locateProjectConfig(options: ProjectOptions): string {
  * base config it spreads, or opens another project while the server runs,
  * and the next session sees the files as they are now. Every session also
  * gets engine instances of its own, even from a config that spreads a base
- * config. The project root is the config's directory.
+ * config. The project root is the config's directory. `graph` names the
+ * session's module graph, which the test files it collects share.
  */
-export async function loadProjectConfig(configPath: string, env: NodeJS.ProcessEnv): Promise<LoadedConfig> {
-  const raw = await loadConfigModule(configPath, { graph: true });
+export async function loadProjectConfig(configPath: string, env: NodeJS.ProcessEnv, graph: string): Promise<LoadedConfig> {
+  const raw = await loadConfigModule(configPath, { graph });
   return { ...resolveConfig(raw, { projectRoot: path.dirname(configPath), configPath, env }), configPath };
 }

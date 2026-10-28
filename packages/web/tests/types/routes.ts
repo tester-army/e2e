@@ -1,5 +1,5 @@
 /** Compile-time assertions for route decisions: the options each one takes, and the ones it refuses at runtime too. */
-import type { Browser, RouteContinueOverrides, RouteFulfillResponse, WebRoute } from '../../src/index.ts';
+import type { Browser, Dialog, RouteContinueOverrides, RouteFulfillResponse, WebRoute } from '../../src/index.ts';
 
 ({ json: { ok: true }, contentType: 'application/vnd.quote+json' }) satisfies RouteFulfillResponse;
 ({ path: 'fixtures/quote.json', status: 201 }) satisfies RouteFulfillResponse;
@@ -17,6 +17,9 @@ import type { Browser, RouteContinueOverrides, RouteFulfillResponse, WebRoute } 
 
 declare const browser: Browser;
 void (browser.waitForDownload(async () => {}).then(file => file.absolutePath) satisfies Promise<string>);
+void (browser.unrouteAll() satisfies Promise<void>);
+// @ts-expect-error clearing routes takes no options
+void browser.unrouteAll({ behavior: 'ignoreErrors' });
 
 declare const route: WebRoute;
 void route.continue();
@@ -25,3 +28,12 @@ void route.fallback();
 void route.abort('failed');
 // @ts-expect-error `fallback` takes no overrides.
 void route.fallback({ url: '/api/other' });
+
+/** Dialog handlers expose only native browser kinds. */
+declare const dialog: Dialog;
+void (dialog.type satisfies 'alert' | 'confirm' | 'prompt' | 'beforeunload');
+// @ts-expect-error the kind is read-only
+dialog.type = 'alert';
+// @ts-expect-error unsupported native kinds are outside the contract
+const futureKind: Dialog['type'] = 'future';
+void futureKind;

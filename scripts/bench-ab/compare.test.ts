@@ -146,4 +146,38 @@ describe('compareSamples', () => {
       'unstable tests/a.e2e.ts › one (web)',
     ]);
   });
+
+  it('reports both builds when both have unstable step sequences', () => {
+    const make = (api: string) => sampleFromReport(report({ one: [{ api, durationMs: 100 }] }), 200);
+    const comparison = compareSamples([make('agent.act'), make('app.open')], [make('agent.act'), make('app.close')], limits);
+    assert.deepEqual(comparison.changes, [
+      { kind: 'unstable', key: 'tests/a.e2e.ts › one (web)', side: 'base', variants: 2 },
+      { kind: 'unstable', key: 'tests/a.e2e.ts › one (web)', side: 'head', variants: 2 },
+    ]);
+    assert.equal(comparison.casesCompared, 0);
+    const markdown = renderMarkdown(header, comparison);
+    assert.match(markdown, /unstable on base/);
+    assert.match(markdown, /unstable on head/);
+  });
+});
+
+describe('run outcomes', () => {
+  it('reports a failed run even when all test attempts match the passing baseline', () => {
+    const document = report({ one: [{ api: 'agent.act', durationMs: 100 }] });
+    const base = [0, 1].map(() => sampleFromReport(document, 200));
+    // An afterAll or reporter failure can fail the run after every test passed.
+    const head = [0, 1].map(() => sampleFromReport({ run: { ...document.run, exitCode: 1 } }, 200));
+    const comparison = compareSamples(base, head, limits);
+    assert.deepEqual(comparison.changes, []);
+    assert.deepEqual(comparison.counters, [{ name: 'run exit code', base: [0, 0], head: [1, 1] }]);
+    assert.match(renderMarkdown(header, comparison), /run exit code/);
+  });
+
+  it('reports exit statuses that vary within one side', () => {
+    const document = report({ one: [{ api: 'agent.act', durationMs: 100 }] });
+    const passed = sampleFromReport(document, 200);
+    const failed = sampleFromReport({ run: { ...document.run, exitCode: 1 } }, 200);
+    assert.deepEqual(compareSamples([passed, passed], [passed, failed], limits).counters,
+      [{ name: 'run exit code', base: [0, 0], head: [0, 1] }]);
+  });
 });

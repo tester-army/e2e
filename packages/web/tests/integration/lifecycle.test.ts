@@ -490,7 +490,7 @@ describe('web engine lifecycle', () => {
         };
         await expect(engine.locate!(child, operation('dv1'))).rejects.toMatchObject({
           code: 'UNSUPPORTED_CAPABILITY',
-          message: 'displayValue queries cannot scope child queries or serve as a has-filter in this engine',
+          message: 'displayValue queries cannot scope child queries or serve as a has or hasNot filter in this engine',
         });
         await expect(
           engine.locate!({ kind: 'filter', source: byRole('main'), has: shared }, operation('dv1')),
@@ -764,6 +764,19 @@ describe('web engine lifecycle', () => {
         expect(await page.evaluate(() => window.scrollY)).toBe(360);
         await engine.perform!(first.root.ref, { kind: 'swipe', direction: 'up', momentum: 'fast' }, operation('r1'));
         await page.waitForFunction(() => window.scrollY === 0);
+      });
+    });
+
+    it('refuses to swipe a node with no box even when its child is under aim', async () => {
+      await inAttempt('dc2', async () => {
+        await engine.session!.open!(`${app.url}/`, operation('dc2'));
+        const page = surfaceOf(engine)!.page();
+        await page.setContent(`
+          <body style="margin: 0"><ul aria-label="Feed" style="display: contents"><li style="display: block; height: 400px">Item</li></ul></body>`);
+        const [feed] = await engine.locate!(byRole('list'), operation('dc2'));
+        await expect(
+          engine.perform!(feed!.ref, { kind: 'swipe', direction: 'down' }, operation('dc2')),
+        ).rejects.toMatchObject({ code: 'NOT_ACTIONABLE' });
       });
     });
 

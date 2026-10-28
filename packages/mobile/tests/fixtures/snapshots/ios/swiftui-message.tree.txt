@@ -1,0 +1,8 @@
+screen
+  other "SwiftUIBar"
+    navigation #Message
+      button "Inbox" #BackButton
+      text "Message"
+      other "Reply"
+        button "Reply"
+    text "Message body"

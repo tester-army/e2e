@@ -56,14 +56,21 @@ export interface MobileOptions {
   /**
    * Device to use: a simulator or emulator by name, simulator UDID, or
    * emulator serial (`emulator-5554`), or a connected phone by name. A list
-   * is a pool: the
-   * engine declares one worker per entry and worker slot `n` drives the
-   * `n`th, so `workers` at or above the pool size runs the target's files
-   * across every device at once. Omitted, the pool is every booted device of
-   * the platform at `prepare`, as many as the run has slots; with none booted,
-   * agent-device boots one. A `DeviceProvider` leases hosted devices instead:
-   * one per worker slot at `prepare`, each driven through the daemon and
-   * client configuration the lease names, all released when the run ends.
+   * is a pool: the engine declares one worker per entry and worker slot `n`
+   * drives the `n`th, so `workers` at or above the pool size runs the target's
+   * files across every device at once. Omitted, the pool is every booted device
+   * of the platform at `prepare` that no other agent-device session holds, as
+   * many as the run has slots; with none booted, agent-device boots one, and
+   * with every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
+   * instead: one per worker slot at `prepare`, each driven through the daemon
+   * and client configuration the lease names. A replacement worker resumes a
+   * healthy agent-device session on the same lease. Forced worker shutdown
+   * can close the session. `device.closeApp()` ends the agent-device session,
+   * allowing another session to take the device. If agent-device has not
+   * confirmed a recording stop, the engine resets the recording before the
+   * next attempt. This reset also ends the session. The provider lease stays
+   * held until run end. At run end, the engine closes its sessions and the
+   * provider releases its leases.
    */
   readonly device?: string | readonly string[] | DeviceProvider | undefined;
   /**
@@ -97,9 +104,9 @@ export interface MobileOptions {
    * 500, the length of a modal or screen transition. Accessibility frames
    * report a control's final position from the first frame of a transition,
    * so this budget is the only thing that keeps a test from tapping a point
-   * the control has not reached; controls already on screen at the same
-   * place before the action are acted on at once. Raise it for slower
-   * transitions.
+   * the control has not reached. Unmoved controls are acted on immediately
+   * only when keyboard visibility is unchanged. Opening or closing the
+   * keyboard also uses the remaining budget. Raise it for slower transitions.
    */
   readonly transition?: number | undefined;
   /**

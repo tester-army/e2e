@@ -58,7 +58,7 @@ variables, `inheritEnv`, and `env`.
 
 | Option | Purpose |
 | --- | --- |
-| `reuseExisting: true` | Use a server that already runs. In CI, e2e ignores it, and a server that already answers is `APP_ALREADY_RUNNING`. |
+| `reuseExisting: true` | Use a server that already runs, such as one an [MCP session](/mcp-server#run-tests-next-to-a-session) started. In CI, e2e ignores it, and a server that already answers is `APP_ALREADY_RUNNING`. |
 | `log` | Save the app's stdout and stderr to a project-relative file. A startup error quotes the last 20 lines any process appended to the file since the command started, with `command.env` and `inheritEnv` values redacted. The file itself is not redacted. |
 | `env` | Environment variables for the app. |
 | `inheritEnv` | Host variables to pass through when set, by name or prefix: `['DATABASE_URL', 'STRIPE_*']`. `env` wins over them. |

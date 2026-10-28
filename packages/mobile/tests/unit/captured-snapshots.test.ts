@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode, ViewportSize } from 'e2e/engine';
-import { projectSnapshot, screenRoot, type RawNode } from '../../src/nodes.ts';
+import { projectSnapshot, screenRoot, screenTitle, type RawNode } from '../../src/nodes.ts';
 
 const ROOT = path.join(import.meta.dirname, '../fixtures/snapshots');
 const UPDATE = process.env['E2E_GOLDEN_UPDATE'] === '1';
@@ -35,11 +35,56 @@ function render(node: SemanticNode, depth = 0, out: string[] = []): string[] {
   return out;
 }
 
-/** The tree `observe` would report for a captured snapshot. */
-function treeOf(file: string): string {
+/**
+ * The title each iOS capture's location carries. A pushed screen's bar is
+ * labelled with the back button (`Benchmark Examples`) and identified by its
+ * own title; the tab bar and the PaymentSheet show no navigation bar. The
+ * `swiftui-*` captures (`tests-capture/swiftui-bar`) give the bar no label,
+ * and identify an untitled screen's bar by a Swift class name.
+ */
+const IOS_TITLES: Record<string, string | undefined> = {
+  'apple-pay': 'Apple Pay',
+  'apple-pay-billing-address': 'Apple Pay Billing Address',
+  'async-states': 'Async States',
+  'bottom-tabs': undefined,
+  'broken-accessibility': 'Broken Accessibility',
+  'choice-controls': 'Choice Controls',
+  'control-inventory': 'Control Inventory',
+  'debounced-search': 'Debounced Search',
+  'error-recovery': 'Error Recovery',
+  'flattened-login': 'Flattened Login',
+  'flattened-registration-form': 'Flattened Registration Form',
+  gestures: 'Gestures',
+  home: 'Benchmark Examples',
+  'huge-virtualized-list': 'Huge Virtualized List',
+  'infinite-scroll-list': 'Infinite Scroll List',
+  'login-form': 'Login Form',
+  'modal-flow': 'Modal Flow',
+  'permission-prompt': 'Permission Prompt',
+  'photo-picker': 'Photo Picker',
+  'product-catalog': 'Product Catalog',
+  'sequential-onboarding': 'Sequential Onboarding',
+  'sticky-chrome-target': 'Sticky Chrome Target',
+  'stripe-paymentsheet': undefined,
+  'swiftui-compose': 'Compose',
+  'swiftui-inbox': 'Inbox',
+  'swiftui-message': 'Message',
+  'swiftui-untitled': undefined,
+  'text-input-variations': 'Text Input Variations',
+  'vision-only': 'Vision Only',
+  'webview-accessibility': 'WebView Accessibility',
+};
+
+/** A captured snapshot projected the way `observe` projects it. */
+function project(file: string) {
   const raw = JSON.parse(readFileSync(file, 'utf8')) as { nodes: RawNode[]; viewport?: ViewportSize; truncated?: boolean };
   let counter = 0;
-  const projected = projectSnapshot(raw.nodes, { mintId: () => `n${(counter += 1)}`, viewport: raw.viewport });
+  return { raw, projected: projectSnapshot(raw.nodes, { mintId: () => `n${(counter += 1)}`, viewport: raw.viewport }) };
+}
+
+/** The tree `observe` would report for a captured snapshot. */
+function treeOf(file: string): string {
+  const { raw, projected } = project(file);
   const root = screenRoot(projected.roots, projected.viewport ?? { width: 0, height: 0 });
   return `${raw.truncated === true ? '# truncated\n' : ''}${render(root).join('\n')}\n`;
 }
@@ -62,6 +107,14 @@ describe('captured device snapshots', () => {
         expect(existsSync(golden), `${golden} is missing; run with E2E_GOLDEN_UPDATE=1`).toBe(true);
         expect(tree).toBe(readFileSync(golden, 'utf8'));
       });
+
+      if (platform === 'ios') {
+        it.each(captures)('%s takes its title from the navigation bar', (capture) => {
+          const scenario = capture.replace(/\.json$/, '');
+          expect(Object.keys(IOS_TITLES), `add ${scenario} to IOS_TITLES`).toContain(scenario);
+          expect(screenTitle(project(path.join(dir, capture)).projected)).toBe(IOS_TITLES[scenario]);
+        });
+      }
 
       it('keeps no tree without its capture', () => {
         const trees = readdirSync(dir).filter((file) => file.endsWith('.tree.txt'));

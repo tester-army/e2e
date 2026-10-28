@@ -92,6 +92,27 @@ export function buildWorkPlans(
 }
 
 /**
+ * Orders each plan's file units longest first by the time the previous run
+ * spent in them, so a long file starts while short ones fill the other
+ * workers instead of starting last and running alone. Files without a
+ * timing go first, being of unknown length; ties keep collection order.
+ * Report order does not depend on dispatch order.
+ */
+export function longestFirst(
+  plans: readonly TargetWorkPlan[],
+  durationOf: (targetName: string, file: string) => number | undefined,
+): TargetWorkPlan[] {
+  return plans.map((plan) => ({
+    ...plan,
+    fileUnits: plan.fileUnits.toSorted(
+      (a, b) =>
+        (durationOf(b.targetName, b.file) ?? Number.POSITIVE_INFINITY) -
+        (durationOf(a.targetName, a.file) ?? Number.POSITIVE_INFINITY) || 0,
+    ),
+  }));
+}
+
+/**
  * The worker slots the run will start for a plan, `0` to `slots - 1`: the
  * run's worker cap, the engine's declared `workers`, and the units to
  * dispatch, whichever is smallest. A strict bound: a worker retired after a

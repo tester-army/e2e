@@ -20,8 +20,11 @@ of skipping it quietly.
 **Important:** first run the shortening pass from
 [authoring-docs](../authoring-docs/SKILL.md#important-shorten-every-page) on
 every guide page the change touches (`docs/**/*.mdx` outside
-`docs/reference/`), even for a one-paragraph edit. The checks below then
-catch an anchor the pass broke.
+`docs/reference/`), even for a one-paragraph edit. A reference page the
+change touches follows
+[authoring-docs, Reference pages](../authoring-docs/SKILL.md#reference-pages)
+instead: `## Reference` first, minimal summary tables, every fact kept. The
+checks below then catch an anchor either pass broke.
 
 Run what CI runs for what you touched, and fix everything:
 
@@ -45,6 +48,11 @@ Then the repo rules `pnpm check` cannot see (`AGENTS.md`, "Contracts"):
   `packages/e2e/tests/types/sdk-types.ts`; a wire change edits the schema,
   both fixtures, and the producer together.
 - A new build input or benchmark dependency goes into `.github/filters.yml`.
+- A new integration, CI service, or migration guide gets the vendor's logo
+  as its sidebar icon and on every card that links to it, never a Font
+  Awesome placeholder. An integration or CI page also gets a card on its
+  overview ([authoring-docs, Page icons](../authoring-docs/SKILL.md#page-icons)).
+  A package PR needs this as much as a docs PR.
 
 ## 2. Verify
 

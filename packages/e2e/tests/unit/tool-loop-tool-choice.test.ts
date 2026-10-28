@@ -34,7 +34,7 @@ function runtime(overrides: Partial<E2EConfig> = {}) {
     budget: new AttemptBudget(signal, new Deadline(10_000)),
     runId: 'run',
     attemptId: 'attempt',
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: () => 'artifact', link: () => 'artifact' },
     priorSteps: () => steps.completed(),
     agentContext: undefined,
@@ -63,7 +63,7 @@ function refusingForcedChoice(respond: LoopResponder): LoopResponder {
 }
 
 describe('tool loop forced tool choice', () => {
-  it('retries with auto and a tool-calls-only rule when the model rejects a forced choice', async () => {
+  it('retries with auto, under the same instructions, when the model rejects a forced choice', async () => {
     const model = installFakeLoopModel(
       refusingForcedChoice(({ turn }) => (turn === 2 ? [{ toolName: 'peek', input: {} }] : [conclude])),
     );
@@ -72,10 +72,12 @@ describe('tool loop forced tool choice', () => {
     await fixtures.agent.act('look around');
 
     expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto', 'auto']);
-    // The retried request is the refused one, sent again under the new rule.
+    // The retried request is the refused one, sent again: the tool-calls-only
+    // rule was in the instructions from the start, so the switch changes
+    // nothing a provider binds reasoning to.
     expect(loopCalls[1]!.prompt).toBe(loopCalls[0]!.prompt);
-    expect(loopCalls[0]!.system).not.toContain('Reply with tool calls only');
-    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+    expect(loopCalls[0]!.system).toContain('Reply with tool calls only');
+    expect(loopCalls.map((call) => call.system)).toEqual([loopCalls[0]!.system, loopCalls[0]!.system, loopCalls[0]!.system]);
     const step = steps.all()[0]!;
     expect(step.status).toBe('passed');
     // The refused request never answered, so it is not a model call the step paid for.
@@ -171,7 +173,7 @@ describe('tool loop downgraded tool choice', () => {
     delete (globalThis as { AI_SDK_LOG_WARNINGS?: boolean }).AI_SDK_LOG_WARNINGS;
   });
 
-  it('continues the step with auto and the tool-calls-only rule once the provider reports a downgrade', async () => {
+  it('continues the step with auto, under the same instructions, once the provider reports a downgrade', async () => {
     const model = installFakeLoopModel(
       downgradingForcedChoice(({ turn }) => (turn === 1 ? [{ toolName: 'peek', input: {} }] : [conclude])),
     );
@@ -179,10 +181,11 @@ describe('tool loop downgraded tool choice', () => {
 
     await fixtures.agent.act('look around');
 
-    // The downgraded turn succeeded, so nothing is sent again.
+    // The downgraded turn succeeded, so nothing is sent again, and the next
+    // request keeps the system prompt its reasoning is bound to.
     expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto']);
-    expect(loopCalls[0]!.system).not.toContain('Reply with tool calls only');
-    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+    expect(loopCalls[0]!.system).toContain('Reply with tool calls only');
+    expect(loopCalls[1]!.system).toBe(loopCalls[0]!.system);
     const step = steps.all()[0]!;
     expect(step.status).toBe('passed');
     expect(step.metrics?.modelCalls).toBe(2);
@@ -198,14 +201,14 @@ describe('tool loop downgraded tool choice', () => {
 
     expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto']);
     expect(loopCalls[1]!.prompt).toBe(loopCalls[0]!.prompt);
-    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+    expect(loopCalls[1]!.system).toBe(loopCalls[0]!.system);
     const step = steps.all()[0]!;
     expect(step.status).toBe('passed');
     // The prose reply was answered and billed before the SDK threw on it.
     expect(step.metrics?.modelCalls).toBe(2);
   });
 
-  it('starts later steps on the same model in auto with the tool-calls-only rule', async () => {
+  it('starts later steps on the same model in auto', async () => {
     const model = installFakeLoopModel(downgradingForcedChoice(() => [conclude]));
     const { fixtures } = runtime({ agents: { default: { model } } });
 
@@ -213,7 +216,7 @@ describe('tool loop downgraded tool choice', () => {
     await fixtures.agent.act('second');
 
     expect(loopCalls.map((call) => call.toolChoice)).toEqual(['required', 'auto']);
-    expect(loopCalls[1]!.system).toContain('Reply with tool calls only');
+    expect(loopCalls[1]!.system).toBe(loopCalls[0]!.system);
   });
 
   it('ignores warnings about other features', async () => {

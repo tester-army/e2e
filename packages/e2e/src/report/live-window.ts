@@ -28,9 +28,10 @@ const SYNC_END = `${ESC}[?2026l`;
  * when counting and never cutting inside a grapheme cluster: a glyph or emoji
  * sequence that would cross the limit is dropped whole. The erase sequence
  * counts physical rows, so a line that wraps would leave stale fragments
- * behind on every repaint.
+ * behind on every repaint. An entry with a line break still paints as one row.
  */
 function clampToWidth(text: string, columns: number): string {
+  text = text.replace(/\r\n?|\n/g, ' ');
   const max = Math.max(4, columns - WIDTH_MARGIN);
   let width = 0;
   let out = '';

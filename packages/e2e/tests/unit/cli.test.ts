@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -12,18 +12,27 @@ const runMock = vi.hoisted(() => vi.fn());
 const listMock = vi.hoisted(() => vi.fn());
 const initMock = vi.hoisted(() => vi.fn());
 const watchMock = vi.hoisted(() => vi.fn());
+const upgradeMock = vi.hoisted(() => vi.fn());
 
 // The suite runs from the repository; these tests cover an installed CLI, where telemetry is on.
 vi.mock('../../src/telemetry/checkout.ts', () => ({ runsFromCheckout: () => false }));
-vi.mock('../../src/runner.ts', () => ({ list: listMock }));
-vi.mock('../../src/run/runner.ts', () => ({ run: runMock }));
+vi.mock('../../src/run/runner.ts', () => ({ run: runMock, listSelection: listMock }));
 vi.mock('../../src/cli/watch.ts', () => ({ watchSession: watchMock }));
+// `e2e list --reporter json` writes its document past the claimed output; here it lands on the stdout spy.
+vi.mock('../../src/run/process-output.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/run/process-output.ts')>()),
+  writeTerminal: (stream: 'stdout' | 'stderr', text: string) => process[stream].write(text),
+}));
 vi.mock('../../src/cli/init.ts', () => ({
   init: initMock,
 }));
+vi.mock('../../src/cli/upgrade.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/cli/upgrade.ts')>()),
+  upgrade: upgradeMock,
+}));
 
 const { main } = await import('../../src/cli/index.ts');
-const { olderThan } = await import('../../src/cli/feedback.ts');
+const { olderThan } = await import('../../src/internal/release.ts');
 
 const { version: packageVersion } = JSON.parse(
   readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
@@ -35,6 +44,7 @@ function initOutcome(exitCode: number, overrides: Record<string, unknown> = {}) 
     exitCode,
     result: exitCode === 0 ? 'scaffolded' : 'invalid-project',
     yes: false,
+    example: null,
     existingConfig: false,
     engine: null,
     gateway: null,
@@ -43,6 +53,11 @@ function initOutcome(exitCode: number, overrides: Record<string, unknown> = {}) 
     install: false,
     ...overrides,
   };
+}
+
+/** What a mocked `upgrade` hands back: the exit code, and nothing learned. */
+function upgradeOutcome(exitCode: number) {
+  return { exitCode, result: exitCode === 0 ? 'upgraded' : 'install-failed', target: { kind: 'tag', tag: 'latest' }, fromVersion: null, toVersion: null, manager: null, siblings: [], moved: 0, linked: 0 };
 }
 
 function lastRunOptions(): RunOptions {
@@ -71,6 +86,8 @@ beforeEach(() => {
   initMock.mockResolvedValue(initOutcome(0));
   watchMock.mockReset();
   watchMock.mockResolvedValue(0);
+  upgradeMock.mockReset();
+  upgradeMock.mockResolvedValue(upgradeOutcome(0));
   process.exitCode = undefined;
   stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
   stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -91,6 +108,7 @@ describe('e2e run argument parsing', () => {
     expect(options.configPath).toBeUndefined();
     expect(options.reporters).toBeUndefined();
     expect(options.agent).toBeUndefined();
+    expect(options.changedSince).toBeUndefined();
     expect(process.exitCode).toBe(0);
   });
 
@@ -222,6 +240,25 @@ describe('e2e run argument parsing', () => {
     expect(runMock).not.toHaveBeenCalled();
   });
 
+  it('parses --action-timeout and --assertion-timeout as milliseconds a timer can wait and rejects anything else with exit code 2', async () => {
+    await invoke('run', '--action-timeout', '5000', '--assertion-timeout', '2147483647');
+    expect(lastRunOptions()).toMatchObject({ actionTimeout: 5_000, assertionTimeout: 2_147_483_647 });
+    runMock.mockClear();
+    await invoke('run');
+    expect(lastRunOptions()).toMatchObject({ actionTimeout: undefined, assertionTimeout: undefined });
+    runMock.mockClear();
+    for (const flag of ['--action-timeout', '--assertion-timeout']) {
+      for (const value of ['0', '-1', '2.5', '5s', '2147483648']) {
+        stderrSpy.mockClear();
+        process.exitCode = undefined;
+        await invoke('run', flag, value);
+        expect(process.exitCode, `${flag} ${value}`).toBe(2);
+        expect(written(stderrSpy)).toContain(`option '${flag} <ms>' argument '${value}' is invalid. must be an integer from 1 through 2147483647`);
+      }
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('parses --repeat-each as a positive integer', async () => {
     await invoke('run', '--repeat-each', '3');
     expect(lastRunOptions().repeatEach).toBe(3);
@@ -237,6 +274,15 @@ describe('e2e run argument parsing', () => {
     const options = lastRunOptions();
     expect(options.shard).toEqual({ index: 2, total: 3 });
     expect(options.lastFailed).toBe(true);
+  });
+
+  it('maps --changed-since to changedSince, which needs a ref', async () => {
+    await invoke('run', 'tests/a.e2e.ts', '--changed-since', 'origin/main');
+    expect(lastRunOptions()).toMatchObject({ files: ['tests/a.e2e.ts'], changedSince: 'origin/main' });
+    runMock.mockClear();
+    await invoke('run', '--changed-since');
+    expect(process.exitCode).toBe(2);
+    expect(runMock).not.toHaveBeenCalled();
   });
 
   it('rejects a --shard that is not index/total within range with exit code 2 and never runs', async () => {
@@ -255,11 +301,11 @@ describe('e2e run argument parsing', () => {
     delete process.env.CI;
     try {
       watchMock.mockResolvedValue(1);
-      await invoke('run', '-w', 'tests/a.e2e.ts', '--tag', 'smoke');
+      await invoke('run', '-w', 'tests/a.e2e.ts', '--tag', 'smoke', '--action-timeout', '3000');
       expect(runMock).not.toHaveBeenCalled();
       expect(watchMock).toHaveBeenCalledTimes(1);
       const options = watchMock.mock.calls[0]?.[0] as { base: RunOptions; stdin: unknown; clear: boolean };
-      expect(options.base).toMatchObject({ files: ['tests/a.e2e.ts'], tags: ['smoke'] });
+      expect(options.base).toMatchObject({ files: ['tests/a.e2e.ts'], tags: ['smoke'], actionTimeout: 3_000 });
       expect(options.stdin).toBe(process.stdin.isTTY === true ? process.stdin : undefined);
       expect(options.clear).toBe(process.stdout.isTTY === true);
       expect(process.exitCode).toBe(1);
@@ -309,6 +355,19 @@ describe('e2e run argument parsing', () => {
     expect(runMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
     expect(written(stderrSpy)).toContain('unknown reporter "teamcity"');
+  });
+
+  it('rejects an empty --reporter on run and explore with exit code 2 instead of running with no reporters', async () => {
+    for (const command of ['run', 'explore']) {
+      for (const value of ['', ' , ']) {
+        process.exitCode = undefined;
+        stderrSpy.mockClear();
+        await invoke(command, '--reporter', value);
+        expect(process.exitCode).toBe(2);
+        expect(written(stderrSpy)).toContain(`option '--reporter <ids>' argument '${value}' is invalid. must name at least one reporter`);
+      }
+    }
+    expect(runMock).not.toHaveBeenCalled();
   });
 
   it('exits 2 on an unknown option or command without running, pointing at --help', async () => {
@@ -490,6 +549,8 @@ describe('e2e list', () => {
       'auth',
       '--tag-mode',
       'all',
+      '--changed-since',
+      'origin/main',
       '--pass-with-no-tests',
     );
     expect(lastListOptions()).toEqual({
@@ -498,6 +559,7 @@ describe('e2e list', () => {
       targets: ['web', 'webkit'],
       tags: ['smoke', 'auth'],
       tagMode: 'all',
+      changedSince: 'origin/main',
       passWithNoTests: true,
     });
     expect(written(stdoutSpy)).toBe('');
@@ -519,6 +581,27 @@ describe('e2e list', () => {
     expect(listMock).not.toHaveBeenCalled();
     expect(process.exitCode).toBe(2);
     expect(written(stderrSpy)).toContain("option '--tag <tags>' argument '' is invalid. must name at least one tag");
+  });
+
+  it('prints a pair a test filter left out with the filter and its reason, as json { pairs } and as a line, and the filter lines on stderr, bounded', async () => {
+    const left = listed({ file: 'tests/a.e2e.ts', title: 'refunds', titlePath: ['refunds'], tags: [], target: 'web', disposition: 'filtered', reason: 'the diff misses billing', filter: 'areas' });
+    listMock.mockImplementation(async (_options: ListOptions, notice: (message: string) => void) => {
+      notice('areas: reading the diff\u001b[2J');
+      notice('areas kept 1 of 2 tests, left out 1 (src/auth changed)');
+      return { pairs: [pairs[0]!, left, pairs[3]!] };
+    });
+    await invoke('list', '--reporter', 'json');
+    expect(process.exitCode).toBe(0);
+    const json = JSON.parse(written(stdoutSpy)) as { pairs: ListedPair[] };
+    // A pair a selection flag removed stays out, as it always has; the one a filter left out is listed.
+    expect(json.pairs).toEqual(JSON.parse(JSON.stringify([pairs[0], left])));
+    const raw = stderrSpy.mock.calls.map((call: readonly unknown[]) => String(call[0])).join('');
+    expect(raw).not.toContain('\u001b');
+    expect(written(stderrSpy)).toBe(['areas: reading the diff', 'areas kept 1 of 2 tests, left out 1 (src/auth changed)', ''].join('\n'));
+
+    stdoutSpy.mockClear();
+    await invoke('list');
+    expect(written(stdoutSpy)).toBe('tests/a.e2e.ts › signs in [web] #smoke #auth\ntests/a.e2e.ts › refunds [web] (left out by areas: the diff misses billing)\n');
   });
 
   it('prints a collection failure as code and message with its exit code', async () => {
@@ -552,12 +635,12 @@ describe('e2e init argument parsing', () => {
 
   it('passes every wizard answer given as a flag', async () => {
     await invoke(
-      'init', '--yes', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
+      'init', '--yes', '--engine', 'mobile,web', '--engine', 'mobile', '--gateway', 'openai-compatible', '--endpoint', ' http://127.0.0.1:11434/v1 ',
       '--skills', '.agents/skills/,.claude/skills,.agents/skills', '--mcp', '.mcp.json', '--install',
     );
     expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
       yes: true,
-      engine: 'mobile',
+      engines: ['mobile', 'web'],
       gateway: 'openai-compatible',
       endpoint: ' http://127.0.0.1:11434/v1 ',
       skills: ['.agents/skills', '.claude/skills'],
@@ -584,12 +667,16 @@ describe('e2e init argument parsing', () => {
   });
 
   it('reads none as no location, and --no-install as declining the install', async () => {
-    await invoke('init', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
-    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), expect.objectContaining({ gateway: 'none', skills: [], mcp: [], install: false }));
+    await invoke('init', '--engine', 'none', '--gateway', 'none', '--skills', 'none', '--mcp', 'none', '--no-install');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(
+      process.cwd(),
+      expect.objectContaining({ engines: [], gateway: 'none', skills: [], mcp: [], install: false }),
+    );
   });
 
   it.each([
-    [['--engine', 'playwright'], "option '--engine <id>' argument 'playwright' is invalid. Allowed choices are web, mobile, none."],
+    [['--engine', 'playwright'], 'error: --engine: unknown engine "playwright"; expected web, mobile, none'],
+    [['--engine', 'web,none'], 'error: --engine: none cannot be combined with other values'],
     [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
     [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
     [['--skills', ''], 'must name at least one skill directory'],
@@ -604,6 +691,91 @@ describe('e2e init argument parsing', () => {
     expect(initMock).not.toHaveBeenCalled();
     expect(written(stderrSpy)).toContain(message);
     expect(process.exitCode).toBe(2);
+  });
+});
+
+describe('e2e explore without a config', () => {
+  let dir: string;
+  let cwd: string;
+  let stdinTty: boolean | undefined;
+  let stdoutTty: boolean | undefined;
+
+  /** Sets both ends of the terminal, as a shell (true) or a pipe (false) would. */
+  function terminal(tty: boolean): void {
+    process.stdin.isTTY = tty;
+    process.stdout.isTTY = tty;
+  }
+
+  beforeEach(() => {
+    // The .git directory stops config discovery here, whatever the temp directory's parents hold.
+    dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-explore-init-'));
+    mkdirSync(path.join(dir, '.git'));
+    cwd = process.cwd();
+    process.chdir(dir);
+    stdinTty = process.stdin.isTTY;
+    stdoutTty = process.stdout.isTTY;
+  });
+
+  afterEach(() => {
+    process.chdir(cwd);
+    process.stdin.isTTY = stdinTty as boolean;
+    process.stdout.isTTY = stdoutTty as boolean;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('runs the init wizard in a terminal and stops when steps are left to do by hand', async () => {
+    terminal(true);
+    initMock.mockResolvedValue({ ...initOutcome(0), ready: false });
+    await invoke('explore', 'Check the cart', '--max-steps', '4');
+    expect(initMock).toHaveBeenCalledExactlyOnceWith(process.cwd(), {
+      interactive: true,
+      continueWith: ['e2e', 'explore', 'Check the cart', '--max-steps', '4'],
+    });
+    expect(runMock).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).not.toContain('CONFIG_NOT_FOUND');
+    expect(process.exitCode).toBe(0);
+  });
+
+  it('carries the exit code of an init that could not scaffold', async () => {
+    terminal(true);
+    initMock.mockResolvedValue({ ...initOutcome(2), ready: false });
+    await invoke('explore');
+    expect(runMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('goes on to explore once init is ready', async () => {
+    terminal(true);
+    initMock.mockImplementation(async () => {
+      writeFileSync(path.join(dir, 'e2e.config.ts'), "export default { targets: [{ name: 'local', platform: 'test' }] };\n");
+      return { ...initOutcome(0), ready: true };
+    });
+    await invoke('explore');
+    expect(initMock).toHaveBeenCalledOnce();
+    // The scaffolded config is loaded; this one names no model, which explore needs.
+    expect(written(stderrSpy)).toContain('MODEL_UNAVAILABLE');
+    expect(written(stderrSpy)).not.toContain('CONFIG_NOT_FOUND');
+  });
+
+  it('keeps CONFIG_NOT_FOUND without a terminal, and with --config', async () => {
+    terminal(false);
+    await invoke('explore');
+    expect(written(stderrSpy)).toContain('CONFIG_NOT_FOUND');
+    expect(process.exitCode).toBe(2);
+
+    terminal(true);
+    stderrSpy.mockClear();
+    process.exitCode = undefined;
+    await invoke('explore', '--config', 'missing.config.ts');
+    expect(written(stderrSpy)).toContain('CONFIG_NOT_FOUND: config file not found: missing.config.ts');
+    expect(initMock).not.toHaveBeenCalled();
+  });
+
+  it('leaves a project with a config alone', async () => {
+    terminal(true);
+    writeFileSync(path.join(dir, 'e2e.config.ts'), "export default { targets: [{ name: 'local', platform: 'test' }] };\n");
+    await invoke('explore');
+    expect(initMock).not.toHaveBeenCalled();
   });
 });
 
@@ -655,6 +827,7 @@ describe('e2e --version and --help', () => {
       '--exclude-tag',
       '--grep',
       '--grep-invert',
+      '--changed-since',
       '--last-failed',
       '--shard',
       '--pass-with-no-tests',
@@ -662,6 +835,8 @@ describe('e2e --version and --help', () => {
       '--agent',
       '--workers',
       '--retries',
+      '--action-timeout',
+      '--assertion-timeout',
       '--max-failures',
       '--max-duration',
       '--repeat-each',
@@ -894,6 +1069,34 @@ describe('e2e feedback', () => {
   });
 });
 
+describe('e2e upgrade argument parsing', () => {
+  it('upgrades to latest by default, under either name', async () => {
+    for (const name of ['upgrade', 'update']) {
+      upgradeMock.mockClear();
+      await invoke(name);
+      expect(upgradeMock).toHaveBeenCalledExactlyOnceWith({ target: { kind: 'tag', tag: 'latest' } });
+      expect(process.exitCode).toBe(0);
+    }
+  });
+
+  it('passes a version, a dist-tag, and --dry-run through, and exits with the upgrade\'s code', async () => {
+    upgradeMock.mockResolvedValue(upgradeOutcome(3));
+    await invoke('update', 'v0.22.0', '--dry-run');
+    expect(upgradeMock).toHaveBeenCalledExactlyOnceWith({ target: { kind: 'version', version: '0.22.0' }, dryRun: true });
+    expect(process.exitCode).toBe(3);
+    upgradeMock.mockClear();
+    await invoke('upgrade', 'nightly');
+    expect(upgradeMock).toHaveBeenCalledExactlyOnceWith({ target: { kind: 'tag', tag: 'nightly' } });
+  });
+
+  it('refuses a range with exit 2 and never upgrades', async () => {
+    await invoke('upgrade', '^0.22.0');
+    expect(upgradeMock).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(2);
+    expect(written(stderrSpy)).toContain("error: command-argument value '^0.22.0' is invalid for argument 'version'. must be a version such as 0.22.0 or a dist-tag");
+  });
+});
+
 describe('olderThan', () => {
   it.each([
     ['0.19.0', '0.20.0', true],
@@ -1078,6 +1281,26 @@ describe('e2e telemetry', () => {
     expect(JSON.stringify(printedEvents())).not.toContain('.claude');
   });
 
+  it('records the upgrade event from the outcome upgrade returns, under either name', async () => {
+    upgradeMock.mockResolvedValue({
+      exitCode: 2,
+      result: 'unknown-target',
+      target: { kind: 'tag', tag: 'beta' },
+      fromVersion: '0.20.0',
+      toVersion: null,
+      manager: 'npm',
+      siblings: [],
+      moved: 0,
+      linked: 0,
+    });
+    await invoke('update', 'beta', '--dry-run');
+    const events = printedEvents();
+    expect(events.map((event) => event.event)).toEqual(['e2e_cli_session', 'e2e_upgrade_completed']);
+    expect(events[0]!.properties).toMatchObject({ command: 'upgrade', flags: ['--dry-run'], exit_code: 2 });
+    expect(events[1]!.properties).toMatchObject({ result: 'unknown-target', target: 'beta', from_version: '0.20.0', to_version: null });
+    expect(process.exitCode).toBe(2);
+  });
+
   it('records the init event from the outcome init returns', async () => {
     initMock.mockResolvedValue(initOutcome(0, { result: 'cancelled', engine: 'agent-device' }));
     await invoke('init', 'apps/secret-app');
@@ -1085,5 +1308,46 @@ describe('e2e telemetry', () => {
     expect(events.map((event) => event.event)).toEqual(['e2e_cli_session', 'e2e_init_completed']);
     expect(events[1]!.properties).toMatchObject({ result: 'cancelled', engine: 'agent-device', gateway: null, skill: false });
     expect(JSON.stringify(events)).not.toContain('secret-app');
+  });
+});
+
+describe('update notice', () => {
+  let configHome: string;
+  let stderrTty: boolean;
+  const fetchMock = vi.fn<typeof fetch>(async () => Response.json({ version: '99.0.0' }));
+
+  beforeEach(() => {
+    configHome = mkdtempSync(path.join(os.tmpdir(), 'e2e-cli-update-'));
+    // The suite-wide opt-outs are lifted; debug mode keeps telemetry off the network.
+    vi.stubEnv('E2E_UPDATE_CHECK_DISABLED', undefined);
+    vi.stubEnv('E2E_TELEMETRY_DISABLED', undefined);
+    vi.stubEnv('DO_NOT_TRACK', undefined);
+    vi.stubEnv('E2E_TELEMETRY_DEBUG', '1');
+    vi.stubEnv('CI', undefined);
+    vi.stubEnv('XDG_CONFIG_HOME', configHome);
+    vi.stubEnv('APPDATA', configHome);
+    vi.stubGlobal('fetch', fetchMock);
+    stderrTty = process.stderr.isTTY;
+    process.stderr.isTTY = true;
+    fetchMock.mockClear();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    process.stderr.isTTY = stderrTty;
+    rmSync(configHome, { recursive: true, force: true });
+  });
+
+  it('follows the output of a command on a terminal', async () => {
+    await invoke('list');
+    expect(fetchMock).toHaveBeenCalledWith('https://registry.npmjs.org/e2e/latest', expect.anything());
+    expect(written(stderrSpy)).toContain(`Update available ${packageVersion} → 99.0.0\n`);
+  });
+
+  it('neither asks nor prints for --version', async () => {
+    await invoke('--version');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(written(stderrSpy)).not.toContain('Update available');
   });
 });

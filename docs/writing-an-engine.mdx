@@ -133,7 +133,7 @@ one node can't do a declared action, throw `UNSUPPORTED_CAPABILITY`.
 
 | Hook | When | Use it to |
 | --- | --- | --- |
-| `prepare` | One time per target, in the runner process | Install runtimes. The `env` it returns reaches every worker |
+| `prepare` | One time per target, in the runner process, on a run with tests to run | Install runtimes. The `env` it returns reaches every worker |
 | `init` | One time per worker, before its first attempt | Boot devices. It must also work on an engine that was disposed |
 | `startAttempt` | Before each attempt | Create the test's UI |
 | `settleAttempt` | After the body, and again after teardown | Throw the error of a test callback no step awaited, such as a dialog handler |
@@ -206,7 +206,7 @@ A secret fill reaches the engine as a `fill` action with
 observation, and the field. A test's `fill(secret)` skips these
 [checks](/reference/security#secret-fills). Handle the fill
 securely, or throw
-`UNSUPPORTED_CAPABILITY`. After it, the runner takes
+`UNSUPPORTED_CAPABILITY`. After it, the runner sends the model
 [no more screenshots](/reference/security#screenshots-after-a-secret-fill).
 
 An engine option can take a secret too, such as a password the engine sends

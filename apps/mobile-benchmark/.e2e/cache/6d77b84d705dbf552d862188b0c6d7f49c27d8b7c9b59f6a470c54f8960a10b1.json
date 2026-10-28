@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:57:21.664Z",
+  "createdAt": "2026-10-15T15:52:08.777Z",
   "payload": {
     "actions": [
       {
@@ -26,14 +26,18 @@
       },
       {
         "name": "type",
-        "summary": "type \"This is a test note.\" into textbox \"Vertical scroll bar, 1 page\"",
+        "summary": "type \"At least ten characters\" into textbox \"Vertical scroll bar, 1 page\"",
         "target": {
           "role": "textbox",
           "name": "Vertical scroll bar, 1 page",
           "testId": "notes-input",
           "selector": "id=notes-input"
         },
-        "value": "This is a test note."
+        "value": "At least ten characters"
+      },
+      {
+        "name": "dismissKeyboard",
+        "summary": "dismiss the keyboard"
       },
       {
         "name": "tap",
@@ -58,9 +62,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered username \"tester\", PIN 1234, and notes \"This is a test note.\" (20 characters), then submitted. The screen displays \"Form submitted.\"",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Entered username “tester,” a four-digit PIN, and notes exceeding ten characters, then submitted. The screen displays “Form submitted.”",
+    "startPath": "dev.e2e.benchmark / Text Input Variations",
+    "endPath": "dev.e2e.benchmark / Text Input Variations",
     "endAnchors": [
       {
         "role": "other",
@@ -112,7 +116,7 @@
         "name": "Username (min 3 chars)"
       }
     ],
-    "endWaitMs": 12441,
+    "endWaitMs": 13233,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

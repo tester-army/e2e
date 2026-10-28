@@ -1,7 +1,7 @@
 /**
  * AI SDK adapter. One implementation serves every provider: the
  * caller-supplied AI SDK model instance (`gateway('openai/gpt-6-luna-fast')`,
- * `openrouter(...)`, `openai('gpt-4o')`, a local provider, a scripted test
+ * `openrouter(...)`, `openai('gpt-6-luna-fast')`, a local provider, a scripted test
  * model) is used as is. Everything after the model — bounded requests,
  * closed-grammar validation, usage and error translation — is
  * provider-independent.
@@ -9,11 +9,12 @@
 
 import type { ModelMessage } from 'ai';
 import { providerFailureMessage, withHint } from '../../internal/errors.ts';
-import { missingModelError, type ResolvedModel } from '../../config/agent.ts';
+import { markUnservedModel, unservedModelExplanation } from '../../internal/unserved-model.ts';
+import { missingModelError, modelLabel, type ResolvedModel } from '../../config/agent.ts';
 import { aiSdk, asSdkLanguageModel, loadAiSdk, type SdkLanguageModel } from '../ai-sdk.ts';
 import { MODEL_REQUEST_HEADERS } from '../../internal/client-identity.ts';
 import { packageVersion } from '../../internal/package-version.ts';
-import { AgentError } from '../error.ts';
+import { AgentError, isAgentError } from '../error.ts';
 import { isContextOverflow } from './overflow.ts';
 import { providerHints, type ProviderModelRef } from './provider-hints.ts';
 import { withStallGuard } from './stall.ts';
@@ -97,9 +98,11 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
         abortSignal: call.signal,
         timeout: call.timeoutMs,
       } as const;
+      let finished: FinishedCall | undefined;
       try {
         if (schema === undefined) {
           const result = await generateText(settings);
+          finished = result;
           const parsed = parseJsonObject(result.text);
           const validation = call.validate(parsed);
           if (!validation.ok) {
@@ -121,13 +124,35 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
             name: call.schemaName,
           }),
         });
-        const output = result.output;
-        if (output === undefined) {
-          throw new ModelOutputInvalidError('provider returned no structured output');
+        finished = result;
+        // The SDK only parses `result.output` on a `stop` finish, or on a
+        // non-`tool-calls` finish with text. Otherwise the getter throws a bare
+        // `NoOutputGeneratedError` carrying no finish reason, text, or cause,
+        // so read them first: an `error` finish is thrown as a provider
+        // failure with its raw finish reason, and anything else with nothing
+        // to parse is invalid output.
+        const finishReason = result.finishReason;
+        const rawText = result.text;
+        // `hasParsedOutput` mirrors the AI SDK's internal condition for when
+        // the `output` getter parses (the `ai` package's dist/index.js, at
+        // the `output` getter); update it if the SDK changes that rule.
+        const hasParsedOutput = finishReason === 'stop' || (finishReason !== 'tool-calls' && rawText !== '');
+        if (!hasParsedOutput) {
+          if (finishReason === 'error') {
+            throw new AgentError(
+              'MODEL_PROVIDER_FAILED',
+              `model provider failed: the call ended on an error finish (raw finish reason: ${result.rawFinishReason ?? finishReason})`,
+            );
+          }
+          throw new ModelOutputInvalidError(
+            `model returned no structured output (finish reason: ${result.rawFinishReason ?? finishReason})`,
+            rawText === '' ? {} : { rawText },
+          );
         }
+        const output = result.output;
         return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
-        throw translateModelError(cause, issue, call.signal);
+        throw translateModelError(cause, issue, call.signal, model, finished);
       }
     },
   };
@@ -256,6 +281,34 @@ function parseCost(raw: unknown): number | undefined {
   return typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : undefined;
 }
 
+/** The finish reasons of a model call that returned a result. */
+interface FinishedCall {
+  readonly finishReason: string;
+  readonly rawFinishReason?: string | undefined;
+}
+
+/** Whether an AI SDK `NoObjectGeneratedError` or `ToolChoiceViolationError` says the model refused the call. */
+export function isModelRefusal(error: unknown): boolean {
+  const { NoObjectGeneratedError, ToolChoiceViolationError } = aiSdk();
+  return (
+    (NoObjectGeneratedError.isInstance(error) || ToolChoiceViolationError.isInstance(error)) &&
+    error.finishReason === 'content-filter'
+  );
+}
+
+/** `MODEL_REFUSED` naming the model and the provider's raw finish reason when it sent one. */
+export function modelRefusalError(
+  model: Pick<ResolvedModel, 'provider' | 'id'>,
+  rawFinishReason: string | undefined,
+  cause?: unknown,
+): AgentError {
+  return new AgentError(
+    'MODEL_REFUSED',
+    `the model ${modelLabel(model)} refused the request (${rawFinishReason ?? 'content-filter'})`,
+    cause === undefined ? undefined : { cause },
+  );
+}
+
 /**
  * Maps adapter and provider failures onto the closed agent error set. Runs
  * only after `generate` loaded the SDK, so the cached module is available for
@@ -265,9 +318,12 @@ function translateModelError(
   rawCause: unknown,
   issue: string | undefined,
   signal: AbortSignal,
+  model: Pick<ResolvedModel, 'provider' | 'id'>,
+  finished: FinishedCall | undefined,
 ): Error {
   const { APICallError, NoObjectGeneratedError } = aiSdk();
   const cause = unwrapRetry(rawCause);
+  if (finished?.finishReason === 'content-filter') return modelRefusalError(model, finished.rawFinishReason, cause);
   if (cause instanceof AgentError) return cause;
   // Only an aborted attempt is a cancellation. A request that exceeded the
   // remaining step budget is a timeout, which is a test failure.
@@ -281,6 +337,7 @@ function translateModelError(
       { cause },
     );
   }
+  if (isModelRefusal(cause)) return modelRefusalError(model, undefined, cause);
   if (NoObjectGeneratedError.isInstance(cause)) {
     return new ModelOutputInvalidError(
       issue ?? 'provider response did not match the closed response grammar',
@@ -296,6 +353,8 @@ function translateModelError(
       { cause },
     );
   }
+  const unserved = unservedModelError(cause);
+  if (unserved !== undefined) return unserved;
   if (APICallError.isInstance(cause)) {
     return new AgentError(
       'MODEL_PROVIDER_FAILED',
@@ -308,6 +367,19 @@ function translateModelError(
     `model provider failed: ${providerFailureMessage(cause)}`,
     { cause },
   );
+}
+
+/** A marked failure (`internal/unserved-model.ts`) as the run-stopping `MODEL_UNAVAILABLE` the fixture reports once, or that error itself; undefined for any other failure. */
+export function unservedModelError(cause: unknown): AgentError | undefined {
+  if (isUnservedModelError(cause)) return cause;
+  const explanation = unservedModelExplanation(cause);
+  if (explanation === undefined) return undefined;
+  return markUnservedModel(new AgentError('MODEL_UNAVAILABLE', explanation, { cause }), explanation);
+}
+
+/** True for an error `unservedModelError` built, in this realm or another. */
+export function isUnservedModelError(value: unknown): value is AgentError {
+  return isAgentError(value) && unservedModelExplanation(value) !== undefined;
 }
 
 /**

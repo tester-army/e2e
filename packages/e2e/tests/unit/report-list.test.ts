@@ -485,6 +485,39 @@ describe('ListReporter', () => {
       expect(interrupted.lines).toContain('      Tests  1 interrupted | 2 passed (3)');
     });
 
+    it('counts the tests each filter left out on a Left out row, a test once across targets and repeats, as the filter line counts them', () => {
+      /** An unselected result `filter` left out. */
+      const leftOut = (id: string, target: string, filter: string): RunEventResult =>
+        ({ ...result({ status: 'skipped', id, target, selected: false, attempts: [] }), skip: { cause: 'filtered', reason: 'unaffected', filter } }) as RunEventResult;
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      reporter.handle(finished(result({ status: 'passed', id: 'kept' })));
+      reporter.handle(finished(leftOut('pays', 'chromium', 'areas')));
+      reporter.handle(finished(leftOut('pays', 'webkit', 'areas')));
+      reporter.handle(finished({ ...leftOut('pays', 'chromium', 'areas'), repeat: 1 }));
+      reporter.handle(finished(leftOut('refunds', 'chromium', 'areas')));
+      reporter.handle(finished(leftOut('export', 'chromium', 'jev')));
+      reporter.handle(finished(result({ status: 'skipped', id: 'slow', selected: false, attempts: [], skipReason: 'carries an excluded tag' })));
+      reporter.handle(runFinished({ reportPath: '.e2e/report.json' }));
+      expect(lines).toContain('      Tests  1 passed (1)');
+      expect(lines).toContain('   Left out  2 by areas, 1 by jev');
+
+      const one = capture();
+      const single = plainReporter(one.output);
+      single.handle(plan([]));
+      single.handle(finished(leftOut('pays', 'chromium', 'areas')));
+      single.handle(runFinished({ reportPath: '.e2e/report.json' }));
+      expect(one.lines).toContain('   Left out  1 test by areas');
+      expect(one.lines).toContain('      Tests  no tests executed');
+
+      const none = capture();
+      const plain = plainReporter(none.output);
+      plain.handle(finished(result({ status: 'passed', id: 'kept' })));
+      plain.handle(runFinished({ reportPath: '.e2e/report.json' }));
+      expect(none.lines.join('\n')).not.toContain('Left out');
+    });
+
     it('starts the clock at plan, so a download narrated before it is not on it', () => {
       vi.useFakeTimers({ now: new Date('2026-09-08T10:00:00.000Z') });
       try {
@@ -654,6 +687,44 @@ describe('ListReporter', () => {
       expect(lines).toContain(' ✓ service "compose" ready 41.20s');
       expect(lines).toContain(' ✓ target "chromium" command reused 1.80s');
       expect(lines.find((line) => line.includes('Duration'))).toMatch(/^   Duration  \S+ \(startup 43\.00s\)$/);
+    });
+
+    it.each([
+      { outcome: 'timed-out', word: 'timed out' },
+      { outcome: 'failed', word: 'failed' },
+    ] as const)('prints a filter step once it narrated, never checks off one that $word, and names the one an interrupt cuts', ({ outcome, word }) => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      const silent = { kind: 'filter', name: 'silent' } as const;
+      reporter.handle({ type: 'setup', step: silent, state: 'started' });
+      reporter.handle({ type: 'setup', step: silent, state: 'finished', durationMs: 300, outcome });
+      const jev = { kind: 'filter', name: 'jev' } as const;
+      reporter.handle({ type: 'setup', step: jev, state: 'started' });
+      reporter.handle({ type: 'notice', target: 'filter', message: 'jev: asking Jev about 4 tests in tests/todos.e2e.ts' });
+      reporter.handle({ type: 'setup', step: jev, state: 'finished', durationMs: 1_200 });
+      const areas = { kind: 'filter', name: 'areas' } as const;
+      reporter.handle({ type: 'setup', step: areas, state: 'started' });
+      reporter.handle({ type: 'notice', target: 'filter', message: 'areas: asking the model about 3 tests' });
+      reporter.handle({ type: 'setup', step: areas, state: 'finished', durationMs: 302, outcome });
+      reporter.handle({ type: 'setup', step: { kind: 'filter', name: 'slow' }, state: 'started' });
+      reporter.handle({ type: 'run-interrupted', mode: 'graceful' });
+      reporter.handle(runFinished({ status: 'interrupted', exitCode: 130 }));
+      expect(lines.filter((line) => /jev|areas|silent|slow/u.test(line))).toEqual([
+        'ℹ jev: asking Jev about 4 tests in tests/todos.e2e.ts',
+        ' ✓ filter "jev" done 1.20s',
+        'ℹ areas: asking the model about 3 tests',
+        ` × filter "areas" ${word} 302ms`,
+        'interrupted while running filter "slow": tearing down (interrupt again to force)',
+      ]);
+
+      const chunks: string[] = [];
+      const colored = new ListReporter({ write: (line) => chunks.push(line) }, { live: false, colors: true });
+      colored.handle(runStarted());
+      colored.handle({ type: 'setup', step: areas, state: 'started' });
+      colored.handle({ type: 'notice', target: 'filter', message: 'areas: asking the model about 3 tests' });
+      colored.handle({ type: 'setup', step: areas, state: 'finished', durationMs: 302, outcome });
+      expect(chunks.at(-1)).toBe(` \u001b[33m×\u001b[39m filter "areas" \u001b[33m${word} 302ms\u001b[39m`);
     });
 
     it('prints a provisioning step only when it narrated, and never the collection', () => {
@@ -1398,6 +1469,93 @@ function agentStepRecord(
     model: usage,
   } as unknown as AttemptRecord['steps'][number];
 }
+
+describe('recording model mismatch', () => {
+  it.each([[false, false], [false, true], [true, false], [true, true]])('keeps distinct recordings with the same label, live=%s, entry=%s', (live, hasEntry) => {
+    const { lines, output } = capture();
+    const reporter = plainReporter({ ...output, raw: () => {} }, live);
+    reporter.handle(runStarted({ model: 'example/B' }));
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+    const steps = [0, 1].map((index) => ({
+      ...agentStepRecord('pay', { provider: 'unused', model: 'unused', calls: 0, inputTokens: 0, outputTokens: 0 }, {
+        mode: 'self-finalized', replayedActions: 1, totalActions: 1, recordedBy: { provider: 'example', model: 'A' },
+        ...(hasEntry ? { entry: `recording-${index}` } : {}),
+      }),
+      index,
+    }));
+    reporter.handle(finished(result({ status: 'flaky', attempts: [attempt({ status: 'failed', steps }), attempt({ index: 1, steps })] })));
+    expect(lines.filter((line) => line.includes('recorded with'))).toHaveLength(2);
+  });
+
+  it.each([false, true])('stays quiet for a per-call pinned agent, live=%s', (live) => {
+    const { lines, output } = capture();
+    const reporter = plainReporter({ ...output, raw: () => {} }, live);
+    reporter.handle(runStarted({ model: 'example/B' }));
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+    const cached = agentStepRecord('pay', { provider: 'unused', model: 'unused', calls: 0, inputTokens: 0, outputTokens: 0 }, {
+      mode: 'self-finalized', replayedActions: 1, totalActions: 1, recordedBy: { provider: 'example', model: 'A' },
+    });
+    cached.agent = 'buyer';
+    reporter.handle(finished(result({ status: 'passed', agent: 'default', attempts: [attempt({ steps: [cached] })] })));
+    expect(lines.filter((line) => line.includes('recorded with'))).toEqual([]);
+  });
+
+  it.each([false, true])('keeps serial retry notices in their file block among multiple files, live=%s', (live) => {
+    const { lines, output } = capture();
+    const reporter = plainReporter({ ...output, raw: () => {} }, live);
+    reporter.handle(runStarted({ model: 'example/B' }));
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }, { file: 'tests/other.e2e.ts', tests: 1 }]));
+    const cached = agentStepRecord('pay', { provider: 'unused', model: 'unused', calls: 0, inputTokens: 0, outputTokens: 0 }, {
+      mode: 'self-finalized', replayedActions: 1, totalActions: 1, recordedBy: { provider: 'example', model: 'A' },
+    });
+    reporter.handle(serialGroup('serial', [{ members: [serialMember('test-1', { steps: [cached] })] }, { members: [serialMember('test-1', { steps: [cached] })] }]));
+    reporter.handle(finished(result({ status: 'passed', serialGroupId: 'serial' })));
+    reporter.handle(finished(result({ status: 'passed', id: 'other', file: 'tests/other.e2e.ts' })));
+    const notices = lines.filter((line) => line.includes('recorded with'));
+    expect(notices).toHaveLength(1);
+    const at = lines.indexOf(notices[0]!);
+    expect(at).toBeGreaterThan(lines.findIndex((line) => line.includes('tests/case.e2e.ts')));
+    expect(at).toBeLessThan(lines.findIndex((line) => line.includes('tests/other.e2e.ts')));
+  });
+
+  it.each([false, true])('deduplicates retries inside the file block, live=%s', (live) => {
+    const { lines, output } = capture();
+    const reporter = plainReporter({ ...output, raw: () => {} }, live);
+    reporter.handle(runStarted({ model: 'example/B' }));
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+    const cached = agentStepRecord('pay', { provider: 'unused', model: 'unused', calls: 0, inputTokens: 0, outputTokens: 0 }, {
+      mode: 'self-finalized', replayedActions: 1, totalActions: 1, recordedBy: { provider: 'example', model: 'A' },
+    });
+    reporter.handle(finished(result({ status: 'flaky', attempts: [attempt({ status: 'failed', steps: [cached] }), attempt({ index: 1, steps: [cached] })] })));
+    const notices = lines.filter((line) => line.includes('recorded with'));
+    expect(notices).toHaveLength(1);
+    expect(lines.indexOf(notices[0]!)).toBeGreaterThan(lines.findIndex((line) => line.includes('tests/case.e2e.ts')));
+    expect(notices[0]).toMatch(/^     /u);
+  });
+
+  it.each([false, true])('prints only known mismatches and preserves the header, live=%s', (live) => {
+    for (const [configured, recorded, agent, expected] of [
+      ['example/B', 'A', 'default', true], ['example/A', 'A', 'default', false],
+      ['example/B', undefined, 'default', false], [undefined, 'A', 'default', false],
+      ['example/B', 'A', 'pinned', false], ['example/B', 'A\n\u001b[31m', 'default', true],
+    ] as const) {
+      const { lines, output } = capture();
+      const reporter = plainReporter({ ...output, raw: () => {} }, live);
+      reporter.handle(runStarted(configured === undefined ? {} : { model: configured }));
+      reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+      const cached = agentStepRecord('pay', { provider: 'unused', model: 'unused', calls: 0, inputTokens: 0, outputTokens: 0 }, {
+        mode: 'self-finalized', replayedActions: 1, totalActions: 1,
+        ...(recorded === undefined ? {} : { recordedBy: { provider: 'example', model: recorded } }),
+      });
+      delete cached.model;
+      reporter.handle(finished(result({ status: 'passed', agent, attempts: [attempt({ steps: [cached] })] })));
+      const replays = lines.filter((line) => line.includes('recorded with'));
+      expect(replays).toHaveLength(expected ? 1 : 0);
+      if (expected) expect(replays[0]).toContain('replayed · recorded with example/A');
+      expect(lines.join('\n')).not.toContain('configured model');
+    }
+  });
+});
 
 describe('ListReporter goldens', () => {
   useGoldenTerminal();

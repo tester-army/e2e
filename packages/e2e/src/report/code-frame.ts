@@ -6,7 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { userFrame, type StackFrame } from '../internal/source.ts';
-import { bounded, terminalColumns, type Colors } from './format.ts';
+import { bounded, fitColumns, terminalColumns, visibleWidth, type Colors } from './format.ts';
 
 export { userFrame, type StackFrame };
 
@@ -17,9 +17,10 @@ const MAX_FRAME_LINE_CHARS = 200;
 
 /**
  * Renders the failing line with two lines of context on each side and a
- * column caret, gutter-numbered like vitest (`  28| code`).
+ * column caret, gutter-numbered like vitest (`  28| code`), each line clipped
+ * to `maxChars` (by default what fits the terminal).
  */
-export function codeFrame(frame: StackFrame, pc: Colors): string[] {
+export function codeFrame(frame: StackFrame, pc: Colors, maxChars = Math.max(20, terminalColumns() - 10)): string[] {
   let source: string;
   try {
     source = readFileSync(frame.file, 'utf8');
@@ -31,16 +32,21 @@ export function codeFrame(frame: StackFrame, pc: Colors): string[] {
   if (index < 0 || index >= lines.length) return [];
   const start = Math.max(0, index - FRAME_RANGE);
   const end = Math.min(lines.length - 1, index + FRAME_RANGE);
-  const maxChars = Math.max(20, terminalColumns() - 10);
   const gutter = (no: number | '' = ''): string => pc.gray(`${String(no).padStart(3)}|`);
   const rows: string[] = [];
   for (let i = start; i <= end; i += 1) {
     const raw = bounded(lines[i] ?? '').replaceAll('\t', ' ');
     if (raw.length > MAX_FRAME_LINE_CHARS) return [];
-    const text = raw.length > maxChars ? `${raw.slice(0, maxChars - 1)}…` : raw.trimEnd();
+    const text = fitColumns(raw.trimEnd(), maxChars);
     rows.push(`${gutter(i + 1)}${text === '' ? '' : ` ${text}`}`);
     if (i === index) {
-      rows.push(`${gutter()}${' '.repeat(Math.max(1, frame.column))}${pc.red('^')}`);
+      const prefix = bounded((lines[i] ?? '').slice(0, Math.max(0, frame.column - 1)));
+      const column = visibleWidth(prefix);
+      // A clipped-away location has no visible token to annotate.
+      const limit = text === raw.trimEnd() ? maxChars : visibleWidth(text) - 1;
+      if (column < limit) {
+        rows.push(`${gutter()}${' '.repeat(column + 1)}${pc.red('^')}`);
+      }
     }
   }
   return rows;

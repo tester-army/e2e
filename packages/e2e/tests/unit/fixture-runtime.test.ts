@@ -28,7 +28,7 @@ function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}, app?:
   const { fixtures } = createFixtures({
     config, target: config.targets[0]!, session: createEngineSession({ engine, targetName: 'fake' }),
     steps, budget: new AttemptBudget(signal, new Deadline(10_000)), runId: 'run', attemptId: 'attempt',
-    attempt: { testId: 'test', attemptId: 'attempt', index: 0, signal, memory: new Map() },
+    attempt: { testId: 'test', attemptId: 'attempt', titlePath: [], index: 0, signal, memory: new Map() },
     artifacts: { dir: '/tmp', register: registerArtifact, link: () => 'artifact' }, priorSteps: () => steps.completed(),
     agentContext: undefined, saveSession: undefined,
     models: new WorkerModels(() => {}),
@@ -39,7 +39,7 @@ function runtime(engine: EngineHandle, overrides: Partial<E2EConfig> = {}, app?:
 const empty = () => defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]) });
 
 describe('explicit screenshot secrecy', () => {
-  it.each(['static', 'provider'] as const)('captures before a %s secret fill and denies capture and registration afterward', async (source) => {
+  it.each(['static', 'provider'] as const)('captures before and after a %s secret fill, with the secret kept out of the steps', async (source) => {
     const sentinel = 'synthetic-screenshot-secret-2718';
     const screenshot = vi.fn(async () => 'screenshots/evidence.png');
     let filled: string | undefined;
@@ -56,7 +56,7 @@ describe('explicit screenshot secrecy', () => {
     });
     setSecretRegistry(config);
     try {
-      await expect(fixtures.app.screenshot('before-fill')).resolves.toBe('screenshots/evidence.png');
+      await expect(fixtures.app.screenshot('before-fill')).resolves.toBe('/tmp/screenshots/evidence.png');
       expect(screenshot).toHaveBeenCalledExactlyOnceWith('before-fill', expect.any(Object));
       expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
       screenshot.mockClear();
@@ -64,14 +64,10 @@ describe('explicit screenshot secrecy', () => {
 
       await fixtures.screen.getByRole('textbox').fill(credentials.user('member').password);
       expect(filled).toBe(sentinel);
-      await expect(fixtures.app.screenshot('after-fill')).rejects.toMatchObject({
-        code: 'POLICY_DENIED', category: 'configuration',
-      });
-      expect(screenshot).not.toHaveBeenCalled();
-      expect(registerArtifact).not.toHaveBeenCalled();
-      expect(steps.all().at(-1)).toMatchObject({
-        api: 'app.screenshot', status: 'failed', artifacts: [], error: { code: 'POLICY_DENIED' },
-      });
+      await expect(fixtures.app.screenshot('after-fill')).resolves.toBe('/tmp/screenshots/evidence.png');
+      expect(screenshot).toHaveBeenCalledExactlyOnceWith('after-fill', expect.any(Object));
+      expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
+      expect(steps.all().at(-1)).toMatchObject({ api: 'app.screenshot', status: 'passed' });
       expect(JSON.stringify(steps.all())).not.toContain(sentinel);
     } finally {
       setSecretRegistry(undefined);
@@ -90,7 +86,7 @@ describe('explicit screenshot secrecy', () => {
       await expect(fixtures.screen.getByRole('textbox').fill(credentials.user('member').password)).rejects.toMatchObject({
         code: 'AUTH_CREDENTIAL_UNAVAILABLE',
       });
-      await expect(fixtures.app.screenshot()).resolves.toBe('screenshots/evidence.png');
+      await expect(fixtures.app.screenshot()).resolves.toBe('/tmp/screenshots/evidence.png');
       expect(screenshot).toHaveBeenCalledOnce();
       expect(registerArtifact).toHaveBeenCalledExactlyOnceWith('screenshot', 'screenshots/evidence.png');
     } finally {
@@ -114,7 +110,7 @@ describe('explicit screenshot secrecy', () => {
         code: 'AUTH_CREDENTIAL_UNAVAILABLE',
         message: expect.stringContaining('at least 6 characters (code points)'),
       });
-      await expect(fixtures.app.screenshot()).resolves.toBe('screenshots/evidence.png');
+      await expect(fixtures.app.screenshot()).resolves.toBe('/tmp/screenshots/evidence.png');
     } finally {
       setSecretRegistry(undefined);
     }
@@ -122,7 +118,7 @@ describe('explicit screenshot secrecy', () => {
 });
 
 describe('generic secrets', () => {
-  it('fills a config.secrets value into a plain textbox, redacts it from steps, and taints the session', async () => {
+  it('fills a config.secrets value into a plain textbox and redacts it from steps', async () => {
     const apiKey = 'sk_live_generic_2718';
     let filled: string | undefined;
     const screenshot = vi.fn(async () => 'screenshots/evidence.png');
@@ -142,7 +138,6 @@ describe('generic secrets', () => {
       expect(JSON.stringify(handle)).not.toContain(apiKey);
       await fixtures.screen.getByLabel('API key').fill(handle);
       expect(filled).toBe(apiKey);
-      await expect(fixtures.app.screenshot('after-fill')).rejects.toMatchObject({ code: 'POLICY_DENIED' });
       expect(JSON.stringify(steps.all())).not.toContain(apiKey);
     } finally {
       setSecretRegistry(undefined);

@@ -82,7 +82,8 @@ export interface SemanticQuery {
 /**
  * The location capability's query language. `selector` is a platform-native
  * selector string (CSS or XPath on a document platform, a predicate on a
- * device platform); `frame` scopes a query inside one nested document.
+ * device platform); `frame` scopes a query inside one nested document;
+ * `union` matches either side, each node once, in document order.
  */
 export type LocatorExpression =
   | {
@@ -94,7 +95,9 @@ export type LocatorExpression =
       readonly kind: 'filter';
       readonly source: LocatorExpression;
       readonly hasText?: TextPattern;
+      readonly hasNotText?: TextPattern;
       readonly has?: LocatorExpression;
+      readonly hasNot?: LocatorExpression;
     }
   | {
       readonly kind: 'index';
@@ -109,6 +112,11 @@ export type LocatorExpression =
       readonly kind: 'frame';
       readonly selector: string;
       readonly source: LocatorExpression;
+    }
+  | {
+      readonly kind: 'union';
+      readonly left: LocatorExpression;
+      readonly right: LocatorExpression;
     };
 
 export interface NodeRef {
@@ -151,8 +159,9 @@ export interface SemanticNode {
    * The node's test id, when the platform gives it one: the value of the
    * project's test-id attribute on a document platform, an accessibility
    * identifier on iOS, a resource id on Android, an automation id on a
-   * desktop. The `testId` query resolves against exactly this field, so the
-   * harness never knows where a platform keeps it.
+   * desktop. The `testId` query resolves against this field, so the harness
+   * never knows where a platform keeps it. An engine may also match the id
+   * without its platform's namespacing.
    */
   readonly testId?: string;
   /** What a field takes, deciding which secrets may fill it. */

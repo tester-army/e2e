@@ -150,7 +150,7 @@ class InProcessRunner implements UnitRunner {
 
   /** Stops accepting work and asks the queue to wind down. */
   private close(): void {
-    if (this.exited || this.closing) return;
+    if (this.exited) return;
     this.closing = true;
     this.worker.handle({ type: 'shutdown' });
   }

@@ -27,6 +27,8 @@ jobs:
     # tokens from self-hosted runners, and Blacksmith registers as one.
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      e2e-version: ${{ steps.published.outputs.e2e-version }}
     permissions:
       contents: write
       pull-requests: write
@@ -52,6 +54,7 @@ jobs:
       # Opens or updates a release PR while changesets are pending; publishes
       # once that PR is merged and no changesets remain.
       - name: Create release PR or publish
+        id: changesets
         uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v2.1.2
         with:
           version-script: pnpm run version-packages
@@ -63,6 +66,24 @@ jobs:
           # No npm token: publishing uses Trusted Publishing (OIDC) configured
           # on each @e2e-dev package. npm attaches provenance automatically
           # once the repository is public.
+
+      - name: Published e2e version
+        id: published
+        if: ${{ steps.changesets.outputs.published == 'true' }}
+        run: echo "e2e-version=$(jq -r '.[] | select(.name == "e2e") | .version' <<< "$PUBLISHED")" >> "$GITHUB_OUTPUT"
+        env:
+          PUBLISHED: ${{ steps.changesets.outputs.published-packages }}
+
+  # Lists the e2e release that just published in the MCP Registry.
+  mcp-registry:
+    needs: release
+    if: ${{ needs.release.outputs.e2e-version != '' }}
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/mcp-registry.yml
+    with:
+      version: ${{ needs.release.outputs.e2e-version }}
 
   # A changesets snapshot of every public package, published to the `nightly`
   # dist-tag as `<next version>-nightly-<datetime>`. Same filename as the

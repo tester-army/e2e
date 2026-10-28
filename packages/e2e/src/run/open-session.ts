@@ -14,7 +14,7 @@ import { reserveHostedRun } from './public-ownership.ts';
 export interface OpenHostOptions {
   /** Config search directory, or project root of a config value; default `process.cwd()`. */
   readonly cwd?: string | undefined;
-  /** Path relative to `cwd`, or a config value; default nearest `e2e.config.ts`. Files load fresh per host. */
+  /** Path relative to `cwd`, or a config value; default the nearest config file. Files load fresh per host. */
   readonly config?: string | E2EConfig | undefined;
   /** May be omitted only when the config declares one target. */
   readonly target?: string | undefined;

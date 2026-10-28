@@ -29,11 +29,13 @@ import {
   type ActionTrace,
   type DerivedReason,
   type RecordedAction,
+  type RecordedModel,
   type ScrollAction,
   type TraceKeyContext,
   type TraceProvenance,
   type TraceTargetDescriptor,
 } from './trace.ts';
+import { readRecordedModel } from './trace-fields.ts';
 import { bound } from '../internal/text.ts';
 
 /** The summary a run-time value gap records; the prose a project-tool gap would carry for a tool of that name. */
@@ -106,6 +108,7 @@ export class TraceRecorder {
     readonly executor: { readonly name: string; readonly version?: string };
     /** Test, target, and instruction digest the trace was recorded for. */
     readonly recordedFor: TraceProvenance;
+    readonly recordedBy?: RecordedModel;
     readonly summary: string;
     readonly startPath?: string;
     readonly endPath?: string;
@@ -119,6 +122,8 @@ export class TraceRecorder {
     readonly keyedBy?: TraceKeyContext;
   }): ActionTrace | undefined {
     if (this.actions.length === 0) return undefined;
+    const source = conclusion.recordedBy;
+    const recordedBy = source === undefined ? undefined : readRecordedModel({ provider: this.redact(source.provider), model: this.redact(source.model) }, MAX_TRACE_DESCRIPTOR_CHARS);
     const summary = bound(this.redact(conclusion.summary), MAX_TRACE_SUMMARY_CHARS);
     // Locations are replay preconditions, so they follow the input rule: a
     // path the redactor alters carried a secret (a token in a query string),
@@ -133,6 +138,7 @@ export class TraceRecorder {
         ...(conclusion.executor.version === undefined ? {} : { version: conclusion.executor.version }),
       },
       recordedFor: recordedProvenance(conclusion.recordedFor, this.redact),
+      ...(recordedBy === undefined ? {} : { recordedBy }),
       summary: summary.trim() === '' ? 'step passed' : summary,
       ...(startPath === undefined ? {} : { startPath }),
       ...(endPath === undefined ? {} : { endPath }),

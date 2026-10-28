@@ -1,7 +1,7 @@
 /** Immutable locator expression construction. */
 
 import type { LocatorExpression, SemanticQuery } from '../engine/surface.ts';
-import { toTextPattern, type TextPattern } from '../internal/text.ts';
+import { describePattern, toTextPattern, type TextPattern } from '../internal/text.ts';
 import { TestError, type ErrorDetails } from '../internal/errors.ts';
 import type { Role, RoleAlias, RoleOptions, TextMatch, TextMatchOptions } from '../types.ts';
 
@@ -92,16 +92,23 @@ function scoped(
 /** Builds a filter expression; an empty filter object is an immediate error. */
 export function filterExpression(
   source: LocatorExpression,
-  options: { hasText?: TextMatch; has?: LocatorExpression },
+  options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: LocatorExpression; hasNot?: LocatorExpression },
 ): LocatorExpression {
-  if (options.hasText === undefined && options.has === undefined) {
-    throw new TestError('INVALID_LOCATOR', 'filter() requires hasText and/or has');
+  if (
+    options.hasText === undefined &&
+    options.hasNotText === undefined &&
+    options.has === undefined &&
+    options.hasNot === undefined
+  ) {
+    throw new TestError('INVALID_LOCATOR', 'filter() requires hasText, hasNotText, has, and/or hasNot');
   }
   return {
     kind: 'filter',
     source,
     ...(options.hasText !== undefined ? { hasText: toTextPattern(options.hasText, { exact: false }) } : {}),
+    ...(options.hasNotText !== undefined ? { hasNotText: toTextPattern(options.hasNotText, { exact: false }) } : {}),
     ...(options.has !== undefined ? { has: options.has } : {}),
+    ...(options.hasNot !== undefined ? { hasNot: options.hasNot } : {}),
   };
 }
 
@@ -126,6 +133,8 @@ export function indexExpression(
  */
 export function expressionHints(expression: LocatorExpression): Pick<ErrorDetails, 'role' | 'name' | 'testId'> {
   switch (expression.kind) {
+    case 'union':
+      return {};
     case 'query': {
       const { query } = expression;
       const value = patternText(query.value);
@@ -151,26 +160,22 @@ function patternText(pattern: TextPattern): string {
 /** Renders an expression for diagnostics. */
 export function describeExpression(expression: LocatorExpression): string {
   switch (expression.kind) {
+    case 'union':
+      return `${describeExpression(expression.left)}.or(${describeExpression(expression.right)})`;
     case 'query': {
       const query = expression.query;
-      const value =
-        query.value.kind === 'string' ? JSON.stringify(query.value.value) : `/${query.value.source}/${query.value.flags}`;
-      const name =
-        query.name === undefined
-          ? ''
-          : `, name: ${query.name.kind === 'string' ? JSON.stringify(query.name.value) : `/${query.name.source}/${query.name.flags}`}`;
+      const value = describePattern(query.value);
+      const name = query.name === undefined ? '' : `, name: ${describePattern(query.name)}`;
       const visible = query.visible === true ? ', visible: true' : '';
       const scope = expression.scope === undefined ? '' : `${describeExpression(expression.scope)} >> `;
       return `${scope}getBy${query.kind[0]!.toUpperCase()}${query.kind.slice(1)}(${value}${name}${visible})`;
     }
     case 'filter': {
       const parts: string[] = [];
-      if (expression.hasText !== undefined) {
-        parts.push(
-          `hasText: ${expression.hasText.kind === 'string' ? JSON.stringify(expression.hasText.value) : `/${expression.hasText.source}/${expression.hasText.flags}`}`,
-        );
-      }
+      if (expression.hasText !== undefined) parts.push(`hasText: ${describePattern(expression.hasText)}`);
+      if (expression.hasNotText !== undefined) parts.push(`hasNotText: ${describePattern(expression.hasNotText)}`);
       if (expression.has !== undefined) parts.push(`has: ${describeExpression(expression.has)}`);
+      if (expression.hasNot !== undefined) parts.push(`hasNot: ${describeExpression(expression.hasNot)}`);
       return `${describeExpression(expression.source)}.filter({ ${parts.join(', ')} })`;
     }
     case 'index':

@@ -36,7 +36,7 @@ export interface ResolvedModel {
 }
 
 /** A resolved model as reports and diagnostics name it: the instance's `provider/model-id`. */
-export function modelLabel(model: ResolvedModel): string {
+export function modelLabel(model: Pick<ResolvedModel, 'provider' | 'id'>): string {
   return `${model.provider}/${model.id}`;
 }
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:05:24.200Z",
+  "createdAt": "2026-10-15T16:03:30.672Z",
   "payload": {
     "actions": [
       {
@@ -56,9 +56,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the exact Trail Mix 500 g product, set quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Opened the exact Trail Mix 500 g product, increased its quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g”.",
+    "startPath": "dev.e2e.benchmark / Product Catalog",
+    "endPath": "dev.e2e.benchmark / Product Catalog",
     "endAnchors": [
       {
         "role": "text",
@@ -119,7 +119,7 @@
         "testId": "favorite-trail-mix-1000"
       }
     ],
-    "endWaitMs": 12025,
+    "endWaitMs": 12917,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

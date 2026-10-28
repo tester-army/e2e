@@ -11,7 +11,7 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 export const migrationPrompt = `Migrate this project's Detox tests to e2e, one spec at a time. Docs: \`https://e2e.tester.army/docs/migrate/detox.md\` and \`https://e2e.tester.army/docs/mobile.md\`
 
 1. Read the migration guide above. It maps \`.detoxrc.js\` and the Detox API to e2e. The mobile guide covers devices and app builds.
-2. If the project has no e2e config (\`e2e.config.ts\` or \`e2e.config.mts\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent). It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
+2. If the project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent). It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
 3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 5. Port \`.detoxrc.js\` into the e2e config: one target per platform with \`mobile({ platform })\`, the app's \`bundleId\` and \`appPath\` on the target, and the device type as \`mobile({ device })\`. e2e uses the normal debug or release build, with no Detox framework.
@@ -140,7 +140,7 @@ password comes from [configured credentials](/authentication).
 | `device.matchFace()`, `device.unmatchFace()` | `device.setBiometrics('faceid', 'match' \| 'nonmatch')` |
 | `device.setStatusBar`, `device.setURLBlacklist` | No equivalent |
 | `device.disableSynchronization()` | No equivalent. Actions wait and assertions retry |
-| `device.takeScreenshot()` | `app.screenshot('label')`; withheld after a secret fill (`POLICY_DENIED`) |
+| `device.takeScreenshot()` | `app.screenshot('label')`, secure fields masked |
 | `device.takeScreenshot()` compared with an image snapshot library | `await expect(screen).toHaveScreenshot('name.png')`, see [Visual comparison](/visual-testing) |
 | `:ios:` / `:android:` in a test name | `{ platforms: ['ios'] }` on the test |
 

@@ -88,6 +88,53 @@ export interface BuildReportOptions {
   explore?: ReportExplore | undefined;
   /** The commit the code under test came from; absent outside git and CI. */
   vcs?: VcsInfo | undefined;
+  /** The change the test filters judged, or why none ran; absent when the run has no filters to apply. */
+  changes?: ReportChanges | undefined;
+  /** The test filters the run applied, in order; written only when there is one. */
+  filters?: readonly ReportFilter[] | undefined;
+}
+
+/**
+ * The change a run's test filters judged, by counts only, or why no filter
+ * ran: `base` and `files` once git measured the change, `skipped` alone
+ * when no filter ran before git was asked.
+ */
+export type ReportChanges =
+  | {
+      /** The merge base the change is measured from. */
+      base: string;
+      /** How many files changed since `base`; 0 when there is no change. */
+      files: number;
+      /** Why no filter ran, such as `no files changed since abc1234`; omitted when they ran. */
+      skipped?: string | undefined;
+    }
+  | {
+      /** Why no filter ran before git was asked: `--last-failed` or `no tests to judge`. */
+      skipped: string;
+      base?: undefined;
+      files?: undefined;
+    };
+
+/** Why a filter left nothing out without answering: it threw or answered with something other than `{ exclude, note? }`, or ran past 5 minutes. */
+export type FilterOutcome = 'failed' | 'timed-out';
+
+/** One test filter the run applied, in order. */
+export interface ReportFilter {
+  /** The filter's `name`. */
+  name: string;
+  /** How many tests it was given. */
+  candidates: number;
+  /** How many tests the run left out on its word; a test it named still runs with its serial group. */
+  excluded: number;
+  /** The filter's note, redacted and cut to one line of 1024 characters; for a filter that failed or timed out, the warning saying why. */
+  note?: string | undefined;
+  /**
+   * Set when the filter left nothing out because the call did not answer:
+   * `failed` when it threw or answered with something other than
+   * `{ exclude, note? }`, `timed-out` when it ran past 5 minutes and the run
+   * stopped waiting. Absent when it answered.
+   */
+  outcome?: FilterOutcome | undefined;
 }
 
 /** One finding `e2e explore` recorded through its `report_finding` tool. */
@@ -173,6 +220,7 @@ export interface ReportStep {
   startedAt: string;
   durationMs: number;
   observationRevision?: string | undefined;
+  observationTruncated?: boolean | undefined;
   explanation?: string | undefined;
   visionInput?: boolean | undefined;
   visionDegraded?: VisionDegradation | undefined;
@@ -286,7 +334,10 @@ export interface ReportResult {
    * than the positionals named, a tag filter, a platform it does not declare)
    * is still here as `skipped` for the record, but it is report-only: the
    * summary's `selected` does not count it, and the page and JUnit renderers
-   * leave it out, as the terminal does.
+   * leave it out, as the terminal does. A result a test filter left out
+   * (`skip.filter` set) is unselected too, yet JUnit lists it as a skipped
+   * case, the terminal counts it in its `Left out` row, and the page counts
+   * it in its headline and lists it under the filters fold.
    */
   selected: boolean;
   serialGroupId?: string | undefined;
@@ -397,6 +448,10 @@ export interface Report1Document {
      * did not pass. Not part of this run's status, exit code, or summary.
      */
     carried?: ReportCarried | undefined;
+    /** The change the test filters judged, or why none ran; absent when the run has no filters to apply. */
+    changes?: ReportChanges | undefined;
+    /** The test filters the run applied, in order; absent when none ran. */
+    filters?: readonly ReportFilter[] | undefined;
     /** Present on an `e2e explore` run only. */
     explore?: ReportExplore | undefined;
   };
@@ -777,17 +832,24 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         serialGroups: options.serialGroups,
         discovered: summary.discovered,
       }),
+      ...(options.changes === undefined ? {} : { changes: options.changes }),
+      ...(options.filters === undefined || options.filters.length === 0 ? {} : { filters: options.filters }),
       ...(options.explore === undefined ? {} : { explore: options.explore }),
     },
   };
 }
 
+/** Report order of two tests: by file, then by declaration within it. */
+export function compareTests(
+  a: { readonly file: string; readonly declarationIndex: number },
+  b: { readonly file: string; readonly declarationIndex: number },
+): number {
+  if (a.file !== b.file) return a.file < b.file ? -1 : 1;
+  return a.declarationIndex - b.declarationIndex;
+}
+
 function compareResults(a: ResultRecord, b: ResultRecord): number {
-  if (a.test.file !== b.test.file) return a.test.file < b.test.file ? -1 : 1;
-  if (a.test.declarationIndex !== b.test.declarationIndex) {
-    return a.test.declarationIndex - b.test.declarationIndex;
-  }
-  return a.target.index - b.target.index;
+  return compareTests(a.test, b.test) || a.target.index - b.target.index;
 }
 
 /** Report order is completion-time independent. */

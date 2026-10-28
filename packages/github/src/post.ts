@@ -53,21 +53,43 @@ function send(params: PostParams, method: Method, route: string, body?: unknown)
   });
 }
 
+/** The start of a response's body, for error messages. */
+async function bodyStart(response: Response): Promise<string> {
+  return (await response.text().catch(() => '')).slice(0, 200);
+}
+
 /** The error for a response the protocol has no meaning for, with the start of its body. */
-async function unexpected(response: Response, method: Method, route: string): Promise<Error> {
-  const detail = (await response.text().catch(() => '')).slice(0, 200);
+function unexpected(response: Response, method: Method, route: string, detail: string): Error {
   return new Error(`GitHub responded ${response.status} to ${method} ${route}${detail === '' ? '' : `: ${detail}`}`);
+}
+
+/**
+ * Whether GitHub throttled the request rather than refused it: a 429, or a
+ * 403 for a spent primary limit, a `Retry-After`, or a secondary limit.
+ */
+function isRateLimited(response: Response, detail: string): boolean {
+  if (response.status === 429) return true;
+  return (
+    response.status === 403 &&
+    (response.headers.get('x-ratelimit-remaining') === '0' ||
+      response.headers.has('retry-after') ||
+      /secondary rate limit/i.test(detail))
+  );
 }
 
 /** The error the runner prints for a response that is not a success. */
 async function failure(params: PostParams, response: Response, method: Method, route: string): Promise<Error> {
   if (response.status === 401) return new Error('GitHub rejected the token (GITHUB_TOKEN or GH_TOKEN)');
+  const detail = await bodyStart(response);
+  if (isRateLimited(response, detail)) {
+    return new Error(`GitHub rate limited ${method} ${route}; wait for the rate-limit reset or Retry-After before rerunning the job`);
+  }
   if (response.status === 403 || response.status === 404) {
     return new Error(
       `the token cannot comment on ${params.repository}#${params.pullRequest}: a pull request from a fork runs with a read-only token, and the job needs \`permissions: pull-requests: write\``,
     );
   }
-  return unexpected(response, method, route);
+  return unexpected(response, method, route, detail);
 }
 
 /** One GitHub REST call; anything but success is an error the runner can print. */
@@ -98,7 +120,7 @@ async function tokenAuthor(params: PostParams): Promise<Author> {
     if (isRecord(refusal) && refusal['message'] === INTEGRATION_REFUSAL) return (author) => author['type'] === 'Bot';
   }
   if (response.status === 401) throw await failure(params, response, 'GET', '/user');
-  throw await unexpected(response, 'GET', '/user');
+  throw unexpected(response, 'GET', '/user', await bodyStart(response));
 }
 
 /**

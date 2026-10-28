@@ -135,6 +135,37 @@ describe('browser.route decisions', () => {
   /** Waits for the latched route failure the next step reports. */
   const nextStepFailure = (): Promise<unknown> => browser.url().then(() => undefined, (error: unknown) => error);
 
+  it('clears every test route, keeps configured site headers, and can register again', async () => {
+    await browser.route('**/api/**', route => route.fulfill({ body: 'mock-api' }));
+    await browser.route(/\/echo$/, route => route.fulfill({ json: { intercepted: true } }));
+    expect(await fetchText(`${origin}/api/quote`)).toBe('mock-api');
+    await browser.unrouteAll();
+    expect(await fetchText(`${origin}/api/quote`)).toBe('network:/api/quote');
+    expect((await fetchEcho(`${origin}/echo`)).headers['x-gate']).toBe('open-sesame');
+    await browser.unrouteAll();
+    await browser.route('**/api/quote', route => route.fulfill({ body: 'new-mock' }));
+    expect(await fetchText(`${origin}/api/quote`)).toBe('new-mock');
+    await browser.unroute('**/api/quote');
+    expect(await fetchText(`${origin}/api/quote`)).toBe('network:/api/quote');
+  });
+
+  it('routes real native dialogs by kind even when their messages are identical', async () => {
+    const kinds: string[] = [];
+    const off = await browser.onDialog(async dialog => {
+      kinds.push(dialog.type);
+      if (dialog.type === 'prompt') await dialog.accept('typed answer');
+      else if (dialog.type === 'confirm') await dialog.dismiss();
+      else await dialog.accept();
+    });
+    const answers = await browser.evaluate(() => {
+      window.alert('same message');
+      return { confirmed: window.confirm('same message'), prompt: window.prompt('same message') };
+    });
+    expect(kinds).toEqual(['alert', 'confirm', 'prompt']);
+    expect(answers).toEqual({ confirmed: false, prompt: 'typed answer' });
+    await off();
+  });
+
   it('answers with the route registered last when two fulfill', async () => {
     await browser.route('**/api/**', (route) => route.fulfill({ body: 'earlier' }));
     await browser.route('**/api/quote', (route) => route.fulfill({ body: 'later' }));

@@ -43,8 +43,8 @@
       "agent": "default"
     },
     "summary": "Read coupon code TA-BENCH-50, entered it, accepted the terms, and applied it. The web view now displays “Coupon applied.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "startPath": "dev.e2e.benchmark / WebView Accessibility",
+    "endPath": "dev.e2e.benchmark / WebView Accessibility",
     "endAnchors": [
       {
         "role": "textbox",

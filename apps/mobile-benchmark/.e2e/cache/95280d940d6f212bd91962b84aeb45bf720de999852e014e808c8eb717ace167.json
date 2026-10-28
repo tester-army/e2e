@@ -100,8 +100,8 @@
       "agent": "default"
     },
     "summary": "Selected Medium, Cheese, and Olives, enabled rush delivery, opened the notes field and dismissed the keyboard, then placed the order. The app confirms: “Order placed: Medium with Cheese, Olives (rush).”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "startPath": "dev.e2e.benchmark / Choice Controls",
+    "endPath": "dev.e2e.benchmark / Choice Controls",
     "endAnchors": [
       {
         "role": "other",

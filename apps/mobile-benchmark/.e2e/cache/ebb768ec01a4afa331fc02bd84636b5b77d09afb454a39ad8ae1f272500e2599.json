@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:56:48.585Z",
+  "createdAt": "2026-10-15T15:51:12.070Z",
   "payload": {
     "actions": [
       {
@@ -44,9 +44,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the modal, tapped Continue, and confirmed the native alert. The screen now shows “Flow completed.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Opened the modal, tapped Continue, and confirmed the native “Confirm action” alert. The screen now displays “Flow completed.”",
+    "startPath": "dev.e2e.benchmark / Modal Flow",
+    "endPath": "dev.e2e.benchmark / Modal Flow",
     "endAnchors": [
       {
         "role": "other",
@@ -64,7 +64,7 @@
         "name": "Open modal"
       }
     ],
-    "endWaitMs": 12280,
+    "endWaitMs": 12596,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

@@ -35,6 +35,8 @@ export interface LoopCall {
   readonly toolChoice: string;
   /** The provider options of every tool call in the history, oldest first; `undefined` where a call carries none. */
   readonly toolCallOptions: readonly unknown[];
+  /** Reasoning parts in the assistant messages of the request: what a provider replays as thinking. */
+  readonly reasoningParts: number;
 }
 
 export interface LoopToolCall {
@@ -113,6 +115,14 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
         message.role === 'assistant' && typeof message.content !== 'string'
           ? message.content.filter((part) => part.type === 'tool-call').map((part) => part.providerOptions)
           : [],
+      ),
+      reasoningParts: options.prompt.reduce(
+        (count, message) =>
+          count +
+          (message.role === 'assistant' && typeof message.content !== 'string'
+            ? message.content.filter((part) => part.type === 'reasoning').length
+            : 0),
+        0,
       ),
     };
     loopCalls.push(call);

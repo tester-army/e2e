@@ -1,14 +1,14 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:57:52.604Z",
+  "createdAt": "2026-10-15T15:53:05.668Z",
   "payload": {
     "actions": [
       {
         "name": "tapAt",
-        "summary": "tap the point (237, 512) on other \"Tap the green circle to continue\"",
+        "summary": "tap the point (237, 514) on other \"Tap the green circle to continue\"",
         "point": {
           "x": 237,
-          "y": 512
+          "y": 514
         },
         "viewport": {
           "width": 402,
@@ -20,39 +20,14 @@
             "name": "Tap the green circle to continue"
           },
           "fx": 0.5896,
-          "fy": 0.5224
+          "fy": 0.5251
         }
       },
       {
         "name": "tapAt",
-        "summary": "tap the point (165, 512) on other \"Enter the code 7291 and press the arrow…\"",
+        "summary": "tap the point (165, 514) on other \"Enter the code 7291 and press the arrow…\"",
         "point": {
           "x": 165,
-          "y": 512
-        },
-        "viewport": {
-          "width": 402,
-          "height": 874
-        },
-        "within": {
-          "target": {
-            "role": "other",
-            "name": "Enter the code 7291 and press the arrow, →"
-          },
-          "fx": 0.4104,
-          "fy": 0.5224
-        }
-      },
-      {
-        "name": "tool",
-        "summary": "tool type (run-time value)",
-        "derived": "pixels"
-      },
-      {
-        "name": "tapAt",
-        "summary": "tap the point (266, 514) on other \"Enter the code 7291 and press the arrow…\"",
-        "point": {
-          "x": 266,
           "y": 514
         },
         "viewport": {
@@ -64,8 +39,33 @@
             "role": "other",
             "name": "Enter the code 7291 and press the arrow, →"
           },
-          "fx": 0.6617,
+          "fx": 0.4104,
           "fy": 0.5251
+        }
+      },
+      {
+        "name": "tool",
+        "summary": "tool type (run-time value)",
+        "derived": "pixels"
+      },
+      {
+        "name": "tapAt",
+        "summary": "tap the point (268, 512) on other \"Enter the code 7291 and press the arrow…\"",
+        "point": {
+          "x": 268,
+          "y": 512
+        },
+        "viewport": {
+          "width": 402,
+          "height": 874
+        },
+        "within": {
+          "target": {
+            "role": "other",
+            "name": "Enter the code 7291 and press the arrow, →"
+          },
+          "fx": 0.6667,
+          "fy": 0.5224
         }
       }
     ],
@@ -81,9 +81,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Tapped the green circle, entered code 7291, and pressed the arrow. The screen now displays “Access granted.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Entered code 7291 and pressed the green arrow. The screen now displays “Access granted.”",
+    "startPath": "dev.e2e.benchmark / Broken Accessibility",
+    "endPath": "dev.e2e.benchmark / Broken Accessibility",
     "endAnchors": [
       {
         "role": "other",
@@ -96,7 +96,7 @@
         "name": "Tap the green circle to continue"
       }
     ],
-    "endWaitMs": 13942,
+    "endWaitMs": 15797,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

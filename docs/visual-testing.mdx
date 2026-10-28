@@ -135,8 +135,9 @@ On the web, e2e stops animations and hides the text caret. On iOS and
 Android, it holds the status bar fixed, so the clock and battery match on
 every run.
 
-e2e masks secure fields in every screenshot. After a test fills a secret,
-the matcher fails with `POLICY_DENIED`, like every other screenshot.
+e2e masks secure fields in every screenshot, after a secret fill too. The
+matcher fails with `POLICY_DENIED` when the engine can't prove every secure
+field on screen is masked.
 
 ## Next
 

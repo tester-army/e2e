@@ -13,6 +13,7 @@ import { BUILT_IN_AGENT } from './agent-brand.ts';
 import { AgentError } from './error.ts';
 import type { ReplayedPrefix, StepExecutor, StepExecutorContext } from './executor.ts';
 import { interactiveNodeCount } from './observation.ts';
+import { testTitleLine } from './prompts.ts';
 import { createGrammarTools } from './primitives.ts';
 import { ScreenPresenter } from './screen-update.ts';
 import { compactScreenHistory, compactScreenshotHistory } from './transcript-compaction.ts';
@@ -81,7 +82,9 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
       if (!context.pixelsTainted && observation.pixels === undefined && interactiveNodeCount(observation) === 0) {
         observation = await context.observe({ pixels: true });
       }
+      const title = testTitleLine(context.attempt.titlePath);
       const parts = [
+        ...(title === undefined ? [] : [title]),
         context.step.kind === 'assert'
           ? `Judge whether this assertion holds; do not change application state: ${context.step.instruction}`
           : `Execute this test step: ${context.step.instruction}`,

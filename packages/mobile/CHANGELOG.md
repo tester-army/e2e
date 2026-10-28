@@ -1,5 +1,35 @@
 # @e2e-dev/mobile
 
+## 0.12.4
+
+### Patch Changes
+
+- [#1308](https://github.com/tester-army/e2e/pull/1308) [`07eb481`](https://github.com/tester-army/e2e/commit/07eb4812ffd7226d5a5a1ee1a6ab23076f138f0f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.29.
+
+- [#1281](https://github.com/tester-army/e2e/pull/1281) [`2b2b845`](https://github.com/tester-army/e2e/commit/2b2b845455e5d31b30b9501336717f080324d9c5) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - Locators and `expect` now keep waiting while iOS reports the app as not running just after `app.open()`, `app.restart()`, or `device.openLink()` launches it, as on a physical iPhone, instead of failing at once with `ENGINE_FAILURE`. A wait that runs out while the app is still down fails with that reason. An app that exits after its first readable screen still fails at once.
+
+- [#1274](https://github.com/tester-army/e2e/pull/1274) [`2a07390`](https://github.com/tester-army/e2e/commit/2a07390dc47c3f6d27069d1da411d14ea7d693e5) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Read an empty iOS text field as empty. XCTest reports an empty field's placeholder as its value, so the agent and `toHaveValue` saw the placeholder text as typed text, and an agent asked to submit an empty form spent its turns trying to delete it.
+
+- [#1305](https://github.com/tester-army/e2e/pull/1305) [`787a5d5`](https://github.com/tester-army/e2e/commit/787a5d5407a223bee5c05d5eaee7b530f0db939d) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - `device.dismissKeyboard()` on an iPhone no longer presses the control under the middle of the screen. The drag that sends a keyboard with no dismiss key away started at the exact centre and could toggle a checkbox or press a filter button there; it now starts at the nearest point no control covers, inside a scroll view when the screen has one, and a screen with no such point above the keyboard fails with `UNSUPPORTED_CAPABILITY` instead of touching it.
+
+- [#1291](https://github.com/tester-army/e2e/pull/1291) [`7674a2c`](https://github.com/tester-army/e2e/commit/7674a2c6bf8eb8142098a26cba1c206c575c18d7) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - Keep the known viewport when a snapshot reads the app smaller than the screen. On iOS, a swipe from a sheet's grabber can pull down Notification Center, and the app's tree behind it reported a third of the screen (130x281 on a 390x844 device), which misplaced every rect and tap after it. A new size now replaces the known one only when it is a rotation or the simulator's screen agrees; a real device's screenshot reports no logical size to check against, so there the tree's size still stands.
+
+- [#1049](https://github.com/tester-army/e2e/pull/1049) [`137b50f`](https://github.com/tester-army/e2e/commit/137b50f0c8505a01ca53e4eb4c38df95e12bd395) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Add `locator.or(other)`, which matches either locator in document order and stays strict when both match. Third-party engines must handle the new `union` kind of `LocatorExpression`.
+
+- [#1209](https://github.com/tester-army/e2e/pull/1209) [`ef977f4`](https://github.com/tester-army/e2e/commit/ef977f4856da009cac26d78d2e9bb14e5991ee41) Thanks [@knowbody](https://github.com/knowbody)! - Keep healthy agent-device sessions open on leased devices across worker replacement, so later tests no longer fail with "Device is already in use". The engine also retries a failed provider recording stop before the worker's next attempt.
+
+## 0.12.3
+
+### Patch Changes
+
+- [#1166](https://github.com/tester-army/e2e/pull/1166) [`4fe6baf`](https://github.com/tester-army/e2e/commit/4fe6baf6538cf4adb6809a005be4b8155d24eb86) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Locators and `expect` now keep waiting while Android reports insufficient foreground app content (an app still loading after a cold start) instead of failing at once. A wait that runs out on an unreadable screen fails with that reason.
+
+- [#1181](https://github.com/tester-army/e2e/pull/1181) [`fc5c350`](https://github.com/tester-army/e2e/commit/fc5c350d490f40417fb71040c0344733d5596c70) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.28.
+
+- [#1178](https://github.com/tester-army/e2e/pull/1178) [`2791786`](https://github.com/tester-army/e2e/commit/2791786ced4122968411c509f64cf969b9f1d31f) Thanks [@michalpobuta](https://github.com/michalpobuta)! - `getByTestId` on Android also matches a resource id without its `<package>:id/` prefix when nothing matches the full id, so a .NET MAUI `AutomationId` or a native `android:id` matches the same string as on iOS. A negative check on such a name, like `toHaveCount(0)`, can now see a node it used to miss, and two prefixed views that share the name on one screen are ambiguous.
+
+- [#1183](https://github.com/tester-army/e2e/pull/1183) [`cf5e122`](https://github.com/tester-army/e2e/commit/cf5e1223bcb2628b84e4941ac3f88648d1101e44) Thanks [@spsaucier](https://github.com/spsaucier)! - An iOS screen's location takes its title from the navigation bar's identifier only when the bar shows that text, not from the bar's label or a class name left in the identifier, and an Android toolbar's resource id is no longer a title; iOS recordings that start or end on a pushed screen, and Android recordings whose path ends in a toolbar resource id, re-record once (`--strict-cache` runs fail with `REPLAY_STALE` until then).
+
 ## 0.12.2
 
 ### Patch Changes

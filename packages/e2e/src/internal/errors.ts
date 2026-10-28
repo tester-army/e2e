@@ -12,7 +12,12 @@ import {
 
 /** Message of an arbitrary thrown value, for diagnostics that must not throw. */
 export function errorMessage(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
+  try {
+    return cause instanceof Error ? String(cause.message) : String(cause);
+  } catch {
+    // An object without a prototype, or one whose `toString` throws.
+    return 'a value that cannot be shown as text';
+  }
 }
 
 /** The redactor `serializeError` falls back to, on `globalThis` so a project's copy of e2e shares it. */
@@ -140,6 +145,7 @@ export type ErrorCategory =
 export type ErrorPhase =
   | 'config'
   | 'collection'
+  | 'filter'
   | 'launch'
   | 'beforeAll'
   | 'beforeEach'
@@ -209,9 +215,9 @@ export function asEngineError(
 ): { code: EngineErrorCode; message: string; retryable: boolean } | undefined {
   if (value instanceof EngineError) return value;
   if (!(value instanceof Error) || value.name !== 'EngineError') return undefined;
-  const code = (value as unknown as { code?: unknown }).code;
+  const code = 'code' in value ? value.code : undefined;
   if (!isEngineErrorCode(code)) return undefined;
-  const retryable = (value as unknown as { retryable?: unknown }).retryable === true;
+  const retryable = 'retryable' in value && value.retryable === true;
   if (retryable && !RETRYABLE_ENGINE_ERROR_CODES.has(code)) {
     return { code: 'ENGINE_FAILURE', message: value.message, retryable: false };
   }
@@ -248,7 +254,7 @@ export class E2EError extends Error {
   }
 }
 
-const CATEGORIES: ReadonlySet<ErrorCategory> = new Set([
+const CATEGORIES: ReadonlySet<unknown> = new Set<ErrorCategory>([
   'test',
   'configuration',
   'infrastructure',
@@ -269,9 +275,12 @@ export function isE2EError(value: unknown): value is Error & {
 } {
   return (
     value instanceof Error &&
-    (value as unknown as Record<PropertyKey, unknown>)[E2E_ERROR_MARKER] === true &&
-    CATEGORIES.has((value as { category?: ErrorCategory }).category as ErrorCategory) &&
-    typeof (value as { code?: unknown }).code === 'string'
+    E2E_ERROR_MARKER in value &&
+    value[E2E_ERROR_MARKER] === true &&
+    'category' in value &&
+    CATEGORIES.has(value.category) &&
+    'code' in value &&
+    typeof value.code === 'string'
   );
 }
 

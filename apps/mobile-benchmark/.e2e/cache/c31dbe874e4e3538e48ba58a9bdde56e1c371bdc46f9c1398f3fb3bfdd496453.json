@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:20:08.210Z",
+  "createdAt": "2026-10-15T16:13:03.122Z",
   "payload": {
     "actions": [
       {
@@ -20,6 +20,20 @@
       {
         "name": "tool",
         "summary": "tool swipe"
+      },
+      {
+        "name": "tool",
+        "summary": "tool swipe"
+      },
+      {
+        "name": "doubleTap",
+        "summary": "double-tap other \"Double-tap me\"",
+        "target": {
+          "role": "other",
+          "name": "Double-tap me",
+          "testId": "double-tap-target",
+          "selector": "id=double-tap-target"
+        }
       },
       {
         "name": "doubleTap",
@@ -44,9 +58,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Continued from the recorded long-press state, swiped the card left, then double-tapped the last target. The screen now confirms “All gestures completed.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Long-pressed the first target, swiped the card left, and double-tapped the last target. The screen now confirms “All gestures completed.”",
+    "startPath": "dev.e2e.benchmark / Gestures",
+    "endPath": "dev.e2e.benchmark / Gestures",
     "endAnchors": [
       {
         "role": "other",
@@ -73,7 +87,7 @@
         "name": "Step 1 of 3"
       }
     ],
-    "endWaitMs": 13624,
+    "endWaitMs": 15088,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

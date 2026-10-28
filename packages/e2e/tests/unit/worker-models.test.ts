@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { SdkLanguageModel } from '../../src/agent/ai-sdk.ts';
+import { AgentError } from '../../src/agent/error.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
 
@@ -56,5 +57,17 @@ describe('WorkerModels', () => {
     expect(() => models.preflight(resolved.get('modelless')!, 'modelless')).toThrow();
     expect(() => models.preflight(resolved.get('default')!, 'default')).toThrow();
     expect(failures).toEqual(['MODEL_UNAVAILABLE']);
+  });
+
+  it('reports a model the provider refused once, and every later preflight rethrows it', () => {
+    const failures: string[] = [];
+    const models = new WorkerModels((error) => failures.push(error.message));
+    const resolved = agents({ default: { model: model('github-copilot/claude-haiku-4.5') } });
+    models.preflight(resolved.get('default')!, 'default');
+    models.unservedModel(new AgentError('MODEL_UNAVAILABLE', 'GitHub Copilot does not serve claude-haiku-4.5 to this account'));
+    // A second worker-local report changes nothing: the run already has the failure.
+    models.unservedModel(new AgentError('MODEL_UNAVAILABLE', 'again'));
+    expect(failures).toEqual(['GitHub Copilot does not serve claude-haiku-4.5 to this account']);
+    expect(() => models.preflight(resolved.get('default')!, 'default')).toThrow('GitHub Copilot does not serve claude-haiku-4.5 to this account');
   });
 });

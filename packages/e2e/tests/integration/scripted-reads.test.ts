@@ -113,7 +113,7 @@ describe('scripted engine: locator reads and queries', () => {
   });
 
   it('rejects malformed refinements before any query runs', () => {
-    failed(run.outcome, 'filter without a predicate is INVALID_LOCATOR', 'INVALID_LOCATOR', 'filter() requires hasText and/or has');
+    failed(run.outcome, 'filter without a predicate is INVALID_LOCATOR', 'INVALID_LOCATOR', 'filter() requires hasText, hasNotText, has, and/or hasNot');
     failed(run.outcome, 'a negative index is INVALID_LOCATOR', 'INVALID_LOCATOR', 'nonnegative integer');
     failed(run.outcome, 'acting before open is APP_NOT_OPEN', 'APP_NOT_OPEN', 'no app is open');
   });

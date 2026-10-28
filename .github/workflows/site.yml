@@ -1,0 +1,36 @@
+name: site
+
+# Redeploys e2e.tester.army, which reads docs/ and the examples registry
+# (examples/examples.json and the logos in examples/icons/) from the commit
+# `main` points to at build time, so every docs or examples change on `main`
+# goes live. A workflow-level `paths:` filter is fine here: no ruleset
+# requires this workflow. A manual dispatch redeploys without a change.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'examples/examples.json'
+      - 'examples/icons/**'
+      - '.github/workflows/site.yml'
+  workflow_dispatch:
+
+permissions: {}
+
+# Queues pushes instead of cancelling a hook call that is already in flight.
+# Each deploy builds `main` as it is when the build starts.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 5
+    steps:
+      - name: Trigger the Vercel deploy hook
+        run: |
+          [ -n "$VERCEL_DEPLOY_HOOK" ] || { echo "::error::the VERCEL_DEPLOY_HOOK secret is not set"; exit 1; }
+          curl --fail --silent --show-error --request POST "$VERCEL_DEPLOY_HOOK"
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}

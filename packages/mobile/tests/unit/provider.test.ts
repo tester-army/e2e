@@ -5,7 +5,7 @@
  * provider's own recording of an attempt.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -13,6 +13,13 @@ import type { OperationContext, ProviderRecordContext, ProviderRecording, Provid
 import type { DeviceLease, DeviceProvider, DeviceRequest } from '../../src/provider.ts';
 import { boot, harness, poolVariableIn, PROJECT_ROOT, type Harness } from '../helpers/harness.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+
+/** A promise the test releases after observing a lifecycle event. */
+function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T | PromiseLike<T>) => void } {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
 
 /** A scripted provider: leases `lease-n` against `https://n.example`, remembering every call. */
 function provider(options: { failSlot?: number; installedApp?: string; failRelease?: boolean } = {}) {
@@ -125,6 +132,24 @@ describe('device provider', () => {
     expect(cloud.released).toHaveLength(2);
   });
 
+  it('releases the provider lease while a retained session close is pending', async () => {
+    const cloud = provider();
+    const runner = harness({ device: cloud.impl });
+    await runner.prepare(prepareInfo({}, 1));
+    const closing = deferred<void>();
+    const closed = deferred<object>();
+    runner.fake.respond('sessions.close', () => { closing.resolve(); return closed.promise; });
+    const finishing = runner.engine.finish!(finishInfo());
+    await closing.promise;
+    try {
+      expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
+    } finally {
+      closed.resolve({});
+      await finishing;
+    }
+    expect(runner.fake.calls.at(-1)).toEqual({ method: 'sessions.close', args: undefined });
+  });
+
   it('asks the provider for the resolved build and leaves the install to the suite when the lease did not', async () => {
     const cloud = provider();
     const h = harness({ device: cloud.impl, appPath: 'build/App.app' });
@@ -138,6 +163,62 @@ describe('device provider', () => {
     expect(worker.fake.methods()).toEqual(['devices.boot']);
     await worker.surface.installApp(undefined, {}, new AbortController().signal);
     expect(worker.fake.lastArgs('apps.install')).toMatchObject({ device: 'sim-0', app: 'Settings', appPath: path.join(PROJECT_ROOT, 'build/App.app') });
+  });
+
+  it('keeps a leased session for a replacement worker until the run finishes', async () => {
+    const cloud = provider();
+    const runner = harness({ device: cloud.impl });
+    const prepared = await runner.prepare(prepareInfo({}, 1));
+    const env = prepared?.env ?? {};
+    const retired = harness({ device: cloud.impl });
+    await boot(retired, 'ios', 0, env);
+    await retired.engine.dispose!({ signal: new AbortController().signal, timeoutMs: 5_000, reuseSignal: new AbortController().signal });
+    expect(retired.fake.calls).toEqual([{ method: 'devices.boot', args: { platform: 'ios', device: 'sim-0' } }]);
+
+    const replacement = harness({ device: cloud.impl });
+    await boot(replacement, 'ios', 0, env);
+    expect(retired.sessions).toEqual(['e2e-ios-0']);
+    expect(replacement.sessions).toEqual(['e2e-ios-0']);
+    expect(replacement.connections).toEqual([
+      { leaseId: 'lease-0', device: 'sim-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' } },
+    ]);
+    expect(replacement.fake.calls).toEqual([{ method: 'devices.boot', args: { platform: 'ios', device: 'sim-0' } }]);
+    await replacement.engine.dispose!({ signal: new AbortController().signal, timeoutMs: 5_000, reuseSignal: new AbortController().signal });
+    expect(replacement.fake.calls).toEqual([{ method: 'devices.boot', args: { platform: 'ios', device: 'sim-0' } }]);
+
+    await runner.engine.finish!(finishInfo());
+    expect(runner.fake.calls).toEqual([
+      { method: 'devices.boot', args: { platform: 'ios', device: 'sim-0' } },
+      { method: 'command.prepare', args: { action: 'ios-runner', platform: 'ios', device: 'sim-0' } },
+      { method: 'apps.open', args: { app: 'Settings', platform: 'ios', device: 'sim-0' } },
+      { method: 'sessions.close', args: undefined },
+    ]);
+    expect(cloud.acquired.map((request) => request.slot)).toEqual([0]);
+    expect(cloud.released).toEqual([
+      { id: 'lease-0', device: 'sim-0', daemon: { baseUrl: 'https://0.example', authToken: 'token-0' } },
+    ]);
+  });
+
+  it.each(['missing', 'revoked'] as const)('closes a leased session when reuse permission is %s', async (permission) => {
+    const cloud = provider();
+    const runner = harness({ device: cloud.impl });
+    const prepared = await runner.prepare(prepareInfo({}, 1));
+    const worker = harness({ device: cloud.impl });
+    await boot(worker, 'ios', 0, prepared?.env ?? {});
+    const reuse = new AbortController();
+    reuse.abort();
+    await worker.engine.dispose!({
+      signal: new AbortController().signal,
+      timeoutMs: 5_000,
+      ...(permission === 'revoked' ? { reuseSignal: reuse.signal } : {}),
+    });
+    expect(worker.fake.calls).toEqual([
+      { method: 'devices.boot', args: { platform: 'ios', device: 'sim-0' } },
+      { method: 'sessions.close', args: undefined },
+    ]);
+    expect(cloud.released).toEqual([]);
+    await runner.engine.finish!(finishInfo());
+    expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
   });
 
   it('skips the build install when the lease says the provider installed it, and opens that app', async () => {
@@ -373,6 +454,11 @@ describe('device provider', () => {
     await boot(h, 'ios', 0);
     expect(h.connections).toEqual([undefined]);
     expect(h.fake.lastArgs('devices.boot')).toEqual({ platform: 'ios' });
+    await h.engine.dispose!({ signal: new AbortController().signal, timeoutMs: 5_000 });
+    expect(h.fake.calls).toEqual([
+      { method: 'devices.boot', args: { platform: 'ios' } },
+      { method: 'sessions.close', args: undefined },
+    ]);
     await h.engine.finish!(finishInfo());
     expect(cloud.released).toEqual([]);
   });
@@ -527,12 +613,24 @@ describe('device provider recording', () => {
     expect(cloud.recorded).toEqual([]);
   });
 
-  it('stops a provider recording when the worker is disposed mid-attempt', async () => {
+  it('stops a provider recording without closing its leased session when the worker is disposed mid-attempt', async () => {
     const cloud = recordingProvider();
     const worker = await leasedWorker(cloud.impl);
     await worker.engine.artifacts!.startVideo!(operation());
-    await worker.engine.dispose!(cleanup());
-    expect(cloud.stopped).toHaveLength(1);
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    expect(cloud.stopped.map((stop) => stop.dir)).toEqual([path.join(artifactsDir, 'video')]);
+    expect(worker.fake.calls).toEqual([{ method: 'devices.boot', args: { platform: 'ios', device: 'sim-0' } }]);
+  });
+
+  it('keeps a reusable leased session when the provider recording still cannot stop during disposal', async () => {
+    const cloud = recordingProvider({ stop: async () => { throw new Error('stop unavailable'); } });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('stop unavailable');
+    await worker.engine.endAttempt!(cleanup());
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    expect(cloud.stopped.map((stop) => stop.dir)).toEqual(Array(3).fill(path.join(artifactsDir, 'video')));
+    expect(worker.fake.methods()).toEqual(['devices.boot']);
   });
 
   it('keeps a recording whose stop failed, so endAttempt stops it once more', async () => {
@@ -557,5 +655,250 @@ describe('device provider recording', () => {
     await worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
     await worker.engine.endAttempt!(cleanup());
     expect(cloud.stopped).toHaveLength(2);
+  });
+
+  it('finishes a retained provider recording before the next attempt records in the same worker', async () => {
+    const stopped = deferred<ProviderRecordingResult>();
+    const events: string[] = [];
+    const cloud = recordingProvider({
+      start: async (_lease, context) => { events.push(`record ${context.attemptId}`); },
+      stop: async () => {
+        if (cloud.stopped.length < 3) throw new Error('stop unavailable');
+        const result = await stopped.promise;
+        events.push('stopped a1');
+        return result;
+      },
+    });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('stop unavailable');
+    await worker.engine.endAttempt!(cleanup());
+    const nextDir = path.join(artifactsDir, 'retry');
+    const starting = worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir: nextDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(cloud.stopped.map((context) => context.dir)).toEqual(Array(3).fill(path.join(artifactsDir, 'video')));
+      expect(cloud.recorded).toHaveLength(1);
+      await expect(worker.engine.artifacts!.startVideo!(operation())).rejects.toThrow('startVideo outside an attempt');
+    } finally {
+      stopped.resolve({ url: 'https://toy.example/a1.mp4', mediaType: 'video/mp4' });
+      await starting;
+    }
+    await worker.engine.artifacts!.startVideo!({ ...operation(), attemptId: 'a2' });
+    expect(events).toEqual(['record a1', 'stopped a1', 'record a2']);
+    await worker.engine.artifacts!.stopVideo!({ ...operation(), attemptId: 'a2' });
+    expect(cloud.stopped.at(-1)!.dir).toBe(path.join(nextDir, 'video'));
+    expect(records(worker)).toEqual([]);
+  });
+
+  it('blocks the next attempt while its retained provider recording cannot stop and preserves its owner', async () => {
+    let unavailable = true;
+    const cloud = recordingProvider({ stop: async () => {
+      if (unavailable) throw new Error('stop unavailable');
+      return { url: 'https://toy.example/a1.mp4', mediaType: 'video/mp4' };
+    } });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('stop unavailable');
+    await worker.engine.endAttempt!(cleanup());
+    const nextAttempt = { attemptId: 'a2', artifactsDir: path.join(artifactsDir, 'retry'), signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace };
+    await expect(worker.engine.startAttempt!(nextAttempt)).rejects.toThrow('stop unavailable');
+    await expect(worker.engine.artifacts!.startVideo!(operation())).rejects.toThrow('startVideo outside an attempt');
+    expect(cloud.recorded).toHaveLength(1);
+    expect(cloud.stopped.map((context) => context.dir)).toEqual(Array(3).fill(path.join(artifactsDir, 'video')));
+    unavailable = false;
+    await worker.engine.startAttempt!(nextAttempt);
+    expect(cloud.stopped.map((context) => context.dir)).toEqual(Array(4).fill(path.join(artifactsDir, 'video')));
+    await worker.engine.artifacts!.startVideo!({ ...operation(), attemptId: 'a2' });
+    await worker.engine.artifacts!.stopVideo!({ ...operation(), attemptId: 'a2' });
+    expect(cloud.recorded.map(({ context }) => context.attemptId)).toEqual(['a1', 'a2']);
+  });
+
+  it('does not begin another attempt or record when a retained provider stop wait is cancelled', async () => {
+    const stopped = deferred<ProviderRecordingResult>();
+    const cloud = recordingProvider({ stop: async () => {
+      if (cloud.stopped.length < 3) throw new Error('stop unavailable');
+      return stopped.promise;
+    } });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('stop unavailable');
+    await worker.engine.endAttempt!(cleanup());
+    const budget = new AbortController();
+    const starting = worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir: path.join(artifactsDir, 'retry'), signal: budget.signal, resolveSecret: noSecrets, ...ignoreTrace });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    budget.abort();
+    try {
+      await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
+      await expect(worker.engine.artifacts!.startVideo!(operation())).rejects.toThrow('startVideo outside an attempt');
+      expect(cloud.recorded).toHaveLength(1);
+      expect(cloud.stopped.map((context) => context.dir)).toEqual(Array(3).fill(path.join(artifactsDir, 'video')));
+    } finally {
+      stopped.resolve({ url: 'https://toy.example/a1.mp4', mediaType: 'video/mp4' });
+    }
+  });
+
+  it('resets a leased session whose native recording still cannot stop after endAttempt', async () => {
+    const cloud = provider();
+    const runner = harness({ device: cloud.impl });
+    const prepared = await runner.prepare(prepareInfo({}, 1));
+    const worker = harness({ device: cloud.impl });
+    await boot(worker, 'ios', 0, prepared?.env ?? {});
+    let active = false;
+    let failStop = true;
+    const recording = (args: unknown) => {
+      if ((args as { action: string }).action === 'start') {
+        if (active) throw new Error('recording already active');
+        active = true;
+      } else {
+        if (failStop) throw new Error('native recorder busy');
+        active = false;
+      }
+      return {};
+    };
+    worker.fake.respond('recording.record', recording);
+    worker.fake.respond('sessions.close', () => { active = false; return {}; });
+    await worker.engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('native recorder busy');
+    await worker.engine.endAttempt!(cleanup());
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    expect(worker.fake.calls.at(-1)).toEqual({ method: 'sessions.close', args: undefined });
+
+    const replacement = harness({ device: cloud.impl });
+    replacement.fake.respond('recording.record', recording);
+    failStop = false;
+    await boot(replacement, 'ios', 0, prepared?.env ?? {});
+    await replacement.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    await replacement.engine.artifacts!.startVideo!(operation());
+    expect(await replacement.engine.artifacts!.stopVideo!(operation())).toEqual([]);
+    expect(replacement.fake.lastArgs('recording.record')).toEqual({ platform: 'ios', device: 'sim-0', action: 'stop' });
+  });
+
+  it('resets an unconfirmed native recording before another attempt in the same worker', async () => {
+    const worker = await leasedWorker(provider().impl);
+    worker.fake.respond('recording.record', (args) => {
+      if ((args as { action: string }).action === 'stop') throw new Error('native recorder busy');
+      return {};
+    });
+    await worker.engine.artifacts!.startVideo!(operation());
+    await worker.engine.endAttempt!(cleanup());
+    await worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    await worker.engine.artifacts!.startVideo!(operation());
+    expect(worker.fake.methods()).toEqual(['devices.boot', 'recording.record', 'recording.record', 'sessions.close', 'recording.record']);
+  });
+
+  it('fails the next attempt when its native recording reset cannot close the session', async () => {
+    const worker = await leasedWorker(provider().impl);
+    worker.fake.respond('recording.record', (args) => {
+      if ((args as { action: string }).action === 'stop') throw new Error('native recorder busy');
+      return {};
+    });
+    worker.fake.respond('sessions.close', () => { throw new Error('reset failed'); });
+    await worker.engine.artifacts!.startVideo!(operation());
+    await worker.engine.endAttempt!(cleanup());
+    await expect(worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace })).rejects.toThrow('reset failed');
+    await expect(worker.engine.artifacts!.startVideo!(operation())).rejects.toThrow('startVideo outside an attempt');
+    expect(worker.fake.methods()).toEqual(['devices.boot', 'recording.record', 'recording.record', 'sessions.close']);
+  });
+
+  it('keeps an unconfirmed native recording after its stop wait was cancelled', async () => {
+    const worker = await leasedWorker(provider().impl);
+    const stopping = deferred<void>();
+    const stopped = deferred<object>();
+    worker.fake.respond('recording.record', (args) => {
+      if ((args as { action: string }).action !== 'stop') return {};
+      stopping.resolve();
+      return stopped.promise;
+    });
+    await worker.engine.artifacts!.startVideo!(operation());
+    const budget = new AbortController();
+    const pending = worker.engine.artifacts!.stopVideo!(operation(budget.signal));
+    await stopping.promise;
+    budget.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await worker.engine.endAttempt!({ signal: budget.signal, timeoutMs: 0 });
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    try {
+      expect(worker.fake.calls.at(-1)).toEqual({ method: 'sessions.close', args: undefined });
+    } finally {
+      stopped.resolve({});
+    }
+  });
+
+  it('preserves a session after native stop succeeded even when moving its artifact fails', async () => {
+    const worker = await leasedWorker(provider().impl);
+    const elsewhere = path.join(artifactsDir, 'elsewhere.mp4');
+    worker.fake.respond('recording.record', (args) => {
+      if ((args as { action: string }).action === 'stop') {
+        writeFileSync(elsewhere, 'video');
+        mkdirSync(path.join(artifactsDir, 'video', 'video.mp4'));
+        return { outPath: elsewhere };
+      }
+      return {};
+    });
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow();
+    await worker.engine.endAttempt!(cleanup());
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    expect(worker.fake.methods()).toEqual(['devices.boot', 'recording.record', 'recording.record']);
+  });
+
+  it('clears a confirmed provider stop before rejecting its invalid artifact', async () => {
+    let stops = 0;
+    const cloud = recordingProvider({ stop: async () => ++stops === 1 ? { file: 'missing.mp4' } : { url: 'https://toy.example/replay.mp4', mediaType: 'video/mp4' } });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('finished without naming a file');
+    await worker.engine.endAttempt!(cleanup());
+    await worker.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    await worker.engine.artifacts!.startVideo!(operation());
+    expect(await worker.engine.artifacts!.stopVideo!(operation())).toEqual([
+      { url: 'https://toy.example/replay.mp4', mediaType: 'video/mp4', startedAt: '2026-09-28T10:00:00.000Z' },
+    ]);
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    expect(cloud.stopped).toHaveLength(2);
+    expect(worker.fake.methods()).toEqual(['devices.boot']);
+  });
+
+  it('retries an unconfirmed provider stop after endAttempt during disposal', async () => {
+    let stops = 0;
+    const cloud = recordingProvider({ stop: async () => {
+      if (++stops < 3) throw new Error('stop unavailable');
+      return { url: 'https://toy.example/replay.mp4', mediaType: 'video/mp4' };
+    } });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    await expect(worker.engine.artifacts!.stopVideo!(operation())).rejects.toThrow('stop unavailable');
+    await worker.engine.endAttempt!(cleanup());
+    await worker.engine.dispose!({ ...cleanup(), reuseSignal: new AbortController().signal });
+    expect(cloud.stopped.map((context) => context.dir)).toEqual(Array(3).fill(path.join(artifactsDir, 'video')));
+    expect(worker.fake.methods()).toEqual(['devices.boot']);
+  });
+
+  it('shares a pending provider stop and closes on reuse revocation before the stop resolves', async () => {
+    const stopping = deferred<void>();
+    const stopped = deferred<ProviderRecordingResult>();
+    const cloud = recordingProvider({ stop: () => { stopping.resolve(); return stopped.promise; } });
+    const worker = await leasedWorker(cloud.impl);
+    await worker.engine.artifacts!.startVideo!(operation());
+    const budget = new AbortController();
+    const pending = worker.engine.artifacts!.stopVideo!(operation(budget.signal));
+    await stopping.promise;
+    budget.abort();
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    await worker.engine.endAttempt!({ signal: budget.signal, timeoutMs: 0 });
+    const reuse = new AbortController();
+    worker.fake.respond('sessions.close', () => ({}));
+    const disposing = worker.engine.dispose!({ ...cleanup(), reuseSignal: reuse.signal });
+    reuse.abort();
+    try {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(worker.fake.calls.at(-1)).toEqual({ method: 'sessions.close', args: undefined });
+      expect(cloud.stopped.map((context) => context.dir)).toEqual([path.join(artifactsDir, 'video')]);
+    } finally {
+      stopped.resolve({ url: 'https://toy.example/replay.mp4', mediaType: 'video/mp4' });
+      await disposing;
+    }
   });
 });

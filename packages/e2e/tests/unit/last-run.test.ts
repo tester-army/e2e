@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { resultId } from '../../src/internal/ids.ts';
 import type { Report1Document } from '../../src/report/build.ts';
-import { carryForward, lastFailedIds, readLastRun, reportArtifactPaths } from '../../src/run/last-run.ts';
+import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths } from '../../src/run/last-run.ts';
 
 /** Temp roots this file creates. A list, not one `dir`: a case may make several, and
  * `reportFile` is called more than once inside a case, so a single variable drops the
@@ -296,5 +296,57 @@ describe('carryForward', () => {
 
   it('reads the tests a report carries back as ones to run again', async () => {
     expect([...(await readLastFailed(reportFile(report([passed('a')], [], { carried: { results: [failed('owed')] } }))))]).toEqual([idOf('owed')]);
+  });
+});
+
+describe('previousFileDurations', () => {
+  it('sums every attempt of every result per target and file', async () => {
+    const durations = await previousFileDurations(
+      reportFile(
+        report([
+          { id: 'one', status: 'passed', attempts: [{ durationMs: 120, artifacts: [] }, { durationMs: 80, artifacts: [] }] },
+          { id: 'two', status: 'passed', attempts: [{ durationMs: 50, artifacts: [] }] },
+          { id: 'other', status: 'passed', file: 'tests/b.e2e.ts', attempts: [{ durationMs: 7, artifacts: [] }] },
+          { id: 'mobile', status: 'passed', targetId: 'mobile', attempts: [{ durationMs: 9, artifacts: [] }] },
+        ]),
+      ),
+    );
+    expect(durations.get(fileDurationKey('web', 'tests/a.e2e.ts'))).toBe(250);
+    expect(durations.get(fileDurationKey('web', 'tests/b.e2e.ts'))).toBe(7);
+    expect(durations.get(fileDurationKey('mobile', 'tests/a.e2e.ts'))).toBe(9);
+  });
+
+  it('times a serial file by its group and leaves a file that never ran untimed', async () => {
+    const durations = await previousFileDurations(
+      reportFile(
+        report(
+          [
+            { id: 'member', status: 'passed', file: 'tests/serial.e2e.ts' },
+            { id: 'skipped', status: 'skipped', file: 'tests/skipped.e2e.ts' },
+          ],
+          [],
+          {
+            serialGroups: [
+              {
+                id: 'group',
+                file: 'tests/serial.e2e.ts',
+                targetId: 'web',
+                status: 'passed',
+                attempts: [{ durationMs: 300, artifacts: [], members: [] }],
+              },
+            ],
+          },
+        ),
+      ),
+    );
+    expect(durations.get(fileDurationKey('web', 'tests/serial.e2e.ts'))).toBe(300);
+    expect(durations.has(fileDurationKey('web', 'tests/skipped.e2e.ts'))).toBe(false);
+  });
+
+  it('is no history, not an error, without a readable report', async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-last-run-'));
+    tempRoots.push(dir);
+    expect((await previousFileDurations(path.join(dir, 'report.json'))).size).toBe(0);
+    expect((await previousFileDurations(reportFile('not json'))).size).toBe(0);
   });
 });

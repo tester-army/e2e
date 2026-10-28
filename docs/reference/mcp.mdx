@@ -6,6 +6,26 @@ icon: "plug"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/mcp.png?v=3d3880edad"
 ---
 
+`e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
+try locators, run test lines, and take masked screenshots while they write tests. It runs over
+stdio and uses the project's configured engine. For setup and what to ask
+the agent, see the [MCP server guide](/mcp-server).
+
+```json title=".mcp.json"
+{
+  "mcpServers": {
+    "e2e": { "command": "npx", "args": ["e2e", "mcp"] }
+  }
+}
+```
+
+Four MCP tools manage the session and call its available app tools. The app
+tool catalog reloads from the config whenever a session opens.
+
+## Reference
+
+### Flags
+
 <CodeGroup>
 ```bash npm
 npx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
@@ -20,13 +40,371 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 ```
 </CodeGroup>
 
-`e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
-try locators, and take masked screenshots before writing tests. It runs over
-stdio and uses the project's configured engine. For setup and what to ask
-the agent, see the [MCP server guide](/mcp).
+| Flag | Default |
+| --- | --- |
+| [`--config <path>`](#config) | discovered like `e2e run` |
+| [`--target <name>`](#target) | the only target |
+| [`--headed`](#headed) | headless |
+| [`--max-sessions <n>`](#max-sessions) | `4` |
 
-Four MCP tools manage the session and call its available app tools. The app
-tool catalog reloads from the config whenever a session opens.
+#### `--config`
+
+The config every session loads unless `open_session` names one. Each
+session loads it afresh ([Several sessions](#several-sessions)).
+
+#### `--target`
+
+The target a session opens on when `open_session` names none.
+
+- Without it and without a name, the only target is used.
+- Several targets and no name is `TARGET_REQUIRED`.
+
+#### `--headed`
+
+Shows the browser or simulator, when the engine supports it, in every
+session whose `open_session` does not set `headed`.
+
+- Sessions are headless by default, as in `e2e run`.
+
+#### `--max-sessions`
+
+How many sessions may be open at once, 1 through 16. See
+[Several sessions](#several-sessions).
+
+```bash
+e2e mcp --max-sessions 8 # default: 4
+```
+
+### Tools
+
+| Tool | Description |
+| --- | --- |
+| [`open_session`](#open_session) | Opens a session |
+| [`tools`](#tools-2) | Lists the catalog or one tool |
+| [`call`](#call) | Runs one catalog tool |
+| [`close_session`](#close_session) | Ends the session and its engine |
+
+`session` may be left out while exactly one session is open. See
+[Several sessions](#several-sessions).
+
+#### `open_session`
+
+Loads the config, starts the target's app command, boots the engine, starts
+one attempt, and opens the app: its URL when the engine can navigate, or on a
+device the [pinned app](/mobile#point-at-your-app), launched fresh. It installs
+no build, so a local device target needs `app.bundleId`. Returns the session
+id, the catalog, and the first observation.
+
+```txt
+open_session {target: "web", headed: true}
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `target` | string | no | The target to open. Otherwise `--target`, else the only target. |
+| `config` | string (path) | no | The config for this session. Otherwise `--config`, else discovered like `e2e run`. |
+| `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
+| `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
+
+#### `tools`
+
+Returns the catalog, one line per tool.
+
+```txt
+tools {tool: "locate"}
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `tool` | string | no | A catalog tool. Returns its full description and argument schema. |
+| `session` | string | while several are open | The session id. |
+
+#### `call`
+
+Runs one catalog tool.
+
+```txt
+call {tool: "tap", args: {target: "n42"}, session: "<id>"}
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `tool` | string | yes | A catalog tool name. |
+| `args` | object | no | The tool's arguments. |
+| `session` | string | while several are open | The session id. |
+
+- Arguments are validated against the tool's closed schema first. A wrong
+  type or an argument the tool does not declare is `INVALID_ARGUMENT`, and
+  nothing runs.
+- An action that fails is an error result that still carries the screen it
+  re-observed. It leads with the tool, its target, and the code:
+  `navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:`.
+- Project tools honor their AI SDK `toModelOutput` renderer, including when
+  `execute` returns a string. Rendered `error-text` and `error-json` outputs
+  are MCP error results (`isError: true`). The coding agent can tell a failed
+  tool call from a successful one.
+
+#### `close_session`
+
+Saves a recording still running, ends the attempt, and disposes the engine.
+It stops the app processes the session started once no other session uses
+them.
+
+```txt
+close_session {session: "<id>"}
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `session` | string | while several are open | The session id. |
+
+### The catalog
+
+What `call` can run depends on the session's target.
+
+| Catalog tool | Description |
+| --- | --- |
+| [`observe`](#observe) | Returns a fresh observation |
+| [Actions](#actions) | Act on an observed node |
+| [`dismiss_keyboard`](#dismiss_keyboard) | Hides the on-screen keyboard |
+| [`locate`](#locate) | Tries a semantic locator |
+| [`run_code`](#run_code) | Runs test statements |
+| [`test_lines`](#test_lines) | Returns the session's test lines |
+| [`screenshot`](#screenshot) | Returns the masked viewport |
+| [Point tools](#point-tools) | Act at a screenshot point |
+| [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
+| [Project tools](#project-tools) | Your `defineTool` tools |
+
+#### `observe`
+
+A fresh observation, one node per line as `#id role "name" ...`, with the
+current path and revision. Takes no arguments.
+
+- A link's `href` is its path when it is on the app URL's origin, else
+  origin and path.
+- `mailto:`, `tel:`, and `blob:` targets keep their scheme.
+- `…` marks what is left out: `?…` a query, `#…` a fragment, `data:…` or
+  `javascript:…` an inline payload, a trailing `…` a target cut at 256
+  characters.
+
+#### Actions
+
+`tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`,
+`select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`,
+`back`, `type_secret`. Each returns the action's summary, the
+[test line](#test_lines) that repeats it, and what changed on screen.
+
+| Input | Does |
+| --- | --- |
+| A node id | From the newest observation. |
+| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name | What the verb needs. |
+| `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
+
+- A verb the engine does not declare is not in the catalog.
+- `upload` refuses a path outside the project, a hidden file, or a file
+  under a hidden directory with `POLICY_DENIED`.
+- `type_secret` is listed when the config declares `credentials` or
+  `secrets` and the engine declares the `fill` action. The plaintext never reaches the agent.
+
+#### `dismiss_keyboard`
+
+Hides the on-screen keyboard. Takes no arguments. Listed when the engine's
+keyboard declares `dismiss`, as the device engines do.
+
+#### `locate`
+
+Returns how many nodes match a semantic locator, which ones, and the
+`screen.*` call to write.
+
+| Input | Does |
+| --- | --- |
+| `role` (with optional `name`), `text`, `label`, `placeholder`, `testId` | Exactly one of them. |
+| `exact` | Exact matching; `false` for substring, case-insensitive. |
+
+- Zero or several matches name the error a test would get.
+- A `name` matches the accessible name only. `observe` shows a `status`,
+  `alert`, or `listitem` by its text, so one of those with a name that
+  matches nothing also points at `getByRole(role).filter({ hasText })` and
+  `getByText`.
+- What it shows of a node passes the secret ledger, as `observe` does: a
+  filled secret reads `<secret:name>`.
+
+#### `run_code`
+
+Runs test statements on the live session and returns each one's pass or
+failure, a read's value, and what changed on screen. Run a line here before
+you write it into a test.
+
+```txt
+call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada@example.com');\nawait expect(screen.getByRole('status')).toHaveText('Saved');"}}
+```
+
+| Input | Does |
+| --- | --- |
+| `code` | One or more statements as a test body writes them, separated by `;` or new lines. |
+| `timeout` | Optional. How long each statement may wait, in ms, 1 through 120000. Default `5000`. |
+
+- Statements run in order on the session's `screen` and `app` fixtures, with
+  a test's waits, exactly-one rule, and matchers.
+- The first failure stops the call. The rest don't run, the app stays where
+  the passing statements left it, and the result is an error result with the
+  code and message a test would get.
+- The statements that pass, except reads, join the
+  [`test_lines`](#test_lines) draft as written, in the order they ran.
+- Each statement waits at most `timeout`, its own `timeout` option included.
+  The config's [`actionTimeout`](/reference/config#actiontimeout) and
+  [`assertionTimeout`](/reference/config#assertiontimeout) apply when
+  shorter. The cap also covers `app.open`, `app.restart`, and
+  `app.clearState`, so raise it for a slow first load or a device relaunch.
+- `timeout` doesn't stop a regular expression mid-match. One that
+  backtracks, such as `/^(\w+\s?)*$/` on a long line, blocks the server
+  until it finishes.
+- Reads and matchers see `<secret:name>` where a secret value is.
+- A secret `fill` passes the checks `type_secret` runs, on the field it lands
+  on: a configured secret, an enabled editable field, and a password field
+  for a password. A filled secret withholds screenshots as `type_secret`
+  does.
+
+The code is parsed, never run as JavaScript. The grammar takes:
+
+| Part | Accepted |
+| --- | --- |
+| Statement | An optional `await`, then a chain on `screen` or `app` that ends in an action or a read, or `expect(locator)` with an optional `.not` and one matcher |
+| Locator | `screen.getByRole`, `getByLabel`, `getByText`, `getByPlaceholder`, `getByTestId`, or `getByDisplayValue`, narrowed with `filter`, `or`, `first`, `last`, `nth`, and more `getBy*` |
+| Argument | A string, number, boolean, `null`, regular expression, template without `${}`, array, object, locator, or `credentials.user(name).username` |
+| Secret | `credentials.user(name).password` or `secrets.get(name)`, as `fill`'s value only |
+
+Left out: fixtures an engine contributes (`browser`, `device`),
+`expect(screen)`, `toHaveScreenshot`, `app.screenshot`, `screen.debug`,
+`all`, `setInputFiles`, and the value matchers (`toBe`, `toEqual`).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Code that doesn't parse or is outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes it with its line and column, and no statement runs. |
+| `INVALID_ARGUMENT` | A matcher that expects `<secret:name>`, since a test compares the real value. No statement runs. |
+| `POLICY_DENIED` | A secret `fill` into a field that fails the `type_secret` checks. Nothing is typed. |
+| `POLICY_DENIED` | A read of a password field. |
+| `POLICY_DENIED` | When the config declares a secret or credential, a locator found by part of a text: a regular expression, an `exact` other than `true`, or `hasText`. Find it by its exact text. No statement runs. |
+
+#### `test_lines`
+
+Returns every test line the session's actions printed, and every statement
+[`run_code`](#run_code) passed, in order, as a draft test body. Takes no
+arguments.
+
+Each action's result carries its line after the summary:
+
+```txt
+Tapped #n31.
+Test line: await screen.getByRole("button", "Sign in").tap();
+```
+
+- The locator comes from the target as the newest observation listed it,
+  before the action runs. Role and name, label, placeholder, text, and test
+  id are tried in that order, and the first that matches the target and
+  nothing else on the live screen wins, as [`locate`](#locate) would report it.
+- A locator that also matches twins is narrowed: to nodes that render
+  (`{ visible: true }`), then under a container
+  (`getByRole("listitem").filter({ hasText: "Offer B" })`), then by position
+  (`.nth(1)`, with a comment saying so). A position is used only when the
+  live twins are the ones the observation listed, each in place or all
+  moved together.
+- At most 10 locators are tried per target. On a device each try reads the
+  whole screen.
+- When nothing reaches the target alone, the result says `No test line:`
+  and why. A line that would fail is never printed.
+- A failed action prints and records no line. The draft shows an action
+  without a line as a `//` comment.
+
+| Action | Line |
+| --- | --- |
+| Opening the session, without [`test`](#running-a-test) | `app.open()` |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover` | `tap()`, `doubleTap()`, `longPress()`, `secondaryTap()`, `hover()`, with any `modifiers` |
+| `type` into a node | `fill(value)`; a credential's username as `credentials.user(name).username` |
+| `type_secret` | `fill(credentials.user(name).password)` or `fill(secrets.get(name))`, never the value |
+| `press` on a node, once | `press(key)` |
+| `select`, `check` | `selectOption(label)`, `check()` or `uncheck()` |
+| `drag`, `upload` | `dragTo(locator)`, `setInputFiles(files)` |
+| `scroll_to` a node | `scrollIntoView()` |
+| `navigate`, `back` | `app.open(url)`, with a URL on the app's origin as its path; `app.back()` |
+
+No line: `type` or `press` with no target, `press` with `times` over 1,
+`scroll`, `scroll_to` a text, `dismiss_keyboard`, and a `type` the node took
+through the keyboard. The [point tools](#point-tools) print nothing.
+
+#### `screenshot`
+
+The masked viewport as an image. Takes no arguments.
+
+- From then on every action result carries a fresh screenshot.
+- After a secret fill it answers `PIXEL_TAINTED`. See [Sessions](#sessions).
+
+#### Point tools
+
+Each takes `x` and `y` in the latest screenshot's pixels.
+
+| Tool | Inputs | Does | Listed when the engine declares |
+| --- | --- | --- | --- |
+| `tap_at` | `x`, `y` | Taps the bare point through the engine's `performAt`. Without `performAt` the point must land on a listed control, which is tapped by id. | `tap` or `performAt` |
+| `hover_at` | `x`, `y` | Hovers the same way: the bare point through `performAt`'s `hover` kind, otherwise a listed control under it by id. | the `hover` action or pointer kind |
+| `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without one, a point on nothing listed fails. | `type` or a keyboard |
+| `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id. With a keyboard, anything else is tapped to focus it and the key goes through the keyboard. | `press` or a keyboard |
+| `select_at` | `x`, `y`, `value` (the option's visible label) | Picks the option in the listed select-like control under the point. Nothing listed there fails. | `select` |
+
+<Note>
+Before the session's first `screenshot`, each point tool answers with the
+line that says to take one, at no cost. Like `screenshot`, they answer
+`PIXEL_TAINTED` after a secret fill.
+</Note>
+
+#### Recording
+
+`start_recording` and `stop_recording` record a video of the app. Both are
+listed when the engine records video.
+
+```txt
+call {tool: "start_recording", args: {name: "checkout-flow"}}
+call {tool: "stop_recording"}
+```
+
+| Tool | Input | Does |
+| --- | --- | --- |
+| `start_recording` | `name` (optional): up to 64 letters, digits, `-`, and `_`, starting with a letter or digit | One recording at a time. A second start reports the one running. |
+| `stop_recording` | none | Saves the video and returns each file's absolute path, or the URL where a provider keeps it. |
+
+- A session records video only between `start_recording` and
+  `stop_recording`, as many times as needed. The configured
+  [`video`](/reference/config#video) mode applies to runs, not sessions, and
+  a session writes no [trace](/reference/config#trace).
+- Each recording is saved to `<output>/videos/<session>/<n>[-<name>].webm`
+  (`.mp4` on mobile, and [`output`](/reference/config#output) is `.e2e` by
+  default), where `n` counts the session's recordings.
+- A web recording that spans a restart or a state reset has one file per
+  page, `-part2`, `-part3`, and so on, in play order.
+- A browser or device provider that records the lease itself records the
+  session instead. [Kernel](/integrations/kernel) downloads its replay, saved
+  here as `<n>[-<name>].mp4` like any other file. A provider that keeps its
+  recordings is listed by URL instead of a file.
+- `close_session`, the idle timeout, and the session TTL save a recording
+  still running, and the close result lists its files.
+
+<Warning>
+Recordings are not masked and are not withheld after a secret was filled:
+they are files for a person to watch, and no tool returns their pixels. A
+secret typed into a plain input while recording is readable in the video,
+and a recording stopped after a secret was filled says so.
+</Warning>
+
+#### Project tools
+
+Project tools in `agents.default.tools` follow in the catalog under their
+own names, scoped to the target's platform. A mobile project that passes
+`mobileTools(...)` also gets `open_app`, `swipe`, and `alert`.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | A project tool named like a built-in, at config load. |
+| `UNKNOWN_TOOL` | A name not in the catalog. The message lists the names. |
 
 ## Setup
 
@@ -47,60 +425,146 @@ claude mcp add --scope project e2e -- bunx e2e mcp
 ```
 </CodeGroup>
 
-For clients that use a `mcpServers` config, add:
-
-```json
-{
-  "mcpServers": {
-    "e2e": { "command": "npx", "args": ["e2e", "mcp"] }
-  }
-}
-```
-
+For clients that use a `mcpServers` config, add the entry shown above.
 Codex reads the project's `.codex/config.toml` once the project is trusted:
 
-```toml
+```toml title=".codex/config.toml"
 [mcp_servers.e2e]
 command = "npx"
 args = ["e2e", "mcp"]
 ```
 
+The server is also listed in the
+[MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.tester-army/e2e`. A client that installs it from there runs the
+listed release with `npx` and must start it in the project directory. The
+project still needs e2e and its engine installed, since the config imports
+them. A listed release on another version than the project's e2e can reject
+config keys it does not know; the registration above always matches.
+
 The server needs no model: a project without the optional `ai` package
-opens sessions and drives the app with the deterministic tools.
+opens sessions and drives the app with the deterministic tools. A test a
+session [runs](#running-a-test) calls the configured model for an agent step
+the replay cache cannot serve.
 
 Start the server in the project directory. Config discovery works like
-`e2e run`. Set `--config` for another location, or pass `config` to
-`open_session` for one session.
+`e2e run`. For another config, see [`--config`](#config) and
+[`open_session`](#open_session).
 
-| Flag | Behavior |
+## Output
+
+- Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only
+  the protocol.
+- What your code writes through `console`, `process.stdout`, or
+  `process.stderr` (the config's top-level code, project tools, a test a
+  session runs) goes to stderr with secret values redacted.
+- Output printed while a config loads appears once it has loaded. If the
+  load fails, that output is withheld, since the config's secrets are
+  unknown.
+- A promise a session's test leaves rejected fails that test, as in a run.
+  One that rejects after the test's body ended is an `UNHANDLED_REJECTION`
+  line in `close_session`'s result, and a warning on stderr once the session
+  has closed. Any other error nobody caught, a rejection before any session
+  has run a test included, is logged redacted and shuts the server down.
+
+<Note>
+A child process that inherits the server's stdio writes past this.
+</Note>
+
+## Sessions
+
+A session is one attempt on one target. A `call` before any session is open
+fails with `NO_SESSION`.
+
+A session closes:
+
+- on `close_session`,
+- after 30 idle minutes,
+- after 4 hours,
+- when the client disconnects,
+- on SIGINT or SIGTERM.
+
+The client disconnects when it closes the server's stdin or dies. Then every
+session closes, the app commands the sessions started stop, and the server
+exits.
+
+Sessions enforce what tests enforce:
+
+- Node ids are valid only against the newest observation.
+- A secret fills only through `type_secret` or a [`run_code`](#run_code)
+  `fill`, under the same checks. Once one has been filled,
+  [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
+  catalog but answer `PIXEL_TAINTED` for the rest of the session.
+- Once the config has loaded, its secret values are redacted from every text
+  a tool returns, a node `locate` found, an action's result, an
+  `open_session` or `close_session` failure, a cleanup line, and the server's
+  own log lines.
+- Nothing a session does is recorded as a test result. Only a test the
+  session runs reads or writes the replay cache
+  ([Running a test](#running-a-test)). Its artifacts land under
+  `<output>/results/mcp/<target>-<attemptId>/`, its videos under
+  `<output>/videos/`. A later `e2e run` clears `<output>/results`; the videos
+  stay.
+- A queued call cancelled by the client does not execute when its turn
+  arrives.
+
+## Running a test
+
+`open_session {test}` runs one test of the project on the session's attempt,
+then hands the session over on the screen where the test stopped. A coding
+agent fixes a failing test from there without clicking through the flow
+again.
+
+```txt
+open_session {test: "tests/checkout.e2e.ts:12"}
+```
+
+- **Selection.** `test` takes what `e2e run` takes as a positional: a file
+  with `:line` for the test declared on that line, a file, a directory, a
+  glob, or a name. It must select exactly one test on the session's target.
+  The line is the one the `test(` call is on; a line inside the test
+  selects nothing.
+- **What runs.** The test's `beforeAll` hooks, its `test.extend()` fixtures,
+  its `beforeEach` hooks, and its body, with the same fixtures, locators,
+  `expect`, `timeout`, `actionTimeout`, and `assertionTimeout` as in a run.
+  The session does not open the app URL or launch the pinned app first; the
+  test opens the app itself.
+- **Where it stops.** At the first failure, or at the end of the body. Nothing
+  is torn down. The opening text leads with the outcome: passed, or failed
+  with the code, the message, the failing line and the code around it, the
+  URL, the nodes nearest a locator that matched nothing, and the last 15
+  steps. The session summary, the catalog, and the screen follow.
+- **Test lines.** The test's own steps print no [test line](#test_lines).
+  The session's lines start with the agent's first action, and `test_lines`
+  returns them as the lines that continue the test.
+- **Teardown.** `afterEach` hooks, fixture teardowns, and `afterAll` hooks
+  run at `close_session`, or when the session closes on its own. Their
+  failures show as `Cleanup (afterEach)` and `Cleanup (afterAll)` lines.
+- **Rerun.** `close_session`, then `open_session {test}` again. Each session
+  loads the config and the test files fresh, files they import included.
+- **Replay cache.** The test reads and writes the cache as a run's first
+  attempt: steps replay, and a new recording is saved once a later check
+  passes. A failure evicts the entries no check confirmed. The cache settles
+  when the body ends, so an `afterEach` check confirms nothing.
+  [`cache.strict`](/reference/config#cache) holds as in a run.
+- **Not part of it.** No test result, report, or trace page. Retries, and the
+  test's `trace` and `video` modes, don't apply. The failure screenshot and
+  `screen-at-failure.txt` land in the session's artifacts directory.
+- **Screenshots.** Each session counts as a run of its own for
+  `toHaveScreenshot`: a baseline one session writes is compared against in
+  the next.
+- **Several sessions.** Test code in two sessions takes turns: one session
+  runs its test or its teardown at a time, since `expect.poll`,
+  `expect.soft`, and `test.skip` find the running test through one slot per
+  process. An open cancelled while its test waits for its turn runs none of
+  the test's code.
+
+| Throws | When |
 | --- | --- |
-| `--config <path>` | The config every session loads unless `open_session` names one. Configs are reloaded on every `open_session`, with every file they import by path. |
-| `--target <name>` | The target every session opens on. Otherwise `open_session` names one, or the only target is used; several targets and no name is `TARGET_REQUIRED`. |
-| `--headed` | Show the browser or simulator, when the engine supports it, in every session whose `open_session` does not set `headed`. Sessions are headless by default, as in `e2e run`. |
-| `--max-sessions <n>` | How many sessions may be open at once, 1 through 16; default 4. Each session is its own browser or device. |
-
-Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only the
-protocol. What your code writes through `console`, `process.stdout`, or
-`process.stderr` (the config's top-level code, project tools) goes to stderr
-with secret values redacted. Output printed while a config loads appears once
-it has loaded; if the load fails, that output is withheld, since the config's
-secrets are unknown. An error nobody caught is logged redacted and shuts the
-server down. A child process that inherits the server's stdio writes past
-this.
-
-## Tools
-
-| Tool | Arguments | Result |
-| --- | --- | --- |
-| `open_session` | `target` (optional), `config` (optional path), `headed` (optional boolean) | Loads the config, starts the target's app command, boots the engine, starts one attempt, opens the app URL when the engine can navigate. Returns the session id, the catalog, and the first observation. `headed: true` shows this session's browser or simulator, `false` hides it; without it the session follows `--headed`. |
-| `tools` | `tool` (optional), `session` (required while several are open) | The catalog, one line per tool. With `tool`, its full description and argument schema. |
-| `call` | `tool`, `args` (optional), `session` (required while several are open) | Runs one catalog tool. Arguments are validated against the tool's closed schema first: a wrong type or an argument the tool does not declare is `INVALID_ARGUMENT`, and nothing runs. An action that fails is an error result that still carries the screen it re-observed, and leads with the tool, its target, and the code: `navigate file:///etc/passwd failed: POLICY_DENIED: forbidden URL scheme: file:`. |
-| `close_session` | `session` (required while several are open) | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
-
-Project tools honor their AI SDK `toModelOutput` renderer, including when
-`execute` returns a string. Rendered `error-text` and `error-json` outputs
-are MCP error results (`isError: true`) so the coding agent can distinguish
-a failed tool call from a successful one.
+| `NO_TESTS` | `test` selects no runnable test. The message names the cause, as for `e2e run`. |
+| `TEST_AMBIGUOUS` | `test` selects several tests. The message lists them as `file:line`. |
+| `SESSION_TEST_UNSUPPORTED` | The test is in a serial group, starts from a setup test's `session`, or runs as several agents. |
+| `COLLECTION_ERROR` | A test file fails to collect, as for `e2e run`. |
 
 ## Several sessions
 
@@ -108,27 +572,30 @@ Several sessions can be open at once, up to `--max-sessions`, each on its
 own attempt and its own browser or device. Parallel agents, such as a
 coding agent's subagents, share one server this way: each opens a session
 and passes its id to every `tools`, `call`, and `close_session`.
+[Bug bashes](/bug-bash) use this: every verifying subagent drives its own
+session.
 
-- `session` may be left out only while exactly one session is open. With
-  several open, a call without it fails with `SESSION_REQUIRED` and the
-  list of open sessions.
-- A `session` id that is not open fails with `NO_SESSION`; for a session
-  that is closing or ended, the message says why.
-- An `open_session` past the limit fails with `SESSION_OPEN`. A session
-  holds its slot from `open_session` until its attempt has closed, so
-  sessions still booting or still closing count toward it.
+| Throws | When |
+| --- | --- |
+| `SESSION_REQUIRED` | A call without `session` while several are open. The message lists the open sessions. |
+| `NO_SESSION` | A `session` id that is not open. For a session that is closing or ended, the message says why. |
+| `SESSION_OPEN` | An `open_session` past the limit, or while the server shuts down. |
+| `CONFIG_IN_USE` | An `open_session` on another config while sessions are open. |
+| `ENGINE_IN_USE` | A second session on an engine created inside a package. |
+| `CANCELLED` | An `open_session` the client cancelled or disconnected from, or the server shut down during, once what it started has stopped. |
+
+- A session holds its slot from `open_session` until its attempt has closed,
+  so sessions still booting or still closing count toward the limit.
 - Sessions open at once share one config: credentials and secrets resolve
-  through one registry per process. An `open_session` on another config
-  fails with `CONFIG_IN_USE` until the others close.
+  through one registry per process.
 - While the server shuts down it cancels sessions still opening and waits
-  for them, closes every session, and refuses new ones with `SESSION_OPEN`.
-  A client that cancels an `open_session`, or disconnects, cancels it too.
-  A cancelled open fails with `CANCELLED` once what it started (an app command
-  still waiting on its `readyUrl`, say) has stopped.
+  for them, closes every session, and refuses new ones. A cancelled open
+  fails once what it started (an app command still waiting on its
+  `readyUrl`, say) has stopped.
 - Each session loads the config afresh, down to the files it imports by
   path, such as a base config it spreads, so each gets engine instances of
-  its own. An engine created inside a package is one instance every session
-  shares, and a second session on it fails with `ENGINE_IN_USE`.
+  its own. A session that runs a test loads the test files the same way. An engine created inside a package is one instance every session
+  shares.
 - Sessions on one app command share its process: the first session starts
   it, and it stops when the last of them closes. A URL declared with port
   `0` gets its own port in each session, and so its own process. A shared
@@ -137,80 +604,6 @@ and passes its id to every `tools`, `call`, and `close_session`.
 - On mobile, each session needs its own simulator or emulator: declare one
   target per device, each naming its `device`, and open each session on its
   own target.
-
-[Bug bashes](/bug-bash) use this: every verifying subagent drives its own
-session.
-
-### The catalog
-
-What `call` can run depends on the session's target:
-
-| Catalog tool | Arguments | Result |
-| --- | --- | --- |
-| `observe` | none | A fresh observation, one node per line as `#id role "name" ...`, with the current path and revision. A link's `href` is its path when it is on the app URL's origin, else origin and path; `mailto:`, `tel:`, and `blob:` targets keep their scheme. `…` marks what is left out: `?…` a query, `#…` a fragment, `data:…` or `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `type_secret` | A node id from the newest observation, plus the value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name. `tap`, `double_tap`, and `right_click` also take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) when the engine declares `tapModifiers`, holding the keys for the click. | The action's summary and what changed on screen. A verb the engine does not declare is not in the catalog. `upload` refuses a path outside the project, a hidden file, or a file under a hidden directory with `POLICY_DENIED`. `type_secret` is listed when the config declares `credentials` or `secrets`; the plaintext never reaches the agent. |
-| `dismiss_keyboard` | none | Hides the on-screen keyboard. Listed when the engine's keyboard declares `dismiss`, as the device engines do. |
-| `locate` | Exactly one of `role` (with optional `name`), `text`, `label`, `placeholder`, `testId`; `exact` | How many nodes match, which, and the `screen.*` call to write. Zero or several matches name the error a test would get. A `name` matches the accessible name only; `observe` shows a `status`, `alert`, or `listitem` by its text, so one of those with a name that matches nothing also points at `getByRole(role).filter({ hasText })` and `getByText`. What it shows of a node passes the secret ledger, as `observe` does: a filled secret reads `<secret:name>`. |
-| `screenshot` | none | The masked viewport as an image. From then on every action result carries a fresh screenshot. Once a secret has been filled it answers `PIXEL_TAINTED` instead, for the rest of the session. |
-| `tap_at` | `x`, `y` in the latest screenshot's pixels | Taps that point: a listed control under it by id, otherwise the bare point through the engine's `performAt`; without `performAt` the point must land on a listed control. Listed when the engine declares `tap` or `performAt`. |
-| `hover_at` | `x`, `y` in the latest screenshot's pixels | Hovers that point the same way: a listed control under it by id, otherwise the bare point through `performAt`'s `hover` kind. Listed when the engine declares the `hover` action or pointer kind. |
-| `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set; without one, a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
-| `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
-| `select_at` | `x`, `y`, `value`, the option's visible label | Picks the option in the listed select-like control under the point; nothing listed there fails. Listed when the engine declares `select`. |
-| `start_recording` | `name` (optional; up to 64 letters, digits, `-`, and `_`, starting with a letter or digit) | Starts a video of the app. One recording at a time; a second start reports the one running. Listed when the engine records video. |
-| `stop_recording` | none | Stops the recording and returns the absolute path of each video file. Listed when the engine records video. |
-
-The five point tools answer `PIXEL_TAINTED` once a secret has been filled.
-Before the session's first `screenshot` each answers with the line that says
-to take one, at no cost.
-
-Project tools in `agents.default.tools` follow in the catalog under
-their own names, scoped to the target's platform. A mobile project that
-passes `mobileTools(...)` also gets `open_app`, `swipe`,
-and `alert`. A project tool named like a built-in fails the config load with `INVALID_CONFIG`. An unknown
-name fails with `UNKNOWN_TOOL` and the list of names.
-
-### Recording
-
-A session records video only between `start_recording` and
-`stop_recording`, as many times as needed; the configured
-[`video`](/reference/config#video) mode applies to runs, not sessions, and a
-session writes no [trace](/reference/config#trace). Each recording is saved to
-`<output>/videos/<session>/<n>[-<name>].webm` (`.mp4` on mobile, and
-[`output`](/reference/config#output) is `.e2e` by default), where `n`
-counts the session's recordings. A web recording that spans a restart or a
-state reset has one file per page, `-part2`, `-part3`, and so on, in play
-order. A browser or device provider that records the lease itself records
-the session instead: [Kernel](/integrations/kernel) downloads its replay,
-saved here as `<n>[-<name>].mp4` like any other file, and a provider that
-keeps its recordings is listed by URL instead of a file. `close_session`, the idle timeout, and the session
-TTL save a recording still running, and the close result lists its files.
-
-Recordings are not masked and are not withheld after a secret was filled:
-they are files for a person to watch, and no tool returns their pixels. A
-secret typed into a plain input while recording is readable in the video,
-and a recording stopped after a secret was filled says so.
-
-A session is one attempt on one target. A `call` before any session is
-open fails with `NO_SESSION`. A session closes on `close_session`, after 30
-idle minutes, after 4 hours, when the client disconnects, and on SIGINT or
-SIGTERM. The client disconnects when it closes the server's stdin or dies,
-so the pipes break under the server: every session closes, the app commands
-the sessions started stop, and the server exits.
-
-Sessions enforce what tests enforce. Node ids are valid only against the
-newest observation. A secret fills only through `type_secret`; once one has
-been filled, `screenshot` and the point tools (`tap_at`, `hover_at`,
-`type_at`, `press_at`, `select_at`) stay in the catalog but answer
-`PIXEL_TAINTED` for the rest of the session. Every text a tool returns, a node `locate` found,
-an action's result, an `open_session` or `close_session` failure, or a cleanup line, has the
-config's secret values redacted once the config has loaded, as do the server's own log lines. Nothing a
-session does is recorded as a test result or into the replay cache; its
-artifacts land under `<output>/results/mcp/<target>-<attemptId>/`, its videos under
-`<output>/videos/`. A later `e2e run` clears `<output>/results`; the
-videos stay.
-
-A queued call cancelled by the client does not execute when its turn arrives.
 
 ## Resources
 
@@ -221,9 +614,12 @@ A queued call cancelled by the client does not execute when its turn arrives.
 
 ## Exit codes
 
-`e2e mcp` exits 0 when the client disconnects, with or without a session
-open, or a signal ends it, and 2
-when the command line is invalid. It exits 1 when an uncaught error shuts the
-server down. A startup failure exits with its error's
-[category code](/reference/cli#exit-codes). Config and engine failures come
-back as tool errors with the same codes the CLI prints.
+| Code | When |
+| --- | --- |
+| `0` | The client disconnects, with or without a session open, or a signal ends it. |
+| `1` | An uncaught error shuts the server down. |
+| `2` | The command line is invalid. |
+| The error's [category code](/reference/cli#exit-codes) | A startup failure. |
+
+Config and engine failures come back as tool errors with the same codes the
+CLI prints.

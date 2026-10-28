@@ -67,6 +67,11 @@ export interface ExecutorStep {
 export interface ExecutorAttempt {
   readonly testId: string;
   readonly attemptId: string;
+  /**
+   * The test's title path, outermost `describe` first, redacted; empty
+   * outside `e2e run` (an `openHost` session, `e2e mcp`).
+   */
+  readonly titlePath: readonly string[];
   /** Zero-based retry index of this attempt. */
   readonly index: number;
   /**
@@ -241,18 +246,17 @@ export interface ExecutorActions {
   /**
    * Taps one viewport point, in the CSS pixels of the newest observation
    * (`SemanticNode.rect` space; a point read off `pixels` is divided by its
-   * `scale`). The point is routed onto the tree: a listed, enabled control
-   * whose box contains it is tapped by its id, exactly like `tap`, with a
-   * replayable descriptor; a point on nothing listed goes to the engine as a
-   * bare point when it has the `pointer` capability, recorded with its
-   * viewport. Fails when the point is on nothing listed and the engine taps
-   * nodes only.
+   * `scale`). The engine gets the bare point when it has the `pointer`
+   * capability, recorded with its viewport and its place inside the node
+   * under it. An engine that taps nodes only gets the listed, enabled
+   * control whose box contains the point, tapped by its id like `tap`, and
+   * fails when the point is on nothing listed.
    */
   tapAt(point: ViewportPoint): Promise<PointTapResult>;
   /**
-   * Hovers one viewport point, routed onto the tree the way `tapAt` is: a
-   * listed control under it is hovered by id, a bare point through the
-   * engine's `hover` pointer kind (`hoverAt` in `target.verbs`).
+   * Hovers one viewport point the way `tapAt` taps one: the bare point
+   * through the engine's `hover` pointer kind (`hoverAt` in `target.verbs`),
+   * else the listed control under it by id.
    */
   hoverAt(point: ViewportPoint): Promise<PointTapResult>;
   /**
@@ -296,7 +300,7 @@ export interface PointHit {
 export interface PointTapResult {
   /** Where the action landed, in the newest observation's CSS pixels. */
   readonly point: ViewportPoint;
-  /** The listed control the point resolved to; absent when a bare point was acted on. */
+  /** The listed, enabled control containing the point, acted on by id or at the point; absent when none is listed there. */
   readonly target?: ExecutorTarget;
   /** Prose for a model: what was acted on, or what sits under a bare point. */
   readonly summary: string;

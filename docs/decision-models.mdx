@@ -17,6 +17,9 @@ works, such as TypeSafe Jev or OpenAI `gpt-6-luna`. `evaluationModel()`
 instances work too. A model id string or a language model in `model` fails
 the config load with `INVALID_CONFIG`.
 
+The same package's `decisionFilter()` runs only the tests a pull request can
+affect. See [Test filters](/filters).
+
 ## Install and configure
 
 Install the package, a decision model provider, and a text model provider.
@@ -95,7 +98,7 @@ import { openai } from '@ai-sdk/openai';
 
 const executor = decisionExecutor({
   model: openai.decisionModel('gpt-6-luna'),
-  textModel: openai('gpt-5.4-mini'),
+  textModel: openai('gpt-6-luna-fast'),
   vision: true,
 });
 ```
@@ -214,7 +217,7 @@ import { gateway } from 'ai';
 
 const executor = decisionExecutor({
   model: gateway.decisionModel('typesafe-ai/jev'),
-  textModel: gateway('openai/gpt-4.1-nano'),
+  textModel: gateway('openai/gpt-6-luna-fast'),
   providerOptions: { gateway: { zeroDataRetention: true } },
 });
 ```
@@ -229,7 +232,7 @@ triggered fallback bills both models:
 ```ts title="Executor setup"
 const executor = decisionExecutor({
   model: gateway.decisionModel('typesafe-ai/jev'),
-  textModel: gateway('openai/gpt-4.1-nano'),
+  textModel: gateway('openai/gpt-6-luna-fast'),
   providerOptions: {
     gateway: { models: [{ model: 'openai/gpt-6-luna-decisions', when: { confidenceBelow: 0.6 } }] },
   },
@@ -238,7 +241,7 @@ const executor = decisionExecutor({
 
 A decision model fallback keeps the gates: the executor reads the fallback
 model's probabilities and confidence. A language model fallback, such as
-`openai/gpt-5-nano`, answers with a choice and no distribution. The
+`openai/gpt-6-luna-fast`, answers with a choice and no distribution. The
 executor takes that choice with probability 1 and confidence 0, so a
 `minConfidence` gate blocks every escalated answer.
 

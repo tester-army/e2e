@@ -104,12 +104,13 @@ function swappedFile(target: string, view: ProjectView): string | undefined {
 function directoryMain(directory: string, view: ProjectView): string | undefined {
   const manifest = path.join(directory, 'package.json');
   if (!view.isFile(manifest)) return undefined;
-  let main: unknown;
+  let parsed: unknown;
   try {
-    ({ main } = JSON.parse(readFileSync(manifest, 'utf8')) as { main?: unknown });
+    parsed = JSON.parse(readFileSync(manifest, 'utf8'));
   } catch {
     return undefined;
   }
+  const main = typeof parsed === 'object' && parsed !== null && 'main' in parsed ? parsed.main : undefined;
   return typeof main === 'string' && main !== '' ? path.resolve(directory, main) : undefined;
 }
 

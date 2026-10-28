@@ -3,7 +3,7 @@
 import nodePath from 'node:path';
 import { describeValue } from '../config/validate.ts';
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
-import type { LocatorAction, LocatorExpression, SemanticNode } from '../engine/surface.ts';
+import type { LocatorAction, LocatorExpression, Observation, SemanticNode } from '../engine/surface.ts';
 import { locatorBrand } from '../internal/brands.ts';
 import { isSecret } from '../secrets.ts';
 import { TestError } from '../internal/errors.ts';
@@ -43,7 +43,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition, sleep } from '../internal/time.ts';
+import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition } from '../internal/time.ts';
 import { SampleHistory } from '../expect/samples.ts';
 import type { ScreenshotContext } from '../run/screenshots.ts';
 
@@ -63,6 +63,8 @@ export interface ScreenContext {
   readonly projectRoot?: string;
   /** Where `toHaveScreenshot` keeps screenshots; absent outside a test. */
   readonly screenshots?: ScreenshotContext;
+  /** Renders an observation as `screen.tree()` returns it: redacted, one node per line. */
+  readonly renderTree: (observation: Observation) => string;
 }
 
 /** Internal accessor used by expect() to reach a locator's expression/engine. */
@@ -298,8 +300,27 @@ class ScreenImpl implements Screen {
           }
           throw cause;
         }
-        await sleep(Math.min(POLL_INTERVAL_MS, deadline.remaining()), engine.signal);
       }
+    });
+  }
+
+  tree(options?: ActionOptions): Promise<string> {
+    return this.readTree('screen.tree', options);
+  }
+
+  async debug(options?: ActionOptions): Promise<void> {
+    console.log(await this.readTree('screen.debug', options));
+  }
+
+  /** One observation of the whole screen, rendered; a locator or a frame refuses, since the tree is not scoped. */
+  private async readTree(api: string, options: ActionOptions | undefined): Promise<string> {
+    rejectUnknownOptions(api, options, ['timeout']);
+    if (this.scope !== undefined || this.wrap !== undefined) {
+      throw new TestError('INVALID_ARGUMENT', `${api} reads the whole screen; call it on screen`);
+    }
+    return await this.context.steps.run('screen', api, 'whole screen', async () => {
+      const { engine } = this.context;
+      return this.context.renderTree(await engine.session.observe(engine.operation(options?.timeout)));
     });
   }
 
@@ -625,17 +646,26 @@ class LocatorImpl extends ScreenImpl implements Locator {
     }, { verifies: true });
   }
 
-  filter(options: { hasText?: TextMatch; has?: Locator }): Locator {
-    rejectUnknownOptions('filter', options, ['hasText', 'has'], 'INVALID_LOCATOR');
-    const { hasText, has } = options ?? {};
+  filter(options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator {
+    rejectUnknownOptions('filter', options, ['hasText', 'hasNotText', 'has', 'hasNot'], 'INVALID_LOCATOR');
+    const { hasText, hasNotText, has, hasNot } = options ?? {};
     const hasExpression = has === undefined ? undefined : this.ownLocator(has, 'filter({ has })').expression;
+    const hasNotExpression =
+      hasNot === undefined ? undefined : this.ownLocator(hasNot, 'filter({ hasNot })').expression;
     return new LocatorImpl(
       this.context,
       filterExpression(this.expression, {
         ...(hasText !== undefined ? { hasText } : {}),
+        ...(hasNotText !== undefined ? { hasNotText } : {}),
         ...(hasExpression !== undefined ? { has: hasExpression } : {}),
+        ...(hasNotExpression !== undefined ? { hasNot: hasNotExpression } : {}),
       }),
     );
+  }
+
+  or(other: Locator): Locator {
+    const right = this.ownLocator(other, 'or').expression;
+    return new LocatorImpl(this.context, { kind: 'union', left: this.expression, right });
   }
 
   first(): Locator {

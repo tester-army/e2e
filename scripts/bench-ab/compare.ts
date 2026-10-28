@@ -98,8 +98,10 @@ function caseChanges(base: readonly Sample[], head: readonly Sample[]): CaseChan
     const only = (set: Set<string>, value: string) => set.size === 1 && set.has(value);
     if (only(inBase, ABSENT)) changes.push({ kind: 'added', key });
     else if (only(inHead, ABSENT)) changes.push({ kind: 'removed', key });
-    else if (inBase.size > 1) changes.push({ kind: 'unstable', key, side: 'base', variants: inBase.size });
-    else if (inHead.size > 1) changes.push({ kind: 'unstable', key, side: 'head', variants: inHead.size });
+    else if (inBase.size > 1 || inHead.size > 1) {
+      if (inBase.size > 1) changes.push({ kind: 'unstable', key, side: 'base', variants: inBase.size });
+      if (inHead.size > 1) changes.push({ kind: 'unstable', key, side: 'head', variants: inHead.size });
+    }
     else {
       const [baseSignature] = inBase;
       const [headSignature] = inHead;

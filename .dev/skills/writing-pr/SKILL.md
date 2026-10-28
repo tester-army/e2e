@@ -36,6 +36,9 @@ Do not write essays. A few bullets on what changed and why, then evidence.
   is the PR.
 - Spec changes: name the chapter, schema, and `suiteVersion` bump in one
   bullet so the reviewer can check them together.
+- A `## Issue` section with `Fixes #123` when the PR resolves an issue.
+  Required on community `fix`, `chore`, `test`, `perf`, `ci`, `build`, and
+  `revert` PRs (CONTRIBUTING.md, Pull requests).
 - A `## Verified` section, required on every PR:
   - First line: `Ran it locally: yes`, or `Ran it locally: no - <why>`
     (docs typo, CI-only, a device you do not have).

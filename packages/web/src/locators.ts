@@ -250,8 +250,13 @@ function positioned(locator: PwLocator, index: 'first' | 'last' | number): PwLoc
   return index === 'first' ? locator.first() : index === 'last' ? locator.last() : locator.nth(index);
 }
 
+/** A projection whose matches are exactly `locator`'s, with nothing left for the surface to apply. */
+function plain(locator: PwLocator): ProjectedLocator {
+  return { locator, displayValue: null, name: null, composable: null, steps: [], visible: false };
+}
+
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
-  'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  'displayValue queries cannot scope child queries or serve as a has or hasNot filter in this engine';
 
 /**
  * Projects a complete immutable expression onto a Playwright locator within
@@ -261,13 +266,13 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * it (see `Candidates`), so a scope, a `has` filter, and an index reach
  * across a closed boundary. Two compositions stay Playwright's own and stop
  * at one: a `selector` expression is the platform's CSS or XPath, and
- * `filter({ hasText })` reads an element's text as Playwright does, light DOM
- * and open roots, so text inside a closed root does not count toward an
- * element outside it.
+ * `filter({ hasText, hasNotText })` reads an element's text as Playwright
+ * does, light DOM and open roots, so text inside a closed root does not count
+ * toward an element outside it.
  *
  * A display-value query resolves to a candidate locator plus a value predicate
  * the surface applies once the candidates are read. Per-element filters
- * (`filter({ hasText, has })`) commute with that predicate, so they compose
+ * (`filter({ hasText, hasNotText, has, hasNot })`) commute with that predicate, so they compose
  * onto the candidate locator as for any other query. Positional selection does
  * not commute (positions are relative to the value-filtered matches), so it is
  * recorded as a step and applied after filtering; a filter that follows a
@@ -278,6 +283,11 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  */
 function project(scope: PwScope, expression: LocatorExpression, testIdAttribute: string): ProjectedLocator {
   switch (expression.kind) {
+    case 'union': {
+      const left = requireComposable(project(scope, expression.left, testIdAttribute));
+      const right = requireComposable(project(scope, expression.right, testIdAttribute));
+      return plain(left.or(right));
+    }
     case 'query': {
       const inner =
         expression.scope === undefined
@@ -299,8 +309,12 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       const source = project(scope, expression.source, testIdAttribute);
       const options: PwFilterOptions = {};
       if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
+      if (expression.hasNotText !== undefined) options.hasNotText = patternToPw(expression.hasNotText);
       if (expression.has !== undefined) {
         options.has = requireComposable(project(scope, expression.has, testIdAttribute));
+      }
+      if (expression.hasNot !== undefined) {
+        options.hasNot = requireComposable(project(scope, expression.hasNot, testIdAttribute));
       }
       if (source.steps.length > 0) {
         return { ...source, steps: [...source.steps, { kind: 'filter', options }] };
@@ -321,24 +335,10 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
           steps: [...source.steps, { kind: 'index', index: expression.index }],
         };
       }
-      return {
-        locator: positioned(source.locator, expression.index),
-        displayValue: null,
-        name: null,
-        composable: null,
-        steps: [],
-        visible: false,
-      };
+      return plain(positioned(source.locator, expression.index));
     }
     case 'selector':
-      return {
-        locator: scope.locator(expression.selector),
-        displayValue: null,
-        name: null,
-        composable: null,
-        steps: [],
-        visible: false,
-      };
+      return plain(scope.locator(expression.selector));
     case 'frame':
       return project(scope.frameLocator(expression.selector), expression.source, testIdAttribute);
   }
@@ -401,6 +401,16 @@ export async function applyPostSteps<T>(
 /** Returns every frame selector along an expression, outermost first. */
 export function frameSelectors(expression: LocatorExpression): string[] {
   switch (expression.kind) {
+    case 'union': {
+      const left = frameSelectors(expression.left);
+      const right = frameSelectors(expression.right);
+      if (left.length !== right.length || left.some((selector, index) => selector !== right[index])) {
+        throw new EngineError('UNSUPPORTED_CAPABILITY', 'locator.or requires both branches in the same document', {
+          retryable: false,
+        });
+      }
+      return left;
+    }
     case 'query':
       return expression.scope === undefined ? [] : frameSelectors(expression.scope);
     case 'filter':

@@ -41,6 +41,8 @@ export interface CacheStore {
    * flow is implicated in a failed attempt: the entry re-records on the next
    * pass instead of replaying a poisoned flow forever. Optional — a store
    * without eviction merely stays stale until the next confirmed write.
+   * Resolves when the entry is absent; rejects when deletion fails so the
+   * best-effort caller can avoid reporting a successful eviction.
    */
   delete?(keyHash: string): Promise<void>;
 }
@@ -113,7 +115,11 @@ export class FileCacheStore implements CacheStore {
     if (!this.writable) return;
     const path = this.entryPath(keyHash);
     if (path === undefined) return;
-    await unlink(path).catch(() => undefined);
+    try {
+      await unlink(path);
+    } catch (cause) {
+      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
+    }
   }
 
   /**

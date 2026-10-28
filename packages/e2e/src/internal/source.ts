@@ -46,7 +46,8 @@ export function userFrame(stack: string | undefined, projectRoot: string | undef
   for (const raw of stack.split('\n')) {
     const match = FRAME_PATTERN.exec(raw);
     if (match === null) continue;
-    const [, location, line, column] = match as unknown as [string, string, string, string];
+    const [, location, line, column] = match;
+    if (location === undefined || line === undefined || column === undefined) continue;
     const withoutQuery = location.split('?')[0]!;
     let file: string;
     try {

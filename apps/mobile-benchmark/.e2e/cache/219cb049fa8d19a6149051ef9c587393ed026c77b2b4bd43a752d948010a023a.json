@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:05:07.898Z",
+  "createdAt": "2026-10-15T16:03:00.604Z",
   "payload": {
     "actions": [
       {
@@ -15,10 +15,10 @@
       },
       {
         "name": "tap",
-        "summary": "tap image \"Photo, October 03, 22:50\"",
+        "summary": "tap image \"Photo, October 15, 10:27\"",
         "target": {
           "role": "image",
-          "name": "Photo, October 03, 22:50",
+          "name": "Photo, October 15, 10:27",
           "testId": "PXGGridLayout-Info",
           "selector": "id=PXGGridLayout-Info"
         }
@@ -36,9 +36,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the photo library and selected the most recent photo (October 03, 22:50). The screen confirms: “Receipt attached: icon.png”.",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Selected the most recent library photo (October 15, 10:27). The scenario now confirms: “Receipt attached: icon.png.”",
+    "startPath": "dev.e2e.benchmark / Photo Picker",
+    "endPath": "dev.e2e.benchmark / Photo Picker",
     "endAnchors": [
       {
         "role": "other",
@@ -69,7 +69,7 @@
         "name": "Expense report"
       }
     ],
-    "endWaitMs": 12335,
+    "endWaitMs": 13099,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

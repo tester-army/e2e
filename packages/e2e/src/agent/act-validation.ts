@@ -38,7 +38,7 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'onBeforeAction']);
 
 /**
  * The `act` type has no `schema` and no `vision`, and no key outside
@@ -70,6 +70,14 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
       'UNSUPPORTED_CAPABILITY',
       'agent.act takes no vision option: the model works from the tree and asks for a screenshot itself when the tree lacks what it needs; vision is a judgment option (assert, waitFor, extract)',
     );
+  }
+  const onBeforeAction: unknown = options.onBeforeAction;
+  if (onBeforeAction !== undefined && typeof onBeforeAction !== 'function') {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options.onBeforeAction must be a function');
+  }
+  const onAction: unknown = options.onAction;
+  if (onAction !== undefined && typeof onAction !== 'function') {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options.onAction must be a function');
   }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
   if (unknown.length > 0) {
@@ -114,6 +122,7 @@ export function validateParams(params: AgentParams | undefined): {
     );
   }
   return {
+    // oxlint-disable-next-line e2e/no-unchecked-json -- canonical is this function's own JSON.stringify of a plain object validateJsonValue just checked
     projected: JSON.parse(canonical) as Readonly<Record<string, JsonValue>>,
     secrets: found.secrets,
     templates: found.templates,

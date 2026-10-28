@@ -125,6 +125,29 @@ export const CANVAS_PAGES: Record<string, PageRenderer> = {
   </script>
 </body>
 </html>`),
+  // A popover over a full-screen dismiss control, the way iOS presents one:
+  // every point outside the popover is inside the dismiss control, whose
+  // center, (640, 360) in the runner's 1280x720 viewport, is under the
+  // popover's own button.
+  '/popover': constant(`<!doctype html>
+<html>
+<head><title>Popover</title></head>
+<body style="margin:0">
+  <output id="hit" role="status" aria-label="Hit">open</output>
+  <button id="dismiss" aria-label="Dismiss popover" style="position:fixed;inset:0;width:100%;height:100%;z-index:1"></button>
+  <div role="dialog" aria-label="Calendar" style="position:fixed;left:540px;top:260px;width:200px;height:200px;z-index:2">
+    <button id="day" style="width:200px;height:200px">15</button>
+  </div>
+  <script>
+    document.getElementById('dismiss').addEventListener('click', () => {
+      document.getElementById('hit').textContent = 'dismissed';
+    });
+    document.getElementById('day').addEventListener('click', () => {
+      document.getElementById('hit').textContent = 'picked 15';
+    });
+  </script>
+</body>
+</html>`),
   // Drag geometry. The near zone starts below the fold but can share a viewport
   // with the source once something scrolls; the far zone never can. A pointer
   // drag has to scroll for the first and refuse the second, because a pointer can

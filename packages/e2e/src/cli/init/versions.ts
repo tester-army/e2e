@@ -31,3 +31,9 @@ export function siblingDependency(name: string): Readonly<Record<string, string>
   return { [name]: dependencyRange(SIBLING_VERSIONS?.[name]) };
 }
 
+/** The range for a sibling the build recorded a version for; undefined for any other package, or from source. */
+export function recordedSiblingRange(name: string): string | undefined {
+  const version = SIBLING_VERSIONS?.[name];
+  return version === undefined ? undefined : dependencyRange(version);
+}
+

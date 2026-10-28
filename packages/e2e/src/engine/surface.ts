@@ -33,8 +33,9 @@ export type { EngineObserveOptions, EngineState, VideoSegment } from './index.ts
  * The agent's action grammar, by verb. A session derives which verbs its
  * engine can honor from the action kinds the engine declared, so the agent
  * offers the model exactly that vocabulary. The vision-located tap and hover
- * are not verbs of their own: each rides its node verb when the located
- * point sits on a node the tree lists, and `performAt` when it does not.
+ * are not verbs of their own: each rides `performAt` when the engine
+ * declares its pointer kind, else its node verb on the listed control at
+ * the point.
  */
 export type GrammarVerb =
   | 'tap'

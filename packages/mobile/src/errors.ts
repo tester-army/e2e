@@ -8,7 +8,8 @@
  * | SESSION_NOT_FOUND, or a session-or-device-selector refusal  | INVALID_STATE                |
  * | UNSUPPORTED_OPERATION, NOT_IMPLEMENTED, UNSUPPORTED_PLATFORM | UNSUPPORTED_CAPABILITY      |
  * | "not supported on this device" under any code                | UNSUPPORTED_CAPABILITY       |
- * | a stale-ref refusal, by `details.reason` (action paths only) | NODE_STALE (retryable)      |
+ * | a stale-ref refusal by `details.reason` (action paths only)  | NODE_STALE (retryable)        |
+ * | target_still_moving with `details.dispatched: no`            | NODE_STALE (retryable)        |
  * | the iOS runner busy, wedged, or past its watchdog           | ENGINE_FAILURE, naming the   |
  * | a snapshot the iOS runner acquired but could not present    |   runner and the recovery    |
  * | anything else, agent-device's own timeouts included         | ENGINE_FAILURE with the text |
@@ -248,6 +249,16 @@ export function isUnreadableCapture(error: unknown): boolean {
 }
 
 /**
+ * True for a translated read the iOS runner refused because XCTest sees the
+ * app as not running. A physical device answers `devicectl` launch before
+ * that state catches up, so this follows an `open` or `restart` for a
+ * moment; any other time the app has exited.
+ */
+export function isAppNotRunning(error: unknown): boolean {
+  return error instanceof Error && details(error.cause).runnerErrorCode === 'APP_NOT_RUNNING';
+}
+
+/**
  * Runs one agent-device command under an abort signal and translates its
  * failure onto the engine taxonomy: the one boundary every command crosses.
  */
@@ -262,15 +273,16 @@ export async function runCommand<T>(label: string, work: () => Promise<T>, signa
 /**
  * Like translateError, but a ref agent-device refused as stale becomes
  * retryable `NODE_STALE`: nothing was dispatched, so the harness may
- * re-observe and re-resolve the node instead of failing the action. Keyed on
- * the reason alone: agent-device marks a drag's stale ref `dispatched:
- * 'unknown'` after Android blocking-dialog recovery, although it refuses it
- * before the gesture.
+ * re-observe and re-resolve the node instead of failing the action. Existing
+ * stale-ref reasons are sufficient on their own: Android dialog recovery can
+ * mark a refused drag as `dispatched: unknown`. A `target_still_moving` refusal
+ * additionally requires `dispatched: no`; missing or unknown dispatch is not retryable.
  */
 export function staleOr(cause: unknown, operation: string, where?: string): Error {
   if (isClassified(cause)) return cause;
-  const { reason } = details(cause);
-  if (typeof reason === 'string' && STALE_REF_REASONS.has(reason)) {
+  const { reason, dispatched } = details(cause);
+  if ((typeof reason === 'string' && STALE_REF_REASONS.has(reason)) ||
+      (reason === 'target_still_moving' && dispatched === 'no')) {
     return new EngineError('NODE_STALE', `${operation}: ${message(cause)}`, { retryable: true, cause });
   }
   return translateError(cause, operation, where);

@@ -399,8 +399,9 @@ export interface EnginePrepareInfo {
    * The worker slots the run will start for this target, `0` to `slots - 1`:
    * the run's worker cap, the engine's declared `workers`, and the work units
    * selected for the target, whichever is smallest; `0` when nothing runs on
-   * it. Provision for exactly these slots (boot that many devices of a pool);
-   * `init` then finds them ready.
+   * it while another target has work. A run with nothing to run prepares no
+   * target. Provision for exactly these slots (boot that many devices of a
+   * pool); `init` then finds them ready.
    */
   readonly slots: number;
   /**
@@ -589,6 +590,17 @@ export interface EngineCleanupContext {
   readonly timeoutMs: number;
 }
 
+/** Cleanup of one worker, with optional permission to leave run-owned resources for a replacement. */
+export interface EngineDisposeContext extends EngineCleanupContext {
+  /**
+   * A live signal permits reusable resources owned by `prepare` and `finish`
+   * to survive this worker. Missing or aborted permission requires final
+   * cleanup. Observe revocation until disposal settles. This signal does
+   * not cancel cleanup, which remains bounded by `signal` and `timeoutMs`.
+   */
+  readonly reuseSignal?: AbortSignal;
+}
+
 export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
@@ -734,9 +746,9 @@ export interface Engine {
   /**
    * capability: pointer - requires observation. Performs one pointer action
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
-   * node behind it: the agent's `tap_at` verb lands here when the point the
-   * model named in a screenshot sits on nothing the tree lists (a shape on a
-   * canvas, a pin on a map, a control in a system sheet), and so do a test's
+   * node behind it: the agent's `tap_at` and `hover_at` verbs land here with
+   * the point the model named in a screenshot (a shape on a canvas, a pin on
+   * a map, a control in a system sheet or one the tree lists), and so do a test's
    * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
    * Dispatch the pointer at the point as given; the harness has clamped an
    * agent's point to the viewport and validated a test's. Throw
@@ -789,10 +801,12 @@ export interface Engine {
    * through `info.log`. It runs after collection and before the run's clock
    * starts: `plan` is emitted, the report's `startedAt` taken, and the app
    * started only once every target is prepared, so a download is never part
-   * of a run's duration. Failure is infrastructure and ends the run before
-   * any test executes. The result may lower the target's worker cap for this
-   * run, for an engine that only learns its capacity here (a device pool
-   * discovered from the booted devices).
+   * of a run's duration. A run with nothing to run (the test filters left
+   * nothing, or `--pass-with-no-tests` on an empty selection) prepares no
+   * target, and so calls no `finish`. Failure is infrastructure and ends the
+   * run before any test executes. The result may lower the target's worker
+   * cap for this run, for an engine that only learns its capacity here (a
+   * device pool discovered from the booted devices).
    */
   prepare?(info: EnginePrepareInfo): Promise<void | EnginePrepareResult>;
   /**
@@ -832,9 +846,11 @@ export interface Engine {
   endAttempt?(context: EngineCleanupContext): Promise<void>;
   /**
    * Worker shutdown, within the cleanup budget; failure is a run error. Runs
-   * whether or not `init` ran, so it MUST tolerate a cold engine.
+   * whether or not `init` ran, so it MUST tolerate a cold engine. A live
+   * `reuseSignal` permits preserving run-owned resources for a replacement,
+   * until that permission is revoked or this hook settles.
    */
-  dispose?(context: EngineCleanupContext): Promise<void>;
+  dispose?(context: EngineDisposeContext): Promise<void>;
 }
 
 /** A validated engine: branded, frozen, capabilities computed. */

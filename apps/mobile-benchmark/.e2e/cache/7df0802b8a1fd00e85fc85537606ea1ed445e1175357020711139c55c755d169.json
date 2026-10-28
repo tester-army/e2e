@@ -58,8 +58,8 @@
       "agent": "default"
     },
     "summary": "Searched for “Benchmark Target,” waited for the exact result to load, and selected it once. The screen confirms “Selected Benchmark Target.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "startPath": "dev.e2e.benchmark / Debounced Search",
+    "endPath": "dev.e2e.benchmark / Debounced Search",
     "endAnchors": [
       {
         "role": "other",

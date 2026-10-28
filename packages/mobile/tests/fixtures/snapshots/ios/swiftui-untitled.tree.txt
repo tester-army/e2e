@@ -1,0 +1,7 @@
+screen
+  other "SwiftUIBar"
+    navigation #_TtGC7SwiftUI32NavigationStackHosting
+      button "Inbox" #BackButton
+      other "Share"
+        button "Share"
+    text "Untitled body"

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T07:04:25.108Z",
+  "createdAt": "2026-10-15T16:01:04.381Z",
   "payload": {
     "actions": [
       {
@@ -39,20 +39,6 @@
         "spans": 0.8673
       },
       {
-        "name": "scroll",
-        "summary": "scroll down on other \"Continue\" (2 of 3)",
-        "direction": "down",
-        "target": {
-          "role": "other",
-          "name": "Continue",
-          "position": {
-            "index": 1,
-            "of": 3
-          }
-        },
-        "spans": 0.8673
-      },
-      {
         "name": "tap",
         "summary": "tap other \"Accept terms\"",
         "target": {
@@ -85,9 +71,9 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled to the Accept terms button, accepted the terms (the button changed to “Terms accepted ✓”), then tapped Continue. The screen now shows “Terms accepted.”",
-    "startPath": "dev.e2e.benchmark / Benchmark Examples",
-    "endPath": "dev.e2e.benchmark / Benchmark Examples",
+    "summary": "Scrolled to the bottom until Accept terms was visible above the sticky footer, accepted the terms, then tapped Continue. The screen now displays “Terms accepted.”",
+    "startPath": "dev.e2e.benchmark / Sticky Chrome Target",
+    "endPath": "dev.e2e.benchmark / Sticky Chrome Target",
     "endAnchors": [
       {
         "role": "other",
@@ -133,7 +119,7 @@
         "name": "Section 4"
       }
     ],
-    "endWaitMs": 13293,
+    "endWaitMs": 16051,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

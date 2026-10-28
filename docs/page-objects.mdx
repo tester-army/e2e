@@ -1,0 +1,116 @@
+---
+title: Page objects
+description: Wrap one screen's locators and actions in a class, and hand it to tests as a fixture.
+icon: "object-group"
+"og:image": "https://e2e.tester.army/docs/images/og/page-objects.png?v=c53bbc6604"
+"twitter:image": "https://e2e.tester.army/docs/images/og/page-objects.png?v=c53bbc6604"
+---
+
+A page object keeps one screen's locators and actions in one place, so your
+tests call its methods instead of repeating the same queries. It's a design
+pattern, and it works the same in any test framework. If you've written page
+objects in Playwright or Selenium, this will look familiar.
+
+In e2e, a page object is a plain TypeScript class that takes `screen`. You
+hand it to tests through a fixture.
+
+## Write a page object
+
+The constructor takes `screen` and builds the locators. Locators are lazy, so
+nothing is looked up until a method uses one:
+
+```ts title="tests/pages/sign-in-page.ts"
+import type { Locator, Screen, Secret } from 'e2e';
+
+export class SignInPage {
+  readonly email: Locator;
+  readonly password: Locator;
+  readonly submit: Locator;
+  readonly error: Locator;
+
+  constructor(readonly screen: Screen) {
+    this.email = screen.getByLabel('Email');
+    this.password = screen.getByLabel('Password');
+    this.submit = screen.getByRole('button', 'Sign in');
+    this.error = screen.getByRole('alert');
+  }
+
+  async signIn(email: string, password: string | Secret) {
+    await this.email.fill(email);
+    await this.password.fill(password);
+    await this.submit.tap();
+  }
+}
+```
+
+Don't end the file name in `.e2e.ts`, or the runner collects it as a test.
+
+## Hand it out as a fixture
+
+Create the page object in a fixture with `test.extend`. Every test that
+imports this `test` gets it, with no `beforeEach`:
+
+```ts title="tests/fixtures.ts"
+import { test as base } from 'e2e';
+import { SignInPage } from './pages/sign-in-page.ts';
+
+export const test = base.extend<{ signInPage: SignInPage }>({
+  signInPage: async ({ screen }, use) => {
+    await use(new SignInPage(screen));
+  },
+});
+```
+
+```ts title="tests/sign-in.e2e.ts"
+import { expect } from 'e2e';
+import { test } from './fixtures.ts';
+
+test('rejects a wrong password', async ({ app, signInPage }) => {
+  await app.open();
+  await signInPage.signIn('ada@example.test', 'not-the-password');
+  await expect(signInPage.error).toHaveText('Wrong email or password');
+});
+```
+
+## Keep it portable
+
+A page object that uses only `screen` runs on web and mobile targets alike.
+When it needs `browser` (keyboard, CSS selectors, `evaluate`) or `device`,
+it runs on that platform only.
+
+A fixture that reads `browser` or `device` makes every test on that `test`
+need it. On another target, those tests fail in `beforeEach` with
+`UNSUPPORTED_CAPABILITY`. Give those tests `requires: ['browser']` to skip
+them there instead, or keep portable tests on the base `test`.
+
+## Where agent goals fit
+
+A method can take `agent` as an argument and wrap a goal the app changes
+often:
+
+```ts
+async addCard(agent: Agent, name: string) {
+  await agent.act('add a new card named {name}', { params: { name } });
+}
+```
+
+Don't read `agent` in the fixture. Every test on that `test` would then need
+a configured model, the deterministic ones too.
+
+Many page object methods exist only to click through a flow. One
+[`agent.act` goal](/core-concepts#goals) can replace them. Keep methods for
+the steps every test repeats and needs exact.
+
+To start tests signed in, don't call `signIn` in each one. Save a session
+one time instead. See [Signing in](/authentication).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Signing in" icon="key" href="/authentication">
+    Sign in one time and reuse the session.
+  </Card>
+  <Card title="Test API" icon="code" href="/reference/test#your-own-fixtures">
+    Fixture setup, teardown, and ordering.
+  </Card>
+</CardGroup>

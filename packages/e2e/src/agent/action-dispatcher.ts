@@ -16,15 +16,15 @@ import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import type { ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
 import { appNavigation } from '../cache/route.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
 import { derivedReason } from './derived.ts';
-import { AgentError } from './error.ts';
-import type { ExecutorActions, ExecutorTarget, PointHit, PointTapResult } from './executor.ts';
+import { ActionHookError, AgentError, toAgentError } from './error.ts';
+import { RUNTIME_CODES, type ExecutorActions, type ExecutorTarget, type PointHit, type PointTapResult } from './executor.ts';
 import type { AgentContext } from './invocation.ts';
 import type { ObservationFeed, Resolved } from './observation-feed.ts';
 import { resolveScrollTarget } from './scroll-target.ts';
@@ -110,6 +110,10 @@ export interface ActionDispatcherOptions {
   readonly secrets: ReadonlyMap<string, Secret>;
   /** The step's trace-cache session, read at commit time; undefined when caching is off. */
   readonly trace: () => StepTraceSession | undefined;
+  /** The test's `onAction` hook, handed each completed action. */
+  readonly onAction?: ActionHook | undefined;
+  /** The test's `onBeforeAction` hook, handed each action before it runs. */
+  readonly onBeforeAction?: BeforeActionHook | undefined;
 }
 
 export class ActionDispatcher {
@@ -200,8 +204,7 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       // The control is reported whatever the engine can do with it: the verb
-      // the executor calls next is gated on its own action kind, and only a
-      // point verb needs to ignore a listed control when its node verb is missing.
+      // the executor calls next is gated on its own action kind.
       const hit = hitTest(observation, clamped);
       return Promise.resolve({
         point: clamped,
@@ -219,13 +222,12 @@ export class ActionDispatcher {
   }
 
   /**
-   * Taps or hovers one viewport point, routed onto the tree in queue order
-   * against the newest observation, like a targeted action's resolution. A
-   * listed, enabled control containing the point is acted on by its id, so
-   * policy, stale relocation, and the trace descriptor see an ordinary node
-   * action; a point on nothing listed goes to the engine as a bare point
-   * when it takes one. The point is clamped to the viewport first, so one
-   * placed off the edge lands on the edge rather than failing the engine.
+   * Taps or hovers one viewport point in queue order against the newest
+   * observation. The engine gets the bare point, where the model aimed,
+   * and the trace keeps it inside the node under it. An engine that takes
+   * no bare point gets the listed, enabled control containing it, acted on
+   * by its id. The point is clamped to the viewport first, so one placed
+   * off the edge lands on the edge rather than failing the engine.
    */
   private pointVerb(verb: PointActionName, point: ViewportPoint): Promise<PointTapResult> {
     requireFinitePoint(point, verb);
@@ -234,9 +236,17 @@ export class ActionDispatcher {
       const observation = this.feed.requireLatest();
       const clamped = clampToViewport(point, observation.viewport);
       const hit = hitTest(observation, clamped);
-      // An engine without the node verb gets the bare point even under a listed control.
-      const control = this.verbs.has(nodeVerb) ? hit.control : undefined;
-      const summary = describePointAction({ verb, point: clamped, control, under: hit.under, ...this.prose(observation) });
+      // A tap by id lands on the control's center, not where the model aimed:
+      // only an engine without the bare point gets it.
+      const control = hit.control !== undefined && !this.verbs.has(verb) && this.verbs.has(nodeVerb) ? hit.control : undefined;
+      const summary = describePointAction({
+        verb,
+        point: clamped,
+        control: hit.control,
+        under: hit.under,
+        byId: control !== undefined,
+        ...this.prose(observation),
+      });
       if (control !== undefined) {
         const target = { id: control.ref.id };
         await this.runActionNow(nodeVerb, () => this.targeted(this.feed.resolve(target), (node) => this.performNode(nodeVerb, node)));
@@ -257,10 +267,11 @@ export class ActionDispatcher {
           name: verb,
           point: clamped,
           viewport: { width: observation.viewport.width, height: observation.viewport.height },
-          ...(under === undefined ? {} : { under }),
+          // Its container and place among twins tell this row's node from the next row's on replay.
+          ...(under === undefined || observation.kind !== 'semantic' ? {} : { under, ...this.placementOf({ node: under, observation }) }),
         };
       });
-      return { point: clamped, summary };
+      return { point: clamped, ...(hit.control === undefined ? {} : { target: { id: hit.control.ref.id } }), summary };
     });
   }
 
@@ -271,14 +282,15 @@ export class ActionDispatcher {
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
         this.accounting.reserveAction();
+        await this.before();
         this.options.trace()?.recordGap(call.name);
       }
-      const value = await instrumentPhase(
-        this.runtime,
-        { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}` },
-        body,
-      );
-      if (call.mutates) this.armAfter('tool');
+      const name = `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`;
+      const value = await instrumentPhase(this.runtime, { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name }, body);
+      if (call.mutates) {
+        this.armAfter('tool');
+        await this.notify('tool', name, () => `ran ${call.name}`);
+      }
       return value;
     };
     return call.mutates ? this.queue.run(run) : run();
@@ -570,6 +582,7 @@ export class ActionDispatcher {
 
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
     this.accounting.reserveAction();
+    await this.before();
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
     let action: RecordableAction;
     try {
@@ -584,6 +597,12 @@ export class ActionDispatcher {
       throw cause;
     }
     this.armAfter(action.name);
+    this.recordTrace(action);
+    await this.notify(action.name, action.name, () => describeAction(action, redaction).summary);
+  }
+
+  /** Writes a committed action to the step's trace cache, when caching is on. */
+  private recordTrace(action: RecordableAction): void {
     const trace = this.options.trace();
     if (trace === undefined) return;
     // A typed value the step read off the screen (its tree, or a screenshot
@@ -603,6 +622,54 @@ export class ActionDispatcher {
       }
     }
     trace.record(action);
+  }
+
+  /**
+   * Hands one completed action to the test's `onAction` hook once the screen
+   * it left settles as the action's policy asks, so what the hook captures is
+   * the action's effect. The action already happened, so a failure from here
+   * on, the settle's or the hook's, hard-stops the step instead of reaching
+   * the executor as a failed action to retry, or the replay as a divergence.
+   */
+  private async notify(kind: RecordedAction['name'], action: string, summary: () => string): Promise<void> {
+    const hook = this.options.onAction;
+    if (hook === undefined || this.accounting.closed) return;
+    await this.invokeHook('onAction', async () => {
+      await this.feed.settleNow(SETTLE_AFTER[kind].look);
+      await hook({
+        index: this.accounting.metrics.actionSteps,
+        action,
+        summary: summary(),
+        source: this.accounting.replayingTrace ? 'replay' : 'model',
+      });
+    });
+  }
+
+  /** Hands the action about to run to the test's `onBeforeAction` hook. */
+  private async before(): Promise<void> {
+    const hook = this.options.onBeforeAction;
+    if (hook === undefined || this.accounting.closed) return;
+    await this.invokeHook('onBeforeAction', async () => {
+      await hook({
+        index: this.accounting.metrics.actionSteps,
+        source: this.accounting.replayingTrace ? 'replay' : 'model',
+      });
+      this.accounting.checkpoint();
+    });
+  }
+
+  /** Observer failures stop the step, never becoming an executor retry or replay hand-off. */
+  private async invokeHook(name: 'onAction' | 'onBeforeAction', body: () => Promise<void>): Promise<void> {
+    try {
+      await body();
+    } catch (cause) {
+      if (cause === this.accounting.hardStop || this.accounting.signal.aborted) throw cause;
+      const error = toAgentError(cause);
+      // A nested step's own budget or deadline is not this step's: the
+      // runtime vouches only for the stops it recorded itself.
+      const code = RUNTIME_CODES.has(error.code) ? 'ACTION_FAILED' : error.code;
+      throw this.accounting.fatalize(new ActionHookError(code, `${this.accounting.api} ${name} failed: ${error.message}`, { cause }));
+    }
   }
 
   /**

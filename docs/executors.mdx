@@ -70,7 +70,10 @@ same provider and model, or the config load fails with `INVALID_CONFIG`.
 
 `buildPrompt` returns a string or a message history. `prepareMessages` runs
 between turns to shorten the history, or returns `{ messages, stop }` when the
-step makes no progress. `guard()` stops new tool calls when the step is
+step makes no progress. A message it rewrites, in place or by replacement,
+edits the request prefix, and on Anthropic models, whose thinking is bound
+to it, the loop then stops sending the reasoning from that message on.
+`guard()` stops new tool calls when the step is
 concluding and returns a failure to the model as text. `ctx.actions`
 authorizes, counts, and records each action, so these steps replay from the
 [cache](/cache) and run on any engine that supports `tap`.
@@ -131,15 +134,15 @@ export default {
 | `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |
 | `ctx.agentContext` | The agent's `context` plus the test's `agentContext` |
 | `ctx.ledger` | The completed steps of the test |
-| `ctx.attempt` | Test and attempt ids, retry index, abort signal, and a `memory` map that is never reported |
+| `ctx.attempt` | Test and attempt ids, the test's `titlePath` (empty outside `e2e run`), retry index, abort signal, and a `memory` map that is never reported |
 | `ctx.budgets` | Accounting for custom tools (`runTool`) and model calls (`recordModelCall`) |
 | `ctx.attachTranscript(text)` | Under `--debug`, attaches the model transcript as a `log` artifact. Call it one time, at the end |
 | `ctx.attachTurns(turns)` | Keeps a clipped record of the model turns (`{ index, calls, outcome }`) on the step. The report shows the last ones under a failed step |
 | `ctx.attachScreenshot(pixels, label)` | Keeps observed pixels as a `screenshot` artifact of the step and resolves with its report id |
 
-`tapAt(point)` and `hoverAt(point)` act on the listed control at the point,
-else call the engine's coordinate action. `hitTest(point)` finds that control
-without acting. Engines with a keyboard add `typeText`, `pressKey`, and
+`tapAt(point)` and `hoverAt(point)` call the engine's coordinate action, or
+act on the listed control at the point when the engine has none.
+`hitTest(point)` finds that control without acting. Engines with a keyboard add `typeText`, `pressKey`, and
 `dismissKeyboard` for the focused control. `upload(target, paths)` refuses a
 path outside the project root or a hidden one with `POLICY_DENIED`, and a
 missing file with `INVALID_ARGUMENT`.

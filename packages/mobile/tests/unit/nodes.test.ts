@@ -424,10 +424,16 @@ describe('snapshot projection', () => {
     const field = project([{ ref: 'e1', type: 'TextField', label: 'Kind', value: 'checkbox, unchecked' }]);
     expect(field.index[0]?.node).toMatchObject({ role: 'textbox', value: 'checkbox, unchecked' });
     expect(field.index[0]?.node.states?.checked).toBeUndefined();
-    // An empty field shows its placeholder, which XCTest reports as the value; the hint flag says it is empty.
-    const empty = project([{ ref: 'e1', type: 'TextField', label: 'Name field', value: 'Type your name', hintShowing: true }]);
-    expect(empty.index[0]?.node.role).toBe('textbox');
+    // An empty iOS field reports its placeholder as its value, with no flag saying so (examples/with-expo's TextInput, agent-device 0.21.28, iOS 26.5).
+    const empty = project([{ ref: 'e1', type: 'TextField', label: 'Name', value: 'Ada Lovelace', placeholder: 'Ada Lovelace', identifier: 'name', editable: true }]);
+    expect(empty.index[0]?.node).toMatchObject({ role: 'textbox', name: 'Name', attributes: { placeholder: 'Ada Lovelace' } });
     expect(empty.index[0]?.node.value).toBeUndefined();
+    // Typed text that differs from the placeholder is the value.
+    const typed = project([{ ref: 'e1', type: 'TextField', label: 'Name', value: 'Ada', placeholder: 'Ada Lovelace', editable: true }]);
+    expect(typed.index[0]?.node.value).toBe('Ada');
+    // A static text whose value matches some placeholder is not a field showing its hint.
+    const text = project([{ ref: 'e1', type: 'StaticText', label: 'Hint', value: 'Ada Lovelace', placeholder: 'Ada Lovelace' }]);
+    expect(text.index[0]?.node.value).toBe('Ada Lovelace');
     expect(android.index[0]?.node.states).toBeUndefined();
   });
 
@@ -525,15 +531,32 @@ describe('snapshot projection', () => {
     expect(projected.index.map((entry) => entry.node.role)).toEqual(['searchbox', 'combobox', 'textbox', 'button', 'button']);
   });
 
-  it('reads the screen title from the navigation bar, its inner text, its identifier, or nothing', () => {
+  it('reads an iOS title from the bar identifier only when the bar shows that text', () => {
     expect(screenTitle(project(SETTINGS_NODES))).toBe('General');
-    expect(screenTitle(project([{ ref: '@e1', type: 'navigation-bar', identifier: 'About' }]))).toBe('About');
-    const innerText = project([
-      { ref: '@e1', depth: 0, type: 'navigation-bar' },
-      { ref: '@e2', depth: 1, type: 'button', label: 'Back' },
-      { ref: '@e3', depth: 1, type: 'static-text', label: 'About' },
+    const pushed = project([
+      { ref: '@e1', depth: 0, type: 'NavigationBar', label: 'Benchmark Examples', identifier: 'Today' },
+      { ref: '@e2', depth: 1, type: 'Button', label: 'Benchmark Examples' },
+      { ref: '@e3', depth: 1, type: 'StaticText', label: 'Today' },
     ]);
-    expect(screenTitle(innerText)).toBe('About');
+    expect(screenTitle(pushed)).toBe('Today');
+    expect(screenTitle(project([{ ref: '@e1', type: 'NavigationBar', identifier: 'About' }]))).toBeUndefined();
+    expect(screenTitle(project([{ ref: '@e1', depth: 0, type: 'NavigationBar', identifier: 'MyApp.InboxController' }, { ref: '@e2', depth: 1, type: 'Button', label: 'Back' }]))).toBeUndefined();
+    const untitled = project([
+      { ref: '@e1', depth: 0, type: 'NavigationBar', identifier: '_TtGC7SwiftUI32NavigationStackHosting' },
+      { ref: '@e2', depth: 1, type: 'Button', label: 'Share' },
+    ]);
+    expect(screenTitle(untitled)).toBeUndefined();
+    const textOnly = project([
+      { ref: '@e1', depth: 0, type: 'navigation-bar' },
+      { ref: '@e2', depth: 1, type: 'static-text', label: 'About' },
+    ]);
+    expect(screenTitle(textOnly)).toBeUndefined();
+    expect(screenTitle(project([{ ref: '@e1', type: 'NavigationBar', label: 'Settings', identifier: ' ' }]))).toBeUndefined();
     expect(screenTitle(project([{ ref: '@e1', type: 'button', label: 'Go' }]))).toBeUndefined();
+  });
+
+  it("never reads an Android toolbar's resource id as its title", () => {
+    const untitled = project([{ ref: 'e1', type: 'android.view.ViewGroup', identifier: 'com.example:id/toolbar' }]);
+    expect(screenTitle(untitled)).toBeUndefined();
   });
 });

@@ -20,6 +20,9 @@ import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contra
 import { timestamp } from '../internal/ids.ts';
 import type { ScrollDirection } from '../types.ts';
 import { bound } from '../internal/text.ts';
+import { readBoundedText, readRecordedModel, type RecordedModel } from './trace-fields.ts';
+
+export type { RecordedModel } from './trace-fields.ts';
 
 export const TRACE_SCHEMA_VERSION = 'trace-1';
 
@@ -380,6 +383,8 @@ export interface ActionTrace {
   readonly executor: { readonly name: string; readonly version?: string };
   /** Which test, target, and instruction recorded it; absent on older entries. */
   readonly recordedFor?: TraceProvenance;
+  /** Configured model when recorded; absent on older or unattributed entries. */
+  readonly recordedBy?: RecordedModel;
   /** The recorded run's verdict summary. */
   readonly summary: string;
   /**
@@ -525,6 +530,8 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   const recordedFor = recordedForRaw === undefined ? undefined : readProvenance(recordedForRaw);
   if (recordedForRaw !== undefined && recordedFor === undefined) return undefined;
 
+  const recordedBy = readRecordedModel(raw['recordedBy'], MAX_TRACE_DESCRIPTOR_CHARS);
+
   const summary = readBoundedText(raw['summary'], MAX_TRACE_SUMMARY_CHARS);
   if (summary === undefined) return undefined;
 
@@ -563,6 +570,7 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
       ...(executorVersion === undefined ? {} : { version: executorVersion }),
     },
     ...(recordedFor === undefined ? {} : { recordedFor }),
+    ...(recordedBy === undefined ? {} : { recordedBy }),
     summary,
     ...(startPath === undefined ? {} : { startPath }),
     ...(endPath === undefined ? {} : { endPath }),
@@ -969,13 +977,6 @@ function readProvenance(document: unknown): TraceProvenance | undefined {
     ...(callIndex === undefined ? {} : { callIndex }),
     ...(agent === undefined ? {} : { agent }),
   };
-}
-
-function readBoundedText(value: unknown, maxChars: number): string | undefined {
-  if (typeof value !== 'string' || value.trim() === '' || value.length > maxChars) {
-    return undefined;
-  }
-  return value;
 }
 
 /** One to `MAX_TRACE_UPLOAD_PATHS` verbatim paths, each a replay input like a typed value. */

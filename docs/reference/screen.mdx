@@ -6,95 +6,247 @@ icon: "display"
 "twitter:image": "https://e2e.tester.army/docs/images/og/reference/screen.png?v=1b21c45d37"
 ---
 
-A `Locator` stores a query and resolves it when an action, read, or assertion
-runs. Every `Screen` query method is also available on a locator, scoped to
-its subtree. `tapAt` is not scoped: on a locator it still taps a viewport
-point.
+The `screen` fixture builds locators. A `Locator` stores a query and resolves
+it when an action, read, or assertion runs. Every query also runs on a
+locator, scoped to its subtree.
 
-```ts
-export interface Screen {
-  /** Creates a lazy role query. An alias such as `img` is rewritten to its role. */
-  getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator;
-  /** Creates a lazy role query narrowed to an accessible name: `getByRole('button', 'Sign in')`. */
-  getByRole(role: Role | RoleAlias, name: TextMatch, options?: Omit<RoleOptions, 'name'>): Locator;
-  /** Creates a lazy accessible-label query. */
-  getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy placeholder query. */
-  getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy visible-text query. */
-  getByText(text: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy displayed-value query. */
-  getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
-  /** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. */
-  getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
-  /** Taps a viewport point, with no node behind it. */
-  tapAt(point: Point, options?: ActionOptions): Promise<void>;
-  /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
-  swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
-  /** Scrolls until a locator resolves visibly or times out. */
-  scrollUntilVisible(
-    target: Locator,
-    options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
-  ): Promise<void>;
-}
+```ts title="tests/invoices.e2e.ts"
+import { expect, test } from 'e2e';
+
+test('void an invoice', async ({ app, screen }) => {
+  await app.open('/invoices');
+  const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
+  await row.getByRole('button', 'Void').tap();
+  await expect(row.getByText('Voided')).toBeVisible();
+});
 ```
 
-Most operations require exactly one match. A read polls for its one match
-until the action timeout, as an action does, then returns the current value
-without waiting for it to change. A node the engine reports stale (a resolve
-that raced a navigation, or a match the app replaced while it was read) is
-re-resolved within the same timeout. Use [`expect`](/reference/expect) to
-wait for a value.
+## Reference
 
-| Operation | Zero matches | Multiple matches |
-| --- | --- | --- |
-| Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
-| Reads | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
-| `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
-| `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
-| Assertions | Poll until the timeout | `LOCATOR_AMBIGUOUS` |
-| Any of these under a frame that is not in the document | As zero matches for `count()`, `all()`, `allTextContents()`, `isVisible()`, and `isHidden()`; actions, reads, and assertions poll for the frame until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` when several frames match |
+### Queries
 
-## Queries
+| Method | Returns |
+| --- | --- |
+| [`getByRole`](#getbyrole) | `Locator` |
+| [`getByLabel`](#getbylabel) | `Locator` |
+| [`getByPlaceholder`](#getbyplaceholder) | `Locator` |
+| [`getByText`](#getbytext) | `Locator` |
+| [`getByDisplayValue`](#getbydisplayvalue) | `Locator` |
+| [`getByTestId`](#getbytestid) | `Locator` |
 
 Every query returns a `Locator` synchronously and performs no work. An
 option key the query does not take (`{ nam: 'Save' }`) throws
 `INVALID_LOCATOR` naming the keys it does.
 
-`getByRole` takes the accessible name as its second argument, a string or a
-`RegExp`, with the other options after it:
-`getByRole('button', 'Save', { exact: false })`. The object form,
-`getByRole('button', { name: 'Save', disabled: true })`, is the same query.
-
 A string passed to `getByRole` as the name, `getByLabel`, `getByPlaceholder`,
 `getByText`, or `getByDisplayValue` matches the whole text, case-sensitive,
-after whitespace normalization: `getByRole('button', 'Save')` does
-not match `Save changes`. `{ exact: false }` makes it a case-insensitive
-substring match, and a `RegExp` matches as written.
+after whitespace normalization: `getByRole('button', 'Save')` does not match
+`Save changes`. `{ exact: false }` makes it a case-insensitive substring
+match, and a `RegExp` matches as written.
 
-`getByTestId` matches the node's `testId`: on the web the value of the
-engine's test-id attribute (`web({ testIdAttribute })`, default
-`data-testid`), on a device the accessibility identifier or resource id. A
-string matches the whole id, case-sensitive; a `RegExp` such as
-`/total-budgeted$/` matches as written.
+Every query accepts `visible: true`; see
+[Hidden duplicates](#hidden-duplicates).
+
+#### `getByRole`
+
+Matches nodes by [role](#types), optionally narrowed to an accessible name
+and to states.
+
+```ts
+/** Creates a lazy role query. An alias such as `img` is rewritten to its role. */
+getByRole(role: Role | RoleAlias, options?: RoleOptions): Locator;
+/** Creates a lazy role query narrowed to an accessible name: `getByRole('button', 'Sign in')`. */
+getByRole(role: Role | RoleAlias, name: TextMatch, options?: Omit<RoleOptions, 'name'>): Locator;
+```
 
 ```ts
 screen.getByRole('button', 'Save');
+screen.getByRole('button', 'Save', { exact: false });
+screen.getByRole('button', { name: 'Save', disabled: true }); // the object form
 screen.getByRole('heading', /welcome/i, { level: 1 });
-screen.getByLabel('Email');
-screen.getByText('Welcome back', { exact: false });
-screen.getByTestId('todo-3');
 ```
 
-### Echoed text
+The accessible name goes second, a string or a `RegExp`, with the other
+options after it. The object form, `{ name: 'Save' }`, is the same query.
+The options are [`RoleOptions`](#types).
+
+<Note>
+A role query never matches a node hidden from the accessibility tree: one
+that does not render, or one under `aria-hidden`. On the other query kinds,
+`visible: true` keeps only nodes that render, the same check `toBeVisible()`
+makes, so an `aria-hidden` node that still paints counts as visible. See
+[Hidden duplicates](#hidden-duplicates).
+</Note>
+
+##### `img` alias
+
+`img` is an alias, not a role ([`RoleAlias`](#types)).
+`getByRole('img', { name })` builds the same query as
+`getByRole('image', { name })`, so a test ported from Playwright keeps its
+spelling. On the web, `image` covers `<img>` with alt text and any element
+with `role="img"`. An `<img alt="">` is decoration and matches nothing,
+unless it has a `title`, a `tabindex`, or a global ARIA attribute: then it is
+an `image`.
+
+##### Roles on the web
+
+The web engine derives the roles from HTML the way HTML-AAM does:
+
+- `<progress>` is `progressbar`, `<meter>` is `meter`, `<hr>` is `separator`.
+- `<fieldset>` and `<details>` are `group`.
+- `<input type="number">` is `spinbutton`. `<input type="file">` is `button`,
+  as Chrome and Playwright read it.
+- `<select size="3">` is a `listbox`, like a `multiple` one. An
+  `<input list>` naming a `<datalist>` is a `combobox`.
+- A `<td>` of a `role="grid"` table is a `gridcell`.
+- `<thead>` and `<tbody>` are `rowgroup`.
+- `<th scope="row">` is `rowheader`. A scope-less `<th>` beside a data cell
+  with text or children is also a `rowheader`; header-only rows keep
+  `columnheader`. A lone scope-less header in a one-row table has no header
+  role, but an explicit `scope="col"` or `scope="colgroup"` keeps
+  `columnheader`.
+- `<figure>` is `figure`, `<article>` is `article`.
+- `<header>` and `<footer>` are `banner` and `contentinfo` only outside
+  sectioning content or an element with a sectioning role (`article`,
+  `complementary`, `main`, `navigation`, `region`).
+- `<form>` and `<section>` are `form` and `region` only when they carry an
+  `aria-label`, `aria-labelledby`, or `title`.
+- `<menu>` is a `list`; only `role="menu"` is a `menu`.
+- `role="presentation"` and `role="none"` are ignored on a focusable element
+  or one with a global ARIA attribute such as `aria-label`, as `getByRole`
+  reads them: `<button role="none">` is still a `button`.
+
+Names follow the same rules:
+
+- A `<legend>`, `<figcaption>`, or `<caption>` names its fieldset, figure, or
+  table, so `toHaveAccessibleName` reads what `getByRole('group', { name })`
+  matched.
+- A role that accname names from content (a button, link, heading, tab, menu
+  item, option, checkbox, radio, switch, cell, row or column header, row, tree
+  item, tooltip) takes its name from its descendants, a custom element's
+  shadow tree included. So `getByRole('checkbox', { name })` and
+  `toHaveAccessibleName(name)` agree on a `<div role="checkbox">`.
+- An `<input type="submit">` or `type="reset"` with no `value` reads `Submit`
+  or `Reset`.
+
+##### Roles on a device
+
+A device engine maps the platform types it has: a tab bar or segmented
+control is a `tablist`, a progress indicator a `progressbar`, a stepper a
+`spinbutton`. It keeps any other type verbatim, so a role with no native
+widget, such as `tooltip` or `figure`, matches nothing on a phone.
+
+##### Editing hosts
+
+A `contenteditable` editing host, the root a TipTap, ProseMirror, Lexical, or
+Slate editor renders into, is a `textbox`.
+
+- Its value is its text as rendered. While it has focus, its `selection` is
+  the text selected inside it. The value keeps spaces and newlines, so
+  `toHaveValue` and `inputValue()` read a `white-space: pre-wrap` editor like
+  a textarea.
+- An empty editor reads as `''`: one holding only the `<p><br></p>` or the
+  zero-width no-break space its editor pads an empty line with. That padding
+  is never part of a value.
+- It is named by its `aria-label`, `aria-placeholder`, or the
+  `data-placeholder` its editor paints. The blocks inside it are content, not
+  textboxes.
+- The tag does not matter: an `<article contenteditable>` is the editor, not
+  an article. A native control or a drawn surface made editable keeps its own
+  role.
+- A name from a block's `data-placeholder` (TipTap, ProseMirror) goes once
+  the editor has content, as the painted hint does. From then on the host is
+  an unnamed `textbox`. A name from the host's own `aria-label`,
+  `aria-labelledby`, `aria-placeholder`, or `data-placeholder` (Quill) stays.
+
+`getByRole` resolves through Playwright's role selector, which has no such
+rule. So `getByRole` finds an editor only when the host carries
+`role="textbox"`; `getByLabel` and `getByTestId` reach it either way. Anchor
+a test on a label or a test id, not on the placeholder.
+
+#### `getByLabel`
+
+```ts
+/** Creates a lazy accessible-label query. */
+getByLabel(text: TextMatch, options?: TextMatchOptions): Locator;
+```
+
+```ts
+await screen.getByLabel('Email').fill('ada@example.test');
+```
+
+#### `getByPlaceholder`
+
+```ts
+/** Creates a lazy placeholder query. */
+getByPlaceholder(text: TextMatch, options?: TextMatchOptions): Locator;
+```
+
+```ts
+await screen.getByPlaceholder('Search memory...').fill('launch');
+```
+
+#### `getByText`
+
+```ts
+/** Creates a lazy visible-text query. */
+getByText(text: TextMatch, options?: TextMatchOptions): Locator;
+```
+
+```ts
+screen.getByText('Welcome back', { exact: false });
+```
+
+##### Echoed text
 
 `getByText` answers with the innermost matching node, so a container that
-echoes its child's text counts once. Browsers do this natively; on a device
+echoes its child's text counts once. Browsers do this natively. On a device
 the engine applies the same rule, since iOS reports a React Native `Text` as
 a host view plus a `StaticText` child with the same label. Two matches that
 do not contain each other remain `LOCATOR_AMBIGUOUS`.
 
-### Hidden duplicates
+#### `getByDisplayValue`
+
+Matches controls by their displayed value.
+
+```ts
+/** Creates a lazy displayed-value query. */
+getByDisplayValue(value: TextMatch, options?: TextMatchOptions): Locator;
+```
+
+```ts
+await screen.getByDisplayValue('ada@example.test').clear();
+```
+
+<Note>
+In the web engine a `getByDisplayValue` locator cannot be the scope of a
+child query or a `has` filter; both fail with `UNSUPPORTED_CAPABILITY`.
+Playwright has no selector for a control's current value, so the engine
+filters candidates after the fact.
+</Note>
+
+#### `getByTestId`
+
+Matches the node's `testId`.
+
+```ts
+/** Creates a lazy test-id query: a string matches the whole id, case-sensitive; a RegExp tests it. An engine may also match an id without its platform's namespacing. */
+getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
+```
+
+```ts
+screen.getByTestId('todo-3');
+screen.getByTestId(/total-budgeted$/);
+```
+
+- On the web, `testId` is the value of the engine's test-id attribute
+  (`web({ testIdAttribute })`, default `data-testid`).
+- On a device, it is the accessibility identifier or resource id. For
+  namespacing, see the mobile engine's
+  [Android resource ids](/reference/mobile#capabilities).
+- `visible` is the only option.
+
+#### Hidden duplicates
 
 Every query accepts `visible: true`, which drops nodes the platform reports
 as hidden before the exactly-one rule runs. Frameworks often keep a hidden
@@ -110,86 +262,160 @@ await screen.getByTestId('memory-list', { visible: true }).getByRole('listitem')
 ```
 
 `visible` uses the same visibility check as `toBeVisible()`, `isVisible()`,
-and `waitFor()`: what renders, as Playwright reads it. `display: none`,
-`visibility: hidden`, a box with no size, a closed `<details>` body, and
-content under `content-visibility: hidden` are hidden; `aria-hidden` is not,
-since a decorative spinner marked with it still paints, so
-`toBeHidden()` on one waits until it leaves. A child that sets
-`visibility: visible` under a hidden parent is visible. On the web, text
-directly under a `display: contents` element with `visibility: hidden` is
-hidden, where Playwright calls it visible. It works with scopes, `filter`, `first`, `last`, and `nth`:
-`getByText('Save', { visible: true }).first()` is the first visible match.
+and `waitFor()`: what renders, as Playwright reads it.
+
+- Hidden: `display: none`, `visibility: hidden`, a box with no size, a closed
+  `<details>` body, and content under `content-visibility: hidden`.
+- Not hidden: `aria-hidden`, since a decorative spinner marked with it still
+  paints, so `toBeHidden()` on one waits until it leaves.
+- A child that sets `visibility: visible` under a hidden parent is visible.
+- On the web, text directly under a `display: contents` element with
+  `visibility: hidden` is hidden, where Playwright calls it visible.
+- It works with scopes, `filter`, `first`, `last`, and `nth`:
+  `getByText('Save', { visible: true }).first()` is the first visible match.
+
 Prefer it over `browser.locator('p:visible')`, which ties the test to CSS.
 
-## Refinement
+### Refinement
 
-Refinement returns a new locator without querying the app. `hasText` with a
-string is a case-insensitive substring match over the match and its
-descendants, unlike a query text, which matches exactly; pass a RegExp for
-anything stricter. `has` keeps a match whose subtree resolves the inner
-locator.
+| Method | Returns |
+| --- | --- |
+| [`filter`](#filter) | `Locator` |
+| [`or`](#or) | `Locator` |
+| [`first`](#first) | `Locator` |
+| [`last`](#last) | `Locator` |
+| [`nth`](#nth) | `Locator` |
 
-Throws `INVALID_LOCATOR` when `filter` gets neither `hasText` nor `has`, when
-it gets any other key, even beside them (`hasNot`, `hasNotText`, and
-`visible` are not filters here), when `has` is not a runner locator or was
-made by another target's screen, or when `nth` gets a negative or
-non-integer index.
+Refinement returns a new locator without querying the app.
+
+#### `filter`
 
 ```ts
-const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
+/** Adds deterministic locator filters. */
+filter(options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator;
+```
+
+```ts
+const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42', hasNotText: 'Paid' });
 await row.getByRole('button', 'Void').tap();
 ```
 
-<Note>
-In the web engine a `getByDisplayValue` locator cannot be the scope
-of a child query or a `has` filter; both fail with `UNSUPPORTED_CAPABILITY`.
-Playwright has no selector for a control's current value, so the engine
-filters candidates after the fact.
-</Note>
+- `hasText` with a string is a case-insensitive substring match over the
+  match and its descendants, unlike a query text, which matches exactly. Pass
+  a `RegExp` for anything stricter.
+- `hasNotText` excludes matches with that subtree text, using the same
+  substring or `RegExp` rules.
+- `has` keeps a match whose subtree resolves the inner locator.
+- `hasNot` drops a match whose subtree resolves the inner locator. It follows
+  the same scoping rules as `has`.
 
-## screen.tapAt
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | None of `hasText`, `hasNotText`, `has`, or `hasNot` is given. |
+| `INVALID_LOCATOR` | Any other key, even beside them: `visible` is not a filter here. |
+| `INVALID_LOCATOR` | `has` or `hasNot` is not a runner locator, or was made by another target's screen. |
+
+#### `or`
 
 ```ts
-tapAt(point: Point, options?: ActionOptions): Promise<void>;
+/** Matches either locator, preserving document order without duplicate nodes. */
+or(other: Locator): Locator;
 ```
 
-Taps a viewport point in CSS pixels, the space `boundingBox()` reports in,
-with no node behind it: a pin on a canvas, a control the tree does not
-list. Nothing is resolved or waited for; the page decides what the tap
-lands on. Uses `config.actionTimeout`. Throws `INVALID_ARGUMENT` for a
-negative or non-finite coordinate and `UNSUPPORTED_CAPABILITY` when the
-engine does not list `tap` in its pointer actions.
+`a.or(b)` matches either branch once, in document order. It stays strict:
+when both match different nodes, an action throws `LOCATOR_AMBIGUOUS`.
+Add `first()` if either will do. Both locators must come from the same
+screen and attempt. On web, both need identical literal frame-selector
+chains; display-value branches cannot be composed.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | `other` is not a runner locator, or belongs to another screen or attempt. |
+| `UNSUPPORTED_CAPABILITY` | Web branches have different frame-selector chains, or a branch is a display-value query. |
+
+#### `first`
+
+```ts
+/** Selects the first current match. */
+first(): Locator;
+```
+
+```ts
+await screen.getByRole('listitem').first().tap();
+```
+
+#### `last`
+
+```ts
+/** Selects the last current match. */
+last(): Locator;
+```
+
+```ts
+await screen.getByRole('listitem').last().tap();
+```
+
+#### `nth`
+
+```ts
+/** Selects one zero-based current match. */
+nth(index: number): Locator;
+```
+
+```ts
+await screen.getByRole('row').nth(2).getByRole('checkbox').check();
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | A negative or non-integer index. |
+
+### Screen actions
+
+| Method | Returns |
+| --- | --- |
+| [`screen.tapAt`](#screen-tapat) | `Promise<void>` |
+| [`screen.swipe`](#screen-swipe) | `Promise<void>` |
+| [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `Promise<void>` |
+
+`tapAt` and `swipe` act on the viewport.
+
+#### `screen.tapAt`
+
+Use it for a pin on a canvas or a control the tree does not list.
+
+```ts
+/** Taps a viewport point, with no node behind it. */
+tapAt(point: Point, options?: ActionOptions): Promise<void>;
+```
 
 ```ts
 const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 ```
 
-Prefer a locator when the tree lists the control; a point moves with the
-layout. For a point inside a node, `tap({ position })` reads the node's box
-for you.
+- The point is in CSS pixels, the space `boundingBox()` reports in.
+- Nothing is resolved or waited for; the page decides what the tap lands on.
+- Uses `config.actionTimeout`.
+- Prefer a locator when the tree lists the control, since a point moves with
+  the layout. For a point inside a node, `tap({ position })` reads the node's
+  box for you.
 
-## screen.swipe
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A negative or non-finite coordinate. |
+| `UNSUPPORTED_CAPABILITY` | The engine does not list `tap` in its pointer actions. |
+
+<Note>
+`tapAt` is not scoped: on a locator it still taps a viewport point.
+</Note>
+
+#### `screen.swipe`
 
 ```ts
+/** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
 swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
 ```
-
-Viewport-level gesture, in one of two shapes. `{ direction, momentum? }` is
-a scroll gesture on the screen. `direction` is the way the content scrolls,
-not the finger: `'down'` reveals what is below. `momentum` is its fling
-strength, `'none'` by default: `'none'` a plain drag of half the surface,
-`'slow'` a short fling, `'fast'` a long one. How far each carries is the
-engine's.
-`{ from, to, duration? }` is a swipe along a path between two viewport points:
-a touch swipe on a device, a pointer drag on a document platform, which is
-what reveals a row action, dismisses a sheet, or drags a card between
-columns. `duration` sets how long the gesture takes, an integer from 16
-through 10000 ms; omitted leaves it to the engine's default. Uses `config.actionTimeout`.
-Throws `ACTION_FAILED` when the gesture is rejected, `INVALID_ARGUMENT` for
-a mix of the two shapes, an out-of-range duration, or a coordinate off the
-plane, and `UNSUPPORTED_CAPABILITY` when the engine does not list `swipe` in
-its actions (a direction) or `swipeTo` in its pointer actions (a path).
 
 ```ts
 await screen.swipe({ direction: 'up', momentum: 'fast' });
@@ -202,262 +428,715 @@ await screen.swipe({
 });
 ```
 
-## screen.scrollUntilVisible
+`{ direction, momentum? }` is a scroll gesture on the screen:
+
+- `direction` is the way the content scrolls, not the finger: `'down'`
+  reveals what is below.
+- `momentum` is its fling strength, `'none'` by default. `'none'` is a
+  plain drag of half the surface, `'slow'` a short fling, `'fast'` a long
+  one. The engine decides how far each carries.
+
+`{ from, to, duration? }` is a swipe along a path between two viewport
+points: a touch swipe on a device, a pointer drag on a document platform.
+Use it to reveal a row action, dismiss a sheet, or drag a card between
+columns.
+
+- `duration` is how long the gesture takes, an integer from 16 through
+  10000 ms. Omitted, it is the engine's default.
+
+Uses `config.actionTimeout` and takes no `timeout` option.
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | The gesture is rejected. |
+| `INVALID_ARGUMENT` | A mix of the two shapes, an out-of-range duration, a coordinate off the plane, or a `timeout` key. |
+| `UNSUPPORTED_CAPABILITY` | The engine does not list `swipe` in its actions (a direction) or `swipeTo` in its pointer actions (a path). |
+
+#### `screen.scrollUntilVisible`
 
 ```ts
+/**
+ * Scrolls until a locator resolves visibly or times out: the viewport on
+ * `screen`, the node itself on a locator. `momentum` is the stride of each
+ * step, `slow` unless told otherwise.
+ */
 scrollUntilVisible(
   target: Locator,
   options?: { direction?: ScrollDirection; momentum?: Momentum; timeout?: number },
 ): Promise<void>;
 ```
 
-| Name | Type | Default |
+```ts
+await screen.scrollUntilVisible(screen.getByRole('button', 'Accept'));
+await screen.getByTestId('feed').scrollUntilVisible(row);
+```
+
+| Option | Type | Default |
 | --- | --- | --- |
 | `target` | `Locator` | - |
 | `options.direction` | `ScrollDirection` | `'down'` |
-| `options.momentum` | `Momentum` | `'slow'`; the gesture of each step, as [`screen.swipe`](#screen-swipe) defines it. A longer step is faster but must not carry the target past the surface unseen, which is what a virtualized list does |
-| `options.timeout` | `number` | `30000`, its own default, not `config.actionTimeout`; it bounds the whole scroll, each swipe included |
+| `options.momentum` | `Momentum` | `'slow'` |
+| `options.timeout` | `number` | `30000` |
 
-On `screen` each step is a viewport swipe. On a locator the step is a swipe
-of that node, so a feed or a table that is its own scroll container pages
-without the pointer having to hover it first:
-`screen.getByRole('feed').scrollUntilVisible(row)`.
+- `momentum` is as [`screen.swipe`](#screen-swipe) defines it. A longer step
+  is faster, but it must not carry the target past the surface unseen, as a
+  virtualized list does.
+- `timeout` is its own default, not `config.actionTimeout`. It bounds the
+  whole scroll, each swipe included.
+- On a locator each step swipes that node. So a feed or a table that is its
+  own scroll container pages without the pointer hovering it first.
 
-Throws `INVALID_LOCATOR` for a non-runner locator or one made by another
-target's screen, `INVALID_ARGUMENT` for an option it does not take,
-`LOCATOR_NOT_FOUND` when the deadline expires first, a swipe it cut short
-included.
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | `target` is not a runner locator, or was made by another target's screen. |
+| `INVALID_ARGUMENT` | An option it does not take. |
+| `LOCATOR_NOT_FOUND` | The deadline expires first, a swipe it cut short included. |
+
+### Screen reads
+
+| Method | Returns |
+| --- | --- |
+| [`screen.tree`](#screen-tree) | `Promise<string>` |
+| [`screen.debug`](#screen-debug) | `Promise<void>` |
+
+Both read the whole screen once, without waiting, and work on every engine.
+They run as a step. A locator does not have them, and a frame throws
+`INVALID_ARGUMENT`.
+
+#### `screen.tree`
+
+Returns the screen as the agent reads it. Use it to write a locator.
 
 ```ts
-await screen.scrollUntilVisible(screen.getByRole('button', 'Accept'));
+/**
+ * Reads the whole screen once, without waiting, as the agent reads it: one
+ * node per line, `#id role "name" text="…" [states]`, children indented,
+ * secrets redacted.
+ */
+tree(options?: ActionOptions): Promise<string>;
 ```
 
-## Locator actions
+```text
+#n29 textbox "New todo"
+#n30 button "Add"
+ #n35 listitem "Milk Delete Milk" testid="todo"
+  #n36 checkbox "Milk" [checked]
+```
+
+- Uses `config.actionTimeout`.
+- The text has the same format and size limit as the trace's
+  [screen at failure](/debugging#traces).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Called on a frame, or with an option it does not take. |
+
+#### `screen.debug`
+
+Prints [`screen.tree()`](#screen-tree) to the test's
+[console output](/debugging#console-output).
+
+```ts
+/** Prints `tree()` to the test's output. */
+debug(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.debug();
+```
+
+### Locator actions
+
+| Method | Returns |
+| --- | --- |
+| [`tap`](#tap) | `Promise<void>` |
+| [`click`](#tap) | `Promise<void>` |
+| [`doubleTap`](#doubletap) | `Promise<void>` |
+| [`dblclick`](#doubletap) | `Promise<void>` |
+| [`secondaryTap`](#secondarytap) | `Promise<void>` |
+| [`longPress`](#longpress) | `Promise<void>` |
+| [`fill`](#fill) | `Promise<void>` |
+| [`pressSequentially`](#presssequentially) | `Promise<void>` |
+| [`clear`](#clear) | `Promise<void>` |
+| [`press`](#press) | `Promise<void>` |
+| [`check`](#check) | `Promise<void>` |
+| [`uncheck`](#uncheck) | `Promise<void>` |
+| [`selectOption`](#selectoption) | `Promise<void>` |
+| [`focus`](#focus) | `Promise<void>` |
+| [`hover`](#hover) | `Promise<void>` |
+| [`setInputFiles`](#setinputfiles) | `Promise<void>` |
+| [`dragTo`](#dragto) | `Promise<void>` |
+| [`scrollIntoView`](#scrollintoview) | `Promise<void>` |
+| [`swipe`](#swipe) | `Promise<void>` |
 
 Each action resolves one node, waits for actionability, and performs one
-operation. Default timeout `config.actionTimeout`, 30000 ms, overridable
-with `{ timeout }`.
+operation. The timeout is
+[`config.actionTimeout`](/reference/config#actiontimeout), and every action
+takes `{ timeout }` to override it. An action takes only the options its
+signature names.
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | The engine does not list the action's kind in `actions`; thrown before reaching the engine. |
+| `INVALID_ARGUMENT` | An option key the action does not take, Playwright's `trial`, `force`, or `noWaitAfter` included. Thrown before the node is resolved, so the control is never touched. |
+| `LOCATOR_NOT_FOUND` | No match before the timeout. |
+| `LOCATOR_AMBIGUOUS` | More than one match. |
+| `ACTION_FAILED` | The action may already have committed; it is never repeated. |
+
+#### `tap`
 
 ```ts
-export interface Locator extends Screen {
-  /** Taps exactly one matching actionable node; with `position`, taps that point of its box once it is in view, with no other actionability check. */
-  tap(options?: TapOptions): Promise<void>;
-  /** Alias of tap. */
-  click(options?: TapOptions): Promise<void>;
-  /** Double-taps exactly one matching actionable node. */
-  doubleTap(options?: ClickOptions): Promise<void>;
-  /** Alias of doubleTap. */
-  dblclick(options?: ClickOptions): Promise<void>;
-  /** Performs a secondary tap, such as a right click or two-finger tap. */
-  secondaryTap(options?: ClickOptions): Promise<void>;
-  /** Long-presses exactly one matching actionable node. */
-  longPress(options?: LongPressOptions): Promise<void>;
-  /** Fills exactly one input. Secret values are never logged. */
-  fill(value: string | Secret, options?: ActionOptions): Promise<void>;
-  /**
-   * Focuses exactly one input and types `text` through the keyboard, one
-   * character at a time, so the app receives key events. A `Secret` is
-   * refused; it goes through `fill`.
-   */
-  pressSequentially(text: string, options?: PressSequentiallyOptions): Promise<void>;
-  /** Clears exactly one input. */
-  clear(options?: ActionOptions): Promise<void>;
-  /** Sends one key to exactly one node. */
-  press(key: string, options?: ActionOptions): Promise<void>;
-  /** Checks exactly one node. */
-  check(options?: ActionOptions): Promise<void>;
-  /** Unchecks exactly one node. */
-  uncheck(options?: ActionOptions): Promise<void>;
-  /** Selects one option from exactly one control. */
-  selectOption(value: SelectOption, options?: ActionOptions): Promise<void>;
-  /** Focuses exactly one node. */
-  focus(options?: ActionOptions): Promise<void>;
-  /** Hovers over exactly one matching actionable node. */
-  hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input; paths resolve from the project root. */
-  setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
-  /** Drags exactly one node to exactly one target. */
-  dragTo(target: Locator, options?: ActionOptions): Promise<void>;
-  /** Scrolls exactly one node into view. */
-  scrollIntoView(options?: ActionOptions): Promise<void>;
-  /** Performs a swipe scoped to exactly one node. */
-  swipe(options: SwipeOptions & ActionOptions): Promise<void>;
-  /** Reads normalized text once a match exists, without retrying for a particular value. */
-  textContent(): Promise<string | null>;
-  /** Reads the current input value. */
-  inputValue(): Promise<string>;
-  /** Reads one attribute. */
-  getAttribute(name: string): Promise<string | null>;
-  /** Reads current visibility. */
-  isVisible(): Promise<boolean>;
-  /** Reads current hidden or absent state, the negation of `isVisible`. */
-  isHidden(): Promise<boolean>;
-  /** Reads current enabled state. */
-  isEnabled(): Promise<boolean>;
-  /** Reads current disabled state, the negation of `isEnabled`. */
-  isDisabled(): Promise<boolean>;
-  /** Reads current checked state. */
-  isChecked(): Promise<boolean>;
-  /** Reads the current viewport-relative rectangle. */
-  boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
-  /** Counts current matches without auto-waiting. */
-  count(): Promise<number>;
-  /** One `nth(i)` locator per current match, without auto-waiting; empty when nothing matches. */
-  all(): Promise<Locator[]>;
-  /** Reads the normalized text of every current match, without auto-waiting; empty when nothing matches. */
-  allTextContents(): Promise<string[]>;
-  /**
-   * Waits for the requested locator state, `visible` by default: `attached`
-   * for one match, visible or not; `detached` for none; `hidden` for none or
-   * a hidden one.
-   */
-  waitFor(options?: { state?: 'attached' | 'detached' | 'visible' | 'hidden'; timeout?: number }): Promise<void>;
-  /** Adds deterministic locator filters. */
-  filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
-  /** Selects the first current match. */
-  first(): Locator;
-  /** Selects the last current match. */
-  last(): Locator;
-  /** Selects one zero-based current match. */
-  nth(index: number): Locator;
-}
+/** Taps exactly one matching actionable node; with `position`, taps that point of its box once it is in view, with no other actionability check. */
+tap(options?: TapOptions): Promise<void>;
+/** Alias of tap. */
+click(options?: TapOptions): Promise<void>;
 ```
 
-- An action whose kind the engine does not list in `actions` throws
-  `UNSUPPORTED_CAPABILITY` before reaching the engine.
-- An action takes only the options its signature names. Any other key,
-  Playwright's `trial`, `force`, or `noWaitAfter` included, throws
-  `INVALID_ARGUMENT` before the node is resolved, so the control is never
-  touched.
-- `click` is an alias of `tap`, and `dblclick` of `doubleTap`.
-- `tap`, `doubleTap`, `dblclick`, and `secondaryTap` take `modifiers`, the keys held for
-  the click, as a Shift-click extends a selection:
-  `row.click({ modifiers: ['Shift'] })`. `ControlOrMeta` is Control on Windows
-  and Linux, Meta on macOS. An unknown or repeated modifier is
-  `INVALID_ARGUMENT`, and so is `modifiers` beside `position`. The browser
-  engine holds them; an engine that does not declare `tapModifiers`, the
-  mobile engine among them, fails with `UNSUPPORTED_CAPABILITY` before it
-  acts.
-- `tap({ position })` taps at an offset of the node's top-left corner, in
-  CSS pixels. The node is scrolled into view when the engine lists
-  `scrollIntoView`, then its box is read and the pointer dispatched at the
-  point, with no node behind the gesture, so the platform's other
-  actionability checks (enabled, not covered) do not run. A node the engine
-  cannot bring into view fails as the engine reports it (`ACTION_FAILED` on
-  the browser engine, whose scroll waits for visibility); one that resolves
-  but never shows a visible box within the timeout is `LOCATOR_NOT_FOUND`.
-  An engine without the `tap` pointer action is `UNSUPPORTED_CAPABILITY`.
-- `press` takes zero or more modifiers (`Shift`, `Control`, `Alt`, `Meta`,
-  `ControlOrMeta`) and one key, joined with `+`: a named key (`Enter`,
-  `Escape`, `Tab`, `Backspace`, `Delete`, `Insert`, `Space`, the arrows,
-  `Home`, `End`, `PageUp`, `PageDown`, `F1` to `F12`) or one printable
-  character. `Shift++` presses `+`. A key the platform lacks throws
-  `UNSUPPORTED_CAPABILITY`. See the [key grammar](/reference/engine#keys).
-- `longPress` holds for `{ duration }` milliseconds, 100 through 10000, else
-  for the engine's default: 500 ms on the browser engine, one second on the
-  mobile engine, past a React Native `Pressable`'s `delayLongPress`.
-- `fill` replaces the current content. A `Secret` is resolved on the host
-  right before the call and never logged, reported, or sent to a model.
-- `pressSequentially` focuses the input and sends the text as keystrokes
-  through the engine's keyboard, appending to the current content. `fill`
-  sets the value directly and fires no key events, so an autocomplete, a
-  search-as-you-type box, or a masked input wired to `keydown` or `keyup`
-  never reacts to it; this is the action for those. `{ delay }` waits that
-  many milliseconds between characters, each sent in its own keyboard call;
-  without it the whole text goes in one call. Focus, pauses, and keystrokes
-  share the one action deadline: a pause is cut short at it and no character
-  is sent past it, and the action fails with `ACTION_FAILED` naming how many
-  characters landed. It needs the engine's `focus` action and `keyboard`
-  capability, else `UNSUPPORTED_CAPABILITY` before any node resolves, and it
-  relies on the [keyboard contract](/reference/engine#engine): `type`
-  must deliver text as a person typing would, so key events reach the app
-  where the platform has them. A `Secret` is a type error and
-  `INVALID_ARGUMENT` at runtime: a secret is filled, never typed as
-  keystrokes. The step records the locator, not the text, like `fill`.
-- `setInputFiles` paths resolve from the project root. An empty list or blank
-  entry throws `INVALID_ARGUMENT`.
-- `dragTo` with a non-runner target, or one made by another target's screen,
-  throws `INVALID_LOCATOR`.
-- `swipe` on a locator is a gesture on that one node: `{ direction,
-  momentum? }` as [`screen.swipe`](#screen-swipe) defines them, plus
-  `timeout`. It has no `{ from, to }` form. `screen.swipe` takes no
-  `timeout`: a `timeout` key there is `INVALID_ARGUMENT`.
-- An action that may already have committed surfaces as `ACTION_FAILED` and
-  is never repeated.
+```ts
+await screen.getByRole('button', 'Save').tap({ timeout: 10_000 });
+await screen.getByRole('image', 'Seat map').tap({ position: { x: 120, y: 48 } });
+await row.click({ modifiers: ['Shift'] });
+```
+
+The options are [`TapOptions`](#types):
+
+- `modifiers`: the browser engine holds them.
+- `position`: an offset from the node's top-left corner, in CSS pixels. The
+  engine scrolls the node into view when it lists `scrollIntoView`. Then it
+  reads the node's box and dispatches the pointer at the point. No node is
+  behind the gesture, so the platform's other actionability checks (enabled,
+  not covered) do not run.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | An unknown or repeated modifier, or `modifiers` beside `position`. |
+| `UNSUPPORTED_CAPABILITY` | `modifiers` on an engine that does not declare `tapModifiers`, the mobile engine among them; thrown before it acts. |
+| `UNSUPPORTED_CAPABILITY` | `position` on an engine without the `tap` pointer action. |
+| `ACTION_FAILED` | `position` on a node the browser engine cannot bring into view; its scroll waits for visibility. Other engines fail as they report it. |
+| `LOCATOR_NOT_FOUND` | `position` on a node that resolves but never shows a visible box within the timeout. |
+
+#### `doubleTap`
+
+```ts
+/** Double-taps exactly one matching actionable node. */
+doubleTap(options?: ClickOptions): Promise<void>;
+/** Alias of doubleTap. */
+dblclick(options?: ClickOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('cell', 'Q3 budget').doubleTap();
+```
+
+Takes `timeout` and `modifiers`, with the same rules and errors as
+[`tap`](#tap).
+
+#### `secondaryTap`
+
+```ts
+/** Secondary-taps exactly one matching actionable node: a right click, a two-finger tap. */
+secondaryTap(options?: ClickOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('row', /Invoice 42/).secondaryTap();
+```
+
+Takes `timeout` and `modifiers`, with the same rules and errors as
+[`tap`](#tap).
+
+#### `longPress`
+
+```ts
+/** Long-presses exactly one matching actionable node. */
+longPress(options?: LongPressOptions): Promise<void>;
+```
+
+```ts
+await screen.getByText('Design review').longPress({ duration: 800 });
+```
+
+- `duration` is the hold time, an integer from 100 through 10000 ms.
+  Anything else is `INVALID_ARGUMENT`.
+- Without it the engine's default applies: 500 ms on the browser engine, one
+  second on the mobile engine, past a React Native `Pressable`'s
+  `delayLongPress`.
+
+#### `fill`
+
+Replaces the input's current content.
+
+```ts
+/** Fills exactly one input. Secret values are never logged. */
+fill(value: string | Secret, options?: ActionOptions): Promise<void>;
+```
 
 ```ts
 await screen.getByLabel('Email').fill('ada@example.test');
-await screen.getByRole('checkbox', 'Remember me').check();
-await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
-await screen.getByLabel('Plan').selectOption({ value: 'pro' });
-await screen.getByRole('button', 'Save').tap({ timeout: 10_000 });
-await screen.getByRole('image', 'Seat map').tap({ position: { x: 120, y: 48 } });
-await screen.getByRole('textbox', 'Search').press('Enter');
-await screen.getByRole('textbox', 'Notes').press('ControlOrMeta+a');
+await screen.getByLabel('Password').fill(credentials.user('member').password);
+```
+
+A `Secret` is resolved on the host right before the call and never logged,
+reported, or sent to a model.
+
+<Note>
+`fill` sets the value directly and fires no key events. An autocomplete, a
+search-as-you-type box, or a masked input wired to `keydown` or `keyup`
+never reacts to it. Use [`pressSequentially`](#presssequentially) for those.
+</Note>
+
+#### `pressSequentially`
+
+Types through the engine's keyboard and appends to the current content.
+
+```ts
+/**
+ * Focuses exactly one input and types `text` through the keyboard, one
+ * character at a time, so the app receives key events. A `Secret` is
+ * refused; it goes through `fill`.
+ */
+pressSequentially(text: string, options?: PressSequentiallyOptions): Promise<void>;
+```
+
+```ts
 await screen.getByLabel('City').pressSequentially('War', { delay: 50 });
 ```
 
-## Locator reads
+- `delay` waits that many milliseconds between characters, each sent in its
+  own keyboard call. Without it the whole text goes in one call.
+- Focus, pauses, and keystrokes share the one action deadline: a pause is cut
+  short at it and no character is sent past it.
+- It relies on the [keyboard contract](/reference/engine#engine): `type` must
+  deliver text as a person typing would, so key events reach the app where
+  the platform has them.
+- The step records the locator, not the text, like `fill`.
 
-`waitFor` defaults `state` to `'visible'` and `timeout` to
-`config.actionTimeout`, and throws `LOCATOR_NOT_FOUND` on timeout. `'attached'`
-waits for one match, hidden or shown, `'detached'` for none, and `'hidden'` for
-a hidden match or none. Several matches are `LOCATOR_AMBIGUOUS` in every
-state. Any other state, or an option key besides `state` and `timeout`, is
-`INVALID_ARGUMENT` before anything is resolved.
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | The deadline passed mid-text; the error names how many characters landed. |
+| `UNSUPPORTED_CAPABILITY` | The engine lacks the `focus` action or the `keyboard` capability; thrown before any node resolves. |
+| `INVALID_ARGUMENT` | A `Secret` at runtime (a type error at compile time): a secret is filled, never typed as keystrokes. |
 
-`textContent` and `allTextContents` return the node's rendered text with
-whitespace collapsed to single spaces. On the web that is what `innerText`
-reads, not the DOM's `textContent`: CSS `text-transform` applies,
-`display: none` descendants are left out, and a `<br>` reads as a space. A
-node that is not rendered itself, such as a `display: none` one, reads its
-DOM text, as `innerText` does.
-
-`isChecked` is `false` on a node with no checked state, such as a button or
-a heading; it does not throw.
-
-`textContent`, `inputValue`, `getAttribute`, and `allTextContents` throw
-`POLICY_DENIED` on a secure field, and so do `expect(locator).toHaveValue`,
-`toHaveText`, `toContainText`, and `toHaveAttribute`.
-`isEnabled`, `isDisabled`, `isChecked`, and `boundingBox` are allowed there.
-
-`boundingBox()` is `null` for a node that lays out no box (`display: none`
-on it or an ancestor), and a box for one `visibility: hidden` keeps.
-`inputValue()` and `toHaveValue` on a checkbox or radio read its value
-attribute, `on` when it has none, whatever its checked state; `isChecked()`
-reads the state.
-
-`isHidden` is `!isVisible()` and `isDisabled` is `!isEnabled()`, with the
-same strictness: `isHidden` is `true` for zero matches, `isDisabled` is
-`LOCATOR_NOT_FOUND` there, and both are `LOCATOR_AMBIGUOUS` on several.
+#### `clear`
 
 ```ts
-if (await screen.getByRole('alert').isVisible()) {
-  const message = await screen.getByRole('alert').textContent();
-}
-await screen.getByTestId('spinner').waitFor({ state: 'hidden' });
+/** Clears exactly one input. */
+clear(options?: ActionOptions): Promise<void>;
 ```
 
-### Every match at once
+```ts
+await screen.getByLabel('Search').clear();
+```
 
-`all()` resolves the query once and hands back one `nth(i)` locator per
-match, so a loop can act on each row; `allTextContents()` reads every match's
-normalized text in one call. Neither waits or enforces exactly-one: zero
-matches is an empty array, the same snapshot rule as `count()`. A
-`frameLocator` whose frame is not in the document counts as zero matches here
-and in `isVisible()`, where an action or assertion polls for it. Each locator
-`all()` returns re-resolves when used, so a list that changes under the loop
-can make a later `nth(i)` point at a different row, or at nothing. Follow the
-loop with an assertion on the list, and use
-[`toHaveText([...])`](/reference/expect#locator-matchers) instead of a loop
-when the point is to check the texts.
+#### `press`
+
+```ts
+/** Sends one key to exactly one node. */
+press(key: string, options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('textbox', 'Search').press('Enter');
+await screen.getByRole('textbox', 'Notes').press('ControlOrMeta+a');
+```
+
+A key is zero or more modifiers and one key, joined with `+`, as the
+[key grammar](/reference/engine#keys) lists them. `Shift++` presses `+`.
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | A key the platform lacks. |
+
+#### `check`
+
+```ts
+/** Checks exactly one node. */
+check(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('checkbox', 'Remember me').check();
+```
+
+#### `uncheck`
+
+```ts
+/** Unchecks exactly one node. */
+uncheck(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('checkbox', 'Remember me').uncheck();
+```
+
+#### `selectOption`
+
+```ts
+/** Selects one option from exactly one control. */
+selectOption(value: SelectOption, options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByLabel('Plan').selectOption('Pro');
+await screen.getByLabel('Plan').selectOption({ label: 'Pro' });
+await screen.getByLabel('Plan').selectOption({ value: 'pro' });
+```
+
+Pass a label string, or an object with exactly one of `label`, `value` (the
+value attribute, which the form submits), or `index` (zero-based).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | More than one option per call: an array, or an object with more than one of those keys. Also a negative or fractional `index`. Thrown before the engine acts. |
+
+#### `focus`
+
+```ts
+/** Focuses exactly one node. */
+focus(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByLabel('Email').focus();
+```
+
+#### `hover`
+
+```ts
+/** Hovers over exactly one matching actionable node. */
+hover(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('button', 'Account').hover();
+```
+
+#### `setInputFiles`
+
+```ts
+/** Sets the files of exactly one file input; paths resolve from the project root. */
+setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | An empty list or a blank entry. |
+
+#### `dragTo`
+
+```ts
+/** Drags exactly one node to exactly one target. */
+dragTo(target: Locator, options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByText('Design review').dragTo(screen.getByRole('region', 'Done'));
+```
+
+| Throws | When |
+| --- | --- |
+| `INVALID_LOCATOR` | `target` is not a runner locator, or was made by another target's screen. |
+
+#### `scrollIntoView`
+
+```ts
+/** Scrolls exactly one node into view. */
+scrollIntoView(options?: ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByRole('contentinfo').scrollIntoView();
+```
+
+#### `swipe`
+
+```ts
+/** Performs a swipe scoped to exactly one node. */
+swipe(options: SwipeOptions & ActionOptions): Promise<void>;
+```
+
+```ts
+await screen.getByTestId('feed').swipe({ direction: 'down', momentum: 'slow' });
+```
+
+It takes `{ direction, momentum? }` as [`screen.swipe`](#screen-swipe)
+defines them, plus `timeout`, which `screen.swipe` refuses. It has no
+`{ from, to }` form.
+
+### Locator reads
+
+| Method | Returns |
+| --- | --- |
+| [`textContent`](#textcontent) | `Promise<string \| null>` |
+| [`inputValue`](#inputvalue) | `Promise<string>` |
+| [`getAttribute`](#getattribute) | `Promise<string \| null>` |
+| [`isVisible`](#isvisible) | `Promise<boolean>` |
+| [`isHidden`](#ishidden) | `Promise<boolean>` |
+| [`isEnabled`](#isenabled) | `Promise<boolean>` |
+| [`isDisabled`](#isdisabled) | `Promise<boolean>` |
+| [`isChecked`](#ischecked) | `Promise<boolean>` |
+| [`boundingBox`](#boundingbox) | `Promise<{ x, y, width, height } \| null>` |
+| [`count`](#count) | `Promise<number>` |
+| [`all`](#all) | `Promise<Locator[]>` |
+| [`allTextContents`](#alltextcontents) | `Promise<string[]>` |
+| [`waitFor`](#waitfor) | `Promise<void>` |
+
+Reads follow the [Match rules](#match-rules). `count`, `all`, and
+`allTextContents` take a snapshot and do not wait.
+
+On a secure field, `textContent`, `inputValue`, `getAttribute`, and
+`allTextContents` throw `POLICY_DENIED`, as the matching
+[`expect` matchers](/reference/expect#secure-fields) do. `isEnabled`,
+`isDisabled`, `isChecked`, and `boundingBox` are allowed there.
+
+#### `textContent`
+
+Reads the node's rendered text with whitespace collapsed to single spaces.
+
+```ts
+/** Reads normalized text once a match exists, without retrying for a particular value. */
+textContent(): Promise<string | null>;
+```
+
+```ts
+const message = await screen.getByRole('alert').textContent();
+```
+
+- On the web that is what `innerText` reads, not the DOM's `textContent`:
+  CSS `text-transform` applies, `display: none` descendants are left out, and
+  a `<br>` reads as a space.
+- A node that is not rendered itself, such as a `display: none` one, reads
+  its DOM text, as `innerText` does.
+
+#### `inputValue`
+
+```ts
+/** Reads the current input value. */
+inputValue(): Promise<string>;
+```
+
+```ts
+const email = await screen.getByLabel('Email').inputValue();
+```
+
+On a checkbox or radio, `inputValue()` and `toHaveValue` read its value
+attribute, `on` when it has none, whatever its checked state. `isChecked()`
+reads the state.
+
+#### `getAttribute`
+
+```ts
+/** Reads one attribute. */
+getAttribute(name: string): Promise<string | null>;
+```
+
+```ts
+const href = await screen.getByRole('link', 'Docs').getAttribute('href');
+```
+
+#### `isVisible`
+
+```ts
+/** Reads current visibility. */
+isVisible(): Promise<boolean>;
+```
+
+```ts
+const open = await screen.getByRole('dialog').isVisible();
+```
+
+- `false` for zero matches, and for a `frameLocator` whose frame is not in
+  the document.
+- Uses the same visibility check as `visible: true` (see
+  [Hidden duplicates](#hidden-duplicates)).
+
+| Throws | When |
+| --- | --- |
+| `LOCATOR_AMBIGUOUS` | Several matches. |
+
+#### `isHidden`
+
+```ts
+/** Reads current hidden or absent state, the negation of `isVisible`. */
+isHidden(): Promise<boolean>;
+```
+
+```ts
+const gone = await screen.getByTestId('spinner').isHidden();
+```
+
+It has the same strictness as `isVisible`: `true` for zero matches.
+
+| Throws | When |
+| --- | --- |
+| `LOCATOR_AMBIGUOUS` | Several matches. |
+
+#### `isEnabled`
+
+```ts
+/** Reads current enabled state. */
+isEnabled(): Promise<boolean>;
+```
+
+```ts
+const ready = await screen.getByRole('button', 'Pay').isEnabled();
+```
+
+#### `isDisabled`
+
+```ts
+/** Reads current disabled state, the negation of `isEnabled`. */
+isDisabled(): Promise<boolean>;
+```
+
+```ts
+const blocked = await screen.getByRole('button', 'Pay').isDisabled();
+```
+
+It has the same strictness as `isEnabled`.
+
+| Throws | When |
+| --- | --- |
+| `LOCATOR_NOT_FOUND` | Zero matches. |
+| `LOCATOR_AMBIGUOUS` | Several matches. |
+
+#### `isChecked`
+
+```ts
+/** Reads current checked state. */
+isChecked(): Promise<boolean>;
+```
+
+```ts
+const remembered = await screen.getByRole('checkbox', 'Remember me').isChecked();
+```
+
+`false` on a node with no checked state, such as a button or a heading. It
+does not throw.
+
+#### `boundingBox`
+
+```ts
+/** Reads the current viewport-relative rectangle. */
+boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
+```
+
+```ts
+const map = (await screen.getByRole('image', 'Map').boundingBox())!;
+```
+
+The box is in CSS pixels. It is `null` for a node that lays out no box
+(`display: none` on it or an ancestor). A `visibility: hidden` node keeps
+its box.
+
+#### `count`
+
+```ts
+/** Counts current matches without auto-waiting. */
+count(): Promise<number>;
+```
+
+```ts
+const rows = await screen.getByRole('row').count();
+```
+
+`0` for zero matches, and for a `frameLocator` whose frame is not in the
+document.
+
+#### `all`
+
+Resolves the query one time, so a loop can act on each row.
+
+```ts
+/** One `nth(i)` locator per current match, without auto-waiting; empty when nothing matches. */
+all(): Promise<Locator[]>;
+```
 
 ```ts
 for (const row of await screen.getByRole('row').all()) {
   await row.getByRole('checkbox').check();
 }
+```
+
+- It neither waits nor enforces exactly-one: zero matches is an empty array,
+  the same snapshot rule as `count()`. A `frameLocator` whose frame is not in
+  the document counts as zero matches here, where an action or assertion
+  polls for it.
+- Each locator that `all()` returns re-resolves when used. A list that changes
+  under the loop can make a later `nth(i)` point at a different row, or at
+  nothing. Follow the loop with an assertion on the list.
+
+#### `allTextContents`
+
+```ts
+/** Reads the normalized text of every current match, without auto-waiting; empty when nothing matches. */
+allTextContents(): Promise<string[]>;
+```
+
+```ts
 expect(await screen.getByRole('listitem').allTextContents()).toEqual(['Alpha', 'Beta']);
 ```
+
+- Text reads as in [`textContent`](#textcontent).
+- It neither waits nor enforces exactly-one: zero matches is an empty array,
+  as for [`all`](#all).
+- To check the texts, use
+  [`toHaveText([...])`](/reference/expect#locator-matchers) instead of a
+  loop.
+
+#### `waitFor`
+
+```ts
+/**
+ * Waits for the requested locator state, `visible` by default: `attached`
+ * for one match, visible or not; `detached` for none; `hidden` for none or
+ * a hidden one.
+ */
+waitFor(options?: { state?: 'attached' | 'detached' | 'visible' | 'hidden'; timeout?: number }): Promise<void>;
+```
+
+```ts
+await screen.getByTestId('spinner').waitFor({ state: 'hidden' }); // default state: 'visible'
+```
+
+| State | Waits for |
+| --- | --- |
+| `'visible'` (default) | One visible match. |
+| `'attached'` | One match, hidden or shown. |
+| `'detached'` | No match. |
+| `'hidden'` | A hidden match, or none. |
+
+`timeout` defaults to `config.actionTimeout`.
+
+| Throws | When |
+| --- | --- |
+| `LOCATOR_NOT_FOUND` | The timeout expires. |
+| `LOCATOR_AMBIGUOUS` | Several matches, in every state. |
+| `INVALID_ARGUMENT` | Any other state, or an option key besides `state` and `timeout`; thrown before anything is resolved. |
+
+## Match rules
+
+Most operations require exactly one match. A read polls for its one match
+until the action timeout, as an action does. Then it returns the current
+value without waiting for it to change. Use [`expect`](/reference/expect) to
+wait for a value.
+
+A node the engine reports stale is re-resolved within the same timeout:
+a resolve that raced a navigation, or a match the app replaced while it was
+read.
+
+| Operation | Zero matches | Multiple matches |
+| --- | --- | --- |
+| Actions | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| Reads | Poll until the timeout, then `LOCATOR_NOT_FOUND` | `LOCATOR_AMBIGUOUS` |
+| `count()`, `all()`, `allTextContents()` | `0`, `[]`, `[]` | The count, one locator per match, one text per match |
+| `isVisible()`, `isHidden()` | `false`, `true` | `LOCATOR_AMBIGUOUS` |
+| Assertions | Poll until the timeout, then `ASSERTION_FAILED` | `LOCATOR_AMBIGUOUS` |
+| Any of these under a frame that is not in the document | As zero matches for `count()`, `all()`, `allTextContents()`, `isVisible()`, and `isHidden()`; actions and reads poll for the frame until the timeout, then `LOCATOR_NOT_FOUND`; assertions, then `ASSERTION_FAILED` | `LOCATOR_AMBIGUOUS` when several frames match |
 
 ## Types
 
@@ -654,72 +1333,7 @@ export type ScrollDirection = 'up' | 'down' | 'left' | 'right';
 export type Momentum = 'none' | 'slow' | 'fast';
 ```
 
-A role query never matches a node hidden from the accessibility tree: one
-that does not render, or one under `aria-hidden`. `visible` narrows the
-other query kinds to the nodes that render, the check `toBeVisible()` makes,
-so an `aria-hidden` node that still paints counts as visible there. See
-[Hidden duplicates](#hidden-duplicates).
+## Related
 
-`img` is an alias, not a role: `getByRole('img', { name })` builds the same
-query as `getByRole('image', { name })`, so a test ported from Playwright keeps
-its spelling while engines, the replay cache, and reports see `image`. On the
-web, `image` covers `<img>` with alt text and any element with `role="img"`;
-an `<img alt="">` is decoration and matches nothing.
-
-The web engine derives the roles from HTML the way HTML-AAM does: `<progress>`
-is `progressbar`, `<meter>` is `meter`, `<hr>` is `separator`, `<fieldset>`
-and `<details>` are `group`, `<input type="number">` is `spinbutton`,
-`<input type="file">` is `button`, as Chrome and Playwright read it,
-`<select size="3">` is a `listbox` like a `multiple` one, an `<input list>`
-naming a `<datalist>` is a `combobox`, a `<td>` of a `role="grid"` table is a
-`gridcell`,
-`<thead>` and `<tbody>` are `rowgroup`, `<th scope="row">` is `rowheader`.
-A scope-less `<th>` beside a data cell with text or children is also a
-`rowheader`; header-only rows keep `columnheader`. A lone scope-less header in a one-row
-table has no header role, while `scope="col"` and `scope="colgroup"` explicitly
-keep `columnheader`.
-`<figure>` is `figure`, `<article>` is `article`, `<header>` and `<footer>` are
-`banner` and `contentinfo` only outside sectioning content or an element with
-a sectioning role (`article`, `complementary`, `main`, `navigation`, `region`),
-and `<form>` and `<section>`
-are `form` and `region` only when they carry an `aria-label`,
-`aria-labelledby`, or `title`. A `<legend>`, `<figcaption>`, or `<caption>`
-names its fieldset, figure, or table, so `toHaveAccessibleName` reads what
-`getByRole('group', { name })` matched. A role accname names from content (a
-button, link, heading, tab, menu item, option, checkbox, radio, switch, cell,
-row or column header, row, tree item, tooltip) is named by its descendants, a
-custom element's shadow tree included, so `getByRole('checkbox', { name })`
-and `toHaveAccessibleName(name)` agree on a `<div role="checkbox">`. An
-`<input type="submit">` or `type="reset"` with no `value` reads `Submit` or
-`Reset`. `<menu>` is a `list`; only `role="menu"` is a
-`menu`. A device engine maps the platform types it has (a tab bar or segmented
-control is a `tablist`, a progress indicator a `progressbar`, a stepper a
-`spinbutton`) and keeps any other type verbatim, so a role with no native
-widget, such as `tooltip` or `figure`, matches nothing on a phone.
-
-A `contenteditable` editing host, the root a TipTap, ProseMirror, Lexical, or
-Slate editor renders into, is a `textbox` whose value is its text as rendered
-(and, while it has focus, whose `selection` is the text selected inside it).
-The value keeps spaces and newlines, so `toHaveValue` and `inputValue()` read
-a `white-space: pre-wrap` editor like a textarea. An empty editor, holding only
-the `<p><br></p>` or the zero-width no-break space its editor pads an empty
-line with, reads as `''`, and that padding is never part of a value. It is named by its
-`aria-label`, `aria-placeholder`, or the `data-placeholder` its editor paints;
-the blocks inside it are content, not textboxes. The tag does not matter (an
-`<article contenteditable>` is the editor, not an article), while a native
-control or a drawn surface made editable keeps its own role. `getByRole` resolves through
-Playwright's role selector, which has no such rule, so a test addresses an
-editor by role only when the host carries `role="textbox"`; `getByLabel` and
-`getByTestId` reach it either way. A name taken from a block's
-`data-placeholder` (TipTap, ProseMirror) goes once the editor has content, as
-the painted hint does, so the host reads as an unnamed `textbox` from then on;
-a name from the host's own `aria-label`, `aria-labelledby`, `aria-placeholder`,
-or `data-placeholder` (Quill) stays. Anchor a test on a label or a test id, not
-on the placeholder.
-
-
-For `selectOption`, pass a label string or exactly one of `label`, `value`,
-or `index`. `value` matches the option's value attribute, which is what the
-form submits. One option per call: an array, an object with more than one of
-those keys, or a negative or fractional `index` fails with `INVALID_ARGUMENT`
-before the engine acts.
+[`expect`](/reference/expect) waits for a locator's state. The
+[`browser`](/reference/web) fixture adds CSS locators and frames.

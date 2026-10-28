@@ -1,0 +1,49 @@
+name: pr-policy-sweep
+
+# Closes community PRs still flagged by pr-policy after 72 hours, and ones open
+# for over a month with fewer than 2 positive reactions
+# (scripts/pr-policy/sweep.ts). A manual run is a dry run unless told otherwise.
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: List the PRs it would close without closing them
+        type: boolean
+        default: true
+      max-close:
+        description: Most PRs to close in this run
+        type: string
+        default: '20'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  sweep:
+    if: ${{ github.repository == 'tester-army/e2e' }}
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: scripts/pr-policy
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - name: Close PRs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry-run }}
+          MAX_CLOSE: ${{ inputs.max-close || '20' }}
+        run: |
+          args=(--max-close "$MAX_CLOSE")
+          if [ "$DRY_RUN" = true ]; then args+=(--dry-run); fi
+          node scripts/pr-policy/sweep.ts "${args[@]}"

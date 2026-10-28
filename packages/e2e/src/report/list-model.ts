@@ -5,6 +5,8 @@
  */
 
 import type { ResultStatus } from '../run/records.ts';
+import type { RecordedModel } from '../cache/trace.ts';
+import type { SerializedError } from '../internal/errors.ts';
 import type { StepActivity, StepEvent, StepKind, StepProgress } from '../run/steps.ts';
 import type { AiUsage } from './format.ts';
 
@@ -68,6 +70,19 @@ export interface RunningTest {
   readonly steps: FinishedStep[];
 }
 
+/** The model and agent named in the run header. */
+export interface ConfiguredModel {
+  readonly label: string;
+  readonly agent: string;
+}
+
+/** One recording mismatch, rendered with its test's finished steps. */
+export interface ReplayNotice {
+  readonly api: string;
+  readonly label: string;
+  readonly source: RecordedModel;
+}
+
 /** One finished pair, held until its file's block prints. */
 export interface TestLine {
   readonly title: string;
@@ -78,7 +93,10 @@ export interface TestLine {
   readonly usage: AiUsage;
   readonly firstErrorLine: string | undefined;
   readonly skipReason: string | undefined;
+  /** Cleanup-phase secondary errors of attempts whose cleanup failed. */
+  readonly cleanupErrors: readonly SerializedError[];
   readonly steps: readonly FinishedStep[];
+  readonly replays: readonly ReplayNotice[];
 }
 
 /**

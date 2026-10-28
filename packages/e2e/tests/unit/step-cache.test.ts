@@ -187,7 +187,7 @@ describe('failedStepOutcome', () => {
     for (const code of ['CANCELLED', 'MODEL_PROVIDER_FAILED', 'MODEL_UNAVAILABLE'] as const) {
       expect(failedStepOutcome(new AgentError(code, 'x'))).toBe('no-verdict');
     }
-    for (const code of ['ASSERTION_FAILED', 'STEP_TIMEOUT', 'MODEL_OUTPUT_INVALID', 'CONTEXT_OVERFLOW', 'APP_UNREACHABLE'] as const) {
+    for (const code of ['ASSERTION_FAILED', 'STEP_TIMEOUT', 'MODEL_OUTPUT_INVALID', 'CONTEXT_OVERFLOW', 'APP_UNREACHABLE', 'MODEL_REFUSED'] as const) {
       expect(failedStepOutcome(new AgentError(code, 'x'))).toBe('failed');
     }
     expect(failedStepOutcome(new Error('MODEL_PROVIDER_FAILED'))).toBe('failed');
@@ -693,6 +693,18 @@ describe('StepTraceSession', () => {
     }
   });
 
+  it('does not stage an eviction outcome when deleting a consumed entry rejects', async () => {
+    const context = entryContext({ endPath: '/customers', endAnchors: [savedAnchor] });
+    context.store.delete = async () => { throw new Error('store unavailable'); };
+    const session = makeSession(context, makeHost(['/pricing', '/customers']));
+    await session.begin();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    await expect(session.conclude('failed', undefined)).resolves.toBeUndefined();
+    expect(context.staged).toEqual([]);
+    const writes = await settleStagedTraces(context, { lastVerifiedStepIndex: -1, implicatesUnconfirmed: true });
+    expect(writes.size).toBe(0);
+  });
+
   it('evicts nothing on failure when no replay was consumed', async () => {
     const deleted: string[] = [];
     const context = fakeContext(async () => ({ status: 'miss' }));
@@ -1118,6 +1130,32 @@ describe('destination path settling', () => {
     expect(verdict?.summary).toContain('zero-turn');
   });
 
+  it('keeps looking past the backoff for a destination that commits late, up to the path timeout', async () => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+    const startedMs = Date.now();
+    // The destination commits 8 s after the step starts: after the backoff's last listed delay, inside its 15 s bound.
+    const late = (arrivesMs: number): StepCacheHost => ({
+      ...makeHost([]),
+      observe: async () => ({
+        kind: 'semantic',
+        nodes: nodeMap([]),
+        viewport: { width: 1280, height: 720 },
+        path: Date.now() - startedMs < arrivesMs ? '/pricing' : '/customers',
+      }),
+      remainingMs: () => 60_000,
+    });
+    const verdict = await makeSession(entryContext({ endPath: '/customers' }), late(8_000)).begin();
+    expect(verdict?.status).toBe('passed');
+
+    const neverMs = Date.now();
+    const session = makeSession(entryContext({ endPath: '/customers' }), late(Number.POSITIVE_INFINITY));
+    expect(await session.begin()).toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(Date.now() - neverMs).toBeGreaterThan(12_000);
+    expect(Date.now() - neverMs).toBeLessThanOrEqual(15_000);
+  });
+
   it('still hands off when the destination never arrives within the budget', async () => {
     const context = entryContext({ endPath: '/customers' });
     const host = { ...makeHost(['/pricing', '/pricing', '/pricing', '/pricing']), remainingMs: () => 250 };
@@ -1161,14 +1199,14 @@ describe('settleStagedTraces and a re-recorded flow', () => {
       await settleStagedTraces(current, { lastVerifiedStepIndex: 1, implicatesUnconfirmed: true });
     };
 
-    await flush(trace('saved the record', 10_100, 1));
+    await flush({ ...trace('saved the record', 10_100, 1), recordedBy: { provider: 'test', model: 'A' } });
     const written = await snapshot();
     expect(JSON.parse(written.bytes).payload.summary).toBe('saved the record');
 
     // A live run of the same flow words its summary differently and measures
     // another end wait; the file is what a replay reads, and nothing it reads changed.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    await flush(trace('the record reads saved now', 10_137, 1));
+    await flush({ ...trace('the record reads saved now', 10_137, 1), recordedBy: { provider: 'test', model: 'B' } });
     expect(await snapshot()).toEqual(written);
 
     // One more tap is a different flow, and the entry follows it.

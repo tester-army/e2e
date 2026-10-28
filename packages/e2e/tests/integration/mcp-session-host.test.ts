@@ -127,6 +127,18 @@ describe('SessionHost', { timeout: 60_000 }, () => {
     expect(fake.stats()).toMatchObject({ attemptsStarted: 2, attemptsEnded: 2, disposes: 2 });
   });
 
+  it("launches a device target's pinned app before the first observation", async () => {
+    const fake = createFakeEngine({ device: true, scene: () => [{ id: 'greet', role: 'button', name: 'Greet' }] });
+    const device = host(() => fake, { app: { bundleId: 'com.example.greeter' } });
+    const text = await device.open({});
+    expect(text).toContain('App: com.example.greeter, launched fresh.');
+    expect(text).toContain('button "Greet"');
+    const methods = fake.operations.map((operation) => operation.method);
+    expect(methods.indexOf('session.restart')).toBeGreaterThan(-1);
+    expect(methods.indexOf('session.restart')).toBeLessThan(methods.indexOf('observe'));
+    await device.close('done');
+  });
+
   it("lets open_session's headed override the server's default either way", async () => {
     const fake = createFakeEngine();
     const summaries: McpSessionSummary[] = [];

@@ -128,7 +128,7 @@ async function holdsSameFlow(store: CacheStore, keyHash: string, trace: ActionTr
 
 /** The part of a trace that decides what a replay does, as canonical JSON. */
 function flowOf(trace: ActionTrace): string {
-  const { summary: _summary, endWaitMs: _endWaitMs, keyedBy: _keyedBy, actions, ...flow } = trace;
+  const { summary: _summary, endWaitMs: _endWaitMs, keyedBy: _keyedBy, recordedBy: _recordedBy, actions, ...flow } = trace;
   return canonicalJson({
     ...flow,
     actions: actions.map((action) => {
@@ -200,8 +200,8 @@ export async function settleStagedTraces(context: AgentCacheContext, settlement:
         // A kept entry existed for certain, so deleting it is an eviction; a
         // new recording's delete only clears what an earlier run may have left.
         const deletes = settlement.implicatesUnconfirmed && context.store.delete !== undefined;
-        outcomes.set(entry.stepIndex, entry.kind === 'keep' && deletes ? 'evicted' : 'unconfirmed');
-        if (deletes) await context.store.delete?.(entry.keyHash);
+        const deleted = deletes && await context.store.delete!(entry.keyHash).then(() => true, () => false);
+        outcomes.set(entry.stepIndex, entry.kind === 'keep' && deleted ? 'evicted' : 'unconfirmed');
         continue;
       }
       if (entry.kind === 'keep') {
@@ -217,6 +217,7 @@ export async function settleStagedTraces(context: AgentCacheContext, settlement:
       outcomes.set(entry.stepIndex, written === undefined ? 'not-written' : 'saved');
     } catch {
       // The cache is disposable; a failed flush is a slower next run only.
+      if (entry.kind === 'write' && confirmed) outcomes.set(entry.stepIndex, 'not-written');
     }
   }
   return outcomes;

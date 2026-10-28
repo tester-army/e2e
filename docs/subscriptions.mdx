@@ -71,6 +71,8 @@ import { copilot } from 'e2e/oauth/copilot';
 
 const agent = { model: copilot('claude-sonnet-5') };
 ```
+
+Which models your plan serves is up to GitHub; see [Pick a model](#pick-a-model).
   </Tab>
   <Tab title="OpenCode Console">
 <CodeGroup>
@@ -191,9 +193,14 @@ The id is not always the name the vendor's app shows.
 With `OPENCODE_API_KEY` set, `e2e models opencode-console` lists the ids that
 key serves, the same key `opencodeConsole()` uses in place of the login.
 
-- **Copilot** marks the models `copilot()` can't call. For `not enabled`,
-  turn the model on in your Copilot settings on GitHub, or ask the admin who
-  manages your seat. For `no chat or responses`, use a different model.
+- **Copilot** marks `not enabled` (turn the model on in your Copilot
+  settings on GitHub, or ask the admin who manages your seat) and `no chat
+  or responses` (use a different model). It can't see what your plan
+  serves: on Copilot Free, GitHub serves models through
+  [auto model selection only](https://docs.github.com/en/copilot/get-started/plans),
+  so a model called by id is usually refused. The run then stops with
+  `MODEL_UNAVAILABLE` naming it; pick another id or an
+  [API provider](/models).
 - **OpenCode Console** lists `go/` models only if you have Go. It leaves out
   models your workspace turned off, and Zen's free models. Key
   `providerOptions` by `opencode` for chat completions models, else by

@@ -85,6 +85,30 @@ describe('renderJunitReport', () => {
     expect(rootAttributes(xml)).toMatchObject({ tests: '1', skipped: '0' });
   });
 
+  it('renders a test a filter left out as a skipped case naming the filter and its reason, so a run the filters left empty is not an empty file', () => {
+    const leftOut = reportResult({
+      id: 'result-2',
+      testId: 'test-2',
+      titlePath: ['pays'],
+      file: 'tests/billing.e2e.ts',
+      selected: false,
+      status: 'skipped',
+      skip: { cause: 'filtered', reason: 'Jev: 4% likely affected', filter: 'jev' },
+      attempts: [],
+    });
+    const xml = render(reportDocument({ results: [leftOut] }));
+    expect(xml).toContain(
+      [
+        '  <testsuite name="tests/billing.e2e.ts" tests="1" failures="0" errors="0" skipped="1" time="0.000">',
+        '    <testcase name="pays [web]" classname="tests/billing.e2e.ts" time="0.000">',
+        '      <skipped message="left out by filter jev: Jev: 4% likely affected"/>',
+        '    </testcase>',
+        '  </testsuite>',
+      ].join('\n'),
+    );
+    expect(rootAttributes(xml)).toMatchObject({ tests: '1', skipped: '1' });
+  });
+
   it('renders a passed result as a bare testcase named by title path and target', () => {
     const xml = render(reportDocument({ results: [reportResult()] }));
     expect(xml).toContain(

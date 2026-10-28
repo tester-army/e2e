@@ -44,7 +44,7 @@ import {
   ConfigurationError,
   TestError,
 } from 'e2e/engine';
-import { isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
+import { isAppNotRunning, isSnapshotPresentationFailure, isUnreadableCapture, runCommand, staleOr } from './errors.ts';
 import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
@@ -52,11 +52,13 @@ import {
   normalizeKind,
   projectSnapshot,
   ROOT_ID,
+  TEXT_INPUT_ROLES,
   screenRoot,
   screenTitle,
   type ProjectedNode,
   type ProjectedSnapshot,
 } from './nodes.ts';
+import { keyboardDragStart } from './keyboard.ts';
 import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
@@ -74,7 +76,6 @@ import {
   swipeWithin,
   unsupported,
   type Rect,
-  type Point,
   InputBudget,
 } from './support.ts';
 
@@ -145,6 +146,23 @@ const KEYBOARD_TYPES: ReadonlySet<string> = new Set(['keyboard', 'key']);
  */
 const KEYBOARD_DRAG_RATIO = 0.03;
 
+/** What a test does instead when the engine cannot send the keyboard away. */
+const KEYBOARD_ALTERNATIVES = 'Tap the app\'s own Done or close control, or press Enter on the field when submitting is what you want.';
+
+/**
+ * The top edge of the soft keyboard: the band the capture's producer
+ * measured, else the highest keyboard or key element, else the bottom of the
+ * screen.
+ */
+function keyboardTop(raw: RawSnapshot, viewport: ViewportSize): number {
+  if (raw.keyboard?.kind === 'visible' || raw.keyboard?.kind === 'derived') return raw.keyboard.frame.y;
+  const keys = (raw.nodes ?? []).filter((node) => node.rect !== undefined && KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+  return Math.min(viewport.height, ...keys.map((node) => node.rect!.y));
+}
+
+/** One projection and the keyboard state captured with it, kept together across an action. */
+type ProjectedScreen = ProjectedSnapshot & { readonly keyboardVisible: boolean };
+
 /**
  * Whether the capture's producer measured the soft keyboard on screen:
  * undefined when it did not look or could not.
@@ -182,6 +200,7 @@ interface NodeBinding {
   readonly ref: string;
   readonly node: SemanticNode;
   readonly controlRef: string;
+  readonly keyboardVisible: boolean;
 }
 
 
@@ -193,8 +212,8 @@ interface NodeBinding {
  * keeps sliding for about half a second after the action that opened it and
  * a tap aimed from either frame lands on whatever is behind the control.
  * Once the budget has passed the control is found again in a fresh
- * snapshot. Controls that were already on screen at the same place before
- * the action are acted on at once.
+ * snapshot. Unmoved controls are immediate only when keyboard state also
+ * stayed the same; a visible keyboard can precede the app's relayout.
  */
 const DEFAULT_TRANSITION_MS = 500;
 
@@ -202,6 +221,12 @@ const DEFAULT_TRANSITION_MS = 500;
 interface ScreenshotCapture {
   /** The status bar in a fixed state (time, battery, signal), for a screenshot compared against a stored one (`comparable`). */
   readonly normalizeStatusBar?: boolean;
+}
+
+/** Whether two viewports are one screen, in the same orientation or rotated; rects from the tree carry fractions. */
+function sameScreen(a: ViewportSize, b: ViewportSize): boolean {
+  const near = (x: number, y: number): boolean => Math.abs(x - y) < 1;
+  return (near(a.width, b.width) && near(a.height, b.height)) || (near(a.width, b.height) && near(a.height, b.width));
 }
 
 /** The centre of a rect in logical pixels. */
@@ -221,12 +246,6 @@ interface Attempt {
   readonly attemptId: string;
   readonly artifactsDir: string;
   screenshots: number;
-  /**
-   * The recording the device was asked for. Marked before the start command
-   * goes out, since a start that outlives its budget still records, and
-   * cleared only once a stop succeeded: either way `endAttempt` can stop it.
-   */
-  video: Recording | undefined;
 }
 
 /** One recording of the device: agent-device's screen recording, or the device provider's own. */
@@ -243,6 +262,7 @@ interface ScreenRecording {
 /** The device provider's recording of the leased device, as its `record` is starting it or started it. */
 interface LeaseRecording {
   readonly kind: 'lease';
+  readonly artifactsDir: string;
   readonly recorder: LeaseRecorder;
   readonly started: Promise<ProviderRecording>;
   /** The stop in flight, shared: a retry while a stop that ran out of budget is still running waits for it instead of stopping twice. */
@@ -364,17 +384,28 @@ function tellHarness(call: () => void): void {
   }
 }
 
+/** The agent-device session a worker drives, and the device agent-device booted for it. */
+export interface BoundDevice {
+  readonly session: string;
+  readonly deviceId: string;
+  readonly deviceName: string;
+}
+
 export class AgentDeviceSurface {
   private client: AgentDeviceClient | undefined;
   private attempt: Attempt | undefined;
+  /** Retained across attempt cleanup until a stop or native session reset is confirmed. */
+  private recording: Recording | undefined;
   /** The attempt's `EngineAttemptContext.screen`, which locate captures feed; undefined between attempts. */
   private screenSink: ((snapshot: EngineSnapshot) => void) | undefined;
   /** The device this worker drives, the pool's binding for its slot; undefined leaves the choice to agent-device. */
-  private device: Pick<SlotBinding, 'device' | 'deviceId'> | undefined;
+  private device: SlotBinding | undefined;
   private generation = new Map<string, NodeBinding>();
   private readonly located = new Map<string, NodeBinding>();
   private idCounter = 0;
   private appIdentity: string | undefined;
+  /** True from a launch until a snapshot succeeds: an app iOS reports not running in between is still starting, not gone. */
+  private launching = false;
   /** The app the build `appPath` installed, once `init` has, itself or through a lease. */
   private installedApp: string | undefined;
   /** The target's app, as `init` received it. */
@@ -383,6 +414,8 @@ export class AgentDeviceSurface {
   private projectRoot = process.cwd();
   /** The session and device this worker drives, for the error messages whose recovery is per device; set in init. */
   private where: string | undefined;
+  /** The agent-device session this worker drives and the device `init` booted under it. */
+  private bound: BoundDevice | undefined;
   /** How this worker's device records through its provider: set in init when the pool's provider records and the slot rides one of its leases. */
   private leaseRecorder: LeaseRecorder | undefined;
   /**
@@ -400,16 +433,18 @@ export class AgentDeviceSurface {
   /** When this surface last acted on the device (an input or an app launch); the screen may be in transition for a while after. */
   private lastActionAt = 0;
   /** The screen as last projected before that action, to tell controls that were already there from ones that came with it. */
-  private indexBeforeAction: readonly ProjectedNode[] | undefined;
+  private screenBeforeAction: ProjectedScreen | undefined;
   /** The most recent projection of the screen, from any observe or locate. */
-  private latestIndex: readonly ProjectedNode[] | undefined;
+  private latestScreen: ProjectedScreen | undefined;
   /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
   private readonly transitionMs: number;
   /**
    * The screen's logical size as last learned from a snapshot with geometry
    * or from the device itself, so a snapshot without geometry (an empty
-   * screen before any app is open, a sparse tree) still reports the viewport
-   * every observation must carry.
+   * screen before any app is open, a sparse tree) or with an app drawn
+   * smaller than the screen still reports the viewport every observation
+   * must carry. A rotation replaces it; any other size needs the device's
+   * screen to agree, see `viewportFor`.
    */
   private knownViewport: ViewportSize | undefined;
 
@@ -443,6 +478,12 @@ export class AgentDeviceSurface {
     return this.attempt !== undefined;
   }
 
+  /** The agent-device session and the device it runs on; INVALID_STATE before init or after dispose. */
+  get boundDevice(): BoundDevice {
+    if (this.bound === undefined) throw invalidState('the agent-device engine is not initialized');
+    return this.bound;
+  }
+
   /** The live client; INVALID_STATE before init or after dispose. */
   requireClient(): AgentDeviceClient {
     if (this.client === undefined) throw invalidState('the agent-device engine is not initialized');
@@ -468,7 +509,7 @@ export class AgentDeviceSurface {
    * not yet arrived.
    */
   async screenCommand<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal: AbortSignal): Promise<T> {
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     const result = await this.command(label, run, signal);
     this.markAction(before);
     return result;
@@ -526,7 +567,8 @@ export class AgentDeviceSurface {
       provider === undefined || lease === undefined
         ? undefined
         : { provider, lease, runId: info.runId, targetName: info.targetName, env: info.env };
-    await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    const booted = await this.command('boot', (client) => client.devices.boot(this.selection()), info.signal);
+    this.bound = { session, deviceId: booted.id, deviceName: booted.device };
     // Nothing is installed here: a device provider that installed the build
     // from `appPath` says so on the binding, and otherwise the suite installs
     // it where it wants to, with `device.installApp()`.
@@ -538,11 +580,19 @@ export class AgentDeviceSurface {
       throw invalidState('an attempt is already running on this agent-device engine');
     }
     await this.settleInflight(context.signal);
+    const recording = this.recording;
+    if (recording?.kind === 'screen') {
+      await this.command('reset video recording', (client) => client.sessions.close(), context.signal);
+      if (this.recording === recording) this.recording = undefined;
+      this.screenReplaced();
+    } else if (recording?.kind === 'lease') {
+      await this.stopLeaseRecording(recording, context.signal);
+    }
     // Nothing is launched here: the app is where the last test, or the
     // worker's `prepare`, left it, and a test that wants it fresh calls
     // `app.open()`, which is `restart` below. The bindings are forgotten, the
     // screen is not, so a control still in place is acted on at once.
-    this.attempt = { attemptId: context.attemptId, artifactsDir: context.artifactsDir, screenshots: 0, video: undefined };
+    this.attempt = { attemptId: context.attemptId, artifactsDir: context.artifactsDir, screenshots: 0 };
     this.generation = new Map();
     this.located.clear();
     this.screenSink = context.screen;
@@ -551,8 +601,7 @@ export class AgentDeviceSurface {
   }
 
   async endAttempt(context: EngineCleanupContext): Promise<void> {
-    const attempt = this.attempt;
-    const dangling = attempt?.video;
+    const dangling = this.recording;
     this.attempt = undefined;
     this.screenSink = undefined;
     this.generation = new Map();
@@ -562,11 +611,11 @@ export class AgentDeviceSurface {
     // and the device must not keep recording into the next one. A start that
     // outlived its budget may still be landing: it settles first, so the stop
     // cannot overtake it.
-    if (attempt !== undefined && dangling?.kind === 'lease') {
-      await this.stopLeaseRecording(dangling, attempt.artifactsDir, context.signal).catch(() => undefined);
+    if (dangling?.kind === 'lease') {
+      await this.stopLeaseRecording(dangling, context.signal).catch(() => undefined);
     } else if (dangling !== undefined) {
       await this.settleInflight(context.signal).catch(() => undefined);
-      await this.stopScreenRecording(context.signal).catch(() => undefined);
+      await this.stopScreenRecording(dangling, context.signal).catch(() => undefined);
     }
   }
 
@@ -582,7 +631,7 @@ export class AgentDeviceSurface {
   async startVideo(operation: OperationContext): Promise<void> {
     const attempt = this.attempt;
     if (attempt === undefined) throw invalidState('startVideo outside an attempt');
-    if (attempt.video !== undefined) throw invalidState('a video is already recording');
+    if (this.recording !== undefined) throw invalidState('a video is already recording');
     if (this.leaseRecorder !== undefined) {
       await this.startLeaseRecording(attempt, this.leaseRecorder, operation.signal);
       return;
@@ -593,7 +642,7 @@ export class AgentDeviceSurface {
     // Marked before the device is asked: a start that outlives its budget
     // still records, and `endAttempt` must be able to stop it.
     const recording: ScreenRecording = { kind: 'screen', relative, absolute, startedAt: new Date().toISOString() };
-    attempt.video = recording;
+    this.recording = recording;
     await this.command(
       'start video recording',
       // The whole screen: an app scope refuses to start while no app is open, before `app.open()` and after `closeApp()`.
@@ -616,17 +665,12 @@ export class AgentDeviceSurface {
   async stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
     const attempt = this.attempt;
     if (attempt === undefined) throw invalidState('stopVideo outside an attempt');
-    const video = attempt.video;
+    const video = this.recording;
     if (video === undefined) return [];
     if (video.kind === 'lease') {
-      const segment = await this.stopLeaseRecording(video, attempt.artifactsDir, operation.signal);
-      // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
-      attempt.video = undefined;
-      return [segment];
+      return [await this.stopLeaseRecording(video, operation.signal)];
     }
-    const result = await this.stopScreenRecording(operation.signal);
-    // Cleared only now: a stop that failed leaves the recording for `endAttempt`.
-    attempt.video = undefined;
+    const result = await this.stopScreenRecording(video, operation.signal);
     // The device may finalize the file under a path of its own choosing; the
     // artifact must live where the attempt directory expects it.
     const written = typeof result.outPath === 'string' ? result.outPath : video.absolute;
@@ -641,8 +685,9 @@ export class AgentDeviceSurface {
    * whatever the test opened in it since, so the session is then as
    * `closeApp` leaves it.
    */
-  private async stopScreenRecording(signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
+  private async stopScreenRecording(video: ScreenRecording, signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
     const result = await this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' }), signal);
+    if (this.recording === video) this.recording = undefined;
     if (result.recordOnlySession === true) {
       this.screenReplaced();
     }
@@ -658,36 +703,65 @@ export class AgentDeviceSurface {
   private async startLeaseRecording(attempt: Attempt, recorder: LeaseRecorder, signal: AbortSignal): Promise<void> {
     const { provider, lease, runId, targetName, env } = recorder;
     const started = recordLease(provider, lease, { runId, targetName, attemptId: attempt.attemptId, env, signal });
-    attempt.video = { kind: 'lease', recorder, started };
+    const video: LeaseRecording = { kind: 'lease', recorder, started, artifactsDir: attempt.artifactsDir };
+    this.recording = video;
+    void started.catch(() => {
+      if (this.recording === video) this.recording = undefined;
+    });
     await raceAbort(started, signal, 'start video recording');
   }
 
   /** Ends the provider's recording as the attempt's one segment, a file in its `video` directory or a link. */
-  private async stopLeaseRecording(video: LeaseRecording, artifactsDir: string, signal: AbortSignal): Promise<VideoSegment> {
+  private async stopLeaseRecording(video: LeaseRecording, signal: AbortSignal): Promise<VideoSegment> {
     const { provider, lease } = video.recorder;
-    video.stopping ??= (async () =>
-      stopProviderRecording(await video.started, { artifactsDir, provider: `device provider "${provider.name}"`, leaseId: lease.id, signal }))().finally(() => {
+    video.stopping ??= (async () => {
+      const recording = await video.started;
+      return stopProviderRecording({
+        startedAt: recording.startedAt,
+        stop: async (context) => {
+          const result = await recording.stop(context);
+          if (this.recording === video) this.recording = undefined;
+          return result;
+        },
+      }, { artifactsDir: video.artifactsDir, provider: `device provider "${provider.name}"`, leaseId: lease.id, signal });
+    })().finally(() => {
       video.stopping = undefined;
     });
     return raceAbort(video.stopping, signal, 'stop video recording');
   }
 
-  async dispose(context: EngineCleanupContext): Promise<void> {
+  async dispose(context: EngineCleanupContext & { readonly reuseSignal?: AbortSignal }): Promise<void> {
     const client = this.client;
-    const attempt = this.attempt;
-    // A worker torn down mid-attempt must not leave the provider recording the device.
-    if (attempt?.video?.kind === 'lease') {
-      await withinCleanupBudget(this.stopLeaseRecording(attempt.video, attempt.artifactsDir, context.signal), context).catch(() => undefined);
-    }
+    const recording = this.recording;
     this.client = undefined;
+    this.bound = undefined;
     this.attempt = undefined;
+    this.screenSink = undefined;
     this.generation = new Map();
     this.located.clear();
     this.appIdentity = undefined;
     this.installedApp = undefined;
     this.knownViewport = undefined;
-    if (client === undefined) return;
-    await withinCleanupBudget(client.sessions.close().catch(() => undefined), context);
+    let closing: Promise<void> | undefined;
+    const close = (): void => {
+      if (client === undefined) return;
+      closing ??= client.sessions.close().then(() => {
+        if (recording?.kind === 'screen' && this.recording === recording) this.recording = undefined;
+      }).catch(() => undefined);
+    };
+    const reuse = context.reuseSignal;
+    reuse?.addEventListener('abort', close, { once: true });
+    const canKeepSession = this.device?.leaseId !== undefined && recording?.kind !== 'screen' && reuse !== undefined && !reuse.aborted;
+    if (!canKeepSession) close();
+    try {
+      const stopping = recording?.kind === 'lease' ? this.stopLeaseRecording(recording, context.signal).catch(() => undefined) : undefined;
+      await withinCleanupBudget((async () => {
+        await stopping;
+        await closing;
+      })(), context);
+    } finally {
+      reuse?.removeEventListener('abort', close);
+    }
   }
 
   /**
@@ -793,6 +867,7 @@ export class AgentDeviceSurface {
    */
   private launched(identity: string | undefined): void {
     if (identity !== undefined) this.appIdentity = identity;
+    this.launching = true;
     this.screenReplaced();
   }
 
@@ -866,6 +941,7 @@ export class AgentDeviceSurface {
       if (backoffMs > 0) await sleep(backoffMs, signal);
       if (signal.aborted) throw new EngineError('CANCELLED', 'snapshot cancelled', { retryable: false });
       last = await this.capture(signal, interactiveOnly);
+      this.launching = false;
       if (last.appBundleId !== undefined || last.appName !== undefined) {
         this.appIdentity = last.appBundleId ?? last.appName;
       }
@@ -907,9 +983,9 @@ export class AgentDeviceSurface {
 
   /**
    * Snapshot for a locate; undefined for a screen agent-device could not read
-   * yet (an app still on its splash). The harness polls a locate until its
-   * deadline, so that screen matches nothing and the poll waits for it to
-   * render. A capture that leaves no budget for another poll fails with the
+   * yet (an app still on its splash, or one iOS does not report running yet
+   * after a launch). The harness polls a locate until its deadline, so that
+   * screen matches nothing and the poll waits for it to render. A capture that leaves no budget for another poll fails with the
    * reason instead, so a wait that ends on an unreadable screen says so.
    */
   private async locateSnapshot(operation: OperationContext): Promise<RawSnapshot | undefined> {
@@ -917,34 +993,62 @@ export class AgentDeviceSurface {
     try {
       return await this.snapshotOrEmpty(operation, false);
     } catch (cause) {
-      if (operation.signal.aborted || !isUnreadableCapture(cause) || Date.now() - startedMs >= operation.timeoutMs) throw cause;
+      const arriving = isUnreadableCapture(cause) || (this.launching && isAppNotRunning(cause));
+      if (operation.signal.aborted || !arriving || Date.now() - startedMs >= operation.timeoutMs) throw cause;
       return undefined;
     }
   }
 
-  private project(raw: RawSnapshot): ProjectedSnapshot {
-    const projected = projectSnapshot(raw.nodes ?? [], {
-      mintId: () => {
-        this.idCounter += 1;
-        return `n${this.idCounter}`;
-      },
-      viewport: raw.viewport,
-    });
-    this.latestIndex = projected.index;
-    if (projected.viewport !== undefined) this.knownViewport = projected.viewport;
+  /**
+   * Projects a snapshot and learns its viewport when it is plainly the
+   * screen's: the first one the session reads, the one it knows, or that one
+   * rotated. A tree of any other size may be an app drawn smaller than the
+   * screen (behind Notification Center, iOS shrinks it to a third), so an
+   * observation's `viewportFor` checks it against the device before it
+   * replaces the known one.
+   */
+  private project(raw: RawSnapshot): ProjectedScreen {
+    const projected = {
+      ...projectSnapshot(raw.nodes ?? [], {
+        mintId: () => {
+          this.idCounter += 1;
+          return `n${this.idCounter}`;
+        },
+        viewport: raw.viewport,
+      }),
+      keyboardVisible: keyboardShowing(raw),
+    };
+    this.latestScreen = projected;
+    const read = projected.viewport;
+    if (read !== undefined && (this.knownViewport === undefined || sameScreen(read, this.knownViewport))) this.knownViewport = read;
     return projected;
   }
 
   /**
-   * The viewport of a snapshot: its own geometry, else the last one this
-   * session learned, else the device's logical screen size read off one
-   * screenshot. A device whose size cannot be learned fails the observation:
-   * the harness measures every rect and point against the viewport, so an
-   * invented one would misplace every tap.
+   * The viewport of a snapshot: its own geometry when that is the screen,
+   * else the last one this session learned, else the device's logical screen
+   * size read off one screenshot. A tree whose size is neither the known one
+   * nor that one rotated replaces it only when the screenshot's size, in
+   * either orientation, agrees: a screenshot reports the portrait size even
+   * in landscape, so it confirms a size but cannot pick the orientation. Only
+   * a simulator's screenshot reports a logical size; on a real device the
+   * tree's size is taken as it comes. A device whose size cannot be learned
+   * at all fails the observation: the harness
+   * measures every rect and point against the viewport, so an invented one
+   * would misplace every tap.
    */
   private async viewportFor(projected: ProjectedSnapshot, signal: AbortSignal): Promise<ViewportSize> {
-    const known = projected.viewport ?? this.knownViewport;
-    if (known !== undefined) return known;
+    const read = projected.viewport;
+    const known = this.knownViewport;
+    if (known !== undefined) {
+      if (read === undefined) return known;
+      if (!sameScreen(read, known)) {
+        const probed = await this.probeViewport(signal);
+        if (probed !== undefined && !sameScreen(read, probed)) return known;
+      }
+      this.knownViewport = read;
+      return read;
+    }
     const probed = await this.probeViewport(signal);
     if (probed === undefined) {
       throw new EngineError(
@@ -966,7 +1070,7 @@ export class AgentDeviceSurface {
   async observe(operation: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot> {
     const raw = await this.snapshotOrEmpty(operation, this.options.snapshot === 'interactive');
     const projected = this.project(raw);
-    this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected.index)]));
+    this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected)]));
     const viewport = await this.viewportFor(projected, operation.signal);
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport, { normalizeStatusBar: options.comparable === true }) : undefined;
@@ -988,7 +1092,7 @@ export class AgentDeviceSurface {
     const projected = this.project(raw);
     this.traceScreen(raw, projected);
     const matches = resolveExpression(expression, projected.index, this.options.platform);
-    for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected.index));
+    for (const entry of matches) this.located.set(entry.id, this.bind(entry, projected));
     for (const oldest of this.located.keys()) {
       if (this.located.size <= MAX_LOCATED_REFS) break;
       this.located.delete(oldest);
@@ -1003,7 +1107,7 @@ export class AgentDeviceSurface {
    */
   private traceScreen(raw: RawSnapshot, projected: ProjectedSnapshot): void {
     const sink = this.screenSink;
-    const viewport = projected.viewport ?? this.knownViewport;
+    const viewport = this.knownViewport;
     if (sink === undefined || viewport === undefined) return;
     const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
     tellHarness(() =>
@@ -1054,10 +1158,10 @@ export class AgentDeviceSurface {
   }
 
   /** Copies the fields actions use and pre-resolves a toggle's inner control. */
-  private bind(entry: ProjectedNode, snapshot: readonly ProjectedNode[]): NodeBinding {
+  private bind(entry: ProjectedNode, snapshot: ProjectedScreen): NodeBinding {
     const { children: _children, ...node } = entry.node;
-    const control = this.controlOf(entry, snapshot);
-    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref };
+    const control = this.controlOf(entry, snapshot.index);
+    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref, keyboardVisible: snapshot.keyboardVisible };
   }
 
   /**
@@ -1089,26 +1193,18 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Lets a control that came with the last action finish arriving before a
-   * test acts on it, and answers the binding to act on. A control already
-   * present at the same place in the snapshot the last action was resolved
-   * from is not in transition and is acted on at once; anything else waits
-   * out the remainder of the transition budget since that action and is then
-   * found again in a fresh snapshot. The budget is the only signal that the
-   * transition is over, since the tree cannot tell a sliding control from a
-   * landed one; the fresh snapshot is where the control landed. Android
-   * reports a window's frames while it slides in, so a ref resolved
-   * mid-flight would send the action where the control was: below the
-   * screen, for a modal rising from the bottom.
+   * Waits for a control that arrived or moved with the last action, returning
+   * whether it waited. Controls already present at the same place need no wait,
+   * unless keyboard state changed: a keyboard change can precede the app's relayout.
    */
-  private async settled(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext): Promise<boolean> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
-    if (remaining <= 0) return entry;
-    const before = this.indexBeforeAction;
-    if (before !== undefined) {
-      const prior = this.refind(entry, before);
-      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return entry;
+    if (remaining <= 0) return false;
+    const before = this.screenBeforeAction;
+    if (before !== undefined && before.keyboardVisible === entry.keyboardVisible) {
+      const prior = this.refind(entry, before.index);
+      if (prior !== undefined && sameRect(prior.node.rect, entry.node.rect)) return false;
     }
     await sleep(remaining, operation.signal);
     // The sleep resolves on abort; the action behind it must not go out once
@@ -1116,14 +1212,28 @@ export class AgentDeviceSurface {
     if (operation.signal.aborted) {
       throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
     }
-    return this.relocated(entry, operation);
+    return true;
   }
 
-  /** The same control in a fresh snapshot; the binding as it was when the snapshot no longer lists it. */
-  private async relocated(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
-    const projected = this.project(await this.snapshotOrEmpty(operation, false));
+  /** Refreshes a control after a transition wait, keeping the binding when no wait was needed. */
+  private async settled(entry: NodeBinding, operation: OperationContext): Promise<NodeBinding> {
+    if (await this.waitForTransition(entry, operation)) return this.relocated(entry, operation);
+    return entry;
+  }
+
+  /** The same control in a fresh snapshot; input mutations refuse a missing target or changed security facts. */
+  private async relocated(entry: NodeBinding, operation: OperationContext, input = false): Promise<NodeBinding> {
+    const raw = await this.snapshotOrEmpty(operation, false);
+    const projected = this.project(raw);
     const found = this.refind(entry, projected.index);
-    return found === undefined ? entry : this.bind(found, projected.index);
+    if (input && (isTruncated(raw) || found === undefined ||
+      entry.node.inputPurpose !== found.node.inputPurpose ||
+      entry.node.states?.disabled !== found.node.states?.disabled ||
+      entry.node.states?.secure !== found.node.states?.secure ||
+      entry.node.states?.hidden !== found.node.states?.hidden)) {
+      throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
+    }
+    return found === undefined ? entry : this.bind(found, projected);
   }
 
   /**
@@ -1131,8 +1241,8 @@ export class AgentDeviceSurface {
    * before it, and when it returned. The transition budget counts from the
    * return, since the input lands late in the command's own round trip.
    */
-  private markAction(before: readonly ProjectedNode[] | undefined): void {
-    this.indexBeforeAction = before;
+  private markAction(before: ProjectedScreen | undefined): void {
+    this.screenBeforeAction = before;
     this.lastActionAt = Date.now();
   }
 
@@ -1153,12 +1263,16 @@ export class AgentDeviceSurface {
     // chrome flow that way. Only the settle wait varies here, by origin.
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
-      const before = this.latestIndex;
+      const before = this.latestScreen;
       await this.command('swipe', (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle })), operation.signal);
       this.markAction(before);
       return;
     }
     const entry = this.resolveRef(ref);
+    const filling = action.kind === 'fill' || action.kind === 'clear';
+    if (filling && (entry.node.role === undefined || !TEXT_INPUT_ROLES.has(entry.node.role))) {
+      throw unsupported(`agent-device can only ${action.kind} editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
+    }
     const label = `perform ${action.kind}`;
     const client = this.requireClient();
     // A toggle already in the wanted state sends nothing, so it neither waits
@@ -1166,9 +1280,15 @@ export class AgentDeviceSurface {
     if ((action.kind === 'check' || action.kind === 'uncheck') && entry.node.states?.checked === (action.kind === 'check')) {
       return;
     }
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     const run = async (): Promise<unknown> => {
-      const target = deterministic ? await this.settled(entry, operation) : entry;
+      let target = entry;
+      if (filling) {
+        if (deterministic) await this.waitForTransition(entry, operation);
+        target = await this.relocated(entry, operation, true);
+      } else if (deterministic) {
+        target = await this.settled(entry, operation);
+      }
       switch (action.kind) {
         case 'tap':
           return input.send(() => client.interactions.press({ ...this.actionTarget(target, true), ...settle }));
@@ -1274,7 +1394,7 @@ export class AgentDeviceSurface {
    */
   async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : action.kind === 'swipeTo' ? action.durationMs : undefined;
     await this.command(`${action.kind} at point`, (client) => input.send(() => pointerInteraction(client, point, action, settle), holdMs), operation.signal);
     this.markAction(before);
@@ -1290,7 +1410,7 @@ export class AgentDeviceSurface {
     if (options.replace) {
       throw unsupported('agent-device cannot clear the focused field without a node; type into a listed field by id to replace its value');
     }
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     await this.command('keyboard.type', (client) => input.send(() => client.interactions.type({ text })), operation.signal);
     this.markAction(before);
   }
@@ -1310,7 +1430,7 @@ export class AgentDeviceSurface {
     if (parsed.modifiers.length > 0) {
       throw unsupported(`agent-device cannot hold ${parsed.modifiers.join('+')} on a device surface; press the key alone`);
     }
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     if (parsed.key.kind === 'named' && parsed.key.name === 'Enter') {
       await this.command('keyboard.press', (client) => input.send(() => client.command.keyboard({ action: 'enter' })), operation.signal);
     } else if (parsed.key.kind === 'char' || parsed.key.name === 'Space') {
@@ -1331,7 +1451,7 @@ export class AgentDeviceSurface {
    * in {@link dismissKeyboardByGesture}.
    */
   async dismissKeyboard(signal: AbortSignal, input?: InputBudget): Promise<void> {
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     try {
       await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.command.keyboard({ action: 'dismiss' })), signal);
     } catch (cause) {
@@ -1343,40 +1463,50 @@ export class AgentDeviceSurface {
 
   /**
    * A keyboard with no dismiss key goes the way a user sends it away: a short
-   * drag at the centre of the screen, which a scroll view turns into a
-   * dismissal, each followed by a fresh look at whether the keyboard is still
-   * there. Horizontal first: on a vertical scroll view it is no scroll, so
-   * React Native's scroll view takes it as the touch outside the keyboard
-   * that dismisses by default, where a vertical drag scrolls the content and
+   * drag on the screen, which a scroll view turns into a dismissal, each
+   * followed by a fresh look at whether the keyboard is still there.
+   * Horizontal first: on a vertical scroll view it is no scroll, so React
+   * Native's scroll view takes it as the touch outside the keyboard that
+   * dismisses by default, where a vertical drag scrolls the content and
    * dismisses only under `keyboardDismissMode="on-drag"`. Vertical second,
    * for the scroll views that dismiss on a drag alone. Maestro's
    * `hideKeyboard` drags in the other order, and on a React Native screen
    * that costs a drag plus the settle after it. The simulator's "Speed up
    * your typing" tip, which sits over a keyboard the first time it appears,
-   * goes through its Continue button first. A drag is a guess about what sits
-   * at the centre, so the sequence stops the moment the keyboard is gone, and
-   * a keyboard that outlives both drags fails naming what does work. Each
-   * look is the observation's own capture, sparse-tree retries included: a
-   * one-node tree has no keys and would pass for a dismissed keyboard.
+   * goes through its Continue button first. A drag that starts on a control
+   * presses it (a horizontal one is no scroll, so the control keeps the
+   * touch), so each drag starts where the latest capture shows none, inside
+   * a scroll view when the screen has one, see {@link keyboardDragStart}, and
+   * a screen with no such point is refused rather than touched. The sequence stops the moment the keyboard is gone,
+   * and a keyboard that outlives both drags fails naming what does work.
+   * Each look is the observation's own capture, sparse-tree retries
+   * included: a one-node tree has no keys and would pass for a dismissed
+   * keyboard.
    */
   private async dismissKeyboardByGesture(signal: AbortSignal, input: InputBudget | undefined): Promise<void> {
     let raw = await this.dismissKeyboardTip(await this.snapshot(signal, false), signal, input);
     if (!keyboardShowing(raw)) return;
-    const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
-    const viewport = await this.viewportFor(projected, signal);
-    const centre = { x: viewport.width / 2, y: viewport.height / 2 };
-    const drags: readonly Point[] = [
-      { x: centre.x - viewport.width * KEYBOARD_DRAG_RATIO, y: centre.y },
-      { x: centre.x, y: centre.y - viewport.height * KEYBOARD_DRAG_RATIO },
-    ];
-    for (const to of drags) {
-      await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.interactions.swipe({ from: centre, to })), signal);
+    for (const axis of ['horizontal', 'vertical'] as const) {
+      const projected = projectSnapshot(raw.nodes ?? [], { mintId: () => 'keyboard', viewport: raw.viewport });
+      const viewport = await this.viewportFor(projected, signal);
+      const from = keyboardDragStart(projected, viewport, keyboardTop(raw, viewport));
+      if (from === undefined) {
+        throw new EngineError(
+          'UNSUPPORTED_CAPABILITY',
+          `keyboard dismissal failed: the keyboard has no dismiss key, and every point above it (in a scroll view, when the screen has one) is on a control, so a drag would press one. ${KEYBOARD_ALTERNATIVES}`,
+          { retryable: false },
+        );
+      }
+      const to = axis === 'horizontal'
+        ? { x: from.x - viewport.width * KEYBOARD_DRAG_RATIO, y: from.y }
+        : { x: from.x, y: from.y - viewport.height * KEYBOARD_DRAG_RATIO };
+      await this.command('keyboard.dismiss', (client) => sendInput(input, () => client.interactions.swipe({ from, to })), signal);
       raw = await this.snapshot(signal, false);
       if (!keyboardShowing(raw)) return;
     }
     throw new EngineError(
       'UNSUPPORTED_CAPABILITY',
-      'keyboard dismissal failed: the keyboard has no dismiss key and stayed up through a horizontal and a vertical drag at the centre of the screen. Tap the app\'s own Done or close control, or press Enter on the field when submitting is what you want.',
+      `keyboard dismissal failed: the keyboard has no dismiss key and stayed up through a horizontal and a vertical drag. ${KEYBOARD_ALTERNATIVES}`,
       { retryable: false },
     );
   }
@@ -1400,7 +1530,7 @@ export class AgentDeviceSurface {
 
   async back(operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
-    const before = this.latestIndex;
+    const before = this.latestScreen;
     await this.command('back', (client) => input.send(() => client.command.back({ ...settle })), operation.signal);
     this.markAction(before);
   }
@@ -1511,7 +1641,7 @@ export class AgentDeviceSurface {
     };
     const projected = this.project(await this.snapshotOrEmpty(operation, false));
     const data = await this.rawScreenshot(signal);
-    const masked = redactSecure(data, projected, projected.viewport ?? this.knownViewport);
+    const masked = redactSecure(data, projected, this.knownViewport);
     if (masked === undefined) {
       throw new EngineError('ENGINE_FAILURE', 'a secure field on screen could not be masked; screenshot withheld', {
         retryable: false,

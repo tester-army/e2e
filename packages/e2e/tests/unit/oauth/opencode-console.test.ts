@@ -225,12 +225,15 @@ describe('opencodeConsole()', () => {
     expect(inference(api.requests)).toEqual([]);
   });
 
-  it('calls over chat when the config cannot be read, and asks again on the next call', async () => {
+  it.each([
+    ['answers an error', 503, { error: 'down' }],
+    ['is of another shape', 200, { config: { provider: 'opencode' } }],
+  ])('calls over chat when the config %s, and asks again on the next call', async (_case, status, unreadable) => {
     let configs = 0;
     const api = await serve((request, response) => {
       if (request.url === '/console/api/config') {
         configs += 1;
-        return configs === 1 ? json(response, 503, { error: 'down' }) : json(response, 200, config);
+        return configs === 1 ? json(response, status, unreadable) : json(response, 200, config);
       }
       if (request.url.endsWith('/chat/completions')) return json(response, 200, chatCompletion);
       json(response, 200, { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-sonnet-5', content: [{ type: 'text', text: 'hello' }], stop_reason: 'end_turn', usage: { input_tokens: 3, output_tokens: 1 } });
@@ -301,6 +304,13 @@ describe('e2e models opencode-console', () => {
     vi.stubEnv('OPENCODE_API_KEY', 'oc_sk_env');
     await listModels('opencode-console');
     expect(api.requests[0]!.headers['authorization']).toBe('Bearer oc_sk_env');
+  });
+
+  it('lists past a model it cannot read, and fails on a config that is not JSON', async () => {
+    const list = (body: string) => createOpencodeConsoleProvider().models!(async () => new Response(body));
+    const providers = { opencode: { models: { 'glm-5.3': { name: 7, cost: { input: 1.4, output: 4.4 } }, broken: null } }, 'opencode-go': 'go' };
+    expect(await list(JSON.stringify({ config: { provider: providers } }))).toEqual([{ id: 'glm-5.3', detail: 'Zen, $1.4 in, $4.4 out per 1M' }]);
+    await expect(list('<html>')).rejects.toMatchObject({ code: 'FLOW_FAILED', message: 'the OpenCode Console workspace config is not JSON' });
   });
 
   it('with neither credential, the message names the key as well as the login', async () => {
