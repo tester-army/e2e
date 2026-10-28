@@ -268,9 +268,8 @@ export class LocatorEngine {
    */
   async resolveNow(
     expression: LocatorExpression,
-    deadlineOrReads: Deadline | ReadWindow = this.deadline(this.options.actionTimeout),
+    reads: ReadWindow = new ReadWindow(this.deadline(this.options.actionTimeout)),
   ): Promise<readonly NodeRef[]> {
-    const reads = deadlineOrReads instanceof ReadWindow ? deadlineOrReads : new ReadWindow(deadlineOrReads);
     return this.resolveOnce(expression, reads, 'empty');
   }
 
@@ -306,9 +305,8 @@ export class LocatorEngine {
    */
   async readAllNow(
     expression: LocatorExpression,
-    deadlineOrReads: Deadline | ReadWindow = this.deadline(this.options.actionTimeout),
+    reads: ReadWindow = new ReadWindow(this.deadline(this.options.actionTimeout)),
   ): Promise<readonly SemanticNode[]> {
-    const reads = deadlineOrReads instanceof ReadWindow ? deadlineOrReads : new ReadWindow(deadlineOrReads);
     for (;;) {
       const refs = await this.resolveOnce(expression, reads, 'empty');
       try {

@@ -171,7 +171,7 @@ describe('LocatorEngine resolve retry contract', () => {
 
   it('translates a non-retryable resolve failure immediately without retrying', async () => {
     const { engine, calls } = makeEngine({ resolve: ['failure'] });
-    await expect(engine.resolveNow(EXPRESSION, engine.deadline())).rejects.toMatchObject({
+    await expect(engine.resolveNow(EXPRESSION, engine.reads(engine.deadline()))).rejects.toMatchObject({
       category: 'infrastructure',
       code: 'ENGINE_FAILURE',
     });
@@ -183,7 +183,7 @@ describe('LocatorEngine resolve retry contract', () => {
       { resolve: Array.from({ length: 50 }, () => 'stale' as const) },
       { actionTimeout: 350 },
     );
-    await expect(engine.resolveNow(EXPRESSION, engine.deadline())).rejects.toMatchObject({
+    await expect(engine.resolveNow(EXPRESSION, engine.reads(engine.deadline()))).rejects.toMatchObject({
       category: 'test',
       code: 'LOCATOR_NOT_FOUND',
     });
@@ -387,13 +387,13 @@ describe('LocatorEngine readAllNow contract', () => {
       resolve: [() => [REF, OTHER_REF]],
       read: [() => NODE, () => OTHER_NODE],
     });
-    expect(await engine.readAllNow(EXPRESSION, engine.deadline())).toEqual([NODE, OTHER_NODE]);
+    expect(await engine.readAllNow(EXPRESSION, engine.reads(engine.deadline()))).toEqual([NODE, OTHER_NODE]);
     expect(calls).toMatchObject({ resolve: 1, read: 2 });
   });
 
   it('answers zero matches with an empty list without waiting', async () => {
     const { engine, calls } = makeEngine({ resolve: [() => []] });
-    expect(await engine.readAllNow(EXPRESSION, engine.deadline())).toEqual([]);
+    expect(await engine.readAllNow(EXPRESSION, engine.reads(engine.deadline()))).toEqual([]);
     expect(calls).toMatchObject({ resolve: 1, read: 0 });
   });
 
@@ -402,20 +402,20 @@ describe('LocatorEngine readAllNow contract', () => {
       resolve: [() => [REF, OTHER_REF], () => [OTHER_REF]],
       read: ['stale', () => OTHER_NODE],
     });
-    expect(await engine.readAllNow(EXPRESSION, engine.deadline())).toEqual([OTHER_NODE]);
+    expect(await engine.readAllNow(EXPRESSION, engine.reads(engine.deadline()))).toEqual([OTHER_NODE]);
     expect(calls).toMatchObject({ resolve: 2, read: 2 });
   });
 
   it('gives up on a set that stays stale at the deadline as LOCATOR_NOT_FOUND', async () => {
     const { engine } = makeEngine({ read: ['stale', 'stale', 'stale', 'stale', 'stale'] });
-    await expect(engine.readAllNow(EXPRESSION, new Deadline(150))).rejects.toMatchObject({
+    await expect(engine.readAllNow(EXPRESSION, engine.reads(new Deadline(150)))).rejects.toMatchObject({
       code: 'LOCATOR_NOT_FOUND',
     });
   });
 
   it('translates non-stale read failures', async () => {
     const { engine } = makeEngine({ read: ['failure'] });
-    await expect(engine.readAllNow(EXPRESSION, engine.deadline())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    await expect(engine.readAllNow(EXPRESSION, engine.reads(engine.deadline()))).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 });
 
@@ -579,7 +579,7 @@ describe('LocatorEngine visible queries', () => {
     const { engine } = makeLocatorEngineOverEngine();
     const ref = await engine.resolveExactlyOne(build(true), new Deadline(5_000));
     expect(ref.id).toBe('shown');
-    expect(await engine.resolveNow(build(true), engine.deadline())).toHaveLength(1);
+    expect(await engine.resolveNow(build(true), engine.reads(engine.deadline()))).toHaveLength(1);
   });
 
   it.each(kinds)('%s without visible keeps the hidden twin, so the pair is LOCATOR_AMBIGUOUS', async (_kind, build) => {
@@ -590,7 +590,7 @@ describe('LocatorEngine visible queries', () => {
     await expect(engine.resolveExactlyOne(build(false), new Deadline(5_000))).rejects.toMatchObject({
       code: 'LOCATOR_AMBIGUOUS',
     });
-    expect(await engine.resolveNow(build(undefined), engine.deadline())).toHaveLength(2);
+    expect(await engine.resolveNow(build(undefined), engine.reads(engine.deadline()))).toHaveLength(2);
   });
 
   it('names the predicate in the ambiguity message when two visible nodes remain', async () => {
@@ -615,7 +615,7 @@ describe('LocatorEngine visible queries', () => {
     const indexed: LocatorExpression = { kind: 'index', source: kinds[1]![1](true), index: 'first' };
     // The adapter cannot know which of the engine's answers came first, so it
     // must not second-guess them; the engine applied `visible` before `first`.
-    expect(await engine.resolveNow(indexed, engine.deadline())).toHaveLength(2);
+    expect(await engine.resolveNow(indexed, engine.reads(engine.deadline()))).toHaveLength(2);
     expect(expressions[0]).toEqual(indexed);
   });
 });
