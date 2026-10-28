@@ -237,8 +237,7 @@ describe('describeDelta', () => {
     // A tally that was there before the step and reads another number after it grows with every run's leftovers.
     const before = nodes([heading, node('c0', { text: '41 items' })]);
     const after = nodes([heading, node('c1', { text: '42 items' }), node('n', { text: 'Item added' })]);
-    // The old tally is volatile and the other side has a stable result, so only that result is recorded.
-    expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: 'Item added' }], gone: [] });
+    expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: 'Item added' }], gone: [{ text: '41 items' }] });
   });
 
   describe('volatile anchors across both sides of the delta', () => {
@@ -260,6 +259,15 @@ describe('describeDelta', () => {
       const before = nodes([heading, node('clock', { text: '10:00' })]);
       const after = nodes([heading, node('clock', { text: '09:59' })]);
       expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: '09:59' }], gone: [{ text: '10:00' }] });
+    });
+
+    it('keeps the count an import reports when the other side holds a stable result', () => {
+      const before = nodes([heading, node('dialog', { role: 'dialog', name: 'Import CSV' }), node('result', { role: 'status', text: '0 records imported' })]);
+      const after = nodes([heading, node('result', { role: 'status', text: '3 records imported' })]);
+      expect(describeDelta(before, after, false)).toEqual({
+        appeared: [{ role: 'status', text: '3 records imported' }],
+        gone: [{ role: 'dialog', name: 'Import CSV' }],
+      });
     });
 
     it('still records an alert beside a clock', () => {
