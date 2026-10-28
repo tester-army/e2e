@@ -383,7 +383,9 @@ export default {
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.
-  Non-input targets return `UNSUPPORTED_CAPABILITY`.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`; an iOS `other` that holds
+  a value or only text is typed into, since a custom-drawn field (Compose
+  Multiplatform, Flutter) can read that way.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`

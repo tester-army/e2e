@@ -2495,6 +2495,52 @@ describe('input freshness', () => {
         expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
         expect(h.fake.methods()).not.toContain('interactions.fill');
       });
+
+      // agent-device 0.21.33's simulator AX tree reads a Compose Multiplatform field as an unclassified `Other`:
+      // an empty one over the placeholder it draws, a filled one with its text as the value.
+      const unclassified = (field: Partial<RawNode>, inside?: RawNode) => {
+        const snapshot = form(237, { type: 'Other', ...field });
+        return inside === undefined ? snapshot : { ...snapshot, nodes: [...snapshot.nodes, inside] };
+      };
+      const child = (type: string, label: string): RawNode =>
+        ({ ref: '@e22', index: 3, parentIndex: 1, depth: 2, type, label, rect: { x: 52, y: 252, width: 101, height: 18 } });
+
+      it.each([
+        ['empty, over its placeholder', () => unclassified({}, child('StaticText', 'Ada Lovelace'))],
+        ['filled', () => unclassified({ value: 'Grace' })],
+      ])(`acts on an unclassified iOS field, %s, for ${origin} ${kind}`, async (_name, snapshot) => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', snapshot);
+        const field = await observed(h, 'Account');
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await h.engine.perform!(field.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e20', text: kind === 'fill' ? 'example' : '' });
+      });
+
+      it.each([
+        ['childless and valueless, like a React Native Pressable', () => unclassified({})],
+        ['holding a control', () => unclassified({}, child('Button', 'Clear'))],
+      ])(`rejects an unclassified iOS element %s for ${origin} ${kind}`, async (_name, snapshot) => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', snapshot);
+        const element = await observed(h, 'Account');
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(element.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+
+      it(`rejects an unclassified iOS element that gained a control before typing for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => unclassified({}, child('StaticText', 'Loading')));
+        const element = await observed(h, 'Account');
+        h.fake.respond('capture.snapshot', () => unclassified({}, child('Button', 'Loading')));
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(element.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
     }
   }
 

@@ -49,10 +49,10 @@ import { pointerInteraction, DEFAULT_LONG_PRESS_MS } from './actions.ts';
 import { resolveExpression } from './locate.ts';
 import {
   isWithin,
+  mayTakeText,
   normalizeKind,
   projectSnapshot,
   ROOT_ID,
-  TEXT_INPUT_ROLES,
   screenRoot,
   screenTitle,
   type ProjectedNode,
@@ -201,6 +201,8 @@ interface NodeBinding {
   readonly node: SemanticNode;
   readonly controlRef: string;
   readonly keyboardVisible: boolean;
+  /** Whether `fill` and `clear` may type into the node, judged with the children `node` leaves out. */
+  readonly takesText: boolean;
 }
 
 
@@ -1161,7 +1163,14 @@ export class AgentDeviceSurface {
   private bind(entry: ProjectedNode, snapshot: ProjectedScreen): NodeBinding {
     const { children: _children, ...node } = entry.node;
     const control = this.controlOf(entry, snapshot.index);
-    return { id: entry.id, ref: entry.ref, node, controlRef: control.ref, keyboardVisible: snapshot.keyboardVisible };
+    return {
+      id: entry.id,
+      ref: entry.ref,
+      node,
+      controlRef: control.ref,
+      keyboardVisible: snapshot.keyboardVisible,
+      takesText: mayTakeText(entry.node),
+    };
   }
 
   /**
@@ -1270,9 +1279,9 @@ export class AgentDeviceSurface {
     }
     const entry = this.resolveRef(ref);
     const filling = action.kind === 'fill' || action.kind === 'clear';
-    if (filling && (entry.node.role === undefined || !TEXT_INPUT_ROLES.has(entry.node.role))) {
-      throw unsupported(`agent-device can only ${action.kind} editable fields; node ${entry.id} is ${entry.node.role ?? 'unknown'}`);
-    }
+    const refuseFill = (binding: NodeBinding): EngineError =>
+      unsupported(`agent-device can only ${action.kind} editable fields; node ${binding.id} is ${binding.node.role ?? 'unknown'}`);
+    if (filling && !entry.takesText) throw refuseFill(entry);
     const label = `perform ${action.kind}`;
     const client = this.requireClient();
     // A toggle already in the wanted state sends nothing, so it neither waits
@@ -1286,6 +1295,7 @@ export class AgentDeviceSurface {
       if (filling) {
         if (deterministic) await this.waitForTransition(entry, operation);
         target = await this.relocated(entry, operation, true);
+        if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {
         target = await this.settled(entry, operation);
       }
