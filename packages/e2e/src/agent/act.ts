@@ -317,9 +317,6 @@ class ActDispatch {
         runTool: (call, body) => this.dispatcher.runTool(call, body),
       },
       observe: (options) => this.feed.observe(options),
-      get pixelsTainted() {
-        return dispatch.runtime.exposure.withholdsModelPixels;
-      },
       attachTranscript: (text) => {
         // Debug detail only: transcripts are model prose and can be large.
         if (this.runtime.debug?.enabled === true && typeof text === 'string' && text !== '') {

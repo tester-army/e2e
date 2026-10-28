@@ -94,8 +94,8 @@ export interface ExecutorObserveOptions {
   readonly tree?: boolean;
   /**
    * Include masked viewport pixels as `pixels`. Granted only when the engine
-   * captures pixels, its masking is proven, and no secret has been filled in
-   * this attempt; otherwise `pixelsWithheld` names the reason. Normally off
+   * captures pixels and its masking is proven; otherwise `pixelsWithheld`
+   * names the reason. Normally off
    * unless asked. If semantic capture fails, the observation carries its
    * permitted screenshot because no semantic evidence is available.
    */
@@ -476,14 +476,6 @@ export interface StepExecutorContext {
    */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
   readonly actions: ExecutorActions;
-  /**
-   * True once a secret was filled in this attempt: `observe({ pixels: true })`
-   * withholds pixels for the rest of it. A secret an engine option holds
-   * (basic-auth credentials) is redacted from text only and taints nothing. An executor reads it when assembling
-   * its vocabulary, to leave screenshot verbs out rather than offer tools
-   * that can only decline.
-   */
-  readonly pixelsTainted: boolean;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a
    * `log` artifact when the run collects debug detail (`--debug`); a no-op

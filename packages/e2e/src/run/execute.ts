@@ -631,8 +631,7 @@ export class TargetExecutor implements SerialHost {
       if (sessionName !== undefined) {
         const saved = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
         // The values the saving session learned come back with its state, so
-        // a stored value the app echoes is redacted here too, and its taint
-        // keeps the viewport withheld: the state may put the value on screen.
+        // a stored value the app echoes is redacted here too.
         adoptSecrecy(sessionSecrecy(session, this.config.allSecrets), saved.secrecy);
         await launch('restoring the session', (launchSignal) =>
           session.restoreState!(saved.state, launchOp(launchSignal)),

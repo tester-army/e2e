@@ -175,9 +175,9 @@ message:
 - The hint reads `pass vision: true when the answer is in pixels`. Until a
   step of the attempt has received pixels, it is worded as a condition
   (`if the engine captures pixels, ...`).
-- There is no hint when the engine declares no screenshot capture, a secret
-  was filled, or an earlier step's pixel request was degraded: `vision: true`
-  could add no evidence then.
+- There is no hint when the engine declares no screenshot capture, or an
+  earlier step's pixel request was degraded: `vision: true` could add no
+  evidence then.
 
 <Note>
 A custom `StepExecutor` judges the assertion itself, and `assert` carries the
@@ -369,7 +369,7 @@ switching has no verb yet: a new tab is invisible to the model.
 the same model reads both. A screen with no listed interactive nodes, such
 as a canvas, opens with a screenshot.
 
-The built-in agent offers these tools while no secret has been filled:
+The built-in agent offers these tools:
 
 | Tool | What it does |
 | --- | --- |
@@ -403,19 +403,13 @@ The built-in agent offers these tools while no secret has been filled:
 - A step that sent pixels records `visionInput: true` and
   `metrics.pixelBytes`.
 
-A secret filled during the step withholds every later screenshot from the
-model (`PIXEL_TAINTED`). A step that opens on a tainted viewport offers none of the
-seven pixel tools.
-
 If semantic capture times out, an engine that proves masking independently
 can return a fresh screenshot with an explicit unavailable-tree warning.
 Every `act` observation with unavailable semantics includes that image and
 warning. Earlier node ids are then invalid, and the next successful semantic
 capture presents the whole tree again. The screenshot shows the current
 viewport; an unavailable tree does not prove that a control or message is
-absent. After a secret fill there is no fallback. When semantic capture times
-out before the step does, `act`, and a judgment with `vision: true`, fails
-with `POLICY_DENIED`.
+absent.
 
 If semantic capture fails, trace replay stops. The step cannot record a new
 trace entry, even if the tree recovers later.
@@ -447,8 +441,6 @@ content, use `true` or `'only'`.
 
 Pixels are withheld, and the tree is sent alone, when:
 
-- a secret fill has tainted the viewport (`visionDegraded: "PIXEL_TAINTED"`
-  on the step),
 - the engine masked fewer regions than the secure fields it observed
   (`MASKING_UNPROVEN`), or
 - the engine cannot capture pixels (`UNSUPPORTED_CAPABILITY`).
@@ -457,9 +449,8 @@ In `'only'` mode those cases fail with `POLICY_DENIED` instead.
 
 With `vision: true` or `'only'`, a recoverable semantic-capture failure can
 use a fresh screenshot when the engine proves masking independently. With
-`vision: false`, or after a secret fill, the capture failure stops the
-judgment before any model call: a missing tree cannot support a judgment
-about an empty screen.
+`vision: false`, the capture failure stops the judgment before any model
+call: a missing tree cannot support a judgment about an empty screen.
 
 If capture fails before a judgment, the report records zero model calls and
 omits `observationRevision` and `explanation`. The step error describes the

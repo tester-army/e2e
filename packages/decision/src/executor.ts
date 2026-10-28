@@ -112,18 +112,14 @@ class Step {
       this.attach();
     }
   }
-  /** Whether this step may show pixels: vision is on and no secret has been filled in the attempt. */
-  private get pixelsAllowed(): boolean {
-    return this.vision && !this.ctx.pixelsTainted;
-  }
   /**
    * A fresh look: the tree, and masked pixels when allowed. `typing` keeps a
    * filled field's row for verdict views.
    */
   private async view(typing: boolean): Promise<View> {
-    const observation = await this.ctx.observe({ tree: true, pixels: this.pixelsAllowed });
+    const observation = await this.ctx.observe({ tree: true, pixels: this.vision });
     const path = observation.path ?? '';
-    const screenshot = this.pixelsAllowed ? observation.pixels : undefined;
+    const screenshot = this.vision ? observation.pixels : undefined;
     const tree = observation.tree;
     if (observation.treeUnavailable || tree === undefined || emptyTree(observation)) return { path, space: undefined, screenshot };
     const base = { path, viewport: observation.viewport, tree, keyboardVisible: observation.keyboardVisible };

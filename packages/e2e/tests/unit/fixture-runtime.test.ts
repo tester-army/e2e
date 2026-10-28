@@ -97,7 +97,7 @@ describe('explicit screenshot secrecy', () => {
   it.each([
     ['1234', 'four characters'],
     ['🔐🔐🔐', 'three emoji, six UTF-16 units'],
-  ])('refuses a provider value under 6 code points (%s, %s) at fill time with the unavailable code, pixels untainted', async (value) => {
+  ])('refuses a provider value under 6 code points (%s, %s) at fill time with the unavailable code', async (value) => {
     const screenshot = vi.fn(async () => 'screenshots/evidence.png');
     const { fixtures, config } = runtime(defineEngine({
       name: 'fake', version: '1', spiVersion: 1, artifacts: { screenshot },

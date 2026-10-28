@@ -1,7 +1,7 @@
 /**
  * Vision tier for judgments: masked pixels as model input. The scripted model cannot
  * see; what is under test is the runner half — pixels attached, bounded,
- * masked, degraded under taint, and routed to the pinned vision model.
+ * masked, kept after a secret fill, and routed to the pinned vision model.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -22,7 +22,7 @@ test('judges an assertion with pixel evidence', async ({ app, agent }) => {
   await agent.assert('the page renders a chart', { vision: true });
 });
 
-test('degrades to tree-only input after a secret fill', async ({ app, agent, screen }) => {
+test('sends masked pixels after a secret fill', async ({ app, agent, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill(credentials.user('member').password);
   await agent.assert('the password field has a value', { vision: true });
@@ -33,11 +33,7 @@ test('judges on pixels alone, with no tree in the request', async ({ app, agent 
   await agent.assert('the chart trends upward', { vision: 'only' });
 });
 
-test('fails pixels-only rather than judging the tree after a secret fill', async ({
-  app,
-  agent,
-  screen,
-}) => {
+test('judges on pixels alone after a secret fill', async ({ app, agent, screen }) => {
   await app.open();
   await screen.getByLabel('Password').fill(credentials.user('member').password);
   await agent.assert('the password field looks filled', { vision: 'only' });
@@ -119,28 +115,18 @@ describe('agent vision (judgments)', () => {
     expect(judged.prompt).toContain('1 region(s) are masked for security');
   });
 
-  it('withholds pixels once the viewport is pixel-tainted, keeping the tree', () => {
-    const result = resultByTitle(outcome, 'degrades to tree-only input after a secret fill');
-    expect(result.status).toBe('passed');
-    const step = stepOf('degrades to tree-only input after a secret fill', 'agent.assert');
-    expect(step.visionInput).toBeUndefined();
-    expect(step.visionDegraded).toBe('PIXEL_TAINTED');
-    expect(step.metrics!.pixelBytes).toBeUndefined();
-    expect(step.metrics!.observationBytes).toBeGreaterThan(0);
-    expect(
-      step.events.some(
-        (event) =>
-          event.kind === 'policy' &&
-          event.name === 'vision.pixels' &&
-          event.decision === 'denied' &&
-          event.code === 'PIXEL_TAINTED',
-      ),
-    ).toBe(true);
-    const judged = fakeCalls.find(
-      (call) => call.instruction === 'the password field has a value',
-    )!;
-    expect(judged.images).toHaveLength(0);
-    expect(judged.observation).not.toBe('');
+  it('sends masked pixels after a secret fill, keeping the value out of the text', () => {
+    const title = 'sends masked pixels after a secret fill';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const step = stepOf(title, 'agent.assert');
+    expect(step.visionInput).toBe(true);
+    expect(step.visionDegraded).toBeUndefined();
+    expect(step.metrics!.pixelBytes).toBeGreaterThan(0);
+    const judged = fakeCalls.find((call) => call.instruction === 'the password field has a value')!;
+    expect(judged.images).toHaveLength(1);
+    expect(judged.prompt).toContain('1 region(s) are masked for security');
+    expect(judged.prompt).not.toContain('hunter2-secret');
+    expect(judged.observation).not.toContain('hunter2-secret');
   });
 
   it('sends pixels alone, with no observation in the request', () => {
@@ -162,15 +148,15 @@ describe('agent vision (judgments)', () => {
     expect(judged.prompt).toMatch(/Its observation revision is "/);
   });
 
-  it('fails pixels-only when pixels are withheld instead of judging the tree', () => {
-    const title = 'fails pixels-only rather than judging the tree after a secret fill';
-    const attempt = resultByTitle(outcome, title).attempts.at(-1)!;
-    expect(attempt.error!.code).toBe('POLICY_DENIED');
-    expect(attempt.error!.message).toContain('PIXEL_TAINTED');
+  it('judges pixels-only after a secret fill', () => {
+    const title = 'judges on pixels alone after a secret fill';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
     const step = stepOf(title, 'agent.assert');
-    expect(step.visionDegraded).toBe('PIXEL_TAINTED');
-    expect(step.visionInput).toBeUndefined();
-    // Nothing was asked of the model: the tree was never an acceptable answer.
-    expect(step.metrics!.modelCalls).toBe(0);
+    expect(step.visionOnly).toBe(true);
+    expect(step.visionInput).toBe(true);
+    expect(step.visionDegraded).toBeUndefined();
+    const judged = fakeCalls.find((call) => call.instruction === 'the password field looks filled')!;
+    expect(judged.images).toHaveLength(1);
+    expect(judged.observation).toBe('');
   });
 });

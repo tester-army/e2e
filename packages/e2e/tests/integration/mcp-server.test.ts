@@ -220,7 +220,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(listed.text).toContain('NO_SESSION');
   });
 
-  it('opens a session with its catalog, then locates, acts, fills a secret, and withholds pixels afterwards', async () => {
+  it('opens a session with its catalog, then locates, acts, fills a secret, and keeps the screenshot afterwards', async () => {
     const opened = await invoke('open_session');
     expect(opened.isError, opened.text).toBe(false);
     expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts\./);
@@ -331,17 +331,10 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(filled.text).toContain('Filled secret "admin.password"');
     expect(filled.text).not.toContain('admin-pass');
 
-    const tainted = await call('screenshot');
-    expect(tainted.images).toBe(0);
-    expect(tainted.text).toContain('No screenshot: a secret was filled in this attempt');
-    expect(tainted.text).toContain('PIXEL_TAINTED');
-
-    // The point tools stay in the catalog but refuse too: the screenshot the
-    // model holds predates the fill and may no longer match the screen.
-    const pointed = await call('tap_at', { x: 10, y: 10 });
-    expect(pointed.isError, pointed.text).toBe(false);
-    expect(pointed.text).toContain('PIXEL_TAINTED');
-    expect(pointed.text).not.toContain('Tapped');
+    const afterFill = await call('screenshot');
+    expect(afterFill.isError, afterFill.text).toBe(false);
+    expect(afterFill.images).toBe(1);
+    expect(afterFill.text).not.toContain('admin-pass');
 
     for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'view-source:file:///etc/passwd', 'VIEW-SOURCE:http://example.test/', 'about:srcdoc']) {
       const denied = await call('navigate', { url });

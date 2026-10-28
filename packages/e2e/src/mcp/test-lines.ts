@@ -170,7 +170,7 @@ export class SessionTestLines {
       const { tree: _tree, ...rest } = observation;
       return rest;
     };
-    // A proxy, not a copy: the context's getters (`pixelsTainted`) must stay live.
+    // A proxy, not a copy: the context's getters must stay live.
     return new Proxy(context, {
       get: (target, key) => (key === 'observe' ? observe : Reflect.get(target, key, target)),
     });

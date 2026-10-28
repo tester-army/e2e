@@ -505,7 +505,7 @@ export interface EngineAttemptContext {
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
    * the attempt's text downloads are rewritten. The protection is
-   * text only: unlike a fill, it withholds no screenshot or model pixels.
+   * text only: a page that shows the value is not masked in screenshots.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
   readonly resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>;
@@ -604,7 +604,7 @@ export interface EngineDisposeContext extends EngineCleanupContext {
 export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
-  /** Allows independently masked pixels to replace a failed semantic capture. Never granted after a secret fill. */
+  /** Allows independently masked pixels to replace a failed semantic capture. */
   readonly pixelFallback?: boolean;
   /**
    * The pixels are compared against a stored screenshot (`toHaveScreenshot`).

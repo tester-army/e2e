@@ -204,8 +204,7 @@ How recovery runs:
 
 What survives:
 
-- Recovery keeps the page's unsaved state, storage, the attempt's secret
-  taint, and the agent ledger. Dialog and route handlers are reattached.
+- Recovery keeps the page's unsaved state, storage, and the agent ledger. Dialog and route handlers are reattached.
 - Video recording resumes. A segment lost during the disconnect is gone.
 - Operations already dispatched are never retried.
 - Recovery clears old node references. Observation-derived `tapAt` calls,
@@ -291,9 +290,9 @@ export interface WebBasicAuth {
 | `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
 
 <Warning>
-The secret protection is text only. Unlike a fill, it withholds no screenshot
-or model pixels, so a page that renders the password on screen is not masked
-in them ([Security rules](/reference/security#secrets-in-engine-options)).
+The secret protection is text only. A page that renders the password on
+screen is not masked in screenshots or model pixels
+([Security rules](/reference/security#secrets-in-engine-options)).
 </Warning>
 
 #### `testIdAttribute`
@@ -950,8 +949,7 @@ fresh viewport screenshot.
 - The observation reports unavailable semantics and clears earlier node
   references.
 - Recovery requires time left in the operation budget and permission from the
-  runner. `act` permits it before a secret fill; judgments also require
-  `vision: true` or `'only'`.
+  runner. `act` permits it; judgments require `vision: true` or `'only'`.
 - Failed masking, cancellation, and hard engine errors still stop the
   observation.
 

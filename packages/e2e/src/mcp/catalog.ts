@@ -2,8 +2,7 @@
  * The catalog of a live session: every tool `call` can run, as AI SDK tools.
  * `observe` shows the whole screen, the grammar is what the target's engine
  * honors, `screenshot` and the point tools (`tap_at`, `hover_at`,
- * `drag_at`, `type_at`, `press_at`, `select_at`) among it, answering
- * `PIXEL_TAINTED` once a secret has been filled, `locate` tries a semantic
+ * `drag_at`, `type_at`, `press_at`, `select_at`) among it, `locate` tries a semantic
  * locator the way a test would, `run_code` runs whole test statements on
  * the session's fixtures, `test_lines` returns the test line every action
  * printed (`test-lines.ts`) and the statements `run_code` passed,

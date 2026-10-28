@@ -1,4 +1,4 @@
-/** What one live session knows about secrets: the values to redact, and whether one reached it. */
+/** What one live session knows about secrets: the values to redact. */
 
 import type { ResolvedConfig } from '../config/resolve.ts';
 import { MIN_SECRET_LENGTH, secretLength } from '../config/secrets.ts';
@@ -11,44 +11,6 @@ import type { Secret } from '../types.ts';
 export interface SessionSecrecy {
   /** Every secret value the session may have seen; live, so a provider's value joins the moment it exists. */
   readonly ledger: SecretLedger;
-  /** Whether a secret was filled into the session, and what that withholds. */
-  readonly exposure: SecretExposure;
-}
-
-/**
- * Whether a secret was typed into one session's app. It only rises, and is
- * never cleared: `none`, nothing was filled; `filled`, a secret was typed
- * into the app.
- */
-export type SecretExposureLevel = 'none' | 'filled';
-
-/**
- * One session's exposure level, and the one place that maps it to what each
- * consumer withholds. Only a fill withholds pixels, and only from a model:
- * the app may show the value outside its masked field, and a model's input
- * leaves the machine. Screenshots, evidence, and video are the project's own
- * artifacts and stay on. A value that reached the app otherwise (an engine
- * option, a URL or a `fill` the test spelled it into) is protected as text
- * only. Only a fill carries into a saved session too: the value then lives
- * in the app's state. Text is not decided here: see `redactsDownloads`.
- */
-export class SecretExposure {
-  private current: SecretExposureLevel = 'none';
-
-  /** Records that a secret was filled into the session. */
-  raise(level: Exclude<SecretExposureLevel, 'none'>): void {
-    this.current = level;
-  }
-
-  /** Whether no pixels may reach a model: no screenshot goes into model input, pixel tools, or an MCP client. */
-  get withholdsModelPixels(): boolean {
-    return this.current === 'filled';
-  }
-
-  /** Whether a session saved from this one carries the taint to the sessions that restore it. */
-  get carriesTaint(): boolean {
-    return this.current === 'filled';
-  }
 }
 
 /**
@@ -169,7 +131,6 @@ export function sessionSecrecy(
     registerStaticSecrets(secrets);
     secrecy = {
       ledger: new SecretLedger(staticSecretLedger(secrets).entries()),
-      exposure: new SecretExposure(),
     };
     secrecyBySession.set(session, secrecy);
   }
@@ -193,14 +154,12 @@ export function redactForSession(
 export interface SavedSecrecy {
   /** Name and value pairs the saving session learned beyond the static config values; travels only inside the encrypted payload. */
   readonly secrets: readonly (readonly [string, string])[];
-  /** Whether a secret was filled on the saving session, so its viewport, and any state restored from it, may carry one. */
-  readonly tainted: boolean;
 }
 
 /**
  * The secrecy a session envelope carries: the provider-resolved values the
  * session learned, which the consumer's session cannot learn again on its
- * own, and the taint. Static config values are left out; every session
+ * own. Static config values are left out; every session
  * registers those itself.
  */
 export function carriedSecrecy(
@@ -211,15 +170,13 @@ export function carriedSecrecy(
     secrets: secrecy.ledger
       .entries()
       .filter(([name, value]) => secrets.get(name)?.value !== value),
-    tainted: secrecy.exposure.carriesTaint,
   };
 }
 
-/** Seeds a restored session's secrecy with what the saving session knew, so a value the restored state echoes back is still redacted and withheld. */
+/** Seeds a restored session's secrecy with what the saving session knew, so a value the restored state echoes back is still redacted. */
 export function adoptSecrecy(secrecy: SessionSecrecy, saved: SavedSecrecy): void {
   for (const [name, value] of saved.secrets) {
     secrecy.ledger.register(name, value);
     processSecrets.register(name, value);
   }
-  if (saved.tainted) secrecy.exposure.raise('filled');
 }

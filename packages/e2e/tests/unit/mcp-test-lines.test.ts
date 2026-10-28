@@ -451,18 +451,18 @@ describe('SessionTestLines', () => {
   });
 
   it('hands the caller the observation it asked for, tree or not, and keeps the context live', async () => {
-    let tainted = false;
+    let resolutions = 0;
     const base = fakeExecutorContext().context;
     const context = Object.defineProperty(
       { ...base, observe: async (asked?: ExecutorObserveOptions) => ({ revision: 'r', text: '', truncated: false, viewport: { width: 1, height: 1 }, ...(asked?.tree === true ? { tree: { id: 'root' } } : {}) }) },
-      'pixelsTainted',
-      { get: () => tainted },
+      'model',
+      { get: () => { resolutions += 1; return undefined; } },
     ) as StepExecutorContext;
     const watched = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).watch(context);
     expect(await watched.observe()).not.toHaveProperty('tree');
     expect(await watched.observe({ tree: true })).toHaveProperty('tree', { id: 'root' });
-    expect(watched.pixelsTainted).toBe(false);
-    tainted = true;
-    expect(watched.pixelsTainted).toBe(true);
+    expect(resolutions).toBe(0);
+    void watched.model;
+    expect(resolutions).toBe(1);
   });
 });

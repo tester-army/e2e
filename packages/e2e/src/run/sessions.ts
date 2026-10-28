@@ -54,8 +54,8 @@ interface SessionEnvelope {
   appIdentity: string;
   createdAt: string;
   expiresAt: string;
-  /** Authenticated, never encrypted: which secrets the payload carries values for, and whether the saving session was tainted. */
-  secrecy?: { tainted: boolean; names: string[] };
+  /** Authenticated, never encrypted: which secrets the payload carries values for. */
+  secrecy?: { names: string[] };
   state: {
     format: string;
     version: number;
@@ -165,8 +165,7 @@ export class SessionStore {
    * Encrypts and atomically persists one captured engine state. The secret
    * values the saving session learned ride inside the ciphertext, beside the
    * state they may be stored in, so the session that restores it redacts
-   * them too; the envelope names them and carries the taint in the clear,
-   * authenticated.
+   * them too; the envelope names them in the clear, authenticated.
    */
   async save(name: string, identity: SessionIdentity, { state, secrecy }: SavedSession): Promise<void> {
     this.ensureDirectory();
@@ -197,7 +196,7 @@ export class SessionStore {
       appIdentity: identity.appIdentity,
       createdAt,
       expiresAt,
-      secrecy: { tainted: secrecy.tainted, names: [...new Set(secrecy.secrets.map(([secretName]) => secretName))] },
+      secrecy: { names: [...new Set(secrecy.secrets.map(([secretName]) => secretName))] },
       state: {
         format: state.format,
         version: state.version,
@@ -308,7 +307,7 @@ export class SessionStore {
         data: payload.data,
         expiresAt: envelope.expiresAt,
       },
-      secrecy: { secrets: payload.secrets, tainted: envelope.secrecy?.tainted === true },
+      secrecy: { secrets: payload.secrets },
     };
   }
 

@@ -533,17 +533,16 @@ trees, on both platforms, without a device.
   model; its `waitFor` and `extract` still use the built-in judgments. No implicit target either: `targets` is required and
   each names its engine.
 - Security invariants (fail closed when one cannot be enforced):
-  - Secrets never reach model input, digests, logs, reports, or artifacts.
-    Model input is the redacted semantic tree (as text or, on request, the
-    redacted node tree), masked pixels only when masking is proven and no
-    secret was filled, and the sanitized prior-step records. Once a secret is
-    filled the viewport stays pixel-tainted for the rest of the attempt. A
-    secret an engine resolves for an option the app sees (basic auth) is
-    protected as text only: redacted everywhere text goes, pixels untouched.
-    One exposure level per session (`SecretExposure` in `run/secrecy.ts`)
-    decides pixels and the taint a saved session carries; text downloads are
+  - Secret values never reach model input, digests, logs, reports, or
+    artifacts as text. Model input is the redacted semantic tree (as text
+    or, on request, the redacted node tree), masked pixels only when masking
+    is proven, and the sanitized prior-step records. Pixels mask secure
+    fields only, before and after a secret fill: a value the app shows
+    elsewhere is in the image, a documented limit (`docs/security.mdx`), not
+    a gap to close with taint or text-matching heuristics. Text downloads are
     rewritten whenever the session's ledger holds a value
-    (`redactsDownloads`), since a plain string reaches the app unseen. What
+    (`redactsDownloads` in `run/secrecy.ts`), since a plain string reaches
+    the app unseen. What
     an executor keeps in `attempt.memory` is its own; the harness never
     reports it.
   - An agent's secret fill is authorized by the runner, not the model.
@@ -562,7 +561,7 @@ trees, on both platforms, without a device.
     next turn is the repair, and refusals count toward the failure-streak
     guard. A node id not on the current screen is `LOCATOR_NOT_FOUND`, an
     action failure the model reads and re-aims from. `POLICY_DENIED` is for
-    denied destinations, forbidden fills, and tainted pixels. Model text is
+    denied destinations, forbidden fills, and withheld pixels. Model text is
     never evaluated as code, selectors, shell, or config. App content, ledger
     text, and pixels are quoted as untrusted evidence with no policy authority.
   - Every navigation a test or the agent asks for (`app.open`,

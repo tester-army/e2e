@@ -16,7 +16,7 @@ test.describe('shared', { serial: true, retries: 1 }, () => {
 });`;
 
 describe('serial session secrecy', () => {
-  it.each(['static', 'provider'] as const)('retains %s secret redaction and pixel taint across members, resetting on retry', async (source) => {
+  it.each(['static', 'provider'] as const)('retains %s secret redaction across members and on retry', async (source) => {
     let echo = '';
     let launches = 0;
     const observations: { step: string; secretVisible: boolean; pixels: boolean; withheld: string | undefined }[] = [];
@@ -55,11 +55,11 @@ describe('serial session secrecy', () => {
       expect(launches).toBe(2);
       expect(observations).toEqual(Array.from({ length: 2 }, () => [
         { step: 'before fill', secretVisible: false, pixels: true, withheld: undefined },
-        { step: 'after fill', secretVisible: false, pixels: false, withheld: 'PIXEL_TAINTED' },
-        { step: 'next member', secretVisible: false, pixels: false, withheld: 'PIXEL_TAINTED' },
+        { step: 'after fill', secretVisible: false, pixels: true, withheld: undefined },
+        { step: 'next member', secretVisible: false, pixels: true, withheld: undefined },
       ]).flat());
-      // Settling captures twice per observation; only the two pre-fill observations request pixels.
-      expect(pixelCaptures).toBe(4);
+      // Settling captures twice per observation, and a secret fill withholds none.
+      expect(pixelCaptures).toBe(12);
       expect(JSON.stringify(outcome.report)).not.toContain(SENTINEL);
     } finally {
       project.cleanup();

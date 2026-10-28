@@ -175,8 +175,8 @@ target.
 ## Secrets
 
 `type_secret`, or a `fill` in `run_code`, fills a secret without showing it
-to the agent. After a secret is filled, the session stops returning
-screenshots.
+to the agent. Screenshots mask password fields only, so a secret the app
+shows anywhere else is in them.
 
 <Warning>
 Videos from `start_recording` are not masked.

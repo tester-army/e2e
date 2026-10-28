@@ -16,7 +16,6 @@ test.setup('authenticate as admin', { sessions: ['admin'] }, async ({ app, scree
 });
 
 test.setup('authenticate as admin with a cookie', { sessions: ['admin-cookie'] }, async ({ app, screen, session, browser }) => {
-  // No secret is filled, so what restores this session keeps its screenshots.
   await app.open('/');
   await browser.setCookies([{ name: 'session', value: 'admin', url: await browser.url(), httpOnly: true }]);
   await app.open('/dashboard');

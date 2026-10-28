@@ -95,11 +95,10 @@ Project tools use their `toModelOutput` renderer for strings as well as
 structured results. Its `error-text` and `error-json` outputs set the MCP
 result's `isError: true`; treat them as failed calls.
 
-Once a secret is filled in the session, `screenshot` and the point tools
-(`tap_at`, `hover_at`, `drag_at`, `type_at`, `press_at`, `select_at`) answer
-with a `PIXEL_TAINTED` line for the rest of it; act on listed nodes by id
-(topic `writing-tests`). Before the session's first `screenshot`, a point
-tool only says to take one.
+`screenshot` masks secure fields only, after a secret fill too (topic
+`writing-tests`). Before the session's first `screenshot`, a point tool
+(`tap_at`, `hover_at`, `drag_at`, `type_at`, `press_at`, `select_at`) only
+says to take one.
 
 Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
 

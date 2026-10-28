@@ -25,7 +25,7 @@ import { allocateTargetPorts } from '../run/app-ports.ts';
 import { selectTarget } from '../run/select-target.ts';
 import { SharedAppProcesses } from '../run/process-pool.ts';
 import { outputLayout } from '../run/output.ts';
-import { processSecrets, registerStaticSecrets, sessionSecrecy } from '../run/secrecy.ts';
+import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
 import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone.ts';
 import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
 import type { AgentParams } from '../types.ts';
@@ -310,8 +310,7 @@ export class SessionHost {
         ...(params === undefined ? {} : { params }),
         timeout: ttlMs,
       });
-      const { context } = step;
-      const screen = new ScreenPresenter({ pixelsUnavailable: () => context.pixelsTainted });
+      const screen = new ScreenPresenter();
       const recorder = this.recorder(id, config, attempt);
       const catalog = createSessionCatalog({
         context: step.context,
@@ -399,7 +398,6 @@ export class SessionHost {
         origin: 'test',
       }),
       timeoutMs: config.cleanupTimeout,
-      tainted: () => sessionSecrecy(attempt.session, config.allSecrets).exposure.withholdsModelPixels,
     });
   }
 
@@ -546,7 +544,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'tools',
       description:
-        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools, which answer PIXEL_TAINTED once a secret has been filled), locate, run_code (test statements run on the live app), test_lines (the test line each action printed and the statements run_code passed, as a draft test body), start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
+        "List the tools a session can run through call: observe, the grammar its engine honors (one tool per action the engine declares, type_secret when a secret is configured, and screenshot and the point tools), locate, run_code (test statements run on the live app), test_lines (the test line each action printed and the statements run_code passed, as a draft test body), start_recording and stop_recording when the engine records video, and the project's own tools. With tool, shows that tool's full description and the JSON Schema of its arguments.",
       inputSchema: z.object({
         tool: z.string().min(1).optional().describe('A catalog tool name, for its full contract'),
         session: z.string().min(1).optional().describe('Session id from open_session; may be omitted only while one session is open'),

@@ -61,9 +61,7 @@ start signed in, so no charter is spent signing in again. A name no setup
 declares fails before any app process starts with `COLLECTION_ERROR`, naming
 the declared sessions.
 
-A setup that filled a secret taints the restored session, so every finding
-goes without a screenshot; one that signed in without a fill (a `browser.setCookies`
-session cookie, say) keeps them where the engine captures pixels, and only
+Findings keep their screenshots after a setup that filled a secret. Only
 configured secrets are redacted (topic `writing-tests`).
 
 ## Flags

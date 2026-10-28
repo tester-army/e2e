@@ -147,15 +147,9 @@ export function createScreenContext(wiring: ScreenWiring): ScreenContext {
 }
 
 export function createFixtures(environment: AttemptEnvironment): AttemptFixtures {
-  const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.allSecrets);
+  const { ledger } = sessionSecrecy(environment.session, environment.config.allSecrets);
   const secrets: SecretResolver = {
-    async resolve(secret) {
-      const plaintext = await resolveSecretValue(secret, environment.config.allSecrets, ledger);
-      // Only a value that exists can reach the screen: a failed provider
-      // leaves nothing to taint the viewport with.
-      exposure.raise('filled');
-      return plaintext;
-    },
+    resolve: (secret) => resolveSecretValue(secret, environment.config.allSecrets, ledger),
   };
 
   const screenContext = createScreenContext({
@@ -251,7 +245,6 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     secrets,
     redact: ledger.redact,
     redactCut: ledger.redactCut,
-    exposure,
     artifacts: environment.artifacts,
     ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
     ...(environment.debug !== undefined ? { debug: environment.debug } : {}),

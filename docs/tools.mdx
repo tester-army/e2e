@@ -102,8 +102,7 @@ const captureEvidence = defineTool(
 
 - `observe()` returns a redacted text snapshot. `tree: true` adds the node
   tree and `pixels: true` a masked screenshot, under the built-in agent's
-  rules, so no pixels
-  [after a secret fill](/reference/security#screenshots-after-a-secret-fill).
+  rules.
 - In a `mutates: true` tool, `observe()` fails with `POLICY_DENIED`.
   Observe in a separate read-only tool.
 - `attachScreenshot(pixels, label)` adds the image to the step's artifacts

@@ -323,15 +323,12 @@ function clearPixels(observation: Observation): {
 
 /**
  * Whether requested pixels become model input, decided once per observation
- * for every tier that asks: a tainted viewport (a secret filled this attempt)
- * is denied first, since the secret may be anywhere on screen; then the
- * capture's own reasons; then the pixels themselves.
+ * for every tier that asks: the capture's own reasons, then the pixels
+ * themselves.
  */
 export function pixelsForModel(
   observation: AgentObservation,
-  tainted: boolean,
 ): { readonly pixels: ExecutorPixels } | { readonly withheld: VisionDegradation } {
-  if (tainted) return { withheld: 'PIXEL_TAINTED' };
   if (observation.pixels === undefined) {
     return { withheld: observation.kind === 'semantic' ? observation.pixelsWithheld ?? 'UNSUPPORTED_CAPABILITY' : 'UNSUPPORTED_CAPABILITY' };
   }

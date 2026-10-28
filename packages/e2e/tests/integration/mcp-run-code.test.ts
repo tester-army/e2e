@@ -6,7 +6,7 @@
  * code outside the grammar runs nothing. A Secret fills only under the
  * authorization `type_secret` runs, reads and matchers see redacted text, a
  * locator found by part of a text is refused in a project with secrets, a
- * password field stays unreadable, and the pixel taint follows a fill. The
+ * password field stays unreadable, and screenshots stay on after a fill. The
  * statements that pass join `test_lines`.
  */
 
@@ -175,7 +175,7 @@ await screen.getByRole('button', 'Increment').tap();`,
   });
 
   describe('secrets', () => {
-    it('fills a password only where type_secret would, and taints the pixels after the fill', async () => {
+    it('fills a password only where type_secret would, and keeps the screenshot after the fill', async () => {
       const before = await call('screenshot');
       expect(before.images).toBe(1);
 
@@ -194,10 +194,6 @@ await screen.getByRole('button', 'Increment').tap();`,
       expect(badTimeout.text).toContain('INVALID_ARGUMENT: fill timeout must be a number of milliseconds');
       const emailValue = await runCode("await screen.getByLabel('Email').inputValue()");
       expect(emailValue.text).toContain('returned ""');
-      // Refused before a value was resolved: nothing reached the screen, so pixels stay on.
-      const stillClean = await call('screenshot');
-      expect(stillClean.images).toBe(1);
-
       const signedIn = await runCode(`await screen.getByLabel('Email').fill(credentials.user('admin').username);
 await screen.getByLabel('Password').fill(credentials.user('admin').password);`);
       expect(signedIn.isError, signedIn.text).toBe(false);
@@ -209,8 +205,7 @@ await screen.getByLabel('Password').fill(credentials.user('admin').password);`);
       expect(asserted.text).toContain('POLICY_DENIED: reading values from a secure field is denied');
 
       const after = await call('screenshot');
-      expect(after.images).toBe(0);
-      expect(after.text).toContain('PIXEL_TAINTED');
+      expect(after.images).toBe(1);
     });
 
     it('fills a generic secret into a plain field and redacts it from every read and failure', async () => {

@@ -115,13 +115,6 @@ export class ScreenPresenter {
   /** True once the engine said it captures no screenshots at all. */
   private pixelsDenied = false;
 
-  /**
-   * `pixelsUnavailable` says whether the step can get no screenshot at all
-   * (a secret was filled, so no pixel tool is offered), which makes the
-   * listing the only evidence an action result has.
-   */
-  constructor(private readonly options: { readonly pixelsUnavailable?: () => boolean } = {}) {}
-
   /** True once a screenshot went to the model in this step. */
   get showingPixels(): boolean {
     return this.screenshot !== undefined;
@@ -195,7 +188,7 @@ export class ScreenPresenter {
    */
   present(observation: ExecutorObservation, options: ScreenUpdateOptions = {}): ScreenOutput {
     const compared = this.attach(observation);
-    const pixels = compared === 'none' && (this.pixelsDenied || this.options.pixelsUnavailable?.() === true) ? 'unavailable' : compared;
+    const pixels = compared === 'none' && this.pixelsDenied ? 'unavailable' : compared;
     const text = this.render(
       observation,
       {
@@ -247,8 +240,6 @@ function screenshotNote(pixels: Pick<ExecutorPixels, 'width' | 'height' | 'scale
 /** Why pixels did not reach the model, and what to do instead. */
 function withheldAdvice(code: VisionDegradation): string {
   switch (code) {
-    case 'PIXEL_TAINTED':
-      return 'a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED). Work from the tree and tap listed nodes by id.';
     case 'MASKING_UNPROVEN':
       return 'the engine could not prove every secure field on screen masked (MASKING_UNPROVEN). Work from the tree and tap listed nodes by id.';
     case 'UNSUPPORTED_CAPABILITY':

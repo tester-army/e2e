@@ -75,11 +75,11 @@ export function createAgentFixture(runtime: AgentContext): Agent {
   /**
    * The vision hint for an inconclusive judgment made from the tree alone,
    * or none when `vision: true` could add no evidence in this attempt: the
-   * engine declares no screenshot capture, a secret was filled, or an
-   * earlier step's pixel request was already degraded.
+   * engine declares no screenshot capture, or an earlier step's pixel
+   * request was already degraded.
    */
   const visionHint = (): string | undefined => {
-    if (runtime.exposure.withholdsModelPixels || !runtime.engineCapabilities.has('artifacts')) return undefined;
+    if (!runtime.engineCapabilities.has('artifacts')) return undefined;
     const steps = runtime.steps.completed();
     if (steps.some((step) => step.visionDegraded !== undefined)) return undefined;
     return steps.some((step) => step.visionInput === true) ? VISION_HINT : VISION_HINT_UNPROVEN;

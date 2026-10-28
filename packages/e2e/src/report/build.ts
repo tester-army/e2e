@@ -223,7 +223,8 @@ export interface ReportStep {
   observationTruncated?: boolean | undefined;
   explanation?: string | undefined;
   visionInput?: boolean | undefined;
-  visionDegraded?: VisionDegradation | undefined;
+  /** `PIXEL_TAINTED` only on a result an earlier version wrote, such as one `--last-failed` carries. */
+  visionDegraded?: VisionDegradation | 'PIXEL_TAINTED' | undefined;
   visionOnly?: boolean | undefined;
   viewport?: { width: number; height: number; scale: number } | undefined;
   metrics?: StepMetrics | undefined;

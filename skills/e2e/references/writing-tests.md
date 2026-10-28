@@ -354,11 +354,10 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen 
   match `[A-Za-z0-9_.-]{1,128}`.
 - A session holds cookies, local storage, and IndexedDB for one run,
   encrypted and deleted at cleanup; server state is not part of it.
-- Once a secret is filled, model pixels are withheld for the rest of that
-  session (later serial members included). Artifact screenshots
-  (`app.screenshot()`, assertion, failure) stay on and mask secure fields
-  only. A restored session keeps its setup's taint; a setup that signs in
-  without a fill (`browser.setCookies`, say) leaves model pixels available.
+- Screenshots, the model's and the artifacts', mask secure fields only,
+  after a secret fill too. A generic secret in a plain input, or a value the
+  app shows anywhere else (a show-password toggle, a toast), is in the image
+  and reaches the model provider: use test credentials.
 - Credentials live in the config, values in the environment:
 
 ```ts

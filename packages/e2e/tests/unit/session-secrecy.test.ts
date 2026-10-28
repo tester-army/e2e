@@ -18,41 +18,23 @@ function newSession(): TargetSession {
 }
 
 describe('session secrecy carried across save and restore', () => {
-  it('carries the provider values and the taint, leaving static values to each session', () => {
+  it('carries the provider values, leaving static values to each session', () => {
     const saving = sessionSecrecy(newSession(), secrets);
     saving.ledger.register('token', PROVIDER_VALUE);
-    saving.exposure.raise('filled');
-    expect(carriedSecrecy(saving, secrets)).toEqual({ secrets: [['token', PROVIDER_VALUE]], tainted: true });
+    expect(carriedSecrecy(saving, secrets)).toEqual({ secrets: [['token', PROVIDER_VALUE]] });
   });
 
-  it('seeds the restoring session and the process ledger with the carried values, and its taint', () => {
+  it('seeds the restoring session and the process ledger with the carried values', () => {
     const restoring = sessionSecrecy(newSession(), secrets);
     const value = 'provider-minted-token-adopted-2290';
     expect(processSecrets.redact(value)).toBe(value);
-    adoptSecrecy(restoring, { secrets: [['token', value]], tainted: true });
+    adoptSecrecy(restoring, { secrets: [['token', value]] });
     expect(restoring.ledger.redact(`echo ${value}`)).toBe('echo <secret:token>');
     expect(processSecrets.redact(`log ${value}`)).toBe('log <secret:token>');
-    expect(restoring.exposure.carriesTaint).toBe(true);
-  });
-
-  it('never clears a taint the restoring session already carries', () => {
-    const restoring = sessionSecrecy(newSession(), secrets);
-    restoring.exposure.raise('filled');
-    adoptSecrecy(restoring, { secrets: [], tainted: false });
-    expect(restoring.exposure.carriesTaint).toBe(true);
   });
 });
 
-describe('session exposure', () => {
-  it('withholds pixels and carries the taint into a saved session only after a fill', () => {
-    const secrecy = sessionSecrecy(newSession(), secrets);
-    expect(secrecy.exposure).toMatchObject({ withholdsModelPixels: false, carriesTaint: false });
-    expect(carriedSecrecy(secrecy, secrets).tainted).toBe(false);
-    secrecy.exposure.raise('filled');
-    expect(secrecy.exposure).toMatchObject({ withholdsModelPixels: true, carriesTaint: true });
-    expect(carriedSecrecy(secrecy, secrets).tainted).toBe(true);
-  });
-
+describe('session download redaction', () => {
   it('rewrites recordings whenever the ledger holds a value, filled or not', () => {
     expect(redactsDownloads(sessionSecrecy(newSession(), secrets))).toBe(true);
     const unsecret = sessionSecrecy(newSession(), new Map());

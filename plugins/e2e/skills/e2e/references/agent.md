@@ -164,9 +164,8 @@ a bare-point drag); `press_at`, `select_at`, and `type_at` hit-test the
 tree first so a listed control underneath is acted on by id, and `type_at`
 on nothing listed taps, then types. A screen with
 nothing to tap by id opens with a screenshot attached. A device has no
-`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
-masked and withheld after a secret fill (topic writing-tests): act on pixels
-before signing in, or in a test of its own. A result says when an action
+`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels mask
+secure fields only (topic writing-tests). A result says when an action
 closed an on-screen keyboard; on a touch screen that tap was often spent
 closing it, so act again.
 
@@ -287,7 +286,7 @@ values, or a `Secret`'s value; password fields masked. The first
 screen of a step arrives whole; later action results report what changed,
 keyed by node ids stable while an element exists, or the whole screen when
 most changed. Pixels arrive through `vision` on a judgment or the act loop's
-`screenshot` and point tools, masked and withheld after a secret fill. When
+`screenshot` and point tools, with secure fields masked. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred
 absent nor old node ids reused. The browser engine's tree shows a frame

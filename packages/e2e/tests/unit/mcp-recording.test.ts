@@ -25,7 +25,6 @@ describe('SessionRecorder', () => {
   let failing: Set<string>;
   /** What every startVideo waits on before it returns. */
   let startGate: Promise<void>;
-  let tainted: boolean;
 
   const recorder = () =>
     new SessionRecorder({
@@ -48,7 +47,6 @@ describe('SessionRecorder', () => {
       outDir,
       operation,
       timeoutMs: 1_000,
-      tainted: () => tainted,
     });
 
   beforeEach(() => {
@@ -59,7 +57,6 @@ describe('SessionRecorder', () => {
     written = ['video/video.mp4'];
     failing = new Set();
     startGate = Promise.resolve();
-    tainted = false;
   });
 
   afterEach(() => {
@@ -143,17 +140,6 @@ describe('SessionRecorder', () => {
     failing.clear();
     const recording = await recordings.stop();
     expect(recording?.files).toEqual([path.join(outDir, '1-demo.mp4')]);
-  });
-
-  it('says so when a secret was filled in the session before the recording stopped', async () => {
-    const recordings = recorder();
-    await recordings.start(undefined);
-    tainted = true;
-    const recording = await recordings.stop();
-    expect(recording?.tainted).toBe(true);
-    expect(describeRecording(recording!)).toMatch(
-      /\nA secret was filled in this session and videos are not masked: check it is not on screen before sharing\.$/,
-    );
   });
 
   it('keeps a recording whose files could not all be moved, and moves the rest on the next stop without stopping the engine again', async () => {

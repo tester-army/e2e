@@ -626,12 +626,12 @@ test('never runs under explore', async () => {
     expect(attempt.artifacts.find((artifact) => artifact.id === finding.artifactId)).toMatchObject({ kind: 'screenshot' });
   }, 120_000);
 
-  it('keeps the pixels of a session whose setup filled a secret withheld, so its findings carry no screenshot', async () => {
+  it('attaches a screenshot to findings of a session whose setup filled a secret, keeping the value out of the report', async () => {
     const model = installExploreModel({
       plan: (call) =>
         call.instruction.includes('(none yet')
           ? { decision: 'step', title: 'Home', instruction: 'Look at the home page' }
-          : { decision: 'finish', summary: 'One finding without evidence.' },
+          : { decision: 'finish', summary: 'One finding with evidence.' },
       loop: (call) =>
         call.turn === 1
           ? [{ toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING }]
@@ -642,7 +642,7 @@ test('never runs under explore', async () => {
     expect(outcome.report.run.errors).toEqual([]);
     expect(ran(outcome)).toEqual(['Explore the storage page', 'fills the password']);
     expect(outcome.explore.findings).toHaveLength(1);
-    expect(outcome.explore.findings[0]!.artifactId).toBeUndefined();
+    expect(outcome.explore.findings[0]!.artifactId).toBeDefined();
     expect(JSON.stringify(outcome.report)).not.toContain('bookworm');
   }, 120_000);
 

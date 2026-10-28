@@ -96,45 +96,6 @@ describe('the grammar tools have closed schemas', () => {
     expect(schemaOf(tools, 'type').safeParse({ target: 'n1', value: 'ada' }).success).toBe(false);
   });
 
-  it('refuses every point verb once a secret was filled mid-step, without reaching the engine', async () => {
-    // A secret fill after a screenshot leaves the model holding pixels that may no longer match the screen.
-    const fake = fakeExecutorContext();
-    let tainted = false;
-    const context = { ...fake.context, get pixelsTainted() { return tainted; } };
-    const tools = createGrammarTools(context);
-    tainted = true;
-    const options = { toolCallId: 'point', messages: [], context: undefined };
-    const pointTools = [...GRAMMAR_TOOL_NAMES].filter((name) => name.endsWith('_at'));
-    expect(pointTools).toHaveLength(6);
-    for (const name of pointTools) {
-      const result = await tools[name]!.execute!(ACCEPTED[name]!, options);
-      expect(result, name).toContain('PIXEL_TAINTED');
-    }
-    expect(fake.dispatched).toEqual([]);
-  });
-
-  it('checks the taint when a point verb runs, not when it is queued: a fill batched ahead of it in the same turn wins', async () => {
-    // AI SDK turns can carry parallel tool calls; the queue runs them in order. The first
-    // body here stands in for a type_secret that taints the attempt before tap_at's turn.
-    const fake = fakeExecutorContext();
-    let tainted = false;
-    const context = { ...fake.context, get pixelsTainted() { return tainted; } };
-    let first = true;
-    const guard = async <T,>(body: () => Promise<T>): Promise<T | string> => {
-      if (!first) return body();
-      first = false;
-      tainted = true;
-      return 'Filled secret "admin".';
-    };
-    const tools = createGrammarTools(context, { guard });
-    const options = { toolCallId: 'batched', messages: [], context: undefined };
-    const queued = tools['observe']!.execute!({}, options);
-    const pointed = await tools['tap_at']!.execute!({ x: 10, y: 20 }, options);
-    expect(await queued).toBe('Filled secret "admin".');
-    expect(pointed).toContain('PIXEL_TAINTED');
-    expect(fake.dispatched).toEqual([]);
-  });
-
   it('closes complete_step', () => {
     expectClosed(schemaOf({ complete_step: createVerdictTool().tool }, 'complete_step'), { status: 'passed', summary: 'done' }, 'complete_step');
   });

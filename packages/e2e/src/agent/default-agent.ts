@@ -42,7 +42,7 @@ const presenters = new WeakMap<StepExecutorContext, ScreenPresenter>();
 function presenterFor(context: StepExecutorContext): ScreenPresenter {
   let presenter = presenters.get(context);
   if (presenter === undefined) {
-    presenter = new ScreenPresenter({ pixelsUnavailable: () => context.pixelsTainted });
+    presenter = new ScreenPresenter();
     presenters.set(context, presenter);
   }
   return presenter;
@@ -79,7 +79,7 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
       // would only spend a turn asking for one. One listed control is enough
       // to leave the decision to the model; a small page is not a blind one.
       let observation = await context.observe();
-      if (!context.pixelsTainted && observation.pixels === undefined && interactiveNodeCount(observation) === 0) {
+      if (observation.pixels === undefined && interactiveNodeCount(observation) === 0) {
         observation = await context.observe({ pixels: true });
       }
       const title = testTitleLine(context.attempt.titlePath);

@@ -262,8 +262,7 @@ call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada
 - Reads and matchers see `<secret:name>` where a secret value is.
 - A secret `fill` passes the checks `type_secret` runs, on the field it lands
   on: a configured secret, an enabled editable field, and a password field
-  for a password. A filled secret withholds screenshots as `type_secret`
-  does.
+  for a password.
 
 The code is parsed, never run as JavaScript. The grammar takes:
 
@@ -337,7 +336,7 @@ through the keyboard. The [point tools](#point-tools) print nothing.
 The masked viewport as an image. Takes no arguments.
 
 - From then on every action result carries a fresh screenshot.
-- After a secret fill it answers `PIXEL_TAINTED`. See [Sessions](#sessions).
+- It masks secure fields only, after a secret fill too.
 
 #### Point tools
 
@@ -355,8 +354,7 @@ drop point as `to_x` and `to_y`.
 
 <Note>
 Before the session's first `screenshot`, each point tool answers with the
-line that says to take one, at no cost. Like `screenshot`, they answer
-`PIXEL_TAINTED` after a secret fill.
+line that says to take one, at no cost.
 </Note>
 
 #### Recording
@@ -391,10 +389,9 @@ call {tool: "stop_recording"}
   still running, and the close result lists its files.
 
 <Warning>
-Recordings are not masked and are not withheld after a secret was filled:
-they are files for a person to watch, and no tool returns their pixels. A
-secret typed into a plain input while recording is readable in the video,
-and a recording stopped after a secret was filled says so.
+Recordings are not masked: they are files for a person to watch, and no
+tool returns their pixels. A secret typed into a plain input while
+recording is readable in the video.
 </Warning>
 
 #### Project tools
@@ -494,9 +491,7 @@ Sessions enforce what tests enforce:
 
 - Node ids are valid only against the newest observation.
 - A secret fills only through `type_secret` or a [`run_code`](#run_code)
-  `fill`, under the same checks. Once one has been filled,
-  [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
-  catalog but answer `PIXEL_TAINTED` for the rest of the session.
+  `fill`, under the same checks.
 - Once the config has loaded, its secret values are redacted from every text
   a tool returns, a node `locate` found, an action's result, an
   `open_session` or `close_session` failure, a cleanup line, and the server's

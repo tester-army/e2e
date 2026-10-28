@@ -621,7 +621,7 @@ export class ActionDispatcher {
    * — an executor can never fill a secret the test did not hand it — and
    * the fill itself runs the full secret authorization policy: configured
    * secret, an enabled editable sink, and a password field for a password.
-   * There is no origin check. Pixel evidence is tainted from here on.
+   * There is no origin check.
    */
   private async typeSecret(target: ExecutorTarget, name: string): Promise<void> {
     const secret = this.options.secrets.get(name);
@@ -633,8 +633,6 @@ export class ActionDispatcher {
     }
     await this.commitTargeted('typeSecret', target, async (node) => {
       const plaintext = await authorizeSecretFill(this.policyHost(), this.runtime, secret, node);
-      // Before the engine call: a fill that types the value and then fails has still put it on screen.
-      this.runtime.exposure.raise('filled');
       await this.session.perform(
         node.ref,
         { kind: 'fill', value: plaintext, sensitive: true },

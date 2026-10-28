@@ -44,12 +44,13 @@ right before dispatch. Unknown tools or fields, stale observation references,
 and denied destinations fail with `POLICY_DENIED`. Model text is never
 evaluated as code, selectors, shell, or config.
 
-Secrets follow from that split. A `Secret` never reaches model input, digests,
-logs, reports, or artifacts. A secret fill is authorized by the runner from
+Secrets follow from that split. A `Secret` value never reaches model input,
+digests, logs, reports, or artifacts as text. A secret fill is authorized by the runner from
 its own observation (an unresolved handle, a secure sink, an editable node
 with a compatible purpose, no control transfer since); the
-model never sees or picks the value. Once a secret is filled, the viewport
-stays pixel-tainted for the rest of the attempt, and a text download (`.txt`,
+model never sees or picks the value. Screenshots mask secure fields only, so
+a value the app shows anywhere else, a secret filled into a plain input
+included, is in the pixels the model gets. A text download (`.txt`,
 `.csv`, `.json`, `.html`) is rewritten before it is registered or stored, every secret value becoming
 `<secret:name>`; any other download is kept as served and marked
 `incomplete`. Sessions are per-run, target-bound, encrypted

@@ -568,22 +568,17 @@ export function createGrammarTools(
       execute: () => acting({ done: 'Navigated back.', attempt: 'back' }, () => context.actions.back()),
     });
   }
-  // The pixel verbs are offered while pixels can still leave the runner. Once
-  // a secret was filled in the attempt they could only decline, and a verb
-  // that is absent costs the model nothing where one that declines costs a
-  // turn. They are the fallback for a target the tree does not list: a tap,
-  // hover, or drag reaches the engine as bare points where it takes them, and
-  // a type, press, or select acts on a listed control under the point by id,
-  // else through the keyboard.
-  if (!context.pixelsTainted) {
-    tools['screenshot'] = screenTool({
-      description:
-        'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
-      inputSchema: z.object({}),
-      execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
-    });
-    Object.assign(tools, createPointTools(context, { screen, inOrder, perform }));
-  }
+  // The pixel verbs are the fallback for a target the tree does not list: a
+  // tap, hover, or drag reaches the engine as bare points where it takes
+  // them, and a type, press, or select acts on a listed control under the
+  // point by id, else through the keyboard.
+  tools['screenshot'] = screenTool({
+    description:
+      'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
+    inputSchema: z.object({}),
+    execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
+  });
+  Object.assign(tools, createPointTools(context, { screen, inOrder, perform }));
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.
   if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
@@ -682,13 +677,9 @@ function createPointTools(
 
   /**
    * A point the model read off the latest screenshot in viewport pixels, or
-   * the line to read instead: no screenshot taken yet, or a secret filled
-   * since, after which no pixel the model holds may be acted on.
+   * the line to read instead when no screenshot was taken yet.
    */
   const pointOf = (px: number, py: number, verb: string): ViewportPoint | string => {
-    if (context.pixelsTainted) {
-      return `No point actions: a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED); ${verb} coordinates would aim at a screenshot that is no longer current. Act on a listed node by id.`;
-    }
     const shot = screen.latestScreenshot;
     if (shot === undefined) {
       return `No screenshot has been taken in this step: ${verb} coordinates are pixels of the latest screenshot. Call screenshot first, or act on a listed node by id.`;
@@ -698,9 +689,8 @@ function createPointTools(
 
   /**
    * Runs a point verb in the queue, resolving the point only when its turn
-   * comes: a `type_secret` batched ahead of it in the same turn has filled by
-   * then, so the taint check sees it, and the screenshot it reads is the one
-   * the model held when the verb ran, not when it was queued.
+   * comes: the screenshot it reads is the one the model held when the verb
+   * ran, not when it was queued.
    */
   const atPoint = (
     verb: string,
@@ -849,7 +839,7 @@ function createPointTools(
  */
 function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
   const guard = options.guard ?? (<T>(body: () => Promise<T>) => body());
-  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter({ pixelsUnavailable: () => context.pixelsTainted });
+  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
   const queue = new OperationQueue();
   const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
   /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */

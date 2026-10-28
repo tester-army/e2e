@@ -20,7 +20,6 @@ export interface FakeExecutorContextOptions {
   readonly tapModifiers?: boolean;
   /** The secrets the step declared; one password by default. */
   readonly secrets?: ExecutorStep['secrets'];
-  readonly pixelsTainted?: boolean;
 }
 
 /** Builds the context; `dispatched` names every action or observation a tool body reached. */
@@ -83,7 +82,6 @@ export function fakeExecutorContext(options: FakeExecutorContextOptions = {}): F
     },
     observe: refuse('observe'),
     actions,
-    pixelsTainted: options.pixelsTainted ?? false,
     attachTranscript: () => undefined,
     attachTurns: () => undefined,
     attachScreenshot: async () => 'screenshot',
