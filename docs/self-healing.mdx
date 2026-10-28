@@ -8,7 +8,7 @@ A self-healing test keeps passing when the UI changes under a recorded
 `agent.act()` step. The runner replays the recording until it no longer
 matches the screen. Then it hands the rest of the step to the agent, which
 finishes the goal from the current screen. In `read-write` mode, the same
-run saves the new flow once a later check passes.
+run can save the new flow once a later check passes.
 
 The run summary counts each step that healed this way as `handed off`:
 
@@ -61,8 +61,10 @@ Continue the step from the CURRENT screen state shown below — do NOT redo the 
 The prompt tells the agent not to repeat those actions, such as a submit
 that already went through. Two stop reasons add a warning:
 
-- `end-mismatch`: every action ran, but the recorded result didn't show.
-  The agent is told to check whether the step took effect before it acts.
+- `end-mismatch`: every action ran, but replay can't show it produced the
+  recorded result. The result didn't show, or it was already on screen
+  before replay acted. The agent is told to check whether the step took
+  effect before it acts.
 - `action-uncertain`: an action failed, and it may have reached the app.
   The agent is told to check the current state before it tries anything
   like it again.
@@ -76,11 +78,15 @@ hand-off: the agent runs it from the beginning with no notice.
 ## How the recording repairs itself
 
 A healed step records again like a new step: in `read-write` mode, and only
-when a check after it passes. Then the recording is saved with the new
-controls and end state. Otherwise the old entry goes away:
+when a check after it passes, such as a locator assertion or
+`agent.assert`. Then the recording is saved with the new controls and end
+state, unless the store rejected the write (`not-written`). Otherwise the
+old entry goes away:
 
 - The step failed. The next run doesn't replay a flow that broke.
 - No check passed after the step.
+- The step changed nothing replay could check, so there is no new flow to
+  save.
 - The agent had to act to fix an `end-mismatch`. The next verified run
   records a clean flow, not the failed flow plus the fix.
 
