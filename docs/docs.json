@@ -135,6 +135,7 @@
               "telemetry",
               "debugging",
               "agent-steps",
+              "self-healing",
               "page-objects"
             ]
           },

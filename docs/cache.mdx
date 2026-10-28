@@ -9,7 +9,8 @@ icon: "box-archive"
 The replay cache records the actions of an `agent.act()` step after a later
 check verifies the result. On the next run, the runner replays those
 actions without a model call. When a control or the expected end state no
-longer matches, the agent takes over from the current screen.
+longer matches, the agent takes over from the current screen. See
+[Self-healing tests](/self-healing).
 
 `agent.assert`, `agent.waitFor`, and `agent.extract` always run live. The
 run summary counts the outcomes:
