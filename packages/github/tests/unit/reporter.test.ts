@@ -122,6 +122,17 @@ describe('reportRun', () => {
     expect(body).toContain('### 🟢 e2e: 1 flaky, 1 passed');
   });
 
+  it('marks an exploration as its own kind, so a job that runs the tests and then explores keeps both comments', async () => {
+    const explored = report({ status: 'passed' });
+    explored.run.explore = { goal: 'Explore checkout', budgets: { maxSteps: 8, timeoutMs: 600_000 }, ended: 'finished', steps: [], findings: [] };
+    const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
+    await reportRun(finished(explored), signal, { key: 'chromium' }, d.deps);
+    expect(postedBody(d.calls).startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test kind=explore key=chromium -->\n')).toBe(true);
+    const tests = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
+    await reportRun(failedRun, signal, { key: 'chromium' }, tests.deps);
+    expect(postedBody(tests.calls).startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test key=chromium -->\n')).toBe(true);
+  });
+
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {
     const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
     await reportRun(failedRun, signal, { key: 'firefox --> 2' }, d.deps);
