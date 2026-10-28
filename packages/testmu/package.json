@@ -87,7 +87,7 @@
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "@agent-device/testmu": "0.21.31",
-    "agent-device": "0.21.31"
+    "@agent-device/testmu": "0.21.33",
+    "agent-device": "0.21.33"
   }
 }
