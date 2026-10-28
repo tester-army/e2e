@@ -122,15 +122,36 @@ describe('reportRun', () => {
     expect(body).toContain('### 🟢 e2e: 1 flaky, 1 passed');
   });
 
-  it('marks an exploration as its own kind, so a job that runs the tests and then explores keeps both comments', async () => {
+  it('keeps a test run and an exploration in one job as two comments, each updated in place', async () => {
     const explored = report({ status: 'passed' });
     explored.run.explore = { goal: 'Explore checkout', budgets: { maxSteps: 8, timeoutMs: 600_000 }, ended: 'finished', steps: [], findings: [] };
-    const d = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
-    await reportRun(finished(explored), signal, { key: 'chromium' }, d.deps);
-    expect(postedBody(d.calls).startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test kind=explore key=chromium -->\n')).toBe(true);
-    const tests = deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' });
-    await reportRun(failedRun, signal, { key: 'chromium' }, tests.deps);
-    expect(postedBody(tests.calls).startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test key=chromium -->\n')).toBe(true);
+    // One pull request whose comments persist across the job's runs.
+    const comments: { id: number; body: string; user: { login: string; type: string } }[] = [];
+    const gh = fakeGitHub({
+      'GET /repos/octo/app/issues/41/comments': () => json(200, comments),
+      'POST /repos/octo/app/issues/41/comments': (call) => {
+        const comment = { id: comments.length + 1, body: (call.body as { body: string }).body, user: { login: 'github-actions[bot]', type: 'Bot' } };
+        comments.push(comment);
+        return json(201, { ...comment, html_url: `https://github.com/octo/app/pull/41#issuecomment-${comment.id}` });
+      },
+      'PATCH *': (call) => {
+        const comment = comments.find((entry) => call.url.endsWith(`/comments/${entry.id}`))!;
+        comment.body = (call.body as { body: string }).body;
+        return json(200, { ...comment, html_url: `https://github.com/octo/app/pull/41#issuecomment-${comment.id}` });
+      },
+    });
+    const shared = { ...deps({ ...actionsEnv, GITHUB_TOKEN: 'ghs' }).deps, fetch: gh.fetch };
+    for (const pass of [1, 2]) {
+      await reportRun(failedRun, signal, {}, shared);
+      await reportRun(finished(explored), signal, {}, shared);
+      expect(comments, `pass ${pass}`).toHaveLength(2);
+    }
+    expect(comments[0]!.body.startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test -->\n### 🔴 e2e: 1 failed')).toBe(true);
+    expect(comments[1]!.body.startsWith('<!-- e2e-github project=dev.example.shop workflow=e2e job=test kind=explore -->\n### 🟢 e2e explore: ')).toBe(true);
+    expect(gh.calls.filter((call) => call.method === 'POST').map((call) => new URL(call.url).pathname)).toEqual([
+      '/repos/octo/app/issues/41/comments',
+      '/repos/octo/app/issues/41/comments',
+    ]);
   });
 
   it('adds the key to the marker, encoded, so matrix replicas keep their own comments', async () => {
