@@ -256,7 +256,7 @@ function plain(locator: PwLocator): ProjectedLocator {
 }
 
 const DISPLAY_VALUE_COMPOSITION_MESSAGE =
-  'displayValue queries cannot scope child queries or serve as a has-filter in this engine';
+  'displayValue queries cannot scope child queries or serve as a has or hasNot filter in this engine';
 
 /**
  * Projects a complete immutable expression onto a Playwright locator within
@@ -266,13 +266,13 @@ const DISPLAY_VALUE_COMPOSITION_MESSAGE =
  * it (see `Candidates`), so a scope, a `has` filter, and an index reach
  * across a closed boundary. Two compositions stay Playwright's own and stop
  * at one: a `selector` expression is the platform's CSS or XPath, and
- * `filter({ hasText })` reads an element's text as Playwright does, light DOM
- * and open roots, so text inside a closed root does not count toward an
- * element outside it.
+ * `filter({ hasText, hasNotText })` reads an element's text as Playwright
+ * does, light DOM and open roots, so text inside a closed root does not count
+ * toward an element outside it.
  *
  * A display-value query resolves to a candidate locator plus a value predicate
  * the surface applies once the candidates are read. Per-element filters
- * (`filter({ hasText, has })`) commute with that predicate, so they compose
+ * (`filter({ hasText, hasNotText, has, hasNot })`) commute with that predicate, so they compose
  * onto the candidate locator as for any other query. Positional selection does
  * not commute (positions are relative to the value-filtered matches), so it is
  * recorded as a step and applied after filtering; a filter that follows a
@@ -309,8 +309,12 @@ function project(scope: PwScope, expression: LocatorExpression, testIdAttribute:
       const source = project(scope, expression.source, testIdAttribute);
       const options: PwFilterOptions = {};
       if (expression.hasText !== undefined) options.hasText = patternToPw(expression.hasText);
+      if (expression.hasNotText !== undefined) options.hasNotText = patternToPw(expression.hasNotText);
       if (expression.has !== undefined) {
         options.has = requireComposable(project(scope, expression.has, testIdAttribute));
+      }
+      if (expression.hasNot !== undefined) {
+        options.hasNot = requireComposable(project(scope, expression.hasNot, testIdAttribute));
       }
       if (source.steps.length > 0) {
         return { ...source, steps: [...source.steps, { kind: 'filter', options }] };

@@ -113,8 +113,8 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | --- | --- |
 | `[directory]` | Where to scaffold; created when missing. Default: the working directory. |
 | `-y`, `--yes` | Skips the prompts. Each answer not given as a flag takes its default: Web engine, Vercel AI Gateway, skill and MCP config in both locations, no install. |
-| `--example <name>` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. See [Starting from an example](#starting-from-an-example). |
-| `--engine <id>` | The engine for a new config: `web`, `mobile`, or `none`. Default: asked. |
+| `--example <name>` | Starts from an example app: `with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`, `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, or `with-maui`. The `with-` prefix is optional. See [Starting from an example](#starting-from-an-example). |
+| `--engine <ids>` | The engines for a new config: `web`, `mobile`, or `none`. Comma-separated or repeated; `web,mobile` writes a target for each. Default: asked. |
 | `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
 | `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
 | `--skills <dirs>` | Where to install the agent skill: `.agents/skills`, `.claude/skills`, or `none`. Comma-separated or repeated. Default: asked. |
@@ -144,9 +144,10 @@ output never shows it.
 
 For a new project, the wizard asks for:
 
-- **The engine.** **Web** (Playwright, the default) adds `@e2e-dev/web`.
-  **Mobile (iOS/Android)** adds `@e2e-dev/mobile`, defaults to iOS on macOS
-  and Android elsewhere, and opens Settings. **None** adds nothing.
+- **The engines.** Select one, both, or none. **Web** (Playwright, the
+  default) adds `@e2e-dev/web`. **Mobile (iOS/Android)** adds
+  `@e2e-dev/mobile`, defaults to iOS on macOS and Android elsewhere, and opens
+  Settings. Selecting none adds no engine, for HTTP tests or your own.
 - **A model provider or subscription for agent steps:** Vercel AI Gateway,
   OpenRouter, an OpenAI-compatible endpoint, ChatGPT, GitHub Copilot, OpenCode
   Console, or SuperGrok. None is for tests that use only locators. The wizard
@@ -168,8 +169,8 @@ field or lockfile, then the invoking package manager, then npm.
 | Creates | Content |
 | --- | --- |
 | `package.json` | Created as a private ESM package when missing; otherwise gets only the missing dependencies and scripts. Sibling packages (`@e2e-dev/web`, `@e2e-dev/mobile`) get the caret range of the version released with the CLI, or that exact version when the CLI is a prerelease. Adds a `test:e2e` script that runs `e2e run`, unless one exists |
-| `e2e.config.ts` | One target for the selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android. With a gateway, `agents.default` is `{ model, system }` |
-| `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead |
+| `e2e.config.ts` | One target per selected engine, with the app in its `app`. Playwright reads `APP_URL` (default `http://localhost:3000`) into `app.url` and shows `app.command` in a comment. Mobile sets `app: { bundleId: 'Settings' }` on iOS and `com.android.settings` on Android, and `workers: 1`. With a gateway, `agents.default` is `{ model, system }` |
+| `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead. With both engines, `tests/web.e2e.ts` and `tests/mobile.e2e.ts` instead, each test with `requires: ['browser']` or `requires: ['device']` so the other target skips it |
 | `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
 | `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
@@ -611,7 +612,8 @@ Out-of-range `--retries` and `--workers` fail with `INVALID_CONFIG` before
 anything starts, as the config value would. `--target`, `--tag`,
 `--exclude-tag`, and `--agent` take each name once. An empty value (`--tag ''`,
 or `--tag "$TAGS"` with the variable unset) is a usage error, exit 2, never a
-wider selection.
+wider selection. An empty `--reporter` is the same usage error, never a run
+with no reporters.
 
 Filters only narrow, and each applies after the one before: positionals, then
 `.only`, `--tag`, `--exclude-tag`, `--grep`, `--grep-invert`, `--last-failed`,
@@ -831,7 +833,7 @@ bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 | Option | Description |
 | --- | --- |
 | `[goal]` | What to explore, in a sentence. Default: `Explore the app and find bugs`. |
-| `--config <path>` | Explicit config path, with the errors of `run`. Default: discovered. |
+| `--config <path>` | Explicit config path, with the errors of `run`. Default: discovered. When no config is found and both stdin and stdout are a terminal, the [`e2e init`](#e2e-init) wizard runs in the working directory first. The exploration follows when nothing is left to do by hand: dependencies installed, a model with its key set or its sign-in done, and a web target (it names the URL it explores). Otherwise init ends with the steps left, then the `e2e explore` command as typed. Without a terminal, no config is `CONFIG_NOT_FOUND`. |
 | `--target <id>` | The one target to explore. Default: the first configured target; with several targets and no flag, it explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
 | `--agent <name>` | The configured agent to explore as. Default: `default`. Its model, `system`, tools, and context are reused. The built-in agent replaces a hand-rolled `StepExecutor`, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
 | `--session <name>` | Starts signed in. The setup test in the config's test files that declares this session runs first. The exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
@@ -1053,12 +1055,13 @@ $ npm install
 ...
 Upgraded: e2e 0.21.2, @e2e-dev/web 0.15.2, @e2e-dev/kernel 0.2.1
 Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
+Updated the agent skill in .agents/skills/e2e/ (12 files)
 ```
 
 | Option | Description |
 | --- | --- |
 | `[version]` | A version such as `0.22.0`, or a dist-tag such as `latest` or `nightly`. Ranges are refused. Default: `latest`. |
-| `--dry-run` | Prints the versions, the new specs, and the install command, and changes nothing. |
+| `--dry-run` | Prints the versions, the new specs, the install command, and the skill copies to update, and changes nothing. |
 
 - **The project.** The nearest `package.json` from the working directory up
   that lists `e2e`.
@@ -1080,8 +1083,10 @@ Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
 - **A failed install.** `package.json` and any lockfile the install changed
   go back as they were. `node_modules` can keep some new versions until the
   next install.
-- **The saved range.** A named version or a prerelease is pinned exactly. A
-  dist-tag keeps the `^` or `~` of the old spec.
+- **The saved range.** Only a package whose installed version changes gets
+  a new spec: a named version or a prerelease is pinned exactly, and a
+  dist-tag keeps the `^` or `~` of the old spec. `e2e upgrade 0.21.3` over
+  an installed 0.21.3 leaves `^0.21.3` as written.
 - **Left alone.** A package linked with `workspace:`, `file:`, `link:`,
   `catalog:`, a path, or a git URL, and an `@e2e-dev/*` package the registry
   doesn't have. When `e2e` itself is linked, the command exits 2.
@@ -1091,8 +1096,12 @@ Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
 - **The registry.** `npm_config_registry` when the package manager sets it,
   else `https://registry.npmjs.org/`.
 - **The agent skill.** A copy in `.agents/skills/e2e` or `.claude/skills/e2e`
-  stays at the old version. The command says so; run `e2e init` to refresh
-  it.
+  is updated to the installed version's after the install, and when
+  everything was already up to date. A `.claude/skills/e2e` symlink to the
+  `.agents/skills` copy follows it. Files the new skill no longer ships stay.
+  A symlink to a copy outside the project isn't written through, and without
+  `node_modules`, as under Yarn Plug'n'Play, the command names `e2e init`
+  instead.
 
 | Exit code | When |
 | --- | --- |

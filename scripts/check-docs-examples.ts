@@ -4,7 +4,7 @@
  * is shown somewhere.
  *
  * The examples are typechecked against the built packages (`pnpm --filter
- * @e2e-dev/docs typecheck`); Mintlify cannot import a file into a page and a
+ * @e2e-dev/docs typecheck`); a page cannot import a file and a
  * skill is plain markdown, so the page carries a copy of each and this script
  * keeps the copies honest.
  *
@@ -26,6 +26,7 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Example file to the page that shows it verbatim. */
 const EXAMPLES: Record<string, string> = {
   'docs/examples/runner/run.ts': 'docs/reference/runner.mdx',
+  'docs/examples/runner/explore.ts': 'docs/reference/runner.mdx',
   'docs/examples/limrun/e2e.config.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/limrun/greeting.e2e.ts': 'docs/integrations/limrun.mdx',
   'docs/examples/quickstart/e2e.config.ts': 'docs/quickstart.mdx',

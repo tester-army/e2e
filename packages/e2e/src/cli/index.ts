@@ -17,6 +17,7 @@ import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
+import { discoverConfig } from '../config/load.ts';
 import { isCiMode } from '../config/resolve.ts';
 import { runsFromCheckout } from '../telemetry/checkout.ts';
 import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERROR_CODE } from '../telemetry/events.ts';
@@ -141,9 +142,11 @@ function rejectForwardedFlags(command: Command, files: readonly string[]): void 
 
 type Reporter = BuiltinReporter;
 
-/** Reporter ids, comma-separated; the CLI only rejects ids it does not know. */
+/** Reporter ids, comma-separated. */
 function parseReporters(value: string): Reporter[] {
-  return parseList(value).map((id) => {
+  const ids = parseList(value);
+  if (ids.length === 0) throw new InvalidArgumentError('must name at least one reporter');
+  return ids.map((id) => {
     if (!isBuiltinReporter(id)) {
       throw new InvalidArgumentError(`unknown reporter "${id}"; expected ${BUILTIN_REPORTERS.join(', ')}`);
     }
@@ -383,6 +386,29 @@ function reportFailure(telemetry: Telemetry, cause: unknown): void {
   telemetry.failSession(error.code);
 }
 
+/**
+ * `e2e explore` where no config is found: in a terminal, the init wizard runs
+ * in the working directory first, and the exploration starts once it has
+ * scaffolded with nothing left to do by hand. Returns whether to explore.
+ * Without a terminal, or when discovery finds a config or refuses (two configs
+ * side by side), nothing is written and the exploration reports what it finds.
+ */
+async function initBeforeExplore(telemetry: Telemetry, command: Command): Promise<boolean> {
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) return true;
+  const cwd = process.cwd();
+  try {
+    if (discoverConfig(cwd).configPath !== undefined) return true;
+  } catch {
+    return true;
+  }
+  // The invocation as typed, goal and flags included, for the line that tells the user what to run next.
+  const continueWith = ['e2e', ...(command.parent?.args ?? [command.name()])];
+  const { exitCode, ready, ...outcome } = await init(cwd, { interactive: true, continueWith });
+  telemetry.record(initCompletedEvent(outcome));
+  if (!ready) process.exitCode = exitCode;
+  return ready;
+}
+
 /** `command` and every command below it. */
 function withSubcommands(command: Command): Command[] {
   return [command, ...command.commands.flatMap(withSubcommands)];
@@ -460,7 +486,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .command('init')
     .summary('scaffold an ESM package, e2e.config.ts, an example test, .gitignore entries, and the agent skill')
     .description(
-      'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, tests/example.e2e.ts, .gitignore entries, and the e2e skill for coding agents. Prompts for the engine, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills linked to it.',
+      'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, an example test per engine, .gitignore entries, and the e2e skill for coding agents. Prompts for the engines, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills linked to it.',
     )
     .argument('[directory]', 'project directory, created when missing (default: the current directory)')
     .option('-y, --yes', 'skip the prompts; each answer not given as a flag takes its default: web, vercel, every skill and MCP location, no installation');
@@ -548,7 +574,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .command('mcp')
     .summary('serve the project to a coding agent over MCP')
     .description(
-      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, screenshot, and the project\'s own), tools describes them, close_session ends it. The agent explores the real app before writing a test. Register it with the client, e.g. claude mcp add --scope project e2e -- npx e2e mcp.',
+      'Serve an MCP server over stdio for a coding agent such as Claude Code or Cursor: open_session opens a live session on one target of any config the agent names, call runs the session\'s tools (observe, tap, type, press, select, scroll, navigate, type_secret, locate, test_lines, screenshot, and the project\'s own), tools describes them, close_session ends it. Each action prints the test line that repeats it, so the agent writes a test while it walks the real app. Register it with the client, e.g. claude mcp add --scope project e2e -- npx e2e mcp.',
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <name>', 'target every session opens on (default: the only target, or the one open_session names)')
@@ -806,8 +832,9 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           video?: RecordingMode | true;
         },
         command: Command,
-      ) =>
-        runToOutcome(telemetry, command, (signals) =>
+      ) => {
+        if (options.config === undefined && !(await initBeforeExplore(telemetry, command))) return;
+        await runToOutcome(telemetry, command, (signals) =>
           explore({
             goal,
             configPath: options.config,
@@ -827,7 +854,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             forceSignal: signals.forceSignal,
             notice: (message) => process.stderr.write(`e2e explore: ${message}\n`),
           }),
-        ),
+        );
+      },
     );
 
   const listCommand = program
@@ -911,10 +939,10 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .alias('update')
     .summary('upgrade e2e and its @e2e-dev packages to the latest or a given version (alias: update)')
     .description(
-      'Upgrade the e2e of the nearest package.json that lists it, to the latest release, a dist-tag such as nightly, or one version, and every @e2e-dev/* package that package.json lists to its newest release whose peer ranges accept the new versions. The new specs go into package.json, each in the section it was in, and one install with the project\'s package manager resolves them; a failed install puts package.json and the lockfile back. A named version or a prerelease is pinned exactly; a dist-tag keeps the ^ or ~ of the old spec. Packages linked from a workspace, a path, or git are left alone.',
+      'Upgrade the e2e of the nearest package.json that lists it, to the latest release, a dist-tag such as nightly, or one version, and every @e2e-dev/* package that package.json lists to its newest release whose peer ranges accept the new versions. The new specs go into package.json, each in the section it was in, and one install with the project\'s package manager resolves them; a failed install puts package.json and the lockfile back. A named version or a prerelease is pinned exactly; a dist-tag keeps the ^ or ~ of the old spec. Packages linked from a workspace, a path, or git are left alone. Copies of the agent skill in .agents/skills/e2e and .claude/skills/e2e are then updated to the installed version\'s.',
     )
     .argument('[version]', 'a version such as 0.22.0, or a dist-tag such as latest or nightly (default: latest)', parseUpgradeTarget)
-    .option('--dry-run', 'print the versions, the new specs, and the install command, and change nothing')
+    .option('--dry-run', 'print the versions, the new specs, the install command, and the skill copies to update, and change nothing')
     .addHelpText(
       'after',
       [

@@ -398,6 +398,39 @@ describe('lifecycle', () => {
     expect(coldEnv).toEqual({});
   });
 
+  it('skips a booted device another agent-device session holds, keeps one its own slot session holds, and fails when every booted one is held', async () => {
+    const h = harness({ device: undefined });
+    h.fake.respond('devices.list', () => [
+      { platform: 'ios', id: 'A', name: 'A', booted: true, claimedBy: { session: 't3-holder', workspace: '/elsewhere' } },
+      { platform: 'ios', id: 'B', name: 'B', booted: true },
+      { platform: 'ios', id: 'C', name: 'C', booted: true, claimedBy: { session: 'e2e-ios-1', workspace: '/project' } },
+      { platform: 'ios', id: 'D', name: 'D', booted: true, claimedBy: { session: 'e2e-ios-2', workspace: '/project' } },
+    ]);
+    const lines: string[] = [];
+    const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 2, env: {}, signal: new AbortController().signal, headed: false, log: (line: string) => lines.push(line) };
+    const result = await h.prepare(info);
+    // e2e-ios-2 is no slot of a two-slot run, so its device is as foreign as another tool's.
+    expect(result).toMatchObject({ workers: 2 });
+    expect(h.fake.calls.filter((call) => call.method === 'devices.boot').map((call) => call.args)).toEqual([
+      { platform: 'ios', udid: 'B' },
+      { platform: 'ios', udid: 'C' },
+    ]);
+    expect(lines[0]).toBe(
+      '4 booted ios device(s), skipping 2 held by another agent-device session (A by session "t3-holder", D by session "e2e-ios-2"); driving 2: B, C',
+    );
+
+    const held = harness({ device: undefined });
+    held.fake.respond('devices.list', () => [
+      { platform: 'ios', id: 'A', name: 'A', booted: true, claimedBy: { session: 't3-holder', workspace: '/elsewhere' } },
+    ]);
+    await expect(held.prepare({ ...info, slots: 1 })).rejects.toMatchObject({
+      code: 'ENGINE_FAILURE',
+      retryable: false,
+      message: expect.stringMatching(/every booted ios device is held by another agent-device session \(A by session "t3-holder"\)/),
+    });
+    expect(held.fake.methods()).not.toContain('devices.boot');
+  });
+
   it('drives a discovered Android emulator by its serial, and reads a configured serial, UDID, or name as agent-device does', async () => {
     const h = harness({ device: undefined, platform: 'android' });
     h.fake.respond('devices.list', () => [{ platform: 'android', id: 'emulator-5554', name: 'test', booted: true }]);
@@ -1129,7 +1162,9 @@ describe('perform', () => {
       ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 1000 }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.hover', { ref: '@e4' }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: 'blue', settle: true, settleQuietMs: 150 }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: '', settle: true, settleQuietMs: 150 }],
       ['interactions.press', { ref: '@e6', settle: true, settleQuietMs: 150 }],
       ['command.keyboard', { action: 'enter' }],
@@ -1411,6 +1446,50 @@ describe('device fixture', () => {
     } as unknown as EngineFixtureContext;
     return h.engine.fixtures!['device']!(context) as Device;
   }
+
+  describe('unstable_raw', () => {
+    const BOOTED = { platform: 'ios', id: '5A1C0DE5-0000-4000-8000-000000000001', device: 'iPhone 17 Pro', booted: true };
+
+    it('names the session, the device agent-device booted, and hands out the session client, outside any step', async () => {
+      const h = harness({ device: 'iPhone 17 Pro' });
+      h.fake.respond('devices.boot', () => BOOTED);
+      await openAttempt(h);
+      const device = fixture(h);
+      expect(device.unstable_raw).toEqual({
+        platform: 'ios',
+        session: 'e2e-ios-simulator-0',
+        deviceId: BOOTED.id,
+        deviceName: 'iPhone 17 Pro',
+        selection: { platform: 'ios', device: 'iPhone 17 Pro' },
+        client: h.fake.client,
+      });
+      expect(declared).not.toHaveProperty('unstable_raw');
+      const before = h.fake.calls.length;
+      await device.unstable_raw.client.apps.list(device.unstable_raw.selection);
+      expect(h.fake.calls.slice(before)).toEqual([{ method: 'apps.list', args: { platform: 'ios', device: 'iPhone 17 Pro' } }]);
+    });
+
+    it('follows the session option and selects a configured UDID by id', async () => {
+      const h = harness({ device: BOOTED.id, session: 'host' });
+      h.fake.respond('devices.boot', () => BOOTED);
+      await openAttempt(h);
+      const { session, selection } = fixture(h).unstable_raw;
+      expect(session).toBe('host-0');
+      expect(selection).toEqual({ platform: 'ios', udid: BOOTED.id });
+    });
+
+    it('is INVALID_STATE once the worker disposed the session', async () => {
+      const h = harness();
+      h.fake.respond('devices.boot', () => BOOTED);
+      await openAttempt(h);
+      const device = fixture(h);
+      const handle = device.unstable_raw;
+      await h.engine.endAttempt!(cleanup());
+      await h.engine.dispose!(cleanup());
+      expect(() => device.unstable_raw).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
+      expect(() => handle.client).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
+    });
+  });
 
   describe('dismissing a keyboard that has no dismiss key', () => {
     const NO_DISMISS_KEY = () => {
@@ -2338,6 +2417,202 @@ describe('video', () => {
   });
 });
 
+describe('input freshness', () => {
+  beforeEach(autoAdvanceTimers);
+
+  /** A uniquely identified field and its neighbor, after a slow accessibility capture. */
+  function form(y = 237, changes: Partial<RawNode> = {}) {
+    const field: RawNode = {
+      ref: '@e20', index: 1, parentIndex: 0, depth: 1, type: 'secure-text-field',
+      label: 'Account', identifier: 'account', rect: { x: 40, y, width: 322, height: 49 }, ...changes,
+    };
+    return {
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        SETTINGS_NODES[0]!, field,
+        { ref: '@e21', index: 2, parentIndex: 0, depth: 1, type: 'text-field', label: 'Username', identifier: 'username', rect: { x: 40, y: 218, width: 322, height: 49 } },
+      ],
+    };
+  }
+
+  for (const origin of ['test', 'agent'] as const) {
+    for (const kind of ['fill', 'clear'] as const) {
+      it(`uses one fresh binding after a slow capture for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
+        const old = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        h.fake.respond('capture.snapshot', () => form(126, { ref: '@e42' }));
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: true } : { kind };
+        await h.engine.perform!(old.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+        expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+      });
+
+      it(`acts on a sliding input with one capture for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => form(2000));
+        const sliding = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        h.fake.respond('capture.snapshot', () => form(126, { ref: '@e42' }));
+        const startedAt = Date.now();
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await h.engine.perform!(sliding.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+        if (origin === 'test') expect(Date.now() - startedAt).toBeGreaterThanOrEqual(500);
+      });
+
+      it(`rejects an originally non-input target before waiting or capturing for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => form(237, { type: 'button' }));
+        const button = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        const startedAt = Date.now();
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(button.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(Date.now()).toBe(startedAt);
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+    }
+  }
+
+  it('refreshes an unchanged input even when the transition shortcut skips the wait', async () => {
+    const h = harness();
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
+    const search = await observed(h, 'Search');
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => node.label === 'Search' ? { ...node, ref: '@e42' } : node) }));
+    const startedAt = Date.now();
+    await h.engine.perform!(search.ref, { kind: 'clear' }, { ...operation(), origin: 'test' });
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e42', text: '' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+  });
+
+  it.each([
+    ['missing', () => ({ ...form(), nodes: [SETTINGS_NODES[0]!] })],
+    ['renamed', () => form(237, { label: 'Other account' })],
+    ['different identifier', () => form(237, { identifier: 'other' })],
+    ['truncated', () => ({ ...form(), truncated: true })],
+    ['non-editable', () => form(237, { type: 'button' })],
+    ['no longer secure', () => form(237, { type: 'text-field' })],
+    ['disabled', () => form(237, { enabled: false })],
+    ['hidden', () => form(237, { visibleToUser: false })],
+  ] as const)('rejects a %s target without dispatching or exposing the value', async (_name, snapshot) => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', snapshot);
+    const failure = h.engine.perform!(old.ref, { kind: 'fill', value: 'not-for-diagnostics', sensitive: true }, operation());
+    await expect(failure).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    await expect(failure).rejects.not.toThrow('not-for-diagnostics');
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  for (const kind of ['fill', 'clear'] as const) {
+    it.each([0, 1])(`can ${kind} identical OTP input %i with the existing nearest-node matching`, async (selected) => {
+      const h = harness();
+      await openAttempt(h);
+      const digits = (refs: readonly string[], shift: number) => ({
+        ...SETTINGS_SNAPSHOT,
+        nodes: [
+          SETTINGS_NODES[0]!,
+          ...refs.map((ref, index) => ({ ref, index: index + 1, parentIndex: 0, depth: 1, type: 'text-field', label: 'Digit', rect: { x: 40, y: 100 + index * 100 + shift, width: 49, height: 49 } })),
+        ],
+      });
+      h.fake.respond('capture.snapshot', () => digits(['@e20', '@e21'], 0));
+      const snapshot = await h.engine.observe!(operation());
+      const target = [...walk(snapshot.root)].filter((node) => node.name === 'Digit')[selected]!;
+      h.fake.respond('capture.snapshot', () => digits(['@e41', '@e42'], 10));
+      const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+      const action = kind === 'fill' ? { kind, value: '7', sensitive: false } : { kind };
+      await h.engine.perform!(target.ref, action, { ...operation(), origin: 'test' });
+      expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: selected === 0 ? '@e41' : '@e42' });
+      expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+    });
+  }
+
+  it('recovers from a truncated capture after re-observation', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => ({ ...form(), truncated: true }));
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+    h.fake.respond('capture.snapshot', () => form());
+    await h.engine.perform!((await observed(h, 'Account')).ref, { kind: 'clear' }, operation());
+    expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+  });
+
+  it('uses the newest backend ref for an unchanged uniquely identified input without taking pixels', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form(237, { ref: '@e42', focused: true }));
+    await h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, operation());
+    expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: 'example' });
+    expect(h.fake.methods()).not.toContain('capture.screenshot');
+    expect(h.fake.lastArgs('capture.snapshot')).toEqual({ interactiveOnly: false });
+  });
+
+  it('does not silently accept changed security facts during a transition', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form(126, { enabled: false }));
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    await expect(h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, { ...operation(), origin: 'test' })).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+  });
+
+  it('does not send input if the preflight consumed the input budget', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, { ...operation(), timeoutMs: 500 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it.each(['fill', 'clear'] as const)('does not capture or send %s after its transition wait is cancelled', async (kind) => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const search = await observed(h, 'Search');
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    const controller = new AbortController();
+    const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+    const pending = h.engine.perform!(search.ref, action, { ...operation(controller.signal), origin: 'test' });
+    setTimeout(() => controller.abort(), 20);
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it('does not dispatch when aborted during the preflight capture', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    const controller = new AbortController();
+    h.fake.respond('capture.snapshot', async () => { controller.abort(); return form(); });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+});
+
 describe('deterministic actions', () => {
   const test = (): OperationContext => ({ ...operation(), origin: 'test' });
 
@@ -2421,6 +2696,71 @@ describe('deterministic actions', () => {
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     await h.engine.perform!(landed.ref, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
+  it.each(
+    (['tap', 'focus', 'fill', 'clear', 'type', 'press character', 'focused character'] as const).flatMap(action =>
+      (['measured', 'tree'] as const).map(signal => [action, signal] as const)),
+  )('reobserves after %s when %s keyboard state changes before the control moves', async (action, signal) => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    const visible = signal === 'measured'
+      ? { ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible' as const, frame: { x: 0, y: 580, width: 390, height: 264 } } }
+      : { ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, { index: 11, ref: '@keyboard', type: 'Keyboard', rect: { x: 0, y: 580, width: 390, height: 264 } }] };
+    const search = await observed(h, 'Search');
+    if (action === 'type') await h.engine.keyboard!.type('blue', { replace: false }, test());
+    else if (action === 'focused character') await h.engine.keyboard!.press('a', test());
+    else if (action === 'press character') await h.engine.perform!(search.ref, { kind: 'press', key: 'a' }, test());
+    else if (action === 'fill') await h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
+    else if (action === 'clear') await h.engine.perform!(search.ref, { kind: 'clear' }, test());
+    else await h.engine.perform!(search.ref, { kind: action }, test());
+    // The first stale layout already reports the keyboard, as in the live probe.
+    h.fake.respond('capture.snapshot', () => visible);
+    const stale = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({
+      ...visible,
+      nodes: visible.nodes.map(node => node.identifier === 'ABOUT' || node.label === 'About'
+        ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } } : node),
+    }));
+    await h.engine.perform!(stale.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
+  it.each(['Enter', 'focused Enter', 'dismiss'] as const)('reobserves after %s hides the keyboard before the control moves', async action => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible', frame: { x: 0, y: 580, width: 390, height: 264 } } }));
+    const search = await observed(h, 'Search');
+    if (action === 'Enter') await h.engine.perform!(search.ref, { kind: 'press', key: 'Enter' }, test());
+    else if (action === 'focused Enter') await h.engine.keyboard!.press('Enter', test());
+    else await h.surface.dismissKeyboard(test().signal);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } }));
+    const stale = await observed(h, 'About');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' },
+      nodes: SETTINGS_NODES.map(node => node.identifier === 'ABOUT' || node.label === 'About'
+        ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } } : node),
+    }));
+    await h.engine.perform!(stale.ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+  });
+
+  it.each(['type', 'fill', 'clear'] as const)('keeps unchanged controls immediate after %s when keyboard state is unchanged', async action => {
+    for (const visible of [false, true]) {
+      const h = harness({ transition: 120 });
+      await openAttempt(h);
+      await sleep(150);
+      h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT,
+        keyboard: visible ? { kind: 'visible', frame: { x: 0, y: 580, width: 390, height: 264 } } : { kind: 'absent' },
+      }));
+      const search = await observed(h, 'Search');
+      if (action === 'type') await h.engine.keyboard!.type('blue', { replace: false }, test());
+      else if (action === 'fill') await h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
+      else await h.engine.perform!(search.ref, { kind: 'clear' }, test());
+      await tapsAtOnce(h, await observed(h, 'About'), { ref: '@e4' });
+    }
   });
 
   it('acts on the duplicate nearest where the control was when a fresh snapshot lists several alike', async () => {

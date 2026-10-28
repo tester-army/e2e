@@ -16,7 +16,7 @@ import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
-import type { ActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
+import type { ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
 import { containerKey, describeAction, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
@@ -111,6 +111,8 @@ export interface ActionDispatcherOptions {
   readonly trace: () => StepTraceSession | undefined;
   /** The test's `onAction` hook, handed each completed action. */
   readonly onAction?: ActionHook | undefined;
+  /** The test's `onBeforeAction` hook, handed each action before it runs. */
+  readonly onBeforeAction?: BeforeActionHook | undefined;
 }
 
 export class ActionDispatcher {
@@ -279,6 +281,7 @@ export class ActionDispatcher {
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
         this.accounting.reserveAction();
+        await this.before();
         this.options.trace()?.recordGap(call.name);
       }
       const name = `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`;
@@ -577,6 +580,7 @@ export class ActionDispatcher {
 
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
     this.accounting.reserveAction();
+    await this.before();
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
     let action: RecordableAction;
     try {
@@ -628,7 +632,7 @@ export class ActionDispatcher {
   private async notify(kind: RecordedAction['name'], action: string, summary: () => string): Promise<void> {
     const hook = this.options.onAction;
     if (hook === undefined || this.accounting.closed) return;
-    try {
+    await this.invokeHook('onAction', async () => {
       await this.feed.settleNow(SETTLE_AFTER[kind].look);
       await hook({
         index: this.accounting.metrics.actionSteps,
@@ -636,13 +640,33 @@ export class ActionDispatcher {
         summary: summary(),
         source: this.accounting.replayingTrace ? 'replay' : 'model',
       });
+    });
+  }
+
+  /** Hands the action about to run to the test's `onBeforeAction` hook. */
+  private async before(): Promise<void> {
+    const hook = this.options.onBeforeAction;
+    if (hook === undefined || this.accounting.closed) return;
+    await this.invokeHook('onBeforeAction', async () => {
+      await hook({
+        index: this.accounting.metrics.actionSteps,
+        source: this.accounting.replayingTrace ? 'replay' : 'model',
+      });
+      this.accounting.checkpoint();
+    });
+  }
+
+  /** Observer failures stop the step, never becoming an executor retry or replay hand-off. */
+  private async invokeHook(name: 'onAction' | 'onBeforeAction', body: () => Promise<void>): Promise<void> {
+    try {
+      await body();
     } catch (cause) {
       if (cause === this.accounting.hardStop || this.accounting.signal.aborted) throw cause;
       const error = toAgentError(cause);
       // A nested step's own budget or deadline is not this step's: the
       // runtime vouches only for the stops it recorded itself.
       const code = RUNTIME_CODES.has(error.code) ? 'ACTION_FAILED' : error.code;
-      throw this.accounting.fatalize(new ActionHookError(code, `${this.accounting.api} onAction failed: ${error.message}`, { cause }));
+      throw this.accounting.fatalize(new ActionHookError(code, `${this.accounting.api} ${name} failed: ${error.message}`, { cause }));
     }
   }
 

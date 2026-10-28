@@ -22,7 +22,7 @@ The Rules and Feedback sections below still apply.
 | When you are | Topic | Read |
 | --- | --- | --- |
 | Adding e2e to a project, writing `e2e.config.ts`, starting the app from the config, signing in to a model, setting up mobile targets | `setup` | [references/setup.md](references/setup.md) |
-| Looking at the running app, checking a UI change, taking a screenshot or video, or trying a locator before writing it, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
+| Looking at the running app, checking a UI change, taking a screenshot or video, trying a locator, running a test line, or walking a flow while you write its test, over `e2e mcp` | `mcp` | [references/mcp.md](references/mcp.md) |
 | Writing or fixing a test: fixtures, locators, actions, matchers, sign-in sessions, the `browser` fixture, API-only tests | `writing-tests` | [references/writing-tests.md](references/writing-tests.md) |
 | Adding `agent.*` steps, picking a model, cutting cost, budgets, the replay cache | `agent` | [references/agent.md](references/agent.md) |
 | Running tests: CLI flags, CI, reporters, trace pages, `report.json` for scripts, exit codes | `running` | [references/running.md](references/running.md) |
@@ -34,7 +34,7 @@ For anything the references do not cover, the full documentation ships in
 the `docs/` directory of the installed `e2e` package
 (`node_modules/e2e/docs` in a single-package project); a link such as
 `/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
-Next.js, Astro, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
+Next.js, Astro, Angular, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
 Flutter, and .NET MAUI are in https://github.com/tester-army/e2e/tree/main/examples.
 
 ## Quick start
@@ -86,19 +86,25 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
 1. Look at what exists: `e2e.config.ts`, `.mts`, `.js`, or `.mjs`, the `tests` glob
    (default `tests/**/*.e2e.ts`), `e2e` in `package.json`. Nothing there:
    follow `setup` when the user has requested e2e (see Rules).
-2. Learn the screens before writing a test: routes, labels, roles, button
-   text. Semantic locators need the accessible names the app renders, so read
-   the components, open the page with `--headed`, or drive the live app over
-   a connected `e2e mcp` server (topic `mcp`): `open_session`, `observe`,
-   and `locate` show exact names and check a locator before you write it,
-   and each action prints the test line that repeats it.
-3. Write `tests/<feature>.e2e.ts`. Drive the flow with `agent.act`, one
-   atomic goal per call, and pin each outcome right after with `expect` or
-   `agent.assert`. A test with three goals makes three calls.
-   Start it on the screen it covers, since every rerun pays for the steps
-   before: in a browser a saved session instead of the sign-in form and
-   `app.open` on that screen's path, on a device `device.openLink`, and data
-   from the app's API (topic `writing-tests`).
+2. With a connected `e2e mcp` server (topic `mcp`), write the test while
+   you walk the flow, not from memory after the walk. A test written
+   afterwards fails on each name or step you got wrong, one run at a time.
+   Before `open_session`, create `tests/<feature>.e2e.ts`, opening on the
+   screen it covers (step 3). Then add each step to the file as you take it
+   in the session. An `act` goal goes in before you walk its path, and the
+   path's actions stay out of the test. A `screen` line is the `Test line:`
+   its action printed, copied as is. When the outcome shows, run its
+   `expect` with `run_code` and add it once it passes; a passing statement
+   also joins `test_lines`. The walk ends with the test written. Without a
+   server, learn the accessible names the app renders from the components or
+   a `--headed` run.
+3. A step is an `agent.act` goal or `screen` lines. Drive the flow with
+   `agent.act`, one atomic goal per call, and pin each outcome right after
+   with `expect` or `agent.assert`. A test with three goals makes three
+   calls. Start the test on the screen it covers, since every rerun pays
+   for the steps before: in a browser a saved session instead of the
+   sign-in form and `app.open` on that screen's path, on a device
+   `device.openLink`, and data from the app's API (topic `writing-tests`).
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
 4. Run only the test you are working on:
@@ -133,13 +139,19 @@ screen.
    the lines after it as far as you can: against the screen at failure, the
    app source, or a live session.
 4. For a screen the evidence and the source leave out, look live (topic
-   `mcp`): open or reuse a session, go straight to that screen, then
-   `observe` and `locate`. On the web, `navigate` to the path of the `❯ at`
-   URL or the screen's route, and tap only to reach a state no URL opens. A
-   device session starts on the app's launch screen: take the shortest path
-   from there.
-5. Rerun only that test, the way the next section says (topic `mcp` says
-   when a session must close first). Repeat with the next failure.
+   `mcp`). `open_session {test: "tests/<feature>.e2e.ts"}` (with `:<line>`
+   of its `test(` call when the file holds several) runs the test and stops
+   on the live screen where it failed. Act out the lines after it there and
+   put the `Test line:` each action prints in place of a wrong one, so the
+   next rerun catches every mistake. Otherwise open or reuse a session, go
+   straight to that screen, then `observe` and `locate`, or `run_code` for
+   the fixed line and the ones after it. On the web, `navigate` to the path
+   of the `❯ at` URL or the screen's route, and tap only to reach a state no
+   URL opens. A device session starts on the app's launch screen: take the
+   shortest path from there.
+5. Rerun only that test, the way the next section says, or in a new
+   session with `open_session {test}` (topic `mcp` says when a session
+   must close first). Repeat with the next failure.
 
 ## Rerunning a test while you fix it
 

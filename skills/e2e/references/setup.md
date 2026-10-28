@@ -38,14 +38,14 @@ pnpm dlx e2e init  # pnpm
 With `e2e` installed, run the installed version: `npx e2e init` or `pnpm exec
 e2e init`; `npx e2e init my-app` scaffolds into a new directory.
 
-The wizard picks an engine and a model provider (None for tests without AI)
+The wizard picks the engines (web, mobile, or both) and a model provider (None for tests without AI)
 and offers to install this skill, register the MCP server for your coding
 agent, and install dependencies. `--yes` picks the web engine (Playwright) and Vercel AI
 Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
 symlinks to it), registers MCP in `.mcp.json` and `.cursor/mcp.json`, skips
 installing dependencies. A flag per question overrides one default:
-`--engine`, `--gateway`, `--endpoint`, `--skills`, `--mcp` (comma-separated
-locations, or `none`), `--install`; `npx e2e init --help` lists the values.
+`--engine` (`web,mobile` for both), `--gateway`, `--endpoint`, `--skills`,
+`--mcp` (comma-separated locations, or `none`), `--install`; `npx e2e init --help` lists the values.
 To start a new app from one of the repo's examples instead, run `npx e2e init
 my-app --example with-vite` (or `with-expo`, `with-flutter`, ...): it
 downloads the example into an empty directory with its config and tests, then
@@ -350,8 +350,9 @@ export default {
   `app.command` (`npx expo start --port 8081`) with `readyUrl:
   'http://localhost:8081/status'` starts it.
 - One worker per device. No `device`: every booted simulator or emulator of
-  the platform, and every connected phone, is the pool, up to `workers` (none booted: agent-device boots
-  one); one `device`: one worker whatever `workers` says; a list (`device:
+  the platform, and every connected phone, is the pool, up to `workers`,
+  minus devices another agent-device session holds (none booted: agent-device boots
+  one; all held: `prepare` fails); one `device`: one worker whatever `workers` says; a list (`device:
   ['iPhone 17', 'iPhone 17 Pro']`): an explicit pool. Devices boot in
   `prepare`, before the run's clock. Two sessions on one device fight over
   it: for parallel MCP sessions or bug-bash explorers, declare one target per
@@ -375,14 +376,23 @@ export default {
   exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
   `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
   recording of the whole session.
-- Only a control that appeared or moved with the previous action waits out
-  `transition` (default 500 ms); agent actions settle `settle` ms (default
+- A control that appeared or moved with the previous action waits out
+  `transition` (default 500 ms). Opening or closing the keyboard also uses
+  the remaining budget. Agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
+- Mobile `fill` and `clear` re-read the field before typing, replay included.
+  Missing fields, changed security state, or incomplete captures return
+  `NODE_STALE` before mutation, then retry after a fresh observation.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
+- `device.unstable_raw` gives the session name, device id and name, and an
+  agent-device `client` bound to the test's session, for what `device`
+  lacks. Client calls are not steps: no report, trace, replay, or secret
+  redaction. Unstable: may change or go away in any release.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.

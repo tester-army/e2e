@@ -40,4 +40,24 @@ export class AttemptBudget {
     };
     return controller;
   }
+
+  /**
+   * Runs `body` with the running phase's deadline brought forward to
+   * `timeoutMs` from now, when that is sooner, then puts the phase's own
+   * deadline back. Every fixture operation in `body` is capped by it, the way
+   * the test deadline caps them, so a wait that would outlast it fails at it
+   * with the error a test gets. One body at a time: `e2e mcp`'s `run_code`
+   * runs its statements one after another.
+   */
+  async capped<T>(timeoutMs: number, body: () => Promise<T>): Promise<T> {
+    const phase = this.current;
+    const capped = { signal: phase.signal, deadline: Deadline.min(phase.deadline, new Deadline(timeoutMs)) };
+    this.current = capped;
+    try {
+      return await body();
+    } finally {
+      // A phase entered meanwhile is that phase's to end.
+      if (this.current === capped) this.current = phase;
+    }
+  }
 }

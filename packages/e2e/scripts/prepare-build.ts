@@ -7,7 +7,7 @@
  * Only the `.mdx` pages and the `snippets/` they import ship: each page
  * carries its own copy of every `docs/examples` file it shows
  * (`check-docs-examples.ts`), a snippet such as the provider list holds
- * content no page repeats, and the site assets mean nothing outside Mintlify. The root README ships as
+ * content no page repeats, and the images and `docs.json` only serve the site. The root README ships as
  * the package README, so the npm page matches the repository page. npm
  * resolves no relative paths, so its `./` links become GitHub URLs: raw files
  * for images, the repository view for everything else.

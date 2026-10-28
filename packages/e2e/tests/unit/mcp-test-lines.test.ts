@@ -72,6 +72,7 @@ async function harness(options: {
   readonly matches: Readonly<Record<string, readonly Fake[]>>;
   readonly actions?: Partial<ExecutorActions>;
   readonly tree?: boolean;
+  readonly testRan?: string;
 }): Promise<Harness> {
   const root: Fake = { id: 'root', role: 'document', name: 'Page', y: 0, children: options.screen };
   const base = fakeExecutorContext({ secrets: [{ name: 'admin.password', purpose: 'password' }, { name: 'apiKey', purpose: 'generic-secret' }] }).context;
@@ -110,6 +111,7 @@ async function harness(options: {
     redact: (text) => text.replaceAll('sk-live-0000', '<secret:apiKey>'),
     appBase: { href: 'http://127.0.0.1:4100/', origin: 'http://127.0.0.1:4100' },
     fills: { credentials: [{ name: 'admin', username: 'ada@example.test', password: 'admin.password' }], secrets: ['apiKey'] },
+    testRan: options.testRan,
   });
   const watched = lines.watch(context);
   const tools: ToolSet = { ...lines.wrap(createGrammarTools(watched)), test_lines: lines.tool() };
@@ -415,6 +417,37 @@ describe('SessionTestLines', () => {
         'Paste it into a test body, async ({ app, screen }) => { ... }, and add an expect after each step that should change the screen.',
       ].join('\n'),
     );
+  });
+
+  it('drafts the lines after a test the session ran as the ones that continue it', async () => {
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] }, testRan: 'tests/profile.e2e.ts:4' });
+    await session.run('tap', { target: 'n2' });
+    expect(session.lines.draft()).toBe(
+      [
+        "Test lines from this session's actions after test tests/profile.e2e.ts:4 stopped, in order (1 lines):",
+        '',
+        'await screen.getByRole("button", "Save").tap();',
+        '',
+        'Put them in that test where it stopped, in place of the line that failed or after its last line, and add an expect after each step that should change the screen.',
+      ].join('\n'),
+    );
+  });
+
+  it('drafts the statements run_code passed among the action lines, each awaited and ended', async () => {
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] } });
+    session.lines.opened();
+    session.lines.ran(["await screen.getByLabel('Email').fill(credentials.user('admin').password);", "expect(screen.getByRole('status')).toHaveText('Saved')"]);
+    await session.run('tap', { target: 'n2' });
+    const draft = session.lines.draft();
+    expect(draft.split('\n').slice(0, 6)).toEqual([
+      "Draft test body from this session's actions, in order (4 lines):",
+      '',
+      'await app.open();',
+      "await screen.getByLabel('Email').fill(credentials.user('admin').password);",
+      "await expect(screen.getByRole('status')).toHaveText('Saved');",
+      'await screen.getByRole("button", "Save").tap();',
+    ]);
+    expect(draft).toContain("Import credentials from 'e2e'.");
   });
 
   it('hands the caller the observation it asked for, tree or not, and keeps the context live', async () => {

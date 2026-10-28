@@ -30,7 +30,10 @@ async function setup() {
     waitForLoadState: async () => undefined,
     viewportSize: () => ({ width: 100, height: 80 }),
     url: () => 'https://app.test/current',
-    frames: () => [{ locator: (selector: string) => selector.startsWith('e2e-closed') ? masks[1] : masks[0] }],
+    frames: () => [{
+      locator: (selector: string) => selector.startsWith('e2e-closed') ? masks[1] : masks[0],
+      evaluateHandle: () => ({ evaluate: async () => undefined, dispose: async () => undefined }),
+    }],
     screenshot,
   } as unknown as Page;
   const browser = {

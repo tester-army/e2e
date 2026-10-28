@@ -14,12 +14,14 @@ acts on it, and checks its work.
 
 | Task | Without `e2e mcp` | With `e2e mcp` |
 | --- | --- | --- |
-| Write a test | Guesses locators, runs, fails, guesses again | Copies a checked test line from each action it takes |
+| Write a test | Guesses locators, runs, fails, guesses again | Writes the test as it walks the flow, from checked test lines and lines it ran with `run_code` |
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
+| Fix a failing test | Clicks through the flow again | Runs the test and stops on the failure |
 | Show a change in a PR | Describes it | Records a video |
 
-The server needs no model.
+The server needs no model. A test it runs needs one only for an agent
+step with no recording.
 
 ## Set it up
 
@@ -71,7 +73,7 @@ A session starts the target's app command, if it has one.
 ## Ask the agent
 
 - "Add a Remember me checkbox to the login form. Check it in the app with e2e."
-- "Write a test for checkout. Check every locator in the app first."
+- "Write a test for checkout while you walk it in the app."
 - "Reproduce issue #123 in the app and record a video."
 
 Add "headed" to watch a local browser or simulator.
@@ -86,13 +88,14 @@ Tapped #n31.
 Test line: await screen.getByRole("button", "Sign in").tap();
 ```
 
-`test_lines` returns every line so far, in order, as a draft test body. The
-agent pastes it into a test and adds the assertions. See
+The agent copies the lines it needs into the test as it walks the flow.
+`test_lines` returns every line so far, in order, as a draft test body. See
 [`test_lines`](/reference/mcp#test_lines) for how a line is built.
 
 ## How it checks a locator
 
-A locator guessed from the source fails in the session, not in a test run:
+For a line no action printed, such as an assertion, the agent tries the
+locator in the session first. A wrong guess fails there, not in a test run:
 
 ```text wrap
 0 nodes match getByLabel("Email").
@@ -102,13 +105,53 @@ A test using this locator would fail with LOCATOR_NOT_FOUND. ...
 Use: screen.getByRole("button", "Sign in")
 ```
 
+## How it runs a test line
+
+The agent runs the lines no action printed, such as assertions, with
+`run_code` in the open session. The ones that pass join the `test_lines`
+draft. A wrong line fails in seconds, without a test run:
+
+```text wrap
+Statement 2 of 2 failed; the one before it passed. Each statement waited at most 5000 ms. ...
+1. passed: await screen.getByLabel('Full name').fill('Grace Hopper');
+2. failed: await screen.getByRole('button', 'Save').tap();
+   LOCATOR_NOT_FOUND: locator matched no nodes within getByRole("button", name: "Save")
+```
+
+The server parses the lines and never evaluates them as JavaScript. See
+[`run_code`](/reference/mcp#run_code).
+
+## Fix a failing test
+
+`open_session {test: "tests/checkout.e2e.ts:12"}` runs one test in the
+session and stops on the screen where it failed. The agent reads the
+failure, checks the screen, and edits the test:
+
+```text wrap
+Test "a member checks out" (tests/checkout.e2e.ts:12) failed after 30.25s; 8 steps ran.
+LOCATOR_NOT_FOUND: locator matched no nodes within getByLabel("Name")
+At tests/checkout.e2e.ts:20:3
+On screen, closest to what the locator asked for:
+  #n32 textbox "Full name"
+```
+
+Each action from that screen prints its
+[test line](#how-it-writes-a-test-line), and `run_code` runs a fixed line
+there. The agent puts those lines in the test in place of the one that
+failed.
+
+To rerun the edited test, the agent closes the session and opens a new one
+with the same `test`. Agent steps replay from the cache as in `e2e run`.
+See [Running a test](/reference/mcp#running-a-test) for what runs and the
+limits.
+
 ## Run tests next to a session
 
-A session doesn't run tests and writes no test results or cache
-recordings. The agent runs tests with `e2e run` and, when a run can go
-beside the session, keeps the session open between runs. After a failed
-run, it goes to the failing screen in that session instead of opening a
-new one.
+A session writes no test results, and only a test it runs with
+`open_session {test}` uses the replay cache. The agent runs suites with
+`e2e run` and, when a run can go beside the session, keeps the session
+open between runs. After a failed run, it goes to the failing screen in
+that session instead of opening a new one.
 
 On web, a run next to a session depends on the target's `app`:
 
@@ -131,8 +174,9 @@ target.
 
 ## Secrets
 
-`type_secret` fills a secret without showing it to the agent. After a
-secret is filled, the session stops returning screenshots.
+`type_secret`, or a `fill` in `run_code`, fills a secret without showing it
+to the agent. After a secret is filled, the session stops returning
+screenshots.
 
 <Warning>
 Videos from `start_recording` are not masked.

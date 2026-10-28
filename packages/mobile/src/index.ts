@@ -14,7 +14,8 @@ export type { DevicePermission, LaunchPermissions, MobileOptions, MobilePlatform
 export type { DeviceClientConfig, DeviceConnection, DeviceDaemon } from './bindings.ts';
 export type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from './provider.ts';
 export type { FoldPose, InstallAppOptions, InstalledApp, OpenAppOptions } from './surface.ts';
-export type { BiometricSensor, Device, DeviceOrientation, ForegroundApp } from './device.ts';
+export type { BiometricSensor, Device, DeviceOrientation, DeviceSession, ForegroundApp } from './device.ts';
+export type { DeviceSelection } from './pool.ts';
 
 /**
  * `test` typed with this engine's contributed `device` fixture. The same

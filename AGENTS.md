@@ -178,7 +178,7 @@ suites that consume the built packages the way a user would.
   diffs against the source minimal, and name no company a scenario was
   distilled from.
 - `examples/` — standalone user-facing projects, one per technology
-  (`with-vite`, `with-next`, `with-astro`, `with-expo`, `with-swiftui`,
+  (`with-vite`, `with-next`, `with-astro`, `with-angular`, `with-expo`, `with-swiftui`,
   `with-compose`, `with-kotlin-multiplatform`, `with-flutter`, `with-maui`), each the same
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
@@ -188,25 +188,22 @@ suites that consume the built packages the way a user would.
   packed from main swapped in for the npm ones, agent tests included, and
   posts one Slack message for the run (`scripts/examples-nightly/`, the
   `SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL` secret). A new example or platform
-  gets a matrix entry there. A change still runs the example's suite by hand and updates the
+  gets a matrix entry there. It also needs an official entry in
+  `examples/examples.json` (the list e2e.tester.army/examples renders,
+  community repositories included) and a preset in
+  `packages/e2e/src/cli/init/examples.ts`; `pnpm check:examples` fails
+  without either. A change still runs the example's suite by hand and updates the
   "Last checked" line in its README. A native, Flutter, or .NET MAUI example (SwiftUI, Compose, Kotlin
   Multiplatform, Flutter, .NET MAUI) keeps its tests in an `e2e/` folder
   beside the native project, as a user would.
-- `docs/` (the Mintlify docs site; pages are the `.mdx` files under `docs/`,
-  navigation, theme, and redirects in `docs/docs.json`, extra CSS in
-  `docs/style.css`, the table of contents scroll in
-  `docs/table-of-contents.js`; `docs/examples/` is typechecked and shown
+- `docs/` (the docs pages: the `.mdx` files under `docs/`, navigation,
+  redirects, and the page menu in `docs/docs.json`, the images under
+  `docs/images/`; `docs/examples/` is typechecked and shown
   verbatim on docs pages and in `skills/e2e/` (`docs/examples/skill/`), kept
   in sync by `scripts/check-docs-examples.ts`; a shell
   block that runs `npx` or `npm install`/`ci` sits in a `<CodeGroup>` of
-  `npm`, `pnpm`, and `bun` blocks, which Mintlify syncs site-wide, enforced
-  by `scripts/check-docs-package-managers.ts`; every navigation page but the
-  home page has a social card in `docs/images/og/`, rendered with
-  `@vercel/og` by `docs/og/generate.tsx` (`pnpm docs:og`, also run by
-  `docs:dev`) and committed with the `og:image` frontmatter it writes, since
-  Mintlify runs no build step of ours; `docs:check` fails on a stale card,
-  and a page without one falls back to the brand card `images/og.png` set
-  in `docs.json`).
+  `npm`, `pnpm`, and `bun` blocks, which the site syncs site-wide, enforced
+  by `scripts/check-docs-package-managers.ts`).
   The `e2e` build copies the
   pages to `packages/e2e/docs/` (gitignored,
   `packages/e2e/scripts/prepare-build.ts`) so the published package ships

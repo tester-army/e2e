@@ -209,6 +209,15 @@ export interface FailureBeforeSkip {
   readonly artifacts: readonly ArtifactRecord[];
 }
 
+/** The cleanup-phase secondary errors of attempts whose cleanup failed. */
+export function cleanupErrorsOf(
+  attempts: readonly { readonly cleanup: string; readonly secondaryErrors: readonly SerializedError[] }[],
+): SerializedError[] {
+  return attempts.flatMap((attempt) =>
+    attempt.cleanup === 'failed' ? attempt.secondaryErrors.filter((secondary) => secondary.phase === 'cleanup') : [],
+  );
+}
+
 /**
  * The failure a test's `test.skip(...)` followed: the last attempt that
  * failed before a skipped retry, or an error the skipped attempt kept beside

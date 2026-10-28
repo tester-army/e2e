@@ -1,15 +1,16 @@
 ---
 title: "e2e/runner"
-description: "Run a test suite, list its selection, or host e2e sessions in another test runner."
+description: "Run a test suite or an exploration, list a selection, or host e2e sessions in another test runner."
 icon: "file-lines"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/runner.png?v=98c298d3ed"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/runner.png?v=98c298d3ed"
+"og:image": "https://e2e.tester.army/docs/images/og/reference/runner.png?v=a4609b13d7"
+"twitter:image": "https://e2e.tester.army/docs/images/og/reference/runner.png?v=a4609b13d7"
 ---
 
 `e2e/runner` runs a suite from code without invoking the CLI. `run` executes
-tests and returns their report, `list` returns a selection, and `openHost`
-hosts e2e sessions in another test runner. Importing `e2e` from a test file
-does not load the runner.
+tests and returns their report, `explore` runs one exploration and returns
+its findings, `list` returns a selection, and `openHost` hosts e2e sessions
+in another test runner. Importing `e2e` from a test file does not load the
+runner.
 
 ```ts title="scripts/run-e2e.ts"
 import type { E2EConfig } from 'e2e';
@@ -39,6 +40,7 @@ console.log(result.status, result.report.run.summary);
 | Function | Returns |
 | --- | --- |
 | [`run`](#run) | `Promise<RunResult>` |
+| [`explore`](#explore) | `Promise<ExploreResult>` |
 | [`list`](#list) | `Promise<ListResult>` |
 | [`openHost`](#openhost) | `Promise<E2EHost<Fixtures>>` |
 | [`isE2EError`](#ise2eerror) | `boolean` |
@@ -99,6 +101,91 @@ and errors in the report.
 - Suite output uses UTF-8 text redaction and does not preserve binary data.
   Your application's logs and progress callback output stay under your
   control.
+
+#### `explore`
+
+`explore(options?: ExploreOptions)` runs one [exploration](/explore), the run
+`e2e explore` starts. It finishes cleanup before resolving and never exits
+the caller's process.
+
+```ts title="scripts/explore-e2e.ts"
+import type { E2EConfig } from 'e2e';
+import { explore } from 'e2e/runner';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+
+const config: E2EConfig = {
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  targets: [{ name: 'web', engine: web(), app: { url: 'http://localhost:3000' } }],
+};
+const controller = new AbortController();
+const result = await explore({
+  config,
+  goal: 'Explore the checkout flow like a first-time buyer and report anything off',
+  maxSteps: 4,
+  interruptSignal: controller.signal,
+  onEvent(event) {
+    if (event.type === 'explore' && event.progress.phase === 'finding') console.log(event.progress.finding.title);
+  },
+});
+
+console.log(result.status, result.explore.ended, result.explore.findings.length);
+```
+
+##### Options
+
+| Option | Example | Type | Default |
+| --- | --- | --- | --- |
+| `cwd` | `'apps/web'` | `string` | the current working directory |
+| `config` | `'e2e.ci.config.ts'` | `string \| E2EConfig` | discovered `e2e.config.ts` |
+| `goal` | `'Explore the login flow'` | `string` | `'Explore the app and find bugs'` |
+| `target` | `'web'` | `string` | the first configured target |
+| `agent` | `'smart'` | `string` | `agents.default` |
+| `session` | `'loggedIn'` | `string` | - |
+| `maxSteps` | `4` | `number` | `8` |
+| `timeoutMs` | `300_000` | `number` | `600_000` |
+| `interruptSignal` | `controller.signal` | `AbortSignal` | - |
+| `onEvent` | `(event) => {}` | `RunEventSink` | - |
+
+- `goal` is at most 2,000 characters.
+- `session` names a session a [setup test](/authentication) saves. That setup
+  runs first, and the exploration starts from it, as `--session` does.
+- `maxSteps` is from 1 to 12. `timeoutMs` is from `180000` to `900000`.
+- `onEvent` receives the same events as for `run`, plus an `explore` event
+  for each planning decision, step, and finding. What `e2e explore` prints
+  before the run starts, such as the target it chose, arrives as a `notice`
+  event with target `run`, before the `plan` event.
+- Recording and output settings, such as `video`, `trace`, and `output`,
+  come from the config.
+
+##### Result
+
+`ExploreResult` has every [`RunResult`](#run) field, plus `explore`, the
+record `report.run.explore` also holds.
+
+| Field | Meaning |
+| --- | --- |
+| `explore.goal`, `explore.budgets` | The goal, with secret values redacted, and the step and time budgets it ran with. |
+| `explore.ended` | Why exploration stopped: `finished`, `step-limit`, `time`, `stuck`, or `aborted`. |
+| `explore.summary` | The agent's closing assessment, when it gave one. |
+| `explore.steps` | Each step the agent planned and ran, with its status: `passed`, `failed`, `blocked`, or `exhausted`. |
+| `explore.findings` | Each finding: `kind`, `severity` from 1 to 5, `title`, `expected`, `actual`, and `reproduction`. An `issue` fails the run; a `warning` does not. |
+
+Once the exploration starts, findings, failures, and interruption resolve
+with their status in the report. Options or a config that cannot start one
+reject first, as the matching `e2e explore` flags do. Recognize them with
+[`isE2EError`](#ise2eerror).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | `goal`, `maxSteps`, or `timeoutMs` is out of range, or `agent` names no configured agent. |
+| `UNKNOWN_TARGET` | `target` names no configured target. |
+| `MODEL_UNAVAILABLE` | The agent has no model. |
+| `RUNNER_BUSY` | A suite or an exploration is running, or a host is open. |
+| The codes `run` records | The config is missing, or the loader refused it. |
+
+Each exploration that returns a report sends one anonymous
+[`e2e_run_completed`](/telemetry) event, as `run` does.
 
 #### `list`
 
@@ -462,6 +549,7 @@ The one-shot attempt `e2e mcp` uses stays internal. There is no top-level
 | Type | Describes |
 | --- | --- |
 | `RunOptions`, `RunResult` | [`run`](#run)'s options and result |
+| `ExploreOptions`, `ExploreResult` | [`explore`](#explore)'s options and result |
 | `RunEventSink` | The `onEvent` callback |
 | `ListOptions`, `ListResult`, `ListedPair` | [`list`](#list)'s options, result, and one pair |
 | `OpenHostOptions`, `E2EHost` | [`openHost`](#openhost)'s options and the [host](#host) |

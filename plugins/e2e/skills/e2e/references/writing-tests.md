@@ -144,7 +144,7 @@ assertion. Every query also exists on a locator, scoped to its subtree.
 | `getByLabel(text, { exact?, visible? })` | Form controls by label. |
 | `getByPlaceholder(text, { exact?, visible? })` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
-| `getByDisplayValue(value, { exact?, visible? })` | Inputs by current value; on the web it cannot scope child queries or be a `filter({ has })` target. |
+| `getByDisplayValue(value, { exact?, visible? })` | Inputs by current value; on the web it cannot scope child queries or be a `filter({ has })` or `filter({ hasNot })` target. |
 | `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), accessibility identifier or resource id on a device (React Native `testID`, SwiftUI `.accessibilityIdentifier`, Compose `testTag` with `testTagsAsResourceId` on Android, Flutter `Semantics(identifier:)`, .NET MAUI `AutomationId`); a string matches the whole id, a RegExp tests it; on Android the `<package>:id/` prefix may be left off. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
@@ -177,13 +177,14 @@ substring; a `RegExp` matches as written.
   `toHaveText` and `toContainText`, `isVisible()` (false at zero),
   `isHidden()` (true), `count()`, `all()`, `allTextContents()`.
 - Narrow with `filter({ hasText })` (a case-insensitive substring, unlike a
-  query), `filter({ has: locator })`, `first()`, `last()`, `nth(i)`, or
-  scoping under another locator. Any other `filter` key (`hasNot`,
-  `hasNotText`) or an empty `filter({})` is `INVALID_LOCATOR`. `a.or(b)`
+  query), `filter({ hasNotText })` to exclude matching subtree text,
+  `filter({ has: locator })`, `filter({ hasNot: locator })`, `first()`,
+  `last()`, `nth(i)`, or scoping under another locator. Any other `filter`
+  key (`visible`) or an empty `filter({})` is `INVALID_LOCATOR`. `a.or(b)`
   matches either, still strict: add `first()` when both may match. Both
   locators must come from the same screen and attempt. Web branches need
-  identical literal frame-selector chains; display-value branches cannot
-  be composed.
+  identical literal frame-selector chains; display-value branches cannot be
+  composed.
 - `visible: true` drops nodes the page hides (a closed drawer) before the
   exactly-one rule. Visibility is what renders, as `toBeVisible()` reads it:
   an `aria-hidden` spinner that paints is visible, so `toBeHidden()` waits

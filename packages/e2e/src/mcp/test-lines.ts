@@ -10,9 +10,11 @@
  * target and nothing else is printed, one that matches its twins too is
  * narrowed (to the nodes that render, under a container, or by position, in
  * that order), and otherwise the result says why there is no line. The
- * session keeps the lines in order, and `test_lines` returns them as a draft
- * test body. Only the session catalog wraps its grammar this way; the
- * testing agent's model loop never sees a line.
+ * session keeps the lines in order, with the statements `run_code` passed
+ * among them, and `test_lines` returns them as a draft test body; after a
+ * test the session ran, as the lines that continue it. Only the session
+ * catalog wraps its grammar this way; the testing agent's model loop never
+ * sees a line.
  */
 
 import type { ToolSet } from 'ai';
@@ -83,6 +85,8 @@ export interface TestLineOptions {
   readonly appBase?: { readonly href: string; readonly origin: string } | undefined;
   /** The configured credentials and secrets a fill is written with. */
   readonly fills?: TestLineFills | undefined;
+  /** The test the session ran before it went live, as `file:line`: the lines carry on from where it stopped. */
+  readonly testRan?: string | undefined;
 }
 
 /** The names a test fills values from, as the config declares them. */
@@ -177,6 +181,13 @@ export class SessionTestLines {
     this.entries.push({ tool: 'open_session', line: 'await app.open();' });
   }
 
+  /** Records statements `run_code` ran and passed, already in a test's own words, each awaited and ended as a test line. */
+  ran(sources: readonly string[]): void {
+    for (const source of sources) {
+      this.entries.push({ tool: 'run_code', line: `${source.startsWith('await ') ? '' : 'await '}${source}${source.endsWith(';') ? '' : ';'}` });
+    }
+  }
+
   /** The grammar tools, each that has a line answering with it after its lead. */
   wrap(tools: ToolSet): ToolSet {
     return Object.fromEntries(
@@ -188,7 +199,7 @@ export class SessionTestLines {
   tool(): ToolSet[string] {
     return {
       description:
-        "Every test line this session's actions printed so far, in order, as a draft test body: the screen.* and app.* calls that repeat each action, with a comment where an action has none. Paste it into a test, then add the assertions.",
+        "Every test line this session's actions printed so far, in order, as a draft test body: the screen.* and app.* calls that repeat each action, with a comment where an action has none, and the statements run_code passed, as written. Paste it into a test, then add any assertion it lacks. After open_session with test, the lines continue that test from where it stopped.",
       inputSchema: z.object({}).strict(),
       execute: async () => this.draft(),
     };
@@ -197,18 +208,23 @@ export class SessionTestLines {
   /** The recorded lines as a draft test body. */
   draft(): string {
     if (this.entries.length === 0) {
-      return 'No test lines yet. Each action (tap, type, select, check, and the rest) prints the line that repeats it in a test, and this tool returns them in order.';
+      return 'No test lines yet. Each action (tap, type, select, check, and the rest) prints the line that repeats it in a test, run_code adds the statements that pass, and this tool returns them in order.';
     }
     const body = this.entries.map((entry) => ('line' in entry ? entry.line : `// ${entry.tool}: no test line: ${entry.reason}`));
     const imports = ['credentials', 'secrets'].filter((name) => body.some((line) => line.includes(`${name}.`)));
+    const count = `in order (${String(this.entries.filter((entry) => 'line' in entry).length)} lines)`;
+    const { testRan } = this.options;
+    // A session that ran a test holds only what came after it: the test's own lines are in its file.
+    const [lead, place] =
+      testRan === undefined
+        ? [`Draft test body from this session's actions, ${count}:`, 'Paste it into a test body, async ({ app, screen }) => { ... },']
+        : [`Test lines from this session's actions after test ${testRan} stopped, ${count}:`, 'Put them in that test where it stopped, in place of the line that failed or after its last line,'];
     return [
-      `Draft test body from this session's actions, in order (${String(this.entries.filter((entry) => 'line' in entry).length)} lines):`,
+      lead,
       '',
       ...body,
       '',
-      `Paste it into a test body, async ({ app, screen }) => { ... }, and add an expect after each step that should change the screen.${
-        imports.length === 0 ? '' : ` Import ${imports.join(' and ')} from 'e2e'.`
-      }`,
+      `${place} and add an expect after each step that should change the screen.${imports.length === 0 ? '' : ` Import ${imports.join(' and ')} from 'e2e'.`}`,
     ].join('\n');
   }
 

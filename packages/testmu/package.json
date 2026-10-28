@@ -78,16 +78,16 @@
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
     "@e2e-dev/web": "workspace:*",
-    "@types/node": "26.6.2",
+    "@types/node": "26.6.5",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.0.1"
+    "vitest": "5.0.5"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "@agent-device/testmu": "0.21.29",
-    "agent-device": "0.21.29"
+    "@agent-device/testmu": "0.21.31",
+    "agent-device": "0.21.31"
   }
 }

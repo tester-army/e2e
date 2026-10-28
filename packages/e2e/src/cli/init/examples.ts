@@ -30,6 +30,7 @@ export const EXAMPLES: readonly ExamplePreset[] = [
   { id: 'with-vite', project: '.', script: 'test:e2e', build: false },
   { id: 'with-next', project: '.', script: 'test:e2e', build: false },
   { id: 'with-astro', project: '.', script: 'test:e2e', build: false },
+  { id: 'with-angular', project: '.', script: 'test:e2e', build: false },
   // The web target starts the dev server itself; the device targets need a build first.
   { id: 'with-expo', project: '.', script: 'test:e2e:web', build: false },
   { id: 'with-swiftui', project: 'e2e', script: 'test:e2e', build: true },
