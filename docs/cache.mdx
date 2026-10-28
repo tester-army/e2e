@@ -151,8 +151,11 @@ matches the screen.
 
 1. Check the starting screen: it must be the same route.
 2. Find each recorded control by role, name, test id, and surrounding
-   context, and repeat its action. The runner waits for missing controls and
-   stops when a match is ambiguous.
+   context, and repeat its action. Replay skips a changing value in that
+   context, such as an `<output>` count or a `role="timer"` clock. When the
+   rest of the context still matches several controls, it matches on the
+   value alone. The runner waits for missing controls and stops when a match
+   is ambiguous.
 3. Check the final route and what the original step changed: the controls
    that appeared, with their checked, selected, expanded, or pressed state,
    and the ones that went away.
