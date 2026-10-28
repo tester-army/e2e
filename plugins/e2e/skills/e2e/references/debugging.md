@@ -57,10 +57,11 @@ default.
      screen at failure, the app source, or a live session.
    - For a screen the evidence and the source leave out, look live (topic
      `mcp`): open or reuse a session, go straight to that screen, then
-     `observe` and `locate`. On the web, `navigate` to the path of the
-     `❯ at` URL or the screen's route, and tap only to reach a state no URL
-     opens. A device session starts on the app's launch screen: take the
-     shortest path from there.
+     `observe` and `locate`, or `run_code` for the fixed line and the ones
+     after it. On the web, `navigate` to the path of the `❯ at` URL or the
+     screen's route, and tap only to reach a state no URL opens. A device
+     session starts on the app's launch screen: take the shortest path from
+     there.
    - Then rerun only that test by `file:line` (SKILL.md, "Rerunning a
      test while you fix it"; topic `mcp` says when a session must close
      first).
@@ -145,6 +146,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | `--video`, `--video=retain-on-failure` | Watch the failed attempt; `step.startedAt` minus the segment's `startedAt` is the step's offset into it |
 | `command.log: '.e2e/logs/app.log'` | The app's output when it never gets ready or errors mid-test |
 | `await app.screenshot('before-submit')` | Evidence at a point you choose; it masks secure fields only |
+| `app.startRecording()`, then `await app.stopRecording()` | One transition as a video; fails while the test's `video` records |
 | `CI=1 npx e2e run` | Reproduce CI-only behaviour (defaults: topic running) |
 
 ## Flaky tests

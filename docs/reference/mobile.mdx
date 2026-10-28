@@ -223,7 +223,9 @@ mobile({ platform: 'ios', settle: 300 }); // default: 150
  * control from a landed one (iOS reports the final frame at once, Android
  * the frame in flight), so the control is found again in a fresh snapshot
  * once the wait is over and acted on where it landed. Unmoved controls are
- * acted on immediately. Raise this for slower transitions.
+ * acted on immediately only when keyboard visibility is unchanged. Opening
+ * or closing the keyboard also uses the remaining budget. Raise it for
+ * slower transitions.
  */
 readonly transition?: number | undefined;
 ```
@@ -236,6 +238,11 @@ mobile({ platform: 'ios', transition: 800 }); // default: 500
 [`device`](#device) change the screen, so they count as actions for this
 budget the way a tap does. A control that arrives with the screen they reveal
 waits out the budget before the next action lands on it.
+
+`fill` and `clear` re-read the field before typing. Missing fields, changed
+security state, or incomplete captures return `NODE_STALE` before mutation,
+then retry after a fresh observation. Non-input targets return
+`UNSUPPORTED_CAPABILITY`.
 
 #### `videoTouches`
 
@@ -375,6 +382,7 @@ test('offline banner', { platforms: ['android'] }, async ({ app, device, screen 
 
 | Member | Returns |
 | --- | --- |
+| [`unstable_raw`](#unstable_raw) | `DeviceSession` |
 | [`locator`](#locator) | `Locator` |
 | [`setNetwork`](#setnetwork) | `Promise<void>` |
 | [`setAirplaneMode`](#setairplanemode) | `Promise<void>` |
@@ -411,6 +419,30 @@ declaration; the types they use are under [Types](#device-fixture).
 | `ACTION_FAILED` | `actionTimeout` expires. |
 | `UNSUPPORTED_CAPABILITY` | The platform cannot run the command. |
 | `ENGINE_FAILURE` | Anything else, with agent-device's message. A timeout the device itself reports (a boot, the runner connecting) keeps its text and hint there. A busy or wedged iOS automation runner names itself and the recovery (see [Troubleshooting](/mobile#troubleshooting)). |
+
+#### `unstable_raw`
+
+```ts
+/**
+ * The agent-device session this test drives, for what the methods here do
+ * not cover. Calls through `client` bypass e2e: they are not steps, so the
+ * report and trace leave them out, the agent's cache does not replay them,
+ * their arguments reach agent-device unredacted, and nothing waits for the
+ * screen to settle after one. Unstable: it may change or go away in any
+ * release.
+ */
+readonly unstable_raw: DeviceSession;
+```
+
+```ts
+const { client, session, deviceId } = device.unstable_raw;
+const sessions = await client.sessions.list();
+await client.apps.list(device.unstable_raw.selection);
+```
+
+`client` is agent-device's own client at the version `@e2e-dev/mobile` pins.
+After the worker disposes the session, reading `unstable_raw` or `client`
+throws `INVALID_STATE`.
 
 #### `locator`
 
@@ -1014,6 +1046,28 @@ export interface ForegroundApp {
 
 /** Sensors `setBiometrics` simulates. */
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
+
+/** The agent-device session behind `device`; see `Device.unstable_raw`. */
+export interface DeviceSession {
+  readonly platform: MobilePlatform;
+  /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
+  readonly session: string;
+  /** The device's agent-device id: a simulator UDID or an Android serial. */
+  readonly deviceId: string;
+  readonly deviceName: string;
+  /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
+  readonly selection: DeviceSelection;
+  /** agent-device's client, bound to this session. */
+  readonly client: AgentDeviceClient;
+}
+
+/** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */
+export interface DeviceSelection {
+  readonly platform: MobilePlatform;
+  readonly device?: string;
+  readonly udid?: string;
+  readonly serial?: string;
+}
 ```
 
 ### Exported types
@@ -1021,7 +1075,7 @@ export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
 `PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
-`Device`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
+`Device`, `DeviceSession`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from
 `@e2e-dev/mobile`. The runtime exports are `mobile`, and `test`, `describe`,
 `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed with the `device`

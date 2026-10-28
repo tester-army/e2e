@@ -44,14 +44,15 @@ export const MCP_SESSION_SURFACE = 'an e2e mcp session';
 
 /**
  * The tools the harness adds beside the grammar, each where it adds them:
- * `complete_step` in every agent step, `locate`, `test_lines`, and the
- * recording tools in an `e2e mcp` session, and `report_finding` under
- * `e2e explore`. A project tool named like one would be replaced or dropped
- * there, so the config load refuses the name.
+ * `complete_step` in every agent step, `locate`, `run_code`, `test_lines`,
+ * and the recording tools in an `e2e mcp` session, and `report_finding`
+ * under `e2e explore`. A project tool named like one would be replaced or
+ * dropped there, so the config load refuses the name.
  */
 export const HARNESS_TOOL_NAMES: ReadonlyMap<string, string> = new Map([
   ['complete_step', 'every agent step'],
   ['locate', MCP_SESSION_SURFACE],
+  ['run_code', MCP_SESSION_SURFACE],
   ['test_lines', MCP_SESSION_SURFACE],
   ['start_recording', MCP_SESSION_SURFACE],
   ['stop_recording', MCP_SESSION_SURFACE],

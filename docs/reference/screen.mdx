@@ -292,24 +292,28 @@ Refinement returns a new locator without querying the app.
 
 ```ts
 /** Adds deterministic locator filters. */
-filter(options: { hasText?: TextMatch; has?: Locator }): Locator;
+filter(options: { hasText?: TextMatch; hasNotText?: TextMatch; has?: Locator; hasNot?: Locator }): Locator;
 ```
 
 ```ts
-const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42' });
+const row = screen.getByRole('listitem').filter({ hasText: 'Invoice 42', hasNotText: 'Paid' });
 await row.getByRole('button', 'Void').tap();
 ```
 
 - `hasText` with a string is a case-insensitive substring match over the
   match and its descendants, unlike a query text, which matches exactly. Pass
   a `RegExp` for anything stricter.
+- `hasNotText` excludes matches with that subtree text, using the same
+  substring or `RegExp` rules.
 - `has` keeps a match whose subtree resolves the inner locator.
+- `hasNot` drops a match whose subtree resolves the inner locator. It follows
+  the same scoping rules as `has`.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_LOCATOR` | Neither `hasText` nor `has` is given. |
-| `INVALID_LOCATOR` | Any other key, even beside them: `hasNot`, `hasNotText`, and `visible` are not filters here. |
-| `INVALID_LOCATOR` | `has` is not a runner locator, or was made by another target's screen. |
+| `INVALID_LOCATOR` | None of `hasText`, `hasNotText`, `has`, or `hasNot` is given. |
+| `INVALID_LOCATOR` | Any other key, even beside them: `visible` is not a filter here. |
+| `INVALID_LOCATOR` | `has` or `hasNot` is not a runner locator, or was made by another target's screen. |
 
 #### `or`
 
@@ -1025,7 +1029,8 @@ boundingBox(): Promise<{ x: number; y: number; width: number; height: number } |
 const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 ```
 
-The box is in CSS pixels. It is `null` for a node that lays out no box
+The box is in CSS pixels, and on a device in points (physical pixels on
+Android). It is `null` for a node that lays out no box
 (`display: none` on it or an ancestor). A `visibility: hidden` node keeps
 its box.
 

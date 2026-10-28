@@ -298,8 +298,8 @@ export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   /**
-   * Starts recording the surface for the attempt. Declared together with
-   * `stopVideo`. A surface that has nothing to show yet (no page open) may
+   * Starts recording the surface. Declared together with `stopVideo`. An
+   * attempt may start and stop more than once, never overlapping. A surface that has nothing to show yet (no page open) may
    * defer the actual capture to the moment it does; the segments returned by
    * `stopVideo` say when each one began.
    */

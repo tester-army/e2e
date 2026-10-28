@@ -1,7 +1,8 @@
 /**
  * Human-readable list reporter, styled after vitest's default reporter: one
  * block per test file and target with each test's agent steps nested, a
- * `Failed Tests` section with code frames, and a padded summary. On a TTY a
+ * `Failed Tests` section with code frames, cleanup failures shown under a
+ * passed test and in the summary, and a padded summary. On a TTY a
  * live window below the log shows the running tree (`RunningTree`) and the
  * counters.
  */
@@ -14,7 +15,7 @@ import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
 import type { AppLogRecord } from '../run/steps.ts';
-import { failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
+import { cleanupErrorsOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
 import {
@@ -118,6 +119,8 @@ interface ResultDetails {
   readonly screenPath: string | undefined;
   /** What the app logged during the told attempt, as `2 errors, 1 warning`; undefined for nothing. */
   readonly appLog: string | undefined;
+  /** Cleanup-phase secondary errors of attempts whose cleanup failed; shown under a passed or flaky test. */
+  readonly cleanupErrors: readonly SerializedError[];
   /** Why the told attempt skipped itself, when it failed anyway. */
   readonly skipReason: string | undefined;
   readonly replays: readonly ReplayNotice[];
@@ -148,6 +151,7 @@ function attemptDetails(attempts: readonly AttemptRecord[], configured: Configur
     videos: videoPaths(attempts),
     ...failureOf(told),
     appLog: appLogTally(told?.appLog ?? []),
+    cleanupErrors: cleanupErrorsOf(attempts),
     skipReason: told?.status === 'skipped' ? undefined : told?.skip?.reason,
     replays: replayNotices(steps, configured),
   };
@@ -201,6 +205,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string, configure
     videos: videoPaths(group.attempts),
     ...failureOf(own === undefined ? undefined : { failure: own.failure, artifacts: last?.attempt.artifacts ?? [] }),
     appLog: appLogTally(own?.appLog ?? []),
+    cleanupErrors: cleanupErrorsOf(group.attempts),
     skipReason: neverRan ? undefined : own.skip?.reason,
     replays: replayNotices(steps, configured),
   };
@@ -261,6 +266,8 @@ export class ListReporter implements Reporter {
   private readonly skippedFailures: Failure[] = [];
   /** Every result a test filter left out, in the order they arrived, for the `Left out` row. */
   private readonly leftOut: { readonly testId: string; readonly skip: SkipInfo | undefined }[] = [];
+  /** Passed or flaky tests whose cleanup failed, for the summary's `Cleanup` row. */
+  private readonly cleanupFailures: { readonly title: string; readonly error: SerializedError }[] = [];
   /** Every finished test's run, for the `Repeats` summary of a `--repeat-each` run. */
   private readonly runs: { key: string; label: string; run: RepeatRun }[] = [];
   /**
@@ -719,11 +726,15 @@ export class ListReporter implements Reporter {
     // Read before `detailsOf` releases the result's serial group.
     const skippedAfter = failureBeforeSkip(result, (id) => this.pendingSerial.get(id)?.group);
     const id = resultId(result.test.id, result.target.name, result.agent, result.repeat);
-    const { durationMs, usage, models, cache, error, videos, failure, screenPath, appLog, skipReason, replays } = this.detailsOf(result);
+    const { durationMs, usage, models, cache, error, videos, failure, screenPath, appLog, skipReason, replays, cleanupErrors } =
+      this.detailsOf(result);
     addUsage(this.runUsage, usage);
     addModelTally(this.runModels, models);
     addCacheTally(this.runCache, cache);
     const title = this.titledAs(result.test.titlePath.join(' > '), result.agent, result.repeat);
+    if (cleanupErrors.length > 0) {
+      this.cleanupFailures.push({ title, error: cleanupErrors[0]! });
+    }
     if (this.explore !== undefined) {
       // The exploration's verdict is its findings; any other error is a failure of its own, unless the run stopped it.
       this.explore.result(result.attempts.flatMap((attempt) => attempt.artifacts));
@@ -741,6 +752,7 @@ export class ListReporter implements Reporter {
       usage,
       firstErrorLine: error === undefined ? undefined : bounded(error.message).split('\n')[0],
       skipReason: result.skip === undefined ? undefined : bounded(result.skip.reason),
+      cleanupErrors,
       steps,
       replays,
     };
@@ -826,6 +838,7 @@ export class ListReporter implements Reporter {
       counts.flaky > 0 ||
       this.groups.size === 1 ||
       group.lines.some((line) => line.replays.length > 0) ||
+      group.lines.some((line) => line.cleanupErrors.length > 0) ||
       (this.live && group.lines.some((line) => line.steps.length > 0));
     if (!verbose) return;
     const ordered = group.lines.toSorted((a, b) => a.declarationIndex - b.declarationIndex);
@@ -844,9 +857,15 @@ export class ListReporter implements Reporter {
     const ai = segment === undefined ? '' : ` ${pc.dim(segment)}`;
     switch (line.status) {
       case 'passed':
-        return [`   ${pc.green(F_CHECK)} ${line.title} ${duration}${ai}`];
+        return [
+          `   ${pc.green(F_CHECK)} ${line.title} ${duration}${ai}`,
+          ...this.cleanupLines(line),
+        ];
       case 'flaky':
-        return [`   ${pc.yellow(F_CHECK)} ${line.title} ${pc.yellow('(flaky)')} ${duration}${ai}`];
+        return [
+          `   ${pc.yellow(F_CHECK)} ${line.title} ${pc.yellow('(flaky)')} ${duration}${ai}`,
+          ...this.cleanupLines(line),
+        ];
       case 'skipped': {
         // `test.skip` without a message records the bare word; repeating it adds nothing.
         const reason =
@@ -868,6 +887,15 @@ export class ListReporter implements Reporter {
         return rows;
       }
     }
+  }
+
+  /** One yellow glance line per cleanup failure under the test. */
+  private cleanupLines(line: TestLine): string[] {
+    const { pc } = this;
+    return line.cleanupErrors.map((error) => {
+      const [first = ''] = bounded(error.message).split('\n');
+      return `     ${pc.yellow(`${F_RIGHT} cleanup failed: ${bounded(error.code)}: ${first}`)}`;
+    });
   }
 
   /**
@@ -903,6 +931,16 @@ export class ListReporter implements Reporter {
     if (this.errors.length > 0) {
       const count = this.errors.length;
       rows.push(padTitle(pc, 'Errors') + pc.bold(pc.red(`${count} error${count === 1 ? '' : 's'}`)));
+    }
+    if (final && this.cleanupFailures.length > 0) {
+      const [first, ...rest] = this.cleanupFailures;
+      const [message = ''] = bounded(first!.error.message).split('\n');
+      rows.push(
+        padTitle(pc, 'Cleanup') +
+          pc.yellow(
+            `${this.cleanupFailures.length} cleanup failure${this.cleanupFailures.length === 1 ? '' : 's'}: ${bounded(first!.error.code)}: ${message}${rest.length === 0 ? '' : ` (+${rest.length} more)`}`,
+          ),
+      );
     }
     const startedAt = this.startedAt ?? (final ? this.launchedAt : undefined);
     if (startedAt !== undefined) {

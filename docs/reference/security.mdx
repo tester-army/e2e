@@ -74,8 +74,9 @@ These calls fail with `POLICY_DENIED`.
 | A `Secret` reaching a JSON sink | Handles carry no value, and no value may be serialized. |
 | Reading a value, text, or attribute from a secure field, with a getter or a `toHaveValue`, `toHaveText`, `toContainText`, or `toHaveAttribute` matcher | Assert the outcome, not the secret. A withheld value is redacted, not empty or absent. |
 | `type_secret` with an undeclared name | Only secrets in the step's params can be filled. |
-| `type_secret` into a disabled or non-editable node | Sinks are `textbox`, `searchbox`, and `combobox`. |
+| `type_secret`, or a `fill` in MCP `run_code`, into a disabled or non-editable node | Sinks are `textbox`, `searchbox`, and `combobox`. |
 | A password into a field that isn't a password field | Purpose must match. A generic secret fills any editable input. |
+| An MCP `run_code` locator found by part of a text (a regular expression, an `exact` other than `true`, `hasText`) when the config declares a secret | The engine matches it on unredacted text, so whether it matches could spell a secret out one piece at a time. `run_code` matchers compare redacted text instead. |
 | A mutating project tool requesting an observation | Observe in a separate call. |
 | `vision: 'only'` when pixels are withheld | There is nothing to fall back to. |
 | `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
@@ -239,6 +240,9 @@ Redaction matches strings. These pass through:
   form holds the value stays collapsed and masked,
 - a value spread over several nodes, such as one character per cell on a PIN
   pad,
+- a yes or no about a value: an `e2e mcp` `locate` count says whether the
+  screen matches the text the agent passed, `exact: false` included, as an
+  assertion in a test does,
 - a case mapping that changes length (`ß` shown as `SS`), for the cut-text
   rule,
 - a value a secret provider returns, in titles and in what a test filter

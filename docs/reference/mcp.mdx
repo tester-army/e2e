@@ -7,7 +7,7 @@ icon: "plug"
 ---
 
 `e2e mcp` lets coding agents such as Claude Code and Cursor inspect your app,
-try locators, and take masked screenshots while they write tests. It runs over
+try locators, run test lines, and take masked screenshots while they write tests. It runs over
 stdio and uses the project's configured engine. For setup and what to ask
 the agent, see the [MCP server guide](/mcp-server).
 
@@ -104,6 +104,7 @@ open_session {target: "web", headed: true}
 | `target` | string | no | The target to open. Otherwise `--target`, else the only target. |
 | `config` | string (path) | no | The config for this session. Otherwise `--config`, else discovered like `e2e run`. |
 | `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
+| `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
 
 #### `tools`
 
@@ -167,6 +168,7 @@ What `call` can run depends on the session's target.
 | [Actions](#actions) | Act on an observed node |
 | [`dismiss_keyboard`](#dismiss_keyboard) | Hides the on-screen keyboard |
 | [`locate`](#locate) | Tries a semantic locator |
+| [`run_code`](#run_code) | Runs test statements |
 | [`test_lines`](#test_lines) | Returns the session's test lines |
 | [`screenshot`](#screenshot) | Returns the masked viewport |
 | [Point tools](#point-tools) | Act at a screenshot point |
@@ -227,10 +229,68 @@ Returns how many nodes match a semantic locator, which ones, and the
 - What it shows of a node passes the secret ledger, as `observe` does: a
   filled secret reads `<secret:name>`.
 
+#### `run_code`
+
+Runs test statements on the live session and returns each one's pass or
+failure, a read's value, and what changed on screen. Run a line here before
+you write it into a test.
+
+```txt
+call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada@example.com');\nawait expect(screen.getByRole('status')).toHaveText('Saved');"}}
+```
+
+| Input | Does |
+| --- | --- |
+| `code` | One or more statements as a test body writes them, separated by `;` or new lines. |
+| `timeout` | Optional. How long each statement may wait, in ms, 1 through 120000. Default `5000`. |
+
+- Statements run in order on the session's `screen` and `app` fixtures, with
+  a test's waits, exactly-one rule, and matchers.
+- The first failure stops the call. The rest don't run, the app stays where
+  the passing statements left it, and the result is an error result with the
+  code and message a test would get.
+- The statements that pass, except reads, join the
+  [`test_lines`](#test_lines) draft as written, in the order they ran.
+- Each statement waits at most `timeout`, its own `timeout` option included.
+  The config's [`actionTimeout`](/reference/config#actiontimeout) and
+  [`assertionTimeout`](/reference/config#assertiontimeout) apply when
+  shorter. The cap also covers `app.open`, `app.restart`, and
+  `app.clearState`, so raise it for a slow first load or a device relaunch.
+- `timeout` doesn't stop a regular expression mid-match. One that
+  backtracks, such as `/^(\w+\s?)*$/` on a long line, blocks the server
+  until it finishes.
+- Reads and matchers see `<secret:name>` where a secret value is.
+- A secret `fill` passes the checks `type_secret` runs, on the field it lands
+  on: a configured secret, an enabled editable field, and a password field
+  for a password. A filled secret withholds screenshots as `type_secret`
+  does.
+
+The code is parsed, never run as JavaScript. The grammar takes:
+
+| Part | Accepted |
+| --- | --- |
+| Statement | An optional `await`, then a chain on `screen` or `app` that ends in an action or a read, or `expect(locator)` with an optional `.not` and one matcher |
+| Locator | `screen.getByRole`, `getByLabel`, `getByText`, `getByPlaceholder`, `getByTestId`, or `getByDisplayValue`, narrowed with `filter`, `or`, `first`, `last`, `nth`, and more `getBy*` |
+| Argument | A string, number, boolean, `null`, regular expression, template without `${}`, array, object, locator, or `credentials.user(name).username` |
+| Secret | `credentials.user(name).password` or `secrets.get(name)`, as `fill`'s value only |
+
+Left out: fixtures an engine contributes (`browser`, `device`),
+`expect(screen)`, `toHaveScreenshot`, `app.screenshot`, `screen.debug`,
+`all`, `setInputFiles`, and the value matchers (`toBe`, `toEqual`).
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | Code that doesn't parse or is outside the grammar, such as another name, a call it lacks, an assignment, or a function. The message quotes it with its line and column, and no statement runs. |
+| `INVALID_ARGUMENT` | A matcher that expects `<secret:name>`, since a test compares the real value. No statement runs. |
+| `POLICY_DENIED` | A secret `fill` into a field that fails the `type_secret` checks. Nothing is typed. |
+| `POLICY_DENIED` | A read of a password field. |
+| `POLICY_DENIED` | When the config declares a secret or credential, a locator found by part of a text: a regular expression, an `exact` other than `true`, or `hasText`. Find it by its exact text. No statement runs. |
+
 #### `test_lines`
 
-Returns every test line the session's actions printed, in order, as a draft
-test body. Takes no arguments.
+Returns every test line the session's actions printed, and every statement
+[`run_code`](#run_code) passed, in order, as a draft test body. Takes no
+arguments.
 
 Each action's result carries its line after the summary:
 
@@ -258,7 +318,7 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 
 | Action | Line |
 | --- | --- |
-| Opening the session | `app.open()` |
+| Opening the session, without [`test`](#running-a-test) | `app.open()` |
 | `tap`, `double_tap`, `long_press`, `right_click`, `hover` | `tap()`, `doubleTap()`, `longPress()`, `secondaryTap()`, `hover()`, with any `modifiers` |
 | `type` into a node | `fill(value)`; a credential's username as `credentials.user(name).username` |
 | `type_secret` | `fill(credentials.user(name).password)` or `fill(secrets.get(name))`, never the value |
@@ -383,7 +443,9 @@ them. A listed release on another version than the project's e2e can reject
 config keys it does not know; the registration above always matches.
 
 The server needs no model: a project without the optional `ai` package
-opens sessions and drives the app with the deterministic tools.
+opens sessions and drives the app with the deterministic tools. A test a
+session [runs](#running-a-test) calls the configured model for an agent step
+the replay cache cannot serve.
 
 Start the server in the project directory. Config discovery works like
 `e2e run`. For another config, see [`--config`](#config) and
@@ -394,12 +456,16 @@ Start the server in the project directory. Config discovery works like
 - Operator output goes to stderr, prefixed `e2e mcp:`. Stdout carries only
   the protocol.
 - What your code writes through `console`, `process.stdout`, or
-  `process.stderr` (the config's top-level code, project tools) goes to
-  stderr with secret values redacted.
+  `process.stderr` (the config's top-level code, project tools, a test a
+  session runs) goes to stderr with secret values redacted.
 - Output printed while a config loads appears once it has loaded. If the
   load fails, that output is withheld, since the config's secrets are
   unknown.
-- An error nobody caught is logged redacted and shuts the server down.
+- A promise a session's test leaves rejected fails that test, as in a run.
+  One that rejects after the test's body ended is an `UNHANDLED_REJECTION`
+  line in `close_session`'s result, and a warning on stderr once the session
+  has closed. Any other error nobody caught, a rejection before any session
+  has run a test included, is logged redacted and shuts the server down.
 
 <Note>
 A child process that inherits the server's stdio writes past this.
@@ -425,20 +491,80 @@ exits.
 Sessions enforce what tests enforce:
 
 - Node ids are valid only against the newest observation.
-- A secret fills only through `type_secret`. Once one has been filled,
+- A secret fills only through `type_secret` or a [`run_code`](#run_code)
+  `fill`, under the same checks. Once one has been filled,
   [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
   catalog but answer `PIXEL_TAINTED` for the rest of the session.
 - Once the config has loaded, its secret values are redacted from every text
   a tool returns, a node `locate` found, an action's result, an
   `open_session` or `close_session` failure, a cleanup line, and the server's
   own log lines.
-- Nothing a session does is recorded as a test result or into the replay
-  cache. Its artifacts land under
+- Nothing a session does is recorded as a test result. Only a test the
+  session runs reads or writes the replay cache
+  ([Running a test](#running-a-test)). Its artifacts land under
   `<output>/results/mcp/<target>-<attemptId>/`, its videos under
   `<output>/videos/`. A later `e2e run` clears `<output>/results`; the videos
   stay.
 - A queued call cancelled by the client does not execute when its turn
   arrives.
+
+## Running a test
+
+`open_session {test}` runs one test of the project on the session's attempt,
+then hands the session over on the screen where the test stopped. A coding
+agent fixes a failing test from there without clicking through the flow
+again.
+
+```txt
+open_session {test: "tests/checkout.e2e.ts:12"}
+```
+
+- **Selection.** `test` takes what `e2e run` takes as a positional: a file
+  with `:line` for the test declared on that line, a file, a directory, a
+  glob, or a name. It must select exactly one test on the session's target.
+  The line is the one the `test(` call is on; a line inside the test
+  selects nothing.
+- **What runs.** The test's `beforeAll` hooks, its `test.extend()` fixtures,
+  its `beforeEach` hooks, and its body, with the same fixtures, locators,
+  `expect`, `timeout`, `actionTimeout`, and `assertionTimeout` as in a run.
+  The session does not open the app URL or launch the pinned app first; the
+  test opens the app itself.
+- **Where it stops.** At the first failure, or at the end of the body. Nothing
+  is torn down. The opening text leads with the outcome: passed, or failed
+  with the code, the message, the failing line and the code around it, the
+  URL, the nodes nearest a locator that matched nothing, and the last 15
+  steps. The session summary, the catalog, and the screen follow.
+- **Test lines.** The test's own steps print no [test line](#test_lines).
+  The session's lines start with the agent's first action, and `test_lines`
+  returns them as the lines that continue the test.
+- **Teardown.** `afterEach` hooks, fixture teardowns, and `afterAll` hooks
+  run at `close_session`, or when the session closes on its own. Their
+  failures show as `Cleanup (afterEach)` and `Cleanup (afterAll)` lines.
+- **Rerun.** `close_session`, then `open_session {test}` again. Each session
+  loads the config and the test files fresh, files they import included.
+- **Replay cache.** The test reads and writes the cache as a run's first
+  attempt: steps replay, and a new recording is saved once a later check
+  passes. A failure evicts the entries no check confirmed. The cache settles
+  when the body ends, so an `afterEach` check confirms nothing.
+  [`cache.strict`](/reference/config#cache) holds as in a run.
+- **Not part of it.** No test result, report, or trace page. Retries, and the
+  test's `trace` and `video` modes, don't apply. The failure screenshot and
+  `screen-at-failure.txt` land in the session's artifacts directory.
+- **Screenshots.** Each session counts as a run of its own for
+  `toHaveScreenshot`: a baseline one session writes is compared against in
+  the next.
+- **Several sessions.** Test code in two sessions takes turns: one session
+  runs its test or its teardown at a time, since `expect.poll`,
+  `expect.soft`, and `test.skip` find the running test through one slot per
+  process. An open cancelled while its test waits for its turn runs none of
+  the test's code.
+
+| Throws | When |
+| --- | --- |
+| `NO_TESTS` | `test` selects no runnable test. The message names the cause, as for `e2e run`. |
+| `TEST_AMBIGUOUS` | `test` selects several tests. The message lists them as `file:line`. |
+| `SESSION_TEST_UNSUPPORTED` | The test is in a serial group, starts from a setup test's `session`, or runs as several agents. |
+| `COLLECTION_ERROR` | A test file fails to collect, as for `e2e run`. |
 
 ## Several sessions
 
@@ -468,7 +594,7 @@ session.
   `readyUrl`, say) has stopped.
 - Each session loads the config afresh, down to the files it imports by
   path, such as a base config it spreads, so each gets engine instances of
-  its own. An engine created inside a package is one instance every session
+  its own. A session that runs a test loads the test files the same way. An engine created inside a package is one instance every session
   shares.
 - Sessions on one app command share its process: the first session starts
   it, and it stops when the last of them closes. A URL declared with port

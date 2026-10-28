@@ -136,8 +136,8 @@ jobs:
             -derivedDataPath build
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.agent-device
-          key: agent-device-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          path: ~/.agent-device/apple-runner/derived
+          key: agent-device-runner-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Boot a simulator and install the app
         run: |

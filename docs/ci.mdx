@@ -164,8 +164,11 @@ These rules apply on each service:
   no change in your code. The examples create a simulator on a named
   runtime and boot it by UDID. Replace `iOS-26-5` with a runtime the image
   has (`xcrun simctl list runtimes`).
-- **Cache `~/.agent-device`.** agent-device builds its XCUITest runner
-  there the first time it drives a simulator.
+- **Cache `~/.agent-device/apple-runner/derived`.** agent-device builds
+  its XCUITest runner there the first time it drives a simulator. Don't
+  cache all of `~/.agent-device`. The rest is the state of the last
+  daemon, and a restored copy can stop the next run with
+  `Failed to communicate with daemon`.
 - **Replay local recordings.** The replay cache key holds the app, not the
   device, so a step recorded on your simulator replays on the CI one.
   [Commit the replay cache](/cache#commit-the-replay-cache).

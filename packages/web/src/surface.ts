@@ -51,6 +51,7 @@ import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts
 import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
+import { withHiddenCaret } from './screenshot-caret.ts';
 import { connectionAbort, withOperationDeadline, type OperationBound } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
 import { ConfiguredInitScripts, type WebInitScript } from './init-scripts.ts';
@@ -1020,16 +1021,17 @@ export class PlaywrightSurface {
     return { relative, absolute };
   }
 
-  /** Redacted at the source: secure fields in every frame are masked, as in observation pixels. */
+  /** Redacted at the source: secure fields in every frame are masked, and the caret is hidden without editing styles, as in observation pixels. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
     return this.guard(operation, 'screenshot', async (currentOperation) => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
-      await page.screenshot({
+      await withHiddenCaret(page, () => page.screenshot({
         path: absolute,
         timeout: currentOperation.timeoutMs,
+        caret: 'initial',
         ...maskOptions(secureFieldMasks(page)),
-      });
+      }));
       return relative;
     });
   }

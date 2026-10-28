@@ -6,6 +6,7 @@
 
 import type { ResultStatus } from '../run/records.ts';
 import type { RecordedModel } from '../cache/trace.ts';
+import type { SerializedError } from '../internal/errors.ts';
 import type { StepActivity, StepEvent, StepKind, StepProgress } from '../run/steps.ts';
 import type { AiUsage } from './format.ts';
 
@@ -92,6 +93,8 @@ export interface TestLine {
   readonly usage: AiUsage;
   readonly firstErrorLine: string | undefined;
   readonly skipReason: string | undefined;
+  /** Cleanup-phase secondary errors of attempts whose cleanup failed. */
+  readonly cleanupErrors: readonly SerializedError[];
   readonly steps: readonly FinishedStep[];
   readonly replays: readonly ReplayNotice[];
 }

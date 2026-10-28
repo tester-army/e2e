@@ -294,7 +294,9 @@ cache: { mode: 'read-write', dir: '.e2e/cache' },
 `--no-cache` overrides the config. In `read-only` mode, stale entries stay
 until a `read-write` run replaces them. A custom `cache.store` replaces the
 file store and doesn't default to `read-only` in CI. `e2e explore` and
-`e2e mcp` don't use the cache.
+`e2e mcp` sessions don't use the cache. A test a session runs
+([`open_session {test}`](/reference/mcp#running-a-test)) uses it as a run's
+first attempt does.
 
 ## Share the cache across checkouts
 

@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tester-army/e2e/blob/main/examples/examples.schema.json",
+  "title": "e2e examples registry",
+  "description": "Every example listed on https://e2e.tester.army/examples: the official ones (folders under examples/ and repositories in the tester-army organization) and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "tags",
+    "examples"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "tags": {
+      "description": "The tags an example can carry, one list per kind. Each kind is a filter on the site, its tags the filter's options in this order.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "framework",
+        "useCase",
+        "platform"
+      ],
+      "properties": {
+        "framework": {
+          "description": "The stack the example's app is built with.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tag"
+          }
+        },
+        "useCase": {
+          "description": "What the example shows, beyond its stack: a starter app, authentication, visual testing.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tag"
+          }
+        },
+        "platform": {
+          "description": "Where the example's tests run.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tag"
+          }
+        }
+      }
+    },
+    "examples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/example"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "tag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        }
+      }
+    },
+    "example": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slug",
+        "title",
+        "description",
+        "source",
+        "repository",
+        "author",
+        "license",
+        "tags"
+      ],
+      "properties": {
+        "slug": {
+          "description": "The page's address, unique across the registry: https://e2e.tester.army/examples/<slug>. `opengraph-image` is taken by the site's own route.",
+          "allOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "not": {
+                "enum": [
+                  "opengraph-image"
+                ]
+              }
+            }
+          ]
+        },
+        "title": {
+          "description": "The page's heading: \"e2e with Vite\".",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "shortTitle": {
+          "description": "The name on the example's card, when shorter than the title: \"Vite\".",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "description": {
+          "description": "One or two sentences on the card and under the page's heading.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "icon": {
+          "description": "The example's logo, a file in examples/icons/ (SVG or PNG). Without one the site shows the e2e logo, the default for every example that is not about one framework or one company's product.",
+          "type": "string",
+          "pattern": "^[a-z0-9-]+\\.(?:svg|png)$"
+        },
+        "invertIcon": {
+          "description": "For a logo drawn in black for light backgrounds: the site shows it inverted, in white.",
+          "type": "boolean"
+        },
+        "source": {
+          "description": "`official` for the examples the e2e team maintains, in the tester-army organization; `community` for everyone else's, outside it.",
+          "enum": [
+            "official",
+            "community"
+          ]
+        },
+        "repository": {
+          "description": "The example's folder on GitHub, whose README the page renders: https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder.",
+          "type": "string",
+          "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:/tree/[^/\\s]+(?:/[^\\s]+)?)?$"
+        },
+        "author": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "github"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "github": {
+              "description": "The GitHub user or organization: the avatar and the profile link.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+            }
+          }
+        },
+        "license": {
+          "description": "The example's SPDX license identifier: \"MIT\", \"Apache-2.0\".",
+          "type": "string",
+          "minLength": 1
+        },
+        "licenseUrl": {
+          "description": "Where the license text lives. Without it the site links to the license on spdx.org.",
+          "type": "string",
+          "pattern": "^https://"
+        },
+        "tags": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "framework",
+            "platform"
+          ],
+          "properties": {
+            "framework": {
+              "description": "Tag ids from tags.framework, the main one first.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "useCase": {
+              "description": "Tag ids from tags.useCase.",
+              "type": "array",
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "platform": {
+              "description": "Tag ids from tags.platform.",
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": {
+                "$ref": "#/$defs/id"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

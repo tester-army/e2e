@@ -48,7 +48,7 @@ import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupOutcome, type SetupStep } from './events.ts';
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
-import { someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
+import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
 import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
@@ -1384,6 +1384,8 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
  * or its attempts' error category when that is worse. A serial group answers
  * for its members, whose results carry no attempts, and for a group attempt
  * that failed before any member ran (a launch), whose members are skipped.
+ *
+ * An attempt whose cleanup failed adds its cleanup errors' codes, even when the test passed.
  */
 function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): number[] {
   const codes: number[] = [0];
@@ -1401,6 +1403,9 @@ function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readon
         break;
       default:
         break;
+    }
+    for (const cleanupError of cleanupErrorsOf(verdict.attempts)) {
+      codes.push(exitCodeForCategory(cleanupError.category));
     }
   }
   return codes;

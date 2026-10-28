@@ -238,6 +238,20 @@ test('shows the offline banner', { platforms: ['android'] }, async ({ app, devic
 `app.clearState()` leaves alone, so a stored session token is gone on the
 next launch. It is iOS only.
 
+For anything `device` doesn't cover, `device.unstable_raw` has an
+[agent-device](https://github.com/callstack/agent-device) client
+bound to the test's session, plus the session name and the device's id and
+name. It is unstable and may change or go away in any release:
+
+```ts
+const { client, deviceId } = device.unstable_raw;
+const { nodes } = await client.capture.snapshot({});
+```
+
+Client calls aren't steps: the report and trace leave them out, the agent
+cache doesn't replay them, secrets passed to them aren't redacted, and
+nothing waits for the screen to settle after one.
+
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
 emulator (a Pixel Fold profile, or the generic "7.6in Foldable") in a hinge
@@ -268,6 +282,26 @@ test('the list and the detail split across the fold', async ({ agent, app, devic
 });
 ```
 </Accordion>
+
+### Record a transition
+
+[`app.startRecording()` and `app.stopRecording()`](/reference/app#startrecording)
+record one span of the screen as an `.mp4`. A locator's `boundingBox()`
+gives an element's frame in points (physical pixels on Android).
+
+```ts
+test('the sheet slides up', { video: 'off' }, async ({ app, screen }) => {
+  await app.open();
+  await app.startRecording({ name: 'sheet' });
+  await screen.getByRole('button', 'Open sheet').tap();
+  await expect(screen.getByText('Sheet title')).toBeVisible();
+  const [video] = await app.stopRecording();
+});
+```
+
+Start it after `app.open()`. A recording started after `device.closeApp()`
+ends the device session when it stops, so open the app again after it.
+Taps show unless [`videoTouches`](/reference/mobile#videotouches) is `false`.
 
 ## Several devices
 
@@ -639,9 +673,10 @@ export function cloudDevices(options: { provider: string; stateDir: string }): D
   Query it by test id or label and assert `toBeSelected`. Checkboxes,
   radios, and `toBeChecked` work on both platforms.
 - On iOS, a plain React Native `View` has no children in the tree, so
-  `filter({ has })` on it and queries scoped to it match nothing. Scope to
-  the screen's `ScrollView` (`device.locator('role=scroll-area')`), or give
-  the children test ids.
+  `filter({ has })` on it and queries scoped to it match nothing, while
+  `filter({ hasNot })` keeps every such row, including one you meant to
+  exclude. Scope to the screen's `ScrollView`
+  (`device.locator('role=scroll-area')`), or give the children test ids.
 - A Jetpack Compose clickable drawn smaller than 48dp shows as two buttons
   in the tree, and a tap fails with `has no parent-owned touch point`. Make
   the control at least 48dp, Android's minimum touch target.
