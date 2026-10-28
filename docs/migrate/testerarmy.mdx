@@ -9,7 +9,7 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 export const migrationPrompt = `Migrate this project's TesterArmy saved tests to e2e, one group at a time. Docs: \`https://e2e.tester.army/docs/migrate/testerarmy.md\`
 
 1. Read the migration guide above. It maps TesterArmy project settings, steps, and groups to e2e and marks what e2e does not have yet.
-2. If you have no \`testerarmy\` MCP tools, add the server with \`npx add-mcp --global --name testerarmy https://tester.army/mcp\`. Ask me to sign in and restart the session, then wait until I confirm.
+2. If you have no \`testerarmy\` MCP tools, add the server with \`npx add-mcp --global --name testerarmy https://tester.army/mcp\`. If Claude Code uses a custom \`CLAUDE_CONFIG_DIR\`, run \`claude mcp add --transport http testerarmy https://tester.army/mcp\` instead. Ask me to sign in and restart the session, then wait until I confirm.
 3. Call \`list_projects\` and ask me which project to migrate. Read it with \`get_project\`, \`list_project_environments\`, \`list_project_credentials\`, \`list_project_memories\`, \`list_project_files\`, \`list_groups\`, and \`list_tests\`. Use only read tools. Never create, update, delete, or run anything in TesterArmy.
 4. If the project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes\` (or the pnpm or bun equivalent), with \`--engine mobile\` for a mobile project. Rewrite \`tests/example.e2e.ts\` for the app or delete it.
 5. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
@@ -22,10 +22,11 @@ export const migrationPrompt = `Migrate this project's TesterArmy saved tests to
 12. Summarize which tests moved, which stayed in TesterArmy, and why.`;
 
 A TesterArmy saved test is a list of plain-language steps that a QA agent
-runs in TesterArmy's cloud. In e2e, each step becomes an `agent.act` or
-`agent.assert` call in a TypeScript test that runs on your machine or in your
-CI. A coding agent reads your projects and tests through the TesterArmy MCP
-server and writes the e2e tests.
+runs in TesterArmy's cloud. In e2e, each step becomes a line in a TypeScript
+test that runs on your machine or in your CI: an `agent.act` or
+`agent.assert` call, or a locator call when the step needs no judgment. A
+coding agent reads your projects and tests through the TesterArmy MCP server
+and writes the e2e tests.
 
 <SetupPrompt>
 
@@ -38,7 +39,7 @@ For a migration that spans several sessions, the [`migrate-to-e2e` skill](/codin
 ## Connect the TesterArmy MCP server
 
 The coding agent reads your tests from the hosted server at
-`https://tester.army/mcp`. Add it to every coding agent on your machine:
+`https://tester.army/mcp`. Add it to the coding agents on your machine:
 
 <CodeGroup>
 ```bash npm
@@ -54,6 +55,9 @@ bunx add-mcp --global --name testerarmy https://tester.army/mcp
 ```
 </CodeGroup>
 
+`add-mcp` writes Claude Code's entry to `~/.claude.json`. If you set
+`CLAUDE_CONFIG_DIR`, run
+`claude mcp add --transport http testerarmy https://tester.army/mcp` instead.
 Sign in when the client asks. Other ways to add the server are in
 [TesterArmy's MCP setup](https://tester.army/docs/cli/mcp).
 
@@ -62,16 +66,16 @@ your tests there.
 
 ## Port the project
 
-<Note>Install e2e and configure a model with the [quickstart](/quickstart). Every ported step is an agent call, so the config needs a model.</Note>
+<Note>Install e2e and configure a model with the [quickstart](/quickstart). Agent calls need a model.</Note>
 
 | TesterArmy | e2e |
 | --- | --- |
 | web project `url` | `app: { url }` on a `web()` target |
-| mobile project and its uploaded builds | a `mobile({ platform })` target with `app: { bundleId }`. You build and install the app, see [Mobile](/mobile) |
+| mobile project and its uploaded builds | a `mobile({ platform })` target with `app: { bundleId, appPath }`. You build the app, and `device.installApp()` installs it, see [Mobile](/mobile) |
 | static environments (Staging, QA) | one target per environment, each with its own `app.url`. `--target staging` runs one |
-| PR preview environment | a CI job that sets `app.url` to the preview URL, see [Continuous integration](/ci) |
-| `login` credential | a `credentials` entry. TesterArmy never returns the password, so read it from an environment variable, see [Signing in](/authentication#credentials) |
-| credential `totpSecret` | a `secrets` entry whose value is a function that computes the code |
+| PR preview environment | a CI job that sets `app.url` to the preview URL, see [Protected previews](/web#protected-previews) |
+| `login` credential | a `credentials` entry. TesterArmy never returns the password or TOTP secret, so read it from an environment variable, see [Signing in](/authentication#credentials) |
+| credential `totpSecret` | a `secrets` entry whose value is a function that computes the code. e2e ships no TOTP generator, so add a TOTP library |
 | credential environment overrides | one `credentials` entry, with `E2E_USER_<NAME>_PASSWORD` set per environment, see [Override a value per run](/authentication#override-a-value-per-run) |
 | `inbox` credential | Not yet. Call your own test inbox from a [fixture](/fixtures) |
 | `agentInstructions` | `system` on the agent, see [Instructions and vocabulary](/agents#instructions-and-vocabulary) |
@@ -144,11 +148,12 @@ opens on its own, so each test starts with `app.open()`.
 
 | TesterArmy | e2e |
 | --- | --- |
-| `act` step | `agent.act('...')` |
+| `act` step | `agent.act('...')`, or a locator call when the step opens a known route or acts on one named control |
 | `assert` step | `agent.assert('...')`, then a locator assertion when a label or test id names the end state |
 | `login` step | a `test.setup` that signs in and calls `session.save()`, and `{ session }` on each test, see [Signing in](/authentication) |
 | `login` with `temporaryEmail` | Not yet |
-| `files` step, `@receipt.jpg` in a step | the file's repository path in the goal: `agent.act('attach tests/fixtures/receipt.jpg')`, or `locator.setInputFiles()` |
+| `files` step, `@receipt.jpg` in a step, on web | the file's repository path in the goal: `agent.act('attach tests/fixtures/receipt.jpg')`, or `locator.setInputFiles()` |
+| `files` step on mobile (photo library) | Not yet |
 | `screenshot` step | `app.screenshot('label')` |
 | `javascript` step | `browser.evaluate()`. It fails only when the code throws, so check a `{ success: false }` return with `expect` |
 | `microphone` step | Not yet |
@@ -156,9 +161,13 @@ opens on its own, so each test starts with `app.open()`.
 | disabled test | `test.skip` |
 | group | `describe` with `tags`, run with `npx e2e run --tag <tag>` |
 | group `runMode: sequential` | `{ serial: true }` on the group |
-| group `maxConcurrentRuns` | `workers` in the config |
+| group `maxConcurrentRuns` | `workers` in the config. It limits the whole run, not one group |
 | group `prepTestId` | a `test.setup` that saves a session, and `{ session }` on the group |
 | `run_test`, `run_group` | `npx e2e run <file>`, `npx e2e run --tag <tag>` |
+
+Keep the agent for a step that reads the screen to decide, spans several
+screens, or names no stable control. Before you swap a step for a locator,
+find the control's exact name, and check the same end state.
 
 ## What differs on purpose
 

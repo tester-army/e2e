@@ -62,14 +62,10 @@ ask the user to sign in and restart the session, and wait.
 - TesterArmy never returns passwords or TOTP secrets. Name each credential
   in the config and ask the user to set its environment variable.
 - The literal port of a step is an agent call (`agent.act`, `agent.assert`),
-  so the config needs a model (step 3.2). When a step needs no judgment,
-  port it to the deterministic API instead: it opens a known route, taps
-  one named control, fills one labeled field, or asserts text a locator can
-  name. Learn the exact name first (step 5),
-  and keep the step's meaning: an `assert` step becomes a locator assertion
-  that checks the same state. Keep the agent for steps that read the screen
-  to decide, span several screens, or name no stable control. Note each
-  swap in the row's Notes.
+  so the config needs a model (step 3.2). A step that needs no judgment
+  ports to a locator call instead, as the guide's "Map each step" section
+  says. Learn the exact name first (step 5), and note each swap in the
+  row's Notes.
 
 ## 1. Resume or start
 
