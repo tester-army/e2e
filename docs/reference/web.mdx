@@ -63,7 +63,9 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`initScripts`](#init-scripts) | `WebInitScript[]` | - |
 
 - A `web()` target needs `app.url` and refuses the device keys (`bundleId`,
-  `appPath`, `launchArguments`, `permissions`).
+  `appPath`, `launchArguments`). Its `app.permissions` takes `'grant'` only,
+  for names its browser grants; see
+  [`permissions`](/reference/config#permissions).
 - A target with `app.url` is a `browser` target, so `requires: ['browser']`
   selects web targets.
 - The full declaration with its JSDoc is [`WebOptions`](#weboptions) under

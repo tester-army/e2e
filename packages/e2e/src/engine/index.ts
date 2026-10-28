@@ -159,7 +159,7 @@ export interface EngineAppInfo {
   readonly appPath?: string;
   /** Arguments every fresh launch passes the app. */
   readonly launchArguments?: readonly string[];
-  /** Permissions the app holds on every fresh launch, by name. */
+  /** Permissions the app holds, by name; what each state means is the engine's (a device sets them before every fresh launch). */
   readonly permissions?: Readonly<Record<string, AppPermissionState>>;
 }
 
