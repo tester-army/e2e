@@ -34,7 +34,7 @@ const read = (min: number, max: number): Member => ({ kind: 'read', args: [min, 
 const matcher = (min: number, max: number): Member => ({ kind: 'matcher', args: [min, max] });
 
 /** Public members `run_code` leaves out on purpose; `LEFT_OUT` says why for each. */
-type LeftOutName = 'debug' | 'all' | 'setInputFiles' | 'screenshot' | 'toHaveScreenshot';
+type LeftOutName = 'debug' | 'all' | 'setInputFiles' | 'screenshot' | 'toHaveScreenshot' | 'startRecording' | 'stopRecording';
 
 /** Public members that are not calls: `expect(...).not` the grammar reads itself, `app.baseUrl` a statement has no use for. */
 type NotCalled = 'not' | 'baseUrl';
@@ -161,5 +161,7 @@ export const LEFT_OUT: ReadonlyMap<string, string> = new Map(
     setInputFiles: 'reads files from disk; attach files with the upload tool, which checks the paths',
     screenshot: 'writes an unmasked screenshot file; use the screenshot tool, which withholds pixels after a secret fill',
     toHaveScreenshot: 'compares against screenshots kept beside a test file, so it runs only in a test; look with the screenshot tool',
+    startRecording: 'records into a test attempt; use the start_recording tool',
+    stopRecording: 'records into a test attempt; use the stop_recording tool',
   } satisfies Record<LeftOutName, string>),
 );

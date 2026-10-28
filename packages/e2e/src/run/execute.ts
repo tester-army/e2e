@@ -60,6 +60,7 @@ import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } fr
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { EngineError } from '../engine/contract.ts';
 import { hostedVideoUrl } from '../engine/recording.ts';
+import { sessionRecordings } from './recordings.ts';
 import { WorkerModels } from './worker-models.ts';
 import type { SetupFn } from '../types.ts';
 
@@ -641,9 +642,9 @@ export class TargetExecutor implements SerialHost {
       // engine without it was either refused before the run (a mode a target
       // or test set) or skipped with a notice (a run-wide mode). A required
       // video's failure fails the launch; a default one's is swallowed.
-      const { startVideo } = session.artifacts;
-      if (video !== undefined && startVideo !== undefined) {
-        const starting = launch('starting the video', (launchSignal) => startVideo(launchOp(launchSignal)));
+      if (video !== undefined && session.artifacts.startVideo !== undefined) {
+        const recordings = sessionRecordings(session, this.target.name);
+        const starting = launch('starting the video', (launchSignal) => recordings.startAttemptVideo(launchOp(launchSignal)));
         if (video.policy === 'required') await starting;
         else await starting.catch(() => undefined);
       }
@@ -719,10 +720,11 @@ export class TargetExecutor implements SerialHost {
     secondaryErrors: SerializedError[],
   ): Promise<void> {
     const { attemptId, video } = close;
-    const { stopVideo } = session.artifacts;
-    if (stopVideo !== undefined && video !== undefined) {
+    await this.stopRunningRecording(session, attemptId, record, artifactSink, secondaryErrors);
+    if (session.artifacts.stopVideo !== undefined && video !== undefined) {
+      const recordings = sessionRecordings(session, this.target.name);
       await this.stopVideo(video, attemptId, record, secondaryErrors, async (operation) => {
-        const segments = await stopVideo(operation);
+        const segments = await recordings.stopAttemptVideo(operation);
         // Recorded so a failure could be looked at; a pass has nothing to show.
         if (!keeps(video.keep, record.status)) {
           await Promise.all(
@@ -735,6 +737,34 @@ export class TargetExecutor implements SerialHost {
     }
     try {
       await this.debug.time('session.close', () => this.endAttempt(session, attemptId));
+    } catch (cause) {
+      record.cleanup = 'failed';
+      secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+    }
+  }
+
+  /**
+   * Stops a recording the test started with `app.startRecording` and left
+   * running, within the cleanup budget, and keeps it as the attempt's
+   * artifact. One that cannot be finalized is a cleanup failure.
+   */
+  private async stopRunningRecording(
+    session: TargetSession,
+    attemptId: string,
+    record: ClosingRecord,
+    artifactSink: ArtifactSink,
+    secondaryErrors: SerializedError[],
+  ): Promise<void> {
+    const recordings = sessionRecordings(session, this.target.name);
+    if (!recordings.spanRunning) return;
+    try {
+      await this.lifecycle(
+        'stopping the recording',
+        this.config.cleanupTimeout,
+        'CLEANUP_TIMEOUT',
+        NEVER_ABORTS,
+        (signal) => recordings.stopSpan(this.op(attemptId, this.config.cleanupTimeout, signal), artifactSink),
+      );
     } catch (cause) {
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
@@ -1231,6 +1261,10 @@ export class TargetExecutor implements SerialHost {
         if (skipped !== undefined) record.skip = { cause: 'explicit', reason: skipped.reason };
         // A failure that first landed in teardown has had no look yet.
         await captureEvidence();
+      }
+      // A serial member's recording ends with the member, not the group.
+      if (openSession !== null && shared !== undefined) {
+        await this.stopRunningRecording(openSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, { attemptId, video }, record, artifacts.sink, secondaryErrors);

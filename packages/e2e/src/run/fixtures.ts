@@ -16,6 +16,7 @@ import { ConfigurationError, errorMessage, InfrastructureError, TestError } from
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { createScreenshotContext, type ScreenshotContext, type WrittenScreenshots } from './screenshots.ts';
+import { sessionRecordings } from './recordings.ts';
 import { resolveSecretValue, sessionSecrecy } from './secrecy.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
@@ -30,7 +31,7 @@ import {
 } from '../locator/screen.ts';
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import type { Agent, App, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -474,6 +475,7 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
 /** Builds the portable app fixture with the session's shared screenshot policy. */
 function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App {
   const { config, steps, target } = environment;
+  const recordings = sessionRecordings(environment.session, target.name);
 
   /** Opens one resolved URL; a refused connection is reported as the app being down. */
   const openAt = async (resolved: string, timeoutMs: number): Promise<void> => {
@@ -553,6 +555,18 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
         return path.join(environment.artifacts.dir, relative);
       });
     },
+    async startRecording(options?: RecordingOptions): Promise<void> {
+      const name = options?.name;
+      await steps.run('app', 'app.startRecording', typeof name === 'string' ? name : '', async () => {
+        await recordings.startSpan(name, engine.operation());
+      });
+    },
+    stopRecording: () =>
+      steps.run('app', 'app.stopRecording', '', async () => {
+        const { ids, videos } = await recordings.stopSpan(engine.operation(), environment.artifacts);
+        for (const id of ids) environment.steps.attachArtifact(id);
+        return videos;
+      }),
   };
 }
 

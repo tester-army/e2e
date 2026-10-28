@@ -128,6 +128,9 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
   the base URL.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
   absolute path. It masks secure fields only (see Sign-in sessions).
+- `startRecording({ name? })`, then `stopRecording()`: records one span and
+  returns its videos (`path` or hosted `url`). Fails while the test's
+  `video` records: set `{ video: 'off' }` on the test.
 
 `clearState()` is `UNSUPPORTED_CAPABILITY` with `connect.reconnectEndpoint`
 or an attempt-scoped browser provider; on a device with no pinned `app`, both
