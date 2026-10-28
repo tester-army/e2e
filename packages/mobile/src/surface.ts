@@ -1374,17 +1374,17 @@ export class AgentDeviceSurface {
     if (parsed.modifiers.length > 0) {
       throw unsupported(`agent-device cannot hold ${parsed.modifiers.join('+')} on a device surface; press the key alone`);
     }
-    if (parsed.key.kind === 'named' && parsed.key.name === 'Enter') {
-      return input.send(() => client.command.keyboard({ action: 'enter' }));
+    const enter = parsed.key.kind === 'named' && parsed.key.name === 'Enter';
+    if (!enter && parsed.key.kind === 'named' && parsed.key.name !== 'Space') {
+      throw unsupported(`agent-device cannot press ${parsed.key.name} on a device surface; only Enter, Space, and single characters reach the soft keyboard`);
     }
-    if (parsed.key.kind === 'char' || parsed.key.name === 'Space') {
-      const text = parsed.key.kind === 'char' ? parsed.key.char : ' ';
-      if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
-        await input.send(() => client.interactions.press({ ...this.actionTarget(entry), ...settle }));
-      }
-      return input.send(() => client.interactions.type({ text }));
+    // A key reaches the field through the soft keyboard, which is up only
+    // while the field holds focus.
+    if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
+      await input.send(() => client.interactions.press({ ...this.actionTarget(entry), ...settle }));
     }
-    throw unsupported(`agent-device cannot press ${parsed.key.name} on a device surface; only Enter, Space, and single characters reach the soft keyboard`);
+    if (enter) return input.send(() => client.command.keyboard({ action: 'enter' }));
+    return input.send(() => client.interactions.type({ text: parsed.key.kind === 'char' ? parsed.key.char : ' ' }));
   }
 
   /**
