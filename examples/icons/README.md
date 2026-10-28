@@ -27,3 +27,5 @@ list its source below.
   PayPal's navy `#002991` to its brighter brand blue `#0070E0`, which reads
   on the site's dark background
 - `smolmachines.svg`: https://smolmachines.com/favicon.svg
+- `kernel.svg`: the green KERNEL wordmark from https://www.kernel.sh/brand-assets,
+  https://www.kernel.sh/rebrand/logos/logo-kernel-green.svg

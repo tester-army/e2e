@@ -83,6 +83,10 @@
       {
         "id": "test-isolation",
         "label": "Test isolation"
+      },
+      {
+        "id": "cloud-browsers",
+        "label": "Cloud browsers"
       }
     ],
     "platform": [
@@ -574,6 +578,32 @@
         ],
         "useCase": [
           "test-isolation"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "kernel",
+      "title": "Testing in KERNEL cloud browsers with e2e",
+      "shortTitle": "KERNEL",
+      "description": "Agent steps and locator assertions against a live docs site in a KERNEL cloud browser, with a session replay of each failed test.",
+      "icon": "kernel.svg",
+      "source": "partner",
+      "repository": "https://github.com/kernel/cookbooks/tree/main/integrations/e2e-kernel",
+      "author": {
+        "name": "KERNEL",
+        "github": "kernel"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/kernel/cookbooks/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "cloud-browsers"
         ],
         "platform": [
           "web"
