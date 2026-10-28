@@ -889,7 +889,7 @@ tools: mobileTools(iphone, pixel),
 
 | Tool | Replay | Purpose |
 | --- | --- | --- |
-| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. A link is refused, as it is for `device.openApp`. |
+| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. Without an id it returns to the target's app. A link is refused, as it is for `device.openApp`. |
 | `swipe` | gap | Free-form swipe between two points in logical pixels. |
 | `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
 

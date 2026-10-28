@@ -10,8 +10,9 @@
 import type { Tool } from 'ai';
 import { z } from 'zod';
 import { defineTool, type DefinedTool, type ToolAnnotations } from 'e2e/agent';
-import { EngineError, type EngineHandle } from 'e2e/engine';
+import { EngineError, TestError, type EngineHandle } from 'e2e/engine';
 import { surfaceOf } from './engine.ts';
+import { isAppNotInstalled } from './errors.ts';
 import type { AgentDeviceSurface } from './surface.ts';
 
 /**
@@ -31,6 +32,19 @@ function requireSurface(engine: EngineHandle): AgentDeviceSurface {
     });
   }
   return surface;
+}
+
+/** The app the target pins for `app.open()`, which `open_app` returns to when the model names none. */
+function appUnderTest(surface: AgentDeviceSurface): string {
+  const app = surface.pinnedApp;
+  if (app === undefined) {
+    throw new EngineError(
+      'INVALID_STATE',
+      "this target pins no app under test (no app.bundleId or app.appPath), so open_app needs the app's bundle id, package, or display name",
+      { retryable: false },
+    );
+  }
+  return app;
 }
 
 /**
@@ -74,11 +88,22 @@ export function mobileTools(
     open_app: defineTool(
       deviceTool({
         description:
-          'Open an app by bundle id, package, or display name (e.g. "Settings"), bringing it to the foreground. Set relaunch to restart it fresh. Takes an app, not a URL: a link is refused.',
-        inputSchema: z.object({ app: z.string().min(1), relaunch: z.boolean().optional() }),
+          'Bring an app to the foreground. Omit app to return to the app under test, e.g. after a system sheet or another app took over the screen; pass a bundle id, package, or display name (e.g. "Settings") only for another app. Set relaunch to restart it fresh. Takes an app, not a URL: a link is refused.',
+        inputSchema: z.object({ app: z.string().min(1).optional(), relaunch: z.boolean().optional() }),
         execute: async ({ app, relaunch }, options) => {
-          await active().openApp(app, { relaunch: relaunch === true }, abort(options) ?? new AbortController().signal);
-          return `Opened ${app}.`;
+          const surface = active();
+          const target = app ?? appUnderTest(surface);
+          try {
+            await surface.openApp(target, { relaunch: relaunch === true }, abort(options) ?? new AbortController().signal);
+          } catch (error) {
+            if (app === undefined || !isAppNotInstalled(error)) throw error;
+            throw new TestError(
+              'INVALID_ARGUMENT',
+              `open ${target} failed: no installed app matches that name. Omit app to return to the app under test, or pass an installed app's exact bundle id or package.`,
+              { retryable: false, cause: error },
+            );
+          }
+          return app === undefined ? `Opened the app under test (${target}).` : `Opened ${app}.`;
         },
       }),
       annotate(true),
