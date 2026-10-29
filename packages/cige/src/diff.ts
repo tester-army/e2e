@@ -1,16 +1,10 @@
 /**
- * The CIGE field rules, checked mechanically. A repair may rewrite
- * Execution and add variants, guardrails, deny patterns, criteria, or
- * evidence; anything that weakens or redirects what a pass means blocks
- * until a human approves it: the Intent statement, a removed criterion or
- * evidence item, a judgment turned off, a guardrail or deny pattern
- * dropped, a case or variant removed, a variant's data changed, an id that
- * moves its history, any Context change (where and as whom the case runs,
- * and what it starts from), and any change to the CIGE config or a module
- * it imports, where the hooks and plugins that decide a pass live; a config
- * it can't load or follow blocks too. `e2e-cige diff` runs this over everything that
- * changed since a git ref, so CI and the `cige` skill read the same verdict.
- * App code and installed packages are out of its reach.
+ * The CIGE field rules, checked mechanically. A repair may rewrite Execution
+ * and add to a case; anything that weakens or redirects what a pass means
+ * blocks until a human approves it, including any change to the CIGE config
+ * or a module it imports, or a config it can't load or follow. `e2e-cige
+ * diff` runs this over what changed since a git ref, so CI and the `cige`
+ * skill read the same verdict.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -363,12 +357,7 @@ function configGraph(config: string | undefined, root: string, mergeBase: string
 }
 
 export interface DiffOptions {
-  /**
-   * Where the CIGE config may be, in order. Each side of the diff starts from
-   * the first one it has, so a deleted or renamed config is still seen. Its
-   * changes, and those of the local modules it imports, need a human's
-   * approval like a weakened case.
-   */
+  /** Where the CIGE config may be, in order; each side starts from the first it has, so a deleted or renamed config is still seen. */
   readonly configFiles?: readonly string[];
 }
 

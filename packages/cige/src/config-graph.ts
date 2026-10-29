@@ -1,41 +1,25 @@
 /**
- * The files a CIGE config reaches, for `e2e-cige diff`. `diffSince` runs this
- * in its own Node process, the way `e2e-cige` loads the config: plain Node,
- * so `#` imports, package exports, and workspace packages resolve as they
- * do at run time.
+ * The files a CIGE config reaches, for `e2e-cige diff`, loaded in its own
+ * Node process the way `e2e-cige` loads it, so aliases, package exports, and
+ * workspace packages resolve as at run time.
  *
- * 1. A resolve hook records every file Node resolves while it imports the
- *    config: the graph it actually loads, aliases included.
- * 2. Each of those files that git lists, inside the repository and outside
- *    `node_modules`, is parsed (`imports.ts`) for the specifiers it names but loading didn't
- *    reach, such as a hook's lazy `await import('#hooks/x')`. Node's
- *    resolver resolves each one (`import.meta.resolve` with a parent,
- *    behind `--experimental-import-meta-resolve`) without running it, and
- *    the walk goes on from there; a `require` resolves as CommonJS does. A
- *    file whose imports can't all be read, such as a computed
- *    `import(name)`, or that names a repository path (relative or `#`) that
- *    no longer resolves, is reported and the gate blocks.
- * 3. A loaded file git doesn't list, such as a workspace package built to
- *    an ignored `dist`, isn't parsed: its package's sources stand for it.
- *    The package's directory counts, and so does each workspace package it
- *    depends on, since a bundler may inline one. Its listed sources join
- *    the walk too, so a module they import by path counts. What they can't
- *    trace doesn't block, since their package counts as a whole. A loaded
- *    file with no package of its own apart from the config's can't be
- *    traced to a source, so it blocks.
- * 4. A symlink to a graph file, or to a directory above one, counts: Node
- *    reads through it, so retargeting it changes what loads.
- * 5. The nearest package.json of each file is reported too: its `imports`
- *    and `exports` decide where an alias lands, so remapping one can
- *    redirect a hook to another file without touching either.
- * 6. The config at the merge base is walked by text too (its relative
- *    imports), so a module the branch deleted or renamed still counts.
+ * 1. A resolve hook records every file Node resolves while importing the config.
+ * 2. Each listed one is parsed (`imports.ts`) for what loading didn't reach,
+ *    such as a lazy `import('#hooks/x')`, resolved by Node without running it.
+ *    A file whose imports can't all be read, or that names a repository path
+ *    that no longer resolves, blocks.
+ * 3. Built output git ignores isn't parsed: its workspace package stands in.
+ *    The package's directory counts, so do the workspace packages it depends
+ *    on (a bundler may inline them), and its sources join the walk leniently.
+ *    Untracked output with no package apart from the config's blocks.
+ * 4. A symlink to a graph file, or to a directory above one, counts.
+ * 5. Each file's nearest package.json counts: its `imports` and `exports` decide where an alias lands.
+ * 6. The merge base's config is walked by its relative imports, so a deleted or renamed module counts.
  *
  * Usage: `node --experimental-import-meta-resolve config-graph.js <input.json> <out.json>`.
- * It writes `{ files, packages, manifests, base, unverified }` (repo-relative paths)
- * to `<out.json>`, never to stdout, which belongs to the config's own code.
- * Node's type stripping runs it from source in tests, so it holds to
- * erasable TypeScript.
+ * It writes `{ files, packages, manifests, base, unverified }` (repo-relative)
+ * to `<out.json>`, never stdout, which belongs to the config. Tests run it
+ * from source, so it holds to erasable TypeScript.
  */
 
 import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -72,12 +56,9 @@ const SOURCE = /\.[cm]?[jt]s$/;
 const RELATIVE = /^\.{1,2}(?:\/|$)/;
 
 /**
- * The config file and every local module it imports, transitively, at the
- * merge base: relative specifiers (`.` and `..` included), resolved beside
- * the importing file, inside the repository only. The walk starts from the
- * first candidate the base has. A file that doesn't parse adds nothing:
- * this side only adds what the branch deleted or renamed, and the working
- * tree's graph covers the rest.
+ * The config and the local modules it imports by relative path, at the merge
+ * base, from the first candidate the base has. A file that doesn't parse adds
+ * nothing: this side only adds what the branch deleted or renamed.
  */
 function configModules(candidates: readonly string[], entry: TreeSide): string[] {
   const seen = new Set<string>();
@@ -151,11 +132,9 @@ const MANIFEST = z.looseObject({
 });
 
 /**
- * The repository directories of the workspace packages a package depends on,
- * in any dependency field: a bundler may inline any of them. Each name is
- * found the way Node finds it, in the nearest `node_modules` up to the root;
- * one that's installed rather than linked to the repository is left out.
- * Undefined when the package.json can't be read.
+ * The directories of the workspace packages a package depends on, in any
+ * field, since a bundler may inline a devDependency too; found through
+ * `node_modules` as Node finds them. Undefined when the package.json can't be read.
  */
 function workspaceDependencies(directory: string): string[] | undefined {
   let manifest: z.infer<typeof MANIFEST>;
@@ -216,16 +195,14 @@ if (input.config !== null && unverified.length === 0) {
   const configFile = inRepo(pathToFileURL(input.config).href);
   const ownPackage = configFile === undefined ? undefined : nearestManifest(configFile);
   const ownDirectory = ownPackage === undefined ? undefined : path.posix.dirname(ownPackage);
-  // Whether each walked file was walked strictly. One reached only through a stand-in package's sources is followed, but what it can't parse or resolve doesn't block.
-  const walked = new Map<string, boolean>();
+  // A file reached only through a stand-in's sources is walked leniently; one the strict walk reaches later is walked again.
+  const strictly = new Set<string>();
+  const leniently = new Set<string>();
   const queue: Array<readonly [string, boolean]> = [...loaded]
     .map(inRepo)
     .filter((file): file is string => file !== undefined && !installed(file))
     .map((file) => [file, true] as const);
-  /**
-   * A workspace package whose sources stand for its built output: its directory counts, its listed sources join the walk, and the workspace packages it depends on stand in too.
-   * The config's own package never does, or its cases and all its app code would count; what the walk reaches in it counts file by file.
-   */
+  // The config's own package never stands in, or its cases and app code would count; what the walk reaches there counts file by file.
   const standIn = (directory: string): void => {
     if (packages.has(directory) || directory === ownDirectory) return;
     packages.add(directory);
@@ -236,11 +213,9 @@ if (input.config !== null && unverified.length === 0) {
   };
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
     const [file, strict] = next;
-    const seen = walked.get(file);
-    if (seen === true || (seen === false && !strict)) continue;
-    walked.set(file, strict);
+    if (strictly.has(file) || (!strict && leniently.has(file))) continue;
+    (strict ? strictly : leniently).add(file);
     if (!listed.has(file)) {
-      // Built output git ignores, such as a workspace package's dist, isn't parsed: its package's listed sources stand for it. Outside one, nothing does, however it was reached.
       const manifest = nearestManifest(file);
       if (manifest === undefined || manifest === 'package.json' || manifest === ownPackage) {
         unverified.push(`loads ${file}, which git doesn't track`);
@@ -267,7 +242,7 @@ if (input.config !== null && unverified.length === 0) {
       if (target !== undefined && !installed(target)) queue.push([target, strict]);
     }
   }
-  // Node reads through links to real paths, so the graph holds targets; a link to one is how a retarget shows.
+  // The graph holds real paths, so a link shows only through its target.
   const graph = [...files];
   for (const file of input.links) {
     let link = false;

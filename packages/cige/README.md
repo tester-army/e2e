@@ -180,13 +180,15 @@ It exits 1 on any change that needs a human's approval:
 
 - imports by a computed name, or names a relative or `#` path that doesn't
   resolve;
-- imports `node:module`, `node:vm`, `node:worker_threads`, or
-  `node:inspector`, or reads `process.getBuiltinModule`, `eval`,
-  `Function`, or `require` other than as a direct call;
+- imports `node:module`, `node:vm`, `node:worker_threads`,
+  `node:inspector`, `node:test`, or a `data:` URL;
+- reads `process.getBuiltinModule`, `process.mainModule`, `.constructor`,
+  `eval`, `Function`, or `require` other than as a direct call;
 - is a file git doesn't track, outside any workspace package.
 
 A workspace package's own sources don't block this way: the package counts
-as a whole.
+as a whole, and so does what they import by name. A load in them that
+`diff` can't follow, such as a computed `import()`, isn't seen.
 
 Loading the config runs its top-level code from the branch under review.
 Give `diff` the env `e2e run` gets: a config that reads a missing

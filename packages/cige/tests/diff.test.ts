@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -374,9 +374,22 @@ describe('diffSince', () => {
     expect(verdict("export default { hooks: { h: async () => (0, eval)('1') } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
     expect(verdict("const make = Function;\nexport default { hooks: { h: async () => make('return 1')() } };\n")).toEqual(untraceable('runs code from a string (eval or Function)'));
     expect(verdict("export default { hooks: { h: async () => (await import('node:module'))['createRequire'] } };\n")).toEqual(loader('node:module'));
-    // A comment, a string, a key, or another builtin is not a loader.
+    // The review's cases: a template-literal key, CommonJS's Module or Function through `.constructor`, a data: URL, and node:test's in-process run.
+    const evaluates = untraceable('runs code from a string (eval or Function)');
+    expect(verdict("export default { hooks: { h: async () => process[`getBuiltinModule`]('module') } };\n")).toEqual(builtin);
+    expect(verdict("export default { hooks: { h: async () => globalThis[`eval`]('1') } };\n")).toEqual(evaluates);
+    expect(verdict("export default { hooks: { h: async () => { const { [`eval`]: run } = globalThis; return run('1'); } } };\n")).toEqual(evaluates);
+    const constructor = untraceable("reads .constructor, which reaches Function or Node's module loader");
+    expect(verdict("export default { hooks: { h: async () => module.constructor._load('./check.cjs').ok } };\n")).toEqual(constructor);
+    expect(verdict("export default { hooks: { h: async () => (() => {}).constructor('return 1')() } };\n")).toEqual(constructor);
+    expect(verdict("export default { hooks: { h: async () => process.mainModule.filename } };\n")).toEqual(untraceable("reads process.mainModule, which reaches Node's module loader"));
+    expect(verdict("export default { hooks: { h: async () => import('data:text/javascript,export default 1') } };\n")).toEqual(untraceable("imports a data: URL, code the walk can't follow"));
+    expect(verdict("import { run } from 'node:test';\nexport default { hooks: { h: async () => run({ files: ['./check.cjs'], isolation: 'none' }) } };\n")).toEqual(loader('node:test'));
+    // A comment, a string, a key, a class constructor, or another builtin is not a loader.
     expect(
-      verdict("import { readFileSync } from 'node:fs';\n// we import (lazily) nothing here\nexport default { note: \"import (not really)\", require: true, eval: 1, getBuiltinModule: 1, why: 'getBuiltinModule', also: 'node:vm', readFileSync };\n"),
+      verdict(
+        "import { readFileSync } from 'node:fs';\n// we import (lazily) nothing here\nclass Hook { constructor() { this.ok = true; } }\nexport default { note: \"import (not really)\", require: true, eval: 1, getBuiltinModule: 1, constructor: 1, mainModule: 1, [`eval`]: 1, why: 'getBuiltinModule', also: 'node:vm', Hook, readFileSync };\n",
+      ),
     ).toEqual([]);
   });
 
@@ -558,7 +571,7 @@ describe('diffSince', () => {
       return dir;
     };
     const retarget = (dir: string, link: string, target: string) => {
-      rmSync(path.join(dir, link));
+      unlinkSync(path.join(dir, link));
       symlinkSync(target, path.join(dir, link));
       return diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => item.kind).join(',')}`);
     };

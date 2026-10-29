@@ -9,10 +9,11 @@
  * loads code by a value (`node:module`, `node:vm`, `node:worker_threads`,
  * `node:inspector`), which closes every export of each at once; or any
  * other read of a loader: `require` other than a direct call,
- * `process.getBuiltinModule`, `eval`, or `Function`, whether by name, as a
- * member (`globalThis.eval`, `module['require']`), or destructured. A load
- * built from strings or reached by reflection (`globalThis['ev' + 'al']`)
- * can't be seen. Node's type stripping runs this from source in tests, so
+ * `process.getBuiltinModule`, `process.mainModule`, `.constructor` (which
+ * reaches `Function` and CommonJS's `Module`), `eval`, or `Function`,
+ * whether by name, as a member (`globalThis.eval`, ``module[`require`]``),
+ * or destructured. A `data:` import blocks too. A load built from strings
+ * or reached by reflection (`globalThis['ev' + 'al']`) can't be seen. Node's type stripping runs this from source in tests, so
  * it holds to erasable TypeScript.
  */
 
@@ -32,12 +33,14 @@ export interface ModuleImports {
 const LOADERS: Readonly<Record<string, string>> = {
   require: "uses require other than as require('<module>')",
   getBuiltinModule: "reads process.getBuiltinModule, which can reach a loader the walk can't follow",
+  mainModule: "reads process.mainModule, which reaches Node's module loader",
+  constructor: "reads .constructor, which reaches Function or Node's module loader",
   eval: 'runs code from a string (eval or Function)',
   Function: 'runs code from a string (eval or Function)',
 };
 
-/** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`. */
-const LOADING_BUILTINS = new Set(['module', 'vm', 'worker_threads', 'inspector', 'inspector/promises']);
+/** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`, `node:test`'s in-process `run`. */
+const LOADING_BUILTINS = new Set(['module', 'node:module', 'vm', 'node:vm', 'worker_threads', 'node:worker_threads', 'inspector', 'node:inspector', 'inspector/promises', 'node:inspector/promises', 'node:test']);
 
 const TYPESCRIPT = /\.[cm]?ts$/;
 
@@ -91,8 +94,13 @@ export function importsOf(text: string, file: string): ModuleImports {
   let unverified: string | undefined;
   const refuse = (reason: string): void => void (unverified ??= reason);
   const named = (list: string[], specifier: string): void => {
-    if (LOADING_BUILTINS.has(specifier.replace(/^node:/, ''))) refuse(`imports ${specifier}, which loads code by a name the walk can't follow`);
+    if (LOADING_BUILTINS.has(specifier)) refuse(`imports ${specifier}, which loads code by a name the walk can't follow`);
+    if (specifier.startsWith('data:')) refuse("imports a data: URL, code the walk can't follow");
     list.push(specifier);
+  };
+  const loaderKey = (key: unknown): string | undefined => {
+    const name = literal(key);
+    return name !== undefined && Object.hasOwn(LOADERS, name) ? LOADERS[name] : undefined;
   };
   const visit = (node: Fields, parent: Fields | undefined, grandparent: Fields | undefined): void => {
     switch (node.type) {
@@ -123,10 +131,16 @@ export function importsOf(text: string, file: string): ModuleImports {
         if (reason !== undefined && !directRequire && !isKey(node, parent, grandparent)) refuse(reason);
         break;
       }
-      case 'Literal': {
-        // `module['require']` reads the loader as surely as `module.require`; a string anywhere else is only text.
-        const reason = typeof node.value === 'string' && Object.hasOwn(LOADERS, node.value) ? LOADERS[node.value] : undefined;
-        if (reason !== undefined && parent?.type === 'MemberExpression' && parent.computed === true && parent.property === node) refuse(reason);
+      case 'MemberExpression': {
+        // ``module[`require`]`` reads the loader as surely as `module.require`; a string anywhere else is only text.
+        const reason = node.computed === true ? loaderKey(node.property) : undefined;
+        if (reason !== undefined) refuse(reason);
+        break;
+      }
+      case 'Property': {
+        // `const { ['eval']: run } = globalThis` destructures the loader; the same key in an object literal only labels a field.
+        const reason = node.computed === true && parent?.type === 'ObjectPattern' ? loaderKey(node.key) : undefined;
+        if (reason !== undefined) refuse(reason);
         break;
       }
     }

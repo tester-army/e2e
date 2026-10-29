@@ -64,8 +64,8 @@ and the package.json that maps them. A config it can't load or follow, such
 as one that imports by a computed name or imports `node:vm`, blocks as
 `config-unverified`. An app helper a hook imports is in that graph, so
 changing it needs a human too. It can't see other app code, data files a
-hook reads, code a hook runs in a child process or builds from strings, or
-installed packages: a repair that touches them is out of scope, so leave
+hook reads, code a hook runs in a child process or builds from strings, a
+computed load in a workspace package's sources, or installed packages: a repair that touches them is out of scope, so leave
 them alone.
 `diff` runs the config's top-level code, so run it with the env the run
 gets.
