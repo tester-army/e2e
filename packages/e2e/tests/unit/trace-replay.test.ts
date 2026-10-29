@@ -82,6 +82,10 @@ function makeHost(options: {
       await act('hoverAt', point);
       return { point, summary: 'scripted' };
     },
+    dragAt: async (from, to) => {
+      await act('dragAt', { from, to });
+      return { from, to, summary: 'scripted' };
+    },
     hitTest: (point) => Promise.resolve({ point, summary: 'scripted' }),
     typeText: (value, typing) => act('typeText', { value, replace: typing?.replace === true }),
     pressKey: (key) => act('pressKey', key),
@@ -637,4 +641,43 @@ describe('replayTrace: bare-point taps', () => {
     expect(unknown).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
   });
 
+});
+
+describe('replayTrace: bare-point drags', () => {
+  it('replays a bare-point drag with both points as recorded, on the recorded viewport only', async () => {
+    const shape: RecordedAction = {
+      name: 'dragAt',
+      summary: 'drag from the point (100, 100) to the point (300, 100)',
+      from: { point: { x: 100, y: 100 } },
+      to: { point: { x: 300, y: 100 } },
+      viewport: VIEWPORT,
+    };
+    const drags: unknown[] = [];
+    const host = makeHost({ onAction: (name, detail) => void (name === 'dragAt' && drags.push(detail)) });
+    expect(await replayTrace(host, trace([shape]))).toMatchObject({ completed: true, executed: 1 });
+    expect(drags).toEqual([{ from: { x: 100, y: 100 }, to: { x: 300, y: 100 } }]);
+    const resized = makeHost({ viewport: { width: 390, height: 844 } });
+    expect(await replayTrace(resized, trace([shape]))).toMatchObject({ completed: false, executed: 0, stopReason: 'viewport-changed' });
+    expect(resized.calls).toEqual([]);
+  });
+
+  it('places each end of a bare-point drag inside the live box of the node it sat in, and hands off when one is gone', async () => {
+    const board: SemanticNode = { ref: { id: 'b', revision: 'r1' }, role: 'img', name: 'Board', rect: { x: 100, y: 200, width: 400, height: 200 } };
+    const moved: RecordedAction = {
+      name: 'dragAt',
+      summary: 'drag from the point (100, 50) on img "Board" to the point (300, 150) on img "Board"',
+      from: { point: { x: 100, y: 50 }, within: { target: { role: 'img', name: 'Board' }, fx: 0.25, fy: 0.25 } },
+      to: { point: { x: 300, y: 150 }, within: { target: { role: 'img', name: 'Board' }, fx: 0.75, fy: 0.75 } },
+      viewport: VIEWPORT,
+    };
+    const drags: unknown[] = [];
+    const host = makeHost({ nodes: [board, email], onAction: (name, detail) => void (name === 'dragAt' && drags.push(detail)) });
+    expect(await replayTrace(host, trace([moved]))).toMatchObject({ completed: true, executed: 1 });
+    // The recording had the board at (0, 0); the live board moved to (100, 200), and both ends move with it.
+    expect(drags).toEqual([{ from: { x: 200, y: 250 }, to: { x: 400, y: 350 } }]);
+    const tray = { target: { role: 'img', name: 'Tray' }, fx: 0.5, fy: 0.5 };
+    const gone = makeHost({ nodes: [board, email] });
+    expect(await replayTrace(gone, trace([{ ...moved, to: { point: { x: 300, y: 150 }, within: tray } }]))).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
+    expect(gone.calls).not.toContain('dragAt');
+  });
 });

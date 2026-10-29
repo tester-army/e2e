@@ -21,7 +21,7 @@ const browserSessions = new WeakMap<Browser, Promise<CDPSession>>();
  * under `dir` on its own disk, each file named by its download id, with the
  * download events Playwright's waiter reads left on.
  */
-export async function saveDownloadsTo(page: Page, dir: string): Promise<void> {
+export async function saveDownloadsTo(page: Page, dir: string, signal?: AbortSignal): Promise<void> {
   const context = page.context();
   const browser = context.browser();
   if (browser === null) throw invalidState('the page has no browser to set a download directory on');
@@ -38,7 +38,9 @@ export async function saveDownloadsTo(page: Page, dir: string): Promise<void> {
     browserSessions.set(browser, session);
     session.catch(() => browserSessions.delete(browser));
   }
-  await (await session).send('Browser.setDownloadBehavior', {
+  const browserSession = await session;
+  signal?.throwIfAborted();
+  await browserSession.send('Browser.setDownloadBehavior', {
     behavior: 'allowAndName',
     downloadPath: dir,
     eventsEnabled: true,

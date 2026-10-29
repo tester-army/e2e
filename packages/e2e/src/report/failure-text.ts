@@ -424,17 +424,41 @@ function shortenLoopback(text: string): string {
   return text.replaceAll(/https?:\/\/(?:127\.0\.0\.1|localhost|\[::1\])(?::\d+)?(?=\/)/g, '');
 }
 
+/** A video artifact with the span it covers; a recording a step stopped (`app.stopRecording`) ends with that step. */
+interface TimedVideo {
+  readonly artifact: ReportArtifact;
+  readonly startsAt: number;
+  readonly endsAt: number;
+}
+
+/** The attempt's videos in the order they began, each with the span it covers. */
+function timedVideos(told: AttemptView): TimedVideo[] {
+  const ends = new Map(told.steps.map((step) => [step.id, Date.parse(step.startedAt) + step.durationMs]));
+  return told.artifacts
+    .filter((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined)
+    .map((artifact) => ({
+      artifact,
+      startsAt: Date.parse(artifact.startedAt!),
+      endsAt: artifact.producer.kind === 'step' ? (ends.get(artifact.producer.stepId) ?? Infinity) : Infinity,
+    }))
+    .toSorted((a, b) => a.startsAt - b.startsAt);
+}
+
 /**
  * `, video 0:12`: where the step starts in the recording that was running
  * then, the last segment that began before it. An attempt cut into several
  * segments (a restart opens a new page) names the segment too:
- * `, video-part2 0:03`. Nothing without a recording.
+ * `, video-part2 0:03`. A step before the attempt's video began is at 0:00;
+ * one outside every recording a step stopped gets nothing.
  */
-function videoOffset(step: ReportStep, videos: readonly ReportArtifact[]): string {
+function videoOffset(step: ReportStep, videos: readonly TimedVideo[]): string {
   const at = Date.parse(step.startedAt);
-  const video = videos.findLast((candidate) => Date.parse(candidate.startedAt!) <= at) ?? videos[0];
-  if (video === undefined) return '';
-  const seconds = Math.max(0, Math.floor((at - Date.parse(video.startedAt!)) / 1000));
+  const timed =
+    videos.findLast((candidate) => candidate.startsAt <= at && at < candidate.endsAt) ??
+    videos.find((candidate) => candidate.endsAt === Infinity && at < candidate.startsAt);
+  if (timed === undefined) return '';
+  const video = timed.artifact;
+  const seconds = Math.max(0, Math.floor((at - timed.startsAt) / 1000));
   const name = videos.length > 1 && video.path !== undefined ? (video.path.split('/').at(-1) ?? 'video').replace(/\.[^.]+$/u, '') : 'video';
   return `, ${name} ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 }
@@ -498,9 +522,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
 
   const at = failedStepOf(told);
   if (told.steps.length > 0) {
-    const videos = told.artifacts
-      .filter((artifact) => artifact.kind === 'video' && artifact.startedAt !== undefined)
-      .toSorted((a, b) => Date.parse(a.startedAt!) - Date.parse(b.startedAt!));
+    const videos = timedVideos(told);
     lines.push('## Steps', '');
     told.steps.forEach((step, index) => {
       const own = step.source.file === 'unknown' ? '' : ` — ${code(`${step.source.file}:${step.source.line}`, MAX_PATH_CHARS)}`;

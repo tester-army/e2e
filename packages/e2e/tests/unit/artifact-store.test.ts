@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import { SecretLedger } from '../../src/internal/redact.ts';
 import { createAttemptArtifacts } from '../../src/run/artifacts.ts';
-import { SecretExposure, type SecretExposureLevel, type SessionSecrecy } from '../../src/run/secrecy.ts';
 
 const roots: string[] = [];
 function root(): string {
@@ -219,19 +218,13 @@ describe('artifact redaction labels', () => {
 describe('download redaction', () => {
   const SECRET = 'download-secret-Qx7-2718';
 
-  function secrecy(level: SecretExposureLevel, ledger = new SecretLedger([['api-key', SECRET]])): SessionSecrecy {
-    const exposure = new SecretExposure();
-    if (level !== 'none') exposure.raise(level);
-    return { ledger, exposure };
-  }
-
-  function downloads(level: SecretExposureLevel | undefined, store?: ArtifactStore) {
+  function downloads(withLedger: boolean, store?: ArtifactStore) {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
       ...(store === undefined ? {} : { store }),
-      ...(level === undefined ? {} : { secrecy: () => secrecy(level) }),
+      ...(withLedger ? { ledger: () => new SecretLedger([['api-key', SECRET]]) } : {}),
     });
     mkdirSync(path.join(artifacts.dir, 'downloads'));
     return artifacts;
@@ -239,7 +232,7 @@ describe('download redaction', () => {
 
   it('labels a download incomplete by default: bytes the app served, not rewritten', async () => {
     const store = capturing();
-    const artifacts = downloads(undefined, store);
+    const artifacts = downloads(false, store);
     const body = `id,key\n1,${SECRET}\n`;
     writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), body);
     artifacts.sink.register('download', 'downloads/export.csv');
@@ -249,8 +242,8 @@ describe('download redaction', () => {
     expect(Buffer.from(store.puts[0]!.bytes).toString('utf8')).toBe(body);
   });
 
-  it('rewrites a text download with nothing filled: a value can reach the app without a fill', async () => {
-    const artifacts = downloads('none');
+  it('rewrites a text download through the ledger: a value can reach the app without a fill', async () => {
+    const artifacts = downloads(true);
     writeFileSync(path.join(artifacts.dir, 'downloads', 'headers.txt'), `authorization: ${SECRET}\n`);
     artifacts.sink.register('download', 'downloads/headers.txt');
     await artifacts.settle();
@@ -258,9 +251,9 @@ describe('download redaction', () => {
     expect(readFileSync(path.join(artifacts.dir, 'downloads', 'headers.txt'), 'utf8')).toBe('authorization: <secret:api-key>\n');
   });
 
-  it('rewrites a text download through the ledger once a secret was filled, and labels it complete', async () => {
+  it('labels a rewritten download complete, and stores the rewritten bytes', async () => {
     const store = capturing();
-    const artifacts = downloads('filled', store);
+    const artifacts = downloads(true, store);
     writeFileSync(path.join(artifacts.dir, 'downloads', 'export.json'), JSON.stringify({ key: SECRET }));
     artifacts.sink.register('download', 'downloads/export.json');
     await artifacts.settle();
@@ -273,7 +266,7 @@ describe('download redaction', () => {
   });
 
   it('rewrites fragments and encoded forms in a download, the way trace text entries are', async () => {
-    const artifacts = downloads('filled');
+    const artifacts = downloads(true);
     const cut = SECRET.slice(6, 20);
     const encoded = Buffer.from(SECRET).toString('base64');
     const body = `cut=${cut}\nencoded=${encoded}\n`;
@@ -291,7 +284,7 @@ describe('download redaction', () => {
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
-      secrecy: () => secrecy('filled', new SecretLedger([['api-key', 'pa"ss,word']])),
+      ledger: () => new SecretLedger([['api-key', 'pa"ss,word']]),
     });
     mkdirSync(path.join(artifacts.dir, 'downloads'));
     writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), 'id,key\n1,"pa""ss,word"\n');
@@ -303,7 +296,7 @@ describe('download redaction', () => {
 
   it('keeps a byte order mark on a rewritten download', async () => {
     const store = capturing();
-    const artifacts = downloads('filled', store);
+    const artifacts = downloads(true, store);
     const bom = Buffer.from([0xef, 0xbb, 0xbf]);
     writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), Buffer.concat([bom, Buffer.from(`key\n${SECRET}\n`)]));
     artifacts.sink.register('download', 'downloads/export.csv');
@@ -317,37 +310,37 @@ describe('download redaction', () => {
   });
 
   it('labels a scanned text download complete when it held nothing to redact', async () => {
-    const artifacts = downloads('filled');
+    const artifacts = downloads(true);
     writeFileSync(path.join(artifacts.dir, 'downloads', 'notes.txt'), 'nothing secret here');
     artifacts.sink.register('download', 'downloads/notes.txt');
     await artifacts.settle();
     expect(artifacts.records[0]).toMatchObject({ redaction: 'complete', size: 19 });
   });
 
-  it('leaves a download as served with no secret value, and a binary one with a fill, both incomplete', async () => {
-    const untainted = createAttemptArtifacts({
+  it('leaves a download as served with no secret value, and a binary one with a value, both incomplete', async () => {
+    const empty = createAttemptArtifacts({
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
-      secrecy: () => secrecy('none', new SecretLedger()),
+      ledger: () => new SecretLedger(),
     });
-    mkdirSync(path.join(untainted.dir, 'downloads'));
+    mkdirSync(path.join(empty.dir, 'downloads'));
     const body = `key=${SECRET}`;
-    writeFileSync(path.join(untainted.dir, 'downloads', 'env.txt'), body);
-    untainted.sink.register('download', 'downloads/env.txt');
-    await untainted.settle();
-    expect(untainted.records[0]).toMatchObject({ redaction: 'incomplete' });
-    expect(readFileSync(path.join(untainted.dir, 'downloads', 'env.txt'), 'utf8')).toBe(body);
+    writeFileSync(path.join(empty.dir, 'downloads', 'env.txt'), body);
+    empty.sink.register('download', 'downloads/env.txt');
+    await empty.settle();
+    expect(empty.records[0]).toMatchObject({ redaction: 'incomplete' });
+    expect(readFileSync(path.join(empty.dir, 'downloads', 'env.txt'), 'utf8')).toBe(body);
 
-    const tainted = downloads('filled');
+    const known = downloads(true);
     const binary = Buffer.concat([Buffer.from([0xff, 0xfe, 0x00]), Buffer.from(SECRET)]);
-    writeFileSync(path.join(tainted.dir, 'downloads', 'blob.bin'), binary);
-    writeFileSync(path.join(tainted.dir, 'downloads', 'broken.txt'), binary);
-    tainted.sink.register('download', 'downloads/blob.bin');
-    tainted.sink.register('download', 'downloads/broken.txt');
-    await tainted.settle();
-    expect(tainted.records.map((record) => record.redaction)).toEqual(['incomplete', 'incomplete']);
-    expect(readFileSync(path.join(tainted.dir, 'downloads', 'blob.bin')).equals(binary)).toBe(true);
-    expect(readFileSync(path.join(tainted.dir, 'downloads', 'broken.txt')).equals(binary)).toBe(true);
+    writeFileSync(path.join(known.dir, 'downloads', 'blob.bin'), binary);
+    writeFileSync(path.join(known.dir, 'downloads', 'broken.txt'), binary);
+    known.sink.register('download', 'downloads/blob.bin');
+    known.sink.register('download', 'downloads/broken.txt');
+    await known.settle();
+    expect(known.records.map((record) => record.redaction)).toEqual(['incomplete', 'incomplete']);
+    expect(readFileSync(path.join(known.dir, 'downloads', 'blob.bin')).equals(binary)).toBe(true);
+    expect(readFileSync(path.join(known.dir, 'downloads', 'broken.txt')).equals(binary)).toBe(true);
   });
 });

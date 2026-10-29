@@ -4,8 +4,8 @@
  * and the rules in `examples-registry.ts`.
  *
  * Usage: `node scripts/check-examples.ts [--online]`. `--online` also fetches
- * the README of every example hosted outside this repository, official or
- * community, which the site renders as the example's page; the `examples-registry` workflow runs it on pull requests that change
+ * the README of every example hosted outside this repository, official,
+ * partner, or community, which the site renders as the example's page; the `examples-registry` workflow runs it on pull requests that change
  * the registry. Exits 1 listing every problem.
  */
 

@@ -104,6 +104,17 @@ test.describe('device fixture', () => {
     await expect(screen.getByTestId('inventory-header')).toBeHidden();
   });
 
+  // The client is bound to this worker's session, so a raw call reads the
+  // screen this test is on, on the device the engine booted.
+  test('unstable_raw reaches the test session through agent-device', async ({ device, platform }) => {
+    const { client, session, deviceId, deviceName } = device.unstable_raw;
+    expect(platform).toBe(device.unstable_raw.platform);
+    const own = (await client.sessions.list()).find((entry) => entry.name === session);
+    expect(own?.device).toMatchObject({ id: deviceId, name: deviceName });
+    const { nodes } = await client.capture.snapshot({});
+    expect(nodes.some((node) => node.identifier === 'inventory-header')).toBe(true);
+  });
+
   // The Device section prints what the device tells the app: the network
   // state (expo-network), a position read on demand (expo-location), and the
   // outcome of a biometric prompt (expo-local-authentication).

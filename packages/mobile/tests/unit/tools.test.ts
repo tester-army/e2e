@@ -1,9 +1,10 @@
+import { AppError } from 'agent-device';
 import { describe, expect, it } from 'vitest';
 import { defineEngine } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
 import { mobileTools } from '../../src/tools.ts';
-import { createFakeClient } from '../helpers/fake-client.ts';
+import { createFakeClient, type FakeClient } from '../helpers/fake-client.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('agent tool pack', () => {
@@ -107,5 +108,78 @@ describe('agent tool pack', () => {
     expect(tools.open_app!.tool.description).toContain('not a URL');
     expect(await open('com.apple.Preferences')).toBe('Opened com.apple.Preferences.');
     expect(fake.lastArgs('apps.open')).toEqual({ app: 'com.apple.Preferences', platform: 'ios' });
+  });
+
+  /** An iOS tool pack inside a running attempt on a target whose `app` is `app`. */
+  async function attemptTools(fake: FakeClient, app: { bundleId?: string }) {
+    const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => fake.client));
+    await ios.init!({
+      runId: 'r',
+      targetName: 'ios',
+      projectRoot: '/project',
+      app,
+      headed: false,
+      workerSlot: 0,
+      log: () => undefined,
+      env: {},
+      signal: new AbortController().signal,
+    });
+    await ios.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    const tools = mobileTools(ios);
+    return (input: unknown) =>
+      (tools.open_app!.tool.execute as (input: unknown, options: object) => Promise<unknown>)(input, {
+        toolCallId: 'c1',
+        messages: [],
+      });
+  }
+
+  it('returns to the app under test when open_app names no app', async () => {
+    const fake = createFakeClient({ 'apps.open': () => ({ appBundleId: 'dev.e2e.benchmark' }) });
+    const open = await attemptTools(fake, { bundleId: 'dev.e2e.benchmark' });
+    expect(await open({})).toBe('Opened the app under test (dev.e2e.benchmark).');
+    expect(fake.lastArgs('apps.open')).toEqual({ app: 'dev.e2e.benchmark', platform: 'ios' });
+    expect(await open({ relaunch: true })).toBe('Opened the app under test (dev.e2e.benchmark).');
+    expect(fake.lastArgs('apps.open')).toEqual({ app: 'dev.e2e.benchmark', platform: 'ios', relaunch: true });
+  });
+
+  it('asks for an app when the target pins none', async () => {
+    const fake = createFakeClient();
+    const open = await attemptTools(fake, {});
+    const before = fake.calls.length;
+    await expect(open({})).rejects.toMatchObject({ code: 'INVALID_STATE', message: expect.stringContaining('needs the app') });
+    expect(fake.calls.length).toBe(before);
+  });
+
+  it('points a name no installed app matches at the app under test, without CLI advice', async () => {
+    const fake = createFakeClient({
+      'apps.open': () => {
+        throw new AppError('APP_NOT_INSTALLED', 'No app found matching "e2eBenchmark"', {
+          hint: 'Run apps to discover the exact installed package or bundle id, or install the app before open.',
+        });
+      },
+    });
+    const open = await attemptTools(fake, { bundleId: 'dev.e2e.benchmark' });
+    const failure = await open({ app: 'e2eBenchmark' }).then(
+      () => undefined,
+      (error: unknown) => error as Error & { code: string },
+    );
+    expect(failure?.code).toBe('INVALID_ARGUMENT');
+    expect(failure?.message).toContain('Omit app to return to the app under test');
+    expect(failure?.message).not.toContain('Run apps');
+  });
+
+  it('keeps the device error when the app under test is not installed', async () => {
+    const fake = createFakeClient({
+      'apps.open': () => {
+        throw new AppError('APP_NOT_INSTALLED', 'No app found matching "dev.e2e.benchmark"');
+      },
+    });
+    const open = await attemptTools(fake, { bundleId: 'dev.e2e.benchmark' });
+    const failure = await open({}).then(
+      () => undefined,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).toContain('No app found matching "dev.e2e.benchmark"');
+    expect(failure?.message).not.toContain('Omit app');
   });
 });

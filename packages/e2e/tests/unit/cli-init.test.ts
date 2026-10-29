@@ -430,6 +430,19 @@ describe('e2e init', () => {
     expect(output()).toContain('Ignoring --engine, --gateway: e2e.config.ts exists, and these apply to a new config only');
   });
 
+  it('adds only the missing script to package.json beside an existing config, with no engine or gateway packages', async () => {
+    writeFileSync(path.join(dir, 'e2e.config.ts'), 'export default {};\n');
+    writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify({ name: 'existing-app', type: 'module', devDependencies: { e2e: '1.2.3' } }, null, 2)}\n`);
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(JSON.parse(read('package.json'))).toEqual({
+      name: 'existing-app',
+      type: 'module',
+      devDependencies: { e2e: '1.2.3' },
+      scripts: { 'test:e2e': 'e2e run' },
+    });
+    expect(read('e2e.config.ts')).toBe('export default {};\n');
+  });
+
   it('installs the skill exactly where --skills says on a re-run, leaving earlier locations untouched', async () => {
     writeCopy('.agents/skills', 'stale');
     expect((await init(dir, { yes: true, skills: ['.claude/skills'], mcp: [] })).exitCode).toBe(0);

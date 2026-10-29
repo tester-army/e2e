@@ -71,17 +71,24 @@ export type RecordableAction =
    * that node sat: the trace records the point's place inside that box so
    * replay can follow the node when the layout shifts.
    */
-  | ({
-      readonly name: PointActionName;
-      readonly point: ViewportPoint;
-      readonly viewport: ViewportSize;
-      readonly under?: RedactedNode;
-    } & Placement);
+  | ({ readonly name: PointActionName; readonly viewport: ViewportSize } & PlacedPoint)
+  /**
+   * A drag from one bare viewport point to another, with the viewport it was
+   * placed in; each end is placed the way a point action's one point is, so
+   * the trace can follow both nodes when the layout shifts.
+   */
+  | { readonly name: 'dragAt'; readonly from: PlacedPoint; readonly to: PlacedPoint; readonly viewport: ViewportSize };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
 export interface Placement {
   readonly within?: string;
   readonly position?: TracePosition;
+}
+
+/** A bare viewport point and, when one is listed, the node whose box contained it and where that node sat. */
+export interface PlacedPoint extends Placement {
+  readonly point: ViewportPoint;
+  readonly under?: RedactedNode;
 }
 
 
@@ -213,9 +220,15 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
       ? describePlaced(action.node, action, redaction)
       : 'point' in action
         ? describePlaced(action.under, action, redaction)
-        : undefined;
+        : action.name === 'dragAt'
+          ? describePlaced(action.from.under, action.from, redaction)
+          : undefined;
   const destination =
-    action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redaction) : undefined;
+    action.name === 'drag'
+      ? describePlaced(action.destination.node, action.destination, redaction)
+      : action.name === 'dragAt'
+        ? describePlaced(action.to.under, action.to, redaction)
+        : undefined;
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redaction.redact(sanitizeText(value)));
   const prose = (() => {
@@ -261,6 +274,13 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
       case 'hoverAt': {
         const at = `${POINT_ACTION_PROSE[action.name]} the point (${String(action.point.x)}, ${String(action.point.y)})`;
         return target === undefined ? at : `${at} on ${where}`;
+      }
+      case 'dragAt': {
+        const { point: start } = action.from;
+        const { point: end } = action.to;
+        const from = `drag from the point (${String(start.x)}, ${String(start.y)})${target === undefined ? '' : ` on ${where}`}`;
+        const to = `the point (${String(end.x)}, ${String(end.y)})${destination === undefined ? '' : ` on ${describeForSummary(destination)}`}`;
+        return `${from} to ${to}`;
       }
     }
   })();

@@ -79,6 +79,12 @@ function serialGroup(id: string, memberTestId: string, status: 'passed' | 'faile
 }
 
 describe('foldLastRun', () => {
+  it('leaves the rerun as it is when the run before was an exploration', () => {
+    const explored = report({ status: 'failed', results: [result({ title: 'Explore checkout', status: 'failed', attempts: [failedAttempt] })] });
+    explored.run.explore = { goal: 'Explore checkout', budgets: { maxSteps: 8, timeoutMs: 600_000 }, ended: 'finished', steps: [], findings: [] };
+    expect(foldLastRun(rerun, explored)).toBe(rerun);
+  });
+
   it('carries the tests the rerun left out, marks a recovered test flaky with both runs\' attempts, and keeps a still-failing one failed', () => {
     const folded = foldLastRun(rerun, firstPass);
     const entries = byTitle(folded);

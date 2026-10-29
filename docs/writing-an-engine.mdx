@@ -206,8 +206,8 @@ A secret fill reaches the engine as a `fill` action with
 observation, and the field. A test's `fill(secret)` skips these
 [checks](/reference/security#secret-fills). Handle the fill
 securely, or throw
-`UNSUPPORTED_CAPABILITY`. After it, the runner sends the model
-[no more screenshots](/reference/security#screenshots-after-a-secret-fill).
+`UNSUPPORTED_CAPABILITY`. Screenshots after it still go to the model, with
+[secure fields masked](/reference/security#screenshots-after-a-secret-fill).
 
 An engine option can take a secret too, such as a password the engine sends
 to the app:

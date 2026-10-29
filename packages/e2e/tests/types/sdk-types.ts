@@ -21,6 +21,7 @@ import {
   type KeyModifier,
   type Locator,
   type ModelInstance,
+  type PointDragResult,
   type PointHit,
   type PointTapResult,
   type PollExpectation,
@@ -35,6 +36,7 @@ import {
   type Secret,
   type StepExecutor,
   type StepExecutorContext,
+  type StepVerdict,
   type StepTurn,
   type StoredArtifactLink,
   type Target,
@@ -53,8 +55,18 @@ import {
   describe,
 } from '../../src/index.ts';
 import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
-import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
+import {
+  BASE_RULES,
+  createGrammarTools,
+  createToolLoopExecutor,
+  createVerdictTool,
+  defineTool,
+  isRuntimeHardStop,
+  VERDICT_RULES,
+  type ScreenOutput,
+} from '../../src/agent/public.ts';
 import type { Report } from '../../src/index.ts';
+import type { ToolSet } from 'ai';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 import { chatgpt } from '../../src/oauth/chatgpt.ts';
 import { copilot } from '../../src/oauth/copilot.ts';
@@ -123,6 +135,16 @@ declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
 declare const targets: readonly Target[];
+
+void (async () => {
+  await appFixture.startRecording({ name: 'dialog' });
+  const [video] = await appFixture.stopRecording();
+  // A recording returns at least one video, so the first needs no undefined check.
+  if ('path' in video) video.path satisfies string;
+  else video.url satisfies string;
+  // @ts-expect-error a video is a file or a link; narrow before reading the path
+  void video.path;
+})();
 
 void (screen.tree() satisfies Promise<string>);
 void (screen.debug({ timeout: 1000 }) satisfies Promise<void>);
@@ -370,6 +392,7 @@ executorContext.attempt.titlePath satisfies readonly string[];
 'tapAt' satisfies ExecutorVerb;
 'hover' satisfies ExecutorVerb;
 'drag' satisfies ExecutorVerb;
+'dragAt' satisfies ExecutorVerb;
 'upload' satisfies ExecutorVerb;
 'back' satisfies ExecutorVerb;
 // @ts-expect-error a verb is one of the action grammar's names
@@ -515,6 +538,9 @@ screen.getByRole('button', { hidden: true });
 declare const point: import('../../src/types.ts').Point;
 void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
 void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
+void (executorContext.actions.dragAt(point, point) satisfies Promise<PointDragResult>);
+// @ts-expect-error a point drag names both ends
+void executorContext.actions.dragAt(point);
 void screen.tapAt(point, { timeout: 1_000 });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });
@@ -664,6 +690,23 @@ declare const brain: StepExecutor;
 ({ targets, agents: { default: brain } }) satisfies E2EConfig;
 // @ts-expect-error maxTurns left createToolLoopExecutor: the agent's maxModelCalls bounds its turns
 createToolLoopExecutor({ name: 'brain', tools: () => ({}), buildPrompt: () => 'go', maxTurns: 3 });
+// A custom loop keeps the built-in actions: the grammar tools take the loop's guard, and their rules are text.
+createToolLoopExecutor({ name: 'brain', system: BASE_RULES, buildPrompt: () => 'go', tools: (ctx, { guard }) => createGrammarTools(ctx, { guard }) });
+// @ts-expect-error the screen presenter stays internal: a caller's first observe shows the whole screen
+createGrammarTools(executorContext, { screen: undefined });
+// @ts-expect-error failure causes stay internal: e2e mcp counts them, a caller reads the result text
+createGrammarTools(executorContext, { onActionFailed: () => undefined });
+// An executor outside the AI SDK loop keeps the built-in verdict: complete_step as a tool, its rules as text, and the verdict it collected.
+const conclusion = createVerdictTool();
+({ complete_step: conclusion.tool }) satisfies ToolSet;
+conclusion.verdict() satisfies StepVerdict | undefined;
+VERDICT_RULES satisfies string;
+// A runtime hard stop narrows to the AgentError the step rethrows untouched.
+declare const thrown: unknown;
+if (isRuntimeHardStop(thrown)) thrown.code satisfies string;
+// A grammar tool's result is a rendered screen: text, or text with its screenshot.
+declare const rendered: ScreenOutput;
+if (typeof rendered !== 'string') rendered.pixels.mediaType satisfies string;
 // @ts-expect-error limits left the config: maxInputTokens is per agent, the rest are fixed by the runner
 ({ targets, limits: { maxModelTokensPerCall: 1_000 } }) satisfies E2EConfig;
 

@@ -3,7 +3,8 @@
 import { describe, expect, it } from 'vitest';
 import { describeAction } from '../../src/agent/actions.ts';
 import { describePosition, relocateDescriptor } from '../../src/cache/relocate.ts';
-import { buildTraceEntry, readTraceEntry, type ActionTrace } from '../../src/cache/trace.ts';
+import { buildTraceEntry, type ActionTrace } from '../../src/cache/trace.ts';
+import { readTraceEntry } from '../../src/cache/trace-read.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
 import { redactedNodes } from '../helpers/redacted.ts';

@@ -63,7 +63,9 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`initScripts`](#init-scripts) | `WebInitScript[]` | - |
 
 - A `web()` target needs `app.url` and refuses the device keys (`bundleId`,
-  `appPath`, `launchArguments`, `permissions`).
+  `appPath`, `launchArguments`). Its `app.permissions` takes `'grant'` only,
+  for names its browser grants; see
+  [`permissions`](/reference/config#permissions).
 - A target with `app.url` is a `browser` target, so `requires: ['browser']`
   selects web targets.
 - The full declaration with its JSDoc is [`WebOptions`](#weboptions) under
@@ -202,8 +204,7 @@ How recovery runs:
 
 What survives:
 
-- Recovery keeps the page's unsaved state, storage, the attempt's secret
-  taint, and the agent ledger. Dialog and route handlers are reattached.
+- Recovery keeps the page's unsaved state, storage, and the agent ledger. Dialog and route handlers are reattached.
 - Video recording resumes. A segment lost during the disconnect is gone.
 - Operations already dispatched are never retried.
 - Recovery clears old node references. Observation-derived `tapAt` calls,
@@ -289,9 +290,9 @@ export interface WebBasicAuth {
 | `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
 
 <Warning>
-The secret protection is text only. Unlike a fill, it withholds no screenshot
-or model pixels, so a page that renders the password on screen is not masked
-in them ([Security rules](/reference/security#secrets-in-engine-options)).
+The secret protection is text only. A page that renders the password on
+screen is not masked in screenshots or model pixels
+([Security rules](/reference/security#secrets-in-engine-options)).
 </Warning>
 
 #### `testIdAttribute`
@@ -401,7 +402,8 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
   `evaluate`, `waitForResponse`, `waitForDownload`, `keyboard`, `mouse`, the
   `expect(browser)` matchers, and every `screen` query.
 - What belongs to the browser covers every tab: `cookies`, `setCookies`,
-  `route`, `unroute`, `unrouteAll`, `onDialog`, and `addInitScript`.
+  `clearCookies`, `route`, `unroute`, `unrouteAll`, `onDialog`, and
+  `addInitScript`.
 - `setViewport` sizes the active tab and every tab opened after it, and
   `emulateMedia` sets its media the same way.
 - A tab the app opens itself, from a `target="_blank"` link or `window.open`,
@@ -437,10 +439,12 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | [`waitForResponse`](#waitforresponse) | `Promise<WebResponse>` |
 | [`cookies`](#cookies) | `Promise<Cookie[]>` |
 | [`setCookies`](#setcookies) | `Promise<void>` |
+| [`clearCookies`](#clearcookies) | `Promise<void>` |
 | [`setViewport`](#setviewport) | `Promise<void>` |
 | [`emulateMedia`](#media-emulation) | `Promise<void>` |
 | [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
 | [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
+| [`waitForDownloads`](#waitfordownloads) | `Promise<{ path, absolutePath, … }[]>` |
 | [`keyboard`](#keyboard) | `{ press, down, up, type }` |
 | [`mouse`](#mouse) | `{ move, wheel, down, up }` |
 
@@ -453,10 +457,10 @@ The [config](/reference/config) sets each member's budget:
   `locator` and `frameLocator` touch no page and take none.
 
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
-`forward`, `waitForResponse`, and `waitForDownload`, capped by the test
-deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`, `unroute`,
-`unrouteAll`, `cookies`, `setCookies`, `setViewport`, `emulateMedia`, `onDialog`,
-`keyboard.*`, and `mouse.*` take no override.
+`forward`, `waitForResponse`, `waitForDownload`, and `waitForDownloads`, capped
+by the test deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`,
+`unroute`, `unrouteAll`, `cookies`, `setCookies`, `clearCookies`, `setViewport`,
+`emulateMedia`, `onDialog`, `keyboard.*`, and `mouse.*` take no override.
 
 #### `goto`
 
@@ -612,6 +616,10 @@ await browser.route('**/api/quote', async (route) => {
 });
 ```
 
+`route.fetch()` returns the upstream `{ url, status, headers, text(), json() }`
+with the site's headers, under the action timeout, without deciding the route.
+It does not follow redirects, which could take it past the navigation rule.
+
 - The pattern is a string or a `RegExp`, both tested against the full URL. In
   a string, `*` matches within a path segment, `**` across `/`, `?` any one
   character, and `\` escapes the next. `unroute` and `waitForResponse` take
@@ -671,6 +679,8 @@ export interface WebRoute {
     readonly headers: Readonly<Record<string, string>>;
     readonly postData?: string;
   };
+  /** Reads upstream without deciding the route or following redirects. */
+  fetch(): Promise<WebResponse>;
   /** Fulfills the intercepted request once. */
   fulfill(response: RouteFulfillResponse): Promise<void>;
   /** Sends the intercepted request to the network once, skipping every other route. */
@@ -789,6 +799,24 @@ export type Cookie = CookieFields &
   );
 ```
 
+#### `clearCookies`
+
+`clearCookies({ name?, domain?, path? })` removes cookies matching every
+filter given. Strings match exactly; RegExp matches the field. With no
+options it removes every cookie. Other storage stays.
+
+```ts
+await browser.clearCookies({ name: /^session/, path: '/' });
+```
+
+```ts
+export interface CookieFilter {
+  name?: string | RegExp;
+  domain?: string | RegExp;
+  path?: string | RegExp;
+}
+```
+
 #### `setViewport`
 
 Sets the viewport size and records the new size on the report.
@@ -872,6 +900,12 @@ const file = await browser.waitForDownload(() =>
 A trigger still running at the timeout fails with the step timeout. One that
 throws fails with its own error.
 
+#### `waitForDownloads`
+
+`waitForDownloads(trigger, { count })` calls the trigger once and returns
+`count` files in start order, each its own artifact, under the same timeout.
+When fewer start in time, the error names both counts; extra downloads are ignored.
+
 #### `keyboard`
 
 Viewport-level keyboard input, for whatever has focus.
@@ -941,8 +975,7 @@ fresh viewport screenshot.
 - The observation reports unavailable semantics and clears earlier node
   references.
 - Recovery requires time left in the operation budget and permission from the
-  runner. `act` permits it before a secret fill; judgments also require
-  `vision: true` or `'only'`.
+  runner. `act` permits it; judgments require `vision: true` or `'only'`.
 - Failed masking, cancellation, and hard engine errors still stop the
   observation.
 
@@ -990,8 +1023,8 @@ The package exports these types for typing config helpers and fixtures:
 `BrowserReleaseContext`, `BrowserProviderDownloads`,
 `BrowserDownloadContext`, `PlaywrightLiveSurface`, `Browser`, `FrameScreen`,
 `BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`,
-`RouteContinueOverrides`, `WebResponse`, `Cookie`, `CookieFields`, `Dialog`,
-and `DialogHandler`.
+`RouteContinueOverrides`, `WebResponse`, `Cookie`, `CookieFields`,
+`CookieFilter`, `Dialog`, and `DialogHandler`.
 
 The runtime exports are `web`, [`surfaceOf`](#surfaceof), and `test`,
 `describe`, `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed
@@ -1148,6 +1181,8 @@ export interface Browser extends Expectable<BrowserExpectation> {
   cookies(): Promise<Cookie[]>;
   /** Sets cookies after URL validation. */
   setCookies(cookies: readonly Cookie[]): Promise<void>;
+  /** Removes matching cookies only; without filters removes every cookie, preserving other storage. */
+  clearCookies(options?: CookieFilter): Promise<void>;
   /** Sets the viewport size. */
   setViewport(size: { width: number; height: number }): Promise<void>;
   /** Emulates CSS media features on every open tab and every tab opened after them. */
@@ -1159,6 +1194,11 @@ export interface Browser extends Expectable<BrowserExpectation> {
     trigger: () => Promise<void>,
     options?: { timeout?: number },
   ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }>;
+  /** Runs one trigger and waits for the requested number of completed downloads. */
+  waitForDownloads(
+    trigger: () => Promise<void>,
+    options: { count: number; timeout?: number },
+  ): Promise<readonly { path: string; absolutePath: string; suggestedFilename: string }[]>;
   /** Viewport-level keyboard, for whatever has focus. */
   readonly keyboard: {
     /** Sends one key. */

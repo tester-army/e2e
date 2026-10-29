@@ -83,7 +83,7 @@ export interface StepMetrics {
  * Why a vision step fell back to tree-only input. Pixel evidence degrades
  * rather than failing the step.
  */
-export type VisionDegradation = 'PIXEL_TAINTED' | 'MASKING_UNPROVEN' | 'UNSUPPORTED_CAPABILITY';
+export type VisionDegradation = 'MASKING_UNPROVEN' | 'UNSUPPORTED_CAPABILITY';
 
 /** Model provenance and usage for one model-backed step. */
 export interface StepModelInfo {

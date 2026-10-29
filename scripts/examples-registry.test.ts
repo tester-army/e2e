@@ -37,6 +37,7 @@ const community = {
   slug: 'vite-auth',
   source: 'community',
   repository: 'https://github.com/someone/vite-auth',
+  author: { name: 'Someone', github: 'someone' },
   tags: { framework: ['vite'], useCase: ['auth'], platform: ['web'] },
 };
 
@@ -93,6 +94,32 @@ describe('registryProblems', () => {
     assert.equal(problems.length, 2, problems.join('\n'));
     assert.match(problems[0]!, /community example lives in its own repository/);
     assert.match(problems[1]!, /official example lives under https:\/\/github\.com\/tester-army\//);
+  });
+
+  it("accepts a partner example in its author's repository, and keeps it out of the organization", () => {
+    const partner = { ...community, slug: 'smolmachines', source: 'partner', author: { ...community.author, website: 'https://someone.dev' } };
+    assert.deepEqual(registryProblems(registry([partner]), ENV), []);
+    const problems = registryProblems(
+      registry([
+        { ...partner, repository: 'https://github.com/tester-army/e2e-smolmachines' },
+        { ...partner, slug: 'impostor', repository: 'https://github.com/someone-else/e2e-smolmachines' },
+      ]),
+      ENV,
+    );
+    assert.equal(problems.length, 2, problems.join('\n'));
+    assert.match(problems[0]!, /"smolmachines": a partner example lives in its own repository, outside the tester-army organization/);
+    assert.match(problems[1]!, /"impostor": a partner example lives in its author's repository, https:\/\/github\.com\/someone\//);
+  });
+
+  it('requires a landing page on a partner example, and allows it on no other', () => {
+    const partner = { ...community, slug: 'smolmachines', source: 'partner' };
+    const problems = registryProblems(
+      registry([partner, { ...community, author: { ...community.author, website: 'https://someone.dev' } }]),
+      ENV,
+    );
+    assert.equal(problems.length, 2, problems.join('\n'));
+    assert.match(problems[0]!, /"smolmachines": a partner example names its author's landing page in author\.website/);
+    assert.match(problems[1]!, /"vite-auth": only a partner example has author\.website/);
   });
 
   it('accepts an official example in its own tester-army repository, and no community one there', () => {

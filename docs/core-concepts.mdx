@@ -78,7 +78,7 @@ closing a banner, or filling the fields of one form.
   records a goal only after a later check passes.
 - Use the words that the screen shows.
 - Give test data in `params`. For a password, give a `Secret`. The model
-  does not see a secret. See [Signing in](/authentication).
+  never gets its value as text. See [Signing in](/authentication).
 - For a value that changes on each run, use `unique()` so the
   [cache can replay the step](/cache#what-must-match):
 
@@ -128,8 +128,7 @@ When the exact text is important, use a [locator](#locators).
 
 For a visual check, such as a chart or a layout, add `vision: true`. To
 judge only the screenshot, use `vision: 'only'`. Images add input tokens.
-After a secret fill, the attempt sends no more screenshots. See the
-[agent reference](/reference/agent#vision).
+See the [agent reference](/reference/agent#vision).
 
 ## Locators
 

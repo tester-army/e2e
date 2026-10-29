@@ -253,7 +253,8 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once | web only |
 | `route.fulfill({ json, body, path, status, headers, contentType })` | the same; one of `json`, `body`, or `path`, and `path` is relative to the project root | web only |
 | `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` goes through the navigation rule, and `fallback()` takes no overrides | web only |
-| `route.fetch()`, `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
+| `route.fetch()` | argument-free: no `timeout`, `headers`, or `maxRedirects` options, and redirects return unfollowed; returns `{ url, status, headers, text(), json() }` without deciding the route | web only |
+| `route.abort(code)`, `route.fallback(overrides)` | none yet; `abort()` takes no error code | missing |
 | `page.unroute()` | `browser.unroute()` | web only |
 | `page.unrouteAll()` | `browser.unrouteAll()` | web only; clears test routes |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()`. A string is a glob tested against the whole URL, query included, and never resolved against `app.url`: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `?` matches any one character (write `'\\?'` for a literal one) | web only |
@@ -269,7 +270,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.emulateMedia({ colorScheme, reducedMotion })` | `browser.emulateMedia()`, for every open tab and every tab opened after it; `media`, `forcedColors`, and `contrast` are not yet supported | web only |
 | `page.exposeFunction()`, `addStyleTag()`, `setExtraHTTPHeaders()`, `clock` | none yet; for `addStyleTag`, `browser.evaluate` can append a `<style>` once the page is open | missing |
 | `context.addCookies()`, `context.cookies()` | `browser.setCookies()`, `browser.cookies()` | web only |
-| `context.clearCookies()` | `app.clearState()` also clears other persisted state and recreates the context | missing |
+| `context.clearCookies(options)` | `browser.clearCookies(options)` | web only |
 | `request` fixture | Node `fetch`, see [API](/api-testing) | by design |
 | `context.storageState({ path })` | no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
 

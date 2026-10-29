@@ -814,7 +814,7 @@ await screen.getByRole('button', 'Account').hover();
 #### `setInputFiles`
 
 ```ts
-/** Sets the files of exactly one file input; paths resolve from the project root. */
+/** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
 setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
 ```
 
@@ -822,9 +822,12 @@ setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promi
 await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
 ```
 
+On the web it also takes a button that opens a file chooser.
+
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | An empty list or a blank entry. |
+| `ACTION_FAILED` | On the web, a button that opens no file chooser. |
 
 #### `dragTo`
 
@@ -1029,7 +1032,8 @@ boundingBox(): Promise<{ x: number; y: number; width: number; height: number } |
 const map = (await screen.getByRole('image', 'Map').boundingBox())!;
 ```
 
-The box is in CSS pixels. It is `null` for a node that lays out no box
+The box is in CSS pixels, and on a device in points (physical pixels on
+Android). It is `null` for a node that lays out no box
 (`display: none` on it or an ancestor). A `visibility: hidden` node keeps
 its box.
 

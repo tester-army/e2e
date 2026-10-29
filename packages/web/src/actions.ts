@@ -15,6 +15,7 @@ import {
   performViewportSwipe,
   POST_DISPATCH_PATTERN,
   translatePwError,
+  targetPage,
   type ActionTarget,
 } from './support.ts';
 import type { ConnectionBudget } from './operation-budget.ts';
@@ -96,6 +97,53 @@ function isRadio(element: ElementHandle<Element>): Promise<boolean> {
 }
 
 /**
+ * Attaches files to a file input, or to a control that opens a native file
+ * chooser when clicked, such as a button over a hidden input. A file input,
+ * or a node inside a `<label>` for one, takes the files directly, as
+ * Playwright retargets a label to its control. Anything else is clicked
+ * with the chooser already awaited, and fails if no chooser opens. Every
+ * step shares the operation's deadline, and a cancelled operation sets no
+ * files, even when its chooser opens after the cancel.
+ */
+async function uploadFiles(target: ActionTarget, paths: readonly string[], operation: ConnectionBudget): Promise<void> {
+  const deadline = new Deadline(operation.timeoutMs);
+  const remaining = (): number => Math.max(1, deadline.remaining());
+  const element =
+    target.kind === 'element' ? target.element : await target.locator.elementHandle({ timeout: operation.timeoutMs });
+  try {
+    if (await isFileInput(element)) {
+      operation.signal.throwIfAborted();
+      await element.setInputFiles([...paths], { timeout: remaining() });
+      return;
+    }
+    const page = await targetPage(target);
+    operation.signal.throwIfAborted();
+    const opened = page.waitForEvent('filechooser', { timeout: remaining() });
+    opened.catch(() => undefined);
+    await element.click({ timeout: remaining() });
+    const chooser = await opened.catch((cause: unknown) => {
+      if (!isPwTimeout(cause)) throw cause;
+      throw new EngineError('NOT_ACTIONABLE', 'upload clicked the control but it opened no file chooser', {
+        retryable: false,
+        cause,
+      });
+    });
+    operation.signal.throwIfAborted();
+    await chooser.setFiles([...paths], { timeout: remaining() });
+  } finally {
+    if (target.kind === 'locator') void element.dispose().catch(() => undefined);
+  }
+}
+
+/** Whether an element is a file input, or labels one, so `setInputFiles` can take it directly. */
+function isFileInput(element: ElementHandle<Element>): Promise<boolean> {
+  return element.evaluate((node) => {
+    const control = node instanceof HTMLInputElement ? node : node.closest('label')?.control;
+    return control instanceof HTMLInputElement && control.type === 'file';
+  });
+}
+
+/**
  * Dispatches one deterministic locator action onto a Playwright target with the
  * platform's own actionability checks. `lookup` resolves the second ref of a
  * drag; everything else needs only the target.
@@ -161,7 +209,7 @@ export async function dispatchLocatorAction(
       return;
     }
     case 'setInputFiles':
-      await locator.setInputFiles([...action.paths], { timeout });
+      await uploadFiles(target, action.paths, operation);
       return;
     case 'dragTo': {
       const other = lookup(action.target);

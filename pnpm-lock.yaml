@@ -331,8 +331,8 @@ importers:
         specifier: 26.6.5
         version: 26.6.5
       agent-device:
-        specifier: 0.21.31
-        version: 0.21.31(ai@7.0.153(zod@4.6.7))
+        specifier: 0.21.33
+        version: 0.21.33(ai@7.0.153(zod@4.6.7))
       ai:
         specifier: 7.0.153
         version: 7.0.153(zod@4.6.7)
@@ -345,6 +345,34 @@ importers:
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/acp:
+    dependencies:
+      '@agentclientprotocol/sdk':
+        specifier: 1.7.0
+        version: 1.7.0(zod@4.6.7)
+      '@modelcontextprotocol/server':
+        specifier: 2.4.0
+        version: 2.4.0
+      zod:
+        specifier: 4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@modelcontextprotocol/client':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@26.6.5)(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/cige:
     dependencies:
@@ -583,8 +611,8 @@ importers:
   packages/limrun:
     dependencies:
       agent-device:
-        specifier: 0.21.31
-        version: 0.21.31(ai@7.0.134(zod@4.6.7))
+        specifier: 0.21.33
+        version: 0.21.33(ai@7.0.134(zod@4.6.7))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -608,8 +636,8 @@ importers:
   packages/mobile:
     dependencies:
       agent-device:
-        specifier: 0.21.31
-        version: 0.21.31(ai@7.0.153(zod@4.6.7))
+        specifier: 0.21.33
+        version: 0.21.33(ai@7.0.153(zod@4.6.7))
       pngjs:
         specifier: 7.0.0
         version: 7.0.0
@@ -660,11 +688,11 @@ importers:
   packages/testmu:
     dependencies:
       '@agent-device/testmu':
-        specifier: 0.21.31
-        version: 0.21.31
+        specifier: 0.21.33
+        version: 0.21.33
       agent-device:
-        specifier: 0.21.31
-        version: 0.21.31(ai@7.0.134(zod@4.6.7))
+        specifier: 0.21.33
+        version: 0.21.33(ai@7.0.134(zod@4.6.7))
     devDependencies:
       '@e2e-dev/mobile':
         specifier: workspace:*
@@ -712,8 +740,13 @@ importers:
 
 packages:
 
-  '@agent-device/testmu@0.21.31':
-    resolution: {integrity: sha512-TyzuPrA0bbZQucu2L9NvJ4acN5iHlu2vZSE7jbGidD5eC3qmddg/zx5k44tMwha2T9klXgnuw6SGClWpjVNGqA==}
+  '@agent-device/testmu@0.21.33':
+    resolution: {integrity: sha512-gh/m/hznXT6KAG0udGk9GbwdgmHnrY9exd1WkAcNlLpuQLv0/kFp2gD5MNy2EM9ZTgS/z6/MAlOt8gAJsjoaQQ==}
+
+  '@agentclientprotocol/sdk@1.7.0':
+    resolution: {integrity: sha512-ZORuxsuEnLjRly7t6Ad7zAsWitjWsyprswyPUHz/yycPb+tTm3DGa8XheaHhRXqX8LS9snuxaYavXSRA50TlHw==}
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
 
   '@ai-sdk/anthropic@4.0.88':
     resolution: {integrity: sha512-7h/rI3jLCfLbQsjVt37Q5PCEGOHrpVgrO2zl+y///UpUcWfiRDcqk8DL7br//OFxiEhyxgeIoU/5ulsN1llOyg==}
@@ -2754,8 +2787,8 @@ packages:
     engines: {node: '>=18.18'}
     hasBin: true
 
-  agent-device@0.21.31:
-    resolution: {integrity: sha512-541X/tXHqQS3Xg5PutPSek1nQFLgEJEXFdLPiZ9jTvSb+SMHr/Z4kzVCnBkGza59R+EHO1atLWx0ZAW5vK84IQ==}
+  agent-device@0.21.33:
+    resolution: {integrity: sha512-MNCJLSOQLnqAmWU3IsLBBij55aZDgFAPPsos6817C1OSx3k/FHN6XaKUNz8OYyMKXme3PRYFqephrbW2KlRAoQ==}
     engines: {node: '>=22.12'}
     hasBin: true
     peerDependencies:
@@ -4729,7 +4762,11 @@ packages:
 
 snapshots:
 
-  '@agent-device/testmu@0.21.31': {}
+  '@agent-device/testmu@0.21.33': {}
+
+  '@agentclientprotocol/sdk@1.7.0(zod@4.6.7)':
+    dependencies:
+      zod: 4.6.7
 
   '@ai-sdk/anthropic@4.0.88(zod@4.6.7)':
     dependencies:
@@ -6735,11 +6772,11 @@ snapshots:
 
   agent-cli-detector@0.1.7: {}
 
-  agent-device@0.21.31(ai@7.0.134(zod@4.6.7)):
+  agent-device@0.21.33(ai@7.0.134(zod@4.6.7)):
     optionalDependencies:
       ai: 7.0.134(zod@4.6.7)
 
-  agent-device@0.21.31(ai@7.0.153(zod@4.6.7)):
+  agent-device@0.21.33(ai@7.0.153(zod@4.6.7)):
     optionalDependencies:
       ai: 7.0.153(zod@4.6.7)
 

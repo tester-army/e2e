@@ -6,7 +6,7 @@
  * what this engine owes agent-device.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1162,9 +1162,13 @@ describe('perform', () => {
       ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 1000 }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.hover', { ref: '@e4' }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: 'blue', settle: true, settleQuietMs: 150 }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: '', settle: true, settleQuietMs: 150 }],
       ['interactions.press', { ref: '@e6', settle: true, settleQuietMs: 150 }],
+      // Enter reaches the field through the soft keyboard, so the unfocused field is tapped first.
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['command.keyboard', { action: 'enter' }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: 'a' }],
@@ -1176,6 +1180,19 @@ describe('perform', () => {
       ['interactions.scroll', { direction: 'up', settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
+  });
+
+  it.each(['Enter', 'a'])('sends %s to a focused field without tapping it first', async (key) => {
+    const h = harness();
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: SETTINGS_NODES.map((node) => (node.label === 'Search' ? { ...node, focused: true } : node)),
+    }));
+    await openAttempt(h);
+    const search = await observed(h, 'Search');
+    const before = h.fake.calls.length;
+    await h.engine.perform!(search.ref, { kind: 'press', key }, operation());
+    expect(h.fake.calls.slice(before).map((call) => call.method)).toEqual([key === 'Enter' ? 'command.keyboard' : 'interactions.type']);
   });
 
   it.each(['e2', ''])('presses the innermost control even when the row ref is %j', async (rowRef) => {
@@ -1444,6 +1461,50 @@ describe('device fixture', () => {
     } as unknown as EngineFixtureContext;
     return h.engine.fixtures!['device']!(context) as Device;
   }
+
+  describe('unstable_raw', () => {
+    const BOOTED = { platform: 'ios', id: '5A1C0DE5-0000-4000-8000-000000000001', device: 'iPhone 17 Pro', booted: true };
+
+    it('names the session, the device agent-device booted, and hands out the session client, outside any step', async () => {
+      const h = harness({ device: 'iPhone 17 Pro' });
+      h.fake.respond('devices.boot', () => BOOTED);
+      await openAttempt(h);
+      const device = fixture(h);
+      expect(device.unstable_raw).toEqual({
+        platform: 'ios',
+        session: 'e2e-ios-simulator-0',
+        deviceId: BOOTED.id,
+        deviceName: 'iPhone 17 Pro',
+        selection: { platform: 'ios', device: 'iPhone 17 Pro' },
+        client: h.fake.client,
+      });
+      expect(declared).not.toHaveProperty('unstable_raw');
+      const before = h.fake.calls.length;
+      await device.unstable_raw.client.apps.list(device.unstable_raw.selection);
+      expect(h.fake.calls.slice(before)).toEqual([{ method: 'apps.list', args: { platform: 'ios', device: 'iPhone 17 Pro' } }]);
+    });
+
+    it('follows the session option and selects a configured UDID by id', async () => {
+      const h = harness({ device: BOOTED.id, session: 'host' });
+      h.fake.respond('devices.boot', () => BOOTED);
+      await openAttempt(h);
+      const { session, selection } = fixture(h).unstable_raw;
+      expect(session).toBe('host-0');
+      expect(selection).toEqual({ platform: 'ios', udid: BOOTED.id });
+    });
+
+    it('is INVALID_STATE once the worker disposed the session', async () => {
+      const h = harness();
+      h.fake.respond('devices.boot', () => BOOTED);
+      await openAttempt(h);
+      const device = fixture(h);
+      const handle = device.unstable_raw;
+      await h.engine.endAttempt!(cleanup());
+      await h.engine.dispose!(cleanup());
+      expect(() => device.unstable_raw).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
+      expect(() => handle.client).toThrow(expect.objectContaining({ code: 'INVALID_STATE' }));
+    });
+  });
 
   describe('dismissing a keyboard that has no dismiss key', () => {
     const NO_DISMISS_KEY = () => {
@@ -2227,6 +2288,109 @@ describe('reference lifetime and cancellation', () => {
   });
 });
 
+describe('snapshot generations', () => {
+  /**
+   * agent-device's ref admission: every capture starts a new generation, and
+   * a ref pinned with `~s<generation>` is refused unless it names the newest.
+   */
+  function generations(h: Harness, nodes: () => readonly RawNode[] = () => SETTINGS_NODES): void {
+    let generation = 6;
+    h.fake.respond('capture.snapshot', () => {
+      generation += 1;
+      return { ...SETTINGS_SNAPSHOT, nodes: nodes(), refsGeneration: generation };
+    });
+    const admit = (ref: string): void => {
+      const pinned = /~s(\d+)$/.exec(ref);
+      if (pinned !== null && Number(pinned[1]) !== generation) {
+        throw new AppError('COMMAND_FAILED', `Ref ${ref} was minted from a superseded snapshot generation`, { reason: 'ref_generation_mismatch', dispatched: 'no' });
+      }
+    };
+    h.fake.respond('interactions.press', (args) => admit((args as { ref: string }).ref));
+    h.fake.respond('interactions.drag', (args) => {
+      const { source, destination } = args as { source: string; destination: string };
+      admit(source);
+      admit(destination);
+    });
+  }
+
+  it('pins every ref action to the capture that issued its ref', async () => {
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const op = operation();
+    const { root } = await h.engine.observe!(op);
+    const [about, toggle, back] = ['About', 'Airplane Mode', 'Back'].map((name) => named(root, name));
+    const before = h.fake.calls.length;
+    await h.engine.perform!(about!.ref, { kind: 'tap' }, op);
+    await h.engine.perform!(toggle!.ref, { kind: 'check' }, op);
+    await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['interactions.press', { ref: '@e4~s7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e6~s7', settle: true, settleQuietMs: 150 }],
+      ['interactions.drag', { source: '@e4~s7', destination: '@e3~s7' }],
+    ]);
+  });
+
+  it('refuses a ref from a superseded capture as stale instead of acting on the newer one', async () => {
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const about = await observed(h, 'About');
+    await h.engine.locate!(testIdQuery('BackButton'), operation());
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.lastArgs('interactions.press')).toMatchObject({ ref: '@e4~s7' });
+  });
+
+  it('drags between nodes located in separate captures from the newest one', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    generations(h);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const [about] = await h.engine.locate!(testIdQuery('ABOUT'), step);
+    const [back] = await h.engine.locate!(testIdQuery('BackButton'), step);
+    await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, step);
+    expect(h.fake.lastArgs('interactions.drag')).toEqual({ source: '@e4~s8', destination: '@e3~s8' });
+  });
+
+  it('pins a control found again after a transition to the capture it was found in', async () => {
+    autoAdvanceTimers();
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const about = await observed(h, 'About');
+    await h.engine.perform!(about.ref, { kind: 'tap' }, step);
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4~s8' });
+  });
+
+  it('drags from a source found again after a transition to a target located before it', async () => {
+    autoAdvanceTimers();
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const [about] = await h.engine.locate!(testIdQuery('ABOUT'), step);
+    const [back] = await h.engine.locate!(testIdQuery('BackButton'), step);
+    await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, step);
+    // The launch leaves the source in transition, so it is found again in a third capture.
+    expect(h.fake.lastArgs('interactions.drag')).toEqual({ source: '@e4~s9', destination: '@e3~s9' });
+  });
+
+  it('refuses a drag whose source a newer capture lists nowhere it was, before sending it', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    const twin: RawNode = { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'cell', label: 'About', identifier: 'ABOUT', rect: { x: 0, y: 600, width: 390, height: 44 } };
+    let nodes: readonly RawNode[] = [...SETTINGS_NODES, twin];
+    generations(h, () => nodes);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const [about] = await h.engine.locate!(testIdQuery('ABOUT'), step);
+    nodes = [...SETTINGS_NODES.filter((node) => node.label !== 'About'), twin];
+    const [back] = await h.engine.locate!(testIdQuery('BackButton'), step);
+    await expect(h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, step)).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods()).not.toContain('interactions.drag');
+  });
+});
+
 describe('video', () => {
   const recorder = (h: Harness, finalizeAt?: string) => {
     let requested: string | undefined;
@@ -2265,6 +2429,22 @@ describe('video', () => {
     expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
     await h.engine.endAttempt!(cleanup());
     expect(records(h)).toHaveLength(2);
+  });
+
+  it('records again in the same attempt once the runner moved the previous file away', async () => {
+    const h = harness();
+    recorder(h);
+    await openAttempt(h);
+    const file = path.join(artifactsDir, 'video', 'video.mp4');
+    for (const moved of ['first.mp4', 'second.mp4']) {
+      await h.engine.artifacts!.startVideo!(operation());
+      expect(await h.engine.artifacts!.stopVideo!(operation())).toEqual([{ path: path.join('video', 'video.mp4'), startedAt: expect.any(String) }]);
+      renameSync(file, path.join(artifactsDir, moved));
+    }
+    expect(records(h)).toHaveLength(4);
+    // Nothing is left recording for the attempt's end to stop.
+    await h.engine.endAttempt!(cleanup());
+    expect(records(h)).toHaveLength(4);
   });
 
   it.each([
@@ -2371,6 +2551,248 @@ describe('video', () => {
   });
 });
 
+describe('input freshness', () => {
+  beforeEach(autoAdvanceTimers);
+
+  /** A uniquely identified field and its neighbor, after a slow accessibility capture. */
+  function form(y = 237, changes: Partial<RawNode> = {}) {
+    const field: RawNode = {
+      ref: '@e20', index: 1, parentIndex: 0, depth: 1, type: 'secure-text-field',
+      label: 'Account', identifier: 'account', rect: { x: 40, y, width: 322, height: 49 }, ...changes,
+    };
+    return {
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        SETTINGS_NODES[0]!, field,
+        { ref: '@e21', index: 2, parentIndex: 0, depth: 1, type: 'text-field', label: 'Username', identifier: 'username', rect: { x: 40, y: 218, width: 322, height: 49 } },
+      ],
+    };
+  }
+
+  for (const origin of ['test', 'agent'] as const) {
+    for (const kind of ['fill', 'clear'] as const) {
+      it(`uses one fresh binding after a slow capture for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
+        const old = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        h.fake.respond('capture.snapshot', () => form(126, { ref: '@e42' }));
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: true } : { kind };
+        await h.engine.perform!(old.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+        expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+      });
+
+      it(`acts on a sliding input with one capture for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => form(2000));
+        const sliding = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        h.fake.respond('capture.snapshot', () => form(126, { ref: '@e42' }));
+        const startedAt = Date.now();
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await h.engine.perform!(sliding.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: kind === 'fill' ? 'example' : '' });
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+        if (origin === 'test') expect(Date.now() - startedAt).toBeGreaterThanOrEqual(500);
+      });
+
+      it(`rejects an originally non-input target before waiting or capturing for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => form(237, { type: 'button' }));
+        const button = await observed(h, 'Account');
+        const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+        const startedAt = Date.now();
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(button.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(Date.now()).toBe(startedAt);
+        expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+
+      // agent-device 0.21.33's simulator AX tree reads a Compose Multiplatform field as an unclassified `Other`:
+      // an empty one over the placeholder it draws, a filled one with its text as the value.
+      const unclassified = (field: Partial<RawNode>, inside?: RawNode) => {
+        const snapshot = form(237, { type: 'Other', ...field });
+        return inside === undefined ? snapshot : { ...snapshot, nodes: [...snapshot.nodes, inside] };
+      };
+      const child = (type: string, label: string): RawNode =>
+        ({ ref: '@e22', index: 3, parentIndex: 1, depth: 2, type, label, rect: { x: 52, y: 252, width: 101, height: 18 } });
+
+      it.each([
+        ['empty, over its placeholder', () => unclassified({}, child('StaticText', 'Ada Lovelace'))],
+        ['filled', () => unclassified({ value: 'Grace' })],
+      ])(`acts on an unclassified iOS field, %s, for ${origin} ${kind}`, async (_name, snapshot) => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', snapshot);
+        const field = await observed(h, 'Account');
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await h.engine.perform!(field.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e20', text: kind === 'fill' ? 'example' : '' });
+      });
+
+      it.each([
+        ['childless and valueless, like a React Native Pressable', () => unclassified({})],
+        ['holding a control', () => unclassified({}, child('Button', 'Clear'))],
+      ])(`rejects an unclassified iOS element %s for ${origin} ${kind}`, async (_name, snapshot) => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', snapshot);
+        const element = await observed(h, 'Account');
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(element.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+
+      it(`rejects an unclassified iOS element that gained a control before typing for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => unclassified({}, child('StaticText', 'Loading')));
+        const element = await observed(h, 'Account');
+        h.fake.respond('capture.snapshot', () => unclassified({}, child('Button', 'Loading')));
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(element.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+    }
+  }
+
+  it('refreshes an unchanged input even when the transition shortcut skips the wait', async () => {
+    const h = harness();
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
+    const search = await observed(h, 'Search');
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => node.label === 'Search' ? { ...node, ref: '@e42' } : node) }));
+    const startedAt = Date.now();
+    await h.engine.perform!(search.ref, { kind: 'clear' }, { ...operation(), origin: 'test' });
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e42', text: '' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+  });
+
+  it.each([
+    ['missing', () => ({ ...form(), nodes: [SETTINGS_NODES[0]!] })],
+    ['renamed', () => form(237, { label: 'Other account' })],
+    ['different identifier', () => form(237, { identifier: 'other' })],
+    ['truncated', () => ({ ...form(), truncated: true })],
+    ['non-editable', () => form(237, { type: 'button' })],
+    ['no longer secure', () => form(237, { type: 'text-field' })],
+    ['disabled', () => form(237, { enabled: false })],
+    ['hidden', () => form(237, { visibleToUser: false })],
+  ] as const)('rejects a %s target without dispatching or exposing the value', async (_name, snapshot) => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', snapshot);
+    const failure = h.engine.perform!(old.ref, { kind: 'fill', value: 'not-for-diagnostics', sensitive: true }, operation());
+    await expect(failure).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    await expect(failure).rejects.not.toThrow('not-for-diagnostics');
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  for (const kind of ['fill', 'clear'] as const) {
+    it.each([0, 1])(`can ${kind} identical OTP input %i with the existing nearest-node matching`, async (selected) => {
+      const h = harness();
+      await openAttempt(h);
+      const digits = (refs: readonly string[], shift: number) => ({
+        ...SETTINGS_SNAPSHOT,
+        nodes: [
+          SETTINGS_NODES[0]!,
+          ...refs.map((ref, index) => ({ ref, index: index + 1, parentIndex: 0, depth: 1, type: 'text-field', label: 'Digit', rect: { x: 40, y: 100 + index * 100 + shift, width: 49, height: 49 } })),
+        ],
+      });
+      h.fake.respond('capture.snapshot', () => digits(['@e20', '@e21'], 0));
+      const snapshot = await h.engine.observe!(operation());
+      const target = [...walk(snapshot.root)].filter((node) => node.name === 'Digit')[selected]!;
+      h.fake.respond('capture.snapshot', () => digits(['@e41', '@e42'], 10));
+      const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+      const action = kind === 'fill' ? { kind, value: '7', sensitive: false } : { kind };
+      await h.engine.perform!(target.ref, action, { ...operation(), origin: 'test' });
+      expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: selected === 0 ? '@e41' : '@e42' });
+      expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+    });
+  }
+
+  it('recovers from a truncated capture after re-observation', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => ({ ...form(), truncated: true }));
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+    h.fake.respond('capture.snapshot', () => form());
+    await h.engine.perform!((await observed(h, 'Account')).ref, { kind: 'clear' }, operation());
+    expect(h.fake.methods().filter((method) => method === 'interactions.fill')).toHaveLength(1);
+  });
+
+  it('uses the newest backend ref for an unchanged uniquely identified input without taking pixels', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form(237, { ref: '@e42', focused: true }));
+    await h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, operation());
+    expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e42', text: 'example' });
+    expect(h.fake.methods()).not.toContain('capture.screenshot');
+    expect(h.fake.lastArgs('capture.snapshot')).toEqual({ interactiveOnly: false });
+  });
+
+  it('does not silently accept changed security facts during a transition', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', () => form(126, { enabled: false }));
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    await expect(h.engine.perform!(old.ref, { kind: 'fill', value: 'example', sensitive: true }, { ...operation(), origin: 'test' })).rejects.toMatchObject({ code: 'NODE_STALE' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures + 1);
+  });
+
+  it('does not send input if the preflight consumed the input budget', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    h.fake.respond('capture.snapshot', async () => { await sleep(600); return form(); });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, { ...operation(), timeoutMs: 500 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it.each(['fill', 'clear'] as const)('does not capture or send %s after its transition wait is cancelled', async (kind) => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const search = await observed(h, 'Search');
+    const captures = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+    const controller = new AbortController();
+    const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+    const pending = h.engine.perform!(search.ref, action, { ...operation(controller.signal), origin: 'test' });
+    setTimeout(() => controller.abort(), 20);
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+
+  it('does not dispatch when aborted during the preflight capture', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => form());
+    const old = await observed(h, 'Account');
+    const controller = new AbortController();
+    h.fake.respond('capture.snapshot', async () => { controller.abort(); return form(); });
+    await expect(h.engine.perform!(old.ref, { kind: 'clear' }, operation(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.fill');
+  });
+});
+
 describe('deterministic actions', () => {
   const test = (): OperationContext => ({ ...operation(), origin: 'test' });
 
@@ -2447,13 +2869,42 @@ describe('deterministic actions', () => {
     await h.engine.perform!(inFlight.ref, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
 
-    // A control the fresh snapshot no longer lists is acted on as it was.
+    // A missing control must be resolved again before any input is dispatched.
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
     h.fake.respond('capture.snapshot', () => submit(600, '@e42'));
     const landed = await observed(h, 'Submit');
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
-    await h.engine.perform!(landed.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+    const presses = h.fake.methods().filter((method) => method === 'interactions.press').length;
+    await expect(h.engine.perform!(landed.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
+  });
+
+  it('does not tap a recycled ref when a native button becomes a tab during relocation', async () => {
+    autoAdvanceTimers();
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [...SETTINGS_NODES, { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Chat' }],
+    }));
+    const chat = await observed(h, 'Chat');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref: '@e10', index: 10, parentIndex: 0, depth: 1, type: 'tab-bar' },
+        { ref: '@e12', index: 11, parentIndex: 10, depth: 2, type: 'button', label: 'Chat' },
+        { ref: '@e11', index: 12, parentIndex: 10, depth: 2, type: 'button', label: 'Orders' },
+      ],
+    }));
+    const presses = h.fake.methods().filter((method) => method === 'interactions.press').length;
+    await expect(h.engine.perform!(chat.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
+
+    await h.engine.perform!((await observed(h, 'Chat')).ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e12' });
   });
 
   it.each(

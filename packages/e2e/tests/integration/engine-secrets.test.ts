@@ -67,7 +67,7 @@ test('downloads the echoed headers', async ({ app, browser }) => {
   await browser.waitForDownload(() => browser.locator('a[download]').tap());
 });
 
-test('takes a screenshot of the page, an engine-held secret tainting no pixels', async ({ app }) => {
+test('takes a screenshot of the page with an engine-held secret', async ({ app }) => {
   await app.open('/basic-auth');
   await app.screenshot('echo');
 });
@@ -115,7 +115,7 @@ describe('a secret in an engine option', () => {
   });
 
   it('protects the secret as text only: screenshots are kept, the text download rewritten', () => {
-    const shot = resultByTitle(outcome, 'takes a screenshot of the page, an engine-held secret tainting no pixels');
+    const shot = resultByTitle(outcome, 'takes a screenshot of the page with an engine-held secret');
     expect(shot.status, JSON.stringify(shot.attempts[0]?.error)).toBe('passed');
     const failure = resultByTitle(outcome, 'fails on the echoed Authorization header').attempts[0]!;
     expect(failure.artifacts.filter((artifact) => artifact.kind === 'screenshot')).toHaveLength(1);

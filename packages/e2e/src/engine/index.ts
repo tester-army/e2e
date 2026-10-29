@@ -159,7 +159,7 @@ export interface EngineAppInfo {
   readonly appPath?: string;
   /** Arguments every fresh launch passes the app. */
   readonly launchArguments?: readonly string[];
-  /** Permissions the app holds on every fresh launch, by name. */
+  /** Permissions the app holds, by name; what each state means is the engine's (a device sets them before every fresh launch). */
   readonly permissions?: Readonly<Record<string, AppPermissionState>>;
 }
 
@@ -298,8 +298,8 @@ export interface EngineArtifacts {
   /** Captures a redacted screenshot; secure fields are masked at the source. */
   screenshot(label: string | undefined, context: OperationContext): Promise<string>;
   /**
-   * Starts recording the surface for the attempt. Declared together with
-   * `stopVideo`. A surface that has nothing to show yet (no page open) may
+   * Starts recording the surface. Declared together with `stopVideo`. An
+   * attempt may start and stop more than once, never overlapping. A surface that has nothing to show yet (no page open) may
    * defer the actual capture to the moment it does; the segments returned by
    * `stopVideo` say when each one began.
    */
@@ -505,7 +505,8 @@ export interface EngineAttemptContext {
    * `options.derived` computes from it, join the attempt's redaction before
    * this resolves, so reports, logs, and every observation redact them, and
    * the attempt's text downloads are rewritten. The protection is
-   * text only: unlike a fill, it withholds no screenshot or model pixels.
+   * text only: a page that shows the value outside a secure field is not
+   * masked in screenshots.
    * A secret the engine did not declare is `SECRET_UNAVAILABLE`.
    */
   readonly resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>;
@@ -604,7 +605,7 @@ export interface EngineDisposeContext extends EngineCleanupContext {
 export interface EngineObserveOptions {
   /** Requests masked viewport pixels for the same revision as the tree. */
   readonly pixels?: boolean;
-  /** Allows independently masked pixels to replace a failed semantic capture. Never granted after a secret fill. */
+  /** Allows independently masked pixels to replace a failed semantic capture. */
   readonly pixelFallback?: boolean;
   /**
    * The pixels are compared against a stored screenshot (`toHaveScreenshot`).
@@ -746,8 +747,8 @@ export interface Engine {
   /**
    * capability: pointer - requires observation. Performs one pointer action
    * at a viewport point, in the CSS pixels of `SemanticNode.rect`, with no
-   * node behind it: the agent's `tap_at` and `hover_at` verbs land here with
-   * the point the model named in a screenshot (a shape on a canvas, a pin on
+   * node behind it: the agent's `tap_at`, `hover_at`, and `drag_at` verbs land
+   * here with the point the model named in a screenshot (a shape on a canvas, a pin on
    * a map, a control in a system sheet or one the tree lists), and so do a test's
    * `screen.tapAt`, `screen.swipe({ from, to })`, and `tap({ position })`.
    * Dispatch the pointer at the point as given; the harness has clamped an

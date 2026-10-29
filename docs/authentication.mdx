@@ -155,8 +155,8 @@ password, the runner requires a password field and types the value. See the
 [secret fill rules](/reference/security#secret-fills). The agent can't read
 a secure field, so assert that sign-in succeeded instead.
 
-After a secret fill, the model gets no screenshots for the rest of the
-attempt, or in the tests that restore the session it saved. See
+Screenshots mask the password field. A value the app shows anywhere else
+reaches the model. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 <Warning>
@@ -195,7 +195,9 @@ await agent.act('Connect Stripe with the given key', {
 ```
 
 A `secrets` entry can fill any editable input. An unconfigured name throws
-`SECRET_UNAVAILABLE`. `secrets.get()` returns `secrets` entries only, so
+`SECRET_UNAVAILABLE`. A plain input isn't masked, so screenshots show the
+value while the input holds it, the model's included. `secrets.get()`
+returns `secrets` entries only, so
 `credentials.admin` and `secrets.admin` can both exist.
 
 In `e2e.config.ts`, `secrets.get()` can pass a secret to an engine option

@@ -16,7 +16,8 @@ import { ConfigurationError, errorMessage, InfrastructureError, TestError } from
 import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { createScreenshotContext, type ScreenshotContext, type WrittenScreenshots } from './screenshots.ts';
-import { resolveSecretValue, sessionSecrecy } from './secrecy.ts';
+import { sessionRecordings } from './recordings.ts';
+import { resolveSecretValue, sessionLedger } from './secrecy.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
 import type { AttemptBudget } from './budget.ts';
@@ -30,7 +31,7 @@ import {
 } from '../locator/screen.ts';
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Agent, App, Expectable, SetupSession, TestFixtures } from '../types.ts';
+import type { Agent, App, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -146,15 +147,9 @@ export function createScreenContext(wiring: ScreenWiring): ScreenContext {
 }
 
 export function createFixtures(environment: AttemptEnvironment): AttemptFixtures {
-  const { ledger, exposure } = sessionSecrecy(environment.session, environment.config.allSecrets);
+  const ledger = sessionLedger(environment.session, environment.config.allSecrets);
   const secrets: SecretResolver = {
-    async resolve(secret) {
-      const plaintext = await resolveSecretValue(secret, environment.config.allSecrets, ledger);
-      // Only a value that exists can reach the screen: a failed provider
-      // leaves nothing to taint the viewport with.
-      exposure.raise('filled');
-      return plaintext;
-    },
+    resolve: (secret) => resolveSecretValue(secret, environment.config.allSecrets, ledger),
   };
 
   const screenContext = createScreenContext({
@@ -250,7 +245,6 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     secrets,
     redact: ledger.redact,
     redactCut: ledger.redactCut,
-    exposure,
     artifacts: environment.artifacts,
     ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
     ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
@@ -330,7 +324,7 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
  * Engine-contributed fixtures: factories declare operation metadata
  * through context.fixture and must return the surface they declared. Factories
  * stay lazy and each instance belongs to one test's fixture graph; the
- * session's secrecy state outlives that graph.
+ * session's ledger outlives that graph.
  */
 function contributedFixtures(
   environment: AttemptEnvironment,
@@ -474,6 +468,7 @@ function unreachableApp(cause: unknown, url: string): InfrastructureError | unde
 /** Builds the portable app fixture with the session's shared screenshot policy. */
 function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App {
   const { config, steps, target } = environment;
+  const recordings = sessionRecordings(environment.session, target.name);
 
   /** Opens one resolved URL; a refused connection is reported as the app being down. */
   const openAt = async (resolved: string, timeoutMs: number): Promise<void> => {
@@ -553,6 +548,18 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
         return path.join(environment.artifacts.dir, relative);
       });
     },
+    async startRecording(options?: RecordingOptions): Promise<void> {
+      const name = options?.name;
+      await steps.run('app', 'app.startRecording', typeof name === 'string' ? name : '', async () => {
+        await recordings.startSpan(name, engine.operation());
+      });
+    },
+    stopRecording: () =>
+      steps.run('app', 'app.stopRecording', '', async () => {
+        const { ids, videos } = await recordings.stopSpan(engine.operation(), environment.artifacts);
+        for (const id of ids) environment.steps.attachArtifact(id);
+        return videos;
+      }),
   };
 }
 

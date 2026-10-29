@@ -145,13 +145,6 @@ describe('vision details', () => {
     expect(requests[3]?.questions['x']?.instructions).toContain('2x zoom of a 200 by 200 pixel region');
     expect(fixture.actions.tapAt).toHaveBeenCalledWith({ x: 398, y: 376 });
   });
-  it('never asks for pixels once a secret was filled, and offers no tap_at', async () => {
-    const { model, requests } = scriptedDecision((id, keys) => ({ choice: id === 'operation' ? 'blocked' : (keys[0] ?? '') }));
-    const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, pixelsTainted: true });
-    await decisionExecutor({ model, vision: true }).runStep(fixture.ctx);
-    expect(fixture.observe).toHaveBeenCalledWith({ tree: true, pixels: false });
-    expect(Object.keys(requests[0]?.questions['operation']?.criteria as object)).not.toContain('tap_at');
-  });
   it('judges a vision-only assert from the pixels when the tree is unavailable', async () => {
     const { model, requests } = scriptedDecision(() => ({ choice: 'holds' }));
     const fixture = context({ kind: 'assert', observation: { treeUnavailable: true, pixels: whitePixels() }, vision: 'only' });

@@ -128,6 +128,9 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
   the base URL.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
   absolute path. It masks secure fields only (see Sign-in sessions).
+- `startRecording({ name? })`, then `stopRecording()`: records one span and
+  returns its videos (`path` or hosted `url`). Fails while the test's
+  `video` records: set `{ video: 'off' }` on the test.
 
 `clearState()` is `UNSUPPORTED_CAPABILITY` with `connect.reconnectEndpoint`
 or an attempt-scoped browser provider; on a device with no pinned `app`, both
@@ -351,11 +354,10 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen 
   match `[A-Za-z0-9_.-]{1,128}`.
 - A session holds cookies, local storage, and IndexedDB for one run,
   encrypted and deleted at cleanup; server state is not part of it.
-- Once a secret is filled, model pixels are withheld for the rest of that
-  session (later serial members included). Artifact screenshots
-  (`app.screenshot()`, assertion, failure) stay on and mask secure fields
-  only. A restored session keeps its setup's taint; a setup that signs in
-  without a fill (`browser.setCookies`, say) leaves model pixels available.
+- Screenshots, the model's and the artifacts', mask secure fields only,
+  after a secret fill too. A generic secret in a plain input, or a value the
+  app shows anywhere else (a show-password toggle, a toast), is in the image
+  and reaches the model provider: use test credentials.
 - Credentials live in the config, values in the environment:
 
 ```ts
@@ -480,6 +482,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   before the page's own scripts; call it before `app.open`. `arg` is JSON.
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
+  `route.fetch()` reads upstream without deciding the route and returns
+  `{ url, status, headers, text(), json() }`; redirects are not followed.
   The handler calls exactly one of
   `fulfill({ status?, headers?, contentType?, json | body | path })`,
   `continue({ url?, method?, headers?, postData? })` (straight to the
@@ -493,6 +497,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `ACTION_FAILED` when it could not be read. Start the wait before the
   request, including the first `browser.goto` or `app.open`.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
+- `clearCookies({ name?, domain?, path? })`: remove cookies matching every
+  string or RegExp filter; no options removes all cookies, other storage stays.
 - `setViewport({ width, height })`: resize.
 - `emulateMedia({ colorScheme?, reducedMotion? })`: what the page's `@media`
   rules and `matchMedia` read, for the rest of the test. Call it before
@@ -507,6 +513,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `waitForDownload(() => trigger, { timeout? })`: returns
   `{ path, absolutePath, suggestedFilename }`; `absolutePath` names the saved
   runner-side file for reading its contents, including with a hosted browser.
+- `waitForDownloads(() => trigger, { count, timeout? })`: calls the trigger
+  once and returns `count` of those results in start order.
 - `keyboard.press(key)`, `keyboard.type(text)`, `keyboard.down(key)`,
   `keyboard.up(key)`, `mouse.*`: unfocused input. Only `down(key)` holds a
   key or modifier until `up(key)`. `press(key)` presses and releases within

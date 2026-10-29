@@ -17,6 +17,9 @@
 /packages/web/             @okwasniewski @szymonrybczak
 /packages/mobile/           @szymonrybczak @okwasniewski
 
+# Examples.
+/examples/                        @kacperkapusciak
+
 # Release and CI.
 /.github/                         @okwasniewski
 /.changeset/config.json           @okwasniewski

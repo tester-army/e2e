@@ -9,7 +9,8 @@ icon: "box-archive"
 The replay cache records the actions of an `agent.act()` step after a later
 check verifies the result. On the next run, the runner replays those
 actions without a model call. When a control or the expected end state no
-longer matches, the agent takes over from the current screen.
+longer matches, the agent takes over from the current screen. See
+[Self-healing tests](/self-healing).
 
 `agent.assert`, `agent.waitFor`, and `agent.extract` always run live. The
 run summary counts the outcomes:
@@ -228,7 +229,7 @@ the file store.
 | `gap` | An action can't be replayed, see [below](#limits-and-gaps). | The agent does this part live. Put stable values in `params`. |
 | `action-failed` | The app rejected a replayed action. | Check the app. |
 | `action-uncertain` | A replayed action failed, and it's unknown whether it took effect. The agent is told to check before it acts again. | Check the app. |
-| `viewport-changed` | A bare-point tap or hover was recorded on a viewport of another size. | Keep the viewport fixed. |
+| `viewport-changed` | A bare-point tap, hover, or drag was recorded on a viewport of another size. | Keep the viewport fixed. |
 | `end-mismatch` | Every action ran, but the [end check](#how-a-replay-works) failed. | Leftover data from an earlier run, a banner that comes and goes, or a regression. Unique test data and cleanup in `afterEach` help. |
 
 To rule the cache out of a failure, run one time without it:
@@ -294,7 +295,9 @@ cache: { mode: 'read-write', dir: '.e2e/cache' },
 `--no-cache` overrides the config. In `read-only` mode, stale entries stay
 until a `read-write` run replaces them. A custom `cache.store` replaces the
 file store and doesn't default to `read-only` in CI. `e2e explore` and
-`e2e mcp` don't use the cache.
+`e2e mcp` sessions don't use the cache. A test a session runs
+([`open_session {test}`](/reference/mcp#running-a-test)) uses it as a run's
+first attempt does.
 
 ## Share the cache across checkouts
 

@@ -20,8 +20,12 @@
     "packages/web/tests/types/keyboard.ts",
     "packages/web/tests/types/media.ts",
     "packages/web/tests/types/routes.ts",
+    "packages/web/tests/types/clear-cookies.ts",
+    "packages/web/tests/types/downloads.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
+    "packages/acp/tests/fixtures/scripted-agent.ts",
+    "packages/acp/tests/live/*.ts",
     "packages/e2e/tests/live/*.ts",
     "packages/e2e/src/config/register.ts",
     "packages/cige/src/config-graph.ts"

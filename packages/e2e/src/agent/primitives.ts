@@ -205,19 +205,24 @@ export interface GrammarToolOptions {
    * instead turns it into text and ends the loop.
    */
   readonly guard?: <T>(body: () => Promise<T>) => Promise<T | string>;
-  /**
-   * Renders screens for the model and remembers what it has seen, so every
-   * result after the first reports the changes rather than the whole tree.
-   * Shared with the opening prompt by the built-in agent; a fresh one per step
-   * otherwise.
-   */
-  readonly screen?: ScreenPresenter;
+}
+
+/** The package's own callers: the options, the presenter they share with what they show the model themselves, and failure causes. */
+interface GrammarToolSetup extends GrammarToolOptions {
   /**
    * Told the cause of every action that failed into a result rather than a
    * throw, before it becomes the result's text: the one place its runner
    * code is still structured.
    */
   readonly onActionFailed?: ((cause: unknown) => void) | undefined;
+  /**
+   * Renders screens for the model and remembers what it has seen, so every
+   * result after the first reports the changes rather than the whole tree.
+   * Shared with the opening prompt by the built-in agent and with the session
+   * by `e2e mcp`; a fresh one per step otherwise, so the first look
+   * (`observe`) returns the whole screen.
+   */
+  readonly screen?: ScreenPresenter;
 }
 
 /**
@@ -314,9 +319,12 @@ const POINT_TOOLS: readonly {
  * that batches several actions gets one coherent result per action rather
  * than every result describing the state after the last one.
  */
-export function createGrammarTools(
+export const createGrammarTools: (context: StepExecutorContext, options?: GrammarToolOptions) => ToolSet = grammarTools;
+
+/** `createGrammarTools` for the package's own callers, which may share a screen presenter and hear of failed actions. */
+export function grammarTools(
   context: StepExecutorContext,
-  options: GrammarToolOptions = {},
+  options: GrammarToolSetup = {},
 ): ToolSet {
   const { guard, screen, verbs, inOrder, present, perform, acting } = verbKit(context, options);
 
@@ -508,7 +516,7 @@ export function createGrammarTools(
   if (verbs.has('upload')) {
     tools['upload'] = screenTool({
       description:
-        'Attach one or more files to a file input node. Paths are relative to the project root, e.g. "fixtures/photo.png"; use the paths the step gives you. A file outside the project, a hidden one, or one that does not exist is refused.',
+        'Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Paths are relative to the project root, e.g. "fixtures/photo.png"; use the paths the step gives you. A file outside the project, a hidden one, or one that does not exist is refused.',
       inputSchema: z.object({ target, files: z.array(z.string().min(1)).min(1) }),
       execute: ({ target: id, files }) =>
         acting(
@@ -568,22 +576,17 @@ export function createGrammarTools(
       execute: () => acting({ done: 'Navigated back.', attempt: 'back' }, () => context.actions.back()),
     });
   }
-  // The pixel verbs are offered while pixels can still leave the runner. Once
-  // a secret was filled in the attempt they could only decline, and a verb
-  // that is absent costs the model nothing where one that declines costs a
-  // turn. They are the fallback for a target the tree does not list: a tap
-  // or hover reaches the engine as a bare point where it takes one, and a
-  // type, press, or select acts on a listed control under the point by id,
-  // else through the keyboard.
-  if (!context.pixelsTainted) {
-    tools['screenshot'] = screenTool({
-      description:
-        'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
-      inputSchema: z.object({}),
-      execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
-    });
-    Object.assign(tools, createPointTools(context, { screen, inOrder, perform }));
-  }
+  // The pixel verbs are the fallback for a target the tree does not list: a
+  // tap, hover, or drag reaches the engine as bare points where it takes
+  // them, and a type, press, or select acts on a listed control under the
+  // point by id, else through the keyboard.
+  tools['screenshot'] = screenTool({
+    description:
+      'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
+    inputSchema: z.object({}),
+    execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
+  });
+  Object.assign(tools, createPointTools(context, { screen, inOrder, perform }));
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.
   if (verbs.has('typeSecret') && context.step.secrets.length > 0) {
@@ -658,10 +661,11 @@ function isNotFillable(cause: unknown): boolean {
 
 /**
  * The point-addressed fallback verbs, offered next to the id-addressed
- * grammar while pixels may reach the model: `tap_at`, `type_at`, `press_at`,
- * and `select_at`, each taking a point in the latest screenshot for a target
- * the tree does not list. `tap_at` taps the bare point where the engine
- * takes one. The others hit-test the point against the tree the harness
+ * grammar while pixels may reach the model: `tap_at`, `drag_at`, `type_at`,
+ * `press_at`, and `select_at`, each taking a point in the latest screenshot
+ * for a target the tree does not list. `tap_at` taps the bare point where the
+ * engine takes one, and `drag_at` drags between bare points the same way. The
+ * others hit-test the point against the tree the harness
  * holds, so a field the tree lists is acted on by id underneath: policed,
  * recorded with a durable descriptor, and replayed like any other action.
  * With a keyboard, a point on nothing listed is tapped to focus it and
@@ -681,13 +685,9 @@ function createPointTools(
 
   /**
    * A point the model read off the latest screenshot in viewport pixels, or
-   * the line to read instead: no screenshot taken yet, or a secret filled
-   * since, after which no pixel the model holds may be acted on.
+   * the line to read instead when no screenshot was taken yet.
    */
   const pointOf = (px: number, py: number, verb: string): ViewportPoint | string => {
-    if (context.pixelsTainted) {
-      return `No point actions: a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED); ${verb} coordinates would aim at a screenshot that is no longer current. Act on a listed node by id.`;
-    }
     const shot = screen.latestScreenshot;
     if (shot === undefined) {
       return `No screenshot has been taken in this step: ${verb} coordinates are pixels of the latest screenshot. Call screenshot first, or act on a listed node by id.`;
@@ -697,9 +697,8 @@ function createPointTools(
 
   /**
    * Runs a point verb in the queue, resolving the point only when its turn
-   * comes: a `type_secret` batched ahead of it in the same turn has filled by
-   * then, so the taint check sees it, and the screenshot it reads is the one
-   * the model held when the verb ran, not when it was queued.
+   * comes: the screenshot it reads is the one the model held when the verb
+   * ran, not when it was queued.
    */
   const atPoint = (
     verb: string,
@@ -752,6 +751,28 @@ function createPointTools(
         ` Last resort: when the screen lists the target, ${byId}.`,
       inputSchema: z.object({ x, y }),
       execute: ({ x: px, y: py }) => atPoint(tool, px, py, async (point) => (await context.actions[verb](point)).summary),
+    });
+  }
+  if (verbs.has('drag') || verbs.has('dragAt')) {
+    tools['drag_at'] = screenTool({
+      description:
+        'Drag from one point in the latest screenshot to another, for a drag the screen does not list: a shape on a canvas, a pin on a map, a card dropped on an empty spot. Both points are pixel coordinates in that image (x from the left edge, y from the top edge). Start on the center of what you drag. The bare points are dragged' +
+        (verbs.has('dragAt') ? '.' : ', which this engine cannot do: the points must land on two different listed controls.') +
+        ' Last resort: when the screen lists what you drag and where it goes, use drag by id.',
+      inputSchema: z.object({
+        x,
+        y,
+        to_x: z.number().describe('x of the drop point in the latest screenshot, pixels from the left edge'),
+        to_y: z.number().describe('y of the drop point in the latest screenshot, pixels from the top edge'),
+      }),
+      execute: ({ x: px, y: py, to_x: qx, to_y: qy }) =>
+        inOrder(() => {
+          const from = pointOf(px, py, 'drag_at');
+          if (typeof from === 'string') return Promise.resolve(from);
+          const to = pointOf(qx, qy, 'drag_at');
+          if (typeof to === 'string') return Promise.resolve(to);
+          return perform(pointAttempt('drag_at', `${at(px, py)} to ${at(qx, qy)}`), async () => (await context.actions.dragAt(from, to)).summary);
+        }),
     });
   }
   if (verbs.has('type') || keyboard) {
@@ -824,9 +845,9 @@ function createPointTools(
  * time. An action may return its own lead line, for a result only it can
  * describe, and with it whether the tree is expected to show a change.
  */
-function verbKit(context: StepExecutorContext, options: GrammarToolOptions) {
+function verbKit(context: StepExecutorContext, options: GrammarToolSetup) {
   const guard = options.guard ?? (<T>(body: () => Promise<T>) => body());
-  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter({ pixelsUnavailable: () => context.pixelsTainted });
+  const screen: ScreenPresenter = options.screen ?? new ScreenPresenter();
   const queue = new OperationQueue();
   const inOrder = <T>(body: () => Promise<T>): Promise<T> => queue.run(body);
   /** The screen after an action: the changes since the one the model holds and, once the step shows pixels, a fresh screenshot. */

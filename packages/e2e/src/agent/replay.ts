@@ -13,7 +13,16 @@
  */
 
 import { isRelocatableDescriptor, MAIN_LIST_SHARE, relocateDescriptor, type RelocationFailure, type RelocationResult } from '../cache/relocate.ts';
-import { isNodeAction, isTapActionName, type ActionTrace, type DerivedReason, type RecordedAction, type TraceTargetDescriptor, type TraceViewport } from '../cache/trace.ts';
+import {
+  isNodeAction,
+  isTapActionName,
+  type ActionTrace,
+  type DerivedReason,
+  type RecordedAction,
+  type TracePointEnd,
+  type TraceTargetDescriptor,
+  type TraceViewport,
+} from '../cache/trace.ts';
 import type { SemanticNode, ViewportPoint } from '../engine/surface.ts';
 import type { RedactedNode } from './observation.ts';
 import { hasCause } from '../internal/errors.ts';
@@ -133,27 +142,32 @@ type PlannedCall =
   | { readonly kind: 'drag'; readonly source: TraceTargetDescriptor; readonly destination: TraceTargetDescriptor }
   /** A list paged until a text showed: on the re-found list, on the viewport for a lost list that filled the screen, else a hand-off. */
   | { readonly kind: 'scrollUntil'; readonly text: string; readonly direction: ScrollDirection; readonly list?: ScrolledList }
-  /** A bare point, replayed as given once the viewport is the recorded size. */
-  | { readonly kind: 'point'; readonly point: ViewportPoint; readonly viewport: TraceViewport; readonly invoke: PointInvoke }
-  /** A bare point placed inside a re-found node's live box. */
-  | {
-      readonly kind: 'within';
-      readonly descriptor: TraceTargetDescriptor;
-      readonly fx: number;
-      readonly fy: number;
-      /**
-       * The recorded point and its viewport: among look-alikes of the node,
-       * the one the point lies in on a viewport of the same size is it, and
-       * when several nested ones hold it the point itself is acted on. The
-       * bare point is never acted on once the node is gone.
-       */
-      readonly point: ViewportPoint;
-      readonly viewport: TraceViewport;
-      readonly invoke: PointInvoke;
-    };
+  /** A bare point, placed the way `placePoint` places one, then acted on through its point verb. */
+  | { readonly kind: 'point'; readonly end: PointEnd; readonly viewport: TraceViewport; readonly invoke: PointInvoke }
+  /** A drag between two bare points, each end placed the way `placePoint` places one. */
+  | { readonly kind: 'pointDrag'; readonly from: PointEnd; readonly to: PointEnd; readonly viewport: TraceViewport };
 
 /** The point verb a recorded bare point replays through: `tapAt` or `hoverAt`. */
 type PointInvoke = (point: ViewportPoint) => Promise<unknown>;
+
+/**
+ * One recorded bare point: the point itself, and the re-findable node whose
+ * box held it, with the point's place in that box. Among look-alikes of the
+ * node, the one the point lies in on a viewport of the recorded size is it,
+ * and when several nested ones hold it the point itself is acted on. The
+ * bare point is never acted on once its node is gone.
+ */
+interface PointEnd {
+  readonly point: ViewportPoint;
+  readonly within?: { readonly descriptor: TraceTargetDescriptor; readonly fx: number; readonly fy: number };
+}
+
+/** A recorded point and the node it sat in, when a replay can re-find that node; a container recorded before anonymous ones were left out cannot be. */
+function pointEnd({ point, within }: TracePointEnd): PointEnd {
+  return within === undefined || !isRelocatableDescriptor(within.target)
+    ? { point }
+    : { point, within: { descriptor: within.target, fx: within.fx, fy: within.fy } };
+}
 
 function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall {
   if (isNodeAction(action)) {
@@ -226,22 +240,20 @@ function planCall(action: RecordedAction, actions: ExecutorActions): PlannedCall
     case 'dismissKeyboard':
       return { kind: 'free', invoke: () => actions.dismissKeyboard() };
     case 'tapAt':
-    case 'hoverAt': {
-      const invoke: PointInvoke = (point) => actions[action.name](point);
-      // A container the recorder kept before it learned to leave anonymous
-      // ones out cannot be re-found; the point stands on its own, as recorded.
-      return action.within === undefined || !isRelocatableDescriptor(action.within.target)
-        ? { kind: 'point', point: action.point, viewport: action.viewport, invoke }
-        : {
-            kind: 'within',
-            descriptor: action.within.target,
-            fx: action.within.fx,
-            fy: action.within.fy,
-            point: action.point,
-            viewport: action.viewport,
-            invoke,
-          };
-    }
+    case 'hoverAt':
+      return {
+        kind: 'point',
+        end: pointEnd(action),
+        viewport: action.viewport,
+        invoke: (point) => actions[action.name](point),
+      };
+    case 'dragAt':
+      return {
+        kind: 'pointDrag',
+        from: pointEnd(action.from),
+        to: pointEnd(action.to),
+        viewport: action.viewport,
+      };
   }
 }
 
@@ -348,20 +360,19 @@ export async function replayTrace(
           break;
         }
         case 'point': {
-          const screen = await firstLook(host, look);
-          if (screen.kind === 'pixels') return stop('action-failed');
-          const { viewport } = screen;
-          if (viewport.width !== planned.viewport.width || viewport.height !== planned.viewport.height) {
-            return stop('viewport-changed', undefined, `recorded at ${planned.viewport.width}x${planned.viewport.height}, the screen is ${viewport.width}x${viewport.height}`);
-          }
-          await planned.invoke(planned.point);
+          const placed = await placePoint(host, planned.end, planned.viewport, look);
+          if (placed.kind === 'failed') return stop(placed.failure, undefined, placed.why);
+          await planned.invoke(placed.point);
           break;
         }
-        case 'within': {
-          const relocated = await relocate(host, planned.descriptor, look);
-          const at = placeWithin(relocated, planned);
-          if (at === undefined) return stop(relocated.kind === 'failed' ? relocated.failure : 'target-not-found');
-          await planned.invoke(at);
+        case 'pointDrag': {
+          // Points, not ids, reach the drag, so each end may take its own look:
+          // nothing acts between the two, and a renumbered tree moves no box.
+          const from = await placePoint(host, planned.from, planned.viewport, look);
+          if (from.kind === 'failed') return stop(from.failure, undefined, from.why);
+          const to = await placePoint(host, planned.to, planned.viewport, look);
+          if (to.kind === 'failed') return stop(to.failure, undefined, to.why);
+          await host.actions.dragAt(from.point, to.point);
           break;
         }
       }
@@ -493,6 +504,38 @@ type Relocated =
   | (Extract<RelocationResult, { failure: 'target-ambiguous' }> & { readonly screen: SemanticScreen });
 
 /**
+ * Where one recorded bare point lands on the live screen: inside its
+ * re-found node's live box when it sat in one, else as recorded once the
+ * viewport is the recorded size. A failure names the hand-off.
+ */
+async function placePoint(
+  host: ReplayHost,
+  end: PointEnd,
+  viewport: TraceViewport,
+  look: Look,
+): Promise<
+  | { readonly kind: 'placed'; readonly point: ViewportPoint }
+  | { readonly kind: 'failed'; readonly failure: ReplayHandOffReason; readonly why?: string }
+> {
+  if (end.within === undefined) {
+    const screen = await firstLook(host, look);
+    if (screen.kind === 'pixels') return { kind: 'failed', failure: 'action-failed' };
+    if (screen.viewport.width !== viewport.width || screen.viewport.height !== viewport.height) {
+      return {
+        kind: 'failed',
+        failure: 'viewport-changed',
+        why: `recorded at ${viewport.width}x${viewport.height}, the screen is ${screen.viewport.width}x${screen.viewport.height}`,
+      };
+    }
+    return { kind: 'placed', point: end.point };
+  }
+  const relocated = await relocate(host, end.within.descriptor, look);
+  const at = placeWithin(relocated, { ...end.within, point: end.point, viewport });
+  if (at === undefined) return { kind: 'failed', failure: relocated.kind === 'failed' ? relocated.failure : 'target-not-found' };
+  return { kind: 'placed', point: at };
+}
+
+/**
  * Where a recorded point lands on the live screen: its place inside the
  * re-found node's box, or among the visible look-alikes inside the one that
  * contains the recorded point on a viewport of the recorded size, as the hit
@@ -500,7 +543,10 @@ type Relocated =
  * hidden nodes. Undefined when the node is gone or has no box, or the point
  * settles nothing: tapping the bare point could press whatever now sits there.
  */
-function placeWithin(relocated: Relocated, planned: Extract<PlannedCall, { kind: 'within' }>): ViewportPoint | undefined {
+function placeWithin(
+  relocated: Relocated,
+  planned: { readonly fx: number; readonly fy: number; readonly point: ViewportPoint; readonly viewport: TraceViewport },
+): ViewportPoint | undefined {
   const inside = (box: Box): ViewportPoint => ({ x: box.x + planned.fx * box.width, y: box.y + planned.fy * box.height });
   if (relocated.kind === 'found') {
     const box = usableBox(relocated.node.rect);

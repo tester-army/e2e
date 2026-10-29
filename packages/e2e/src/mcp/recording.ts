@@ -6,9 +6,7 @@
  * attempt directory into `.e2e/videos/<session>/` as soon as it stops,
  * so the next one never overwrites it and closing the session never takes
  * it along. Recordings are not masked: they are files for a person to
- * watch, never pixels handed to the model, so the pixel taint that withholds
- * a screenshot does not withhold them; a recording stopped once the session
- * is tainted says so instead.
+ * watch, never pixels handed to the model.
  */
 
 import { existsSync, mkdirSync, renameSync } from 'node:fs';
@@ -29,8 +27,6 @@ export interface SessionRecorderOptions {
   readonly operation: (timeoutMs: number) => OperationContext;
   /** How long starting or stopping a recording may take. */
   readonly timeoutMs: number;
-  /** True once a secret was filled in the session. */
-  readonly tainted: () => boolean;
 }
 
 /** A recording that stopped: its files in order, and how long it ran. */
@@ -41,8 +37,6 @@ export interface FinishedRecording {
   readonly files: readonly string[];
   readonly startedAt: string;
   readonly durationMs: number;
-  /** A secret was filled in the session by the time it stopped, so the video may show one. */
-  readonly tainted: boolean;
 }
 
 interface ActiveRecording {
@@ -116,7 +110,6 @@ export class SessionRecorder {
         files,
         startedAt,
         durationMs: Math.max(0, at - Date.parse(startedAt)),
-        tainted: this.options.tainted(),
       };
     });
   }
@@ -157,9 +150,6 @@ export function describeRecording(recording: FinishedRecording): string {
     lines.push(`${String(recording.files.length)} files, one per page the surface showed; they play in this order:`);
   }
   for (const file of recording.files) lines.push(`- ${file}`);
-  if (recording.tainted && recording.files.length > 0) {
-    lines.push('A secret was filled in this session and videos are not masked: check it is not on screen before sharing.');
-  }
   return lines.join('\n');
 }
 

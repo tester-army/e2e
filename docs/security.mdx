@@ -16,26 +16,26 @@ A `Secret` is a handle with no plaintext accessor. The model sees only its
 name and purpose. When the model asks to fill one, the runner checks the
 field and types the value itself.
 
-After a secret fill, the model gets no screenshots for the rest of the
-attempt, because the app could show the value anywhere. Every known secret value becomes
-`<secret:name>` in model input, reports, console output, and `.txt`,
-`.csv`, `.json`, `.html`, and `.htm` downloads.
+Every known secret value becomes `<secret:name>` in the model's text input, reports,
+console output, and `.txt`, `.csv`, `.json`, `.html`, and `.htm` downloads.
 
 ## What can still leak
 
-Redaction matches strings, and only a secret fill turns model screenshots off:
+Redaction matches strings, and screenshots mask secure fields only:
 
-- **Screenshots, video, and downloads.** Screenshots mask secure fields
-  only, video masks nothing, and a download other than a redacted text file
-  is kept as served. If the test typed a password, check them before you
-  share them.
+- **Screenshots, the model's included.** A generic secret filled into a
+  plain input, or a value the app shows outside a secure field, is in the
+  image and reaches your model provider. Use test credentials, not
+  production secrets.
+- **Video and downloads.** Video masks nothing, and a download other than a
+  redacted text file is kept as served. If the test typed a password, check
+  them before you share them.
 - **`command.log`.** It holds your app's stdout and stderr verbatim. Keep
   secrets out of your app's output.
 - **Transformed values.** The last four characters of a key, or its base64,
   pass through. Assert the outcome, not the secret.
-- **Values not filled as a secret.** A secret passed as a plain string, or a
-  sign-in that sets a cookie, leaves model screenshots on. Only a configured
-  secret's value is redacted.
+- **Values not filled as a secret.** Only a configured secret's value is
+  redacted. A value a sign-in sets in a cookie is not.
 - **Request credentials.** `basicAuth` answers a `401` from any origin.
   `headers` reach every host under a shared domain such as `vercel.app`.
 - **Committed recordings.** Cache entries store typed values verbatim, except

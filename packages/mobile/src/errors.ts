@@ -25,6 +25,7 @@
  */
 
 import { isAgentDeviceError, normalizeAgentDeviceError } from 'agent-device';
+import { defaultHintForCode } from 'agent-device/contracts';
 import { EngineError, ConfigurationError, InfrastructureError, TestError, raceAbort } from 'e2e/engine';
 import { cancelled } from './support.ts';
 
@@ -53,12 +54,14 @@ function details(cause: unknown): Record<string, unknown> {
  * The normalized message followed by the hint the failure itself declared.
  * That hint is the recovery path (press return, tap the app's own Done
  * control) and the model only ever sees the error text, so dropping it leaves
- * the agent retrying the same refused action. The per-code default hint the
- * normalizer would add is CLI advice and stays out.
+ * the agent retrying the same refused action. The per-code default hint is
+ * CLI advice (`Run apps to discover...`) and stays out, also when the daemon
+ * carries it over in `details.hint`.
  */
 function withHint(cause: unknown, text: string): string {
   const hint = details(cause).hint;
   if (typeof hint !== 'string' || hint.trim() === '' || CLI_ADVICE.test(hint)) return text;
+  if (hint === defaultHintForCode(normalizeAgentDeviceError(cause).code)) return text;
   return `${text} Hint: ${hint.trim()}`;
 }
 
@@ -256,6 +259,11 @@ export function isUnreadableCapture(error: unknown): boolean {
  */
 export function isAppNotRunning(error: unknown): boolean {
   return error instanceof Error && details(error.cause).runnerErrorCode === 'APP_NOT_RUNNING';
+}
+
+/** True for a translated `open` agent-device refused because no installed app matches the name. */
+export function isAppNotInstalled(error: unknown): boolean {
+  return error instanceof Error && isAgentDeviceError(error.cause) && normalizeAgentDeviceError(error.cause).code === 'APP_NOT_INSTALLED';
 }
 
 /**

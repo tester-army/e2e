@@ -60,6 +60,8 @@ export type GrammarVerb =
   | 'back'
   | 'tapAt'
   | 'hoverAt'
+  /** A drag from one viewport point to another (`dragTo` in `pointerActions`), for a drag the tree does not list. */
+  | 'dragAt'
   /** Keyboard input to whatever holds focus: `type` and `press` without a target. */
   | 'typeText'
   | 'pressKey'

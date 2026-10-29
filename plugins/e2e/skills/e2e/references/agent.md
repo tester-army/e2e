@@ -52,6 +52,12 @@ and upload paths. See the shipped `docs/decision-models.mdx` or
 [the online guide](https://e2e.tester.army/docs/decision-models) for setup,
 gates, and limits.
 
+A coding agent the user already signs in to runs agent steps over ACP:
+install `@e2e-dev/acp` and its adapter, and put
+`claudeCode({ model: 'sonnet' })` or `codex()` under
+`executor`; no model provider is needed. See the shipped `docs/acp.mdx` or
+[the online guide](https://e2e.tester.army/docs/acp).
+
 - Pass a model instance, not a string (`INVALID_CONFIG`).
 - An agents entry is one plain object of `model`, `judge`, `system`,
   `context`, `tools`, `maxSteps`, `maxModelCalls`, `judgmentTimeout`,
@@ -144,27 +150,28 @@ The tools, one per engine action. Name the target as the screen names it
 - `scroll`: viewport or one scrollable node, a screen or a few.
 - `scroll_to`: a listed node into view, or by `text` page a list to a row.
 - `drag`: one node onto another.
-- `upload`: project-root files to a file input; outside it or hidden (`.env`)
-  is `POLICY_DENIED`.
+- `upload`: project-root files to a file input or a visible control that opens a
+  native file chooser; outside it or hidden (`.env`) is `POLICY_DENIED`.
 - `navigate`: a URL or app-relative path.
 - `back`: browser history or in-app back.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.
 - `tap_at`/`hover_at`/`press_at`/`select_at`/`type_at`: a screenshot point.
+- `drag_at`: from one screenshot point to another (`to_x`, `to_y`).
 - `dismiss_keyboard` (device): hide the on-screen keyboard.
 
 The focused field's selected text is listed as `selection="..."` (never for
 a secret), so a repeated `Shift+ArrowLeft` selects one word with visible
 feedback. Point tools serve a canvas shape, map pin, image region, or system
-sheet control. `tap_at` and `hover_at` act at the point; `press_at`,
-`select_at`, and `type_at` hit-test the tree first so a listed control
-underneath is acted on by id, and `type_at` on nothing listed taps, then
-types. A screen with
+sheet control. `tap_at`, `hover_at`, and `drag_at` act at the point
+(`drag_at` by id between two different listed controls on an engine without
+a bare-point drag); `press_at`, `select_at`, and `type_at` hit-test the
+tree first so a listed control underneath is acted on by id, and `type_at`
+on nothing listed taps, then types. A screen with
 nothing to tap by id opens with a screenshot attached. A device has no
-`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels are
-masked and withheld after a secret fill (topic writing-tests): act on pixels
-before signing in, or in a test of its own. A result says when an action
+`right_click`, `select`, `upload`, or `scroll_to` by node id. Pixels mask
+secure fields only (topic writing-tests). A result says when an action
 closed an on-screen keyboard; on a touch screen that tap was often spent
 closing it, so act again.
 
@@ -285,7 +292,7 @@ values, or a `Secret`'s value; password fields masked. The first
 screen of a step arrives whole; later action results report what changed,
 keyed by node ids stable while an element exists, or the whole screen when
 most changed. Pixels arrive through `vision` on a judgment or the act loop's
-`screenshot` and point tools, masked and withheld after a secret fill. When
+`screenshot` and point tools, with secure fields masked. When
 the browser engine's tree capture times out, the model gets a screenshot and
 a warning, a judgment needs `vision: true`, and no control may be inferred
 absent nor old node ids reused. The browser engine's tree shows a frame
@@ -411,7 +418,8 @@ make no model calls.
   `defineTool(tool({ ... }), { mutates: true })` from `e2e/agent` for a
   test API a flow calls mid-step.
 - `createToolLoopExecutor` keeps the loop and replaces prompt and tool
-  vocabulary.
+  vocabulary; spread `createGrammarTools(ctx, { guard })` into its tools and
+  start its `system` with `BASE_RULES` to keep the built-in actions.
 - Any `StepExecutor` (`{ name, version?, cache?, runStep(ctx) }`) goes under
   `executor`; the runner still owns observations, actions, budgets, and the
   report, and `system` or `tools` beside `executor` is `INVALID_CONFIG`.

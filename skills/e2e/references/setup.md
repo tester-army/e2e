@@ -188,7 +188,8 @@ target's `app`:
 | `url` | Base URL for `app.open()` and relative navigation; required on a `web()` target, not supported on a mobile target yet. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. |
 | `bundleId` | Device targets: the bundle id, package name, or display name (`Settings`) `app.open()` launches. |
 | `appPath` | Device targets: the `.app` or `.apk` under test. A device target needs `bundleId` or `appPath`. |
-| `launchArguments`, `permissions` | Device targets: arguments and permission states (`grant`, `deny`, `reset`) every fresh launch gets. |
+| `launchArguments` | Device targets: arguments every fresh launch gets. |
+| `permissions` | Device targets: states (`grant`, `deny`, `reset`) every fresh launch gets. Web targets: `grant` only, held by every page (`{ 'clipboard-write': 'grant' }` lets headless Chromium write the clipboard). |
 | `command` | The process serving `url`: `{ executable, args, cwd, env, inheritEnv, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
 | `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
@@ -380,11 +381,21 @@ export default {
   `transition` (default 500 ms). Opening or closing the keyboard also uses
   the remaining budget. Agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
+- Mobile `fill` and `clear` re-read the field before typing, replay included.
+  Missing fields, changed security state, or incomplete captures return
+  `NODE_STALE` before mutation, then retry after a fresh observation.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`; an iOS `other` that holds
+  a value or only text is typed into, since a custom-drawn field (Compose
+  Multiplatform, Flutter) can read that way.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
+- `device.unstable_raw` gives the session name, device id and name, and an
+  agent-device `client` bound to the test's session, for what `device`
+  lacks. Client calls are not steps: no report, trace, replay, or secret
+  redaction. Unstable: may change or go away in any release.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.

@@ -175,6 +175,14 @@ Set `MATRIX_BROWSER: ${{ matrix.browser }}` in the step's `env`. The key
 shows in the headline, such as `e2e chromium: 77 passed`. Keep it stable
 across runs so a rerun updates the existing comment.
 
+## Explorations
+
+An [`e2e explore`](/explore) run posts a comment of its own, so a job can run
+the tests and then explore. Give the exploration its own `--output`, such as
+`npx e2e explore --output .e2e-explore`, and upload that directory too.
+Otherwise it replaces the test run's results, and the evidence links in the
+test run's comment break.
+
 ## When nothing is posted
 
 The reporter never changes the run's status or exit code. When it can't

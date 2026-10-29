@@ -104,22 +104,16 @@ describe('ScreenPresenter', () => {
     expect(first).not.toContain('had no visible effect');
   });
 
-  it('keeps the listing as the only evidence, and says to try another way, when the step can get no screenshot', () => {
+  it('keeps the listing as the only evidence, and says to try another way, when the engine captures no screenshot', () => {
     const textOf = (output: ReturnType<ScreenPresenter['present']>) => (typeof output === 'string' ? output : output.text);
-    let tainted = false;
-    const presenter = new ScreenPresenter({ pixelsUnavailable: () => tainted });
-    presenter.open(screen('b1', HOME));
-    tainted = true;
-    // A secret was filled: no pixel tool is offered, so pointing at a screenshot would be advice the model cannot follow.
-    const after = textOf(presenter.present(screen('b2', HOME), { lead: 'Tapped #n3.', expectChange: true }));
-    expect(after).toContain('No screenshot can be taken in this step');
-    expect(after).toContain('look for another way rather than repeating it');
-    expect(after).not.toContain('needs a screenshot to see');
-    // An engine that captures none says so once asked; from then on the same holds.
+    // An engine that captures none says so once asked; from then on the listing is all there is.
     const denied = new ScreenPresenter();
     denied.open(screen('c1', HOME));
     denied.present(screen('c2', HOME, { pixelsWithheld: 'UNSUPPORTED_CAPABILITY' }));
-    expect(textOf(denied.present(screen('c3', HOME), { lead: 'Tapped #n3.', expectChange: true }))).toContain('No screenshot can be taken in this step');
+    const after = textOf(denied.present(screen('c3', HOME), { lead: 'Tapped #n3.', expectChange: true }));
+    expect(after).toContain('No screenshot can be taken in this step');
+    expect(after).toContain('look for another way rather than repeating it');
+    expect(after).not.toContain('needs a screenshot to see');
   });
 
   it('says the screenshot changed, not that the control had no effect, when the listing stood still under a moved image', () => {

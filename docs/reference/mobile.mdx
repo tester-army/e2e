@@ -234,10 +234,19 @@ readonly transition?: number | undefined;
 mobile({ platform: 'ios', transition: 800 }); // default: 500
 ```
 
+If the control changes during the wait, the action finds it again within its timeout before acting.
+
 `back`, `home`, `alert`, `dismissKeyboard`, `setOrientation`, and `fold` on
 [`device`](#device) change the screen, so they count as actions for this
 budget the way a tap does. A control that arrives with the screen they reveal
 waits out the budget before the next action lands on it.
+
+`fill` and `clear` re-read the field before typing. Missing fields, changed
+security state, or incomplete captures return `NODE_STALE` before mutation,
+then retry after a fresh observation. Non-input targets return
+`UNSUPPORTED_CAPABILITY`. An iOS `other`, the type of an element the platform
+did not classify, is typed into when it holds a value or only text, since a
+custom-drawn field (Compose Multiplatform, Flutter) can read that way.
 
 #### `videoTouches`
 
@@ -350,8 +359,8 @@ running on the device. The next attempt waits for it to settle.
 
 | Contract member | On a device |
 | --- | --- |
-| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles and `RadioButton` is `radio`, each with the `checked` state the device reports, layouts are `group`, `RecyclerView` and `AbsListView` (React Native's `FlatList`) are `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. An Android node is named by the content description its app set (React Native's `accessibilityLabel`), else by its text, and its `text` is what it shows, so a labeled text view or a filled field answers `getByLabel` by its label and `getByText` by its text; a view flagged as a heading is a `heading`, and the role description React Native writes for a role Android has no class for (`Tab`, `Tab List`, `Radio Group`) gives the node that role. A field's hint is its `placeholder` attribute, showing or not. An empty field has no value: Android flags a showing hint, and XCTest reports an empty iOS field's placeholder as its value, so an iOS field whose value equals its placeholder (trimmed) reads empty, text typed to match the placeholder exactly included. One Android fact is agent-device's, not the platform's: `rect` and every point are the screen's physical pixels; the display density it reports is not applied yet. Android's status bar and navigation bar, the full-width `com.android.systemui` windows along the screen's edges and the narrow status icons (clock, signal, battery) agent-device reports on their own inside that edge band, are left out; the notification shade, system dialogs, and a heads-up notification or other popup inset from the sides stay. Pixels on request, with every secure node's bounds painted black. |
-| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter`, `Space`, or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack and a React Native checkbox or radio on iOS has. `doubleTap` is two presses, 284 to 285 ms apart on iOS (the cadence of agent-device's XCTest tap): agent-device's own double-tap gesture reaches a React Native `Pressable` as one press. A detector with a window of 300 ms or less can read the pair as two single taps. `longPress` holds for one second unless the test passes `duration`, past a React Native `Pressable`'s `delayLongPress` of 500 ms and the longer thresholds apps set; agent-device's own default hold is shorter and registers as a tap on those. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared, and neither is `tapModifiers`, so `tap` or `doubleTap` with `modifiers` is `UNSUPPORTED_CAPABILITY`. |
+| `observe` | The accessibility tree with rects. iOS: `Button` is `button`, `TextField` and `SearchField` are `textbox`, `SecureTextField` is a secure `textbox`, `Cell` is `listitem`, `StaticText` is `text`, `Switch` is `switch` with `checked`, `TabBar` and `SegmentedControl` are `tablist` and the buttons inside them `tab`, `ProgressIndicator` is `progressbar`, `ActivityIndicator` is `status`, `Stepper` is `spinbutton`, `Toolbar`, `Menu`, and `RadioGroup` are `toolbar`, `menu`, and `radiogroup`. Android: `TextView` is `text`, `EditText` is `textbox` and one UIAutomator flags as `password` is a secure `textbox` like `SecureTextField`, `Switch` and `CheckBox` keep their roles and `RadioButton` is `radio`, each with the `checked` state the device reports, layouts are `group`, `RecyclerView` and `AbsListView` (React Native's `FlatList`) are `list`, `TabLayout` and `BottomNavigationView` are `tablist` with their items as `tab`, `ProgressBar` is `progressbar`, `NumberPicker` is `spinbutton`, `Toolbar` and `RadioGroup` keep their names. Any other type is kept verbatim in lower case (`picker-wheel`), so it answers no vocabulary role, unless the platform reports it editable, which makes it a `textbox`. React Native on iOS has no trait for `checkbox`, `radio`, and a few other roles and spells the role and state into the accessibility value instead (`checkbox, unchecked`, `radio button, checked`); such a node takes that role, `checked` and `expanded` from the state words, and reports only what follows them as its value. An iOS field keeps a value equal to its label (an unlabeled field is named by its text); Android's echo of a text view's label as its value is dropped. The accessibility identifier (iOS) or resource id (Android) is the node's `testId`. An Android node is named by the content description its app set (React Native's `accessibilityLabel`), else by its text, and its `text` is what it shows, so a labeled text view or a filled field answers `getByLabel` by its label and `getByText` by its text; a view flagged as a heading is a `heading`, and the role description React Native writes for a role Android has no class for (`Tab`, `Tab List`, `Radio Group`) gives the node that role. A field's hint is its `placeholder` attribute, showing or not. Compose Multiplatform reports no placeholder on iOS: an empty field appends the text it draws to its label (`Name, Ada Lovelace`) over one `StaticText` child, so that text is the field's `placeholder` and the child is left out. An empty field has no value: Android flags a showing hint, and XCTest reports an empty iOS field's placeholder as its value, so an iOS field whose value equals its placeholder (trimmed) reads empty, text typed to match the placeholder exactly included. One Android fact is agent-device's, not the platform's: `rect` and every point are the screen's physical pixels; the display density it reports is not applied yet. Android's status bar and navigation bar, the full-width `com.android.systemui` windows along the screen's edges and the narrow status icons (clock, signal, battery) agent-device reports on their own inside that edge band, are left out; the notification shade, system dialogs, and a heads-up notification or other popup inset from the sides stay. Pixels on request, with every secure node's bounds painted black. |
+| `perform` | `tap`, `doubleTap`, `longPress`, `fill`, `clear`, `hover`, `check`, `uncheck`, `press` (`Enter`, `Space`, or one character), `swipe`, `dragTo`, and `focus` on editable fields. A tap on a `switch` or `checkbox` lands on its innermost control, since UIKit reports a settings row as one labelled switch with the real toggle as a child. `check` and `uncheck` need a `checked` state, which Android switches lack and a React Native checkbox or radio on iOS has. `doubleTap` is two presses, 284 to 285 ms apart on iOS (the cadence of agent-device's XCTest tap): agent-device's own double-tap gesture reaches a React Native `Pressable` as one press. A detector with a window of 300 ms or less can read the pair as two single taps. `longPress` holds for one second unless the test passes `duration`, past a React Native `Pressable`'s `delayLongPress` of 500 ms and the longer thresholds apps set; agent-device's own default hold is shorter and registers as a tap on those. `selectOption`, `setInputFiles`, `scrollIntoView`, and `secondaryTap` are not declared, and neither is `tapModifiers`, so `tap` or `doubleTap` with `modifiers` is `UNSUPPORTED_CAPABILITY`. An action on a node that a newer snapshot replaced finds the node again instead of acting on a different element. |
 | `performAt` | `tap`, `doubleTap`, `longPress`, and `swipeTo` at a bare screen point, so `screen.tapAt`, `tap({ position })`, `screen.swipe({ from, to })`, and the agent's `tap_at` reach a control the tree does not list. No `hover`, `secondaryTap`, or `dragTo` at a point: touch has none without a node, so `hover_at` needs a listed control. |
 | `keyboard` | `type` and `press` into the focused field, the agent's `type` and `press` without a target and the fallback of `type_at` and `press_at`, and `dismiss`, the agent's `dismiss_keyboard`. |
 | `locate` | Every `screen` query. Text and label queries answer with the innermost match, since a device echoes both up the tree (a React Native input is a host view and the field inside it, both labelled). On Android a test id query, a string or a RegExp, also matches a resource id without its `<package>:id/` prefix, for any package but the framework's `android`, when nothing on the screen matches the full id. `screen.locator('id=…')` is agent-device's selector and takes the full id. |
@@ -377,6 +386,7 @@ test('offline banner', { platforms: ['android'] }, async ({ app, device, screen 
 
 | Member | Returns |
 | --- | --- |
+| [`unstable_raw`](#unstable_raw) | `DeviceSession` |
 | [`locator`](#locator) | `Locator` |
 | [`setNetwork`](#setnetwork) | `Promise<void>` |
 | [`setAirplaneMode`](#setairplanemode) | `Promise<void>` |
@@ -413,6 +423,30 @@ declaration; the types they use are under [Types](#device-fixture).
 | `ACTION_FAILED` | `actionTimeout` expires. |
 | `UNSUPPORTED_CAPABILITY` | The platform cannot run the command. |
 | `ENGINE_FAILURE` | Anything else, with agent-device's message. A timeout the device itself reports (a boot, the runner connecting) keeps its text and hint there. A busy or wedged iOS automation runner names itself and the recovery (see [Troubleshooting](/mobile#troubleshooting)). |
+
+#### `unstable_raw`
+
+```ts
+/**
+ * The agent-device session this test drives, for what the methods here do
+ * not cover. Calls through `client` bypass e2e: they are not steps, so the
+ * report and trace leave them out, the agent's cache does not replay them,
+ * their arguments reach agent-device unredacted, and nothing waits for the
+ * screen to settle after one. Unstable: it may change or go away in any
+ * release.
+ */
+readonly unstable_raw: DeviceSession;
+```
+
+```ts
+const { client, session, deviceId } = device.unstable_raw;
+const sessions = await client.sessions.list();
+await client.apps.list(device.unstable_raw.selection);
+```
+
+`client` is agent-device's own client at the version `@e2e-dev/mobile` pins.
+After the worker disposes the session, reading `unstable_raw` or `client`
+throws `INVALID_STATE`.
 
 #### `locator`
 
@@ -859,7 +893,7 @@ tools: mobileTools(iphone, pixel),
 
 | Tool | Replay | Purpose |
 | --- | --- | --- |
-| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. A link is refused, as it is for `device.openApp`. |
+| `open_app` | gap | Bring an app to the foreground by id, optionally relaunched. Without an id it returns to the target's app. A link is refused, as it is for `device.openApp`. |
 | `swipe` | gap | Free-form swipe between two points in logical pixels. |
 | `alert` | gap | Accept or dismiss a system alert; prefer a listed button, whose tap replays. |
 
@@ -870,17 +904,16 @@ agent:
   `scroll`, `drag`, `scroll_to` by `text` (paging the list until a row
   reading it is drawn), `back`, and `dismiss_keyboard`.
 - The pixel tools `screenshot`, `tap_at`, `hover_at` (on a listed control
-  only), `type_at`, and `press_at`. Point actions can tap controls absent
-  from the accessibility tree.
+  only), `drag_at` (between two different listed controls only), `type_at`, and
+  `press_at`. Point actions can tap controls absent from the accessibility
+  tree.
 - `type_secret`, when the step declares a secret.
 
 There is no `right_click`, `select`, `scroll_to` by node id, `upload`, or
 `navigate` on a device, and `select_at` is not offered.
 
 <Note>
-After a secret fill the agent offers neither `screenshot` nor `tap_at`,
-including in later members of the same serial group. Pixels whose masking
-the engine cannot prove are withheld as `MASKING_UNPROVEN`. An accessibility
+Pixels whose masking the engine cannot prove are withheld as `MASKING_UNPROVEN`. An accessibility
 capture failure still stops the observation. Device screenshot masks depend
 on secure-field bounds from that capture, so without them the engine cannot
 prove a fallback screenshot safe.
@@ -1016,6 +1049,28 @@ export interface ForegroundApp {
 
 /** Sensors `setBiometrics` simulates. */
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
+
+/** The agent-device session behind `device`; see `Device.unstable_raw`. */
+export interface DeviceSession {
+  readonly platform: MobilePlatform;
+  /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
+  readonly session: string;
+  /** The device's agent-device id: a simulator UDID or an Android serial. */
+  readonly deviceId: string;
+  readonly deviceName: string;
+  /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
+  readonly selection: DeviceSelection;
+  /** agent-device's client, bound to this session. */
+  readonly client: AgentDeviceClient;
+}
+
+/** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */
+export interface DeviceSelection {
+  readonly platform: MobilePlatform;
+  readonly device?: string;
+  readonly udid?: string;
+  readonly serial?: string;
+}
 ```
 
 ### Exported types
@@ -1023,7 +1078,7 @@ export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
 `PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
-`Device`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
+`Device`, `DeviceSession`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from
 `@e2e-dev/mobile`. The runtime exports are `mobile`, and `test`, `describe`,
 `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed with the `device`

@@ -99,6 +99,25 @@ export function appLocation(location: string, appOrigin: string | undefined): st
   return url.origin === appOrigin ? `${url.pathname}${url.search}${url.hash}` : location;
 }
 
+/** Scheme and authority as a URL parser skips them: leading whitespace and any run of slashes. */
+const URL_ORIGIN_PREFIX = /^\s*[a-z][a-z\d+.-]*:[/\\]*[^/?#\\]*/i;
+
+/**
+ * A navigation as a recording keeps it: a URL on the app's origin without
+ * that origin, the rest as typed. Anything else stays as given, and so does
+ * a URL with credentials or a rest that would not open the same URL.
+ */
+export function appNavigation(url: string, appOrigin: string | undefined): string {
+  if (appOrigin === undefined || !URL.canParse(url)) return url;
+  const parsed = new URL(url);
+  if (parsed.origin !== appOrigin || parsed.username !== '' || parsed.password !== '') return url;
+  const prefix = URL_ORIGIN_PREFIX.exec(url)?.[0];
+  if (prefix === undefined) return url;
+  const rest = url.slice(prefix.length);
+  const path = rest.startsWith('/') ? rest : `/${rest}`;
+  return URL.canParse(path, appOrigin) && new URL(path, appOrigin).href === parsed.href ? path : url;
+}
+
 /**
  * The parts of a location its route is made of, or undefined when the
  * location is not a web address (a device engine's screen title, a

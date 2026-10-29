@@ -13,8 +13,9 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EventEmitter } from 'node:events';
+import type { Download, Page } from 'playwright-core';
 import { TestError, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
@@ -35,6 +36,20 @@ function startCountingServer(hits: Map<string, number>): Promise<{ server: Serve
   const server = createServer((request, response) => {
     const pathname = new URL(request.url ?? '/', 'http://host').pathname;
     hits.set(pathname, (hits.get(pathname) ?? 0) + 1);
+    if (pathname === '/redirect') {
+      response.writeHead(302, { location: '/echo' });
+      response.end();
+      return;
+    }
+    if (pathname === '/stream-download') {
+      response.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-disposition': 'attachment; filename="stream.bin"',
+        'content-length': '4096',
+      });
+      response.write(Buffer.alloc(1024, 'x'));
+      return;
+    }
     if (pathname === '/echo') {
       let body = '';
       request.on('data', (chunk: Buffer) => { body += chunk.toString(); });
@@ -62,6 +77,7 @@ describe('browser.route decisions', () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-routes-'));
   const signal = new AbortController().signal;
   const hits = new Map<string, number>();
+  const attached: string[] = [];
   let server: Server;
   let origin: string;
   let otherSite: string;
@@ -90,6 +106,7 @@ describe('browser.route decisions', () => {
 
   beforeEach(async () => {
     hits.clear();
+    attached.length = 0;
     await surface.startAttempt({ attemptId: 'routes', artifactsDir: projectRoot, signal, resolveSecret: noSecrets, ...ignoreTrace });
     page = await surface.ensurePage();
     await page.goto(`${origin}/`);
@@ -98,6 +115,7 @@ describe('browser.route decisions', () => {
       operation: (timeoutMs = 5_000) => ({ signal, timeoutMs, runId: 'routes', attemptId: 'routes', origin: 'test' }),
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
+      attachArtifact: (_kind: string, relative: string) => attached.push(relative),
     } as unknown as EngineFixtureContext);
   });
 
@@ -134,6 +152,155 @@ describe('browser.route decisions', () => {
 
   /** Waits for the latched route failure the next step reports. */
   const nextStepFailure = (): Promise<unknown> => browser.url().then(() => undefined, (error: unknown) => error);
+
+  it('fetches upstream once, keeps site headers, then fulfills an amended response', async () => {
+    await browser.route('**/echo', async route => {
+      const upstream = await route.fetch();
+      expect(upstream.status).toBe(200);
+      expect(upstream.url).toBe(`${origin}/echo`);
+      expect(upstream.headers['content-type']).toContain('application/json');
+      const echo = await upstream.json<Echo>();
+      expect(echo.headers['x-gate']).toBe('open-sesame');
+      expect(JSON.parse(await upstream.text())).toEqual(echo);
+      await route.fulfill({ json: { ...echo, amended: true } });
+    });
+    expect(await page.evaluate(async url => (await fetch(url)).json(), `${origin}/echo`)).toMatchObject({ amended: true });
+    expect(hits.get('/echo')).toBe(1);
+  });
+
+  it('keeps upstream metadata when the native API response body is unavailable', async () => {
+    const context = page.context();
+    const register = context.route.bind(context);
+    const spy = vi.spyOn(context, 'route').mockImplementation((url, handler, options) => register(url, async (route, request) => {
+      const fetch = route.fetch.bind(route);
+      route.fetch = async (...args) => {
+        const response = await fetch(...args);
+        await response.dispose();
+        return response;
+      };
+      await handler(route, request);
+    }, options));
+    try {
+      await browser.route('**/echo', async route => {
+        const upstream = await route.fetch();
+        expect(upstream.status).toBe(200);
+        expect(upstream.url).toBe(`${origin}/echo`);
+        expect(upstream.headers['content-type']).toContain('application/json');
+        await expect(upstream.text()).rejects.toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('route.fetch') });
+        await expect(upstream.json()).rejects.toMatchObject({ code: 'ACTION_FAILED' });
+        await route.fulfill({ body: 'safe fallback' });
+      });
+      expect(await fetchText(`${origin}/echo`)).toBe('safe fallback');
+      expect(hits.get('/echo')).toBe(1);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('returns an upstream redirect without following it', async () => {
+    await browser.route('**/redirect', async route => {
+      const upstream = await route.fetch();
+      expect(upstream.status).toBe(302);
+      expect(upstream.headers['location']).toBe('/echo');
+      await route.fulfill({ body: 'inspected redirect' });
+    });
+    expect(await fetchText(`${origin}/redirect`)).toBe('inspected redirect');
+    expect(hits.get('/redirect')).toBe(1);
+    expect(hits.get('/echo')).toBeUndefined();
+  });
+
+  it('rejects an invalid download count before running the trigger', async () => {
+    let calls = 0;
+    await expect(browser.waitForDownloads(async () => { calls += 1; }, { count: 0 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    expect(calls).toBe(0);
+  });
+
+  it('removes a multi-download listener after an incomplete trigger times out', async () => {
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    await expect(browser.waitForDownloads(async () => undefined, { count: 2, timeout: 30 })).rejects.toMatchObject({
+      code: 'ACTION_FAILED', message: expect.stringContaining('0 of 2 downloads'),
+    });
+    expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+  });
+
+  it.each(['waitForDownload', 'waitForDownloads'] as const)('%s bounds saving a download whose HTTP body never finishes', async (method) => {
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.href = '/stream-download';
+      link.textContent = 'Stream';
+      document.body.append(link);
+    });
+    const baseline = (page as unknown as EventEmitter).listenerCount('download');
+    let download: Download | undefined;
+    page.once('download', (value) => { download = value; });
+    const trigger = () => page.evaluate(() => document.querySelector<HTMLAnchorElement>('a')!.click());
+    const work = method === 'waitForDownload'
+      ? browser.waitForDownload(trigger, { timeout: 500 })
+      : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        work.then(() => 'completed', (cause: unknown) => cause),
+        new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
+      ]);
+      expect(download).toBeDefined();
+      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('did not finish') });
+      expect((page as unknown as EventEmitter).listenerCount('download')).toBe(baseline);
+    } finally {
+      clearTimeout(timer);
+      server.closeAllConnections();
+      await download?.cancel();
+      await work.catch(() => undefined);
+    }
+  });
+
+  it.each(['waitForDownload', 'waitForDownloads'] as const)('%s closes started downloads while its trigger is still pending', async (method) => {
+    await page.evaluate(() => {
+      const link = document.createElement('a');
+      link.href = '/stream-download';
+      link.textContent = 'Pending';
+      document.body.append(link);
+    });
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    let download: Download | undefined;
+    page.once('download', (value) => { download = value; });
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => { release = resolve; });
+    const trigger = async (): Promise<void> => {
+      await page.evaluate(() => document.querySelector<HTMLAnchorElement>('a')!.click());
+      await pending;
+    };
+    const work = method === 'waitForDownload'
+      ? browser.waitForDownload(trigger, { timeout: 500 })
+      : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([
+        work.then(() => 'completed', (cause: unknown) => cause),
+        new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
+      ]);
+      expect(result).toMatchObject({ code: 'ACTION_FAILED' });
+      expect(download).toBeDefined();
+      expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+      expect(await download!.failure()).toMatch(/cancel/);
+      release();
+      await work.catch(() => undefined);
+      expect(attached).toEqual([]);
+    } finally {
+      clearTimeout(timer);
+      release();
+      server.closeAllConnections();
+      await download?.cancel();
+      await work.catch(() => undefined);
+    }
+  });
+
+  it('keeps a trigger error and removes the multi-download listener immediately', async () => {
+    const listeners = (page as unknown as EventEmitter).listenerCount('download');
+    const failure = new TestError('ASSERTION_FAILED', 'trigger assertion');
+    await expect(browser.waitForDownloads(async () => { throw failure; }, { count: 2, timeout: 30 })).rejects.toBe(failure);
+    expect((page as unknown as EventEmitter).listenerCount('download')).toBe(listeners);
+  });
 
   it('clears every test route, keeps configured site headers, and can register again', async () => {
     await browser.route('**/api/**', route => route.fulfill({ body: 'mock-api' }));

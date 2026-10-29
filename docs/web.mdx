@@ -285,6 +285,28 @@ A video keeps the size the page had when recording started. Set
 records, such as [Kernel](/integrations/kernel#recordings), records the
 whole screen instead.
 
+## Granting browser permissions
+
+Headless Chromium refuses a permission the target doesn't grant, so
+`navigator.clipboard.writeText` fails even after a click. To let
+the app use the clipboard, grant it on the target:
+
+```ts
+{
+  engine: web(),
+  app: {
+    url: 'http://localhost:3000',
+    permissions: { 'clipboard-read': 'grant', 'clipboard-write': 'grant' },
+  },
+}
+```
+
+- Every page of every attempt holds the grant, on any origin.
+- A web target takes `'grant'` only. `'deny'` and `'reset'` are
+  `INVALID_CONFIG`: leave the permission out instead.
+- The names are Playwright's, and each browser grants its own set. See
+  [`permissions`](/reference/config#permissions).
+
 ## Next
 
 <CardGroup cols={2}>

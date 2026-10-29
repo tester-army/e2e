@@ -32,6 +32,6 @@ forms, validation, updated results, and restart. No AI key is needed.
 ## Contributing
 
 [e2e.tester.army/examples](https://e2e.tester.army/examples) lists these
-examples and community ones from other repositories, from
+examples and partner and community ones from other repositories, from
 [`examples.json`](examples.json). To add yours, or to change an example
 here, see [CONTRIBUTING.md](CONTRIBUTING.md).

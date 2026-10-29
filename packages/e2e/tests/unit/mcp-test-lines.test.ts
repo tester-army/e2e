@@ -72,6 +72,7 @@ async function harness(options: {
   readonly matches: Readonly<Record<string, readonly Fake[]>>;
   readonly actions?: Partial<ExecutorActions>;
   readonly tree?: boolean;
+  readonly testRan?: string;
 }): Promise<Harness> {
   const root: Fake = { id: 'root', role: 'document', name: 'Page', y: 0, children: options.screen };
   const base = fakeExecutorContext({ secrets: [{ name: 'admin.password', purpose: 'password' }, { name: 'apiKey', purpose: 'generic-secret' }] }).context;
@@ -110,6 +111,7 @@ async function harness(options: {
     redact: (text) => text.replaceAll('sk-live-0000', '<secret:apiKey>'),
     appBase: { href: 'http://127.0.0.1:4100/', origin: 'http://127.0.0.1:4100' },
     fills: { credentials: [{ name: 'admin', username: 'ada@example.test', password: 'admin.password' }], secrets: ['apiKey'] },
+    testRan: options.testRan,
   });
   const watched = lines.watch(context);
   const tools: ToolSet = { ...lines.wrap(createGrammarTools(watched)), test_lines: lines.tool() };
@@ -164,7 +166,7 @@ describe('SessionTestLines', () => {
     const tools = createGrammarTools(context);
     expect(new Set(Object.keys(tools))).toEqual(GRAMMAR_TOOL_NAMES);
     const wrapped = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).wrap(tools);
-    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
+    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['drag_at', 'hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
   });
 
   const save: Fake = { id: 'n2', role: 'button', name: 'Save', y: 40 };
@@ -417,6 +419,20 @@ describe('SessionTestLines', () => {
     );
   });
 
+  it('drafts the lines after a test the session ran as the ones that continue it', async () => {
+    const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] }, testRan: 'tests/profile.e2e.ts:4' });
+    await session.run('tap', { target: 'n2' });
+    expect(session.lines.draft()).toBe(
+      [
+        "Test lines from this session's actions after test tests/profile.e2e.ts:4 stopped, in order (1 lines):",
+        '',
+        'await screen.getByRole("button", "Save").tap();',
+        '',
+        'Put them in that test where it stopped, in place of the line that failed or after its last line, and add an expect after each step that should change the screen.',
+      ].join('\n'),
+    );
+  });
+
   it('drafts the statements run_code passed among the action lines, each awaited and ended', async () => {
     const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] } });
     session.lines.opened();
@@ -435,18 +451,18 @@ describe('SessionTestLines', () => {
   });
 
   it('hands the caller the observation it asked for, tree or not, and keeps the context live', async () => {
-    let tainted = false;
+    let resolutions = 0;
     const base = fakeExecutorContext().context;
     const context = Object.defineProperty(
       { ...base, observe: async (asked?: ExecutorObserveOptions) => ({ revision: 'r', text: '', truncated: false, viewport: { width: 1, height: 1 }, ...(asked?.tree === true ? { tree: { id: 'root' } } : {}) }) },
-      'pixelsTainted',
-      { get: () => tainted },
+      'model',
+      { get: () => { resolutions += 1; return undefined; } },
     ) as StepExecutorContext;
     const watched = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).watch(context);
     expect(await watched.observe()).not.toHaveProperty('tree');
     expect(await watched.observe({ tree: true })).toHaveProperty('tree', { id: 'root' });
-    expect(watched.pixelsTainted).toBe(false);
-    tainted = true;
-    expect(watched.pixelsTainted).toBe(true);
+    expect(resolutions).toBe(0);
+    void watched.model;
+    expect(resolutions).toBe(1);
   });
 });

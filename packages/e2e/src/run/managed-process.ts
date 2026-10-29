@@ -101,6 +101,14 @@ export function killManagedProcessGroups(): void {
   for (const child of live) signalProcessGroup(child, 'SIGKILL');
 }
 
+/** Stops in flight, each settling once its process group is gone, by exit or by the force-kill at `shutdownTimeout`. */
+const stopping = new Set<Promise<void>>();
+
+/** Resolves once every stop in flight has ended its process group. */
+export async function stopsSettled(): Promise<void> {
+  await Promise.allSettled(stopping);
+}
+
 interface ExitStatus {
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
@@ -405,6 +413,17 @@ export class ManagedProcess {
     const child = this.child;
     this.child = null;
     if (child === null) return;
+    const stopped = this.terminate(child);
+    stopping.add(stopped);
+    try {
+      await stopped;
+    } finally {
+      stopping.delete(stopped);
+    }
+  }
+
+  /** Sends SIGTERM to the process group behind `child`, then SIGKILL once `shutdownTimeout` passes. */
+  private async terminate(child: ChildProcess): Promise<void> {
     const shutdownTimeout = this.command.shutdownTimeout ?? 10_000;
     signalProcessGroup(child, 'SIGTERM');
     const exited = child.exitCode !== null || child.signalCode !== null

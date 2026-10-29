@@ -7,6 +7,7 @@
  */
 
 import { leftWorkBehind } from '../internal/abandoned.ts';
+import { killManagedProcessGroups, stopsSettled } from '../run/managed-process.ts';
 import { claimProcessOutput, type RunnerOutput } from '../run/process-output.ts';
 import { processSecrets } from '../run/secrecy.ts';
 
@@ -51,4 +52,24 @@ export async function exitIfStopped(exit: () => void = () => process.exit()): Pr
   if (process.exitCode !== 130 && !leftWorkBehind()) return;
   await drainRunnerOutput();
   exit();
+}
+
+/** How long the process may outlive its command, for the timers and `beforeExit` hooks user code left. */
+const EXIT_GRACE_MS = 2_000;
+
+/**
+ * Exits if the process is still alive `EXIT_GRACE_MS` after the command: a
+ * timer or socket the config or a test file opened would keep it open forever.
+ * A process with nothing left ends on its own first, and an app stop still in
+ * flight finishes within its `shutdownTimeout` before the exit.
+ */
+export function exitAfterGrace(exit: () => void = () => process.exit()): void {
+  setTimeout(() => {
+    void (async () => {
+      await stopsSettled();
+      killManagedProcessGroups();
+      await drainRunnerOutput();
+      exit();
+    })();
+  }, EXIT_GRACE_MS).unref();
 }

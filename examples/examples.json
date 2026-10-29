@@ -83,6 +83,14 @@
       {
         "id": "test-isolation",
         "label": "Test isolation"
+      },
+      {
+        "id": "cloud-browsers",
+        "label": "Cloud browsers"
+      },
+      {
+        "id": "cloud-devices",
+        "label": "Cloud devices"
       }
     ],
     "platform": [
@@ -560,11 +568,12 @@
       "description": "Each test attempt runs in its own branch of a smol machines microVM, with its own copy of the running app and its data.",
       "icon": "smolmachines.svg",
       "invertIcon": true,
-      "source": "community",
+      "source": "partner",
       "repository": "https://github.com/smol-machines/e2e-smolmachines",
       "author": {
         "name": "smol machines",
-        "github": "smol-machines"
+        "github": "smol-machines",
+        "website": "https://smolmachines.com"
       },
       "license": "Apache-2.0",
       "licenseUrl": "https://github.com/smol-machines/e2e-smolmachines/blob/main/LICENSE",
@@ -577,6 +586,62 @@
         ],
         "platform": [
           "web"
+        ]
+      }
+    },
+    {
+      "slug": "kernel",
+      "title": "Testing in KERNEL cloud browsers with e2e",
+      "shortTitle": "KERNEL",
+      "description": "Agent steps and locator assertions against a live docs site in a KERNEL cloud browser, with a session replay of each failed test.",
+      "icon": "kernel.svg",
+      "source": "partner",
+      "repository": "https://github.com/kernel/cookbooks/tree/main/integrations/e2e-kernel",
+      "author": {
+        "name": "KERNEL",
+        "github": "kernel",
+        "website": "https://www.kernel.sh"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/kernel/cookbooks/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "cloud-browsers"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "limrun",
+      "title": "Testing iOS and Android apps on Limrun with e2e",
+      "shortTitle": "Limrun",
+      "description": "The same greeting-form tests on hosted iOS and Android devices, with both apps built remotely on Limrun.",
+      "icon": "limrun.svg",
+      "source": "partner",
+      "repository": "https://github.com/limrun-inc/testerarmy-e2e-limrun",
+      "author": {
+        "name": "Limrun",
+        "github": "limrun-inc",
+        "website": "https://limrun.com"
+      },
+      "license": "Apache-2.0",
+      "licenseUrl": "https://github.com/limrun-inc/testerarmy-e2e-limrun/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "swiftui",
+          "jetpack-compose"
+        ],
+        "useCase": [
+          "cloud-devices"
+        ],
+        "platform": [
+          "ios",
+          "android"
         ]
       }
     }

@@ -16,11 +16,11 @@ import { formatNode, prepareObservation, type AgentObservation, type RedactedNod
 import type { ResolvedConfig } from '../config/resolve.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
 import { truncateUtf8, type E2EError } from '../internal/errors.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import { isTypoOf } from '../internal/suggest.ts';
 import { withAbort } from '../internal/time.ts';
 import type { ArtifactSink } from './fixtures.ts';
 import type { FailureEvidence } from './records.ts';
-import type { SessionSecrecy } from './secrecy.ts';
 
 /** The whole capture, observation and screenshot together, gets this long. */
 const EVIDENCE_TIMEOUT_MS = 5_000;
@@ -36,7 +36,7 @@ const SCREEN_FILE = 'screen-at-failure.txt';
 export interface FailureEvidenceOptions {
   readonly session: TargetSession;
   readonly error: E2EError;
-  readonly secrecy: SessionSecrecy;
+  readonly ledger: SecretLedger;
   readonly config: ResolvedConfig;
   /** The app base URL's origin, whose link targets the screen lists as paths. */
   readonly appOrigin: string | undefined;
@@ -57,7 +57,7 @@ export async function captureFailureEvidence(options: FailureEvidenceOptions): P
   const signal = AbortSignal.any([options.interrupt, timeout]);
   if (signal.aborted) return finish(evidence);
   const operation = options.operation(signal, EVIDENCE_TIMEOUT_MS);
-  const { redact, redactCut } = options.secrecy.ledger;
+  const { redact, redactCut } = options.ledger;
 
   // The engine is handed the budget, and the wait is abandoned at its end
   // either way: an engine stuck on a hung app may never honor it.

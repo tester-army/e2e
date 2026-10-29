@@ -1,7 +1,7 @@
 /** Routes: a location reduced to the screen it names, across the URL shapes apps use. */
 
 import { describe, expect, it } from 'vitest';
-import { appLocation, sameRoute } from '../../src/cache/route.ts';
+import { appLocation, appNavigation, sameRoute } from '../../src/cache/route.ts';
 
 /** Whether every location names the same screen as the first. */
 const alike = (first: string, ...others: string[]) => others.every((other) => sameRoute(first, other));
@@ -93,5 +93,46 @@ describe('appLocation', () => {
     expect(appLocation('https://other.test/shop', 'https://pr-12.preview.test')).toBe('https://other.test/shop');
     expect(appLocation('https://other.test/shop', undefined)).toBe('https://other.test/shop');
     expect(appLocation('Settings', 'https://pr-12.preview.test')).toBe('Settings');
+  });
+});
+
+describe('appNavigation', () => {
+  const app = 'http://127.0.0.1:4291';
+
+  it('cuts the app origin off an absolute URL and keeps the rest as typed', () => {
+    expect(appNavigation('http://127.0.0.1:4291/todos?tab=open#new', app)).toBe('/todos?tab=open#new');
+    // Not re-encoded, so `unique()` slots still match.
+    expect(appNavigation('http://127.0.0.1:4291/companies/a&b c?q=x y', app)).toBe('/companies/a&b c?q=x y');
+    // Leading whitespace and extra slashes, which the URL parser skips.
+    expect(appNavigation(' http:////127.0.0.1:4291/todos', app)).toBe('/todos');
+    expect(appNavigation('https://app.test:443/x', 'https://app.test')).toBe('/x');
+    expect(appNavigation('https://APP.test/x', 'https://app.test')).toBe('/x');
+  });
+
+  it('opens a URL with no path at the root, never relative to a base path', () => {
+    expect(appNavigation('http://127.0.0.1:4291', app)).toBe('/');
+    expect(appNavigation('http://127.0.0.1:4291?q=1', app)).toBe('/?q=1');
+    expect(appNavigation('http://127.0.0.1:4291#top', app)).toBe('/#top');
+  });
+
+  it('resolves to the URL it was cut from on the recorded origin, and to the same path on another', () => {
+    for (const url of ['http://127.0.0.1:4291/todos?tab=open#new', 'http://127.0.0.1:4291/companies/a&b c', 'http://127.0.0.1:4291?q=1', 'http:////127.0.0.1:4291/todos']) {
+      expect(new URL(appNavigation(url, app), `${app}/app/`).href).toBe(new URL(url).href);
+      expect(new URL(appNavigation(url, app), 'http://127.0.0.1:4292/app/').href).toBe(`http://127.0.0.1:4292${appLocation(url, app)}`);
+    }
+  });
+
+  it('keeps another origin, a relative reference, credentials, and no app URL as given', () => {
+    expect(appNavigation('http://127.0.0.1:4292/todos', app)).toBe('http://127.0.0.1:4292/todos');
+    expect(appNavigation('https://docs.example.test/pay', app)).toBe('https://docs.example.test/pay');
+    expect(appNavigation('/todos', app)).toBe('/todos');
+    expect(appNavigation('todos', app)).toBe('todos');
+    expect(appNavigation('about:blank', app)).toBe('about:blank');
+    expect(appNavigation('http://user:pass@127.0.0.1:4291/todos', app)).toBe('http://user:pass@127.0.0.1:4291/todos');
+    expect(appNavigation('http://127.0.0.1:4291/todos', undefined)).toBe('http://127.0.0.1:4291/todos');
+  });
+
+  it('keeps a URL whose rest a parser would read as another host', () => {
+    expect(appNavigation('http://127.0.0.1:4291//evil.test/x', app)).toBe('http://127.0.0.1:4291//evil.test/x');
   });
 });

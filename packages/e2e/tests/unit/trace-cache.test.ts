@@ -7,11 +7,11 @@ import {
   MAX_TRACE_ACTIONS,
   MAX_TRACE_ANCHORS,
   MAX_TRACE_INPUT_CHARS,
-  readTraceEntry,
   type ActionTrace,
   type RecordedAction,
   type TraceEntry,
 } from '../../src/cache/trace.ts';
+import { readTraceEntry } from '../../src/cache/trace-read.ts';
 
 const tap: RecordedAction = {
   name: 'tap',

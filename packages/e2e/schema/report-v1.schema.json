@@ -327,7 +327,7 @@
         "observationTruncated": { "type": "boolean" },
         "explanation": { "type": "string", "maxLength": 8192 },
         "visionInput": { "type": "boolean" },
-        "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"] },
+        "visionDegraded": { "enum": ["PIXEL_TAINTED", "MASKING_UNPROVEN", "UNSUPPORTED_CAPABILITY"], "description": "PIXEL_TAINTED appears only on results an earlier version wrote." },
         "visionOnly": { "type": "boolean" },
         "viewport": {
           "type": "object",

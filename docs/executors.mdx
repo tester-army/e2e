@@ -78,6 +78,27 @@ concluding and returns a failure to the model as text. `ctx.actions`
 authorizes, counts, and records each action, so these steps replay from the
 [cache](/cache) and run on any engine that supports `tap`.
 
+To keep the built-in actions beside your own tools, spread
+`createGrammarTools(ctx, { guard })` into the toolset. It returns the
+built-in agent's action tools for the verbs the target's engine supports,
+and each result reports what changed on screen. `BASE_RULES` is the
+built-in agent's guidance for those tools; start your `system` with it.
+
+```ts
+import { BASE_RULES, createGrammarTools, createToolLoopExecutor } from 'e2e/agent';
+
+createToolLoopExecutor({
+  name: 'with-inbox',
+  system: `${BASE_RULES}\n\nCheck the inbox with read_inbox when a step mentions an email.`,
+  buildPrompt: (ctx) => ctx.step.instruction,
+  tools: (ctx, { guard }) => ({ ...createGrammarTools(ctx, { guard }), read_inbox: readInbox }),
+});
+```
+
+Outside the loop, a grammar tool returns a `ScreenOutput`: text, or text
+with the screenshot. When a tool throws an error that
+`isRuntimeHardStop(error)` accepts, end the step and rethrow it.
+
 A tool that works outside `ctx.actions`, such as a call to your test API,
 wraps its body in `ctx.budgets.runTool({ name, mutates })`, which takes an
 action slot and records the outcome. Don't call `ctx.actions` or
@@ -128,7 +149,6 @@ export default {
 | `ctx.observe({ tree, pixels })` | Redacted screen text, with an optional node tree and masked screenshot |
 | `ctx.actions` | Checked and recorded actions: `tap`, `doubleTap`, `longPress`, `secondaryTap`, `hover`, `type`, `typeSecret`, `press`, `select`, `check`, `drag`, `scrollTo`, `scrollUntil`, `upload`, `scroll`, `navigate`, `back`, and the point and keyboard actions below |
 | `ctx.target` | The target's `name`, `platform`, and `verbs`, the actions its engine supports. Offer only these to the model. `tapModifiers` is true when `tap`, `doubleTap`, and `secondaryTap` take `{ modifiers }` |
-| `ctx.pixelsTainted` | True after a [secret fill](/reference/security#screenshots-after-a-secret-fill). Then no screenshots are available |
 | `ctx.signal` | Aborts on cancellation, at the step deadline, or on any other hard stop. The deadline can't stop work that ignores it |
 | `ctx.replayedPrefix` | Set when a cache replay ran part of the step first. See [Replay cache](#replay-cache) |
 | `ctx.model`, `ctx.providerOptions` | The agent's configured model and `providerOptions`, when set |
@@ -142,7 +162,11 @@ export default {
 
 `tapAt(point)` and `hoverAt(point)` call the engine's coordinate action, or
 act on the listed control at the point when the engine has none.
-`hitTest(point)` finds that control without acting. Engines with a keyboard add `typeText`, `pressKey`, and
+`dragAt(from, to)` drags between the points through the engine's `dragTo`
+pointer kind. Without it, an engine with the `dragTo` action drags by id when
+the points land on two different listed controls. Any other `dragAt` fails
+with `UNSUPPORTED_CAPABILITY`. `hitTest(point)` finds the control at a point
+without acting. Engines with a keyboard add `typeText`, `pressKey`, and
 `dismissKeyboard` for the focused control. `upload(target, paths)` refuses a
 path outside the project root or a hidden one with `POLICY_DENIED`, and a
 missing file with `INVALID_ARGUMENT`.
@@ -174,6 +198,10 @@ Return `STEP_BUDGET_EXHAUSTED`, `STEP_TIMEOUT`, or `CANCELLED` only when that
 budget is spent, the deadline passed, or the test was cancelled. The runner
 refuses any other use, and a passed verdict with a code, with
 `MODEL_OUTPUT_INVALID`.
+
+For a model your executor drives itself, `createVerdictTool()` from
+`e2e/agent` is the built-in agent's `complete_step`. Give the model its
+`tool` and `VERDICT_RULES`, then return `verdict()`.
 
 ## Replay cache
 

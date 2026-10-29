@@ -176,6 +176,27 @@ function stubLocator(box = { x: 10, y: 20, width: 200, height: 100 }, aim: 'poin
   return { locator, target, wheel, move, frame };
 }
 
+/** An upload target resolving to one element handle, recording the order of the chooser wait, the click, and the file set. */
+function stubUpload(fileInput: boolean) {
+  const calls: string[] = [];
+  const chooser = { setFiles: vi.fn(async (_paths: string[], _options: unknown) => void calls.push('setFiles')) };
+  const page = {
+    waitForEvent: vi.fn((_event: string, _options: unknown): Promise<unknown> => {
+      calls.push('waitForEvent');
+      return Promise.resolve(chooser);
+    }),
+  };
+  const element = {
+    evaluate: vi.fn(async () => fileInput),
+    setInputFiles: vi.fn(async (_paths: string[], _options: unknown) => undefined),
+    click: vi.fn(async (_options: unknown) => void calls.push('click')),
+    dispose: vi.fn(async () => undefined),
+  };
+  const locator = { elementHandle: vi.fn(async () => element), page: () => page };
+  const target: ActionTarget = { kind: 'locator', locator: locator as unknown as PwLocator };
+  return { element, target, page, chooser, calls };
+}
+
 describe('dispatchLocatorAction', () => {
   const lookup = () => {
     throw new Error('no second target in these cases');
@@ -197,6 +218,64 @@ describe('dispatchLocatorAction', () => {
       expect(spy.mock.calls[0]).toEqual(args);
     },
   );
+
+  it('uploads through a file chooser it awaits before clicking a button', async () => {
+    const { element, target, page, chooser, calls } = stubUpload(false);
+    await dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, OPERATION, lookup);
+    expect(calls).toEqual(['waitForEvent', 'click', 'setFiles']);
+    expect(page.waitForEvent).toHaveBeenCalledWith('filechooser', { timeout: expect.any(Number) });
+    expect(chooser.setFiles).toHaveBeenCalledWith(['/tmp/a.txt'], { timeout: expect.any(Number) });
+    expect(element.setInputFiles).not.toHaveBeenCalled();
+    expect(element.dispose).toHaveBeenCalled();
+  });
+
+  it('sets a file input directly', async () => {
+    const { element, target, page } = stubUpload(true);
+    await dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, OPERATION, lookup);
+    expect(element.setInputFiles).toHaveBeenCalledWith(['/tmp/a.txt'], { timeout: expect.any(Number) });
+    expect(element.click).not.toHaveBeenCalled();
+    expect(page.waitForEvent).not.toHaveBeenCalled();
+  });
+
+  it('fails as NOT_ACTIONABLE when the click opens no file chooser', async () => {
+    const { target, page } = stubUpload(false);
+    page.waitForEvent.mockRejectedValue(Object.assign(new Error('Timeout 7ms exceeded'), { name: 'TimeoutError' }));
+    await expect(
+      dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, OPERATION, lookup),
+    ).rejects.toMatchObject({ code: 'NOT_ACTIONABLE', message: expect.stringContaining('opened no file chooser') });
+  });
+
+  it('sets no files when the operation is cancelled while the chooser is pending', async () => {
+    const { target, page, chooser } = stubUpload(false);
+    const cancel = new AbortController();
+    let openChooser: (value: unknown) => void = () => undefined;
+    page.waitForEvent.mockReturnValue(new Promise((resolve) => (openChooser = resolve)));
+    const upload = dispatchLocatorAction(
+      target,
+      { kind: 'setInputFiles', paths: ['/tmp/a.txt'] },
+      { timeoutMs: 1000, signal: cancel.signal },
+      lookup,
+    );
+    await vi.waitFor(() => expect(page.waitForEvent).toHaveBeenCalled());
+    cancel.abort(new Error('step cancelled'));
+    openChooser(chooser);
+    await expect(upload).rejects.toThrow('step cancelled');
+    expect(chooser.setFiles).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed click without leaving the chooser wait unhandled', async () => {
+    const { element, target, page } = stubUpload(false);
+    let rejectChooser: (cause: Error) => void = () => undefined;
+    const pending = new Promise((_, reject) => (rejectChooser = reject));
+    // A plain function: a vi.fn handles the promises it returns, which would hide an unhandled rejection.
+    Object.assign(page, { waitForEvent: () => pending });
+    element.click.mockRejectedValue(new Error('element is not enabled'));
+    await expect(
+      dispatchLocatorAction(target, { kind: 'setInputFiles', paths: ['/tmp/a.txt'] }, OPERATION, lookup),
+    ).rejects.toThrow('element is not enabled');
+    rejectChooser(Object.assign(new Error('Timeout 7ms exceeded'), { name: 'TimeoutError' }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 
   it('scrolls a node with a wheel gesture sized by its own box: the agent node scroll', async () => {
     const { locator, target, wheel, frame } = stubLocator({ x: 0, y: 0, width: 400, height: 300 });

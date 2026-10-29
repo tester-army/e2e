@@ -150,6 +150,8 @@ export interface FakeEngineBehavior {
   video?: boolean;
   /** Links `stopVideo` reports before its file, as `video/mp4` segments starting with it. */
   videoLinks?: readonly string[];
+  /** Throw to fail video finalization (`stopVideo`). */
+  onStopVideo?(attemptIndex: number): void | Promise<void>;
   /** Throw to fail state restore after startAttempt succeeded. */
   onRestore?(state: EngineState): void | Promise<void>;
   /** Contributes a `gadget` fixture exercising every fixture-context facility. */
@@ -465,6 +467,7 @@ export function createFakeEngine(behavior: FakeEngineBehavior = {}): FakeEngineH
                   },
                   async stopVideo(operation) {
                     record('artifacts.stopVideo', operation);
+                    await behavior.onStopVideo?.(current);
                     const dir = attempts[current]?.artifactsDir;
                     if (dir === undefined || videoStartedAt === undefined) return [];
                     mkdirSync(path.join(dir, 'video'), { recursive: true });

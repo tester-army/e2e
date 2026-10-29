@@ -93,7 +93,8 @@
             "pages": [
               "models",
               "decision-models",
-              "subscriptions"
+              "subscriptions",
+              "acp"
             ]
           },
           {
@@ -136,6 +137,7 @@
               "telemetry",
               "debugging",
               "agent-steps",
+              "self-healing",
               "page-objects"
             ]
           },

@@ -536,7 +536,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   focus(options?: ActionOptions): Promise<void>;
   /** Hovers over exactly one matching actionable node. */
   hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input; paths resolve from the project root. */
+  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;
@@ -613,6 +613,44 @@ export interface App {
   back(): Promise<void>;
   /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
+  /**
+   * Starts recording the screen, until `stopRecording`. One recording at a
+   * time, and none while the test's `video` records: set `{ video: 'off' }`
+   * on the test.
+   */
+  startRecording(options?: RecordingOptions): Promise<void>;
+  /**
+   * Stops the recording and returns its videos in play order: one, or on the
+   * web one per page when the page was replaced while it recorded.
+   */
+  stopRecording(): Promise<readonly [RecordedVideo, ...RecordedVideo[]]>;
+}
+
+/** How `app.startRecording` names its file. */
+export interface RecordingOptions {
+  /** File name stem, `recordings/001-<name>.<ext>`; defaults to `recording`. */
+  readonly name?: string;
+}
+
+/** One video `app.stopRecording` returns: a file, or a link to a recording a hosted service keeps. */
+export type RecordedVideo = RecordedVideoFile | RecordedVideoLink;
+
+/** A video file under the attempt's `recordings/` directory. */
+export interface RecordedVideoFile {
+  /** Absolute path of the file. */
+  readonly path: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
+}
+
+/** A recording a hosted browser or device service keeps, by URL. */
+export interface RecordedVideoLink {
+  /** `http(s)` URL of the recording. */
+  readonly url: string;
+  /** Media type of what the URL serves: `video/mp4`, or `text/html` for a player page. */
+  readonly mediaType: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
 }
 
 export interface SetupSession {
@@ -623,7 +661,7 @@ export interface SetupSession {
 export interface TestFixtures {
   /** Agent steps. Acquiring the built-in agent without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
-  /** App lifecycle: open, restart, clear state, back, screenshot. */
+  /** App lifecycle: open, restart, clear state, back, screenshot, recording. */
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
@@ -1159,8 +1197,11 @@ export interface TargetApp {
    */
   launchArguments?: readonly string[] | undefined;
   /**
-   * Permissions a device app holds on every fresh launch, by name, each
-   * granted, denied, or reset before the app starts.
+   * Permissions the app holds, by name. A device app has each granted,
+   * denied, or reset before every fresh launch. A browser target takes
+   * `grant` only and holds it on every page of the attempt; what it leaves
+   * out is the browser's default, which headless Chromium refuses. The
+   * engine checks the names its platform knows.
    */
   permissions?: Readonly<Record<string, AppPermissionState>> | undefined;
   /**

@@ -214,7 +214,13 @@ bunx e2e init my-app --example with-expo
 
 ##### Re-running init
 
-- An existing config is kept, and no packages are added for it.
+- An existing config and existing test files stay byte-for-byte unchanged.
+  The engine and gateway answers apply to a new config only, so their
+  packages are not added. A missing example test is still created, unless
+  per-engine examples exist.
+- `package.json` and `.gitignore` are still updated with what they lack: the
+  `e2e` dev dependency, the `test:e2e` script, and the ignore entries.
+  Existing dependencies, scripts, and entries stay as they are.
 - MCP registration keeps extra settings on the e2e server, such as
   environment variables and client timeouts, even when it repairs the launch
   command. A current registration stays byte-for-byte unchanged.
@@ -889,8 +895,6 @@ finding do (`stuck`).
   before warnings, the most severe first.
 - Each finding has its location, the expected and observed behavior, the
   steps to reproduce, and a screenshot when capture is allowed and succeeds.
-  After a secret fill, findings carry no screenshots; see
-  [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 ##### Outcomes
 
@@ -1167,20 +1171,23 @@ bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --
   registry for the latest e2e release. When yours is older, it exits 2 and
   sends nothing, since the problem may be fixed already. Upgrade with
   [`e2e upgrade`](#e2e-upgrade), check that it still happens, and send it
-  again, or pass `--allow-outdated`.
+  again, or pass `--allow-outdated`. With an opt-out variable set, the
+  command skips this check.
 - **Where it goes.** One `e2e_feedback` event, to the same PostHog project as
   [telemetry](/telemetry#feedback), with the anonymous machine facts every
   telemetry event carries.
 - **Opting out.** Feedback is sent only when you run the command, so a saved
   `e2e telemetry disable` does not stop it. `E2E_TELEMETRY_DISABLED=1` and
-  `DO_NOT_TRACK=1` do: with either set, the command exits 2 and sends
-  nothing. So a CI job or a fleet that opted out sends nothing, even when an
-  agent runs it. `E2E_TELEMETRY_DEBUG=1` prints the event like `--dry-run`.
+  `DO_NOT_TRACK=1` do: with either set, the command sends nothing, and a
+  report it would have sent exits 2. So a CI job or a fleet that opted out
+  sends nothing, even when an agent runs it. `--dry-run`,
+  `E2E_TELEMETRY_DEBUG=1` (prints the event like `--dry-run`), and a bug
+  without `--repro` send nothing anyway, so they exit 0.
 
 | Exit code | When |
 | --- | --- |
 | 0 | PostHog accepted the event, and the command printed a reference id. Also `--dry-run`, `E2E_TELEMETRY_DEBUG=1`, and `--type bug` without `--repro`: none of them send, so they exit 0 even with an opt-out variable set. The outdated-release check runs first, so an outdated install exits 2 on these too, unless `--allow-outdated` or an opt-out variable is set. |
-| 2 | A blank or too long text value, an outdated release without `--allow-outdated`, or `E2E_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` set. |
+| 2 | A blank or too long text value, an outdated release with neither `--allow-outdated` nor an opt-out variable set, or a report that would be sent while `E2E_TELEMETRY_DISABLED=1` or `DO_NOT_TRACK=1` is set. |
 | 3 | PostHog did not confirm the event. The report may still have arrived, so the message names its reference id. |
 
 <Warning>

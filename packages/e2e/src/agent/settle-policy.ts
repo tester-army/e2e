@@ -99,6 +99,7 @@ export const SETTLE_AFTER: Record<RecordedAction['name'], SettleAfter> = {
   back: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   tapAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   hoverAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
+  dragAt: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   typeText: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'after-change' },
   pressKey: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },
   dismissKeyboard: { changeWaitMs: FULL_CHANGE_WAIT_MS, look: 'held-still' },

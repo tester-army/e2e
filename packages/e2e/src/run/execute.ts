@@ -54,12 +54,13 @@ import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
-import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
+import { adoptSecrets, carriedSecrets, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionLedger, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
 import { EngineError } from '../engine/contract.ts';
 import { hostedVideoUrl } from '../engine/recording.ts';
+import { sessionRecordings } from './recordings.ts';
 import { WorkerModels } from './worker-models.ts';
 import type { SetupFn } from '../types.ts';
 
@@ -630,9 +631,8 @@ export class TargetExecutor implements SerialHost {
       if (sessionName !== undefined) {
         const saved = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
         // The values the saving session learned come back with its state, so
-        // a stored value the app echoes is redacted here too, and its taint
-        // keeps the viewport withheld: the state may put the value on screen.
-        adoptSecrecy(sessionSecrecy(session, this.config.allSecrets), saved.secrecy);
+        // a stored value the app echoes is redacted here too.
+        adoptSecrets(sessionLedger(session, this.config.allSecrets), saved.secrets);
         await launch('restoring the session', (launchSignal) =>
           session.restoreState!(saved.state, launchOp(launchSignal)),
         );
@@ -641,9 +641,9 @@ export class TargetExecutor implements SerialHost {
       // engine without it was either refused before the run (a mode a target
       // or test set) or skipped with a notice (a run-wide mode). A required
       // video's failure fails the launch; a default one's is swallowed.
-      const { startVideo } = session.artifacts;
-      if (video !== undefined && startVideo !== undefined) {
-        const starting = launch('starting the video', (launchSignal) => startVideo(launchOp(launchSignal)));
+      if (video !== undefined && session.artifacts.startVideo !== undefined) {
+        const recordings = sessionRecordings(session, this.target.name);
+        const starting = launch('starting the video', (launchSignal) => recordings.startAttemptVideo(launchOp(launchSignal)));
         if (video.policy === 'required') await starting;
         else await starting.catch(() => undefined);
       }
@@ -674,9 +674,9 @@ export class TargetExecutor implements SerialHost {
         `engine ${engine?.name ?? 'none'} asked for secret ${name}, which it did not declare in its secrets`,
       );
     }
-    const secrecy = sessionSecrecy(session, this.config.allSecrets);
-    const plaintext = await resolveSecretValue(secret, this.config.allSecrets, secrecy.ledger);
-    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], secrecy.ledger);
+    const ledger = sessionLedger(session, this.config.allSecrets);
+    const plaintext = await resolveSecretValue(secret, this.config.allSecrets, ledger);
+    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], ledger);
     return plaintext;
   }
 
@@ -719,10 +719,11 @@ export class TargetExecutor implements SerialHost {
     secondaryErrors: SerializedError[],
   ): Promise<void> {
     const { attemptId, video } = close;
-    const { stopVideo } = session.artifacts;
-    if (stopVideo !== undefined && video !== undefined) {
+    await this.stopRunningRecording(session, attemptId, record, artifactSink, secondaryErrors);
+    if (session.artifacts.stopVideo !== undefined && video !== undefined) {
+      const recordings = sessionRecordings(session, this.target.name);
       await this.stopVideo(video, attemptId, record, secondaryErrors, async (operation) => {
-        const segments = await stopVideo(operation);
+        const segments = await recordings.stopAttemptVideo(operation);
         // Recorded so a failure could be looked at; a pass has nothing to show.
         if (!keeps(video.keep, record.status)) {
           await Promise.all(
@@ -735,6 +736,34 @@ export class TargetExecutor implements SerialHost {
     }
     try {
       await this.debug.time('session.close', () => this.endAttempt(session, attemptId));
+    } catch (cause) {
+      record.cleanup = 'failed';
+      secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+    }
+  }
+
+  /**
+   * Stops a recording the test started with `app.startRecording` and left
+   * running, within the cleanup budget, and keeps it as the attempt's
+   * artifact. One that cannot be finalized is a cleanup failure.
+   */
+  private async stopRunningRecording(
+    session: TargetSession,
+    attemptId: string,
+    record: ClosingRecord,
+    artifactSink: ArtifactSink,
+    secondaryErrors: SerializedError[],
+  ): Promise<void> {
+    const recordings = sessionRecordings(session, this.target.name);
+    if (!recordings.spanRunning) return;
+    try {
+      await this.lifecycle(
+        'stopping the recording',
+        this.config.cleanupTimeout,
+        'CLEANUP_TIMEOUT',
+        NEVER_ABORTS,
+        (signal) => recordings.stopSpan(this.op(attemptId, this.config.cleanupTimeout, signal), artifactSink),
+      );
     } catch (cause) {
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
@@ -868,7 +897,7 @@ export class TargetExecutor implements SerialHost {
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
-      secrecy: () => (openSession === null ? undefined : sessionSecrecy(openSession, this.config.allSecrets)),
+      ledger: () => (openSession === null ? undefined : sessionLedger(openSession, this.config.allSecrets)),
       // A serial member's artifacts are filed under the group attempt in the
       // report, so that is the attempt a store must see for them.
       identity: { runId: this.options.runId, testId: pair.test.id, attemptId: shared?.attemptId ?? attemptId },
@@ -935,7 +964,7 @@ export class TargetExecutor implements SerialHost {
       const evidence = await captureFailureEvidence({
         session: openSession,
         error: failure,
-        secrecy: sessionSecrecy(openSession, this.config.allSecrets),
+        ledger: sessionLedger(openSession, this.config.allSecrets),
         config: this.config,
         appOrigin: this.target.app.base?.origin,
         artifacts: artifacts.sink,
@@ -983,7 +1012,7 @@ export class TargetExecutor implements SerialHost {
       session.screens.route((observation) =>
         steps.recordScreen(() =>
           traceScreen(observation, {
-            secrecy: sessionSecrecy(session, this.config.allSecrets),
+            ledger: sessionLedger(session, this.config.allSecrets),
             maxBytes: this.config.limits.maxObservationBytes,
             appOrigin: this.target.app.base?.origin,
           }),
@@ -1009,7 +1038,7 @@ export class TargetExecutor implements SerialHost {
               context.staging.stage(
                 name,
                 state,
-                carriedSecrecy(sessionSecrecy(session, this.config.allSecrets), this.config.allSecrets),
+                carriedSecrets(sessionLedger(session, this.config.allSecrets), this.config.allSecrets),
               );
             };
       const { fixtures } = createFixtures({
@@ -1231,6 +1260,10 @@ export class TargetExecutor implements SerialHost {
         if (skipped !== undefined) record.skip = { cause: 'explicit', reason: skipped.reason };
         // A failure that first landed in teardown has had no look yet.
         await captureEvidence();
+      }
+      // A serial member's recording ends with the member, not the group.
+      if (openSession !== null && shared !== undefined) {
+        await this.stopRunningRecording(openSession, attemptId, record, artifacts.sink, secondaryErrors);
       }
       if (openSession !== null && shared === undefined) {
         await this.closeSession(openSession, { attemptId, video }, record, artifacts.sink, secondaryErrors);

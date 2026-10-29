@@ -5,6 +5,8 @@ import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 import { defineEngine } from '../../src/engine/index.ts';
+import { createFakeEngine } from '../helpers/fake-engine.ts';
+import { engineConfig } from '../helpers/fixture-config.ts';
 import { runProject, type FixtureProject } from '../helpers/run-project.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
@@ -50,6 +52,42 @@ describe('list reporter output', () => {
       const summary = readFileSync(path.join(project.dir, '.e2e', 'summary.md'), 'utf8');
       expect(summary).toContain('**Repeats:** 1 of 2 tests passed all 3 runs');
       expect(summary).toContain(`\`tests/repeat.e2e.ts\` fails every other &lt;b&gt;attempt&lt;/b&gt;: ${line}`);
+    } finally {
+      stdoutWrite.mockRestore();
+      project?.cleanup();
+    }
+  });
+
+  it('shows a cleanup failure under a passed test and in the summary, not a green summary with exit 3', async () => {
+    const written: string[] = [];
+    const stdoutWrite = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      written.push(String(chunk));
+      return true;
+    });
+    let project: FixtureProject | undefined;
+    try {
+      const fake = createFakeEngine({
+        onEndAttempt() {
+          throw new Error('close exploded');
+        },
+      });
+      const run = await runProject(
+        {
+          'tests/close-fail.e2e.ts': `import { test } from 'e2e';\n\ntest('taps a node', async ({ app, screen }) => {\n  await app.open('/');\n  await screen.getByRole('button', { name: 'Submit' }).tap();\n});\n`,
+        },
+        {
+          appUrl: 'http://127.0.0.1:4599',
+          config: engineConfig(fake.engine),
+          runOptions: { quiet: false, reporters: ['list'] },
+        },
+      );
+      project = run.project;
+      stdoutWrite.mockRestore();
+      const output = stripVTControlCharacters(written.join(''));
+      expect(run.outcome.exitCode).toBe(3);
+      expect(output).toMatch(/✓ taps a node/);
+      expect(output).toMatch(/cleanup failed: ENGINE_FAILURE: attempt end failed: close exploded/);
+      expect(output).toMatch(/Cleanup +1 cleanup failure: ENGINE_FAILURE: attempt end failed: close exploded/);
     } finally {
       stdoutWrite.mockRestore();
       project?.cleanup();

@@ -17,9 +17,10 @@ const MAX_FRAME_LINE_CHARS = 200;
 
 /**
  * Renders the failing line with two lines of context on each side and a
- * column caret, gutter-numbered like vitest (`  28| code`).
+ * column caret, gutter-numbered like vitest (`  28| code`), each line clipped
+ * to `maxChars` (by default what fits the terminal).
  */
-export function codeFrame(frame: StackFrame, pc: Colors): string[] {
+export function codeFrame(frame: StackFrame, pc: Colors, maxChars = Math.max(20, terminalColumns() - 10)): string[] {
   let source: string;
   try {
     source = readFileSync(frame.file, 'utf8');
@@ -31,7 +32,6 @@ export function codeFrame(frame: StackFrame, pc: Colors): string[] {
   if (index < 0 || index >= lines.length) return [];
   const start = Math.max(0, index - FRAME_RANGE);
   const end = Math.min(lines.length - 1, index + FRAME_RANGE);
-  const maxChars = Math.max(20, terminalColumns() - 10);
   const gutter = (no: number | '' = ''): string => pc.gray(`${String(no).padStart(3)}|`);
   const rows: string[] = [];
   for (let i = start; i <= end; i += 1) {

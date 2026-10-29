@@ -7,7 +7,7 @@ icon: "cube"
 ---
 
 The `app` fixture opens, restarts, and resets the app under test, and takes
-screenshots. It is on every target. A method the engine can't perform fails
+screenshots and recordings. It is on every target. A method the engine can't perform fails
 with `UNSUPPORTED_CAPABILITY`.
 
 ```ts title="tests/billing.e2e.ts"
@@ -30,9 +30,11 @@ test('billing page', async ({ app, screen }) => {
 | [`clearState`](#clearstate) | `Promise<void>` |
 | [`back`](#back) | `Promise<void>` |
 | [`screenshot`](#screenshot) | `Promise<string>` |
+| [`startRecording`](#startrecording) | `Promise<void>` |
+| [`stopRecording`](#stoprecording) | `Promise<[RecordedVideo, ...RecordedVideo[]]>` |
 
-`open`, `restart`, and `clearState` are bounded by `timeout`. `back` and
-`screenshot` are bounded by `actionTimeout`. Both come from the
+`open`, `restart`, and `clearState` are bounded by `timeout`. The others
+are bounded by `actionTimeout`. Both come from the
 [config](/reference/config): `timeout` defaults to 120000 ms and
 `actionTimeout` to 30000 ms. The remaining test timeout caps both. `app`
 methods take no per-call timeout option.
@@ -143,6 +145,53 @@ the app shows anywhere else is in the image. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 </Note>
 
+### `startRecording`
+
+Starts recording the screen, until `stopRecording`.
+
+```ts
+test('the dialog slides in', { video: 'off' }, async ({ app, screen }) => {
+  await app.open();
+  await app.startRecording({ name: 'dialog' });
+  await screen.getByRole('button', 'Open').tap();
+  await expect(screen.getByRole('dialog')).toBeVisible();
+  const [video] = await app.stopRecording();
+});
+```
+
+- One recording at a time. The engine has one recorder, so set
+  `video: 'off'` on the test: a start fails while the test's
+  [video](/reference/config#video) records. That includes `--video`,
+  `retain-on-failure`, and the retries `on-first-retry` records.
+- A recording still running when the test ends is stopped and kept.
+- Like the test's video, a recording masks nothing.
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | The test's video records, or the engine records no video. |
+| `INVALID_ARGUMENT` | Another recording is running. |
+
+### `stopRecording`
+
+Stops the recording and returns its videos, in play order.
+
+```ts
+const [video] = await app.stopRecording();
+if ('path' in video) console.log(video.path);
+```
+
+- A video is a file (`path`, absolute) under the attempt's `recordings/`,
+  named `001-<name>.<ext>`, or a `url` when a hosted browser or device
+  keeps the recording.
+- There is one video, except on the web when the page was replaced while
+  it recorded (`app.restart()`, `app.clearState()`): then one per page.
+- The step links each video in the trace.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | No recording is running. |
+| `ENGINE_FAILURE` | The engine wrote no video. |
+
 ## Types
 
 ```ts
@@ -173,6 +222,44 @@ export interface App {
   back(): Promise<void>;
   /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
+  /**
+   * Starts recording the screen, until `stopRecording`. One recording at a
+   * time, and none while the test's `video` records: set `{ video: 'off' }`
+   * on the test.
+   */
+  startRecording(options?: RecordingOptions): Promise<void>;
+  /**
+   * Stops the recording and returns its videos in play order: one, or on the
+   * web one per page when the page was replaced while it recorded.
+   */
+  stopRecording(): Promise<readonly [RecordedVideo, ...RecordedVideo[]]>;
+}
+
+/** How `app.startRecording` names its file. */
+export interface RecordingOptions {
+  /** File name stem, `recordings/001-<name>.<ext>`; defaults to `recording`. */
+  readonly name?: string;
+}
+
+/** One video `app.stopRecording` returns: a file, or a link to a recording a hosted service keeps. */
+export type RecordedVideo = RecordedVideoFile | RecordedVideoLink;
+
+/** A video file under the attempt's `recordings/` directory. */
+export interface RecordedVideoFile {
+  /** Absolute path of the file. */
+  readonly path: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
+}
+
+/** A recording a hosted browser or device service keeps, by URL. */
+export interface RecordedVideoLink {
+  /** `http(s)` URL of the recording. */
+  readonly url: string;
+  /** Media type of what the URL serves: `video/mp4`, or `text/html` for a player page. */
+  readonly mediaType: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
 }
 ```
 
