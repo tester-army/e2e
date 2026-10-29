@@ -11,7 +11,7 @@ import type { AgentCacheContext } from '../cache/context.ts';
 import type { ResolvedAgentConfig } from '../config/agent.ts';
 import type { ResolvedApp, ResolvedConfig } from '../config/resolve.ts';
 import type { EngineCapability } from '../engine/index.ts';
-import type { TargetSession, Observation } from '../engine/surface.ts';
+import type { TargetSession } from '../engine/surface.ts';
 import type { DebugTrace } from '../internal/debug.ts';
 import { timestamp } from '../internal/ids.ts';
 import { Deadline } from '../internal/time.ts';
@@ -225,12 +225,17 @@ export class Invocation {
     const observation = await this.instrument(
       { kind: 'observation', phase: 'agent.observe' },
       async () => {
-        const raw = await this.captureObservation(this.pixelTier);
+        const pixelsAllowed = this.options.vision !== false;
+        const raw = await retryingObserve({
+          capture: () => this.session.observe(this.operation(), { pixels: this.pixelTier, pixelFallback: pixelsAllowed }),
+          guard: (cause) => this.checkDeadline(cause),
+          signal: this.runtime.engine.signal,
+        });
         const prepared = prepareObservation(raw, {
           redact: this.runtime.redact,
           redactCut: this.runtime.redactCut,
           maxBytes: this.observationByteBudget(),
-          pixelsAllowed: this.options.vision !== false,
+          pixelsAllowed,
           appOrigin: this.runtime.app.base?.origin,
         });
         return prepared;
@@ -247,16 +252,6 @@ export class Invocation {
     }
     if (this.pixelTier || observation.kind === 'pixels') this.recordPixels(observation);
     return observation;
-  }
-
-  /** Captures one raw observation through the shared race-hardened path. */
-  private captureObservation(pixels: boolean): Promise<Observation> {
-    return retryingObserve({
-      observe: (operation) => this.session.observe(operation, { pixels, pixelFallback: this.options.vision !== false }),
-      operation: () => this.operation(),
-      guard: (cause) => this.checkDeadline(cause),
-      signal: this.runtime.engine.signal,
-    });
   }
 
   /** Records whether requested pixels actually became model input. */

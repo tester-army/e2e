@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { createEngineSession } from '../../src/engine/session.ts';
 import type { EngineSnapshot } from '../../src/engine/index.ts';
 import type { Observation } from '../../src/engine/surface.ts';
-import type { SessionSecrecy } from '../../src/run/secrecy.ts';
+import type { SecretLedger } from '../../src/internal/redact.ts';
 import { compareScreens, traceScreen } from '../../src/run/step-screens.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 
@@ -47,7 +47,7 @@ describe('compareScreens', () => {
 });
 
 describe('traceScreen', () => {
-  const secrecy = { ledger: { redact: (text: string) => text.replaceAll('hunter2', '<secret:pw>'), redactCut: (text: string) => text } } as unknown as SessionSecrecy;
+  const ledger = { redact: (text: string) => text.replaceAll('hunter2', '<secret:pw>'), redactCut: (text: string) => text } as unknown as SecretLedger;
   const observed = (tree: Extract<Observation, { kind: 'semantic' }>['tree']): Observation => ({
     kind: 'semantic',
     root: tree.ref,
@@ -67,7 +67,7 @@ describe('traceScreen', () => {
         role: 'document',
         children: [{ ref: { id: 'n2', revision: 'r1' }, role: 'textbox', name: 'Password hint', value: 'hunter2', states: { focused: true, disabled: true } }],
       }),
-      { secrecy, maxBytes: 10_000, appOrigin: undefined },
+      { ledger, maxBytes: 10_000, appOrigin: undefined },
     );
     expect(kept).toEqual({
       location: 'http://app.test/<secret:pw>',
@@ -80,7 +80,7 @@ describe('traceScreen', () => {
 
   it('counts its budget in UTF-8 bytes, so a screen in another script is bounded the same', () => {
     const children = Array.from({ length: 50 }, (_, index) => ({ ref: { id: `n${index}`, revision: 'r1' }, role: 'button', name: `購入する商品${index}` }));
-    const kept = traceScreen(observed({ ref: { id: 'root', revision: 'r1' }, role: 'document', children }), { secrecy, maxBytes: 200, appOrigin: undefined });
+    const kept = traceScreen(observed({ ref: { id: 'root', revision: 'r1' }, role: 'document', children }), { ledger, maxBytes: 200, appOrigin: undefined });
     const bytes = kept!.lines.reduce((total, line) => total + Buffer.byteLength(line.text, 'utf8') + 1, 0);
     expect(bytes).toBeLessThanOrEqual(200);
     expect(kept!.lines.length).toBeGreaterThan(1);
@@ -88,7 +88,7 @@ describe('traceScreen', () => {
 
   it('stops at its byte budget, keeping at least the root', () => {
     const children = Array.from({ length: 50 }, (_, index) => ({ ref: { id: `n${index}`, revision: 'r1' }, role: 'button', name: `Item ${index}` }));
-    const kept = traceScreen(observed({ ref: { id: 'root', revision: 'r1' }, role: 'document', children }), { secrecy, maxBytes: 60, appOrigin: undefined });
+    const kept = traceScreen(observed({ ref: { id: 'root', revision: 'r1' }, role: 'document', children }), { ledger, maxBytes: 60, appOrigin: undefined });
     expect(kept!.lines.length).toBeGreaterThan(1);
     expect(kept!.lines.length).toBeLessThan(10);
   });

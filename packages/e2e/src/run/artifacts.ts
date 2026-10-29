@@ -6,10 +6,11 @@ import { readdir, readFile, rm, rmdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
+import type { SecretLedger } from '../internal/redact.ts';
 import type { ArtifactStore } from '../types.ts';
 import type { ArtifactRegistration, ArtifactSink } from './fixtures.ts';
 import type { ArtifactRecord } from './records.ts';
-import { redactsDownloads, type SessionSecrecy } from './secrecy.ts';
+import { redactsDownloads } from './secrecy.ts';
 
 /**
  * How much of each kind the runner masked. A
@@ -67,13 +68,12 @@ export function createAttemptArtifacts(options: {
   /** Host store every artifact is handed to once complete; undefined keeps files local only. */
   store?: ArtifactStore;
   /**
-   * The secrecy of the session the attempt runs on, read when a download is
+   * The ledger of the session the attempt runs on, read when a download is
    * registered; undefined (no session open yet) leaves every download as
-   * served. While its ledger holds a value (`redactsDownloads`), a
-   * text-like download is rewritten through it before it is hashed or
-   * stored.
+   * served. While it holds a value (`redactsDownloads`), a text-like
+   * download is rewritten through it before it is hashed or stored.
    */
-  secrecy?: () => SessionSecrecy | undefined;
+  ledger?: () => SecretLedger | undefined;
   /**
    * Report identity handed to the store with each artifact. `attemptId` is
    * the attempt the REPORT files the artifact under; a serial member's
@@ -105,11 +105,11 @@ export function createAttemptArtifacts(options: {
       };
       records.push(record);
       const reportPath = path.posix.join(...options.segments, relativePath);
-      const secrecy: SessionSecrecy | undefined = kind === 'download' ? options.secrecy?.() : undefined;
+      const ledger = kind === 'download' ? options.ledger?.() : undefined;
       pending.push(
         (async () => {
-          if (secrecy !== undefined && redactsDownloads(secrecy) && isTextLike(record.mediaType)) {
-            record.redaction = await redactDownload(absolute, secrecy);
+          if (ledger !== undefined && redactsDownloads(ledger) && isTextLike(record.mediaType)) {
+            record.redaction = await redactDownload(absolute, ledger);
           }
           // Without a store the file is streamed for its size and digest only;
           // with one it is read whole, since the store needs the bytes anyway,
@@ -274,11 +274,11 @@ export function attemptSegments(rerunDir: string | undefined, owner: string, att
  * in which case it is left as served. A leading byte order mark is kept as
  * part of the text, so a rewritten file starts the way it was served.
  */
-async function redactDownload(absolute: string, secrecy: SessionSecrecy): Promise<ArtifactRecord['redaction']> {
+async function redactDownload(absolute: string, ledger: SecretLedger): Promise<ArtifactRecord['redaction']> {
   try {
     const bytes = await readFile(absolute);
     const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
-    const redacted = secrecy.ledger.redactFragments(text);
+    const redacted = ledger.redactFragments(text);
     if (redacted !== text) await writeFileAtomic(absolute, redacted);
     return 'complete';
   } catch {

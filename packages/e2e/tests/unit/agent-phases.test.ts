@@ -27,8 +27,6 @@ const OBSERVATION: Observation = {
   redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
 };
 
-const operation = () => ({ runId: 'run', attemptId: 'attempt', timeoutMs: 1_000, signal: new AbortController().signal, origin: 'agent' as const });
-
 describe('retryingObserve', () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -39,13 +37,12 @@ describe('retryingObserve', () => {
     vi.setTimerTickMode('nextTimerAsync');
     let attempts = 0;
     const observation = await retryingObserve({
-      observe: () => {
+      capture: () => {
         attempts += 1;
         return attempts < 3
           ? Promise.reject(foreignEngineError('NODE_STALE', true))
           : Promise.resolve(OBSERVATION);
       },
-      operation,
       guard: () => undefined,
       signal: new AbortController().signal,
     });
@@ -57,12 +54,11 @@ describe('retryingObserve', () => {
     let attempts = 0;
     await expect(
       retryingObserve({
-        observe: () => {
+        capture: () => {
           attempts += 1;
           return Promise.reject(foreignEngineError('OPERATION_TIMEOUT', false));
         },
-        operation,
-        guard: () => undefined,
+          guard: () => undefined,
         signal: new AbortController().signal,
       }),
     ).rejects.toThrow('OPERATION_TIMEOUT');
@@ -72,9 +68,8 @@ describe('retryingObserve', () => {
   it('reports the step clock when the capture timed out at the deadline', async () => {
     await expect(
       retryingObserve({
-        observe: () => Promise.reject(foreignEngineError('OPERATION_TIMEOUT', false)),
-        operation,
-        guard: (cause) => checkStepClock({ signal: new AbortController().signal, deadline: new Deadline(50), api: 'agent.act', timeoutMs: 3_000, cause }),
+        capture: () => Promise.reject(foreignEngineError('OPERATION_TIMEOUT', false)),
+          guard: (cause) => checkStepClock({ signal: new AbortController().signal, deadline: new Deadline(50), api: 'agent.act', timeoutMs: 3_000, cause }),
         signal: new AbortController().signal,
       }),
     ).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });

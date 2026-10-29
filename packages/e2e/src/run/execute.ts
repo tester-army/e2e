@@ -54,7 +54,7 @@ import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
 import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
-import { adoptSecrecy, carriedSecrecy, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionSecrecy, staticSecretLedger } from './secrecy.ts';
+import { adoptSecrets, carriedSecrets, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionLedger, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
 import { SessionStaging, SessionStore, targetIdentity, type SessionIdentity } from './sessions.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -632,7 +632,7 @@ export class TargetExecutor implements SerialHost {
         const saved = await this.options.sessionStore.load(sessionName, this.sessionIdentity);
         // The values the saving session learned come back with its state, so
         // a stored value the app echoes is redacted here too.
-        adoptSecrecy(sessionSecrecy(session, this.config.allSecrets), saved.secrecy);
+        adoptSecrets(sessionLedger(session, this.config.allSecrets), saved.secrets);
         await launch('restoring the session', (launchSignal) =>
           session.restoreState!(saved.state, launchOp(launchSignal)),
         );
@@ -674,9 +674,9 @@ export class TargetExecutor implements SerialHost {
         `engine ${engine?.name ?? 'none'} asked for secret ${name}, which it did not declare in its secrets`,
       );
     }
-    const secrecy = sessionSecrecy(session, this.config.allSecrets);
-    const plaintext = await resolveSecretValue(secret, this.config.allSecrets, secrecy.ledger);
-    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], secrecy.ledger);
+    const ledger = sessionLedger(session, this.config.allSecrets);
+    const plaintext = await resolveSecretValue(secret, this.config.allSecrets, ledger);
+    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], ledger);
     return plaintext;
   }
 
@@ -897,7 +897,7 @@ export class TargetExecutor implements SerialHost {
       attemptId,
       currentStepId: () => steps.currentStepId,
       ...(this.config.artifactStore === undefined ? {} : { store: this.config.artifactStore }),
-      secrecy: () => (openSession === null ? undefined : sessionSecrecy(openSession, this.config.allSecrets)),
+      ledger: () => (openSession === null ? undefined : sessionLedger(openSession, this.config.allSecrets)),
       // A serial member's artifacts are filed under the group attempt in the
       // report, so that is the attempt a store must see for them.
       identity: { runId: this.options.runId, testId: pair.test.id, attemptId: shared?.attemptId ?? attemptId },
@@ -964,7 +964,7 @@ export class TargetExecutor implements SerialHost {
       const evidence = await captureFailureEvidence({
         session: openSession,
         error: failure,
-        secrecy: sessionSecrecy(openSession, this.config.allSecrets),
+        ledger: sessionLedger(openSession, this.config.allSecrets),
         config: this.config,
         appOrigin: this.target.app.base?.origin,
         artifacts: artifacts.sink,
@@ -1012,7 +1012,7 @@ export class TargetExecutor implements SerialHost {
       session.screens.route((observation) =>
         steps.recordScreen(() =>
           traceScreen(observation, {
-            secrecy: sessionSecrecy(session, this.config.allSecrets),
+            ledger: sessionLedger(session, this.config.allSecrets),
             maxBytes: this.config.limits.maxObservationBytes,
             appOrigin: this.target.app.base?.origin,
           }),
@@ -1038,7 +1038,7 @@ export class TargetExecutor implements SerialHost {
               context.staging.stage(
                 name,
                 state,
-                carriedSecrecy(sessionSecrecy(session, this.config.allSecrets), this.config.allSecrets),
+                carriedSecrets(sessionLedger(session, this.config.allSecrets), this.config.allSecrets),
               );
             };
       const { fixtures } = createFixtures({

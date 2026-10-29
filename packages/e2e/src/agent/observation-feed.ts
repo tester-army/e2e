@@ -386,8 +386,7 @@ export class ObservationFeed {
   private async capture(pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     const raw = await retryingObserve({
-      observe: (operation) => this.runtime.engine.session.observe(operation, { pixels, pixelFallback: true }),
-      operation: () => this.accounting.operation(),
+      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: true }),
       guard: (cause) => this.accounting.checkpoint(cause),
       signal: this.runtime.engine.signal,
     });
@@ -433,9 +432,6 @@ export class ObservationFeed {
     if ('withheld' in outcome) {
       this.recordPixelDecision('denied', outcome.withheld);
       this.visionDegraded = outcome.withheld;
-      if (observation.kind === 'pixels') {
-        throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and its screenshot is no longer permitted');
-      }
       return { pixelsWithheld: outcome.withheld };
     }
     this.recordPixelDecision('allowed');

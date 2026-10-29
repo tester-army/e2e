@@ -164,14 +164,13 @@ function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
  * timeout rather than whichever transport error the truncated budget produced.
  */
 export async function retryingObserve(options: {
-  readonly observe: (operation: OperationContext) => Promise<Observation>;
-  readonly operation: () => OperationContext;
+  readonly capture: () => Promise<Observation>;
   readonly guard: (cause?: unknown) => void;
   readonly signal: AbortSignal;
 }): Promise<Observation> {
   for (;;) {
     try {
-      return await options.observe(options.operation());
+      return await options.capture();
     } catch (cause) {
       options.guard(cause);
       // Structural, not instanceof: an engine a config file imported lives in

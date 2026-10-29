@@ -542,9 +542,8 @@ trees, on both platforms, without a device.
     a gap to close with taint or text-matching heuristics. Text downloads are
     rewritten whenever the session's ledger holds a value
     (`redactsDownloads` in `run/secrecy.ts`), since a plain string reaches
-    the app unseen. What
-    an executor keeps in `attempt.memory` is its own; the harness never
-    reports it.
+    the app unseen. What an executor keeps in `attempt.memory` is its own;
+    the harness never reports it.
   - An agent's secret fill is authorized by the runner, not the model.
     `typeSecret` (`action-dispatcher.ts`) takes only a handle the step's
     params declare, the target resolves on the newest observation

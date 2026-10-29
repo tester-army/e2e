@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ArtifactStore, StoredArtifact } from '../../src/types.ts';
 import { SecretLedger } from '../../src/internal/redact.ts';
 import { createAttemptArtifacts } from '../../src/run/artifacts.ts';
-import type { SessionSecrecy } from '../../src/run/secrecy.ts';
 
 const roots: string[] = [];
 function root(): string {
@@ -219,17 +218,13 @@ describe('artifact redaction labels', () => {
 describe('download redaction', () => {
   const SECRET = 'download-secret-Qx7-2718';
 
-  function secrecy(ledger = new SecretLedger([['api-key', SECRET]])): SessionSecrecy {
-    return { ledger };
-  }
-
-  function downloads(withSecrecy: boolean, store?: ArtifactStore) {
+  function downloads(withLedger: boolean, store?: ArtifactStore) {
     const artifacts = createAttemptArtifacts({
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
       ...(store === undefined ? {} : { store }),
-      ...(withSecrecy ? { secrecy: () => secrecy() } : {}),
+      ...(withLedger ? { ledger: () => new SecretLedger([['api-key', SECRET]]) } : {}),
     });
     mkdirSync(path.join(artifacts.dir, 'downloads'));
     return artifacts;
@@ -289,7 +284,7 @@ describe('download redaction', () => {
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
-      secrecy: () => secrecy(new SecretLedger([['api-key', 'pa"ss,word']])),
+      ledger: () => new SecretLedger([['api-key', 'pa"ss,word']]),
     });
     mkdirSync(path.join(artifacts.dir, 'downloads'));
     writeFileSync(path.join(artifacts.dir, 'downloads', 'export.csv'), 'id,key\n1,"pa""ss,word"\n');
@@ -327,7 +322,7 @@ describe('download redaction', () => {
       artifactsRoot: root(),
       segments: ['web', 'test-1', 'attempt-0'],
       attemptId: 'att-1',
-      secrecy: () => secrecy(new SecretLedger()),
+      ledger: () => new SecretLedger(),
     });
     mkdirSync(path.join(empty.dir, 'downloads'));
     const body = `key=${SECRET}`;

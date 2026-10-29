@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from '../../src/internal/ids.ts';
-import type { SavedSecrecy } from '../../src/run/secrecy.ts';
+import type { SavedSecrets } from '../../src/run/secrecy.ts';
 import { SessionStore, type SavedSession, type SessionIdentity } from '../../src/run/sessions.ts';
 import { assertValidSessionEnvelope } from '../helpers/session-schema.ts';
 
@@ -29,7 +29,7 @@ afterEach(async () => {
 
 /** Saves one state and returns the parsed envelope, its raw text, its file, and its store. */
 async function saveEnvelope(
-  secrecy: SavedSecrecy = { secrets: [] },
+  secrets: SavedSecrets = [],
 ): Promise<{ store: SessionStore; raw: string; file: string; envelope: Record<string, unknown> }> {
   const root = await mkdtemp(path.join(tmpdir(), 'e2e-sessions-'));
   tempDirs.push(root);
@@ -37,7 +37,7 @@ async function saveEnvelope(
   const store = SessionStore.create(runId, root);
   await store.save('member', identity, {
     state: { format: 'playwright-state', version: 1, data: { cookies: [{ name: 'sid', value: 'abc' }] } },
-    secrecy,
+    secrets,
   });
   const [file] = await readdir(path.join(root, runId));
   expect(file).toMatch(/^web--member-[0-9a-f]{16}\.json$/);
@@ -47,9 +47,7 @@ async function saveEnvelope(
 
 describe('session envelope', () => {
   it('carries learned secret values, naming the secrets in the clear and the values only inside the ciphertext', async () => {
-    const { store, raw, envelope } = await saveEnvelope({
-      secrets: [['token', SECRET_VALUE], ['token', 'rotated-token-0042']],
-    });
+    const { store, raw, envelope } = await saveEnvelope([['token', SECRET_VALUE], ['token', 'rotated-token-0042']]);
     try {
       assertValidSessionEnvelope(envelope);
       expect((envelope.state as { algorithm: string }).algorithm).toBe('A256GCM');
@@ -58,9 +56,7 @@ describe('session envelope', () => {
       expect(raw).not.toContain('rotated-token-0042');
       const loaded = await store.load('member', identity);
       expect(loaded.state.data).toEqual({ cookies: [{ name: 'sid', value: 'abc' }] });
-      expect(loaded.secrecy).toEqual({
-        secrets: [['token', SECRET_VALUE], ['token', 'rotated-token-0042']],
-      });
+      expect(loaded.secrets).toEqual([['token', SECRET_VALUE], ['token', 'rotated-token-0042']]);
     } finally {
       store.cleanup();
     }
@@ -72,12 +68,12 @@ describe('session envelope', () => {
       [longName, SECRET_VALUE] as const,
       ...Array.from({ length: 300 }, (_, index) => [`token-${String(index)}`, `value-${String(index)}-padded`] as const),
     ];
-    const { store, envelope } = await saveEnvelope({ secrets });
+    const { store, envelope } = await saveEnvelope(secrets);
     try {
       assertValidSessionEnvelope(envelope);
       expect((envelope.secrecy as { names: string[] }).names).toHaveLength(301);
       const loaded = await store.load('member', identity);
-      expect(loaded.secrecy.secrets).toEqual(secrets);
+      expect(loaded.secrets).toEqual(secrets);
     } finally {
       store.cleanup();
     }
@@ -111,7 +107,7 @@ describe('session load', () => {
       }
       const loaded = await store.load('member', identity);
       expect(loaded.state.data).toEqual({ cookies: [{ name: 'sid', value: 'abc' }] });
-      expect(loaded.secrecy).toEqual({ secrets: [] });
+      expect(loaded.secrets).toEqual([]);
     } finally {
       store.cleanup();
     }
@@ -158,7 +154,7 @@ describe('session load', () => {
       },
     ];
     for (const edit of edits) {
-      const { store, file } = await saveEnvelope({ secrets: [['token', SECRET_VALUE]] });
+      const { store, file } = await saveEnvelope([['token', SECRET_VALUE]]);
       try {
         await tamper(file, edit);
         await expect(store.load('member', identity)).rejects.toMatchObject({ code: 'SESSION_INVALID' });
@@ -189,7 +185,7 @@ describe('session file names', () => {
   function stateFor(targetId: string, name: string): SavedSession {
     return {
       state: { format: 'state', version: 1, data: { pair: `${targetId}/${name}` } },
-      secrecy: { secrets: [] },
+      secrets: [],
     };
   }
 

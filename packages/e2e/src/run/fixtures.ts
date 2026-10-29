@@ -17,7 +17,7 @@ import { Deadline } from '../internal/time.ts';
 import { didYouMean } from '../internal/suggest.ts';
 import { createScreenshotContext, type ScreenshotContext, type WrittenScreenshots } from './screenshots.ts';
 import { sessionRecordings } from './recordings.ts';
-import { resolveSecretValue, sessionSecrecy } from './secrecy.ts';
+import { resolveSecretValue, sessionLedger } from './secrecy.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
 import type { AttemptBudget } from './budget.ts';
@@ -147,7 +147,7 @@ export function createScreenContext(wiring: ScreenWiring): ScreenContext {
 }
 
 export function createFixtures(environment: AttemptEnvironment): AttemptFixtures {
-  const { ledger } = sessionSecrecy(environment.session, environment.config.allSecrets);
+  const ledger = sessionLedger(environment.session, environment.config.allSecrets);
   const secrets: SecretResolver = {
     resolve: (secret) => resolveSecretValue(secret, environment.config.allSecrets, ledger),
   };
@@ -324,7 +324,7 @@ function gateUnknownFixtures<T extends object>(fixtures: T, environment: Attempt
  * Engine-contributed fixtures: factories declare operation metadata
  * through context.fixture and must return the surface they declared. Factories
  * stay lazy and each instance belongs to one test's fixture graph; the
- * session's secrecy state outlives that graph.
+ * session's ledger outlives that graph.
  */
 function contributedFixtures(
   environment: AttemptEnvironment,

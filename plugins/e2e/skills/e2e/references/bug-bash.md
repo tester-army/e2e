@@ -37,9 +37,8 @@ prove each bug. Report confirmed bugs only, each with its failing test.
   Explorers that share an account report each other's edits as bugs.
 - Start signed-in charters from a saved session: `e2e explore --session
   <name>` runs the setup test that saves it and explores signed in (topic
-  `explore`). A setup that types a password withholds screenshots from then
-  on; sign in by cookie or API call to keep them (topic `writing-tests`).
-  Each charter with its own account needs its own setup and session.
+  `explore`). Each charter with its own account needs its own setup and
+  session.
 - Put what the local app cannot do in the agent's `context`: integrations
   without keys, what is seed data, what must never be clicked (paid runs,
   real accounts). Add the explorer's own blind spots from step 5's artifact

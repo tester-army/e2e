@@ -24,7 +24,7 @@ import { holdSecretRegistry } from '../secrets.ts';
 import { createAgentCacheContext } from '../cache/context.ts';
 import { storedRecordingsFor } from '../cache/rekeyed.ts';
 import { WrittenScreenshots } from './screenshots.ts';
-import { processSecrets, redactForSession, sessionSecrecy } from './secrecy.ts';
+import { processSecrets, redactForSession, sessionLedger } from './secrecy.ts';
 import { targetIdentity } from './sessions.ts';
 import { createStandaloneTestRun, type StandaloneTest, type StandaloneTestRun } from './standalone-test.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -155,7 +155,7 @@ export async function launchAttempt(
   const artifacts = createAttemptArtifacts({
     artifactsRoot: worker.resultsDir, segments: identity.segments, attemptId, currentStepId: () => steps.currentStepId,
     ...(config.artifactStore === undefined ? {} : { store: config.artifactStore }),
-    secrecy: () => session === undefined ? undefined : sessionSecrecy(session, config.allSecrets),
+    ledger: () => session === undefined ? undefined : sessionLedger(session, config.allSecrets),
     identity: { runId, testId: identity.testId, attemptId },
   });
   const attemptErrors: SerializedError[] = [];
