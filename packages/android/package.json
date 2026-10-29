@@ -1,0 +1,35 @@
+{
+  "name": "@e2e-dev/android",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Experimental Android engine for e2e that drives the device in process over the engine protocol, without agent-device",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "build:server": "node scripts/build-server.ts",
+    "typecheck": "tsc --noEmit",
+    "bench": "node bench/bench.ts"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.21.2 <1"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "workspace:*",
+    "@types/node": "26.6.5",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

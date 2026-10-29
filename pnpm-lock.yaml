@@ -208,6 +208,9 @@ importers:
         specifier: 13.16.1
         version: 13.16.1(react-native@0.86.3(@babel/core@7.29.7(supports-color@8.1.1))(@types/react@19.2.18)(react@19.2.3)(supports-color@8.1.1))(react@19.2.3)
     devDependencies:
+      '@e2e-dev/android':
+        specifier: workspace:*
+        version: link:../../packages/android
       '@e2e-dev/github':
         specifier: workspace:*
         version: link:../../packages/github
@@ -373,6 +376,21 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@26.6.6)(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
+  packages/android:
+    devDependencies:
+      '@e2e-dev/mobile':
+        specifier: workspace:*
+        version: link:../mobile
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
 
   packages/browserstack:
     devDependencies:
