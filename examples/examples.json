@@ -147,6 +147,14 @@
       {
         "id": "reporting",
         "label": "Reporting"
+      },
+      {
+        "id": "time-zones",
+        "label": "Time zones"
+      },
+      {
+        "id": "email",
+        "label": "Email"
       }
     ],
     "platform": [
@@ -615,6 +623,89 @@
         "useCase": [
           "iframes",
           "payments"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "booking",
+      "title": "Testing a booking calendar across time zones with e2e",
+      "shortTitle": "Booking",
+      "description": "A date picker and a time list in a Next.js booking card, booked by the same tests as a visitor in London and one in New York.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-booking",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-booking/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "time-zones"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "onboarding",
+      "title": "Testing an Expo onboarding with e2e",
+      "shortTitle": "Onboarding",
+      "description": "An email code the agent reads from a local Mailpit inbox, then the OS notification prompt, in an Expo app on iOS and Android.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-onboarding",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-onboarding/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "email",
+          "authentication"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "shopify",
+      "title": "Testing Shopify checkout with e2e",
+      "shortTitle": "Shopify",
+      "description": "A Next.js storefront that sends shoppers to Shopify's own checkout in a dev store, with paid, declined, and discounted checkouts each checked through the Admin API.",
+      "icon": "shopify.svg",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-shopify",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-shopify/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "e-commerce",
+          "payments",
+          "iframes"
         ],
         "platform": [
           "web"
