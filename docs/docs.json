@@ -143,6 +143,7 @@
           {
             "group": "Migrate",
             "pages": [
+              "migrate/index",
               "migrate/playwright",
               "migrate/cypress",
               "migrate/selenium",
