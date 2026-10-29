@@ -168,9 +168,8 @@ Merge findings that describe one defect: same path, same broken behavior.
 Keep the clearest reproduction and every charter that hit it. Keep warnings
 in a separate list unless the user asked for polish.
 
-A charter that filled a password, or whose session's setup did, prints no
-`evidence` line after that point. Its video is not masked: check it for
-secrets before sharing (topic `writing-tests`).
+A charter's video is not masked: check it for secrets before sharing (topic
+`writing-tests`).
 
 ## 5. Triage
 

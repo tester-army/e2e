@@ -73,7 +73,7 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
     }),
     buildPrompt: async (context) => {
       // The opening look is tree-only, unless no listed interactive node
-      // exists at all: then the opening prompt asks for a screenshot, because the tree describes a canvas, a game,
+      // exists at all: then the opening prompt carries a screenshot, because the tree describes a canvas, a game,
       // or a semantics-free native screen too poorly to act on, and the model
       // would only spend a turn asking for one. One listed control is enough
       // to leave the decision to the model; a small page is not a blind one.

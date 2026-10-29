@@ -96,8 +96,8 @@ export interface ExecutorObserveOptions {
    * Include masked viewport pixels as `pixels`. Granted only when the engine
    * captures pixels and its masking is proven; otherwise `pixelsWithheld`
    * names the reason. Normally off unless asked. If semantic capture fails,
-   * the observation carries its screenshot because no semantic evidence is
-   * available.
+   * the observation carries its screenshot when masking is proven, because
+   * no semantic evidence is available.
    */
   readonly pixels?: boolean;
 }
