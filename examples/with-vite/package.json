@@ -16,13 +16,13 @@
     "react-dom": "^19.3.0"
   },
   "devDependencies": {
-    "@e2e-dev/web": "^0.15.2",
+    "@e2e-dev/web": "^0.15.3",
     "@types/node": "^26.6.4",
     "@types/react": "^19.1.4",
     "@types/react-dom": "^19.1.4",
     "@vitejs/plugin-react": "^6.1.1",
     "ai": "^7.0.0",
-    "e2e": "^0.21.2",
+    "e2e": "^0.21.3",
     "playwright": "^1.63.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.2",

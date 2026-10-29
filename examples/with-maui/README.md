@@ -66,7 +66,6 @@ For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mob
 
 The bundled fonts use the [SIL Open Font License](Resources/Fonts/OFL.txt).
 
-Last checked on 2026-10-17 with e2e 0.21.2, @e2e-dev/mobile 0.12.3, .NET
-SDK 10.0.201, and MAUI 10.0.20 on an Android 15 emulator and an iOS 26.4
-simulator. Three locator tests passed on each; the agent tests skipped
-without a key.
+Last checked on 2026-10-29 with e2e 0.21.3, @e2e-dev/mobile 0.12.4, .NET
+SDK 10.0.403, and MAUI 10.0.110 on an Android 16 emulator and an iOS 26.5
+simulator. The three locator tests and the two agent tests passed on each.

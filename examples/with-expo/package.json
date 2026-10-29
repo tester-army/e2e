@@ -27,12 +27,12 @@
     "react-native-web": "~0.21.0"
   },
   "devDependencies": {
-    "@e2e-dev/mobile": "^0.12.3",
-    "@e2e-dev/web": "^0.15.2",
+    "@e2e-dev/mobile": "^0.12.4",
+    "@e2e-dev/web": "^0.15.3",
     "@types/node": "^26.6.4",
     "@types/react": "~19.2.2",
     "ai": "^7.0.0",
-    "e2e": "^0.21.2",
+    "e2e": "^0.21.3",
     "playwright": "^1.63.0",
     "typescript": "~6.0.3",
     "zod": "^4.1.8"
