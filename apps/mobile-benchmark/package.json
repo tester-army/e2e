@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@e2e-dev/github": "workspace:*",
+    "@e2e-dev/ios": "workspace:*",
     "@e2e-dev/mobile": "workspace:*",
     "@expo/fingerprint": "0.20.14",
     "@expo/repack-app": "0.10.4",

@@ -9,7 +9,7 @@
   ],
   "type": "module",
   "scripts": {
-    "build": "pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build && pnpm --filter @e2e-dev/mobile run build && pnpm --filter @e2e-dev/github run build && pnpm --filter @e2e-dev/kernel run build && pnpm --filter @e2e-dev/lightpanda run build && pnpm --filter @e2e-dev/eas run build && pnpm --filter @e2e-dev/smol run build && pnpm --filter @e2e-dev/limrun run build && pnpm --filter @e2e-dev/decision run build && pnpm --filter @e2e-dev/testmu run build && pnpm --filter @e2e-dev/acp run build && pnpm --filter @e2e-dev/browserstack run build",
+    "build": "pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build && pnpm --filter @e2e-dev/mobile run build && pnpm --filter @e2e-dev/ios run build && pnpm --filter @e2e-dev/github run build && pnpm --filter @e2e-dev/kernel run build && pnpm --filter @e2e-dev/lightpanda run build && pnpm --filter @e2e-dev/eas run build && pnpm --filter @e2e-dev/smol run build && pnpm --filter @e2e-dev/limrun run build && pnpm --filter @e2e-dev/decision run build && pnpm --filter @e2e-dev/testmu run build && pnpm --filter @e2e-dev/acp run build && pnpm --filter @e2e-dev/browserstack run build",
     "check": "pnpm run lint && pnpm run check:dead-code && pnpm run typecheck && pnpm run docs:check-errors && pnpm run check:peer-ranges && pnpm run check:changeset-bumps && pnpm run check:examples && pnpm run check:install-scripts && pnpm run plugins:check && pnpm run mcp-server:check && pnpm run docs:check",
     "check:dead-code": "fallow dead-code",
     "check:peer-ranges": "node scripts/check-peer-ranges.ts",
