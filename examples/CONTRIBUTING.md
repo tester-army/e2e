@@ -75,6 +75,8 @@ Your editor can autocomplete the fields from
 
 - It uses e2e and the tests pass.
 - Its README explains how to run it, so someone can start from the page.
+  An example without one (`readme: false`) can still be listed; its page
+  asks for a README and links the code.
 - It shows something the listed examples do not: a framework, a service, or
   a use case.
 - It has a license.
