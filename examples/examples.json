@@ -630,18 +630,18 @@
       }
     },
     {
-      "slug": "booking",
+      "slug": "calendar",
       "title": "Testing a booking calendar across time zones with e2e",
-      "shortTitle": "Booking",
+      "shortTitle": "Calendar",
       "description": "A date picker and a time list in a Next.js booking card, booked by the same tests as a visitor in London and one in New York.",
       "source": "official",
-      "repository": "https://github.com/tester-army/e2e-booking",
+      "repository": "https://github.com/tester-army/e2e-calendar",
       "author": {
         "name": "TesterArmy",
         "github": "tester-army"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/tester-army/e2e-booking/blob/main/LICENSE",
+      "licenseUrl": "https://github.com/tester-army/e2e-calendar/blob/main/LICENSE",
       "tags": {
         "framework": [
           "nextjs",
