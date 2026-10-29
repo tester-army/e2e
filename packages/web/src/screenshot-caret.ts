@@ -22,7 +22,7 @@ const FRAME_BUDGET_MS = 1_000;
  * keeps, since nothing else can name them.
  */
 function hideCaret(): () => void {
-  const closed: unknown = Reflect.get(globalThis, Symbol.for('e2e.closedShadowRoots'));
+  const closed: WeakMap<Element, ShadowRoot> | undefined = Reflect.get(globalThis, Symbol.for('e2e.closedShadowRoots'));
   const sheet = new CSSStyleSheet();
   sheet.replaceSync('input, textarea, [contenteditable] { caret-color: transparent !important; }');
   const roots: (Document | ShadowRoot)[] = [];
@@ -30,8 +30,8 @@ function hideCaret(): () => void {
     roots.push(root);
     root.adoptedStyleSheets = [...root.adoptedStyleSheets, sheet];
     for (const element of root.querySelectorAll('*')) {
-      const shadow: unknown = element.shadowRoot ?? (closed instanceof WeakMap ? closed.get(element) : null);
-      if (shadow instanceof ShadowRoot) visit(shadow);
+      const shadow = element.shadowRoot ?? closed?.get(element);
+      if (shadow !== null && shadow !== undefined) visit(shadow);
     }
   };
   visit(document);

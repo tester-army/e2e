@@ -935,10 +935,10 @@ export class PlaywrightSurface {
       page.frames().map((frame) =>
         frame
           .evaluate((key) => {
-            const recorded: unknown = Reflect.get(globalThis, Symbol.for(key));
+            const recorded: WeakMap<Element, ShadowRoot> | undefined = Reflect.get(globalThis, Symbol.for(key));
             let active = document.activeElement;
             while (active !== null) {
-              const root: ShadowRoot | undefined | null = active.shadowRoot ?? (recorded instanceof WeakMap ? recorded.get(active) : undefined);
+              const root = active.shadowRoot ?? recorded?.get(active);
               const leaf = root?.activeElement;
               if (leaf === undefined || leaf === null) break;
               active = leaf;
