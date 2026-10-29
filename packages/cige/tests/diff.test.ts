@@ -384,6 +384,8 @@ describe('diffSince', () => {
     expect(verdict("export default { hooks: { h: async () => (() => {}).constructor('return 1')() } };\n")).toEqual(constructor);
     expect(verdict("export default { hooks: { h: async () => process.mainModule.filename } };\n")).toEqual(untraceable("reads process.mainModule, which reaches Node's module loader"));
     expect(verdict("export default { hooks: { h: async () => import('data:text/javascript,export default 1') } };\n")).toEqual(untraceable("imports a data: URL, code the walk can't follow"));
+    // cubic's case: a URL scheme is case-insensitive.
+    expect(verdict("export default { hooks: { h: async () => import('DATA:text/javascript,export default 1') } };\n")).toEqual(untraceable("imports a data: URL, code the walk can't follow"));
     expect(verdict("import { run } from 'node:test';\nexport default { hooks: { h: async () => run({ files: ['./check.cjs'], isolation: 'none' }) } };\n")).toEqual(loader('node:test'));
     // A comment, a string, a key, a class constructor, or another builtin is not a loader.
     expect(

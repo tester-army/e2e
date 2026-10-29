@@ -95,7 +95,8 @@ export function importsOf(text: string, file: string): ModuleImports {
   const refuse = (reason: string): void => void (unverified ??= reason);
   const named = (list: string[], specifier: string): void => {
     if (LOADING_BUILTINS.has(specifier)) refuse(`imports ${specifier}, which loads code by a name the walk can't follow`);
-    if (specifier.startsWith('data:')) refuse("imports a data: URL, code the walk can't follow");
+    // URL schemes ignore case, so Node runs `DATA:text/javascript,…` too.
+    if (/^data:/i.test(specifier)) refuse("imports a data: URL, code the walk can't follow");
     list.push(specifier);
   };
   const loaderKey = (key: unknown): string | undefined => {
