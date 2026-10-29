@@ -12,6 +12,7 @@
  *    The package's directory counts, so do the workspace packages it depends
  *    on (a bundler may inline them), and its sources join the walk: leniently
  *    inside the package, strictly for what they reach outside every stand-in.
+ *    A source the walk can't parse blocks either way.
  *    Untracked output with no package apart from the config's blocks.
  * 4. A symlink to a graph file, or to a directory above one, counts.
  * 5. Each file's nearest package.json counts: its `imports` and `exports` decide where an alias lands.
@@ -229,7 +230,9 @@ if (input.config !== null && unverified.length === 0) {
     files.add(file);
     if (!SOURCE.test(file)) continue;
     const imports = importsOf(readFileSync(path.join(root, file), 'utf8'), file);
-    if (strict && imports.unverified !== undefined) unverified.push(`${file} ${imports.unverified}`);
+    // A load a stand-in's sources can't trace is the documented limit; a source the walk can't read at all hides every import it holds.
+    const reason = imports.unreadable ?? (strict ? imports.unverified : undefined);
+    if (reason !== undefined) unverified.push(`${file} ${reason}`);
     const resolved = [
       ...imports.specifiers.map((specifier) => [specifier, resolveImport(specifier, path.join(root, file))] as const),
       ...imports.requires.map((specifier) => [specifier, resolveRequire(specifier, path.join(root, file))] as const),

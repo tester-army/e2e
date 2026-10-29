@@ -182,19 +182,27 @@ It exits 1 on any change that needs a human's approval:
   resolve;
 - imports `node:module`, `node:vm`, `node:worker_threads`,
   `node:inspector`, `node:repl`, `node:test`, or a `data:` URL;
-- reads `process.getBuiltinModule`, `process.mainModule`,
-  `process.binding`, `process.dlopen`, `.constructor`, `eval`, `Function`,
-  or `require` other than as a direct call;
+- reads `process.getBuiltinModule`, `process.mainModule`, `.constructor`,
+  `eval`, `Function`, or `require` other than as a direct call, or uses
+  `with`;
+- reads `binding` or `dlopen` on `process`, `globalThis.process`, or
+  `node:process`, or hands `process` on;
+- doesn't parse;
 - is a file git doesn't track, outside any workspace package.
 
-The rule on `.constructor` is by name, so an idiom such as
-`err.constructor.name` blocks too.
+The rule on `.constructor` is by name, so `Base.constructor` blocks, but
+`err.constructor.name` doesn't, since it reads only a string. `binding`
+and `dlopen` count only on `process`, so `process` may only have a field
+read where it's referenced: handing it on, as `const p = process`,
+`fn(process)`, or `export default process`, blocks. That rule is by name,
+so a local named `process` handed on blocks too.
 
-A workspace package's own sources don't block this way: the package counts
-as a whole, and so does what they import by name, TypeScript Node can't
-strip (an `enum`) included. A load in them that `diff` can't follow, such
-as a computed `import()`, isn't seen. A module they reach outside every
-workspace package is held to the rules above.
+A workspace package's own sources don't block on a load: the package counts
+as a whole, and so does what they import by name, in any TypeScript or JSX
+(an `enum` or a decorator included). A load in them that `diff` can't
+follow, such as a computed `import()`, isn't seen. A source that doesn't
+parse blocks there too, and a module they reach outside every workspace
+package is held to all the rules above.
 
 Loading the config runs its top-level code from the branch under review.
 Give `diff` the env `e2e run` gets: a config that reads a missing

@@ -53,7 +53,7 @@
   },
   "dependencies": {
     "acorn": "8.18.0",
-    "oxc-transform": "0.155.0",
+    "oxc-parser": "0.155.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
