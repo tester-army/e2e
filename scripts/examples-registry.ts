@@ -40,8 +40,8 @@ function ownerOf(repository: string): string | undefined {
   return repository.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1]?.toLowerCase();
 }
 
-/** Folders under `examples/` that are not standalone examples: they reuse the others' apps. */
-const UNLISTED_FOLDERS = new Set(['with-limrun', 'icons']);
+/** Folders under `examples/` that are not examples: the site's logos. */
+const UNLISTED_FOLDERS = new Set(['icons']);
 
 export type TagKind = 'framework' | 'useCase' | 'platform';
 const TAG_KINDS: readonly TagKind[] = ['framework', 'useCase', 'platform'];

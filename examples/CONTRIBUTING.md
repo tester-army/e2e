@@ -79,7 +79,7 @@ The folders here are official examples, maintained by the e2e team:
   without them.
 - Run the suite locally after changes, and update the README's "Last
   checked" versions.
-- Every example but with-limrun runs nightly on GitHub against the packages
+- Every example runs nightly on GitHub against the packages
   built from main (`.github/workflows/examples.yml`); a new example needs an
   entry there. Pull requests never run them. Oxlint and fallow exclude them.
 - Do not commit lockfiles. Keep the demo and tests consistent across

@@ -3,8 +3,7 @@ name: examples
 # Every example under examples/ on every platform it supports, each night,
 # against the packages built from main rather than the npm releases its
 # package.json names: a change that breaks a user's first project shows up
-# the next morning, before a release ships it. with-limrun is left out: it
-# leases paid hosted devices.
+# the next morning, before a release ships it.
 #
 # The examples commit no lockfile, so every dependency besides ours resolves
 # the way a fresh project's would; a new Vite, Expo, Gradle plugin, or Flutter

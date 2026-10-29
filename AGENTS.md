@@ -190,7 +190,7 @@ suites that consume the built packages the way a user would.
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
   lockfile, and gate no pull request; oxlint and fallow ignore them.
-  `.github/workflows/examples.yml` runs every one but `with-limrun` nightly
+  `.github/workflows/examples.yml` runs every one nightly
   (23:00 Europe/Warsaw) on each platform it supports, with the packages
   packed from main swapped in for the npm ones, agent tests included, and
   posts one Slack message for the run (`scripts/examples-nightly/`, the

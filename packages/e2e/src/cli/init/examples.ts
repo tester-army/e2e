@@ -25,7 +25,7 @@ export interface ExamplePreset {
   readonly build: boolean;
 }
 
-/** Every standalone app under `examples/`. `with-limrun` is left out: it reuses the SwiftUI and Compose apps. */
+/** Every standalone app under `examples/`. */
 export const EXAMPLES: readonly ExamplePreset[] = [
   { id: 'with-vite', project: '.', script: 'test:e2e', build: false },
   { id: 'with-next', project: '.', script: 'test:e2e', build: false },
