@@ -6,7 +6,8 @@ icon: "right-left"
 ---
 
 A migration guide maps one test runner's config, API, and commands to e2e.
-It also marks what e2e doesn't have yet, with a workaround. Keep the old
+It also marks what e2e doesn't have yet, with a workaround where there is
+one. A test with no workaround stays in the old runner. Keep the old
 suite installed while you move one test at a time, so both suites stay green.
 
 ## Pick your runner
@@ -31,7 +32,10 @@ suite installed while you move one test at a time, so both suites stay green.
 
 ## Move one test at a time
 
-<Note>Install e2e and configure a model with the [quickstart](/quickstart) first.</Note>
+<Note>Install e2e with the [quickstart](/quickstart) first. Only agent steps need a model.</Note>
+
+e2e tests are TypeScript. For a Java, Python, or native suite, install e2e
+in an `e2e/` folder with its own `package.json`.
 
 Each guide follows the same steps:
 
@@ -42,39 +46,20 @@ Each guide follows the same steps:
 3. Run the new test with `npx e2e run <file>` until it passes.
 4. Delete the old test when you trust the new one.
 
-e2e tests are TypeScript. For a Java, Python, or native suite, put the e2e
-project in an `e2e/` folder with its own `package.json`.
-
 ## Let an agent migrate the suite
 
-The `migrate-to-e2e` skill ports one slice of the suite per session and
-keeps the old suite running. A `MIGRATION.md` file records progress for the
-next session.
-
-<CodeGroup>
-```bash npm
-npx skills add tester-army/e2e --skill migrate-to-e2e
-```
-
-```bash pnpm
-pnpm dlx skills add tester-army/e2e --skill migrate-to-e2e
-```
-
-```bash bun
-bunx skills add tester-army/e2e --skill migrate-to-e2e
-```
-</CodeGroup>
-
-Then ask the agent for `/migrate-to-e2e`. See
-[Migrate an existing suite](/coding-agents#migrate-an-existing-suite). For a
-port in one session, copy the agent prompt at the top of your runner's guide.
+To move one test with a coding agent, copy the agent prompt at the top of
+your runner's guide. For a migration over many sessions, use the
+[`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite). It
+records progress in a `MIGRATION.md` file and keeps the old suite running.
 
 ## Migrate from a runner with no guide
 
 WebdriverIO and Appium have no guide. Map WebDriver calls with the
 [Selenium](/migrate/selenium) guide. Map Appium device commands with the
 [Detox](/migrate/detox) and [Maestro](/migrate/maestro) guides, on the
-[mobile engine](/mobile).
+[mobile engine](/mobile). These mappings are partial: no guide covers the
+WebdriverIO or Appium APIs themselves.
 
 ## Next
 
