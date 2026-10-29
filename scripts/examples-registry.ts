@@ -2,7 +2,8 @@
  * The examples registry, `examples/examples.json`: every example on
  * https://e2e.tester.army/examples, official, partner, and community. The site
  * (tester-army/e2e-site) downloads the file at build time and renders a page
- * per entry from it and the README at its `repository`; `site.yml` redeploys
+ * per entry from it and the README at its `repository` (or its `readme`);
+ * `site.yml` redeploys
  * the site when the file changes on `main`.
  *
  * `examples.schema.json` pins the shape; `registryProblems` checks what a
@@ -11,7 +12,9 @@
  * examples living under the tester-army organization (and, in this
  * repository, matching the folders under `examples/` and the ones
  * `e2e init --example` can copy), partner and community examples living
- * outside it, and partner examples in their author's own repository.
+ * outside it, partner examples in their author's own repository, community
+ * examples pinned to a commit, and a `readme` only where the folder has no
+ * README.md, in the example's own repository.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -39,6 +42,16 @@ const ORG_URL = /^https:\/\/github\.com\/tester-army\//i;
 function ownerOf(repository: string): string | undefined {
   return repository.match(/^https:\/\/github\.com\/([^/]+)\//)?.[1]?.toLowerCase();
 }
+/** `owner/repo` of a github.com URL, lowercased. */
+function repoOf(url: string): string | undefined {
+  return url.match(/^https:\/\/github\.com\/([^/]+\/[^/]+)/)?.[1]?.toLowerCase();
+}
+/** The ref of a `/tree/<ref>` or `/blob/<ref>` URL. */
+function refOf(url: string): string | undefined {
+  return url.match(/^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:tree|blob)\/([^/]+)/)?.[1];
+}
+/** A folder URL whose ref is a full commit SHA. */
+const PINNED_URL = /^https:\/\/github\.com\/[^/]+\/[^/]+\/tree\/[0-9a-f]{40}(?:\/|$)/;
 
 /** Folders under `examples/` that are not examples: the site's logos. */
 const UNLISTED_FOLDERS = new Set(['icons']);
@@ -56,6 +69,7 @@ interface RegistryExample {
   icon?: string;
   source: 'official' | 'partner' | 'community';
   repository: string;
+  readme?: string | false;
   author: { github: string; website?: string };
   tags: Partial<Record<TagKind, string[]>>;
 }
@@ -154,6 +168,18 @@ export function registryProblems(registry: Registry, env: RegistryEnvironment): 
     } else if (example.source === 'partner' && ownerOf(example.repository) !== example.author.github.toLowerCase()) {
       // The site's partner seal credits author.name, so the partner must own the repository.
       problems.push(`${name}: a partner example lives in its author's repository, https://github.com/${example.author.github}/`);
+    } else if (example.source === 'community' && !PINNED_URL.test(example.repository)) {
+      // The page renders the README live: a branch could change under a reviewed entry.
+      problems.push(`${name}: a community example pins its repository to a commit, https://github.com/<owner>/<repo>/tree/<commit sha>/<path>`);
+    }
+    if (typeof example.readme === 'string') {
+      if (repoOf(example.readme) !== repoOf(example.repository)) {
+        problems.push(`${name}: readme must be a file in the example's repository, https://github.com/${repoOf(example.repository)}/`);
+      } else if (readmeUrl({ repository: example.repository, readme: example.readme }) === readmeUrl({ repository: example.repository })) {
+        problems.push(`${name}: readme names the folder's own README.md; leave it out`);
+      } else if (example.source === 'community' && refOf(example.readme) !== refOf(example.repository)) {
+        problems.push(`${name}: a community example's readme is pinned to the same commit as its repository`);
+      }
     }
     if (example.source === 'partner' && !example.author?.website) {
       problems.push(`${name}: a partner example names its author's landing page in author.website`);
@@ -178,9 +204,18 @@ export function isLocalFolder(repository: string): boolean {
   return FOLDER_URL.test(repository);
 }
 
-/** The URL of an example's README, which the site renders as its page. */
-export function readmeUrl(repository: string): string {
+/**
+ * The raw URL of the README the site renders as an example's page: its
+ * `readme` file when it names one, else README.md in its `repository`.
+ * `undefined` for an example with `readme: false`.
+ */
+export function readmeUrl(example: Pick<RegistryExample, 'repository' | 'readme'>): string | undefined {
+  if (example.readme === false) return undefined;
+  if (example.readme) {
+    const [, owner, repo, ref, path] = example.readme.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/) ?? [];
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`;
+  }
   const [, owner, repo, ref = 'HEAD', path = ''] =
-    repository.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?$/) ?? [];
+    example.repository.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)(?:\/tree\/([^/]+)(?:\/(.+))?)?$/) ?? [];
   return `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path ? `${path}/` : ''}README.md`;
 }

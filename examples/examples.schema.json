@@ -141,9 +141,21 @@
           ]
         },
         "repository": {
-          "description": "The example's folder on GitHub, whose README the page renders: https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder.",
+          "description": "The example's folder on GitHub, whose README the page renders (see `readme`): https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder. A community example pins `<ref>` to a commit.",
           "type": "string",
           "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:/tree/[^/\\s]+(?:/[^\\s]+)?)?$"
+        },
+        "readme": {
+          "description": "Only for an example whose folder has no README.md of its own. A Markdown file in the same repository (for a community example, at the same commit), https://github.com/<owner>/<repo>/blob/<ref>/<path>.md, to render instead; or `false` for no README, and the page links to the code in `repository`. Leave it out when `repository` has a README.md.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/blob/[^/\\s]+/[^\\s]+\\.md$"
+            },
+            {
+              "const": false
+            }
+          ]
         },
         "author": {
           "type": "object",

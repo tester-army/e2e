@@ -23,6 +23,10 @@
         "label": "Angular"
       },
       {
+        "id": "tanstack-start",
+        "label": "TanStack Start"
+      },
+      {
         "id": "expo",
         "label": "Expo"
       },
@@ -49,6 +53,18 @@
       {
         "id": "dotnet-maui",
         "label": ".NET MAUI"
+      },
+      {
+        "id": "electron",
+        "label": "Electron"
+      },
+      {
+        "id": "phoenix",
+        "label": "Phoenix"
+      },
+      {
+        "id": "cloudflare-workers",
+        "label": "Cloudflare Workers"
       },
       {
         "id": "nodejs",
@@ -91,6 +107,46 @@
       {
         "id": "cloud-devices",
         "label": "Cloud devices"
+      },
+      {
+        "id": "e-commerce",
+        "label": "E-commerce"
+      },
+      {
+        "id": "realtime",
+        "label": "Real-time"
+      },
+      {
+        "id": "api-testing",
+        "label": "API testing"
+      },
+      {
+        "id": "mcp",
+        "label": "MCP"
+      },
+      {
+        "id": "ota-updates",
+        "label": "OTA updates"
+      },
+      {
+        "id": "module-federation",
+        "label": "Module Federation"
+      },
+      {
+        "id": "physical-devices",
+        "label": "Physical devices"
+      },
+      {
+        "id": "preview-deployments",
+        "label": "Preview deployments"
+      },
+      {
+        "id": "replay-cache",
+        "label": "Replay cache"
+      },
+      {
+        "id": "reporting",
+        "label": "Reporting"
       }
     ],
     "platform": [
@@ -105,6 +161,10 @@
       {
         "id": "android",
         "label": "Android"
+      },
+      {
+        "id": "desktop",
+        "label": "Desktop"
       }
     ]
   },
@@ -642,6 +702,670 @@
         "platform": [
           "ios",
           "android"
+        ]
+      }
+    },
+    {
+      "slug": "pipedash",
+      "title": "Testing Pipedash's App Store screenshot editor with e2e",
+      "shortTitle": "Pipedash",
+      "description": "The Next.js editor that builds Pipedash's iPhone and iPad App Store screenshots, tested in Google Chrome.",
+      "source": "community",
+      "repository": "https://github.com/hcavarsan/pipedash/tree/476371c441fc098f1b800d5317a5cffe3aa55ffd/ios/app-store-screenshots",
+      "author": {
+        "name": "Henrique Cavarsan",
+        "github": "hcavarsan"
+      },
+      "license": "GPL-3.0",
+      "licenseUrl": "https://github.com/hcavarsan/pipedash/blob/476371c441fc098f1b800d5317a5cffe3aa55ffd/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "wraps",
+      "title": "Testing the Wraps dashboard with e2e",
+      "shortTitle": "Wraps",
+      "description": "Sign-up, invitations, contacts, API keys, and plan gating in the Wraps Next.js dashboard, with agent steps on AI Gateway.",
+      "source": "community",
+      "repository": "https://github.com/wraps-team/wraps/tree/7642269838ae3d5dfec641c4338e072305c2f8f7/apps/e2e",
+      "readme": false,
+      "author": {
+        "name": "Wraps",
+        "github": "wraps-team"
+      },
+      "license": "AGPL-3.0",
+      "licenseUrl": "https://github.com/wraps-team/wraps/blob/7642269838ae3d5dfec641c4338e072305c2f8f7/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "agenticx",
+      "title": "Testing AgenticX's admin console with e2e",
+      "shortTitle": "AgenticX",
+      "description": "Webhook settings in AgenticX's Next.js admin console, with a Chinese UI, driven by agent steps on any OpenAI-compatible model and replayed from the cache.",
+      "source": "community",
+      "repository": "https://github.com/DemonDamon/AgenticX/tree/f3e592161a41d18b4f3fcd910a2e85d7dcfa102d/enterprise/e2e",
+      "author": {
+        "name": "Damon Li",
+        "github": "DemonDamon"
+      },
+      "license": "Apache-2.0",
+      "licenseUrl": "https://github.com/DemonDamon/AgenticX/blob/f3e592161a41d18b4f3fcd910a2e85d7dcfa102d/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "repack",
+      "title": "Testing Module Federation in Re.Pack with e2e",
+      "shortTitle": "Re.Pack",
+      "description": "A React Native host app that loads mini apps through Module Federation 2 with Re.Pack, smoke-tested on iOS and Android.",
+      "source": "community",
+      "repository": "https://github.com/callstack/repack/tree/171e3ec6e8011db0a756d19e1d806d512982c93c/apps/tester-federation-v2",
+      "readme": false,
+      "author": {
+        "name": "Callstack",
+        "github": "callstack"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/callstack/repack/blob/171e3ec6e8011db0a756d19e1d806d512982c93c/LICENSE",
+      "tags": {
+        "framework": [
+          "react-native"
+        ],
+        "useCase": [
+          "module-federation"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "maple",
+      "title": "Testing Maple's web app on PR previews with e2e",
+      "shortTitle": "Maple",
+      "description": "Alert rules in Maple's React app, tested with locators against each pull request's preview deployment, signed in with a single-use Clerk ticket.",
+      "source": "community",
+      "repository": "https://github.com/MapleTechLabs/maple/tree/f197a70082594ffccd31c02468a4bf9fcd9c7b81/apps/web/e2e",
+      "author": {
+        "name": "Maple",
+        "github": "MapleTechLabs"
+      },
+      "license": "FSL-1.1-ALv2",
+      "licenseUrl": "https://github.com/MapleTechLabs/maple/blob/f197a70082594ffccd31c02468a4bf9fcd9c7b81/LICENSE",
+      "tags": {
+        "framework": [
+          "vite",
+          "react"
+        ],
+        "useCase": [
+          "preview-deployments",
+          "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "bikecontrol",
+      "title": "Testing BikeControl's store screenshot editor with e2e",
+      "shortTitle": "BikeControl",
+      "description": "The Next.js editor that frames BikeControl's App Store, Google Play, and Microsoft Store screenshots, tested in Google Chrome.",
+      "source": "community",
+      "repository": "https://github.com/OpenBikeControl/bikecontrol/tree/e126b26f1f2fe3230e7c02a09f90936a6acc873d/store_screenshots",
+      "author": {
+        "name": "OpenBikeControl",
+        "github": "OpenBikeControl"
+      },
+      "license": "Non-Commercial",
+      "licenseUrl": "https://github.com/OpenBikeControl/bikecontrol/blob/e126b26f1f2fe3230e7c02a09f90936a6acc873d/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "appduct",
+      "title": "Calling an app's tools from tests with Appduct and e2e",
+      "shortTitle": "Appduct",
+      "description": "The appduct fixture calls an app's own tools over MCP from tests and from agent steps, on web, iOS, and Android.",
+      "source": "community",
+      "repository": "https://github.com/callstackincubator/appduct/tree/be5e37afb5457bac106ade3de71bbbc2309db224/packages/e2e",
+      "author": {
+        "name": "Callstack Incubator",
+        "github": "callstackincubator"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/callstackincubator/appduct/blob/be5e37afb5457bac106ade3de71bbbc2309db224/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "mcp"
+        ],
+        "platform": [
+          "web",
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "notte",
+      "title": "Testing in Notte cloud browsers with e2e",
+      "shortTitle": "Notte",
+      "description": "Each test attempt runs in its own Notte cloud browser, through a browser provider for e2e's web engine.",
+      "source": "community",
+      "repository": "https://github.com/nottelabs/notte/tree/704dcf9d4ce534955937cde8e557b302336394d3/examples/e2e",
+      "author": {
+        "name": "Notte",
+        "github": "nottelabs"
+      },
+      "license": "SSPL-1.0",
+      "licenseUrl": "https://github.com/nottelabs/notte/blob/704dcf9d4ce534955937cde8e557b302336394d3/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "cloud-browsers"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "testomatio",
+      "title": "Reporting e2e results to Testomat.io",
+      "shortTitle": "Testomat.io",
+      "description": "A small to-do app tested in Chromium, with every result sent to Testomat.io by its e2e reporter.",
+      "source": "community",
+      "repository": "https://github.com/testomatio/reporter/tree/a7c071014c7e8188e7b0ce2bbcd48f85db627d00/example/e2e",
+      "readme": false,
+      "author": {
+        "name": "Testomat.io",
+        "github": "testomatio"
+      },
+      "license": "MIT",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "reporting"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "mobai",
+      "title": "Testing on physical devices with MobAI and e2e",
+      "shortTitle": "MobAI",
+      "description": "A MobAI device engine for e2e: tests on physical iPhones and Android phones, simulators, emulators, and device farms, with results in MobAI's dashboard.",
+      "source": "community",
+      "repository": "https://github.com/MobAI-App/mobai-e2e/tree/c906837b3e332428417c97a070582623dfdb6f2a",
+      "author": {
+        "name": "MobAI",
+        "github": "MobAI-App"
+      },
+      "license": "Apache-2.0",
+      "licenseUrl": "https://github.com/MobAI-App/mobai-e2e/blob/c906837b3e332428417c97a070582623dfdb6f2a/LICENSE",
+      "tags": {
+        "framework": [
+          "nodejs"
+        ],
+        "useCase": [
+          "physical-devices",
+          "cloud-devices",
+          "reporting"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "firmowid",
+      "title": "Testing Firmowid's invoicing with e2e",
+      "shortTitle": "Firmowid",
+      "description": "An invoice round trip in Firmowid, a Phoenix LiveView app with a Polish UI, driven by agent steps through OpenRouter.",
+      "source": "community",
+      "repository": "https://github.com/Alergeek-Ventures/firmowid/tree/c329a8e063e7bd8f96ec978c395fa0e40db5a376/e2e",
+      "readme": false,
+      "author": {
+        "name": "Alergeek Ventures",
+        "github": "Alergeek-Ventures"
+      },
+      "license": "AGPL-3.0",
+      "licenseUrl": "https://github.com/Alergeek-Ventures/firmowid/blob/c329a8e063e7bd8f96ec978c395fa0e40db5a376/LICENSE",
+      "tags": {
+        "framework": [
+          "phoenix"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "clerk-ios",
+      "title": "Testing Clerk's iOS SDK with e2e",
+      "shortTitle": "Clerk iOS",
+      "description": "Sign-in, sign-up, MFA, and organization flows of Clerk's iOS SDK in a SwiftUI host app, on an iOS simulator.",
+      "source": "community",
+      "repository": "https://github.com/clerk/clerk-ios/tree/bcf2c0e2f2fb59611005469a57f46768874f9ed9/e2e-tests",
+      "author": {
+        "name": "Clerk",
+        "github": "clerk"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/clerk/clerk-ios/blob/bcf2c0e2f2fb59611005469a57f46768874f9ed9/LICENSE",
+      "tags": {
+        "framework": [
+          "swiftui"
+        ],
+        "useCase": [
+          "authentication"
+        ],
+        "platform": [
+          "ios"
+        ]
+      }
+    },
+    {
+      "slug": "clerk-android",
+      "title": "Testing Clerk's Android SDK with e2e",
+      "shortTitle": "Clerk Android",
+      "description": "Sign-in, sign-up, MFA, and organization flows of Clerk's Android SDK in a Jetpack Compose host app, on an Android emulator.",
+      "source": "community",
+      "repository": "https://github.com/clerk/clerk-android/tree/50cdece33d8459f73977ffa7c6e18e31429f329a/e2e-tests",
+      "author": {
+        "name": "Clerk",
+        "github": "clerk"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/clerk/clerk-android/blob/50cdece33d8459f73977ffa7c6e18e31429f329a/LICENSE",
+      "tags": {
+        "framework": [
+          "jetpack-compose"
+        ],
+        "useCase": [
+          "authentication"
+        ],
+        "platform": [
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "teak",
+      "title": "Testing Teak's web app, API, CLI, and MCP server with e2e",
+      "shortTitle": "Teak",
+      "description": "Journeys across Teak's Next.js web app, REST API, CLI, and MCP server, run against a local stack that needs no secrets.",
+      "source": "community",
+      "repository": "https://github.com/praveenjuge/teak/tree/3c866919c4a28b7a1185f57bd244b32ce6ca7605/packages/tests",
+      "author": {
+        "name": "Praveen Juge",
+        "github": "praveenjuge"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/praveenjuge/teak/blob/3c866919c4a28b7a1185f57bd244b32ce6ca7605/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "authentication",
+          "api-testing",
+          "mcp"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "cezar",
+      "title": "Testing the Cezar cockpit with e2e",
+      "shortTitle": "Cezar",
+      "description": "Cezar's React cockpit, smoke-tested by e2e as a verification step that an agent's task cannot finish without.",
+      "source": "community",
+      "repository": "https://github.com/open-mercato/cezar/tree/2c5cf2a5793c7abd72decb062dfa35ca8f6d2d18/tests",
+      "readme": "https://github.com/open-mercato/cezar/blob/2c5cf2a5793c7abd72decb062dfa35ca8f6d2d18/docs/e2e-verification.md",
+      "author": {
+        "name": "Open Mercato",
+        "github": "open-mercato"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/open-mercato/cezar/blob/2c5cf2a5793c7abd72decb062dfa35ca8f6d2d18/LICENSE",
+      "tags": {
+        "framework": [
+          "vite",
+          "react"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "hot-updater",
+      "title": "Testing OTA updates in hot-updater with e2e",
+      "shortTitle": "hot-updater",
+      "description": "Deterministic OTA update and recovery scenarios for a React Native app on iOS and Android, with no model.",
+      "source": "community",
+      "repository": "https://github.com/gronxb/hot-updater/tree/e9f1c1f791f7654723b74f35108ca120e402ebaf/e2e/mobile",
+      "author": {
+        "name": "Sungyu Kang",
+        "github": "gronxb"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/gronxb/hot-updater/blob/e9f1c1f791f7654723b74f35108ca120e402ebaf/LICENSE",
+      "tags": {
+        "framework": [
+          "react-native"
+        ],
+        "useCase": [
+          "ota-updates"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "actor-kit",
+      "title": "Testing Actor Kit's real-time Studio with e2e",
+      "shortTitle": "Actor Kit",
+      "description": "Multi-client and multi-tab scenarios across Durable Object restarts and hibernation, in a TanStack Start app on Cloudflare Workers.",
+      "source": "community",
+      "repository": "https://github.com/actor-kit/actor-kit/tree/91137ae9fc7232ad5ac3d9c4d3e830f78135269e/tests/e2e-agent",
+      "readme": false,
+      "author": {
+        "name": "Actor Kit",
+        "github": "actor-kit"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/actor-kit/actor-kit/blob/91137ae9fc7232ad5ac3d9c4d3e830f78135269e/LICENSE",
+      "tags": {
+        "framework": [
+          "tanstack-start",
+          "react",
+          "cloudflare-workers"
+        ],
+        "useCase": [
+          "realtime"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "quivr",
+      "title": "Testing the Quivr search demo with e2e",
+      "shortTitle": "Quivr",
+      "description": "Sign-in and feed journeys in Quivr's React search demo, driven by agent steps.",
+      "source": "community",
+      "repository": "https://github.com/The-Vibe-Company/quivr/tree/ec80407fe05828729efb00665d1e026a0a5b1cb2/quivr-search/journeys",
+      "readme": false,
+      "author": {
+        "name": "The Vibe Company",
+        "github": "The-Vibe-Company"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/The-Vibe-Company/quivr/blob/ec80407fe05828729efb00665d1e026a0a5b1cb2/LICENSE",
+      "tags": {
+        "framework": [
+          "vite",
+          "react"
+        ],
+        "useCase": [
+          "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "nextjs-ecommerce-template",
+      "title": "Testing a Next.js ecommerce store with e2e",
+      "shortTitle": "Ecommerce template",
+      "description": "Catalog, search, bag, wishlist, account, and admin tests for a Next.js store, with agent steps run through the Claude CLI.",
+      "source": "community",
+      "repository": "https://github.com/MarcosCamara01/ecommerce-template/tree/a99e3c07c7a5c6d920ddb8203712e619fe19957d",
+      "author": {
+        "name": "Marcos Penelas Cámara",
+        "github": "MarcosCamara01"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/MarcosCamara01/ecommerce-template/blob/a99e3c07c7a5c6d920ddb8203712e619fe19957d/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "e-commerce",
+          "authentication"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "radon",
+      "title": "Testing Radon's public site with e2e",
+      "shortTitle": "Radon",
+      "description": "Every public route, navigation, theme, and copy action on Radon's Next.js site, at desktop and mobile sizes, with locators only.",
+      "source": "community",
+      "repository": "https://github.com/joemccann/radon/tree/e3b7788145d5c9e19fe71d5d926b5638b1a7f4a9/site/tester-army",
+      "author": {
+        "name": "Joe McCann",
+        "github": "joemccann"
+      },
+      "license": "MIT OR Apache-2.0",
+      "licenseUrl": "https://github.com/joemccann/radon/blob/e3b7788145d5c9e19fe71d5d926b5638b1a7f4a9/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "react-native-pager-view",
+      "title": "Testing react-native-pager-view with e2e",
+      "shortTitle": "react-native-pager-view",
+      "description": "Swipe, nesting, and issue regression tests for the pager's example app on iOS simulators and Android emulators, spread across a device pool.",
+      "source": "community",
+      "repository": "https://github.com/callstack/react-native-pager-view/tree/d7f2b522be7960170c92fdd0ff1652b4cea28738/e2e",
+      "author": {
+        "name": "Callstack",
+        "github": "callstack"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/callstack/react-native-pager-view/blob/d7f2b522be7960170c92fdd0ff1652b4cea28738/LICENSE",
+      "tags": {
+        "framework": [
+          "react-native"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "xum",
+      "title": "Testing Xum with agent-driven user stories and e2e",
+      "shortTitle": "Xum",
+      "description": "User stories an agent drives through Xum's React UI, in the browser and in its Electron app, with exact checks on the outcome.",
+      "source": "community",
+      "repository": "https://github.com/coder/xum/tree/ad5bc01a0cb23e7f457fef0d9355b13670d5c034/tests/stories",
+      "readme": false,
+      "author": {
+        "name": "Coder",
+        "github": "coder"
+      },
+      "license": "AGPL-3.0",
+      "licenseUrl": "https://github.com/coder/xum/blob/ad5bc01a0cb23e7f457fef0d9355b13670d5c034/LICENSE",
+      "tags": {
+        "framework": [
+          "electron",
+          "react",
+          "vite"
+        ],
+        "platform": [
+          "web",
+          "desktop"
+        ]
+      }
+    },
+    {
+      "slug": "backend-ai-webui",
+      "title": "Testing the Backend.AI WebUI with e2e",
+      "shortTitle": "Backend.AI WebUI",
+      "description": "Sessions, environments, admin settings, and plugins in the Backend.AI WebUI, with agent steps on an OpenAI-compatible model.",
+      "source": "community",
+      "repository": "https://github.com/lablup/backend.ai-webui/tree/8ec417a9c63c7be3e345b1ba50ffb6b8f040ee99/e2e-agent",
+      "readme": false,
+      "author": {
+        "name": "Lablup",
+        "github": "lablup"
+      },
+      "license": "LGPL-3.0",
+      "licenseUrl": "https://github.com/lablup/backend.ai-webui/blob/8ec417a9c63c7be3e345b1ba50ffb6b8f040ee99/LICENSE",
+      "tags": {
+        "framework": [
+          "react"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "builders-hub",
+      "title": "Testing Avalanche Builders Hub with e2e",
+      "shortTitle": "Builders Hub",
+      "description": "Explorer, Academy, docs, and Console tests at desktop and phone sizes, API tests for the MCP endpoint, and in-app browser tests.",
+      "source": "community",
+      "repository": "https://github.com/ava-labs/builders-hub/tree/e422245353468638c94cd10ba4198124e2f7366a/tests/e2e",
+      "author": {
+        "name": "Ava Labs",
+        "github": "ava-labs"
+      },
+      "license": "BSD-3-Clause",
+      "licenseUrl": "https://github.com/ava-labs/builders-hub/blob/e422245353468638c94cd10ba4198124e2f7366a/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "api-testing",
+          "mcp"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "webiny",
+      "title": "Testing the Webiny admin with e2e",
+      "shortTitle": "Webiny",
+      "description": "Admin tests that mix locators, agent steps, and REST and GraphQL calls, with agent steps replayed in CI from a committed cache.",
+      "source": "community",
+      "repository": "https://github.com/webiny/webiny-js/tree/296a29edad93362cdf241d093096927d5f4eda76/e2e",
+      "author": {
+        "name": "Webiny",
+        "github": "webiny"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/webiny/webiny-js/blob/296a29edad93362cdf241d093096927d5f4eda76/LICENSE",
+      "tags": {
+        "framework": [
+          "react"
+        ],
+        "useCase": [
+          "api-testing",
+          "replay-cache"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "solstatus",
+      "title": "Testing SolStatus with e2e",
+      "shortTitle": "SolStatus",
+      "description": "Dashboard, monitor, API, CLI, and library tests against SolStatus's real development stack, a TanStack Start app on Cloudflare Workers.",
+      "source": "community",
+      "repository": "https://github.com/jonbeckman/solstatus/tree/1cd47901393001f9da8b3be783bb5e824a6939a5/tests",
+      "readme": "https://github.com/jonbeckman/solstatus/blob/1cd47901393001f9da8b3be783bb5e824a6939a5/docs/e2e.md",
+      "author": {
+        "name": "Jonathan Beckman",
+        "github": "jonbeckman"
+      },
+      "license": "AGPL-3.0",
+      "licenseUrl": "https://github.com/jonbeckman/solstatus/blob/1cd47901393001f9da8b3be783bb5e824a6939a5/LICENSE",
+      "tags": {
+        "framework": [
+          "tanstack-start",
+          "react",
+          "cloudflare-workers"
+        ],
+        "useCase": [
+          "api-testing"
+        ],
+        "platform": [
+          "web"
         ]
       }
     }

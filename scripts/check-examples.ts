@@ -5,7 +5,8 @@
  *
  * Usage: `node scripts/check-examples.ts [--online]`. `--online` also fetches
  * the README of every example hosted outside this repository, official,
- * partner, or community, which the site renders as the example's page; the `examples-registry` workflow runs it on pull requests that change
+ * partner, or community, which the site renders as the example's page (the
+ * folder, for an example with `readme: false`); the `examples-registry` workflow runs it on pull requests that change
  * the registry. Exits 1 listing every problem.
  */
 
@@ -24,10 +25,13 @@ async function readmeProblems(registry: Registry): Promise<string[]> {
   const remote = registry.examples.filter((example) => !isLocalFolder(example.repository));
   const results = await Promise.all(
     remote.map(async (example) => {
-      const url = readmeUrl(example.repository);
+      // Without a README the page links to the folder, so that is what must exist.
+      const url = readmeUrl(example) ?? example.repository;
       try {
         const response = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(15_000) });
-        return response.ok ? undefined : `examples "${example.slug}": HEAD ${url} answered ${response.status}; is the repository public with a README.md in that folder?`;
+        return response.ok
+          ? undefined
+          : `examples "${example.slug}": HEAD ${url} answered ${response.status}; ${example.readme === false ? 'is the repository public with that folder?' : example.readme ? 'is the repository public with that file?' : 'is the repository public with a README.md in that folder? Without one, set readme.'}`;
       } catch (error) {
         return `examples "${example.slug}": HEAD ${url} failed: ${error instanceof Error ? error.message : String(error)}`;
       }
