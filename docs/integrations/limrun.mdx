@@ -43,8 +43,8 @@ APK.
 ## Configure a target
 
 Set `device: limrun()` on the mobile engine and point `appPath` at your build.
-This config runs the SwiftUI app from the
-[app-flow example](https://github.com/tester-army/e2e/tree/main/examples/with-limrun).
+This config runs the SwiftUI app from Limrun's
+[app-flow example](https://github.com/limrun-inc/testerarmy-e2e-limrun).
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -90,10 +90,10 @@ test('corrects an empty submission', async ({ app, screen }) => {
 });
 ```
 
-The [runnable example](https://github.com/tester-army/e2e/tree/main/examples/with-limrun)
-uses the same five tests on SwiftUI and Compose apps.
+Limrun maintains a [runnable example](https://github.com/limrun-inc/testerarmy-e2e-limrun)
+that uses the same five tests on SwiftUI and Compose apps.
 It covers the initial form, validation recovery, trimmed input, repeated submissions, and app restart.
-Its README includes build commands and a config with both targets. No AI key is needed.
+Limrun builds both apps remotely, and the config has both targets. No AI key is needed.
 
 ## Record a run
 

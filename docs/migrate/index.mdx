@@ -1,0 +1,74 @@
+---
+title: Migrating to e2e
+sidebarTitle: Overview
+description: Move a Playwright, Cypress, Selenium, Detox, or Maestro suite to e2e one test at a time.
+icon: "right-left"
+---
+
+A migration guide maps one test runner's config, API, and commands to e2e.
+It also marks what e2e doesn't have yet, with a workaround where there is
+one. A test with no workaround stays in the old runner. Keep the old
+suite installed while you move one test at a time, so both suites stay green.
+
+## Pick your runner
+
+<CardGroup cols={2}>
+  <Card title="Playwright" icon="/images/integrations/playwright.svg" href="/migrate/playwright">
+    Web. Every config key, `page` call, and CLI flag, mapped to e2e.
+  </Card>
+  <Card title="Cypress" icon="/images/integrations/cypress.svg" href="/migrate/cypress">
+    Web. Command chains become async tests. Your `data-cy` attributes stay.
+  </Card>
+  <Card title="Selenium" icon="/images/integrations/selenium.svg" href="/migrate/selenium">
+    Web. WebDriver calls and page objects, rewritten in TypeScript.
+  </Card>
+  <Card title="Detox" icon="/images/integrations/detox.png" href="/migrate/detox">
+    Mobile. Your app build and testIDs, with no Detox framework.
+  </Card>
+  <Card title="Maestro" icon="/images/integrations/maestro.svg" href="/migrate/maestro">
+    Mobile. YAML flows become TypeScript tests.
+  </Card>
+</CardGroup>
+
+## Move one test at a time
+
+<Note>Install e2e with the [quickstart](/quickstart) first. Only agent steps need a model.</Note>
+
+e2e tests run in Node, in TypeScript by default or in
+[JavaScript](/reference/config#javascript). For a Java, Python, or native suite, install e2e
+in an `e2e/` folder with its own `package.json`.
+
+Each guide follows the same steps:
+
+1. Port the config. The old runner's base URL, app command, and devices
+   become a target in `e2e.config.ts`.
+2. Rewrite one test as a `.e2e.ts` file under `tests/`. Keep the file
+   patterns of the two runners apart, so neither runs the other's tests.
+3. Run the new test with `npx e2e run <file>` until it passes.
+4. Delete the old test when you trust the new one.
+
+## Let an agent migrate the suite
+
+To move one test with a coding agent, copy the agent prompt at the top of
+your runner's guide. For a migration over many sessions, use the
+[`migrate-to-e2e` skill](/coding-agents#migrate-an-existing-suite). It
+records progress in a `MIGRATION.md` file and keeps the old suite running.
+
+## Migrate from a runner with no guide
+
+WebdriverIO and Appium have no guide. Map WebDriver calls with the
+[Selenium](/migrate/selenium) guide. Map Appium device commands with the
+[Detox](/migrate/detox) and [Maestro](/migrate/maestro) guides, on the
+[mobile engine](/mobile). These mappings are partial: no guide covers the
+WebdriverIO or Appium APIs themselves.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Core concepts" icon="pen-to-square" href="/core-concepts">
+    Goals, assertions, and locators instead of scripted selectors.
+  </Card>
+  <Card title="Coding agents" icon="robot" href="/coding-agents">
+    The e2e skill, the MCP server, and how an agent writes a test.
+  </Card>
+</CardGroup>

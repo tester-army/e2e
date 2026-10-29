@@ -10,7 +10,8 @@ e2e? Add it with a pull request.
 
 1. Put your example in a public GitHub repository, or a folder in one, with
    a `README.md` that says what it tests and how to install and run it. The
-   README becomes the example's page on the site.
+   README becomes the example's page on the site. If your docs live in
+   another Markdown file, or you have none, see `readme` below.
 2. Add an entry to `examples` in [`examples.json`](examples.json):
 
    ```json
@@ -20,7 +21,7 @@ e2e? Add it with a pull request.
      "shortTitle": "Nuxt + Auth.js",
      "description": "Sign-in and protected pages in a Nuxt app, tested with locators and the agent.",
      "source": "community",
-     "repository": "https://github.com/your-name/nuxt-auth-e2e",
+     "repository": "https://github.com/your-name/nuxt-auth-e2e/tree/<commit sha>",
      "author": { "name": "Your Name", "github": "your-name" },
      "license": "MIT",
      "tags": { "framework": ["nuxt", "vue"], "useCase": ["authentication"], "platform": ["web"] }
@@ -37,8 +38,16 @@ Your editor can autocomplete the fields from
 ## The fields
 
 - `slug` is the page's address, `e2e.tester.army/examples/<slug>`.
-- `repository` is `https://github.com/<owner>/<repo>`, or
-  `https://github.com/<owner>/<repo>/tree/<ref>/<path>` for a folder.
+- `repository` is `https://github.com/<owner>/<repo>/tree/<ref>`, or
+  `https://github.com/<owner>/<repo>/tree/<ref>/<path>` for a folder. The
+  `<ref>` of a community example is the full SHA of the commit the pull
+  request was reviewed at, so the page cannot change under it; open another
+  pull request to move it forward.
+- `readme` is only for a folder without a `README.md`, and left out
+  otherwise. Set it to a Markdown file in the same repository at the same
+  commit, `https://github.com/<owner>/<repo>/blob/<commit sha>/<path>.md`,
+  to render that file instead, or to `false` for no README: the page then shows the entry's
+  details and links to the code in `repository`.
 - `source` is always `community`. `official` is reserved for examples the
   e2e team maintains under the tester-army organization, and `partner` for
   examples a partner company verifies and maintains in its own repository,
@@ -66,6 +75,8 @@ Your editor can autocomplete the fields from
 
 - It uses e2e and the tests pass.
 - Its README explains how to run it, so someone can start from the page.
+  An example without one (`readme: false`) can still be listed; its page
+  asks for a README and links the code.
 - It shows something the listed examples do not: a framework, a service, or
   a use case.
 - It has a license.
@@ -79,7 +90,7 @@ The folders here are official examples, maintained by the e2e team:
   without them.
 - Run the suite locally after changes, and update the README's "Last
   checked" versions.
-- Every example but with-limrun runs nightly on GitHub against the packages
+- Every example runs nightly on GitHub against the packages
   built from main (`.github/workflows/examples.yml`); a new example needs an
   entry there. Pull requests never run them. Oxlint and fallow exclude them.
 - Do not commit lockfiles. Keep the demo and tests consistent across

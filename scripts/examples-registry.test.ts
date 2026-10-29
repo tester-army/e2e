@@ -36,7 +36,7 @@ function registry(examples: Record<string, unknown>[] = []): Registry {
 const community = {
   slug: 'vite-auth',
   source: 'community',
-  repository: 'https://github.com/someone/vite-auth',
+  repository: 'https://github.com/someone/vite-auth/tree/0123456789abcdef0123456789abcdef01234567',
   author: { name: 'Someone', github: 'someone' },
   tags: { framework: ['vite'], useCase: ['auth'], platform: ['web'] },
 };
@@ -171,12 +171,84 @@ describe('registryProblems on official folders and tags', () => {
   });
 });
 
+describe('registryProblems on community pins and readme', () => {
+  const pinned = 'https://github.com/someone/vite-auth/tree/0123456789abcdef0123456789abcdef01234567/tests';
+
+  it('rejects a community example on a branch', () => {
+    const problems = registryProblems(registry([{ ...community, repository: 'https://github.com/someone/vite-auth/tree/main/tests' }]), ENV);
+    assert.equal(problems.length, 1, problems.join('\n'));
+    assert.match(problems[0]!, /"vite-auth": a community example pins its repository to a commit/);
+  });
+
+  it('accepts a readme file in the same repository, or none', () => {
+    const problems = registryProblems(
+      registry([
+        { ...community, repository: pinned, readme: 'https://github.com/someone/vite-auth/blob/0123456789abcdef0123456789abcdef01234567/docs/e2e.md' },
+        { ...community, slug: 'no-readme', repository: pinned, readme: false },
+      ]),
+      ENV,
+    );
+    assert.deepEqual(problems, []);
+  });
+
+  it("rejects a readme in another repository, and one that is the folder's own README", () => {
+    const problems = registryProblems(
+      registry([
+        { ...community, repository: pinned, readme: 'https://github.com/someone-else/docs/blob/main/e2e.md' },
+        { ...community, slug: 'own', repository: pinned, readme: 'https://github.com/someone/vite-auth/blob/0123456789abcdef0123456789abcdef01234567/tests/README.md' },
+      ]),
+      ENV,
+    );
+    assert.equal(problems.length, 2, problems.join('\n'));
+    assert.match(problems[0]!, /"vite-auth": readme must be a file in the example's repository, https:\/\/github\.com\/someone\/vite-auth\//);
+    assert.match(problems[1]!, /"own": readme names the folder's own README\.md; leave it out/);
+  });
+});
+
+describe('registryProblems on a community readme', () => {
+  it("rejects a readme on another ref than the repository's commit", () => {
+    const problems = registryProblems(
+      registry([
+        {
+          ...community,
+          repository: 'https://github.com/someone/vite-auth/tree/0123456789abcdef0123456789abcdef01234567/tests',
+          readme: 'https://github.com/someone/vite-auth/blob/main/docs/e2e.md',
+        },
+      ]),
+      ENV,
+    );
+    assert.equal(problems.length, 1, problems.join('\n'));
+    assert.match(problems[0]!, /"vite-auth": a community example's readme is pinned to the same commit as its repository/);
+  });
+});
+
+describe('schemaProblems on readme', () => {
+  it('accepts a Markdown file on GitHub or false, and nothing else', () => {
+    const json = JSON.parse(readFileSync(REGISTRY_PATH, 'utf8')) as Registry;
+    const [first] = json.examples;
+    const withReadme = (readme: unknown) => schemaProblems({ ...json, examples: [{ ...first, readme }] });
+    assert.deepEqual(withReadme('https://github.com/a/b/blob/main/docs/e2e.md'), []);
+    assert.deepEqual(withReadme(false), []);
+    for (const readme of [true, 'https://github.com/a/b/tree/main/docs', 'https://example.com/e2e.md']) {
+      assert.ok(withReadme(readme).some((problem) => problem.startsWith('/examples/0/readme')), String(readme));
+    }
+  });
+});
+
 describe('readmeUrl', () => {
   it('reads the default branch of a bare repository and the folder of a tree URL', () => {
-    assert.equal(readmeUrl('https://github.com/a/b'), 'https://raw.githubusercontent.com/a/b/HEAD/README.md');
+    assert.equal(readmeUrl({ repository: 'https://github.com/a/b' }), 'https://raw.githubusercontent.com/a/b/HEAD/README.md');
     assert.equal(
-      readmeUrl('https://github.com/a/b/tree/main/examples/x'),
+      readmeUrl({ repository: 'https://github.com/a/b/tree/main/examples/x' }),
       'https://raw.githubusercontent.com/a/b/main/examples/x/README.md',
     );
+  });
+
+  it('reads the readme file when one is named, and nothing for readme: false', () => {
+    assert.equal(
+      readmeUrl({ repository: 'https://github.com/a/b/tree/abc/tests', readme: 'https://github.com/a/b/blob/abc/docs/e2e.md' }),
+      'https://raw.githubusercontent.com/a/b/abc/docs/e2e.md',
+    );
+    assert.equal(readmeUrl({ repository: 'https://github.com/a/b/tree/abc/tests', readme: false }), undefined);
   });
 });

@@ -370,7 +370,8 @@ export default {
   matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
   iOS keyboard actions such as `locator.press('Enter')` return
   `UNSUPPORTED_CAPABILITY`; tap an app button when available.
-  See `examples/with-limrun` for the same form and restart tests on both platforms.
+  Limrun's `limrun-inc/testerarmy-e2e-limrun` repository runs the same form
+  and restart tests on both platforms.
 - `testmu({ device, osVersion, app })` from `@e2e-dev/testmu` leases TestMu
   AI (formerly LambdaTest) emulators, simulators, or real devices
   (`deviceType: 'real'`); `device` and `osVersion` match its catalog
