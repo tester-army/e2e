@@ -387,10 +387,15 @@ describe('diffSince', () => {
     // cubic's case: a URL scheme is case-insensitive.
     expect(verdict("export default { hooks: { h: async () => import('DATA:text/javascript,export default 1') } };\n")).toEqual(untraceable("imports a data: URL, code the walk can't follow"));
     expect(verdict("import { run } from 'node:test';\nexport default { hooks: { h: async () => run({ files: ['./check.cjs'], isolation: 'none' }) } };\n")).toEqual(loader('node:test'));
+    // The review's cases: vm's binding, a native addon, and a REPL's eval.
+    expect(verdict("export default { hooks: { h: async () => process.binding('contextify') } };\n")).toEqual(untraceable("reads process.binding, which reaches Node's internal loaders"));
+    expect(verdict("export default { hooks: { h: async () => process.dlopen(module, './addon.node') } };\n")).toEqual(untraceable('reads process.dlopen, which loads a native addon'));
+    expect(verdict("export default { hooks: { h: async () => (await import('node:repl')).start() } };\n")).toEqual(loader('node:repl'));
+    expect(verdict("export default { hooks: { h: async () => (await import('repl')).start() } };\n")).toEqual(loader('repl'));
     // A comment, a string, a key, a class constructor, or another builtin is not a loader.
     expect(
       verdict(
-        "import { readFileSync } from 'node:fs';\n// we import (lazily) nothing here\nclass Hook { constructor() { this.ok = true; } }\nexport default { note: \"import (not really)\", require: true, eval: 1, getBuiltinModule: 1, constructor: 1, mainModule: 1, [`eval`]: 1, why: 'getBuiltinModule', also: 'node:vm', Hook, readFileSync };\n",
+        "import { readFileSync } from 'node:fs';\n// we import (lazily) nothing here\nclass Hook { constructor() { this.ok = true; } }\nexport default { note: \"import (not really)\", require: true, eval: 1, getBuiltinModule: 1, constructor: 1, mainModule: 1, binding: 1, dlopen: 1, [`eval`]: 1, why: 'getBuiltinModule', also: 'node:vm', Hook, readFileSync };\n",
       ),
     ).toEqual([]);
   });
@@ -487,7 +492,8 @@ describe('diffSince', () => {
       'helper.mjs': "export const helper = async () => (await import('./packages/hooks/src/lazy.mjs')).ok;\n",
       // Bundled with tsup's `noExternal` or similar: what it imports from @acme/shared and ../../../local is inlined into dist.
       'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js', devDependencies: { '@acme/shared': 'workspace:*' } }),
-      'packages/hooks/src/index.ts': "export { verdict } from '@acme/shared';\nexport { local } from '../../../local/src/index.ts';\n",
+      // The review's case: an enum Node's strip-only mode refuses, as a tsc-built package holds, doesn't hide the imports beside it.
+      'packages/hooks/src/index.ts': "export enum Mode { A, B }\nexport { verdict } from '@acme/shared';\nexport { local } from '../../../local/src/index.ts';\n",
       // A built package's sources are compiled, not run by Node, and what they can't trace doesn't block: their package counts as a whole.
       'packages/hooks/src/load.ts': 'export class Loader {\n  constructor(private readonly name: string) {}\n  load = () => import(this.name);\n}\n',
       'packages/hooks/src/lazy.mjs': 'export const ok = true;\n',
@@ -511,6 +517,11 @@ describe('diffSince', () => {
     // An undeclared module the sources import by path.
     write(dir, { 'packages/shared/src/index.ts': 'export const verdict = () => false;\n', 'local/src/index.ts': 'export const local = () => true;\n' });
     expect(changed()).toEqual(['local/src/index.ts !config-changed']);
+    // The review's case: outside every stand-in, a load the walk can't follow blocks, however the walk got there.
+    write(dir, { 'local/src/index.ts': "import { createRequire } from 'node:module';\nexport const local = () => createRequire(import.meta.url)('../check.cjs')();\n" });
+    expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'local/src/index.ts !config-changed']);
+    write(dir, { 'local/src/index.ts': "const name = '../check.mjs';\nexport const local = async () => (await import(name)).ok;\n" });
+    expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'local/src/index.ts !config-changed']);
     // A file deleted from the package: its directory counts, not only the files left in it.
     write(dir, { 'local/src/index.ts': 'export const local = () => false;\n' });
     rmSync(path.join(dir, 'packages/hooks/src/unused.ts'));

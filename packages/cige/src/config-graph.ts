@@ -10,7 +10,8 @@
  *    that no longer resolves, blocks.
  * 3. Built output git ignores isn't parsed: its workspace package stands in.
  *    The package's directory counts, so do the workspace packages it depends
- *    on (a bundler may inline them), and its sources join the walk leniently.
+ *    on (a bundler may inline them), and its sources join the walk: leniently
+ *    inside the package, strictly for what they reach outside every stand-in.
  *    Untracked output with no package apart from the config's blocks.
  * 4. A symlink to a graph file, or to a directory above one, counts.
  * 5. Each file's nearest package.json counts: its `imports` and `exports` decide where an alias lands.
@@ -195,7 +196,7 @@ if (input.config !== null && unverified.length === 0) {
   const configFile = inRepo(pathToFileURL(input.config).href);
   const ownPackage = configFile === undefined ? undefined : nearestManifest(configFile);
   const ownDirectory = ownPackage === undefined ? undefined : path.posix.dirname(ownPackage);
-  // A file reached only through a stand-in's sources is walked leniently; one the strict walk reaches later is walked again.
+  // A stand-in's own files are walked leniently, and again strictly if the strict walk reaches one later. What they reach outside every stand-in is walked strictly.
   const strictly = new Set<string>();
   const leniently = new Set<string>();
   const queue: Array<readonly [string, boolean]> = [...loaded]
@@ -212,7 +213,8 @@ if (input.config !== null && unverified.length === 0) {
     for (const dependency of dependencies ?? []) standIn(dependency);
   };
   for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-    const [file, strict] = next;
+    const [file, fromStrict] = next;
+    const strict = fromStrict || ![...packages].some((directory) => file.startsWith(`${directory}/`));
     if (strictly.has(file) || (!strict && leniently.has(file))) continue;
     (strict ? strictly : leniently).add(file);
     if (!listed.has(file)) {

@@ -1,24 +1,28 @@
 /**
  * The modules a source file imports, read with a parser, for the config
  * graph of `e2e-cige diff` (`config-graph.ts`). TypeScript is stripped the
- * way Node strips it to run the file, then acorn parses what's left, so
- * comments, strings, and templates are what the language says they are.
+ * way Node strips it to run the file, or, when Node can't (an `enum`, a
+ * parameter property), compiled by oxc the way a build would. acorn parses
+ * what's left, so comments, strings, and templates are what the language
+ * says they are.
  *
  * A file whose imports can't all be read from it fails closed with a
  * reason: a computed `import()` or `require()`; an import of a builtin that
  * loads code by a value (`node:module`, `node:vm`, `node:worker_threads`,
- * `node:inspector`), which closes every export of each at once; or any
- * other read of a loader: `require` other than a direct call,
- * `process.getBuiltinModule`, `process.mainModule`, `.constructor` (which
- * reaches `Function` and CommonJS's `Module`), `eval`, or `Function`,
- * whether by name, as a member (`globalThis.eval`, ``module[`require`]``),
- * or destructured. A `data:` import blocks too. A load built from strings
- * or reached by reflection (`globalThis['ev' + 'al']`) can't be seen. Node's type stripping runs this from source in tests, so
- * it holds to erasable TypeScript.
+ * `node:inspector`, `node:repl`, `node:test`), which closes every export of
+ * each at once; or any other read of a loader: `require` other than a direct
+ * call, `process.getBuiltinModule`, `process.mainModule`, `process.binding`,
+ * `process.dlopen`, `.constructor` (which reaches `Function` and CommonJS's
+ * `Module`), `eval`, or `Function`, whether by name, as a member
+ * (`globalThis.eval`, ``module[`require`]``), or destructured. A `data:` import blocks too. A load built from strings
+ * or reached by reflection (`globalThis['ev' + 'al']`) can't be seen.
+ * Node's type stripping runs this from source in tests, so it holds to
+ * erasable TypeScript.
  */
 
 import { parse, type Program } from 'acorn';
 import nodeModule from 'node:module';
+import type * as OxcTransform from 'oxc-transform';
 
 /** What a file imports: the specifiers it names, by how Node resolves them, and why that list is incomplete when it is. */
 export interface ModuleImports {
@@ -34,15 +38,36 @@ const LOADERS: Readonly<Record<string, string>> = {
   require: "uses require other than as require('<module>')",
   getBuiltinModule: "reads process.getBuiltinModule, which can reach a loader the walk can't follow",
   mainModule: "reads process.mainModule, which reaches Node's module loader",
+  binding: "reads process.binding, which reaches Node's internal loaders",
+  dlopen: 'reads process.dlopen, which loads a native addon',
   constructor: "reads .constructor, which reaches Function or Node's module loader",
   eval: 'runs code from a string (eval or Function)',
   Function: 'runs code from a string (eval or Function)',
 };
 
-/** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`, `node:test`'s in-process `run`. */
-const LOADING_BUILTINS = new Set(['module', 'node:module', 'vm', 'node:vm', 'worker_threads', 'node:worker_threads', 'inspector', 'node:inspector', 'inspector/promises', 'node:inspector/promises', 'node:test']);
+/** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`, a REPL's `eval`. */
+const LOADING_BUILTINS = new Set(['module', 'vm', 'worker_threads', 'inspector', 'inspector/promises', 'repl']);
+/** The same, for builtins Node knows only with the prefix: `node:test`'s in-process `run`. */
+const PREFIXED_LOADING_BUILTINS = new Set(['node:test']);
 
 const TYPESCRIPT = /\.[cm]?ts$/;
+
+const ownRequire = nodeModule.createRequire(import.meta.url);
+let oxc: typeof OxcTransform | undefined;
+
+/**
+ * `text` compiled to JavaScript by oxc, loaded on first use: the TypeScript
+ * Node's strip-only mode refuses is what a package built with tsc holds.
+ * Every import but a type-only one stays. Throws when oxc can't load or
+ * reports an error.
+ */
+function compiled(text: string, file: string): string {
+  oxc ??= ownRequire('oxc-transform') as typeof OxcTransform;
+  const result = oxc.transformSync(file, text, { lang: 'ts', typescript: { onlyRemoveTypeImports: true } });
+  const error = result.errors.find((item) => item.severity === 'Error');
+  if (error !== undefined) throw new Error(error.message);
+  return result.code;
+}
 
 /** An ESTree node as a plain record, so the walk reads any node's fields the same way. */
 type Fields = { readonly type: string } & Record<string, unknown>;
@@ -79,8 +104,12 @@ export function importsOf(text: string, file: string): ModuleImports {
     if (typeof nodeModule.stripTypeScriptTypes !== 'function') return { specifiers: [], requires: [], unverified: "is TypeScript, and this Node can't strip its types" };
     try {
       code = nodeModule.stripTypeScriptTypes(text, { mode: 'strip' });
-    } catch (cause) {
-      return { specifiers: [], requires: [], unverified: `has TypeScript Node can't strip: ${cause instanceof Error ? cause.message.split('\n')[0] : String(cause)}` };
+    } catch {
+      try {
+        code = compiled(text, file);
+      } catch (cause) {
+        return { specifiers: [], requires: [], unverified: `has TypeScript neither Node nor oxc can read: ${cause instanceof Error ? cause.message.split('\n')[0] : String(cause)}` };
+      }
     }
   }
   let tree: Program;
@@ -94,7 +123,7 @@ export function importsOf(text: string, file: string): ModuleImports {
   let unverified: string | undefined;
   const refuse = (reason: string): void => void (unverified ??= reason);
   const named = (list: string[], specifier: string): void => {
-    if (LOADING_BUILTINS.has(specifier)) refuse(`imports ${specifier}, which loads code by a name the walk can't follow`);
+    if (LOADING_BUILTINS.has(specifier.replace(/^node:/, '')) || PREFIXED_LOADING_BUILTINS.has(specifier)) refuse(`imports ${specifier}, which loads code by a name the walk can't follow`);
     // URL schemes ignore case, so Node runs `DATA:text/javascript,…` too.
     if (/^data:/i.test(specifier)) refuse("imports a data: URL, code the walk can't follow");
     list.push(specifier);
