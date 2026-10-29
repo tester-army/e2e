@@ -53,7 +53,7 @@ const root = realpathSync(input.root);
 const listed = new Set(input.listed);
 
 const MODULE_EXTENSIONS = ['', '.ts', '.mts', '.js', '.mjs', '/index.ts', '/index.js'];
-const SOURCE = /\.[cm]?[jt]s$/;
+const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 /** A relative specifier, `.` and `..` included. */
 const RELATIVE = /^\.{1,2}(?:\/|$)/;
 

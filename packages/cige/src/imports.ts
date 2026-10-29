@@ -19,11 +19,12 @@
  *
  * `binding` and `dlopen` are common names, so they count only on `process`
  * (also `globalThis.process`, `require('node:process')`, an import of
- * `node:process`). Where it's referenced, `process` may only have a field
- * read or destructured: handed on (an alias, an argument, an export) it
- * blocks, since the walk can't see what's read from it there. A load built
- * from strings or reached by reflection (`globalThis['ev' + 'al']`) can't be
- * seen.
+ * `node:process`, a namespace's `default`). Where it's referenced, `process`
+ * may only have a field read or destructured: handed on (an alias, an
+ * argument, an export) it blocks, since the walk can't see what's read from
+ * it there. The global object, which holds `process`, is held to the same
+ * rule. A load built from strings or reached by reflection on another
+ * object (`Reflect.get(module, 'req' + 'uire')`) can't be seen.
  */
 
 import { parse } from 'acorn';
@@ -61,6 +62,7 @@ const PROCESS_MODULES = new Set(['process', 'node:process']);
 /** The names of the global object, which holds `process`. */
 const GLOBALS = new Set(['globalThis', 'global']);
 const HANDED_ON = "hands process on (an alias, an argument, an export), where the walk can't see binding or dlopen read";
+const GLOBAL_HANDED_ON = "hands the global object on (an alias, an argument, an export), where the walk can't see what's read from it";
 
 /** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`, a REPL's `eval`. */
 const LOADING_BUILTINS = new Set(['module', 'vm', 'worker_threads', 'inspector', 'inspector/promises', 'repl']);
@@ -85,7 +87,7 @@ const WRAPPERS = new Set(['ChainExpression', 'TSAsExpression', 'TSSatisfiesExpre
 /** Where a value is only tested, compared, or dropped, so it goes no further. */
 const TESTED = new Set(['ExpressionStatement', 'UnaryExpression', 'BinaryExpression', 'IfStatement', 'ConditionalExpression']);
 
-const TYPESCRIPT = /\.[cm]?ts$/;
+const TYPESCRIPT = /\.(?:[cm]?ts|tsx)$/;
 
 const ownRequire = nodeModule.createRequire(import.meta.url);
 let oxc: typeof OxcParser | Error | undefined;
@@ -178,7 +180,8 @@ function program(text: string, file: string): Program {
   }
   const { parseSync } = oxcParser();
   for (const sourceType of ['module', 'commonjs'] as const) {
-    const result = parseSync(file, text, { lang: TYPESCRIPT.test(file) ? 'ts' : 'jsx', sourceType, preserveParens: false });
+    const lang = file.endsWith('.tsx') ? 'tsx' : TYPESCRIPT.test(file) ? 'ts' : 'jsx';
+    const result = parseSync(file, text, { lang, sourceType, preserveParens: false });
     const error = result.errors.find((item) => item.severity === 'Error');
     if (error === undefined) return asProgram(result.program);
     first ??= error.message;
@@ -217,8 +220,11 @@ export function importsOf(text: string, file: string): ModuleImports {
     switch (node.type) {
       case 'Identifier':
         return processNames.has(node.name as string) && !isName(node, parent);
-      case 'MemberExpression':
-        return nameOf(node.property, node.computed) === 'process' && GLOBALS.has(nameOf(node.object, false) ?? '');
+      case 'MemberExpression': {
+        // `globalThis.process`, and a namespace's `default`: `(await import('node:process')).default` is process.
+        const name = nameOf(node.property, node.computed);
+        return (name === 'process' && isGlobalObject(node.object as Fields)) || (name === 'default' && isProcess(unwrapped(node.object as Fields), undefined));
+      }
       case 'CallExpression':
         return isRequire(node) && isProcessModule((node.arguments as unknown[])[0]);
       case 'ImportExpression':
@@ -227,8 +233,50 @@ export function importsOf(text: string, file: string): ModuleImports {
         return false;
     }
   };
-  /** Why `process`, reached at `node`, lets a load past the walk: a loader read off it, or `process` handed on. */
-  const processUse = (node: Fields, ancestors: readonly Fields[]): string | undefined => {
+  /** `node` without the casts, awaits, and `?.` around it. */
+  const unwrapped = (node: Fields): Fields => (WRAPPERS.has(node.type) ? unwrapped((node.type === 'AwaitExpression' ? node.argument : node.expression) as Fields) : node);
+  /** Whether `node` evaluates to the global object: `globalThis`, `global`, or either read off it. */
+  const isGlobal = (node: Fields, parent: Fields | undefined): boolean =>
+    node.type === 'Identifier' ? GLOBALS.has(node.name as string) && !isName(node, parent) : node.type === 'MemberExpression' && GLOBALS.has(nameOf(node.property, node.computed) ?? '') && isGlobalObject(node.object as Fields);
+  const isGlobalObject = (node: Fields): boolean => isGlobal(node, undefined);
+  /** What may be read off an object the walk follows: the fields that load code, and the ones that hold another such object. */
+  interface Rule {
+    readonly subject: string;
+    readonly handedOn: string;
+    readonly loads: (name: string) => string | undefined;
+    readonly holds: (name: string) => Rule | undefined;
+  }
+  /** `process`: `binding` and `dlopen` load code; a namespace's `default` is process again. */
+  const processRule: Rule = {
+    subject: 'process',
+    handedOn: HANDED_ON,
+    loads: (name) => lookup(PROCESS_LOADERS, name),
+    holds: (name) => (name === 'default' ? processRule : undefined),
+  };
+  /** The global object: no field loads by itself; `process` and the global object's own names hold what does. */
+  const globalRule: Rule = {
+    subject: 'the global object',
+    handedOn: GLOBAL_HANDED_ON,
+    loads: () => undefined,
+    holds: (name) => (name === 'process' ? processRule : GLOBALS.has(name) ? globalRule : undefined),
+  };
+  /** Why destructuring into `target` under `rule` lets a load past: a loading field, a computed key, a rest element, or a held object bound whole. */
+  const pattern = (target: unknown, rule: Rule): string | undefined => {
+    if (!isNode(target) || target.type !== 'ObjectPattern') return rule.handedOn;
+    for (const property of target.properties as Fields[]) {
+      if (property.type !== 'Property') return rule.handedOn;
+      const name = nameOf(property.key, property.computed);
+      if (name === undefined) return `reads ${rule.subject} by a computed name`;
+      // `{ process: { env } }` reads env off process; `{ process: p }` binds it whole.
+      const inner = rule.holds(name);
+      const value = property.value as Fields;
+      const reason = inner === undefined ? rule.loads(name) : pattern(value.type === 'AssignmentPattern' ? value.left : value, inner);
+      if (reason !== undefined) return reason;
+    }
+    return undefined;
+  };
+  /** Why an object reached at `node` lets a load past the walk under `rule`: a loading field read or destructured, a computed read, or the object handed on. */
+  const use = (node: Fields, ancestors: readonly Fields[], rule: Rule): string | undefined => {
     let value = node;
     let index = ancestors.length - 1;
     // The value a cast, an await, a comma, or `a || b` gives may still be process.
@@ -239,39 +287,39 @@ export function importsOf(text: string, file: string): ModuleImports {
       else break;
     }
     // A promise of process is only awaited.
-    if (node.type === 'ImportExpression' && value === node) return HANDED_ON;
+    if (node.type === 'ImportExpression' && value === node) return rule.handedOn;
     const parent = ancestors[index];
     // Tested, compared, or dropped: a test, an operand, a statement, a comma's earlier value.
     if (parent === undefined || TESTED.has(parent.type) || parent.type === 'SequenceExpression') return undefined;
     if (parent.type === 'MemberExpression' && parent.object === value) {
       const name = nameOf(parent.property, parent.computed);
-      return name === undefined ? 'reads process by a computed name' : lookup(PROCESS_LOADERS, name);
+      // A field that holds another such object is a reference to it, and held to its rule there.
+      return name === undefined ? `reads ${rule.subject} by a computed name` : rule.holds(name) === undefined ? rule.loads(name) : undefined;
     }
     // A declaration's own name never counts as process, so a declarator here holds it as its value.
     const target = parent.type === 'VariableDeclarator' ? parent.id : parent.type === 'AssignmentExpression' || parent.type === 'AssignmentPattern' ? (parent.right === value ? parent.left : undefined) : undefined;
-    if (!isNode(target) || target.type !== 'ObjectPattern') return HANDED_ON;
     // `const { env } = process` reads fields; a rest element takes the loaders with the rest.
-    for (const property of target.properties as Fields[]) {
-      if (property.type !== 'Property') return HANDED_ON;
-      const name = nameOf(property.key, property.computed);
-      if (name === undefined) return 'reads process by a computed name';
-      const reason = lookup(PROCESS_LOADERS, name);
-      if (reason !== undefined) return reason;
-    }
-    return undefined;
+    return pattern(target, rule);
   };
   const visit = (node: Fields, ancestors: Fields[]): void => {
     // Types, ambient declarations, and type-only imports: Node erases them, so they load nothing.
     if (TYPE_ONLY.has(node.type) || node.declare === true || node.importKind === 'type' || node.exportKind === 'type') return;
     const parent = ancestors.at(-1);
     const grandparent = ancestors.at(-2);
-    if (isProcess(node, parent)) refuse(processUse(node, ancestors));
+    if (isProcess(node, parent)) refuse(use(node, ancestors, processRule));
+    if (isGlobal(node, parent)) refuse(use(node, ancestors, globalRule));
     switch (node.type) {
       case 'ImportDeclaration':
       case 'ExportAllDeclaration':
       case 'ExportNamedDeclaration': {
         const source = literal(node.source);
         if (source === undefined) break;
+        // `import { type Script } from 'node:vm'` keeps the import but binds nothing a loader could be read from.
+        const bound = (node.specifiers ?? []) as Fields[];
+        if (bound.length > 0 && bound.every((specifier) => specifier.importKind === 'type' || specifier.exportKind === 'type')) {
+          specifiers.push(source);
+          break;
+        }
         named(specifiers, source);
         if (!PROCESS_MODULES.has(source)) break;
         // `import { binding }` reads the loader; `export *` and `export { default }` hand it, or process, on.
@@ -331,7 +379,12 @@ export function importsOf(text: string, file: string): ModuleImports {
     }
     ancestors.pop();
   };
-  visit(tree, []);
+  try {
+    visit(tree, []);
+  } catch (cause) {
+    // A tree the walk doesn't expect fails closed, naming why, rather than ending the graph's process.
+    return { specifiers: [], requires: [], unreadable: `couldn't be walked: ${cause instanceof Error ? cause.message : String(cause)}` };
+  }
   return { specifiers, requires, ...(unverified === undefined ? {} : { unverified }) };
 }
 
