@@ -137,7 +137,7 @@
               "debugging",
               "agent-steps",
               "self-healing",
-              "page-objects"
+              "page-object-model"
             ]
           },
           {
@@ -210,6 +210,10 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/page-objects",
+      "destination": "/page-object-model"
+    },
     {
       "source": "/integrations/testmu-browsers",
       "destination": "/integrations/testmu#run-web-targets-in-browsers"
