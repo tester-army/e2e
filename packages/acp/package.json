@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/acp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Run e2e agent steps on a coding agent you already use (Claude Code, Codex, Cursor, ...) over the Agent Client Protocol",
   "keywords": [
     "e2e",
