@@ -143,8 +143,8 @@ await agent.assert('the dashboard shows a trial badge');
 await agent.assert('the table lists {name}', { params: { name } });
 ```
 
-- The judge sees the assertion, the current observation, and the agent's
-  `context`, never prior steps or `act` summaries. It answers `holds`,
+- The judge sees the assertion, its `params`, the current observation, and
+  the agent's `context`, never prior steps or `act` summaries. It answers `holds`,
   `fails`, or `inconclusive`.
 - When the subject appears more than once, such as a total in a summary and
   on a pay button, every instance must agree: one that contradicts it fails.

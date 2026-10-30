@@ -115,7 +115,8 @@ export async function runAssertStep(
   options: AssertOptions | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
-  const { projected, secrets, templates } = validateParams(options?.params, 'agent.assert');
+  // An assert changes no state, so its secrets are named to the executor but never fillable.
+  const { projected, templates } = validateParams(options?.params, 'agent.assert');
   const agent = runtime.select(options?.agent);
   const vision = resolveVision(options?.vision);
   if (options?.vision !== undefined && agent.executor.vision !== true) {
@@ -129,7 +130,7 @@ export async function runAssertStep(
     kind: 'assert',
     instruction: normalized,
     params: projected,
-    secrets,
+    secrets: new Map(),
     templates,
     defaultFailureCode: 'ASSERTION_FAILED',
     timeout: options?.timeout,

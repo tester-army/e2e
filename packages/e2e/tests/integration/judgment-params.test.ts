@@ -11,6 +11,8 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { resultByTitle, runProject, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 
 const SECRET_VALUE = 'hunter2-secret';
+/** A registered value with a quote, so the judge prompt's JSON spells it escaped. */
+const QUOTED_SECRET = 'pa"ss-7781';
 
 const SUITE = `import { test, credentials, unique } from 'e2e';
 
@@ -31,6 +33,11 @@ test('assert sees a secret by name only', async ({ app, agent }) => {
   await agent.assert('the password field holds {password}', {
     params: { password: credentials.user('member').password },
   });
+});
+
+test('assert redacts a registered value passed as a plain string', async ({ app, agent }) => {
+  await app.open();
+  await agent.assert('the note reads {note}', { params: { note: ${JSON.stringify(QUOTED_SECRET)} } });
 });
 
 test('assert refuses params that are not a plain object', async ({ app, agent }) => {
@@ -61,7 +68,10 @@ describe('judgment params on the built-in judge', () => {
         config: {
           tests: 'tests/**/*.e2e.ts',
           agents: { default: { model: judge, judge } },
-          credentials: { member: { username: 'ada', password: SECRET_VALUE } },
+          credentials: {
+            member: { username: 'ada', password: SECRET_VALUE },
+            quoted: { username: 'bo', password: QUOTED_SECRET },
+          },
         },
       },
     );
@@ -98,6 +108,13 @@ describe('judgment params on the built-in judge', () => {
     expect(fakeCalls.some((call) => call.prompt.includes(SECRET_VALUE))).toBe(false);
   });
 
+  it('redacts a registered value a plain param spells out, quotes included', () => {
+    expect(resultByTitle(outcome, 'assert redacts a registered value passed as a plain string').status).toBe('passed');
+    expect(instructionFor('the note reads')).toMatch(/Parameters: \{"note":"<secret:[^>]+>"\}/);
+    const escaped = JSON.stringify(QUOTED_SECRET).slice(1, -1);
+    expect(fakeCalls.some((call) => call.prompt.includes(QUOTED_SECRET) || call.prompt.includes(escaped))).toBe(false);
+  });
+
   it('rejects invalid params naming the method that took them', () => {
     const assertError = resultByTitle(outcome, 'assert refuses params that are not a plain object').attempts.at(-1)!.error!;
     expect(assertError.code).toBe('INVALID_ARGUMENT');
@@ -123,12 +140,14 @@ describe('judgment params through a custom executor', () => {
   let outcome: RunOutcome;
   let project: FixtureProject;
   const steps: StepExecutorContext['step'][] = [];
+  const fillErrors: unknown[] = [];
 
   const probing: StepExecutor = {
     name: 'params-probe',
     version: '1',
     async runStep(context: StepExecutorContext) {
       steps.push(context.step);
+      await context.actions.typeSecret({ id: 'n1' }, 'member.password').catch((error: unknown) => fillErrors.push(error));
       return { status: 'passed', summary: 'checked' };
     },
   };
@@ -163,5 +182,9 @@ describe('judgment params through a custom executor', () => {
       password: { kind: 'secret', name: 'member.password', purpose: expect.any(String) },
     });
     expect(JSON.stringify(step)).not.toContain(SECRET_VALUE);
+  });
+
+  it('never lets an assert step fill a secret it names', () => {
+    expect(fillErrors).toEqual([expect.objectContaining({ code: 'POLICY_DENIED' })]);
   });
 });
