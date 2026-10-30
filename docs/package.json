@@ -4,7 +4,7 @@
   "description": "The e2e documentation pages and their checks",
   "type": "module",
   "scripts": {
-    "check": "node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && node ../scripts/check-docs-anchors.ts && node ../scripts/check-docs-logos.ts",
+    "check": "node ../scripts/check-docs-examples.ts && node ../scripts/check-docs-package-managers.ts && node ../scripts/check-docs-anchors.ts && node ../scripts/check-docs-logos.ts && node ../scripts/check-docs-mdx.ts",
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {

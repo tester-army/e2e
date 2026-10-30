@@ -376,14 +376,14 @@ and hovering still work. The agent ends every step with `complete_step`:
 does.
   </Accordion>
   <Accordion title="Limits">
-- The Agent Client Protocol doesn't report model requests. Each prompt
-  turn counts as one model call against `maxModelCalls`, with its tokens
-  and cost when the agent reports them. `maxSteps` and the step timeout
-  bound the turn.
-- `waitFor` and `extract` use the built-in judgments, so they need the
-  agents entry's `model`.
-- An agents entry with an `executor` takes no `tools`, so the agent gets no
-  project tools from `defineTool`.
+  - The Agent Client Protocol doesn't report model requests. Each prompt
+    turn counts as one model call against `maxModelCalls`, with its tokens
+    and cost when the agent reports them. `maxSteps` and the step timeout
+    bound the turn.
+  - `waitFor` and `extract` use the built-in judgments, so they need the
+    agents entry's `model`.
+  - An agents entry with an `executor` takes no `tools`, so the agent gets no
+    project tools from `defineTool`.
   </Accordion>
 </AccordionGroup>
 
