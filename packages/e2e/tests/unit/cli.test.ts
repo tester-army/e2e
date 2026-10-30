@@ -767,7 +767,7 @@ describe('e2e explore without a config', () => {
     stderrSpy.mockClear();
     process.exitCode = undefined;
     await invoke('explore', '--config', 'missing.config.ts');
-    expect(written(stderrSpy)).toContain('CONFIG_NOT_FOUND: config file not found: missing.config.ts');
+    expect(written(stderrSpy)).toContain(`CONFIG_NOT_FOUND: config file not found: ${path.resolve('missing.config.ts')} (missing.config.ts resolved against the working directory ${process.cwd()})`);
     expect(initMock).not.toHaveBeenCalled();
   });
 

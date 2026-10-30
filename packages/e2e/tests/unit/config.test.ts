@@ -1304,8 +1304,14 @@ describe('discoverConfig', () => {
         configPath: path.join(root, 'custom/my.config.ts'),
         projectRoot: path.join(root, 'custom'),
       });
-      expect(() => discoverConfig(root, 'missing.config.ts')).toThrow(
-        expect.objectContaining({ code: 'CONFIG_NOT_FOUND', message: 'config file not found: missing.config.ts' }),
+      expect(() => discoverConfig(path.join(root, 'custom'), 'custom/my.config.ts')).toThrow(
+        expect.objectContaining({
+          code: 'CONFIG_NOT_FOUND',
+          message: `config file not found: ${path.join(root, 'custom/custom/my.config.ts')} (custom/my.config.ts resolved against the working directory ${path.join(root, 'custom')}); pass an absolute path, or a path relative to that directory`,
+        }),
+      );
+      expect(() => discoverConfig(root, path.join(root, 'missing.config.ts'))).toThrow(
+        expect.objectContaining({ code: 'CONFIG_NOT_FOUND', message: `config file not found: ${path.join(root, 'missing.config.ts')}` }),
       );
     });
   });

@@ -383,6 +383,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const absent = await invoke('open_session', { config: 'missing.config.ts' });
     expect(absent.isError).toBe(true);
     expect(absent.text).toContain('CONFIG_NOT_FOUND');
+    expect(absent.text).toContain(`missing.config.ts resolved against the working directory ${project.dir}`);
 
     const reopened = await invoke('open_session', { target: 'web', config: 'e2e.config.ts' });
     expect(reopened.isError, reopened.text).toBe(false);

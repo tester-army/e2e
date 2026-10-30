@@ -68,7 +68,7 @@ interface LiveSession {
 export interface OpenSessionOptions {
   /** The target to open; otherwise the server's `--target`, else the config's only target. */
   readonly target?: string | undefined;
-  /** A config file to load instead of the server's default, relative to the server's directory. */
+  /** A config file to load instead of the server's default, absolute or relative to the server's working directory. */
   readonly config?: string | undefined;
   /** Whether this session shows its UI; otherwise the server's `headed`. */
   readonly headed?: boolean | undefined;
@@ -524,7 +524,7 @@ export class SessionHost {
         'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. With test, it runs that one test first and stops on the screen where the test passed or failed, with the failure and its line ahead of the catalog. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
-        config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
+        config: z.string().min(1).optional().describe("Path to an e2e config file, absolute or relative to the server's working directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
         headed: z
           .boolean()
           .optional()
