@@ -159,6 +159,23 @@ describe('describeDelta', () => {
     expect(appeared(nodes([heading]), end)).toEqual([{ text: 'Release pipeline' }]);
   });
 
+  it('skips an age in words, the way moment, date-fns, and apps print a recent one', () => {
+    const end = nodes([
+      heading,
+      node('m', { text: 'Last refreshed a few seconds ago' }),
+      node('f', { text: 'Updated less than a minute ago' }),
+      node('a', { text: 'Edited about an hour ago' }),
+      node('j', { text: 'Saved just now' }),
+      node('n', { text: 'Saved' }),
+    ]);
+    expect(appeared(nodes([heading]), end)).toEqual([{ text: 'Saved' }]);
+  });
+
+  it('keeps words that only look like an age', () => {
+    const end = nodes([heading, node('a', { text: 'About us' }), node('b', { text: 'Setup takes a minute' }), node('c', { text: 'Not now' })]);
+    expect(appeared(nodes([heading]), end)).toHaveLength(3);
+  });
+
   it('keeps volatile anchors when nothing stable appeared, so the replay hands off rather than passing blind', () => {
     const end = nodes([heading, node('k', { text: 'sk_b1bccf4e03c5_...' })]);
     expect(appeared(nodes([heading]), end)).toEqual([{ text: 'sk_b1bccf4e03c5_...' }]);
