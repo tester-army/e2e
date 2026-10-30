@@ -800,7 +800,7 @@
       "slug": "expo-simulators",
       "title": "Testing an Expo app on Expo Simulators with e2e",
       "shortTitle": "Expo Simulators",
-      "description": "An Expo UI greeting form tested on hosted iOS and Android simulators, in EAS Workflows on every pull request, and on web.",
+      "description": "An Expo UI greeting form tested on hosted iOS simulators and Android emulators, in EAS Workflows on every pull request, and on web.",
       "icon": "expo.svg",
       "invertIcon": true,
       "source": "partner",
