@@ -329,6 +329,8 @@ describe('deltaMismatch', () => {
     const synced = (id: string, age: string) => node(id, { role: 'alert', text: `Synced ${age}` });
     expect(holds([{ role: 'alert', text: 'Synced a few seconds ago' }], [synced('a', '3 minutes ago')])).toBe(true);
     expect(holds([{ role: 'alert', text: 'Synced just now' }], [synced('a', '2 hours ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced less than a minute ago' }], [synced('a', '3 minutes ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced half a minute ago' }], [synced('a', 'about 1 hour ago')])).toBe(true);
     expect(holds([{ role: 'alert', text: 'Synced 5 minutes ago' }], [node('x', { role: 'alert', text: 'Sync failed 5 minutes ago' })])).toBe(false);
   });
 
