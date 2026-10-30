@@ -199,9 +199,10 @@ expect(data.titles).toContain('Buy milk');
   screen first and ask about what is visible. Judged from the tree alone,
   it adds `pass vision: true when the answer is in pixels`, as does
   `waitFor`'s timeout after an inconclusive round.
-- Judgments see the assertion, its params, and the current screen only, never prior
-  steps or the act loop's summaries; malformed output gets one repair
-  round, then `MODEL_OUTPUT_INVALID`.
+- Judgments see the assertion, its params, the agent's context, the test
+  title, and the current screen, never prior steps or the act loop's
+  summaries; malformed output gets one repair round, then
+  `MODEL_OUTPUT_INVALID`.
 - `assert` and `waitFor` take `params` like `act`:
   `assert('the table lists {name}', { params: { name } })`. The judge sees a
   `Secret` by name only; check a secret's value with a locator assertion.

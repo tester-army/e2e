@@ -40,9 +40,6 @@ import { deriveJsonSchema } from './model/schema.ts';
 
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
 
-/** A judgment's params as the judge reads them, or undefined when the call passed none. */
-type JudgmentParams = Readonly<Record<string, JsonValue>> | undefined;
-
 /**
  * How often `waitFor` looks at the screen between judgments.
  *
@@ -129,21 +126,16 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
   /**
    * One judgment call against a fresh observation. The judge is shown the
-   * instruction, its params, and the screen, never the prior steps or the
-   * acting agent's summaries: a verdict rests on evidence, not on what the
-   * actor said it did.
+   * instruction, its params, the agent's context, and the screen, never the
+   * prior steps or the acting agent's summaries: a verdict rests on evidence,
+   * not on what the actor said it did.
    */
-  const askJudgment = (
-    invocation: Invocation,
-    instruction: string,
-    params: JudgmentParams,
-    observation: AgentObservation,
-  ) =>
+  const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
     invocation.ask({
       schemaName: 'agent-judgment-2',
       schema: JUDGMENT_SCHEMA,
       validate: validateJudgmentResponse,
-      prompt: { request: JUDGMENT_REQUEST, instruction, observation, ...(params === undefined ? {} : { params }) },
+      prompt: { request: JUDGMENT_REQUEST, instruction, observation },
     });
 
   /**
@@ -151,7 +143,10 @@ export function createAgentFixture(runtime: AgentContext): Agent {
    * them, a `Secret` by name only and a `unique()` value as its string, then
    * redacted per call, so a registered value spelled into a param never reaches the model.
    */
-  const judgmentParams = (params: AgentParams | undefined, api: string): JudgmentParams => {
+  const judgmentParams = (
+    params: AgentParams | undefined,
+    api: string,
+  ): Readonly<Record<string, JsonValue>> | undefined => {
     const { projected, templates } = validateParams(params, api);
     return projected === undefined ? undefined : redactParams(projected, templates, runtime.redact, api).params;
   };
@@ -170,6 +165,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         {
           api: 'agent.waitFor',
           agent: options?.agent,
+          params,
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.judgmentTimeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
@@ -180,7 +176,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           let observation = await invocation.observe();
           for (let round = 1; ; round += 1) {
             invocation.recordPoll('waitFor', round);
-            const judgment = await askJudgment(invocation, condition, params, observation);
+            const judgment = await askJudgment(invocation, condition, observation);
             invocation.note({ explanation: judgment.explanation });
             // An inconclusive round is one more thing to wait for; only the
             // deadline turns it into a failure, with this explanation attached.
@@ -276,6 +272,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         {
           api: 'agent.assert',
           agent: options?.agent,
+          params,
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.judgmentTimeout),
           maxModelCalls: ASSERT_MODEL_CALLS,
@@ -284,7 +281,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         assertion,
         async (invocation) => {
           const observation = await invocation.observe();
-          const judgment = await askJudgment(invocation, assertion, params, observation);
+          const judgment = await askJudgment(invocation, assertion, observation);
           invocation.note({ explanation: judgment.explanation });
           // The report keeps the redacted screenshot
           // whenever `screenshot` allows it, on a passing judgment too.

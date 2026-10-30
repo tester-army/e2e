@@ -166,8 +166,8 @@ failing.
 with `screenshot: false`.
 
 `params` follow the [`agent.act`](#agent-act) rules, and invalid ones throw
-`INVALID_ARGUMENT`. The judge never sees a `Secret` value, only its name. To
-check that a secret's value is on screen, use a locator assertion.
+`INVALID_ARGUMENT`. A `Secret` param reaches the judge as its name, never its
+value. To check that a secret's value is on screen, use a locator assertion.
 
 | Throws | When |
 | --- | --- |

@@ -105,14 +105,15 @@ describe('judgment params on the built-in judge', () => {
     expect(resultByTitle(outcome, 'assert sees a secret by name only').status).toBe('passed');
     const instruction = instructionFor('the password field holds');
     expect(instruction).toContain('"password":{"kind":"secret","name":"member.password"');
-    expect(fakeCalls.some((call) => call.prompt.includes(SECRET_VALUE))).toBe(false);
+    expect(fakeCalls.some((call) => `${call.system}\n${call.prompt}`.includes(SECRET_VALUE))).toBe(false);
   });
 
   it('redacts a registered value a plain param spells out, quotes included', () => {
     expect(resultByTitle(outcome, 'assert redacts a registered value passed as a plain string').status).toBe('passed');
     expect(instructionFor('the note reads')).toMatch(/Parameters: \{"note":"<secret:[^>]+>"\}/);
     const escaped = JSON.stringify(QUOTED_SECRET).slice(1, -1);
-    expect(fakeCalls.some((call) => call.prompt.includes(QUOTED_SECRET) || call.prompt.includes(escaped))).toBe(false);
+    const sent = fakeCalls.map((call) => `${call.system}\n${call.prompt}`);
+    expect(sent.some((text) => text.includes(QUOTED_SECRET) || text.includes(escaped))).toBe(false);
   });
 
   it('rejects invalid params naming the method that took them', () => {

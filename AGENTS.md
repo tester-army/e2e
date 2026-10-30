@@ -533,8 +533,8 @@ trees, on both platforms, without a device.
 - No implicit default model. For the built-in agent, the entry's `model`
   serves `act`; the judgment calls (`assert`, `waitFor`, `extract`) use its
   `judge` when one is configured, else `model`. A judgment never sees the
-  prior-step ledger or the acting agent's summaries, only the instruction, its
-  params, and the current screen. Without a model, the first `agent` acquisition in a run
+  prior-step ledger or the acting agent's summaries; it sees the instruction, its
+  params, the agent's context, and the current screen. Without a model, the first `agent` acquisition in a run
   reports one run-level `MODEL_UNAVAILABLE` and stops the run (exit 2). A
   custom executor handles `act` and `assert` through `runStep` and needs no
   model; its `waitFor` and `extract` still use the built-in judgments. No implicit target either: `targets` is required and
