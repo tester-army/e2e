@@ -72,10 +72,14 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 [e2e.tester.army/docs](https://e2e.tester.army/docs). The `e2e` package ships
 every page, so coding agents can read them offline in `node_modules/e2e/docs`.
 
-## Contributing
+## Join us
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Questions go to
-[Discord](https://tester.army/discord).
+Join us in changing how software gets tested.
+[We are hiring.](https://tester.army/contact?utm_source=e2e&utm_medium=github&utm_campaign=readme_hiring)
+
+Or, if you want to hack on e2e, see [Contributing](./CONTRIBUTING.md). We
+prefer GitHub issues and [Discord discussions](https://tester.army/discord)
+over drive-by pull requests.
 
 ## Security
 
