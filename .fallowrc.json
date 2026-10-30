@@ -24,6 +24,8 @@
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
     "packages/e2e/tests/live/*.ts",
+    "packages/e2e/evals/planner/bench.ts",
+    "packages/e2e/evals/planner/model.ts",
     "packages/e2e/src/config/register.ts"
   ],
   "ignorePatterns": [

@@ -437,6 +437,28 @@ CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2e-dev/web exec v
   Playwright's copy, MPL-2.0). Its disagreements live in
   `tests/conformance/expected.txt` the same way, grouped by reason; a line
   that starts with `Bug:` is a fix waiting to be made, and the fix deletes it.
+## The explore planner eval
+
+`packages/e2e/evals/planner/` judges what `e2e explore --changed-since` plans
+for a change: each fixture commits a change to a small bookshop, the built CLI
+explores it with a real model against a static copy of the shop (only the
+explorer's steps are scripted), and judges read `run.explore`: skip or
+explore, what the first charter targets, what no charter may expect, and
+rubric questions a judge model answers where a pattern can't. A fixture passes
+with two thirds of its runs; an observed one (`decision: 'any'`) only prints
+what the planner did and fails only when a run breaks.
+
+```bash
+pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build
+AI_GATEWAY_API_KEY=... pnpm --filter e2e run eval:planner --models openai/gpt-6-luna-fast,google/gemini-3-flash
+```
+
+- A change to the planner's prompt, the change brief, or what reaches them
+  runs it before the PR; `planner.yml` runs it on such pull requests and
+  weekly. A planner bug starts as a fixture here.
+- Check a new fixture can fail: break the rule it pins and watch it go red.
+  Options and output are in the header of `evals/planner/bench.ts`.
+
 ## Measuring a change against main
 
 `pnpm bench:ab` runs a benchmark suite through two builds, the merge base

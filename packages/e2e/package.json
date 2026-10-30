@@ -89,7 +89,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:unit": "vitest run tests/unit"
+    "test:unit": "vitest run tests/unit",
+    "eval:planner": "node evals/planner/bench.ts"
   },
   "dependencies": {
     "@ai-sdk/provider": "4.0.34",
