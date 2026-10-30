@@ -63,13 +63,13 @@ const SOURCE = /\.(?:[cm]?[jt]s|[jt]sx)$/;
 /** A relative specifier, `.` and `..` included. */
 const RELATIVE = /^\.{1,2}(?:\/|$)/;
 
-/** The repo-relative files a relative import of `target` may land on, in the order a bundler tries them. */
+/** The repo-relative files a relative import of `target` may land on, in the order a bundler tries them; a source first, as tsc builds it, over its compiled `.js`. */
 function searched(target: string): string[] {
   const extension = path.posix.extname(target);
   const stem = target.slice(0, target.length - extension.length);
   return [
-    target,
     ...(Object.hasOwn(COMPILED_FROM, extension) ? (COMPILED_FROM[extension] ?? []) : []).map((source) => `${stem}${source}`),
+    target,
     ...BUNDLED_EXTENSIONS.map((added) => `${target}${added}`),
     ...BUNDLED_EXTENSIONS.map((added) => `${target}/index${added}`),
   ];

@@ -708,7 +708,7 @@ describe('diffSince', () => {
   it("resolves a stand-in's relative imports as a bundler does, every extension and index", () => {
     const targets = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json'].map((extension) => `local/bare-${extension}.${extension}`);
     // Written with a JavaScript extension for the source a compiler reads.
-    const compiled = { 'js-ts.js': 'js-ts.ts', 'js-tsx.js': 'js-tsx.tsx', 'js-jsx.js': 'js-jsx.jsx', 'jsx.jsx': 'jsx.tsx', 'mjs.mjs': 'mjs.mts', 'cjs.cjs': 'cjs.cts' };
+    const compiled = { 'both.js': 'both.ts', 'js-ts.js': 'js-ts.ts', 'js-tsx.js': 'js-tsx.tsx', 'js-jsx.js': 'js-jsx.jsx', 'jsx.jsx': 'jsx.tsx', 'mjs.mjs': 'mjs.mts', 'cjs.cjs': 'cjs.cts' };
     const indexes = ['ts', 'js'].map((extension) => `local/dir-${extension}/index.${extension}`);
     const all = [...targets, ...Object.values(compiled).map((file) => `local/${file}`), ...indexes];
     const imports = [
@@ -722,6 +722,8 @@ describe('diffSince', () => {
     const dir = repo({
       '.gitignore': 'node_modules\ndist\nlocal/stale.js\n',
       'local/stale.js': 'exports.x = 1;\n',
+      // cubic's case: a tracked compiled file beside its source; the source is what tsc builds.
+      'local/both.js': 'export const x = 1;\n',
       'cige.config.mjs': "import { verdict } from '@acme/hooks';\nexport default { hooks: { verdict } };\n",
       'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js' }),
       'packages/hooks/src/index.ts': `${imports.join('')}export const verdict = () => false;\n`,
