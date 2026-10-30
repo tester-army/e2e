@@ -676,8 +676,8 @@ importers:
   packages/testmu:
     dependencies:
       '@agent-device/testmu':
-        specifier: 0.21.33
-        version: 0.21.33
+        specifier: 0.21.35
+        version: 0.21.35
       agent-device:
         specifier: 0.21.35
         version: 0.21.35(ai@7.0.134(zod@4.6.7))
