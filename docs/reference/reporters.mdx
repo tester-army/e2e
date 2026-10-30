@@ -341,7 +341,7 @@ type RunEventFact =
 - `setup` brackets the work before the tests start. Its `step.kind` is
   `collect`, `filter` (one [test filter](/filters), by its `name`),
   `prepare`, `service`, or `app`. An `app` step's `url` is the URL its
-  readiness probe polls, with a free port filled in. `outcome` is `reused`
+  readiness probe polls, with a free port filled in and no userinfo or query. `outcome` is `reused`
   when a service or app command attached to a process already serving its
   URL, `failed` when
   a filter threw or returned an invalid result, and `timed-out` when a

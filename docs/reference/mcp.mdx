@@ -99,12 +99,13 @@ id, the catalog, and the first observation.
 
 The summary names the app's URL, with the port a free-port `url` was
 assigned, and the app command: its executable, readiness URL, `env` and
-`inheritEnv` names, and log file. It prints no `args` and no `env` values.
-e2e starts no other process, so a database the app uses runs outside it.
+`inheritEnv` names, and log file. It prints no `args`, no `env` values, and
+no URL userinfo or query. e2e starts no other app process, so a database the
+app uses runs outside it.
 
 ```text wrap
 App: http://127.0.0.1:57162/ (port 57162, assigned for the declared port 0).
-Process: app.command "node" (ready at http://127.0.0.1:57162/; env PORT, DATABASE_URL; log .e2e/app.log). e2e runs no other process for this session; a database or other service the app uses runs outside e2e.
+Process: app.command "node" (ready at http://127.0.0.1:57162/; env PORT, DATABASE_URL; log .e2e/app.log). e2e starts no other app process for this session; a database or other service the app uses runs outside e2e.
 ```
 
 ```txt

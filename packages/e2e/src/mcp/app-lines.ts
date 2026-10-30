@@ -2,12 +2,13 @@
  * The app half of `open_session`'s summary: where the app is, the port the
  * session assigned, and the process it brought up for it, so an agent never
  * reads the config to learn what is listening. Nothing that may carry a
- * secret is printed: `args` are left out, and `env` and `inheritEnv` are
- * named without values.
+ * secret is printed: `args` are left out, `env` and `inheritEnv` are named
+ * without values, and the readiness URL loses userinfo and query.
  */
 
 import type { ResolvedTarget } from '../config/resolve.ts';
 import { launchesPinnedApp } from '../config/targets.ts';
+import { printableUrl } from '../internal/urls.ts';
 import type { CommandConfig } from '../types.ts';
 
 /**
@@ -25,7 +26,7 @@ export function appLines(target: ResolvedTarget, ranTest: boolean): string[] {
     lines.push(ranTest ? `App: ${pinned}.` : `App: ${pinned}, launched fresh.`);
   }
   if (app.command !== undefined && app.readyUrl !== undefined) {
-    lines.push(`Process: ${describeCommand(app.command, app.readyUrl)} e2e runs no other process for this session; a database or other service the app uses runs outside e2e.`);
+    lines.push(`Process: ${describeCommand(app.command, app.readyUrl)} e2e starts no other app process for this session; a database or other service the app uses runs outside e2e.`);
   } else if (app.base !== undefined) {
     lines.push('Process: none; the target declares no app.command, so the app runs outside e2e.');
   }
@@ -34,7 +35,7 @@ export function appLines(target: ResolvedTarget, ranTest: boolean): string[] {
 
 /** One app command as the session ran it: its executable, where it answers, and what it was given. */
 function describeCommand(command: CommandConfig, readyUrl: string): string {
-  const facts = [`ready at ${readyUrl}`];
+  const facts = [`ready at ${printableUrl(readyUrl)}`];
   if (command.reuseExisting === true) facts.push('reuseExisting: a server already answering there is used instead of starting one');
   const env = Object.keys(command.env ?? {});
   if (env.length > 0) facts.push(`env ${env.join(', ')}`);

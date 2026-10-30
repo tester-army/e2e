@@ -52,7 +52,7 @@ export interface RunEventResult extends WireResultRecord {
  * download); `service` and `app` are the processes the run owns, labelled the
  * way the runner names them (`service "postgres"`, `target "web" command`).
  * An `app` step's `url` is the one its readiness probe polls, with a free
- * port already assigned; absent for a command that is ready when it exits.
+ * port already assigned and without userinfo or query.
  */
 export type SetupStep =
   | { readonly kind: 'collect' }

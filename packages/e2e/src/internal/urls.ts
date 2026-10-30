@@ -98,6 +98,12 @@ function withScheme(raw: string): string {
 }
 
 /** True for loopback hosts where plain HTTP is allowed. */
+/** `url` without userinfo, query, or fragment, any of which may carry a credential: safe to print. */
+export function printableUrl(url: string): string {
+  const parsed = new URL(url);
+  return `${parsed.origin}${parsed.pathname}`;
+}
+
 export function isLoopbackHost(hostname: string): boolean {
   if (hostname === 'localhost' || hostname.endsWith('.localhost')) return true;
   if (hostname === '::1' || hostname === '[::1]') return true;
