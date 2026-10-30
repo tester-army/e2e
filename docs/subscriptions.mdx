@@ -363,7 +363,8 @@ behind `secrets: { apiKey: process.env.API_KEY }`, or the variable an
   <Accordion title="How a test runs">
 One agent session serves one test attempt. The first agent step that the
 cache can't replay starts it. Each later step is one more message in the
-same conversation, and the session closes when the attempt ends.
+same conversation, and the session closes when the attempt ends, or
+earlier on a `POLICY_DENIED` step.
 
 Each message carries the step, its non-secret params, the steps done so
 far, and the current screen. Action results say what changed on screen, and
