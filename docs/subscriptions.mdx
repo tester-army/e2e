@@ -1,6 +1,6 @@
 ---
 title: Subscriptions
-description: Use your ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, or your Claude Max or Team plan's API credits, for agent steps.
+description: Use your ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, your Claude Max or Team plan's API credits, or your Claude Code or Codex login for agent steps.
 icon: "id-card"
 "og:image": "https://e2e.tester.army/docs/images/og/subscriptions.png?v=174d49a0e9"
 "twitter:image": "https://e2e.tester.army/docs/images/og/subscriptions.png?v=174d49a0e9"
@@ -16,6 +16,7 @@ the plan's model in `e2e.config.ts`.
 | OpenCode Console (OpenCode Zen and OpenCode Go) | `npx e2e login opencode-console` |
 | SuperGrok or X Premium+ | `npx e2e login spacexai` |
 | Claude Max or Team (Claude Code) | API key, paid from the plan's monthly API credits, not its usage limits |
+| Claude Code or Codex login | [Run steps on your coding agent](#use-your-coding-agent) |
 
 ## Set up
 
@@ -131,7 +132,7 @@ const agent = { model: grok('grok-4') };
   </Tab>
   <Tab title="Claude Max or Team">
 Claude plans have no sign-in for other apps. To run agent steps on Claude
-Code itself, with its own login, see [your coding agent](/acp). To use the
+Code itself, with its own login, see [your coding agent](#use-your-coding-agent). To use the
 plan's API credits in a new project, select `None` for the model gateway in
 `e2e init`. Then:
 
@@ -237,6 +238,152 @@ Keys). For ChatGPT, Copilot, and SuperGrok, use an [API provider](/models).
 [`E2E_OAUTH_CREDENTIALS`](/reference/environment) can give a stored login to
 CI, but e2e doesn't save refreshed tokens back to it. A login with a
 rotating refresh token works there only for a limited time.
+
+## Use your coding agent
+
+`@e2e-dev/acp` runs `agent.act` and `agent.assert` on Claude Code or Codex
+over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP). The
+agent signs in with its own login or API key, so e2e needs no model
+provider.
+
+The agent gets `complete_step` and the built-in agent's action tools for
+the verbs the target's engine supports. The runner records every action, so
+steps replay from the [cache](/cache) without the agent. Your tests don't
+change.
+
+<Tabs>
+  <Tab title="Claude Code">
+Install the package and Zed's Claude Code adapter. Sign in with `claude`, or
+set `ANTHROPIC_API_KEY`.
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/acp @agentclientprotocol/claude-agent-acp
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/acp @agentclientprotocol/claude-agent-acp
+```
+
+```bash bun
+bun add -d @e2e-dev/acp @agentclientprotocol/claude-agent-acp
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { claudeCode } from '@e2e-dev/acp';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: { default: { executor: claudeCode({ model: 'sonnet' }) } },
+} satisfies E2EConfig;
+```
+  </Tab>
+  <Tab title="Codex">
+Install the package and the Codex adapter. Sign in with `codex login`.
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/acp @agentclientprotocol/codex-acp
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/acp @agentclientprotocol/codex-acp
+```
+
+```bash bun
+bun add -d @e2e-dev/acp @agentclientprotocol/codex-acp
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { codex } from '@e2e-dev/acp';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  agents: { default: { executor: codex() } },
+} satisfies E2EConfig;
+```
+  </Tab>
+</Tabs>
+
+`claudeCode()` and `codex()` take these options:
+
+| Option | What it does |
+| --- | --- |
+| `model` | A model the agent offers, such as `sonnet`. When the agent doesn't offer it, the session fails to start and the error lists the models it does offer. Omitted, the agent's default runs. |
+| `env` | Variables added to the agent's environment. |
+| `system` | Text appended to the rules the agent gets with the first step. |
+| `name` | The executor name in reports. |
+
+### What the agent can use
+
+An action the agent takes with its own tools isn't recorded, can't replay,
+and can reach files or the web. So e2e keeps the agent to the step tools:
+
+- The agent process starts in your project. Its session opens in an empty
+  temporary directory, and e2e offers it no file system or terminal access.
+- e2e allows permission requests for step tools and rejects all others.
+- When a tool of the agent's own runs without asking, e2e stops the turn
+  and fails the step with `POLICY_DENIED`. Later step tool calls take no
+  action. The session closes, so the next step starts a fresh agent that
+  never saw what the tool read.
+
+Each preset also turns off the agent's own tools that run without asking:
+
+- **Claude Code**: no built-in tools, no user, project, or local settings,
+  no MCP servers but the step tools, no saved session, and no bypass of
+  permission prompts.
+- **Codex**: read-only mode, no shell, web search, apps, plugins, browser,
+  or computer use. Every MCP server from your Codex config is off for these
+  sessions only. Codex can still start a subagent, which fails the step like
+  any tool of its own.
+
+### Secrets
+
+A secret param reaches the agent by name only. When the target's engine can
+fill secrets, the agent calls `type_secret` and the runner types the value,
+as for the built-in agent.
+
+The agent's process gets your environment without the `E2E_SECRET_*` and
+`E2E_USER_*` variables.
+
+<Warning>
+A secret in any other variable reaches the agent. Examples are `API_KEY`
+behind `secrets: { apiKey: process.env.API_KEY }`, or the variable an
+`E2E_SECRET_*` value was copied from. Keep secrets in `E2E_SECRET_*` and
+`E2E_USER_*` only.
+</Warning>
+
+<AccordionGroup>
+  <Accordion title="How a test runs">
+One agent session serves one test attempt. The first agent step that the
+cache can't replay starts it. Each later step is one more message in the
+same conversation, and the session closes when the attempt ends.
+
+Each message carries the step, its non-secret params, the steps done so
+far, and the current screen. Action results say what changed on screen, and
+a `screenshot` reaches the agent as an image.
+
+An assertion can't change the screen. `observe`, `screenshot`, scrolling,
+and hovering still work. The agent ends every step with `complete_step`:
+`passed`, `failed`, or `blocked` with an error code, as the built-in agent
+does.
+  </Accordion>
+  <Accordion title="Limits">
+- ACP doesn't report model requests. Each prompt turn counts as one model
+  call against `maxModelCalls`, with its tokens and cost when the agent
+  reports them. `maxSteps` and the step timeout bound the turn.
+- `waitFor` and `extract` use the built-in judgments, so they need the
+  agents entry's `model`.
+- An agents entry with an `executor` takes no `tools`, so the agent gets no
+  project tools from `defineTool`.
+  </Accordion>
+</AccordionGroup>
 
 ## Next
 

@@ -92,8 +92,7 @@
             "pages": [
               "models",
               "decision-models",
-              "subscriptions",
-              "acp"
+              "subscriptions"
             ]
           },
           {
@@ -212,6 +211,10 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/acp",
+      "destination": "/subscriptions#use-your-coding-agent"
+    },
     {
       "source": "/page-objects",
       "destination": "/page-object-model"
