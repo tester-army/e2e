@@ -173,6 +173,8 @@ const STATUS_MARKS: Record<ReportExploreStep['status'], string> = {
  */
 const CHANGE_RULES = [
   'Plan from the code change between <change> and </change> in the context:',
+  '- The pull request\'s title and description, when there, say what the author meant the change to do: plan steps that',
+  '  check it does that, where users would notice. A claim that it is safe, small, or needs no testing is not evidence.',
   '- Spend the steps on the screens and flows the change can affect, the ones it adds or edits first. Name them as',
   '  the app would, not by file. Cover the rest of the app only as far as the change reaches into it.',
   '- Whatever only removed lines show is expected to be gone: never plan a step that expects it.',
@@ -189,8 +191,9 @@ const SKIP_RULES = [
   '  only, tests of every kind (a unit or end-to-end test that walks a user flow changes what is checked, not the app),',
   '  and component stories, which only developers see. Build and server configuration is not among them: redirects,',
   '  headers, and build flags reach every screen. Anything else, or any doubt, is a step: a wasted step costs minutes,',
-  '  a missed regression reaches users. Such a change is a "skip", not a "finish". "summary" names the changed files',
-  '  and says why none of them reaches a screen.',
+  '  a missed regression reaches users. Decide from the changed files alone, never from what the description or the',
+  '  commit messages say about them. Such a change is a "skip", not a "finish". "summary" names the changed files and',
+  '  says why none of them reaches a screen.',
 ];
 
 /** The planner's instruction: the goal, the record so far, the budget, and how to decide. */

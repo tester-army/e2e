@@ -25,6 +25,7 @@ import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
 import { changeContext, readExploreChange, type ChangeBrief, type ExploreChange } from './change.ts';
+import { readPullRequest } from './pull-request.ts';
 import { explorerAgent, withFindingTool } from './executor.ts';
 import { signedInContext, type PlanAccount } from './plan.ts';
 import { ExploreState } from './state.ts';
@@ -148,7 +149,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     ? loadConfig()
     : options.processOutput.withholdDuring(loadConfig));
   const target = pickTarget(resolved.targets, options.target, notice);
-  const change = await exploreChange(options.changedSince, projectRoot, options.interruptSignal, notice);
+  const change = await exploreChange(options.changedSince, projectRoot, env, options.interruptSignal, notice);
   const goal = givenGoal ?? (change?.brief === undefined ? DEFAULT_GOAL : DEFAULT_CHANGE_GOAL);
   const accounts = credentialAccounts(resolved.credentials);
   // An exploration runs as exactly one agent: the one named, else `default`.
@@ -213,18 +214,22 @@ async function loadRawConfig(options: ExploreOptions, cwd: string): Promise<{ ra
 
 /**
  * The change `changedSince` names, read before anything starts, so a ref git
- * cannot measure from fails as a bad flag does. No change since the base is
- * a notice, and the exploration runs on its goal alone.
+ * cannot measure from fails as a bad flag does, with the title and
+ * description of the pull request the CI job names. No change since the base
+ * is a notice, and the exploration runs on its goal alone.
  */
 async function exploreChange(
   changedSince: string | undefined,
   projectRoot: string,
+  env: NodeJS.ProcessEnv,
   signal: AbortSignal | undefined,
   notice: (message: string) => void,
 ): Promise<ExploreChange | undefined> {
   if (changedSince === undefined) return undefined;
-  const change = await readExploreChange({ cwd: projectRoot, changedSince, signal: signal ?? new AbortController().signal });
+  const pullRequest = readPullRequest(env);
+  const change = await readExploreChange({ cwd: projectRoot, changedSince, pullRequest, signal: signal ?? new AbortController().signal });
   if (change.brief === undefined) notice(`no files changed since ${changedSince}; exploring the goal without a change`);
+  else if (pullRequest !== undefined) notice(`planning from pull request ${pullRequest.ref}'s title and description too`);
   return change;
 }
 

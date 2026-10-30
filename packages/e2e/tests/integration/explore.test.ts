@@ -7,7 +7,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defineTool } from '../../src/agent/public.ts';
@@ -86,6 +86,8 @@ async function runExplore(
     maxSteps: 2,
     timeoutMs: 180_000,
     notice: (message) => notices.push(message),
+    // The suite's own CI job is a pull request; its text must not reach a fixture's brief.
+    env: Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('GITHUB_') && !name.startsWith('GITLAB_') && !name.startsWith('CI_'))),
     ...options,
   });
   return Object.assign(outcome, { notices });
@@ -246,6 +248,18 @@ describe('e2e explore', () => {
       const labels = outcome.report.run.results[0]!.attempts[0]!.steps.map((step) => step.label);
       expect(labels.every((label) => !label.includes('<output>{count}</output>'))).toBe(true);
       assertValidReport(outcome.report);
+      // On a GitHub pull_request job, the pull request's title and description open the brief.
+      const eventPath = path.join(changed.dir, '.e2e', 'event.json');
+      mkdirSync(path.dirname(eventPath), { recursive: true });
+      writeFileSync(eventPath, JSON.stringify({ pull_request: { number: 7, title: 'Show the counter', body: '<!-- template -->\nOpen the home page and read the counter.' } }));
+      const planned = planCalls.length;
+      const fromPull = await runExplore(changed, app, model, {
+        goal: undefined,
+        changedSince: 'base',
+        env: { ...process.env, GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: eventPath },
+      });
+      expect(fromPull.notices).toContain("planning from pull request #7's title and description too");
+      expect(planCalls[planned]!.system).toContain('Pull request #7: Show the counter\nDescription:\n  Open the home page and read the counter.');
       // No change since the ref: a notice, the usual default goal, and no change in the context.
       const unchanged = await runExplore(changed, app, model, { goal: undefined, changedSince: 'HEAD' });
       expect(unchanged.notices).toContain('no files changed since HEAD; exploring the goal without a change');
