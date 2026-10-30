@@ -1,0 +1,7 @@
+screen
+  application "e2e Benchmark"
+    other "Underlay"
+      other #e2e-screen:Underlay
+      text "Underlay"
+      other #e2e-screen:Cover
+      text "Cover"

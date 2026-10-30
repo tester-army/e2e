@@ -1,0 +1,10 @@
+screen
+  application "e2e Benchmark"
+    window "Benchmark modal"
+      other "Benchmark modal"
+        other #e2e-screen:Benchmark modal
+        other #modal-card
+        text "Benchmark modal"
+        text "Tap Continue, then accept the native alert to finish."
+        other "Continue" #continue-button
+        other "Close" #close-modal-button

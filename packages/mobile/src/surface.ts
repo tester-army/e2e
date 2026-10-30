@@ -53,8 +53,8 @@ import {
   normalizeKind,
   projectSnapshot,
   ROOT_ID,
+  screenName,
   screenRoot,
-  screenTitle,
   type ProjectedNode,
   type ProjectedSnapshot,
 } from './nodes.ts';
@@ -331,6 +331,7 @@ const MOBILE_OPTION_KEYS: readonly string[] = Object.keys({
   settle: true,
   transition: true,
   videoTouches: true,
+  screenIdPrefix: true,
 } satisfies Record<keyof MobileOptions, true>);
 
 /** Every state a permission takes, kept equal to `PermissionState` by the compiler. */
@@ -368,6 +369,14 @@ function transitionMs(transition: MobileOptions['transition']): number {
     throw new ConfigurationError('INVALID_CONFIG', 'mobile: `transition` must be a non-negative integer of milliseconds');
   }
   return budget;
+}
+
+/** Checks the `screenIdPrefix` option: a non-empty string when set. */
+function screenIdPrefix(prefix: MobileOptions['screenIdPrefix']): string | undefined {
+  if (prefix !== undefined && (typeof prefix !== 'string' || prefix === '')) {
+    throw new ConfigurationError('INVALID_CONFIG', 'mobile: `screenIdPrefix` must be a non-empty string');
+  }
+  return prefix;
 }
 
 /** Resolves the `settle` option: the default window, a custom one, or no wait at all. */
@@ -443,6 +452,8 @@ export class AgentDeviceSurface {
   private latestScreen: ProjectedScreen | undefined;
   /** Budget a control that came with the last action gets to finish arriving; see DEFAULT_TRANSITION_MS. */
   private readonly transitionMs: number;
+  /** The identifier prefix of an app-declared screen marker; see `MobileOptions.screenIdPrefix`. */
+  private readonly screenIdPrefix: string | undefined;
   /**
    * The screen's logical size as last learned from a snapshot with geometry
    * or from the device itself, so a snapshot without geometry (an empty
@@ -461,6 +472,7 @@ export class AgentDeviceSurface {
     this.pool = new DevicePool(options, createClient);
     this.settleOptions = settleOptions(options.settle);
     this.transitionMs = transitionMs(options.transition);
+    this.screenIdPrefix = screenIdPrefix(options.screenIdPrefix);
   }
 
   /** Whether the target pins an app for `app.open()`, `app.restart()`, and `app.clearState()` to launch. */
@@ -1078,7 +1090,7 @@ export class AgentDeviceSurface {
     const projected = this.project(raw);
     this.generation = new Map(projected.index.map((entry) => [entry.id, this.bind(entry, projected)]));
     const viewport = await this.viewportFor(projected, operation.signal);
-    const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
+    const location = this.locationOf(raw, projected, viewport);
     const capture = options?.pixels === true ? await this.capturePixels(operation, projected, viewport, { normalizeStatusBar: options.comparable === true }) : undefined;
     const keyboardVisible = measuredKeyboard(raw);
     return {
@@ -1089,6 +1101,12 @@ export class AgentDeviceSurface {
       ...(location === undefined ? {} : { location }),
       ...(capture === undefined ? {} : { pixels: capture.pixels, maskedRegionCount: capture.masked }),
     };
+  }
+
+  /** The snapshot's location: the foreground app and the screen `screenName` reads. */
+  private locationOf(raw: RawSnapshot, projected: ProjectedSnapshot, viewport: ViewportSize): string | undefined {
+    const name = screenName(projected, { screenIdPrefix: this.screenIdPrefix, viewport });
+    return screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, name);
   }
 
   /** Retains only action bindings for matches, independently of the observation generation. */
@@ -1115,7 +1133,7 @@ export class AgentDeviceSurface {
     const sink = this.screenSink;
     const viewport = this.knownViewport;
     if (sink === undefined || viewport === undefined) return;
-    const location = screenLocation(raw.appBundleId ?? raw.appName ?? this.appIdentity, screenTitle(projected));
+    const location = this.locationOf(raw, projected, viewport);
     tellHarness(() =>
       sink({
         root: screenRoot(projected.roots, viewport),

@@ -1,0 +1,31 @@
+screen
+  group
+    group
+      group
+        group #dev.e2e.benchmark:id/action_bar_root
+          group #android:id/content
+            group
+              group
+                group
+                  group
+                    group
+                      group
+                        group
+                          group
+                            group
+                              group
+                                heading "Actions"
+                                group #e2e-screen:Actions tab
+                                group "Complete action" #complete-action-button
+                                  text "Complete action"
+                        group
+                          tab "⏷, Home" #tab-home
+                            text "Home"
+                            text "⏷"
+                          tab "⏷, 3, Feed" #tab-feed
+                            text "⏷"
+                            text "3"
+                            text "Feed"
+                          tab "⏷, Actions" [selected] #tab-actions
+                            text "Actions" [selected]
+                            text "⏷" [selected]

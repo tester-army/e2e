@@ -238,6 +238,9 @@ describe('acp', () => {
     first.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
     await vi.waitFor(() => expect(log()).toContainEqual({ ran: 'Read ~/.env' }));
+    // The update closes this agent. The next step starts its own only once this one is gone.
+    const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
+    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
     const second = context({ kind: 'assert', attempt: { attempt: first.ctx.attempt as never, end: first.end } });
     await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
     expect(log().filter((entry) => 'session' in entry)).toHaveLength(2);

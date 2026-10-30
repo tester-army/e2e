@@ -382,6 +382,13 @@ export default {
   `transition` (default 500 ms). Opening or closing the keyboard also uses
   the remaining budget. Agent actions settle `settle` ms (default
   150) before the next observation, `settle: false` skips it.
+- The replay cache's start screen is `<bundle id> / <title bar>`. A screen
+  whose title the engine can't read (React Native `headerShown: false`, or
+  a native-stack header on Android with no `toolbar` / `action_bar` /
+  `collapsing_toolbar` resource id) reads as `<bundle id>`: set
+  `screenIdPrefix: 'e2e-screen:'` on the engine and
+  `testID="e2e-screen:Offers"` on each screen's root view, so the location
+  reads `<bundle id> / Offers`.
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.

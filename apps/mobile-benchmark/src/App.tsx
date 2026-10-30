@@ -17,7 +17,7 @@ const visibleExamples = examples.filter((example) =>
 function ExampleList() {
   const navigation = useNavigation();
   return (
-    <ScrollView contentInsetAdjustmentBehavior="automatic">
+    <ScrollView testID="e2e-screen:Benchmark Examples" contentInsetAdjustmentBehavior="automatic">
       <View style={styles.exampleGrid}>
         {visibleExamples.map((example) => (
           <TouchableOpacity
@@ -40,14 +40,41 @@ function ExampleList() {
   );
 }
 
+/**
+ * Two marked layers stay mounted and visible in the same accessibility tree.
+ */
+function LayeredMarkers() {
+  return (
+    <View style={styles.layers}>
+      <View testID="e2e-screen:Underlay" style={styles.underlay}>
+        <Text>Underlay</Text>
+      </View>
+      <View testID="e2e-screen:Cover" style={styles.cover}>
+        <Text>Cover</Text>
+      </View>
+    </View>
+  );
+}
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer
+        linking={{
+          prefixes: ["e2e-benchmark://"],
+          config: { screens: { "Layered Markers": "layers" } },
+          filter: url => url === "e2e-benchmark:///layers",
+        }}
+      >
         <Stack.Navigator initialRouteName="Benchmark Examples">
           <Stack.Screen name="Benchmark Examples" component={ExampleList} />
+          <Stack.Screen
+            name="Layered Markers"
+            component={LayeredMarkers}
+            options={{ headerShown: false }}
+          />
           {visibleExamples.map((example) => (
             <Stack.Screen
               key={example.name}
@@ -78,5 +105,20 @@ const styles = StyleSheet.create({
   exampleName: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  layers: {
+    flex: 1,
+  },
+  underlay: {
+    flex: 1,
+    padding: 24,
+  },
+  cover: {
+    position: "absolute",
+    bottom: 24,
+    left: 24,
+    right: 24,
+    padding: 24,
+    backgroundColor: "#ffffff",
   },
 });

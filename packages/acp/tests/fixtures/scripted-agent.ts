@@ -167,11 +167,13 @@ const connection = new AgentSideConnection(
             });
           }
           if (move.thenRan !== undefined) {
+            // Logged before the update: the client closes the agent from inside
+            // that handler, and a SIGTERM there drops the line that would follow it.
+            log({ ran: move.thenRan });
             await client.sessionUpdate({
               sessionId: 's1',
               update: { sessionUpdate: 'tool_call', toolCallId: `ran-${turn}-${move.thenRan}`, title: move.thenRan, kind: 'read', status: 'in_progress' },
             });
-            log({ ran: move.thenRan });
           }
           return { stopReason: 'cancelled' };
         } else {

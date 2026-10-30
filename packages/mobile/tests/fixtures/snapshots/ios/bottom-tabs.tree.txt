@@ -5,6 +5,7 @@ screen
         other "Home"
           other "Home"
             text "Home"
+        other #e2e-screen:Home tab
         text "Home" #home-tab-content
           text "Home"
         text "Go to the Actions tab and press the button there."
