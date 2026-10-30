@@ -415,6 +415,31 @@ describe('ListReporter', () => {
       expect(lines).toContain(' ❯ screen .e2e/artifacts/chromium/a/attempt-0/screen.txt');
     });
 
+    it('quotes the first app errors under the tally, loopback origins dropped, and counts the rest', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      const failed = failedAttempt('locator matched 2 nodes');
+      const at = (second: number): string => `2026-01-01T00:00:0${second}.000Z`;
+      failed.appLog = [
+        { source: 'console', level: 'warning', text: 'each child needs a key', at: at(0), step: 0 },
+        { source: 'console', level: 'error', text: 'Error occurred prerendering page "/profile"', at: at(1), step: 0 },
+        { source: 'error', level: 'error', text: 'TypeError: x is undefined', at: at(2), step: 0 },
+        { source: 'network', level: 'error', text: 'GET http://127.0.0.1:4271/api/me 500', at: at(3), step: 0 },
+        { source: 'console', level: 'error', text: 'late fallout', at: at(4), step: 0 },
+        { source: 'console', level: 'info', text: 'ready', at: at(5), step: 0 },
+      ];
+      reporter.handle(finished(result({ status: 'failed', attempts: [failed] })));
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+      const app = lines.findIndex((line) => line === ' ❯ app 4 errors, 1 warning logged');
+      expect(app).toBeGreaterThan(-1);
+      expect(lines.slice(app + 1, app + 5)).toEqual([
+        '   × console error: Error occurred prerendering page "/profile"',
+        '   × uncaught error: TypeError: x is undefined',
+        '   × network error: GET /api/me 500',
+        '   1 more app error logged',
+      ]);
+    });
+
     it('names the status when a failure recorded no error', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);

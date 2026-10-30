@@ -13,8 +13,10 @@ a summary of the whole run, add the `markdown` reporter. It writes
 ## Read the failure
 
 The `list` reporter's `Failed Tests` section shows the error, the failing
-line, nearby matches for a failed locator, the app's error count, and the
-trace page:
+line, nearby matches for a failed locator, what the app logged, and the
+trace page. It quotes the app's first 3 errors (console errors, uncaught
+exceptions, failed requests, 5xx responses), redacted like the trace page.
+`.e2e/summary.md` quotes them too:
 
 ```text
  FAIL  |web| tests/todos.e2e.ts > shows the remaining count
@@ -22,6 +24,8 @@ LOCATOR_NOT_FOUND: locator did not become visible: getByRole("heading", name: "T
  ❯ tests/todos.e2e.ts:31:3
  ❯ at http://127.0.0.1:4271/nope
  ❯ app 2 errors, 2 warnings logged
+   × console error: Error occurred prerendering page "/todos"
+   × network error: GET /api/todos 500 Internal Server Error
  ❯ trace .e2e/results/todos-shows-the-remaining-count-796fac5f12ab34cd/trace.md
 ```
 

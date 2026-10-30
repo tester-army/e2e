@@ -18,6 +18,7 @@ import type { AppLogRecord } from '../run/steps.ts';
 import { cleanupErrorsOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
+import { appErrorsOf, type AppErrors } from './failure-text.ts';
 import {
   addCacheTally,
   addModelTally,
@@ -117,8 +118,8 @@ interface ResultDetails {
   /** What the runner saw when the last failure landed, with the screen text's report path when it kept one. */
   readonly failure: FailureEvidence | undefined;
   readonly screenPath: string | undefined;
-  /** What the app logged during the told attempt, as `2 errors, 1 warning`; undefined for nothing. */
-  readonly appLog: string | undefined;
+  /** What the app logged during the told attempt that went wrong; undefined for nothing. */
+  readonly appLog: AppLogSummary | undefined;
   /** Cleanup-phase secondary errors of attempts whose cleanup failed; shown under a passed or flaky test. */
   readonly cleanupErrors: readonly SerializedError[];
   /** Why the told attempt skipped itself, when it failed anyway. */
@@ -126,15 +127,22 @@ interface ResultDetails {
   readonly replays: readonly ReplayNotice[];
 }
 
-/** `2 errors, 1 warning`: the app log lines that say something went wrong. */
-function appLogTally(appLog: readonly AppLogRecord[]): string | undefined {
-  const errors = appLog.filter((entry) => entry.level === 'error').length;
+/** The app log lines that say something went wrong: the tally, and the errors a failure block quotes. */
+interface AppLogSummary {
+  /** `2 errors, 1 warning`. */
+  readonly tally: string;
+  readonly errors: AppErrors;
+}
+
+/** What went wrong in the app log, or undefined when nothing did. */
+function appLogSummary(appLog: readonly AppLogRecord[]): AppLogSummary | undefined {
+  const errors = appErrorsOf(appLog);
   const warnings = appLog.filter((entry) => entry.level === 'warning').length;
   const parts = [
-    ...(errors === 0 ? [] : [`${errors} ${errors === 1 ? 'error' : 'errors'}`]),
+    ...(errors.count === 0 ? [] : [`${errors.count} ${errors.count === 1 ? 'error' : 'errors'}`]),
     ...(warnings === 0 ? [] : [`${warnings} ${warnings === 1 ? 'warning' : 'warnings'}`]),
   ];
-  return parts.length === 0 ? undefined : parts.join(', ');
+  return parts.length === 0 ? undefined : { tally: parts.join(', '), errors };
 }
 
 /** Details of an ordinary result: summed over its attempts, the error from the last. */
@@ -150,7 +158,7 @@ function attemptDetails(attempts: readonly AttemptRecord[], configured: Configur
     error: told?.error,
     videos: videoPaths(attempts),
     ...failureOf(told),
-    appLog: appLogTally(told?.appLog ?? []),
+    appLog: appLogSummary(told?.appLog ?? []),
     cleanupErrors: cleanupErrorsOf(attempts),
     skipReason: told?.status === 'skipped' ? undefined : told?.skip?.reason,
     replays: replayNotices(steps, configured),
@@ -204,7 +212,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string, configure
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
     ...failureOf(own === undefined ? undefined : { failure: own.failure, artifacts: last?.attempt.artifacts ?? [] }),
-    appLog: appLogTally(own?.appLog ?? []),
+    appLog: appLogSummary(own?.appLog ?? []),
     cleanupErrors: cleanupErrorsOf(group.attempts),
     skipReason: neverRan ? undefined : own.skip?.reason,
     replays: replayNotices(steps, configured),
@@ -223,7 +231,7 @@ interface Failure {
   readonly videos: readonly string[];
   readonly failure: FailureEvidence | undefined;
   readonly screenPath: string | undefined;
-  readonly appLog: string | undefined;
+  readonly appLog: AppLogSummary | undefined;
   /** Why a failed test skipped itself: the skip did not outrank the failure. */
   readonly skipReason?: string | undefined;
 }
@@ -1089,18 +1097,22 @@ export class ListReporter implements Reporter {
 
   /**
    * What the runner saw when the failure landed: the location, the nodes
-   * closest to what a failed locator asked for, and where the trace page
-   * is (else the screen text). The message says what was asked; these lines
-   * say what was there.
+   * closest to what a failed locator asked for, what the app logged as an
+   * error, and where the trace page is (else the screen text). The message
+   * says what was asked; these lines say what was there.
    */
-  private printEvidence(failure: FailureEvidence | undefined, screenPath: string | undefined, page: string | undefined, appLog: string | undefined): void {
+  private printEvidence(failure: FailureEvidence | undefined, screenPath: string | undefined, page: string | undefined, appLog: AppLogSummary | undefined): void {
     const { pc } = this;
     const row = (label: string, text: string): void => {
       this.print(pc.cyan(` ${pc.dim(F_POINTER)} ${pc.dim(label)} ${text}`));
     };
     if (failure?.url !== undefined) row('at', bounded(failure.url));
     for (const candidate of failure?.candidates ?? []) row('on screen', bounded(candidate));
-    if (appLog !== undefined) row('app', `${appLog} logged`);
+    if (appLog !== undefined) {
+      row('app', `${appLog.tally} logged`);
+      for (const { label, text } of appLog.errors.shown) this.print(`   ${pc.red(`${F_CROSS} ${label}:`)} ${bounded(text)}`);
+      if (appLog.errors.more !== undefined) this.print(pc.dim(`   ${appLog.errors.more}`));
+    }
     // The page tells the screen too, and every step before it.
     if (page !== undefined) {
       row('trace', bounded(page));
