@@ -10,7 +10,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { readdirSync } from 'node:fs';
 import { connect, createServer, type Socket } from 'node:net';
 import path from 'node:path';
-import { ConfigurationError, InfrastructureError, type EngineTransport, type TransportContext } from 'e2e/engine';
+import { ConfigurationError, InfrastructureError, type EngineAppInfo, type EngineTransport, type TransportContext } from 'e2e/engine';
 
 /** Options of the iOS transport. */
 export interface IosTransportOptions {
@@ -128,13 +128,16 @@ function startServer(udid: string, port: number, options: IosTransportOptions, s
   });
 }
 
-/** The engine-protocol transport to the Swift engine server on one simulator; `onOpen` learns which. */
-export function iosTransport(options: IosTransportOptions = {}, onOpen: (udid: string) => void = () => {}): EngineTransport {
+/** The engine-protocol transport to the Swift engine server on one simulator; `onOpen` learns which, and the app it drives. */
+export function iosTransport(
+  options: IosTransportOptions = {},
+  onOpen: (udid: string, app: EngineAppInfo | undefined) => void = () => {},
+): EngineTransport {
   return {
     label: 'ios simulator',
     async open(context) {
       const udid = await simulator(options, context.env, context.signal);
-      onOpen(udid);
+      onOpen(udid, context.app);
       if (context.app?.appPath !== undefined) await run('xcrun', ['simctl', 'install', udid, path.resolve(context.cwd, context.app.appPath)], context.signal);
       const port = await freePort();
       const server = await startServer(udid, port, options, context.signal);
