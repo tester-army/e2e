@@ -443,7 +443,12 @@ final class Device {
     default: throw EngineFailure.unsupported("unknown swipe direction \(direction)")
     }
     let velocity: XCUIGestureVelocity = momentum == "fast" ? .fast : (momentum == "none" ? .slow : .default)
-    coordinate(from, app).press(forDuration: 0.05, thenDragTo: coordinate(to, app), withVelocity: velocity, thenHoldForDuration: momentum == "none" ? 0.1 : 0)
+    // The harness reads the screen again after a scroll, and the next
+    // tap waits for idle before its event: the swipe need not wait for the
+    // content to stop coasting.
+    Quiescence.skipped {
+      coordinate(from, app).press(forDuration: 0.05, thenDragTo: coordinate(to, app), withVelocity: velocity, thenHoldForDuration: momentum == "none" ? 0.1 : 0)
+    }
   }
 
   /// Paints secure fields over a capture, so no password leaves the device.

@@ -14,7 +14,7 @@ import XCTest
 final class EngineServer: XCTestCase {
   func testServe() throws {
     continueAfterFailure = true
-    guard Quiescence.disableIfAsked() else {
+    guard Quiescence.install() else {
       print("E2E_SERVER_FAILED waitForIdle: false needs XCTest's private idle wait, which this Xcode does not have")
       XCTFail("the idle wait could not be turned off")
       return
