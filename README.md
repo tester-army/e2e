@@ -78,7 +78,7 @@ Join us in changing how software gets tested.
 [We are hiring.](https://tester.army/contact?utm_source=e2e&utm_medium=github&utm_campaign=readme_hiring)
 
 Or, if you want to hack on e2e, see [Contributing](./CONTRIBUTING.md). We
-prefer GitHub issues and [Discord discussions](https://tester.army/discord)
+prefer [GitHub issues](https://github.com/tester-army/e2e/issues) and [Discord discussions](https://tester.army/discord)
 over drive-by pull requests.
 
 ## Security
