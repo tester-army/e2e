@@ -47,7 +47,7 @@ describe('unique() through validateParams', () => {
       qty: 2,
       owner: { email: unique('a@b.test'), tags: ['vip', unique('new-customer')] },
       'a/b': unique('slash'),
-    });
+    }, 'agent.act');
     expect(projected).toEqual({
       name: 'E2E abc Company',
       plan: 'pro',

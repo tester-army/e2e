@@ -15,7 +15,8 @@ import { rejectUnknownOptions } from '../internal/options.ts';
 import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
-import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
+import type { Agent, AgentParams, JsonValue, StandardSchemaV1, VisionMode } from '../types.ts';
+import { redactParams, validateParams } from './act-validation.ts';
 import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
@@ -38,6 +39,9 @@ import { EXTRACT_REPAIR_OUTLET, EXTRACT_REQUEST, JUDGMENT_REQUEST } from './prom
 import { deriveJsonSchema } from './model/schema.ts';
 
 const DEFAULT_WAIT_INTERVAL_MS = 3_000;
+
+/** A judgment's params as the judge reads them, or undefined when the call passed none. */
+type JudgmentParams = Readonly<Record<string, JsonValue>> | undefined;
 
 /**
  * How often `waitFor` looks at the screen between judgments.
@@ -65,9 +69,9 @@ const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true whe
 const VISION_HINT_UNPROVEN =
   'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
 
-const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
+const WAIT_FOR_KEYS = ['params', 'timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
-const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
+const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -125,16 +129,32 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
   /**
    * One judgment call against a fresh observation. The judge is shown the
-   * instruction and the screen, never the prior steps or the acting agent's
-   * summaries: a verdict rests on evidence, not on what the actor said it did.
+   * instruction, its params, and the screen, never the prior steps or the
+   * acting agent's summaries: a verdict rests on evidence, not on what the
+   * actor said it did.
    */
-  const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
+  const askJudgment = (
+    invocation: Invocation,
+    instruction: string,
+    params: JudgmentParams,
+    observation: AgentObservation,
+  ) =>
     invocation.ask({
       schemaName: 'agent-judgment-2',
       schema: JUDGMENT_SCHEMA,
       validate: validateJudgmentResponse,
-      prompt: { request: JUDGMENT_REQUEST, instruction, observation },
+      prompt: { request: JUDGMENT_REQUEST, instruction, observation, ...(params === undefined ? {} : { params }) },
     });
+
+  /**
+   * A judgment's params as the judge reads them: projected as `act` projects
+   * them, a `Secret` by name only and a `unique()` value as its string, then
+   * redacted per call, so a registered value spelled into a param never reaches the model.
+   */
+  const judgmentParams = (params: AgentParams | undefined, api: string): JudgmentParams => {
+    const { projected, templates } = validateParams(params, api);
+    return projected === undefined ? undefined : redactParams(projected, templates, runtime.redact, api).params;
+  };
 
   const agent: Agent = {
     // The rest parameter exists only to catch the pre-0.8 three-argument call.
@@ -142,6 +162,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
       rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
+      const params = judgmentParams(options?.params, 'agent.waitFor');
       const intervalMs = validateInterval(options?.interval);
       const { config } = runtime.select(options?.agent);
       const vision = resolveVision(options?.vision);
@@ -159,7 +180,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
           let observation = await invocation.observe();
           for (let round = 1; ; round += 1) {
             invocation.recordPoll('waitFor', round);
-            const judgment = await askJudgment(invocation, condition, observation);
+            const judgment = await askJudgment(invocation, condition, params, observation);
             invocation.note({ explanation: judgment.explanation });
             // An inconclusive round is one more thing to wait for; only the
             // deadline turns it into a failure, with this explanation attached.
@@ -249,6 +270,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       if (customExecutor) {
         return runAssertStep(runtime, assertion, options);
       }
+      const params = judgmentParams(options?.params, 'agent.assert');
       const vision = resolveVision(options?.vision);
       return step(
         {
@@ -262,7 +284,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         assertion,
         async (invocation) => {
           const observation = await invocation.observe();
-          const judgment = await askJudgment(invocation, assertion, observation);
+          const judgment = await askJudgment(invocation, assertion, params, observation);
           invocation.note({ explanation: judgment.explanation });
           // The report keeps the redacted screenshot
           // whenever `screenshot` allows it, on a passing judgment too.

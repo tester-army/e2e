@@ -202,6 +202,9 @@ expect(data.titles).toContain('Buy milk');
 - Judgments see the assertion and the current screen only, never prior
   steps or the act loop's summaries; malformed output gets one repair
   round, then `MODEL_OUTPUT_INVALID`.
+- `assert` and `waitFor` take `params` like `act`:
+  `assert('the table lists {name}', { params: { name } })`. The judge sees a
+  `Secret` by name only; check a secret's value with a locator assertion.
 - A value shown in more than one place (a total in the summary and on the
   pay button) must agree everywhere, or the judgment fails. Name the one
   you mean (`'the order summary total is $42.00'`) when only it matters.

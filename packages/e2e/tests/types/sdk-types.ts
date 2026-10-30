@@ -599,6 +599,8 @@ await agent.assert('the form is not covered', { vision: 'only' });
 // @ts-expect-error a judgment's vision is a closed set: true, false, or 'only'
 await agent.assert('the chart trends upward', { vision: 'always' });
 await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+await agent.assert('the table lists {name}', { params: { name: unique('acme'), owner: credentials.user('admin').password } });
+await agent.waitFor('the table lists {name}', { params: { name: unique('acme') } });
 // @ts-expect-error the wait interval is `interval`, in milliseconds
 await agent.waitFor('the page settles', { intervalMs: 500 });
 // @ts-expect-error extract has a fixed budget: one extraction plus one repair round
