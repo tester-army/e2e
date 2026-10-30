@@ -52,7 +52,7 @@ and upload paths. See the shipped `docs/decision-models.mdx` or
 [the online guide](https://e2e.tester.army/docs/decision-models) for setup,
 gates, and limits.
 
-A coding agent the user already signs in to runs agent steps over ACP:
+A coding agent the user already signs in to runs agent steps over the Agent Client Protocol:
 install `@e2e-dev/acp` and its adapter, and put
 `claudeCode({ model: 'sonnet' })` or `codex()` under
 `executor`; no model provider is needed. See the shipped `docs/subscriptions.mdx` or
