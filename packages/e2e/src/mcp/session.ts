@@ -318,6 +318,8 @@ export class SessionHost {
         session: attempt.session,
         tools: config.agent.tools,
         redaction: { redact: attempt.agentRuntime.redact, redactCut: attempt.agentRuntime.redactCut },
+        projectRoot: config.projectRoot,
+        attemptDir: attempt.artifactsDir,
         recorder,
         appBase: target.app.base,
         fills: {

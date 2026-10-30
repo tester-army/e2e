@@ -143,7 +143,8 @@ hosted service's video by URL.
   Tests` section (error, code, failing line, code frame), then the
   summary rows `Test Files`, `Tests`, `AI`, `Cache` (when the replay cache
   ran), `Repeats` (with `--repeat-each`), `Errors`, `Start at`, `Duration`,
-  `Traces` (when a page was written), `AI trace` (with `--ai-trace`). Past a minute `Duration`
+  `Traces` (when a page was written), `Screenshots` (each
+  `app.screenshot` file), `AI trace` (with `--ai-trace`). Past a minute `Duration`
   repeats as minutes and seconds, setup time split out as `startup` in the
   same parenthetical (`682.97s (11m 23s, startup 43.00s)`).
 - `report.json`, for scripts rather than reading (`jq`, CI tools; a reader

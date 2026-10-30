@@ -10,6 +10,7 @@
  * corrupt the protocol.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
@@ -335,6 +336,23 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(afterFill.isError, afterFill.text).toBe(false);
     expect(afterFill.images).toBe(1);
     expect(afterFill.text).not.toContain('admin-pass');
+
+    // With a path, the masked capture app.screenshot keeps is saved there, relative to the project root, beside the attached image.
+    const saved = await call('screenshot', { path: 'shots/after-fill.png' });
+    expect(saved.isError, saved.text).toBe(false);
+    expect(saved.images).toBe(1);
+    const file = /^Saved to (.+)$/m.exec(saved.text)?.[1];
+    expect(file).toMatch(/[\\/]shots[\\/]after-fill\.png$/);
+    expect(readFileSync(file!).subarray(1, 4).toString()).toBe('PNG');
+    const notPng = await call('screenshot', { path: 'shots/after-fill.jpg' });
+    expect(notPng.isError).toBe(true);
+    expect(notPng.text).toContain('a .png file');
+    for (const outside of ['../outside.png', '/tmp/outside.png', '.e2e/shot.png']) {
+      const refused = await call('screenshot', { path: outside });
+      expect(refused.isError, outside).toBe(true);
+      expect(refused.text, outside).toContain('POLICY_DENIED');
+    }
+    expect(existsSync(path.join(project.dir, '..', 'outside.png'))).toBe(false);
 
     for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'view-source:file:///etc/passwd', 'VIEW-SOURCE:http://example.test/', 'about:srcdoc']) {
       const denied = await call('navigate', { url });

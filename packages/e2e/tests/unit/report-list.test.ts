@@ -1925,3 +1925,50 @@ describe('explore runs', () => {
     expect(lines).toContain('      Steps  0 of 4 · the run was cut short');
   });
 });
+
+describe('screenshots row', () => {
+  const step = (api: string, artifacts: string[]) =>
+    ({ id: api, index: 0, kind: 'app', api, label: '', status: 'passed', startedAt: new Date(0).toISOString(), durationMs: 1, events: [], artifacts }) as unknown as AttemptRecord['steps'][number];
+  const shot = (id: string, file: string): AttemptRecord['artifacts'][number] =>
+    ({ id, kind: 'screenshot', mediaType: 'image/png', path: file, redaction: 'complete', producer: { kind: 'step', stepId: 'app.screenshot' } });
+
+  it('names each app.screenshot file, ordinary and serial, and leaves out assertion and failure screenshots', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+    const group = serialGroup('g1', [{ members: [serialMember('m1', { steps: [step('app.screenshot', ['g:0'])] })] }]) as RunEventOf<'serial-group'>;
+    group.group.attempts[0]!.artifacts.push(shot('g:0', 'wizard/attempt-1/screenshots/001-wizard.png'));
+    reporter.handle(group);
+    reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })));
+    const taken = attempt({
+      steps: [step('app.screenshot', ['a:0']), step('agent.assert', ['a:1'])],
+      artifacts: [shot('a:0', 'case/attempt-1/screenshots/001-plan.png'), shot('a:1', 'case/attempt-1/screenshots/002-assert.png'), shot('a:2', 'case/attempt-1/failure.png')],
+    });
+    reporter.handle(finished(result({ status: 'passed', declarationIndex: 1, attempts: [taken] })));
+    reporter.handle(runFinished());
+    expect(lines.filter((line) => line.includes('.png'))).toEqual([
+      'Screenshots  .e2e/artifacts/wizard/attempt-1/screenshots/001-wizard.png',
+      '             .e2e/artifacts/case/attempt-1/screenshots/001-plan.png',
+    ]);
+  });
+
+  it('counts the files past the first ten', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+    const ids = Array.from({ length: 12 }, (_, index) => `a:${index}`);
+    reporter.handle(finished(result({
+      status: 'passed',
+      attempts: [attempt({ steps: [step('app.screenshot', ids)], artifacts: ids.map((id, index) => shot(id, `s/${index}.png`)) })],
+    })));
+    reporter.handle(runFinished());
+    const row = lines.findIndex((line) => line.startsWith('Screenshots'));
+    expect(lines.slice(row, row + 11)).toEqual([
+      'Screenshots  .e2e/artifacts/s/0.png',
+      ...Array.from({ length: 9 }, (_, index) => `             .e2e/artifacts/s/${index + 1}.png`),
+      '             and 2 more (the report lists every artifact)',
+    ]);
+  });
+});

@@ -14,7 +14,7 @@ import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
-import type { AppLogRecord } from '../run/steps.ts';
+import type { AppLogRecord, StepRecord } from '../run/steps.ts';
 import { cleanupErrorsOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
@@ -81,6 +81,8 @@ const BADGE_COLORS = ['bgYellowBright', 'bgCyanBright', 'bgGreenBright', 'bgMage
 
 /** Indentation of the `→ first error line` under a failed test in a file block. */
 const ERROR_GLANCE_INDENT = 7;
+/** How many `app.screenshot` files the summary names before it counts the rest. */
+const SHOWN_SCREENSHOTS = 10;
 
 export interface ListReporterOutput {
   write(line: string): void;
@@ -114,6 +116,8 @@ interface ResultDetails {
   readonly error: SerializedError | undefined;
   /** Where the recordings the attempts kept are, in attempt order: report-relative paths, or hosted URLs. */
   readonly videos: readonly string[];
+  /** Report-relative paths of the screenshots `app.screenshot` took, in attempt order. */
+  readonly screenshots: readonly string[];
   /** What the runner saw when the last failure landed, with the screen text's report path when it kept one. */
   readonly failure: FailureEvidence | undefined;
   readonly screenPath: string | undefined;
@@ -149,6 +153,7 @@ function attemptDetails(attempts: readonly AttemptRecord[], configured: Configur
     cache: stepsCacheTally(steps),
     error: told?.error,
     videos: videoPaths(attempts),
+    screenshots: attempts.flatMap((attempt) => requestedScreenshots(attempt.steps, attempt.artifacts)),
     ...failureOf(told),
     appLog: appLogTally(told?.appLog ?? []),
     cleanupErrors: cleanupErrorsOf(attempts),
@@ -179,6 +184,19 @@ function videoPaths(attempts: readonly { readonly artifacts: readonly ArtifactRe
   return paths;
 }
 
+/** Report-relative paths of the screenshots the `app.screenshot` steps among `steps` attached, in step order. */
+function requestedScreenshots(steps: readonly StepRecord[], artifacts: readonly ArtifactRecord[]): string[] {
+  const paths: string[] = [];
+  for (const step of steps) {
+    if (step.api !== 'app.screenshot') continue;
+    for (const id of step.artifacts) {
+      const where = artifacts.find((artifact) => artifact.id === id && artifact.kind === 'screenshot')?.path;
+      if (where !== undefined) paths.push(where);
+    }
+  }
+  return paths;
+}
+
 /**
  * Details of one serial member, read from its group: member results carry no
  * attempts of their own. Duration and usage sum over every group attempt the
@@ -203,6 +221,7 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string, configure
     error: own?.error ?? (neverRan ? last?.attempt.error : undefined),
     // The group's recording covers every member, so a failed member points at it.
     videos: videoPaths(group.attempts),
+    screenshots: runs.flatMap((run) => requestedScreenshots(run.member?.steps ?? [], run.attempt.artifacts)),
     ...failureOf(own === undefined ? undefined : { failure: own.failure, artifacts: last?.attempt.artifacts ?? [] }),
     appLog: appLogTally(own?.appLog ?? []),
     cleanupErrors: cleanupErrorsOf(group.attempts),
@@ -268,6 +287,8 @@ export class ListReporter implements Reporter {
   private readonly leftOut: { readonly testId: string; readonly skip: SkipInfo | undefined }[] = [];
   /** Passed or flaky tests whose cleanup failed, for the summary's `Cleanup` row. */
   private readonly cleanupFailures: { readonly title: string; readonly error: SerializedError }[] = [];
+  /** Report-relative paths of every `app.screenshot` file, in result order, for the `Screenshots` row. */
+  private readonly screenshots: string[] = [];
   /** Every finished test's run, for the `Repeats` summary of a `--repeat-each` run. */
   private readonly runs: { key: string; label: string; run: RepeatRun }[] = [];
   /**
@@ -726,8 +747,9 @@ export class ListReporter implements Reporter {
     // Read before `detailsOf` releases the result's serial group.
     const skippedAfter = failureBeforeSkip(result, (id) => this.pendingSerial.get(id)?.group);
     const id = resultId(result.test.id, result.target.name, result.agent, result.repeat);
-    const { durationMs, usage, models, cache, error, videos, failure, screenPath, appLog, skipReason, replays, cleanupErrors } =
+    const { durationMs, usage, models, cache, error, videos, screenshots, failure, screenPath, appLog, skipReason, replays, cleanupErrors } =
       this.detailsOf(result);
+    this.screenshots.push(...screenshots);
     addUsage(this.runUsage, usage);
     addModelTally(this.runModels, models);
     addCacheTally(this.runCache, cache);
@@ -1110,6 +1132,17 @@ export class ListReporter implements Reporter {
     }
   }
 
+  /** The `Screenshots` row: each `app.screenshot` file, so a caller never has to search the results directory. */
+  private printScreenshots(): void {
+    const { pc } = this;
+    const shown = this.screenshots.slice(0, SHOWN_SCREENSHOTS).map((relative) =>
+      this.displayPath(this.artifactsRoot === undefined ? relative : path.join(this.artifactsRoot, relative)),
+    );
+    shown.forEach((file, index) => this.print(padTitle(pc, index === 0 ? 'Screenshots' : '') + file));
+    const rest = this.screenshots.length - shown.length;
+    if (rest > 0) this.print(padTitle(pc, '') + pc.dim(`and ${rest} more (the report lists every artifact)`));
+  }
+
   /** Where to watch a failed attempt: one line per recording it kept. */
   private printVideos(videos: readonly string[]): void {
     const { pc } = this;
@@ -1186,6 +1219,7 @@ export class ListReporter implements Reporter {
       const dir = path.posix.dirname(path.posix.dirname(paged[0]!));
       this.print(padTitle(pc, 'Traces') + `${bounded(dir)}/ ${pc.dim(`(${paged.length} ${paged.length === 1 ? 'page' : 'pages'}, trace.md in each test's directory)`)}`);
     }
+    this.printScreenshots();
     if (event.aiTracePath !== undefined) {
       const shown = this.displayPath(event.aiTracePath);
       this.print(padTitle(pc, 'AI trace') + `${shown} ${pc.dim(`(open with: npx unbox-ai ${shown})`)}`);

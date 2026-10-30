@@ -170,7 +170,7 @@ What `call` can run depends on the session's target.
 | [`locate`](#locate) | Tries a semantic locator |
 | [`run_code`](#run_code) | Runs test statements |
 | [`test_lines`](#test_lines) | Returns the session's test lines |
-| [`screenshot`](#screenshot) | Returns the masked viewport |
+| [`screenshot`](#screenshot) | Returns the masked viewport, optionally saved to a file |
 | [Point tools](#point-tools) | Act at a screenshot point |
 | [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
 | [Project tools](#project-tools) | Your `defineTool` tools |
@@ -335,10 +335,20 @@ through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
 
-The masked viewport as an image. Takes no arguments.
+The masked viewport as an image.
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Optional. Also saves the screenshot as a PNG file, resolved against the project root, and returns its absolute path. A path outside the project or under a hidden directory is `POLICY_DENIED`. |
+
+```json
+{ "tool": "screenshot", "args": { "path": "screenshots/checkout.png" } }
+```
 
 - From then on every action result carries a fresh screenshot.
 - It masks secure fields only, after a secret fill too.
+- The file is a second, full-resolution capture, masked as `app.screenshot`
+  masks it. The attached image may be scaled down.
 
 #### Point tools
 
