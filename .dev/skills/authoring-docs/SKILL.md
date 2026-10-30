@@ -205,6 +205,10 @@ file must be a silhouette too:
 - **Weight**: the icon shows at 16 px. Hairline strokes look faint at that
   size. Thicken them until the mark is as heavy as the icons beside it.
 
+The one exception is our own mark, `icons/testerarmy.png`: the TesterArmy
+favicon in grey shades, since its dithered pixel art turns to mush as a
+silhouette. The docs site skips the silhouette filter for it.
+
 Card logos in `docs/images/integrations/` are a different set. They keep
 their brand colors, and some sit on a filled tile. Don't use one as a page
 icon. Make a silhouette copy in `docs/images/icons/`.
