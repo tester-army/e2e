@@ -183,36 +183,33 @@ It exits 1 on any change that needs a human's approval:
 - imports `node:module`, `node:vm`, `node:worker_threads`,
   `node:inspector`, `node:repl`, `node:test`, or a `data:` URL;
 - reads `process.getBuiltinModule`, `process.mainModule`, `.constructor`,
-  `eval`, `Function`, or `require` other than as a direct call, or uses
-  `with`;
-- reads `binding` or `dlopen` on `process`, `globalThis.process`, or
-  `node:process`, or hands `process` or the global object on;
+  `eval`, `Function`, or `require` other than as a direct call, a JSX tag
+  included, or uses `with`;
 - doesn't parse;
 - is a file git doesn't track, outside any workspace package.
 
-The rule on `.constructor` is by name, so `Base.constructor` blocks, but
-`err.constructor.name` doesn't, since it reads only a string. `binding`
-and `dlopen` count only on `process`, so `process` may only have a field
-read where it's referenced: handing it on, as `const p = process`,
-`fn(process)`, or `export default process`, blocks. `globalThis` and
-`global` hold `process`, so they follow the same rule: `const g =
-globalThis` and `globalThis[name]` block. The rule is by name, so a local
-named `process` handed on blocks too.
+The rules are by name, so `Base.constructor` blocks, but
+`err.constructor.name` doesn't, since it reads only a string.
 
 A workspace package's own sources don't block on a load: the package counts
 as a whole, and so does what they import by name, in any TypeScript or JSX
-(an `enum` or a decorator included). A load in them that `diff` can't
-follow, such as a computed `import()`, isn't seen. A source that doesn't
-parse blocks there too, and a module they reach outside every workspace
-package is held to all the rules above.
+(an `enum` or a decorator included). They're bundled, not run by Node, so a
+relative import resolves as a bundler's does: `./x` or `./x.js` for `x.ts`,
+and `./dir` for its index. A load in them that `diff` can't follow, such as
+a computed `import()` or a tsconfig `paths` alias, isn't seen. A source that
+doesn't parse blocks there too, and so does a relative import that leaves
+every workspace package and doesn't resolve. A module they reach outside
+every workspace package is held to all the rules above.
 
 Loading the config runs its top-level code from the branch under review.
 Give `diff` the env `e2e run` gets: a config that reads a missing
 variable at load blocks every `diff` with `config-unverified`. Run it only
-where you'd run the branch's tests. `diff` follows the imports the code
-names, so a load built from strings, reached by reflection on another
-object, or reached through `this` as the global object in sloppy-mode code
-isn't seen. Neither is a file a hook runs in a child process or reads as
+where you'd run the branch's tests. `diff` catches the changes a person or
+an agent makes in good faith. It follows the imports the code names and
+matches loaders by name, without scopes, so it's no boundary against code
+written to get past it: a load built from strings, reached by reflection
+(`Reflect.get(module, name)`), or through `process.binding` or
+`process.dlopen` isn't seen. Neither is a file a hook runs in a child process or reads as
 data, app code the config doesn't import, or an installed package: those
 need a human's review.
 `--allow-intent` exits 0 anyway and records nothing: gate it on a human's

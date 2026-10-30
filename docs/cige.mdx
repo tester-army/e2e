@@ -277,14 +277,19 @@ redirects what a pass means:
 - The CIGE config, or a module it imports, changed: that's where the hooks
   and plugins a pass depends on live. `#` aliases, workspace packages and
   the ones they depend on, a hook's lazy imports, links, and the
-  package.json that maps them count. A config that `diff` can't load or
-  follow blocks, such as one that imports `node:vm` or by a computed name.
+  package.json that maps them count. A workspace package's sources resolve
+  `./x` and `./x.js` to `x.ts`, as their bundler does. A config that `diff`
+  can't load or follow blocks, such as one that imports `node:vm` or by a
+  computed name, or a package source whose relative import leaves every
+  workspace package and doesn't resolve.
 
 Rewriting Execution and adding guardrails, deny patterns, criteria,
 evidence, or variants pass. `diff` follows the imports the code names, so a
 load built from strings, a computed load in a workspace package's sources, a
 file a hook runs in a child process or reads as data, app code the config
-doesn't import, and installed packages are out of its reach.
+doesn't import, and installed packages are out of its reach. It catches the
+changes a person or an agent makes in good faith, and it's no boundary
+against code written to get past it.
 `--allow-intent` exits 0 anyway and records nothing, so gate it on a
 human's approval in CI; an agent never passes it.
 

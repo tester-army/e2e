@@ -11,20 +11,16 @@
  * loads code by a value (`node:module`, `node:vm`, `node:worker_threads`,
  * `node:inspector`, `node:repl`, `node:test`), which closes every export of
  * each at once; a `data:` import; `with`; or any other read of a loader:
- * `require` other than a direct call, `process.getBuiltinModule`,
- * `process.mainModule`, `.constructor` other than for its `.name` (it
- * reaches `Function` and CommonJS's `Module`), `eval`, or `Function`,
- * whether by name, as a member (`globalThis.eval`, ``module[`require`]``),
- * or destructured.
+ * `require` other than a direct call, `getBuiltinModule`, `mainModule`,
+ * `.constructor` other than for its `.name` (it reaches `Function` and
+ * CommonJS's `Module`), `eval`, or `Function`, whether by name, as a member
+ * (`globalThis.eval`, ``module[`require`]``), destructured, or as a JSX tag.
  *
- * `binding` and `dlopen` are common names, so they count only on `process`
- * (also `globalThis.process`, `require('node:process')`, an import of
- * `node:process`, a namespace's `default`). Where it's referenced, `process`
- * may only have a field read or destructured: handed on (an alias, an
- * argument, an export) it blocks, since the walk can't see what's read from
- * it there. The global object, which holds `process`, is held to the same
- * rule. A load built from strings or reached by reflection on another
- * object (`Reflect.get(module, 'req' + 'uire')`) can't be seen.
+ * The walk catches the loads an honest change makes, a person's or an
+ * agent's. It matches names without scopes, so it's no boundary against code
+ * written to get past it: a load built from strings, reached by reflection
+ * (`Reflect.get(module, 'req' + 'uire')`), or through `process.binding` or
+ * `process.dlopen`, isn't seen.
  */
 
 import { parse } from 'acorn';
@@ -53,17 +49,6 @@ const LOADERS: Readonly<Record<string, string>> = {
   Function: 'runs code from a string (eval or Function)',
 };
 
-/** What `process` holds that loads code, read only on `process`: as bare names they're common. */
-const PROCESS_LOADERS: Readonly<Record<string, string>> = {
-  binding: "reads process.binding, which reaches Node's internal loaders",
-  dlopen: 'reads process.dlopen, which loads a native addon',
-};
-const PROCESS_MODULES = new Set(['process', 'node:process']);
-/** The names of the global object, which holds `process`. */
-const GLOBALS = new Set(['globalThis', 'global']);
-const HANDED_ON = "hands process on (an alias, an argument, an export), where the walk can't see binding or dlopen read";
-const GLOBAL_HANDED_ON = "hands the global object on (an alias, an argument, an export), where the walk can't see what's read from it";
-
 /** Builtins that load or run code by a value: `Module._load`, `createRequire`, `vm.runInThisContext`, a `Worker` with `eval`, an inspector's `Runtime.evaluate`, a REPL's `eval`. */
 const LOADING_BUILTINS = new Set(['module', 'vm', 'worker_threads', 'inspector', 'inspector/promises', 'repl']);
 /** The same, for builtins Node knows only with the prefix: `node:test`'s in-process `run`. */
@@ -82,11 +67,6 @@ const TYPE_ONLY = new Set([
   'TSAbstractPropertyDefinition',
   'TSAbstractAccessorProperty',
 ]);
-/** Expressions whose value is the one they wrap: a cast, `await`, `?.`. */
-const WRAPPERS = new Set(['ChainExpression', 'TSAsExpression', 'TSSatisfiesExpression', 'TSNonNullExpression', 'TSTypeAssertion', 'AwaitExpression']);
-/** Where a value is only tested, compared, or dropped, so it goes no further. */
-const TESTED = new Set(['ExpressionStatement', 'UnaryExpression', 'BinaryExpression', 'IfStatement', 'ConditionalExpression']);
-
 const TYPESCRIPT = /\.(?:[cm]?ts|tsx)$/;
 
 const ownRequire = nodeModule.createRequire(import.meta.url);
@@ -152,11 +132,6 @@ function isRequire(node: Fields): boolean {
   return isNode(callee) && callee.type === 'Identifier' && callee.name === 'require';
 }
 
-/** Whether `node` names `node:process`, as a specifier. */
-function isProcessModule(node: unknown): boolean {
-  return PROCESS_MODULES.has(literal(node) ?? '');
-}
-
 /** An ESTree program, as both parsers give it. */
 type Program = Fields & { readonly body: readonly Fields[] };
 
@@ -207,107 +182,11 @@ export function importsOf(text: string, file: string): ModuleImports {
     if (/^data:/i.test(specifier)) refuse("imports a data: URL, code the walk can't follow");
     list.push(specifier);
   };
-  // `process` under its import names: `import proc from 'node:process'`, `import * as proc`, `import { default as proc }`. Imports hoist, so they're read first.
-  const processNames = new Set(['process']);
-  for (const statement of tree.body) {
-    if (statement.type !== 'ImportDeclaration' || !isProcessModule(statement.source)) continue;
-    for (const specifier of statement.specifiers as (Fields & { local: { name: string } })[]) {
-      if (specifier.type !== 'ImportSpecifier' || nameOf(specifier.imported, false) === 'default') processNames.add(specifier.local.name);
-    }
-  }
-  /** Whether `node` evaluates to `process` itself, or for `import()`, to a promise of it. */
-  const isProcess = (node: Fields, parent: Fields | undefined): boolean => {
-    switch (node.type) {
-      case 'Identifier':
-        return processNames.has(node.name as string) && !isName(node, parent);
-      case 'MemberExpression': {
-        // `globalThis.process`, and a namespace's `default`: `(await import('node:process')).default` is process.
-        const name = nameOf(node.property, node.computed);
-        return (name === 'process' && isGlobalObject(node.object as Fields)) || (name === 'default' && isProcess(unwrapped(node.object as Fields), undefined));
-      }
-      case 'CallExpression':
-        return isRequire(node) && isProcessModule((node.arguments as unknown[])[0]);
-      case 'ImportExpression':
-        return isProcessModule(node.source);
-      default:
-        return false;
-    }
-  };
-  /** `node` without the casts, awaits, and `?.` around it. */
-  const unwrapped = (node: Fields): Fields => (WRAPPERS.has(node.type) ? unwrapped((node.type === 'AwaitExpression' ? node.argument : node.expression) as Fields) : node);
-  /** Whether `node` evaluates to the global object: `globalThis`, `global`, or either read off it. */
-  const isGlobal = (node: Fields, parent: Fields | undefined): boolean =>
-    node.type === 'Identifier' ? GLOBALS.has(node.name as string) && !isName(node, parent) : node.type === 'MemberExpression' && GLOBALS.has(nameOf(node.property, node.computed) ?? '') && isGlobalObject(node.object as Fields);
-  const isGlobalObject = (node: Fields): boolean => isGlobal(node, undefined);
-  /** What may be read off an object the walk follows: the fields that load code, and the ones that hold another such object. */
-  interface Rule {
-    readonly subject: string;
-    readonly handedOn: string;
-    readonly loads: (name: string) => string | undefined;
-    readonly holds: (name: string) => Rule | undefined;
-  }
-  /** `process`: `binding` and `dlopen` load code; a namespace's `default` is process again. */
-  const processRule: Rule = {
-    subject: 'process',
-    handedOn: HANDED_ON,
-    loads: (name) => lookup(PROCESS_LOADERS, name),
-    holds: (name) => (name === 'default' ? processRule : undefined),
-  };
-  /** The global object: no field loads by itself; `process` and the global object's own names hold what does. */
-  const globalRule: Rule = {
-    subject: 'the global object',
-    handedOn: GLOBAL_HANDED_ON,
-    loads: () => undefined,
-    holds: (name) => (name === 'process' ? processRule : GLOBALS.has(name) ? globalRule : undefined),
-  };
-  /** Why destructuring into `target` under `rule` lets a load past: a loading field, a computed key, a rest element, or a held object bound whole. */
-  const pattern = (target: unknown, rule: Rule): string | undefined => {
-    if (!isNode(target) || target.type !== 'ObjectPattern') return rule.handedOn;
-    for (const property of target.properties as Fields[]) {
-      if (property.type !== 'Property') return rule.handedOn;
-      const name = nameOf(property.key, property.computed);
-      if (name === undefined) return `reads ${rule.subject} by a computed name`;
-      // `{ process: { env } }` reads env off process; `{ process: p }` binds it whole.
-      const inner = rule.holds(name);
-      const value = property.value as Fields;
-      const reason = inner === undefined ? rule.loads(name) : pattern(value.type === 'AssignmentPattern' ? value.left : value, inner);
-      if (reason !== undefined) return reason;
-    }
-    return undefined;
-  };
-  /** Why an object reached at `node` lets a load past the walk under `rule`: a loading field read or destructured, a computed read, or the object handed on. */
-  const use = (node: Fields, ancestors: readonly Fields[], rule: Rule): string | undefined => {
-    let value = node;
-    let index = ancestors.length - 1;
-    // The value a cast, an await, a comma, or `a || b` gives may still be process.
-    for (; index >= 0; index -= 1) {
-      const parent = ancestors[index] as Fields;
-      const passes = WRAPPERS.has(parent.type) || parent.type === 'LogicalExpression' || (parent.type === 'ConditionalExpression' && parent.test !== value);
-      if (passes || (parent.type === 'SequenceExpression' && (parent.expressions as unknown[]).at(-1) === value)) value = parent;
-      else break;
-    }
-    // A promise of process is only awaited.
-    if (node.type === 'ImportExpression' && value === node) return rule.handedOn;
-    const parent = ancestors[index];
-    // Tested, compared, or dropped: a test, an operand, a statement, a comma's earlier value.
-    if (parent === undefined || TESTED.has(parent.type) || parent.type === 'SequenceExpression') return undefined;
-    if (parent.type === 'MemberExpression' && parent.object === value) {
-      const name = nameOf(parent.property, parent.computed);
-      // A field that holds another such object is a reference to it, and held to its rule there.
-      return name === undefined ? `reads ${rule.subject} by a computed name` : rule.holds(name) === undefined ? rule.loads(name) : undefined;
-    }
-    // A declaration's own name never counts as process, so a declarator here holds it as its value.
-    const target = parent.type === 'VariableDeclarator' ? parent.id : parent.type === 'AssignmentExpression' || parent.type === 'AssignmentPattern' ? (parent.right === value ? parent.left : undefined) : undefined;
-    // `const { env } = process` reads fields; a rest element takes the loaders with the rest.
-    return pattern(target, rule);
-  };
   const visit = (node: Fields, ancestors: Fields[]): void => {
     // Types, ambient declarations, and type-only imports: Node erases them, so they load nothing.
     if (TYPE_ONLY.has(node.type) || node.declare === true || node.importKind === 'type' || node.exportKind === 'type') return;
     const parent = ancestors.at(-1);
     const grandparent = ancestors.at(-2);
-    if (isProcess(node, parent)) refuse(use(node, ancestors, processRule));
-    if (isGlobal(node, parent)) refuse(use(node, ancestors, globalRule));
     switch (node.type) {
       case 'ImportDeclaration':
       case 'ExportAllDeclaration':
@@ -316,26 +195,14 @@ export function importsOf(text: string, file: string): ModuleImports {
         if (source === undefined) break;
         // `import { type Script } from 'node:vm'` keeps the import but binds nothing a loader could be read from.
         const bound = (node.specifiers ?? []) as Fields[];
-        if (bound.length > 0 && bound.every((specifier) => specifier.importKind === 'type' || specifier.exportKind === 'type')) {
-          specifiers.push(source);
-          break;
-        }
-        named(specifiers, source);
-        if (!PROCESS_MODULES.has(source)) break;
-        // `import { binding }` reads the loader; `export *` and `export { default }` hand it, or process, on.
-        if (node.type === 'ExportAllDeclaration') refuse(HANDED_ON);
-        for (const specifier of (node.specifiers ?? []) as Fields[]) {
-          const name = nameOf(specifier.type === 'ExportSpecifier' ? specifier.local : specifier.imported, false);
-          refuse(lookup(PROCESS_LOADERS, name) ?? (specifier.type === 'ExportSpecifier' && name === 'default' ? HANDED_ON : undefined));
-        }
+        if (bound.length > 0 && bound.every((specifier) => specifier.importKind === 'type' || specifier.exportKind === 'type')) specifiers.push(source);
+        else named(specifiers, source);
         break;
       }
       case 'TSImportEqualsDeclaration': {
-        // `import x = require('./y')`, TypeScript's CommonJS import; of node:process it's an alias.
-        // An alias of a namespace (`import x = N.y`) has no expression, so names no module.
+        // `import x = require('./y')`, TypeScript's CommonJS import. An alias of a namespace (`import x = N.y`) has no expression, so names no module.
         const source = literal((node.moduleReference as Fields).expression);
         if (source !== undefined) named(requires, source);
-        if (PROCESS_MODULES.has(source ?? '')) refuse(HANDED_ON);
         break;
       }
       case 'ImportExpression': {
@@ -363,6 +230,10 @@ export function importsOf(text: string, file: string): ModuleImports {
         if (reason !== undefined && !directRequire && !constructorName && !isKey(node, parent, grandparent)) refuse(reason);
         break;
       }
+      case 'JSXIdentifier':
+        // A capitalized or dotted tag reads a value, which a pragma calls (`<Function>`, `<module.require>`); a lowercase tag or an attribute is only a name.
+        if (parent?.type === 'JSXMemberExpression' || (parent?.type === 'JSXOpeningElement' && /^[A-Z]/.test(node.name as string))) refuse(lookup(LOADERS, node.name as string));
+        break;
       case 'MemberExpression':
         // ``module[`require`]`` reads the loader as surely as `module.require`; a string anywhere else is only text.
         refuse(lookup(LOADERS, literal(node.property)));
@@ -400,36 +271,4 @@ function isKey(node: Fields, parent: Fields | undefined, grandparent: Fields | u
   if (parent.key !== node) return false;
   if (parent.type === 'Property') return parent.shorthand !== true && grandparent?.type === 'ObjectExpression';
   return parent.type === 'MethodDefinition' || parent.type === 'PropertyDefinition' || parent.type === 'AccessorProperty';
-}
-
-/**
- * An identifier that names rather than references: a member's property, a
- * key, an import or export's name, a declared local, or a parameter. The
- * name `process` there is not the object.
- */
-function isName(node: Fields, parent: Fields | undefined): boolean {
-  switch (parent?.type) {
-    case 'MemberExpression':
-      return parent.property === node && parent.computed !== true;
-    case 'Property':
-    case 'MethodDefinition':
-    case 'PropertyDefinition':
-    case 'AccessorProperty':
-      return parent.key === node && parent.computed !== true && parent.shorthand !== true;
-    case 'ImportSpecifier':
-    case 'ImportDefaultSpecifier':
-    case 'ImportNamespaceSpecifier':
-      return true;
-    case 'ExportSpecifier':
-      return parent.exported === node && parent.local !== node;
-    // A local or a parameter that shadows process is a new binding, not the object.
-    case 'VariableDeclarator':
-      return parent.id === node;
-    case 'FunctionDeclaration':
-    case 'FunctionExpression':
-    case 'ArrowFunctionExpression':
-      return (parent.params as unknown[]).includes(node);
-    default:
-      return false;
-  }
 }

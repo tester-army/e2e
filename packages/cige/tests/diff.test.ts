@@ -399,9 +399,7 @@ describe('diffSince', () => {
     // cubic's case: a URL scheme is case-insensitive.
     expect(verdict("export default { hooks: { h: async () => import('DATA:text/javascript,export default 1') } };\n")).toEqual(untraceable("imports a data: URL, code the walk can't follow"));
     expect(verdict("import { run } from 'node:test';\nexport default { hooks: { h: async () => run({ files: ['./check.cjs'], isolation: 'none' }) } };\n")).toEqual(loader('node:test'));
-    // The review's cases: vm's binding, a native addon, and a REPL's eval.
-    expect(verdict("export default { hooks: { h: async () => process.binding('contextify') } };\n")).toEqual(untraceable("reads process.binding, which reaches Node's internal loaders"));
-    expect(verdict("export default { hooks: { h: async () => process.dlopen(module, './addon.node') } };\n")).toEqual(untraceable('reads process.dlopen, which loads a native addon'));
+    // The review's case: a REPL's eval.
     expect(verdict("export default { hooks: { h: async () => (await import('node:repl')).start() } };\n")).toEqual(loader('node:repl'));
     expect(verdict("export default { hooks: { h: async () => (await import('repl')).start() } };\n")).toEqual(loader('repl'));
     expect(verdict("export default { hooks: { h: async () => (await import('inspector')).open() } };\n")).toEqual(loader('inspector'));
@@ -413,6 +411,8 @@ describe('diffSince', () => {
     expect(verdict('export default { hooks: { h: async () => ({ [eval]: 1 }) } };\n')).toEqual(evaluates);
     expect(verdict('export default { hooks: { h: async () => ({ run: eval }) } };\n')).toEqual(evaluates);
     expect(verdict('class Runner { make = Function; }\nexport default { hooks: { h: async () => new Runner() } };\n')).toEqual(evaluates);
+    // Only `.name` itself is a string: a computed key may read anything off the constructor.
+    expect(verdict("const name = 'prototype';\nexport default { hooks: { h: async () => new Error('x').constructor[name] } };\n")).toEqual(constructor);
     // A comment, a string, a key, a class constructor, or another builtin is not a loader.
     expect(
       verdict(
@@ -421,113 +421,36 @@ describe('diffSince', () => {
     ).toEqual([]);
   });
 
-  it('reads binding and dlopen as loaders only on process', () => {
+  it('reads a loader in a JSX tag, and leaves process and the global object to review', () => {
     const verdict = (config: string, files: Record<string, string> = {}) => {
       const dir = repo({ 'cige.config.mjs': config, 'checkout.cige.json': BASE, ...files });
       return diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.mjs')] }).files.flatMap((entry) => entry.changes.map((item) => item.detail));
     };
-    const reads = (name: string) => [
-      `cige.config.mjs: cige.config.mjs reads process.${name}, ${name === 'binding' ? "which reaches Node's internal loaders" : 'which loads a native addon'}; a human must review every change outside the case files`,
-    ];
-    expect(verdict("export default { hooks: { h: async () => process['binding']('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => process?.[`dlopen`](module, './a.node') } };\n")).toEqual(reads('dlopen'));
-    expect(verdict("export default { hooks: { h: async () => globalThis.process.binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => globalThis['process'].dlopen(module, './a.node') } };\n")).toEqual(reads('dlopen'));
-    expect(verdict("const { binding: b } = process;\nexport default { hooks: { h: async () => b('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("let d;\n({ dlopen: d } = process);\nexport default { hooks: { h: async () => d } };\n")).toEqual(reads('dlopen'));
-    expect(verdict("const h = async ({ binding } = process) => binding('fs');\nexport default { hooks: { h } };\n")).toEqual(reads('binding'));
-    expect(verdict("import { binding } from 'node:process';\nexport default { hooks: { h: async () => binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("import proc from 'node:process';\nexport default { hooks: { h: async () => proc.dlopen(module, './a.node') } };\n")).toEqual(reads('dlopen'));
-    expect(verdict("import * as proc from 'process';\nexport default { hooks: { h: async () => proc.binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("import { default as proc } from 'process';\nexport default { hooks: { h: async () => proc['binding']('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => require('node:process').binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export { dlopen } from 'node:process';\nexport default {};\n")).toEqual(reads('dlopen'));
-    expect(verdict("export default { hooks: { h: async () => (globalThis?.process).binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => global.process.binding('fs') } };\n")).toEqual(reads('binding'));
-    // Read, never run: a cast changes nothing about what process is.
-    const lazy = (hook: string) => verdict("export default { hooks: { h: async () => (await import('./hooks/h.ts')).h() } };\n", { 'hooks/h.ts': hook }).map((detail) => detail.replace('hooks/h.ts', 'cige.config.mjs'));
-    expect(lazy("export const h = () => (process as any).binding('fs');\n")).toEqual(reads('binding'));
-    expect(lazy("export const h = () => process!.dlopen(module, './a.node');\n")).toEqual(reads('dlopen'));
-    expect(lazy("export const h = () => (process satisfies object).binding('fs');\n")).toEqual(reads('binding'));
-    expect(lazy("export const h = () => (<any>process).binding('fs');\n")).toEqual(reads('binding'));
-    expect(lazy("import { type Script, runInThisContext } from 'node:vm';\nexport const h = (s?: Script) => runInThisContext('1');\n")).toEqual([
-      "cige.config.mjs: cige.config.mjs imports node:vm, which loads code by a name the walk can't follow; a human must review every change outside the case files",
-    ]);
-    expect(verdict("export default { hooks: { h: async () => (0, process).binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => (await import('node:process')).binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => { const { dlopen } = await import('process'); return dlopen; } } };\n")).toEqual(reads('dlopen'));
-    // Handed on, process may be read anywhere: the review's aliases, an argument, an export.
-    const handed = ["cige.config.mjs: cige.config.mjs hands process on (an alias, an argument, an export), where the walk can't see binding or dlopen read; a human must review every change outside the case files"];
-    expect(verdict("export * from 'node:process';\nexport default {};\n")).toEqual(handed);
-    expect(verdict("export { default as proc } from 'node:process';\nexport default {};\n")).toEqual(handed);
-    expect(verdict('export default process;\n')).toEqual(handed);
-    expect(verdict("export default { hooks: { h: async () => { const p = require('node:process'); return p.binding('fs'); } } };\n")).toEqual(handed);
-    expect(verdict('const p = globalThis.process || {};\nexport default { hooks: { h: async () => p } };\n')).toEqual(handed);
-    expect(verdict("export default { hooks: { h: async () => Reflect.get(process, 'binding')('fs') } };\n")).toEqual(handed);
-    expect(verdict("export default { hooks: { h: async () => (await import('node:process').then((p) => p.binding))('fs') } };\n")).toEqual(handed);
-    expect(verdict('export default { hooks: { h: async () => { const { env, ...rest } = process; return rest; } } };\n')).toEqual(handed);
-    expect(verdict('export default { hooks: { h: async () => ({ a: process }) } };\n')).toEqual(handed);
-    expect(verdict('export default { hooks: { h: async () => ({ process }) } };\n')).toEqual(handed);
-    expect(verdict('export default { hooks: { h: () => process } };\n')).toEqual(handed);
-    expect(verdict('export default { hooks: { h: async () => ({})[process] } };\n')).toEqual(handed);
-    expect(verdict("import process from 'node:process';\nexport { process };\nexport default {};\n")).toEqual(handed);
-    // cubic's cases: a module namespace's default is process.
-    expect(verdict("export default { hooks: { h: async () => { const { default: proc } = await import('node:process'); return proc.binding('fs'); } } };\n")).toEqual(handed);
-    expect(verdict("import * as ns from 'node:process';\nexport default { hooks: { h: async () => ns.default.binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => (await import('node:process')).default.dlopen(module, './a.node') } };\n")).toEqual(reads('dlopen'));
-    // cubic's case: the global object holds process, so it may only have a field read too.
-    const globalHanded = ["cige.config.mjs: cige.config.mjs hands the global object on (an alias, an argument, an export), where the walk can't see what's read from it; a human must review every change outside the case files"];
-    expect(verdict("const g = globalThis;\nexport default { hooks: { h: async () => g.process.binding('fs') } };\n")).toEqual(globalHanded);
-    expect(verdict("export default { hooks: { h: async () => Reflect.get(global, 'process').binding('fs') } };\n")).toEqual(globalHanded);
-    expect(verdict("export default { hooks: { h: async () => globalThis.global.process.binding('fs') } };\n")).toEqual(reads('binding'));
-    expect(verdict("export default { hooks: { h: async () => globalThis['pro' + 'cess'].binding('fs') } };\n")).toEqual([
-      'cige.config.mjs: cige.config.mjs reads the global object by a computed name; a human must review every change outside the case files',
-    ]);
-    expect(verdict("const { process: p } = globalThis;\nexport default { hooks: { h: async () => p.binding('fs') } };\n")).toEqual(handed);
-    expect(verdict("const { global: g } = globalThis;\nexport default { hooks: { h: async () => g.process.binding('fs') } };\n")).toEqual(globalHanded);
-    const computedRead = ['cige.config.mjs: cige.config.mjs reads process by a computed name; a human must review every change outside the case files'];
-    expect(verdict("const name = 'binding';\nexport default { hooks: { h: async () => process[name]('fs') } };\n")).toEqual(computedRead);
-    expect(verdict("const name = 'binding';\nexport default { hooks: { h: async () => { const { [name]: load } = process; return load; } } };\n")).toEqual(computedRead);
-    expect(lazy("import proc = require('node:process');\nexport const h = () => proc.binding('fs');\n")).toEqual(handed);
-    expect(verdict("export default { hooks: { h: async () => (await import('./hooks/h.cjs')).default } };\n", { 'hooks/h.cjs': 'module.exports = process;\n' }).map((detail) => detail.replace('hooks/h.cjs', 'cige.config.mjs'))).toEqual(handed);
+    // Read, never run, so a hook may hold JSX: a capitalized or dotted tag reads its value, which the pragma calls.
+    const view = (source: string) => verdict("export default { hooks: { h: async () => (await import('./hooks/view.jsx')).v } };\n", { 'hooks/view.jsx': source });
+    const reads = (reason: string) => [`cige.config.mjs: hooks/view.jsx ${reason}; a human must review every change outside the case files`];
+    expect(view("/** @jsx h */\nconst h = (t, p, ...c) => t(...c)();\nexport const v = <Function>{'return 6 * 7'}</Function>;\n")).toEqual(reads('runs code from a string (eval or Function)'));
+    expect(view("export const v = <module.require>{'./evil.cjs'}</module.require>;\n")).toEqual(reads("uses require other than as require('<module>')"));
+    expect(view("/** @jsx h */\nconst h = (t) => t('return 1')();\nexport const v = <Function />;\n")).toEqual(reads('runs code from a string (eval or Function)'));
+    expect(view('export const v = <eval require="x"><Box.Item /></eval>;\n')).toEqual([]);
+    // With `with`, a hook reads names off an object: blocked, whatever it holds.
     expect(verdict("export default { hooks: { h: async () => (await import('./hooks/h.cjs')).default() } };\n", { 'hooks/h.cjs': "module.exports = () => { with (process) return binding('fs'); };\n" })).toEqual([
       "cige.config.mjs: hooks/h.cjs uses with, which reads names off an object the walk can't follow; a human must review every change outside the case files",
     ]);
-    // The review's cases: the names on anything but process are only names.
-    expect(verdict("const binding = { ok: true };\nexport default { hooks: { h: async () => binding.ok } };\n")).toEqual([]);
-    expect(verdict("export default { hooks: { h: async () => (await import('./hooks/h.mjs')).h({}) } };\n", { 'hooks/h.mjs': 'export const h = async (reply) => reply.binding ?? null;\n' })).toEqual([]);
-    expect(verdict('export default { hooks: { h: async ({ dlopen }) => dlopen } };\n')).toEqual([]);
+    // The documented limit: the walk catches honest changes, not code written to get past it, so process and the global object are only names.
     expect(
       verdict(
         [
           "import proc, { argv } from 'node:process';",
-          'const { env, platform: os } = process;',
-          "const node = typeof process !== 'undefined' && process.versions.node;",
-          'const vars = globalThis.process?.env ?? {};',
-          'if (process) void 0;',
-          'globalThis.process && void 0;',
-          'const missing = process === undefined;',
-          'const kind = process ? 1 : 0;',
-          'const dropped = (process, 1);',
-          'const owns = process.hasOwnProperty("env");',
-          'const labels = { process: 1 };',
-          "const { setTimeout: later2, process: { env: penv } } = globalThis;",
-          "const nsEnv = async () => (await import('node:process')).default.env;",
-          'const hasGlobal = typeof globalThis !== "undefined" && globalThis.structuredClone !== undefined;',
-          'globalThis.cigeSeen = true;',
-          "const later = async () => import('not-installed-pkg');",
-          "import { binding as nativeBinding } from './hooks/native.mjs';",
-          "export * from './hooks/native.mjs';",
-          'const local = 1;',
-          'export { local as process };',
-          'const shadow = (process) => process.argv;',
-          'function started(event) { const process = event.kind === "app"; return process ? 1 : 0; }',
+          'const { env } = process;',
+          'const g = globalThis;',
+          'const reply = { binding: 1 };',
+          'const binding = reply.binding;',
           'class Native { binding = 1; dlopen() {} }',
           'class Failure extends Error { kind = this.constructor.name; }',
-          "export default { hooks: { h: async () => [proc.argv, argv, env, os, node, vars, new Native().binding, { binding: 1, dlopen: 2 }.dlopen, new Failure().kind, new Error('x').constructor.name, shadow, started, missing, kind, dropped, owns, labels, nativeBinding, later, later2, penv, hasGlobal, nsEnv] } };",
+          "export default { hooks: { h: async () => [proc.argv, argv, env, g.structuredClone, binding, new Native().binding, new Failure().kind, new Error('x').constructor.name, process.binding] } };",
           '',
         ].join('\n'),
-        { 'hooks/native.mjs': 'export const binding = 1;\n' },
       ),
     ).toEqual([]);
   });
@@ -571,6 +494,11 @@ describe('diffSince', () => {
     expect(diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files).toEqual([]);
     write(dir, { 'hooks/keep.ts': 'export type Hook = () => Promise<unknown>;\nexport const keep = (fn: Function): Function => () => true;\n' });
     expect(diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.map((entry) => entry.file)).toEqual(['hooks/keep.ts']);
+    // A type beside a value still binds the loader.
+    write(dir, { 'hooks/generic.ts': "import { type Script, runInThisContext } from 'node:vm';\nexport const kept = (s?: Script) => runInThisContext('1');\n" });
+    expect(diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.ts')] }).files.flatMap((entry) => entry.changes.filter((item) => item.kind === 'config-unverified').map((item) => item.detail))).toEqual([
+      "cige.config.ts: hooks/generic.ts imports node:vm, which loads code by a name the walk can't follow; a human must review every change outside the case files",
+    ]);
   });
 
   it('follows a lazy import that comment-looking strings surround', () => {
@@ -611,6 +539,18 @@ describe('diffSince', () => {
     rmSync(path.join(alias, 'hooks/check.mjs'));
     expect(changed(alias)).toEqual([
       "cige.config.mjs !config-unverified: cige.config.mjs: cige.config.mjs imports #hooks/check, which doesn't resolve; a human must review every change outside the case files",
+    ]);
+    // Node runs this hook, so an import only a bundler would resolve, an extension left off or a directory, doesn't resolve.
+    const bundlerStyle = repo({
+      'cige.config.mjs': "export default { hooks: { check: async () => (await import('./hooks/check')).ok(), dir: async () => import('./hooks') } };\n",
+      'hooks/check.mjs': 'export const ok = () => false;\n',
+      'hooks/index.mjs': 'export const ok = () => false;\n',
+      'checkout.cige.json': BASE,
+    });
+    write(bundlerStyle, { 'cige.config.mjs': "export default { hooks: { check: async () => (await import('./hooks/check')).ok(), dir: async () => import('./hooks') } };\n// edited\n" });
+    expect(changed(bundlerStyle)).toEqual([
+      "cige.config.mjs !config-unverified: cige.config.mjs: cige.config.mjs imports ./hooks/check, which doesn't resolve; cige.config.mjs imports ./hooks, which doesn't resolve; a human must review every change outside the case files",
+      'cige.config.mjs !config-changed: cige.config.mjs: the hooks, plugins, and environments a pass depends on',
     ]);
     // cubic's case: a bare `.` is relative too, here a directory's index behind a caught require.
     const index = repo({
@@ -683,6 +623,9 @@ describe('diffSince', () => {
       'packages/hooks/src/load.ts': 'export class Loader {\n  constructor(private readonly name: string) {}\n  load = () => import(this.name);\n}\n',
       'packages/hooks/src/lazy.mjs': 'export const ok = true;\n',
       'packages/hooks/src/unused.ts': 'export const unused = 1;\n',
+      // The review's case: imports as tsc and bundlers write them, `./x` and `./x.js` for `x.ts`, and a directory's index.
+      'packages/hooks/src/ext.ts':
+        "export { ext } from '../../../local/ext';\nexport { js } from '../../../local/js.js';\nexport { dir } from '../../../local/dir';\nimport req = require('../../../local/req');\nexport { req };\n",
       'packages/hooks/dist/index.js': 'export const verdict = () => false;\nexport const local = () => false;\n',
       'packages/shared/package.json': JSON.stringify({ name: '@acme/shared', type: 'module', exports: './dist/index.js' }),
       'packages/shared/src/index.ts': 'export const verdict = () => false;\n',
@@ -693,6 +636,15 @@ describe('diffSince', () => {
       'local/view.mjs': "export const label = 'view';\n",
       'local/app.mjs': "export const title = 'app';\n",
       'local/card.mjs': "export const body = 'card';\n",
+      // Bundled too, so its own imports resolve as the bundler's do.
+      'local/ext.ts': "export { deep } from './deep';\nexport const ext = () => false;\n",
+      // A cycle outside the stand-in, walked strictly, and one inside it, walked leniently.
+      'local/deep.ts': "export { ext as again } from './ext';\nexport const deep = 1;\n",
+      'packages/hooks/src/cycle-a.ts': "export * from './cycle-b';\n",
+      'packages/hooks/src/cycle-b.ts': "export * from './cycle-a';\n",
+      'local/js.ts': 'export const js = 1;\n',
+      'local/dir/index.tsx': 'export const dir = 1;\n',
+      'local/req.cts': 'export = 1;\n',
       // A directory beside the stand-in whose name starts with it, and no package of its own.
       'packages/hooks-extra/loader.mjs': 'export const extra = 1;\n',
       // Nothing reaches it, so it isn't walked: the stand-in's own sources are only `packages/hooks/`.
@@ -722,11 +674,18 @@ describe('diffSince', () => {
     write(dir, { 'local/src/index.ts': "const name = '../check.mjs';\nexport const local = async () => (await import(name)).ok;\n" });
     expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'local/src/index.ts !config-changed']);
     write(dir, { 'local/src/index.ts': 'export const local = () => false;\n' });
-    for (const file of ['local/legacy.cjs', 'local/ns.cjs', 'local/codes.cjs', 'local/view.mjs', 'local/app.mjs', 'local/card.mjs']) {
+    for (const file of ['local/legacy.cjs', 'local/ns.cjs', 'local/codes.cjs', 'local/view.mjs', 'local/app.mjs', 'local/card.mjs', 'local/ext.ts', 'local/deep.ts', 'local/js.ts', 'local/dir/index.tsx', 'local/req.cts']) {
       write(dir, { [file]: 'module.exports = 2;\n' });
       expect(changed()).toEqual([`${file} !config-changed`]);
       execFileSync('git', ['checkout', '--', file], { cwd: dir });
     }
+    // An import that leaves the stand-in and lands nowhere hides what it loads, as a parse failure does; inside the package, it's the package's own business.
+    const ext = "export { ext } from '../../../local/ext';\nexport { js } from '../../../local/js.js';\nexport { dir } from '../../../local/dir';\nimport req = require('../../../local/req');\nexport { req };\n";
+    write(dir, { 'packages/hooks/src/ext.ts': `${ext}export { gone } from '../../../local/gone';\n` });
+    expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'packages/hooks/src/ext.ts !config-changed']);
+    write(dir, { 'packages/hooks/src/ext.ts': `${ext}export { gone } from './gone';\nexport * from '..';\n` });
+    expect(changed()).toEqual(['packages/hooks/src/ext.ts !config-changed']);
+    execFileSync('git', ['checkout', '--', 'packages/hooks/src/ext.ts'], { cwd: dir });
     // The review's case: a sibling whose name starts with the stand-in's is outside it.
     write(dir, { 'packages/hooks-extra/loader.mjs': "import { createRequire } from 'node:module';\nexport const extra = createRequire(import.meta.url)('./check.cjs');\n" });
     expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'packages/hooks-extra/loader.mjs !config-changed']);
@@ -744,6 +703,38 @@ describe('diffSince', () => {
     // cubic's case: a stand-in's package.json that doesn't parse can't say what it bundles.
     write(dir, { 'packages/hooks/src/lazy.mjs': 'export const ok = true;\n', 'packages/shared/package.json': '{ "name": "@acme/shared",' });
     expect(changed()).toEqual(['cige.config.mjs !config-unverified', 'packages/shared/package.json !config-changed']);
+  });
+
+  it("resolves a stand-in's relative imports as a bundler does, every extension and index", () => {
+    const targets = ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs', 'json'].map((extension) => `local/bare-${extension}.${extension}`);
+    // Written with a JavaScript extension for the source a compiler reads.
+    const compiled = { 'js-ts.js': 'js-ts.ts', 'js-tsx.js': 'js-tsx.tsx', 'js-jsx.js': 'js-jsx.jsx', 'jsx.jsx': 'jsx.tsx', 'mjs.mjs': 'mjs.mts', 'cjs.cjs': 'cjs.cts' };
+    const indexes = ['ts', 'js'].map((extension) => `local/dir-${extension}/index.${extension}`);
+    const all = [...targets, ...Object.values(compiled).map((file) => `local/${file}`), ...indexes];
+    const imports = [
+      ...targets.map((file) => file.replace(/\.\w+$/, '')),
+      ...Object.keys(compiled).map((file) => `local/${file}`),
+      ...indexes.map((file) => path.posix.dirname(file)),
+    ].map((file, index) => `import * as m${index} from '../../../${file}';\n`);
+    // A stale compiled file beside its source, ignored: CommonJS's search would find it first, the bundler's finds the source.
+    imports.push("import stale = require('../../../local/stale');\n");
+    all.push('local/stale.ts');
+    const dir = repo({
+      '.gitignore': 'node_modules\ndist\nlocal/stale.js\n',
+      'local/stale.js': 'exports.x = 1;\n',
+      'cige.config.mjs': "import { verdict } from '@acme/hooks';\nexport default { hooks: { verdict } };\n",
+      'packages/hooks/package.json': JSON.stringify({ name: '@acme/hooks', type: 'module', exports: './dist/index.js' }),
+      'packages/hooks/src/index.ts': `${imports.join('')}export const verdict = () => false;\n`,
+      'packages/hooks/dist/index.js': 'export const verdict = () => false;\n',
+      ...Object.fromEntries(all.map((file) => [file, file.endsWith('.json') ? '{}\n' : 'export const x = 1;\n'])),
+      'checkout.cige.json': BASE,
+    });
+    mkdirSync(path.join(dir, 'node_modules/@acme'), { recursive: true });
+    symlinkSync('../../packages/hooks', path.join(dir, 'node_modules/@acme/hooks'), 'dir');
+    const changed = () => diffSince('HEAD', dir, { configFiles: [path.join(dir, 'cige.config.mjs')] }).files.map((entry) => `${entry.file} ${entry.changes.map((item) => `${item.blocking ? '!' : ''}${item.kind}`).join(',')}`);
+    expect(changed()).toEqual([]);
+    write(dir, Object.fromEntries(all.map((file) => [file, file.endsWith('.json') ? '{ "x": 2 }\n' : 'export const x = 2;\n'])));
+    expect(changed()).toEqual(all.toSorted().map((file) => `${file} !config-changed`));
   });
 
   it("never counts the config's own package as a stand-in, so its cases stay cases", () => {
