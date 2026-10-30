@@ -172,8 +172,8 @@ describe('describeDelta', () => {
   });
 
   it('keeps words that only look like an age', () => {
-    const end = nodes([heading, node('a', { text: 'About us' }), node('b', { text: 'Setup takes a minute' }), node('c', { text: 'Not now' })]);
-    expect(appeared(nodes([heading]), end)).toHaveLength(3);
+    const end = nodes([heading, node('a', { text: 'About us' }), node('b', { text: 'Setup takes a minute' }), node('c', { text: 'Not now' }), node('d', { text: 'Not just now' })]);
+    expect(appeared(nodes([heading]), end)).toHaveLength(4);
   });
 
   it('keeps volatile anchors when nothing stable appeared, so the replay hands off rather than passing blind', () => {
