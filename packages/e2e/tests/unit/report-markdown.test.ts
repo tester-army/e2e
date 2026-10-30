@@ -324,6 +324,8 @@ describe('renderMarkdownReport', () => {
     ];
     const withLog = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [logged] })] }));
     expect(withLog).toContain('- Observed: default states (1 match)\n- App console error: `Error occurred prerendering page "/settings"`\n- App uncaught error: `TypeError: x at /app.js:3:7`\n\n');
+    expect(withLog).not.toContain('`ready`');
+    expect(withLog).not.toContain('deprecated');
     // A message that says more than the api is quoted, first line only: the facts carry the rest.
     const worded = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [attempt({ status: 'failed', error: { ...error, message: 'the Save button stayed\nexpected: hidden' }, steps: locators })] })] }));
     expect(worded).toContain(', after 15.1s\n\n> the Save button stayed\n\n- Expected:');

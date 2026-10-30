@@ -421,11 +421,11 @@ describe('ListReporter', () => {
       const failed = failedAttempt('locator matched 2 nodes');
       const at = (second: number): string => `2026-01-01T00:00:0${second}.000Z`;
       failed.appLog = [
+        { source: 'console', level: 'error', text: 'late fallout', at: at(4), step: 0 },
         { source: 'console', level: 'warning', text: 'each child needs a key', at: at(0), step: 0 },
+        { source: 'network', level: 'error', text: 'GET http://127.0.0.1:4271/api/me 500', at: at(3), step: 0 },
         { source: 'console', level: 'error', text: 'Error occurred prerendering page "/profile"', at: at(1), step: 0 },
         { source: 'error', level: 'error', text: 'TypeError: x is undefined', at: at(2), step: 0 },
-        { source: 'network', level: 'error', text: 'GET http://127.0.0.1:4271/api/me 500', at: at(3), step: 0 },
-        { source: 'console', level: 'error', text: 'late fallout', at: at(4), step: 0 },
         { source: 'console', level: 'info', text: 'ready', at: at(5), step: 0 },
       ];
       reporter.handle(finished(result({ status: 'failed', attempts: [failed] })));
