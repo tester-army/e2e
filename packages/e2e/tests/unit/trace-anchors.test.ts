@@ -325,6 +325,13 @@ describe('deltaMismatch', () => {
     expect(describeDelta(before, after, false)).toEqual({ appeared: [{ role: 'status', text: 'Task created' }], gone: [] });
   });
 
+  it('reads an age in an alert as one placeholder, in words or in digits', () => {
+    const synced = (id: string, age: string) => node(id, { role: 'alert', text: `Synced ${age}` });
+    expect(holds([{ role: 'alert', text: 'Synced a few seconds ago' }], [synced('a', '3 minutes ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced just now' }], [synced('a', '2 hours ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced 5 minutes ago' }], [node('x', { role: 'alert', text: 'Sync failed 5 minutes ago' })])).toBe(false);
+  });
+
   it('forgives a churned test id when the other fields still identify the node', () => {
     const anchor = { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-1a2b' };
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });
