@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-15T16:31:43.492Z",
+  "createdAt": "2026-10-30T17:05:16.786Z",
   "payload": {
     "actions": [
       {
@@ -36,14 +36,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Started the Apple Pay payment and authorized it in the payment sheet using Pay with Passcode. The app now displays “Payment complete: $8.99.”",
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "The Apple Pay payment completed successfully; the screen shows “Payment complete: $8.99.”",
     "startPath": "dev.e2e.benchmark / Apple Pay",
     "endPath": "dev.e2e.benchmark / Apple Pay",
     "endAnchors": [
-      {
-        "role": "other",
-        "name": "Payment complete: $8.99"
-      },
       {
         "role": "text",
         "name": "Payment complete: $8.99",
@@ -51,6 +51,11 @@
       }
     ],
     "goneAnchors": [
+      {
+        "role": "other",
+        "name": "Buy with Apple Pay",
+        "testId": "apple-pay-button"
+      },
       {
         "role": "text",
         "name": "Order summary"
@@ -66,18 +71,9 @@
       {
         "role": "text",
         "name": "Total — $8.99"
-      },
-      {
-        "role": "other",
-        "name": "Buy with Apple Pay",
-        "testId": "apple-pay-button"
-      },
-      {
-        "role": "other",
-        "name": "Order summary"
       }
     ],
-    "endWaitMs": 16797,
+    "endWaitMs": 10168,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

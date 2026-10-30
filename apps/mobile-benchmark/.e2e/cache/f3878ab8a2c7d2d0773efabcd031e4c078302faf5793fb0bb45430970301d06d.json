@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-09T06:57:00.223Z",
+  "createdAt": "2026-10-30T17:02:13.437Z",
   "payload": {
     "actions": [
       {
@@ -36,14 +36,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the Actions tab and pressed the Complete action button. The screen now displays “Action completed.”",
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "The Actions tab is selected and the screen displays “Action completed,” confirming the action took effect.",
     "startPath": "dev.e2e.benchmark",
     "endPath": "dev.e2e.benchmark",
     "endAnchors": [
-      {
-        "role": "text",
-        "name": "Actions"
-      },
       {
         "role": "button",
         "name": "Home, tab, 1 of 3",
@@ -58,11 +58,7 @@
         ]
       },
       {
-        "role": "other",
-        "name": "Action completed"
-      },
-      {
-        "role": "other",
+        "role": "text",
         "name": "Actions"
       },
       {
@@ -72,14 +68,6 @@
       }
     ],
     "goneAnchors": [
-      {
-        "role": "text",
-        "name": "Home"
-      },
-      {
-        "role": "text",
-        "name": "Go to the Actions tab and press the button there."
-      },
       {
         "role": "button",
         "name": "Home, tab, 1 of 3",
@@ -94,11 +82,15 @@
         "testId": "tab-actions"
       },
       {
-        "role": "other",
+        "role": "text",
         "name": "Home"
+      },
+      {
+        "role": "text",
+        "name": "Go to the Actions tab and press the button there."
       }
     ],
-    "endWaitMs": 11845,
+    "endWaitMs": 10166,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",
