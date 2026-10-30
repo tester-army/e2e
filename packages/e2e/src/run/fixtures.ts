@@ -18,7 +18,7 @@ import { didYouMean } from '../internal/suggest.ts';
 import { createScreenshotContext, type ScreenshotContext, type WrittenScreenshots } from './screenshots.ts';
 import { sessionRecordings } from './recordings.ts';
 import { resolveSecretValue, sessionLedger } from './secrecy.ts';
-import { resolveNavigationUrl } from '../internal/urls.ts';
+import { baseUrlOf, resolveNavigationUrl } from '../internal/urls.ts';
 import { FixtureRecorder } from './fixture-recording.ts';
 import type { AttemptBudget } from './budget.ts';
 import { LocatorEngine } from '../locator/engine.ts';
@@ -529,7 +529,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
     });
 
   return {
-    baseUrl: target.app.base?.href,
+    baseUrl: target.app.base === undefined ? undefined : baseUrlOf(target.app.base),
     open: (openPath?: string) =>
       target.app.base === undefined && !engine.session.verbs.has('navigate')
         ? launchPinnedApp(openPath)

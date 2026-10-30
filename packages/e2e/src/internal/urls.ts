@@ -65,6 +65,11 @@ export function requestsFreePort(base: NormalizedBaseUrl): boolean {
   return new URL(base.href).port === '0';
 }
 
+/** The base URL as a test reads it: `href` without its trailing slash, so `${baseUrl}/path` joins with one slash. */
+export function baseUrlOf(base: NormalizedBaseUrl): string {
+  return base.href.endsWith('/') ? base.href.slice(0, -1) : base.href;
+}
+
 /** The port the base URL is served on: the explicit one, else the scheme's default. */
 export function portOf(base: NormalizedBaseUrl): number {
   const url = new URL(base.href);

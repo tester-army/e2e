@@ -83,8 +83,8 @@ function expectAllocatedRun(outcome: RunOutcome, urlsPath: string, names: readon
   const ports = seen.map(({ baseUrl, current }) => {
     const port = Number(new URL(baseUrl).port);
     expect(port).toBeGreaterThan(0);
-    expect(baseUrl).toBe(`http://127.0.0.1:${port}/`);
-    expect(current).toBe(baseUrl);
+    expect(baseUrl).toBe(`http://127.0.0.1:${port}`);
+    expect(current).toBe(`${baseUrl}/`);
     return port;
   });
   expect(new Set(ports).size).toBe(names.length);

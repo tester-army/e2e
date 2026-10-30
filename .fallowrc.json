@@ -22,6 +22,7 @@
     "packages/web/tests/types/routes.ts",
     "packages/web/tests/types/clear-cookies.ts",
     "packages/web/tests/types/downloads.ts",
+    "packages/web/tests/types/app.ts",
     "packages/mobile/tests/types/options.ts",
     "packages/decision/tests/types/options.ts",
     "packages/acp/tests/fixtures/scripted-agent.ts",
