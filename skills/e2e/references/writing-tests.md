@@ -127,7 +127,7 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
 - `clearState()`: clears cookies and storage, recreates the context, reopens
   the base URL.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
-  absolute path; the `list` summary names it under `Screenshots`. It masks
+  absolute path; the `list` summary names the first 10 under `Screenshots`. It masks
   secure fields only (see Sign-in sessions).
 - `startRecording({ name? })`, then `stopRecording()`: records one span and
   returns its videos (`path` or hosted `url`). Fails while the test's

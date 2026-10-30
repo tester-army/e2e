@@ -339,7 +339,7 @@ The masked viewport as an image.
 
 | Argument | Type | Description |
 | --- | --- | --- |
-| `path` | `string` | Optional. Also saves the screenshot as a PNG file, resolved against the project root, and returns its absolute path. A path outside the project or under a hidden directory is `POLICY_DENIED`. |
+| `path` | `string` | Optional. Also saves the screenshot as a PNG file, resolved against the project root, and returns its absolute path. A path outside the project, a hidden file, or one under a hidden directory is `POLICY_DENIED`. |
 
 ```json
 { "tool": "screenshot", "args": { "path": "screenshots/checkout.png" } }
