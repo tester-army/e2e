@@ -340,8 +340,10 @@ type RunEventFact =
   judgments use a model other than `model`.
 - `setup` brackets the work before the tests start. Its `step.kind` is
   `collect`, `filter` (one [test filter](/filters), by its `name`),
-  `prepare`, `service`, or `app`. `outcome` is `reused` when a service or
-  app command attached to a process already serving its URL, `failed` when
+  `prepare`, `service`, or `app`. An `app` step's `url` is the URL its
+  readiness probe polls, with a free port filled in. `outcome` is `reused`
+  when a service or app command attached to a process already serving its
+  URL, `failed` when
   a filter threw or returned an invalid result, and `timed-out` when a
   filter ran past 5 minutes.
 - A `notice` names what its line is about in `target`: a target, `app`,

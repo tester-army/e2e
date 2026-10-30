@@ -1213,7 +1213,8 @@ function setupWording(step: SetupStep): { verb: string; subject: string; done: s
         done: 'prepared',
       };
     case 'service':
-    case 'app':
       return { verb: 'starting', subject: bounded(step.label), done: 'ready' };
+    case 'app':
+      return { verb: 'starting', subject: step.url === undefined ? bounded(step.label) : `${bounded(step.label)} at ${bounded(step.url)}`, done: 'ready' };
   }
 }

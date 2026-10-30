@@ -140,9 +140,10 @@ export interface ManagedProcessHooks {
   readonly ci?: boolean;
   readonly env?: NodeJS.ProcessEnv;
   readonly notice?: (message: string) => void;
-  readonly starting?: (label: string) => void;
+  /** `url` is the one the readiness probe polls; undefined for a command that is ready when it exits. */
+  readonly starting?: (label: string, url: string | undefined) => void;
   /** `reused` when the process attached to one already serving the URL instead of spawning. */
-  readonly ready?: (label: string, durationMs: number, reused: boolean) => void;
+  readonly ready?: (label: string, url: string | undefined, durationMs: number, reused: boolean) => void;
 }
 
 /**
@@ -192,9 +193,10 @@ export class ManagedProcess {
     const aborted = (): boolean => signal?.aborted === true;
     if (aborted()) return;
     const startedAt = Date.now();
-    this.hooks.starting?.(this.label);
+    const url = 'readyUrl' in this.readiness ? this.readiness.readyUrl : undefined;
+    this.hooks.starting?.(this.label, url);
     await this.launch(signal);
-    if (!aborted()) this.hooks.ready?.(this.label, Date.now() - startedAt, this.reusedExisting);
+    if (!aborted()) this.hooks.ready?.(this.label, url, Date.now() - startedAt, this.reusedExisting);
   }
 
   /** The preflight probe, the spawn, and the readiness wait behind `start`. */

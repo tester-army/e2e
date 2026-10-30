@@ -682,11 +682,12 @@ describe('ListReporter', () => {
       reporter.handle(runStarted());
       reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'started' });
       reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'finished', durationMs: 41_200 });
-      reporter.handle({ type: 'setup', step: { kind: 'app', label: 'target "chromium" command' }, state: 'started' });
-      reporter.handle({ type: 'setup', step: { kind: 'app', label: 'target "chromium" command' }, state: 'finished', durationMs: 1_800, outcome: 'reused' });
+      const app = { kind: 'app', label: 'target "chromium" command', url: 'http://127.0.0.1:4310/' } as const;
+      reporter.handle({ type: 'setup', step: app, state: 'started' });
+      reporter.handle({ type: 'setup', step: app, state: 'finished', durationMs: 1_800, outcome: 'reused' });
       reporter.handle(runFinished({ reportPath: 'r.json' }));
       expect(lines).toContain(' ✓ service "compose" ready 41.20s');
-      expect(lines).toContain(' ✓ target "chromium" command reused 1.80s');
+      expect(lines).toContain(' ✓ target "chromium" command at http://127.0.0.1:4310/ reused 1.80s');
       expect(lines.find((line) => line.includes('Duration'))).toMatch(/^   Duration  \S+ \(startup 43\.00s\)$/);
     });
 

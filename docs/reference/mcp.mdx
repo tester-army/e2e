@@ -50,7 +50,9 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 #### `--config`
 
 The config every session loads unless `open_session` names one. Each
-session loads it afresh ([Several sessions](#several-sessions)).
+session loads it afresh ([Several sessions](#several-sessions)) with the
+server's environment: `process.env` in the config reads the variables the
+MCP client started `e2e mcp` with, not the agent's shell.
 
 #### `--target`
 
@@ -94,6 +96,16 @@ one attempt, and opens the app: its URL when the engine can navigate, or on a
 device the [pinned app](/mobile#point-at-your-app), launched fresh. It installs
 no build, so a local device target needs `app.bundleId`. Returns the session
 id, the catalog, and the first observation.
+
+The summary names the app's URL, with the port a free-port `url` was
+assigned, and the app command: its executable, readiness URL, `env` and
+`inheritEnv` names, and log file. It prints no `args` and no `env` values.
+e2e starts no other process, so a database the app uses runs outside it.
+
+```text wrap
+App: http://127.0.0.1:57162/ (port 57162, assigned for the declared port 0).
+Process: app.command "node" (ready at http://127.0.0.1:57162/; env PORT, DATABASE_URL; log .e2e/app.log). e2e runs no other process for this session; a database or other service the app uses runs outside e2e.
+```
 
 ```txt
 open_session {target: "web", headed: true}

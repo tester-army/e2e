@@ -223,7 +223,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
   it('opens a session with its catalog, then locates, acts, fills a secret, and keeps the screenshot afterwards', async () => {
     const opened = await invoke('open_session');
     expect(opened.isError, opened.text).toBe(false);
-    expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts\./);
+    expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts, read with the e2e mcp server's environment, not your shell's\./);
     expect(opened.text).toContain(`App: ${app.url}/`);
     expect(opened.text).toContain('Credentials: "admin" (username "admin", password secret "admin.password")');
     expect(opened.text).toContain('Tools (run one with call {tool, args}; tools {tool} shows a tool\'s arguments):');

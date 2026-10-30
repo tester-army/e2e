@@ -30,6 +30,7 @@ import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone
 import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
+import { appLines } from './app-lines.ts';
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
@@ -454,14 +455,9 @@ export class SessionHost {
     const engine = live.target.engine;
     const lines = [
       ...(outcome === undefined ? [] : [outcome, '']),
-      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
+      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}, read with the e2e mcp server's environment, not your shell's.`,
     ];
-    const pinned = launchesPinnedApp(live.target) ? (live.target.app.bundleId ?? live.target.app.appPath) : undefined;
-    if (live.target.app.base !== undefined) {
-      lines.push(`App: ${live.target.app.base.href}.`);
-    } else if (pinned !== undefined) {
-      lines.push(outcome === undefined ? `App: ${pinned}, launched fresh.` : `App: ${pinned}.`);
-    }
+    lines.push(...appLines(live.target, outcome !== undefined));
     if (config.credentials.size > 0) {
       const described = [...config.credentials.values()].map(
         (credential) => `"${credential.name}" (username ${JSON.stringify(credential.username)}, password secret "${credential.password.name}")`,

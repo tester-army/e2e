@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { web } from '@e2e-dev/web';
 import type { E2EConfig } from '../../src/index.ts';
+import type { RunEvent, SetupStep } from '../../src/run/events.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import {
   createProject,
@@ -118,8 +119,19 @@ describe('app port allocation', () => {
     'serves the app on a port the run picked and hands tests the allocated base URL, run after run',
     async () => {
       project = createProject(FILES);
-      const options = { appUrl: DECLARATION.url, config: { targets: targets(['web']) } };
-      expectAllocatedRun(await runExisting(project, options), urlsPath, ['web']);
+      const steps: SetupStep[] = [];
+      const onEvent = (event: RunEvent): void => {
+        if (event.type === 'setup' && event.step.kind === 'app') steps.push(event.step);
+      };
+      const options = { appUrl: DECLARATION.url, config: { targets: targets(['web']) }, runOptions: { onEvent } };
+      const first = await runExisting(project, options);
+      expectAllocatedRun(first, urlsPath, ['web']);
+      // The app command's setup step names the URL on the assigned port, not the declared `:0`.
+      const origin = first.report.run.targets[0]!.baseOrigin;
+      expect(steps).toEqual([
+        { kind: 'app', label: 'target "web" command', url: `${origin}/` },
+        { kind: 'app', label: 'target "web" command', url: `${origin}/` },
+      ]);
       rmSync(urlsPath);
       // A second run in the same process allocates again and the app follows.
       expectAllocatedRun(await runExisting(project, options), urlsPath, ['web']);
