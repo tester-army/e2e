@@ -494,7 +494,7 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
       links to it ([Page icons](#page-icons)). A new integration or CI page
       has a card on its overview.
 - [ ] A page icon from a file is a black silhouette under
-      `docs/images/icons/` and matches its sidebar neighbors in light and
-      dark mode.
+      `docs/images/icons/` (except `testerarmy.png`, see "Page icons") and
+      matches its sidebar neighbors in light and dark mode.
 - [ ] Links and anchors resolve. Moved pages have redirects.
 - [ ] `pnpm docs:check` passes.
