@@ -48,6 +48,7 @@ export default {
 | [`workers`](#workers) | `number` | half the cores, `1` in CI |
 | [`reporters`](#reporters) | `(BuiltinReporter \| Reporter)[]` | `['list']` |
 | [`output`](#output) | `string` | `'.e2e'` |
+| [`keepResults`](#keepresults) | `number` | `0` |
 | [`artifacts`](#artifacts) | `ArtifactsConfig` | local only |
 | [`trace`](#trace) | `RecordingMode` | `'retain-on-failure'` |
 | [`video`](#video) | `RecordingMode` | `'off'` |
@@ -617,6 +618,7 @@ overrides it for one run.
 | `results/` | One directory per test: its [trace page](/debugging#traces), `trace.md`, when the [`trace`](#trace) mode keeps one, and its screenshots, videos, downloads, and logs, one `attempt-<n>/` per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under each test's `rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
+| `history/<run-id>/` | With [`keepResults`](#keepresults), a snapshot containing `report.json`, `results/`, and `ai-trace.json` when enabled |
 
 - A run that stops before its tests start writes nothing here. Such stops are
   a selection that matches no test (`NO_TESTS`, a mistyped `--grep`), a
@@ -638,7 +640,8 @@ with `INVALID_CONFIG`, naming the reason, when the directory:
 - is the project root, or outside it;
 - is a file, or a path under one (a missing directory is created);
 - is the cache directory (`cache.dir`, `--cache-dir`, or `E2E_CACHE_DIR`) or
-  inside it, or would hold it under `results/`, `sessions/`, or `videos/`;
+  inside it, or would hold it under `results/`, `sessions/`, `videos/`, or
+  `history/`;
 - holds a directory a `tests` glob scans (`output: 'tests'` with the default
   `tests/**/*.e2e.ts`).
 
@@ -653,6 +656,34 @@ report used to go to the directory's parent, so `--artifacts out/artifacts` is
 `--output out`. A parent an output cannot be (the project root, or outside it)
 maps to `--output .e2e`.
 </Note>
+
+### keepResults
+
+```ts
+keepResults: 3,
+```
+
+Keep snapshots of the latest three runs, including the current run, under
+`<output>/history/<run-id>/`. Each contains the canonical `report.json`,
+the run's `results/` tree, and `ai-trace.json` when enabled. Trace pages
+link to the snapshot's own artifacts. Reporter files such as `junit.xml`
+and `summary.md`, the replay cache, encrypted sessions, and MCP recordings
+are not copied.
+
+The value is a non-negative safe integer; the default `0` writes no
+history. Setting it to `0` later leaves existing snapshots untouched.
+With a positive value, each run that writes a report saves a snapshot,
+including failed, interrupted, and `--last-failed` runs, then removes the
+oldest snapshots beyond the limit. A run that stops before tests start
+neither saves nor prunes history.
+
+History is local and opt-in, and copies can include large videos and
+downloads. Only snapshots marked as owned by e2e are pruned. A symlink,
+foreign history directory, or failed copy prints a diagnostic without
+changing the test verdict or deleting earlier snapshots. Partial snapshots
+left by an exited process are removed on the next run with history enabled.
+Normal output and `--last-failed` continue to use the current `report.json`
+and `results/`.
 
 ### artifacts
 
@@ -1549,6 +1580,8 @@ export interface E2EConfig {
   video?: RecordingMode;
   /** The results directory, relative to the project root; default `.e2e`. */
   output?: string;
+  /** Run snapshots retained under output/history, including the latest; default 0 disables history. */
+  keepResults?: number;
   /** Output renderers and reporter objects; default `['list']`. */
   reporters?: readonly (BuiltinReporter | Reporter)[];
   /** Named agents: the built-in agent's options, or `{ executor }` for a custom brain. */
