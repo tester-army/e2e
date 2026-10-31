@@ -45,7 +45,7 @@ enum Idle {
   }
 
   /// A reply that may arrive on any thread.
-  private final class Reply: @unchecked Sendable {
+  final class Reply: @unchecked Sendable {
     private let lock = NSLock()
     private var value = false
 

@@ -59,11 +59,14 @@ async function xctestrunIn(dir: string): Promise<string | undefined> {
   }
 }
 
+/** Builds in flight in this process, by build directory: workers opening at once share one. */
+const building = new Map<string, Promise<string>>();
+
 /**
  * The `.xctestrun` of the server built from the shipped sources, built
- * first when this version has no build yet. Builds into a scratch directory
- * renamed into place, so a run that stops mid-build or races another leaves
- * no half build behind.
+ * first when this version has no build yet. A build keeps going when
+ * `signal` aborts the wait for it (an engine init out of `launchTimeout`),
+ * so a slow first build still lands for the next attempt or run.
  */
 export async function buildServer(options: {
   readonly env?: Readonly<Record<string, string | undefined>>;
@@ -74,22 +77,47 @@ export async function buildServer(options: {
   const dir = path.join(root, await buildKey(options.signal));
   const built = await xctestrunIn(dir);
   if (built !== undefined) return built;
-  options.log?.(`building the ios engine server with xcodebuild into ${dir}`);
+  let pending = building.get(dir);
+  if (pending === undefined) {
+    options.log?.(`building the ios engine server with xcodebuild into ${dir}`);
+    pending = build(dir).finally(() => building.delete(dir));
+    building.set(dir, pending);
+  }
+  const { signal } = options;
+  if (signal === undefined) return pending;
+  // The build outlives an abandoned wait; its own failure surfaces to the next caller.
+  pending.catch(() => undefined);
+  return new Promise((resolve, reject) => {
+    const abandon = (): void =>
+      reject(
+        new InfrastructureError(
+          'ENGINE_FAILURE',
+          `the ios engine server is still building into ${dir} (first use) and keeps building; run npx e2e-ios-build before the tests, or raise launchTimeout`,
+        ),
+      );
+    if (signal.aborted) abandon();
+    signal.addEventListener('abort', abandon, { once: true });
+    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', abandon));
+  });
+}
+
+/**
+ * Builds the server into `dir` through a scratch directory renamed into
+ * place, so a failed build leaves no half build behind, and a build that
+ * loses a race to another process keeps the winner's.
+ */
+async function build(dir: string): Promise<string> {
   const scratch = `${dir}.${String(process.pid)}.${String(Date.now())}`;
   try {
-    await run(
-      'xcodebuild',
-      [
-        'build-for-testing',
-        '-project', path.join(SOURCES, 'E2EServer.xcodeproj'),
-        '-scheme', 'E2EServer',
-        '-configuration', 'Release',
-        '-destination', 'generic/platform=iOS Simulator',
-        '-derivedDataPath', scratch,
-        `ARCHS=${ARCH}`,
-      ],
-      options.signal,
-    );
+    await run('xcodebuild', [
+      'build-for-testing',
+      '-project', path.join(SOURCES, 'E2EServer.xcodeproj'),
+      '-scheme', 'E2EServer',
+      '-configuration', 'Release',
+      '-destination', 'generic/platform=iOS Simulator',
+      '-derivedDataPath', scratch,
+      `ARCHS=${ARCH}`,
+    ]);
     await rename(scratch, dir).catch(async (cause: unknown) => {
       if (!(await stat(dir).then(() => true, () => false))) throw cause;
     });

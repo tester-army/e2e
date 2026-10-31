@@ -20,7 +20,6 @@ export const MANIFEST = {
     'keyboard/press',
     'artifacts/screenshot',
     'session/back',
-    'session/restart',
     'lifecycle/init',
     'lifecycle/startAttempt',
     'lifecycle/endAttempt',

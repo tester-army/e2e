@@ -34,7 +34,7 @@ export default {
 
 The package ships the server's Xcode project. The first run builds it with
 `xcodebuild` into `~/Library/Caches/e2e/ios-server` (`E2E_IOS_BUILD_DIR`
-overrides), once per package version and Xcode. Run `npx e2e-ios-build`
+overrides), once per version of its sources and Xcode. Run `npx e2e-ios-build`
 first in CI, so the first test does not wait for the build.
 
 See the [docs page](https://e2e.tester.army/docs/ios-engine) for options and

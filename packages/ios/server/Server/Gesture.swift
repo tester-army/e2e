@@ -33,19 +33,22 @@ enum Gesture {
     guard let type = NSClassFromString("XCTRunnerDaemonSession") as? NSObject.Type,
       let session = type.perform(NSSelectorFromString("sharedSession"))?.takeUnretainedValue() as? NSObject
     else { throw EngineFailure.unsupported("this Xcode has no XCTest event synthesis") }
-    var finished = false
-    var failure: Error?
+    let reply = Idle.Reply()
+    var failure: NSError?
     send(session, "synthesizeEvent:completion:") { (fn: @convention(c) (AnyObject, Selector, NSObject, @escaping @convention(block) (Bool, NSError?) -> Void) -> Void, selector) in
       fn(session, selector, record) { _, error in
         failure = error
-        finished = true
+        reply.done()
       }
     }
-    while !finished { RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005)) }
+    let deadline = Date(timeIntervalSinceNow: timeout)
+    while !reply.isDone {
+      if Date() > deadline { throw EngineFailure.invalidState("the gesture was not confirmed within \(Int(timeout))s") }
+      RunLoop.current.run(mode: .default, before: Date(timeIntervalSinceNow: 0.005))
+    }
     if let failure { throw EngineFailure.invalidState("the gesture was not delivered: \(failure.localizedDescription)") }
     if idleAfter { Idle.wait(process, timeout: timeout) }
   }
-
 
   /// A new instance of a private class: `alloc`, then `initializer` through `call`, which returns it retained.
   private static func make<F>(_ className: String, _ initializer: String, _ call: (F, AnyObject, Selector) -> Unmanaged<NSObject>) throws -> NSObject {

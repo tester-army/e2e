@@ -29,6 +29,7 @@ export function ios(options: IosTransportOptions = {}): EngineHandle {
       throw new EngineError('INVALID_STATE', 'the ios engine has no app to launch: init has not run', { retryable: false });
     }
     const { udid, bundleId } = target;
+    const deadline = Date.now() + operation.timeoutMs;
     if (clear) {
       await run('xcrun', ['simctl', 'terminate', udid, bundleId], operation.signal).catch(() => undefined);
       const container = (await run('xcrun', ['simctl', 'get_app_container', udid, bundleId, 'data'], operation.signal)).trim();
@@ -39,7 +40,6 @@ export function ios(options: IosTransportOptions = {}): EngineHandle {
     await run('xcrun', ['simctl', 'launch', '--terminate-running-process', udid, bundleId], operation.signal);
     // The relaunch is done once the app answers an observation, as
     // XCUITest's own launch waits for it.
-    const deadline = Date.now() + operation.timeoutMs;
     for (;;) {
       try {
         await engine.observe!(operation);

@@ -8,8 +8,8 @@ icon: "flask"
 `ios()` from `@e2e-dev/ios` is an experimental engine for iOS simulators.
 It runs an [engine protocol](/reference/engine-protocol) server written in
 Swift inside an XCUITest bundle on the simulator, so reads and gestures run
-in process. Tests use the same `screen`, `app`, and `expect` APIs as with
-[`@e2e-dev/mobile`](/mobile).
+in process. Tests use `screen`, `app`, and `expect` as with
+[`@e2e-dev/mobile`](/mobile), with the [limits](#limits) below.
 
 <Warning>
 Experimental. Options and behavior can change in any release. Use
@@ -19,7 +19,7 @@ Experimental. Options and behavior can change in any release. Use
 ## Set up
 
 <Note>
-Needs macOS with Xcode and one booted iOS simulator.
+Needs macOS with Xcode and one booted iOS 18 or later simulator.
 </Note>
 
 Install the engine:
@@ -66,10 +66,12 @@ export default {
 
 The package ships the server's Xcode project. The first run builds it with
 `xcodebuild` and keeps the build in `~/Library/Caches/e2e/ios-server`. Set
-`E2E_IOS_BUILD_DIR` to keep it elsewhere. A new package version or Xcode
-builds again.
+`E2E_IOS_BUILD_DIR` to keep it elsewhere. A change to the server sources
+or to the selected Xcode builds again.
 
-In CI, build it before the tests, so the first test doesn't wait for Xcode:
+The build counts against `launchTimeout`. When it takes longer, the run
+fails and the build keeps going for the next run. In CI, build it before
+the tests:
 
 <CodeGroup>
 ```bash npm
@@ -91,7 +93,8 @@ bunx e2e-ios-build
 - `app.url`, `app.launchArguments`, and `app.permissions` aren't supported.
 - The `device` fixture has `back()` only. Use `@e2e-dev/mobile` for location,
   network, orientation, and other device controls.
-- No video recording.
+- No video recording, no `dragTo` or `hover` on a locator, and no keyboard
+  modifiers.
 - A double tap goes through XCUITest, which can deliver it as two taps.
 
 ## Next

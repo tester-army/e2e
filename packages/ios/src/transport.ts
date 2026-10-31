@@ -22,20 +22,33 @@ export interface IosTransportOptions {
 /** How long `xcodebuild` may take to start the runner and the server to listen. */
 const READY_TIMEOUT_MS = 180_000;
 
+/** The UDIDs of the booted iOS simulators in `simctl list devices booted -j` output; a paired Watch or a visionOS simulator boots alongside. */
+function bootedIos(listed: unknown): string[] {
+  if (typeof listed !== 'object' || listed === null) return [];
+  const { devices } = listed as { devices?: unknown };
+  if (typeof devices !== 'object' || devices === null) return [];
+  return Object.entries(devices).flatMap(([runtime, booted]) =>
+    runtime.includes('SimRuntime.iOS') && Array.isArray(booted)
+      ? booted.flatMap((device: unknown) => (typeof device === 'object' && device !== null && typeof (device as { udid?: unknown }).udid === 'string' ? [(device as { udid: string }).udid] : []))
+      : [],
+  );
+}
+
+/** The simulator to drive: `udid`, else `E2E_IOS_UDID`, else the one booted iOS simulator. */
 async function simulator(options: IosTransportOptions, env: TransportContext['env'], signal: AbortSignal): Promise<string> {
   const chosen = options.udid ?? env['E2E_IOS_UDID'];
   if (chosen !== undefined) return chosen;
-  const listed: unknown = JSON.parse(await run('xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], signal));
-  const devices = Object.values((listed as { devices?: Record<string, { udid: string }[]> }).devices ?? {}).flat();
-  if (devices.length !== 1) {
+  const devices = bootedIos(JSON.parse(await run('xcrun', ['simctl', 'list', 'devices', 'booted', '-j'], signal)));
+  const [device, ...others] = devices;
+  if (device === undefined || others.length > 0) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      devices.length === 0
-        ? 'the ios engine found no booted simulator: boot one'
-        : `the ios engine found ${devices.length} booted simulators: pick one with ios({ udid }) or E2E_IOS_UDID`,
+      device === undefined
+        ? 'the ios engine found no booted iOS simulator: boot one'
+        : `the ios engine found ${devices.length} booted iOS simulators: pick one with ios({ udid }) or E2E_IOS_UDID`,
     );
   }
-  return devices[0]!.udid;
+  return device;
 }
 
 /** A TCP port free on the loopback right now. */

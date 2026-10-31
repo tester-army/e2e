@@ -68,7 +68,6 @@ struct Operation {
   let signal: Int
   let abortedWhenSent: Bool
   let timeoutMs: Double
-  let agent: Bool
   let aborted: AbortMarks
 
   init(_ params: [String: Any], aborted: AbortMarks) {
@@ -77,7 +76,6 @@ struct Operation {
     self.signal = signal?["id"] as? Int ?? 0
     self.abortedWhenSent = signal?["aborted"] as? Bool ?? false
     self.timeoutMs = operation?["timeoutMs"] as? Double ?? 30_000
-    self.agent = operation?["origin"] as? String == "agent"
     self.aborted = aborted
   }
 
@@ -340,9 +338,6 @@ final class Session {
       return nil
     case "session/back":
       try device.back(operation)
-      return nil
-    case "session/restart":
-      try device.restart(operation)
       return nil
     case "artifacts/screenshot":
       try operation.check()
