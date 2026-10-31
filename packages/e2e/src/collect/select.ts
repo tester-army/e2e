@@ -5,13 +5,15 @@ import { resultId } from '../internal/ids.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { attemptKeep, attemptVideo, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
-import type { Capability, RecordingMode, TestOptions } from '../types.ts';
+import type { Capability, RecordingMode, RetryOnCategory, TestOptions } from '../types.ts';
 import { excludingEntry, type Collection, type CollectedTest, type UncollectedFile } from './collect.ts';
 import { groupChain } from './registry.ts';
 
 export interface ResolvedTestOptions {
   readonly timeout: number;
   readonly retries: number;
+  /** Whose failures spend the retries budget: `test` only (the default) or `infrastructure` too. */
+  readonly retryOn: readonly RetryOnCategory[];
   readonly platforms: readonly string[] | undefined;
   readonly requires: readonly Capability[];
   readonly session: string | undefined;
@@ -213,6 +215,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   return {
     timeout,
     retries,
+    retryOn: config.retryOn,
     platforms,
     requires,
     session,

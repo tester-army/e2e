@@ -14,6 +14,12 @@ import type { CacheStore } from './cache/store.ts';
 import type { RunEvent, RunExitCode, RunStatus } from './run/events.ts';
 import type { Report1Document } from './report/build.ts';
 
+/**
+ * A failure category `retryOn` may name: the test's own failures, or the
+ * run's infrastructure failures (one-off device, engine, and harness errors).
+ */
+export type RetryOnCategory = 'test' | 'infrastructure';
+
 export type { KeyModifier, Momentum, ScrollDirection, SelectOption } from './engine/contract.ts';
 export type { CacheReadResult, CacheStore } from './cache/store.ts';
 export type { DerivedReason } from './cache/trace.ts';
@@ -1655,6 +1661,12 @@ export interface E2EConfig {
   cleanupTimeout?: number;
   /** Retries per test, 0 through 10; default 1 in CI, else 0. */
   retries?: number;
+  /**
+   * Whose failures spend the retry budget: `test` only (the default), or
+   * `infrastructure` too for one-off device and harness errors that pass on a
+   * second attempt. Timeouts keep retrying whatever this says.
+   */
+  retryOn?: readonly RetryOnCategory[];
   /** Fail the run when a test skips a retry after an earlier failed attempt; default false. */
   failOnSkippedFailure?: boolean;
   /**

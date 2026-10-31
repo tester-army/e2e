@@ -300,6 +300,9 @@ unique(7);
 ({ targets, video: 'sometimes' }) satisfies E2EConfig;
 // @ts-expect-error video is a mode, not a boolean
 ({ targets, video: true }) satisfies E2EConfig;
+({ targets, retryOn: ['test', 'infrastructure'] }) satisfies E2EConfig;
+// @ts-expect-error retryOn is a closed set of categories: test or infrastructure
+({ targets, retryOn: ['flaky'] }) satisfies E2EConfig;
 // @ts-expect-error trace is a mode, not a boolean
 ({ targets: [{ name: 'phone', engine, trace: true }] }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;

@@ -63,6 +63,17 @@ describe('resolveConfig', () => {
     }
   });
 
+  it('validates the opt-in retryOn categories', () => {
+    expect(resolve({}).retryOn).toEqual(['test']);
+    expect(resolve({ retryOn: ['test', 'infrastructure'] }).retryOn).toEqual(['test', 'infrastructure']);
+    // A sparse array: the hole is what a plain filter would skip.
+    const sparse = ['test'];
+    sparse[2] = 'infrastructure';
+    for (const value of [null, 'infrastructure', ['infrastructure'], ['test', 'bogus'], [], ['test', 'test'], sparse]) {
+      expect(() => resolve(invalid({ retryOn: value }))).toThrow(/retryOn/);
+    }
+  });
+
   it('validates maxDuration as milliseconds without invalidating recordings', () => {
     expect(resolve({}).maxDuration).toBeUndefined();
     expect(resolve({ maxDuration: 900_000 }).maxDuration).toBe(900_000);

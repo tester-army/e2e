@@ -119,7 +119,7 @@ export async function runSerialUnit(
   file: FileRef,
 ): Promise<SerialGroupRecord> {
   const group = newSerialGroup(members, host.target);
-  const finalStatus = await runWithRetries(
+const finalStatus = await runWithRetries(
     members[0]!.options.retries + 1,
     host.interruptSignal,
     async (attemptIndex) => {
@@ -131,6 +131,7 @@ export async function runSerialUnit(
       if (attempt.error?.code === 'HOOK_FAILED') return undefined;
       return attempt;
     },
+    members[0]!.options.retryOn,
   );
 
   if (group.attempts.length === 0) {
@@ -345,7 +346,11 @@ export class SerialGroupProgress {
  * the retry policy allows it, and a hook failure never retries.
  */
 function retryFollows(record: SerialAttemptRecord, attempts: number, members: readonly TestTargetPair[]): boolean {
-  return attempts < members[0]!.options.retries + 1 && isRetryEligible(record) && record.error?.code !== 'HOOK_FAILED';
+  return (
+    attempts < members[0]!.options.retries + 1 &&
+    isRetryEligible(record, members[0]!.options.retryOn) &&
+    record.error?.code !== 'HOOK_FAILED'
+  );
 }
 
 /** An abort signal that never fires. */

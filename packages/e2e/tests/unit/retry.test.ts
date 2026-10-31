@@ -8,16 +8,24 @@ function error(category: SerializedError['category']): SerializedError {
 
 describe('isRetryEligible', () => {
   it('accepts timeouts regardless of error category', () => {
-    expect(isRetryEligible({ status: 'timed-out' })).toBe(true);
-    expect(isRetryEligible({ status: 'timed-out', error: error('infrastructure') })).toBe(true);
+    expect(isRetryEligible({ status: 'timed-out' }, ['test'])).toBe(true);
+    expect(isRetryEligible({ status: 'timed-out', error: error('infrastructure') }, ['test'])).toBe(true);
   });
 
   it('accepts failures only with a test-category error', () => {
-    expect(isRetryEligible({ status: 'failed', error: error('test') })).toBe(true);
-    expect(isRetryEligible({ status: 'failed', error: error('infrastructure') })).toBe(false);
-    expect(isRetryEligible({ status: 'failed', error: error('configuration') })).toBe(false);
-    expect(isRetryEligible({ status: 'failed', error: error('internal') })).toBe(false);
-    expect(isRetryEligible({ status: 'failed' })).toBe(false);
+    expect(isRetryEligible({ status: 'failed', error: error('test') }, ['test'])).toBe(true);
+    expect(isRetryEligible({ status: 'failed', error: error('infrastructure') }, ['test'])).toBe(false);
+    expect(isRetryEligible({ status: 'failed', error: error('configuration') }, ['test'])).toBe(false);
+    expect(isRetryEligible({ status: 'failed', error: error('internal') }, ['test'])).toBe(false);
+    expect(isRetryEligible({ status: 'failed' }, ['test'])).toBe(false);
+  });
+
+  it('accepts the categories retryOn names', () => {
+    expect(isRetryEligible({ status: 'failed', error: error('infrastructure') }, ['test', 'infrastructure'])).toBe(true);
+    expect(isRetryEligible({ status: 'failed', error: error('infrastructure') }, ['infrastructure'])).toBe(true);
+    expect(isRetryEligible({ status: 'failed', error: error('test') }, ['infrastructure'])).toBe(false);
+    expect(isRetryEligible({ status: 'failed', error: error('configuration') }, ['test', 'infrastructure'])).toBe(false);
+    expect(isRetryEligible({ status: 'timed-out', error: error('infrastructure') }, ['test'])).toBe(true);
   });
 });
 
@@ -29,7 +37,7 @@ describe('runWithRetries', () => {
     const status = await runWithRetries(3, liveSignal(), async (index) => {
       attempts.push(index);
       return { status: 'passed' };
-    });
+    }, ['test']);
     expect(status).toBe('passed');
     expect(attempts).toEqual([0]);
   });
@@ -37,6 +45,7 @@ describe('runWithRetries', () => {
   it('returns flaky when a retry passes after a test failure', async () => {
     const status = await runWithRetries(3, liveSignal(), async (index) =>
       index === 0 ? { status: 'failed', error: error('test') } : { status: 'passed' },
+      ['test'],
     );
     expect(status).toBe('flaky');
   });
@@ -46,7 +55,7 @@ describe('runWithRetries', () => {
     const status = await runWithRetries(3, liveSignal(), async (index) => {
       attempts.push(index);
       return { status: index === 2 ? 'timed-out' : 'failed', error: error('test') } as RetryAttempt;
-    });
+    }, ['test']);
     expect(status).toBe('timed-out');
     expect(attempts).toEqual([0, 1, 2]);
   });
@@ -56,7 +65,35 @@ describe('runWithRetries', () => {
     const status = await runWithRetries(3, liveSignal(), async (index) => {
       attempts.push(index);
       return { status: 'failed', error: error('infrastructure') };
-    });
+    }, ['test']);
+    expect(status).toBe('failed');
+    expect(attempts).toEqual([0]);
+  });
+
+  it('returns flaky when a retry passes after an infrastructure failure', async () => {
+    const status = await runWithRetries(3, liveSignal(), async (index) =>
+      index === 0 ? { status: 'failed', error: error('infrastructure') } : { status: 'passed' },
+      ['test', 'infrastructure'],
+    );
+    expect(status).toBe('flaky');
+  });
+
+  it('exhausts the retryOn budget for infrastructure failures', async () => {
+    const attempts: number[] = [];
+    const status = await runWithRetries(3, liveSignal(), async (index) => {
+      attempts.push(index);
+      return { status: 'failed', error: error('infrastructure') };
+    }, ['test', 'infrastructure']);
+    expect(status).toBe('failed');
+    expect(attempts).toEqual([0, 1, 2]);
+  });
+
+  it('does not retry infrastructure failures when retryOn omits them', async () => {
+    const attempts: number[] = [];
+    const status = await runWithRetries(3, liveSignal(), async (index) => {
+      attempts.push(index);
+      return { status: 'failed', error: error('infrastructure') };
+    }, ['test']);
     expect(status).toBe('failed');
     expect(attempts).toEqual([0]);
   });
@@ -66,7 +103,7 @@ describe('runWithRetries', () => {
     const status = await runWithRetries(3, liveSignal(), async (index) => {
       attempts.push(index);
       return { status: 'interrupted' };
-    });
+    }, ['test']);
     expect(status).toBe('interrupted');
     expect(attempts).toEqual([0]);
   });
@@ -76,7 +113,7 @@ describe('runWithRetries', () => {
     const status = await runWithRetries(3, liveSignal(), async (index) => {
       attempts.push(index);
       return { status: 'skipped' };
-    });
+    }, ['test']);
     expect(status).toBe('skipped');
     expect(attempts).toEqual([0]);
   });
@@ -84,9 +121,10 @@ describe('runWithRetries', () => {
   it('keeps the failed verdict when an interrupt cuts its retry short', async () => {
     const status = await runWithRetries(3, liveSignal(), async (index) =>
       index === 0 ? { status: 'failed', error: error('test') } : { status: 'interrupted' },
+      ['test'],
     );
     expect(status).toBe('failed');
-    const timedOut = await runWithRetries(3, liveSignal(), async (index) => ({ status: index === 0 ? 'timed-out' : 'interrupted' }));
+    const timedOut = await runWithRetries(3, liveSignal(), async (index) => ({ status: index === 0 ? 'timed-out' : 'interrupted' }), ['test']);
     expect(timedOut).toBe('timed-out');
   });
 
@@ -97,7 +135,7 @@ describe('runWithRetries', () => {
     const status = await runWithRetries(3, controller.signal, async () => {
       ran += 1;
       return { status: 'passed' };
-    });
+    }, ['test']);
     expect(status).toBe('failed');
     expect(ran).toBe(0);
   });
@@ -109,7 +147,7 @@ describe('runWithRetries', () => {
       attempts.push(index);
       controller.abort();
       return { status: 'failed', error: error('test') };
-    });
+    }, ['test']);
     expect(status).toBe('failed');
     expect(attempts).toEqual([0]);
   });
@@ -117,12 +155,13 @@ describe('runWithRetries', () => {
   it('stops when an attempt could not start and keeps the prior status', async () => {
     const status = await runWithRetries(3, liveSignal(), async (index) =>
       index === 0 ? { status: 'timed-out' } : undefined,
+      ['test'],
     );
     expect(status).toBe('timed-out');
   });
 
   it('returns failed when the very first attempt cannot start', async () => {
-    const status = await runWithRetries(3, liveSignal(), async () => undefined);
+    const status = await runWithRetries(3, liveSignal(), async () => undefined, ['test']);
     expect(status).toBe('failed');
   });
 });

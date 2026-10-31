@@ -11,6 +11,7 @@ import { didYouMean } from '../internal/suggest.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
 import { BUILTIN_REPORTER_LIST, BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { ellipsize } from '../report/format.ts';
+import { DEFAULT_RETRY_ON, RETRY_ON_CATEGORIES } from '../run/retry.ts';
 import { isStepExecutor } from '../agent/executor.ts';
 import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.ts';
 import { isRecord } from './command.ts';
@@ -23,6 +24,7 @@ import type {
   E2EConfig,
   ModelInstance,
   Reporter,
+  RetryOnCategory,
   SecretProvider,
   SecretPurpose,
   RecordingMode,
@@ -68,6 +70,11 @@ export interface ResolvedConfig {
   readonly assertionTimeout: number;
   readonly cleanupTimeout: number;
   readonly retries: number;
+  /**
+   * Whose failures spend the retry budget: `test` only (the default), or
+   * `infrastructure` too for one-off device and harness errors.
+   */
+  readonly retryOn: readonly RetryOnCategory[];
   readonly failOnSkippedFailure: boolean;
   /** Milliseconds the run may spend running tests before it stops; undefined for no limit. */
   readonly maxDuration: number | undefined;
@@ -172,6 +179,7 @@ const TOP_LEVEL_KEYS = new Set([
   'assertionTimeout',
   'cleanupTimeout',
   'retries',
+  'retryOn',
   'failOnSkippedFailure',
   'maxDuration',
   'workers',
@@ -288,6 +296,31 @@ export function resolveConfig(
     boundedInt(cli.retries, '--retries', 0, 10) ??
     boundedInt(raw.retries, 'retries', 0, 10) ??
     (ci ? 1 : 0);
+
+  let retryOn: readonly RetryOnCategory[] = DEFAULT_RETRY_ON;
+  if (raw.retryOn !== undefined) {
+    if (!Array.isArray(raw.retryOn) || raw.retryOn.length === 0) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `retryOn must be a non-empty array of ${RETRY_ON_CATEGORIES.join(', ')}`,
+      );
+    }
+    const values = [...raw.retryOn];
+    const bad = values.filter((value) => !RETRY_ON_CATEGORIES.includes(value));
+    if (bad.length > 0 || new Set(values).size !== values.length) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `retryOn may only contain each of ${RETRY_ON_CATEGORIES.join(', ')} once`,
+      );
+    }
+    if (!values.includes('test')) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `retryOn must always include 'test'; 'infrastructure' may be added to spend retries on one-off harness failures too`,
+      );
+    }
+    retryOn = values;
+  }
   const workers =
     boundedInt(cli.workers, '--workers', 1, 1024) ??
     boundedInt(raw.workers, 'workers', 1, 1024) ??
@@ -324,6 +357,7 @@ export function resolveConfig(
     assertionTimeout,
     cleanupTimeout,
     retries,
+    retryOn,
     failOnSkippedFailure,
     maxDuration,
     workers,
