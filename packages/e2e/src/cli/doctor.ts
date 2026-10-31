@@ -16,11 +16,10 @@ import { discoverConfig, loadConfigModule, missingConfigError } from '../config/
 import { resolveConfig, type ResolvedConfig } from '../config/resolve.ts';
 import type { ResolvedTarget } from '../config/targets.ts';
 import { selectTargets } from '../collect/select.ts';
-import { EngineError } from '../engine/contract.ts';
 import type { EngineDoctorCheck } from '../engine/index.ts';
 import { classifyError, InfrastructureError } from '../internal/errors.ts';
 import { SUPPORTED_NODE_RANGE } from '../internal/node-version.ts';
-import { withAbort } from '../internal/time.ts';
+import { cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../internal/time.ts';
 import { loginOf } from '../oauth/login-model.ts';
 import { apiKeyFor, getProvider, loginHint, type ProviderId } from '../oauth/providers.ts';
 import { defaultCredentialStore } from '../oauth/store.ts';
@@ -33,6 +32,9 @@ const DOCTOR_SCHEMA_VERSION = 'doctor-1';
 
 /** How long one engine's `doctor` hook may take: it should only look things up. */
 const ENGINE_DOCTOR_TIMEOUT_MS = 30_000;
+
+/** How long a timed-out or cancelled engine `doctor` hook may take to close its connection: a protocol engine shuts its server down within this. */
+const ENGINE_DOCTOR_TEARDOWN_MS = 10_000;
 
 /** How long one `--check-model` call may take, transport retries included. */
 const MODEL_CALL_TIMEOUT_MS = 60_000;
@@ -176,28 +178,36 @@ async function engineChecks(target: ResolvedTarget, config: ResolvedConfig, opti
   if (engine.doctor === undefined) {
     return [{ id: 'engine', status: 'skip', target: target.name, message: `engine "${engine.name}" has no doctor checks` }];
   }
-  const signal = AbortSignal.any([options.signal, AbortSignal.timeout(ENGINE_DOCTOR_TIMEOUT_MS)]);
-  try {
-    const findings = await withAbort(
-      engine.doctor({
-        targetName: target.name,
-        projectRoot: config.projectRoot,
-        app: engineAppInfo(target.app),
-        env: options.env,
-        headed: options.headed,
-        signal,
-        log: (line) => options.notice(target.name, line),
-      }),
+  const hook = engine.doctor.bind(engine);
+  const deadline = AbortSignal.timeout(ENGINE_DOCTOR_TIMEOUT_MS);
+  const signal = AbortSignal.any([options.signal, deadline]);
+  const pending = Promise.resolve().then(() =>
+    hook({
+      targetName: target.name,
+      projectRoot: config.projectRoot,
+      app: engineAppInfo(target.app),
+      env: options.env,
+      headed: options.headed,
       signal,
-      () => new EngineError('OPERATION_TIMEOUT', `engine "${engine.name}" did not finish its checks within ${String(ENGINE_DOCTOR_TIMEOUT_MS / 1000)}s`, { retryable: false }),
-    );
+      log: (line) => options.notice(target.name, line),
+    }),
+  );
+  try {
+    const findings: unknown = await withAbort(pending, signal, cancelledError);
     if (!Array.isArray(findings)) throw malformedFinding(engine.name, findings);
     return findings.map((finding: unknown) => {
       if (!isEngineFinding(finding)) throw malformedFinding(engine.name, finding);
       return { id: finding.id, status: finding.status, target: target.name, ...(finding.message === undefined ? {} : { message: finding.message }) };
     });
   } catch (cause) {
-    return [failed('engine', cause, { target: target.name })];
+    // The hook stops at the signal; waiting for it keeps doctor from exiting
+    // while a protocol engine still shuts its server down.
+    await withinCleanupBudget(pending, { signal: NEVER_ABORTS, timeoutMs: ENGINE_DOCTOR_TEARDOWN_MS });
+    const timedOut = deadline.aborted && !options.signal.aborted;
+    const failure = timedOut
+      ? new InfrastructureError('ENGINE_FAILURE', `engine "${engine.name}" did not finish its checks within ${String(ENGINE_DOCTOR_TIMEOUT_MS / 1000)}s`)
+      : cause;
+    return [failed('engine', failure, { target: target.name })];
   }
 }
 
@@ -225,7 +235,7 @@ function malformedFinding(engine: string, value: unknown): InfrastructureError {
  */
 async function modelChecks(config: ResolvedConfig, options: DoctorOptions): Promise<DoctorCheck[]> {
   const agents = [...config.agents];
-  const sdk = agents.some(([, agent]) => agent.model !== undefined) ? await loadAiSdk().then(() => undefined, (cause: unknown) => cause) : undefined;
+  const sdk = agents.some(([, agent]) => agent.model !== undefined || agent.judge !== undefined) ? await loadAiSdk().then(() => undefined, (cause: unknown) => cause) : undefined;
   const calls = new Map<object, Map<unknown, Promise<unknown>>>();
   const call = (model: ResolvedModel, agent: ResolvedAgentConfig): Promise<unknown> => {
     let byOptions = calls.get(model.model);
@@ -245,6 +255,11 @@ async function modelChecks(config: ResolvedConfig, options: DoctorOptions): Prom
   return checks;
 }
 
+/**
+ * The `model` check of one agent: its model and, when it is another one, its
+ * judge, each checked on its own. An executor that brings its own agent may
+ * still leave judgments to `judge`.
+ */
 async function modelCheck(
   name: string,
   agent: ResolvedAgentConfig,
@@ -253,21 +268,21 @@ async function modelCheck(
 ): Promise<DoctorCheck> {
   const executor = agent.executor === undefined ? {} : { executor: agent.executor.name };
   const { model } = agent;
-  if (model === undefined) {
+  const judge = agent.judge === undefined || agent.judge.model === model?.model ? undefined : agent.judge;
+  const roles = [...(model === undefined ? [] : [{ role: 'model', model }]), ...(judge === undefined ? [] : [{ role: 'judge', model: judge }])];
+  if (roles.length === 0) {
     if (agent.executor !== undefined) {
       return { id: 'model', status: 'unknown', agent: name, ...executor, message: `executor "${agent.executor.name}" brings its own agent, which doctor does not check` };
     }
     return { id: 'model', status: 'skip', agent: name, message: 'no model configured: tests without agent steps run, agent steps fail' };
   }
-  const judge = agent.judge === undefined || agent.judge.model === model.model ? undefined : agent.judge;
-  const models = judge === undefined ? [model] : [model, judge];
-  const logins = [...new Set(models.flatMap((entry) => loginOf(entry.model) ?? []))];
+  const logins = [...new Set(roles.flatMap((entry) => loginOf(entry.model.model) ?? []))];
   const result = (status: DoctorStatus, outcome: Pick<DoctorCheck, 'code' | 'message'>): DoctorCheck => ({
     id: 'model',
     status,
     agent: name,
     ...executor,
-    model: doctorModel(model),
+    ...(model === undefined ? {} : { model: doctorModel(model) }),
     ...(judge === undefined ? {} : { judge: doctorModel(judge) }),
     ...(logins.length === 1 ? { login: logins[0]! } : {}),
     ...outcome,
@@ -280,13 +295,15 @@ async function modelCheck(
     credentials.push(credential.message);
   }
   if (call !== undefined) {
-    for (const entry of models) {
-      const failure = await call(entry, agent);
-      if (failure !== undefined) return result('fail', errorOutcome(failure));
+    for (const entry of roles) {
+      const failure = await call(entry.model, agent);
+      if (failure === undefined) continue;
+      const { code, message } = errorOutcome(failure);
+      return result('fail', { code, message: roles.length === 1 ? message : `${entry.role}: ${message}` });
     }
-    return result('pass', { message: models.length === 1 ? 'answered' : 'both answered' });
+    return result('pass', { message: roles.length === 1 ? 'answered' : 'both answered' });
   }
-  if (models.every((entry) => loginOf(entry.model) !== undefined)) {
+  if (roles.every((entry) => loginOf(entry.model.model) !== undefined)) {
     return result('pass', { message: credentials.join('; ') });
   }
   return result('unknown', { message: 'the model reads its own credential; --check-model calls it' });
@@ -310,8 +327,9 @@ async function loginCredential(provider: ProviderId): Promise<{ readonly ok: boo
 
 /**
  * One small call to `model` with the agent's provider options, resolving to
- * the failure or undefined. A reply that is not the JSON asked for still
- * proves the model answered.
+ * the failure or undefined. A call that finished with a reply that is not the
+ * JSON asked for still proves the model answered: the adapter throws a
+ * provider failure for one that ended on an error.
  */
 async function callModel(model: ResolvedModel, agent: ResolvedAgentConfig, signal: AbortSignal): Promise<unknown> {
   try {
@@ -357,7 +375,7 @@ function describe(check: DoctorCheck): string {
   if (check.targets !== undefined) parts.push(`targets: ${check.targets.map((target) => `${target.name} (${target.engine ?? target.platform})`).join(', ')}`);
   if (check.model !== undefined) parts.push(modelLabel({ provider: check.model.provider, id: check.model.modelId }));
   if (check.judge !== undefined) parts.push(`judge ${modelLabel({ provider: check.judge.provider, id: check.judge.modelId })}`);
-  if (check.executor !== undefined && check.model !== undefined) parts.push(`executor ${check.executor}`);
+  if (check.executor !== undefined && (check.model !== undefined || check.judge !== undefined)) parts.push(`executor ${check.executor}`);
   if (check.message !== undefined) parts.push(check.code === undefined ? check.message : `${check.code}: ${check.message}`);
   return `${scope}${parts.join(' · ')}`;
 }

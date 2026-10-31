@@ -48,6 +48,7 @@ const checked = defineEngine({
   },
 });
 const answering = createScriptedInstance('scripted', 'answers', async () => scriptedResult([{ type: 'text', text: 'OK' }], 'stop'));
+const erroring = createScriptedInstance('scripted', 'errors', async () => scriptedResult([], 'error'));
 const failing = createScriptedInstance('scripted', 'fails', async () => {
   throw new Error('provider is down');
 });
@@ -137,7 +138,11 @@ describe('e2e doctor', () => {
   });
 
   it("names each agent's model and calls it only with --check-model", () => {
-    const files = { 'e2e.config.ts': config("agents: { default: { model: answering }, down: { model: failing }, split: { model: answering, judge: failing } },") };
+    const files = {
+      'e2e.config.ts': config(
+        "agents: { default: { model: answering }, down: { model: failing }, split: { model: answering, judge: failing }, broken: { model: erroring }, brought: { executor: { name: 'own', runStep: async () => ({ status: 'done' }) } as never, judge: failing } },",
+      ),
+    };
     const unchecked = doctorJson(files);
     expect(unchecked.exitCode).toBe(0);
     expect(unchecked.report.checks.filter((check) => check.id === 'model')).toEqual([
@@ -151,13 +156,17 @@ describe('e2e doctor', () => {
         judge: { provider: 'scripted', modelId: 'fails' },
         message: 'the model reads its own credential; --check-model calls it',
       },
+      { id: 'model', status: 'unknown', agent: 'broken', model: { provider: 'scripted', modelId: 'errors' }, message: 'the model reads its own credential; --check-model calls it' },
+      { id: 'model', status: 'unknown', agent: 'brought', executor: 'own', judge: { provider: 'scripted', modelId: 'fails' }, message: 'the model reads its own credential; --check-model calls it' },
     ]);
     const checked = doctorJson(files, ['--check-model']);
     expect(checked.exitCode).toBe(2);
-    expect(checked.report.checks.filter((check) => check.id === 'model').map(({ agent, status, code }) => ({ agent, status, code }))).toEqual([
-      { agent: 'default', status: 'pass', code: undefined },
-      { agent: 'down', status: 'fail', code: 'MODEL_PROVIDER_FAILED' },
-      { agent: 'split', status: 'fail', code: 'MODEL_PROVIDER_FAILED' },
+    expect(checked.report.checks.filter((check) => check.id === 'model').map(({ agent, status, code, message }) => ({ agent, status, code, message }))).toEqual([
+      { agent: 'default', status: 'pass', code: undefined, message: 'answered' },
+      { agent: 'down', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('provider is down') },
+      { agent: 'split', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringMatching(/^judge: .*provider is down/) },
+      { agent: 'broken', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('error finish') },
+      { agent: 'brought', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('provider is down') },
     ]);
   });
 

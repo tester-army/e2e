@@ -3,7 +3,8 @@
  * not a provider failure. The adapter reads the finish reason and the text
  * before the SDK's `result.output` getter throws its bare
  * `NoOutputGeneratedError`, so the error carries the raw finish reason and
- * any text the model produced. An `error` finish stays a provider failure.
+ * any text the model produced. An `error` finish stays a provider failure,
+ * on a plain call too, where it is caught before the text is parsed.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -17,12 +18,12 @@ function adapter(model: ModelInstance) {
   return createModelAdapter({ provider: model.provider, id: model.modelId, model });
 }
 
-function call(): ModelCall<unknown> {
+function call(structured: boolean): ModelCall<unknown> {
   return {
     system: 's',
     prompt: 'p',
     schemaName: 'agent-extract-2',
-    schema: { type: 'object' },
+    schema: structured ? { type: 'object' } : undefined,
     validate: (value: unknown) => ({ ok: true as const, value }),
     maxOutputTokens: 16,
     maxInputTokens: 64_000,
@@ -31,9 +32,9 @@ function call(): ModelCall<unknown> {
   };
 }
 
-async function generateError(model: ModelInstance): Promise<unknown> {
+async function generateError(model: ModelInstance, structured = true): Promise<unknown> {
   return adapter(model)
-    .generate(call())
+    .generate(call(structured))
     .then(
       () => {
         throw new Error('expected the empty call to throw');
@@ -80,5 +81,20 @@ describe('empty model output', () => {
     expect(isAgentError(error)).toBe(true);
     expect(error).toMatchObject({ code: 'MODEL_OUTPUT_INVALID', category: 'test' });
     expect(error).toHaveProperty('rawText', '{"a":1}');
+  });
+
+  it('plain call: an error finish is MODEL_PROVIDER_FAILED, not MODEL_OUTPUT_INVALID', async () => {
+    const model = createScriptedInstance('fake', 'scripted', async () => scriptedResult([], 'error'));
+    const error = await generateError(model, false);
+
+    expect(error).toMatchObject({ code: 'MODEL_PROVIDER_FAILED', category: 'infrastructure' });
+    expect((error as Error).message).toContain('error finish (raw finish reason: error)');
+  });
+
+  it('plain call: a finished reply that is not JSON is MODEL_OUTPUT_INVALID with its text', async () => {
+    const model = createScriptedInstance('fake', 'scripted', async () => scriptedResult([{ type: 'text', text: 'OK' }], 'stop'));
+    const error = await generateError(model, false);
+
+    expect(error).toMatchObject({ code: 'MODEL_OUTPUT_INVALID', rawText: 'OK' });
   });
 });

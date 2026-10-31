@@ -545,6 +545,25 @@ describe('engine protocol over a child process', () => {
     expect(() => process.kill(pid, 0)).toThrow();
   });
 
+  it('stops a server that hangs in doctor and ignores SIGTERM before doctor settles', async () => {
+    const remote = connectEngine({
+      manifest: { ...manifest, methods: [...manifest.methods, 'lifecycle/doctor'], actions: [...manifest.actions] },
+      transport: spawnTransport({ command: process.execPath, args: [server] }),
+      initializationOptions: { hangDoctor: true },
+    });
+    const controller = new AbortController();
+    let pid = 0;
+    const log = (line: string): void => {
+      pid = Number(line.slice('pid:'.length));
+      controller.abort();
+    };
+    await expect(remote.doctor!({ targetName: 'toy', projectRoot: process.cwd(), app: {}, env: process.env, headed: false, signal: controller.signal, log })).rejects.toMatchObject({
+      code: 'CANCELLED',
+    });
+    expect(pid).toBeGreaterThan(0);
+    expect(() => process.kill(pid, 0)).toThrow();
+  }, 15_000);
+
   it('fails a request with the server stderr when the process dies mid-call', async () => {
     const remote = connectEngine({
       manifest: { ...manifest, methods: [...manifest.methods], actions: [...manifest.actions] },
