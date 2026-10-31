@@ -2,6 +2,7 @@
 
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach } from 'vitest';
 import type { EngineHandle, EnginePrepareInfo, EngineFinishInfo } from '../../src/engine/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
@@ -12,7 +13,7 @@ const runnerModule = new URL('../../dist/runner.js', import.meta.url).href;
 export const sdkModule = new URL('../../dist/index.js', import.meta.url).href;
 export const { openHost } = (await import(runnerModule)) as typeof import('../../src/runner.ts');
 export const { credentials, expect: sdkExpect, secrets } = (await import(sdkModule)) as typeof import('../../src/index.ts');
-const PROJECTS = new URL('../tmp-projects/', import.meta.url);
+const PROJECTS = fileURLToPath(new URL('../tmp-projects/', import.meta.url));
 /** Where a file config finds the engines a test made. */
 export const ENGINES = '__e2eOpenHostTestEngines';
 
@@ -84,7 +85,7 @@ export function hostHarness() {
 
   beforeEach(() => {
     mkdirSync(PROJECTS, { recursive: true });
-    dir = mkdtempSync(path.join(PROJECTS.pathname, 'open-host-'));
+    dir = mkdtempSync(path.join(PROJECTS, 'open-host-'));
     hosts = [];
     releases = [];
   });

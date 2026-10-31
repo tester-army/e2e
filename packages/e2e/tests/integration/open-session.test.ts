@@ -2,13 +2,14 @@
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createFakeEngine, FAKE_APP, type FakeEngineHandle } from '../helpers/fake-engine.ts';
 import type { E2EHost, OpenHostOptions, StepProgress } from '../../src/runner.ts';
 
 const runnerModule = new URL('../../dist/runner.js', import.meta.url).href;
 const { openHost } = (await import(runnerModule)) as typeof import('../../src/runner.ts');
-const PROJECTS = new URL('../tmp-projects/', import.meta.url);
+const PROJECTS = fileURLToPath(new URL('../tmp-projects/', import.meta.url));
 
 /** Where the config file finds the engines this test made. */
 const ENGINES = '__e2eHostTestEngines';
@@ -35,7 +36,7 @@ describe('host.openSession', { timeout: 60_000 }, () => {
 
   beforeEach(() => {
     mkdirSync(PROJECTS, { recursive: true });
-    dir = mkdtempSync(path.join(PROJECTS.pathname, 'open-session-'));
+    dir = mkdtempSync(path.join(PROJECTS, 'open-session-'));
     hosts = [];
   });
 

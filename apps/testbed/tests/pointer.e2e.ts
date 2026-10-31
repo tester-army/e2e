@@ -61,3 +61,17 @@ test.describe('raw pointer input', { requires: ['browser'] }, () => {
     await expect(screen.getByLabel('Pad state')).toHaveText('swiped from 10,20 to 150,20');
   });
 });
+
+test('raw mouse double-click edits a label beneath a sibling SVG', { requires: ['browser'] }, async ({ app, browser, screen }) => {
+  await app.open('/pointer');
+  const label = screen.getByRole('textbox', 'Edit label');
+  const point = centerOf(await boxOf(label));
+  const hit = await browser.evaluate(({ x, y }: { x: number; y: number }) => {
+    const target = document.elementFromPoint(x, y);
+    return { tag: target?.localName ?? null, node: target?.closest('#diagram-node')?.id ?? null };
+  }, { x: point.x, y: point.y });
+  expect(hit).toEqual({ tag: 'path', node: 'diagram-node' });
+  await browser.mouse.dblclick(point.x, point.y);
+  await label.fill('Renamed');
+  await expect(label).toHaveValue('Renamed');
+});
