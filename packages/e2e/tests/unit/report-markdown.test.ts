@@ -203,7 +203,7 @@ describe('renderMarkdownReport', () => {
           '</details>',
         ].join('\n'),
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web · [run artifacts](https://github.com/o/r/actions/runs/9)</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web · [run artifacts](https://github.com/o/r/actions/runs/9)</sub>',
         '',
       ].join('\n'),
     );
@@ -216,7 +216,7 @@ describe('renderMarkdownReport', () => {
         '',
         '<details>\n<summary>All 1 test in 1 file</summary>\n\n|  | Test | Time |\n| --- | --- | --- |\n| 🟢 | **tests/smoke.e2e.ts** · 1 passed | 850ms |\n| 🟢 | opens the app | 850ms |\n</details>',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
@@ -343,7 +343,7 @@ describe('renderMarkdownReport', () => {
   });
 
   it('says no tests selected when nothing ran and nothing failed', () => {
-    expect(renderMarkdownReport(page())).toBe('### 🟢 e2e: no tests selected\n\n<sub>e2e 0.9.0 · 8.4s · web</sub>\n');
+    expect(renderMarkdownReport(page())).toBe('### 🟢 e2e: no tests selected\n\n<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>\n');
   });
 
   it('escapes what a test wrote, keeps it on one line, and keeps a link destination closed', () => {
@@ -454,7 +454,7 @@ describe('renderMarkdownReport', () => {
     const one = renderMarkdownReport(page({ status: 'failed', results: [failing, passing], targets: twoTargets }));
     expect(one).not.toContain('(web)');
     expect(one).toContain('`tests/members.e2e.ts:41`\n\n');
-    expect(one).toContain('<sub>e2e 0.9.0 · 8.4s · web</sub>');
+    expect(one).toContain('<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>');
     // One file on two targets is two groups and one file.
     const twice = renderMarkdownReport(page({ results: [passing, { ...passing, targetId: 'mobile' }], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
     expect(twice).toContain('<summary>All 2 tests in 1 file</summary>');
@@ -700,7 +700,7 @@ describe('renderMarkdownReport for an exploration', () => {
         '',
         'The cart is the weak spot.',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
@@ -859,7 +859,7 @@ describe('a run test filters narrowed', () => {
         '',
         '<details>\n<summary>All 1 test in 1 file</summary>\n\n|  | Test | Time |\n| --- | --- | --- |\n| 🟢 | **tests/smoke.e2e.ts** · 1 passed | 850ms |\n| 🟢 | opens the app | 850ms |\n</details>',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
