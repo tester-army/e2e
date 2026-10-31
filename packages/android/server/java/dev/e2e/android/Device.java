@@ -315,7 +315,7 @@ final class Device {
     if (ROOT_ID.equals(id)) {
       if (!"swipe".equals(kind)) throw EngineException.unsupported("the screen root only takes a swipe");
       Point size = displaySize();
-      swipe(new Rect(0, 0, size.x, size.y), action.getString("direction"), action.optString("momentum", "slow"), operation);
+      swipe(new Rect(0, 0, size.x, size.y), action.getString("direction"), action.optString("momentum", "none"), operation);
       settle(operation);
       return;
     }
@@ -363,7 +363,7 @@ final class Device {
         press(action.getString("key"), operation);
         break;
       case "swipe":
-        swipe(bounds, action.getString("direction"), action.optString("momentum", "slow"), operation);
+        swipe(bounds, action.getString("direction"), action.optString("momentum", "none"), operation);
         break;
       case "dragTo": {
         AccessibilityNodeInfo target = live(action.getJSONObject("target").getString("id"));
@@ -402,7 +402,7 @@ final class Device {
       case "swipe": {
         Point size = displaySize();
         int half = Math.min(size.x, size.y) / 4;
-        swipe(new Rect((int) x - half, (int) y - half, (int) x + half, (int) y + half), action.getString("direction"), action.optString("momentum", "slow"), operation);
+        swipe(new Rect((int) x - half, (int) y - half, (int) x + half, (int) y + half), action.getString("direction"), action.optString("momentum", "none"), operation);
         break;
       }
       case "swipeTo": {
@@ -602,9 +602,9 @@ final class Device {
 
   /**
    * A scroll gesture inside `bounds`: `down` reveals what is below, so the
-   * finger travels up. `none` drags and rests before lifting; `slow` slows
-   * down toward the end, as a hand does, so the content coasts a little;
-   * `fast` lifts at full speed, a long fling.
+   * finger travels up. `none`, the default, drags and rests before lifting;
+   * `slow` slows down toward the end, as a hand does, so the content coasts
+   * briefly; `fast` lifts at full speed, a long fling.
    */
   private void swipe(Rect bounds, String direction, String momentum, Operation operation) throws EngineException {
     float cx = bounds.exactCenterX();
@@ -656,49 +656,59 @@ final class Device {
   /**
    * Waits for content a gesture set moving to come to rest: a list coasts
    * after the finger lifts, and a touch on it then stops the fling instead
-   * of pressing what is under it. A container that scrolled is read every
-   * frame until its content holds still for four frames. Content that moved
-   * without scrolling (an animated view) only raises accessibility events,
-   * so a pause in them is its rest.
+   * of pressing what is under it. The content of a container that scrolled
+   * is read fresh from the app every frame until it holds still for four
+   * frames. Content that moved without scrolling (an animated view), or
+   * whose layout cannot be read, only raises accessibility events, so a
+   * pause in them is its rest.
    */
   private void awaitRest(AccessibilityNodeInfo scrolled, Operation operation) throws EngineException {
     long timeoutMs = Math.min(3000, operation.timeoutMs);
-    if (scrolled == null) {
-      try {
-        automation.waitForIdle(150, timeoutMs);
-      } catch (java.util.concurrent.TimeoutException ignored) {
-        // Content that never rests (an animation) is acted on as it is.
-      }
-      return;
-    }
     long deadline = SystemClock.uptimeMillis() + timeoutMs;
-    String last = layout(scrolled);
-    for (int still = 0; last != null && still < 4 && SystemClock.uptimeMillis() < deadline; ) {
+    String last = scrolled == null ? null : layout(scrolled);
+    for (int still = 0; last != null && still < 4; ) {
+      if (SystemClock.uptimeMillis() >= deadline) return;
       pause(16, operation);
       String next = layout(scrolled);
       still = last.equals(next) ? still + 1 : 0;
       last = next;
     }
+    if (last != null) return;
+    try {
+      automation.waitForIdle(150, Math.max(0, deadline - SystemClock.uptimeMillis()));
+    } catch (java.util.concurrent.TimeoutException ignored) {
+      // Content that never rests (an animation) is acted on as it is.
+    }
   }
 
-  /** Where a scroll container's content is on screen, up to three levels down; null once it left the screen. */
+  /**
+   * Where a scroll container's content is on screen, its children and
+   * grandchildren each refreshed past the accessibility cache, which only a
+   * throttled scroll event clears. Null once the container left the screen
+   * or holds nothing to read.
+   */
   private static String layout(AccessibilityNodeInfo container) {
     if (!container.refresh()) return null;
     StringBuilder out = new StringBuilder();
-    appendLayout(container, 0, out, new int[] {0});
-    return out.toString();
-  }
-
-  private static void appendLayout(AccessibilityNodeInfo node, int depth, StringBuilder out, int[] count) {
     Rect bounds = new Rect();
-    for (int index = 0; index < node.getChildCount() && count[0] < 24; index++) {
-      AccessibilityNodeInfo child = node.getChild(index);
+    int read = 0;
+    for (int index = 0; index < container.getChildCount() && read < 8; index++) {
+      AccessibilityNodeInfo child = container.getChild(index);
       if (child == null) continue;
-      child.getBoundsInScreen(bounds);
-      out.append(bounds.toShortString());
-      count[0] += 1;
-      if (depth < 2) appendLayout(child, depth + 1, out, count);
+      for (int inner = 0; inner < child.getChildCount() && read < 8; inner++) {
+        AccessibilityNodeInfo row = child.getChild(inner);
+        if (row == null || !row.refresh()) continue;
+        row.getBoundsInScreen(bounds);
+        out.append(bounds.toShortString());
+        read += 1;
+      }
+      if (child.refresh()) {
+        child.getBoundsInScreen(bounds);
+        out.append(bounds.toShortString());
+        read += 1;
+      }
     }
+    return read == 0 ? null : out.toString();
   }
 
   /**

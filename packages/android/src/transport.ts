@@ -10,9 +10,8 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
-import { connect, type Socket } from 'node:net';
 import path from 'node:path';
-import { ConfigurationError, InfrastructureError, type EngineTransport, type TransportContext } from 'e2e/engine';
+import { ConfigurationError, InfrastructureError, socketTransport, type EngineTransport, type TransportConnection, type TransportContext } from 'e2e/engine';
 
 /** Options of the Android transport. */
 export interface AndroidTransportOptions {
@@ -35,6 +34,14 @@ const READY_TIMEOUT_MS = 30_000;
 
 const DEFAULT_APK = path.join(import.meta.dirname, '..', 'build', 'e2e-android-server.apk');
 
+/**
+ * Open connections per device serial. Starting the server ends the one
+ * already running, so a connection that opens while another closes (a
+ * shared handle hands over between sessions) owns the server, and only the
+ * last connection to close may stop it.
+ */
+const openConnections = new Map<string, number>();
+
 /** Runs adb and resolves with its stdout. */
 function adb(executable: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -45,13 +52,15 @@ function adb(executable: string, args: readonly string[], signal?: AbortSignal):
   });
 }
 
+/** The adb to run: the option, else the SDK's under `ANDROID_HOME` or `ANDROID_SDK_ROOT`, else `adb` on `PATH`. */
 function adbExecutable(options: AndroidTransportOptions, env: TransportContext['env']): string {
   if (options.adb !== undefined) return options.adb;
   const home = env['ANDROID_HOME'] ?? env['ANDROID_SDK_ROOT'];
-  const candidate = home === undefined ? undefined : path.join(home, 'platform-tools', 'adb');
+  const candidate = home === undefined ? undefined : path.join(home, 'platform-tools', process.platform === 'win32' ? 'adb.exe' : 'adb');
   return candidate !== undefined && existsSync(candidate) ? candidate : 'adb';
 }
 
+/** The serial of the device to drive: the option, else `ANDROID_SERIAL`, else the one device attached. */
 async function deviceSerial(executable: string, options: AndroidTransportOptions, env: TransportContext['env'], signal: AbortSignal): Promise<string> {
   const chosen = options.serial ?? env['ANDROID_SERIAL'];
   if (chosen !== undefined) return chosen;
@@ -139,27 +148,35 @@ export function androidTransport(options: AndroidTransportOptions = {}): EngineT
       let forwarded: number | undefined;
       const unforward = (signal?: AbortSignal): Promise<unknown> =>
         forwarded === undefined ? Promise.resolve() : adb(executable, ['-s', serial, 'forward', '--remove', `tcp:${String(forwarded)}`], signal).catch(() => undefined);
-      let socket: Socket;
+      openConnections.set(serial, (openConnections.get(serial) ?? 0) + 1);
+      // The device cleanup gets a short budget of its own: a host process
+      // that used the whole budget must still not leave the server running
+      // or the port forwarded.
+      const release = async (): Promise<void> => {
+        await unforward(AbortSignal.timeout(CLEANUP_MS));
+        const left = (openConnections.get(serial) ?? 1) - 1;
+        if (left > 0) {
+          openConnections.set(serial, left);
+          return;
+        }
+        openConnections.delete(serial);
+        await stopOnDevice(AbortSignal.timeout(CLEANUP_MS));
+      };
+      let connection: TransportConnection;
       try {
         forwarded = Number((await run(['forward', 'tcp:0', `localabstract:${SOCKET}`])).trim());
-        socket = connect({ host: '127.0.0.1', port: forwarded });
-        socket.setNoDelay(true);
-        await new Promise<void>((resolve, reject) => {
-          socket.once('connect', resolve);
-          socket.once('error', reject);
-        });
+        connection = await socketTransport({ host: '127.0.0.1', port: forwarded }).open(context);
       } catch (cause) {
         server.process.kill();
-        await unforward(AbortSignal.timeout(CLEANUP_MS));
-        await stopOnDevice(AbortSignal.timeout(CLEANUP_MS));
+        await release();
         throw cause;
       }
       return {
-        input: socket,
-        output: socket,
+        input: connection.input,
+        output: connection.output,
         diagnostics: () => `device ${serial}; instrumentation output: ${server.output() || '(none)'}`,
         async close(timeoutMs) {
-          socket.end();
+          connection.output.end();
           const { process: child } = server;
           const exited = new Promise<void>((resolve) => {
             if (child.exitCode !== null || child.signalCode !== null) resolve();
@@ -168,12 +185,8 @@ export function androidTransport(options: AndroidTransportOptions = {}): EngineT
           const timer = setTimeout(() => child.kill(), Math.max(0, timeoutMs));
           await exited;
           clearTimeout(timer);
-          socket.destroy();
-          // The device cleanup gets a short budget of its own: a host process
-          // that used the whole budget must still not leave the server
-          // running or the port forwarded.
-          await unforward(AbortSignal.timeout(CLEANUP_MS));
-          await stopOnDevice(AbortSignal.timeout(CLEANUP_MS));
+          await connection.close(timeoutMs);
+          await release();
         },
       };
     },

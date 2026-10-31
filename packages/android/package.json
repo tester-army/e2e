@@ -45,16 +45,19 @@
     "prepack": "node scripts/build-server.ts",
     "prepublishOnly": "node ../../scripts/check-dist.ts",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
     "bench": "node bench/bench.ts"
   },
   "peerDependencies": {
-    "e2e": ">=0.21.4 <1"
+    "e2e": ">=0.22.1 <1"
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

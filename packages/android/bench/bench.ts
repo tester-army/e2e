@@ -33,6 +33,7 @@ function nodes(root: SemanticNode): SemanticNode[] {
   return [root, ...(root.children ?? []).flatMap(nodes)];
 }
 
+/** The first node `predicate` matches, observed until it shows or `timeoutMs` passes. */
 async function find(engine: EngineHandle, predicate: (node: SemanticNode) => boolean, timeoutMs = 10_000): Promise<SemanticNode> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
@@ -55,6 +56,7 @@ async function time(fn: () => Promise<unknown>): Promise<number> {
 
 type Samples = Record<string, number[]>;
 
+/** Runs every engine call of the benchmark on `engine` and returns its samples by operation. */
 async function measure(label: string, engine: EngineHandle): Promise<Samples> {
   const samples: Samples = {};
   const record = async (name: string, fn: () => Promise<unknown>): Promise<void> => {

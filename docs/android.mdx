@@ -19,8 +19,8 @@ release. Use [`@e2e-dev/mobile`](/mobile) for suites that must stay stable.
 
 <Note>
 You need the Android SDK (`ANDROID_HOME`, or `adb` on `PATH`) and one
-booted emulator or connected phone. The package ships the device server, so
-you don't need a JDK.
+booted emulator or connected phone on Android 9 (API 28) or later. The
+package ships the device server, so you don't need a JDK.
 </Note>
 
 <CodeGroup>
@@ -85,8 +85,8 @@ test('signs in', async ({ app, screen, device }) => {
 
 ## Speed
 
-On a Pixel 7 API 36 emulator, the deterministic Android suite of the
-mobile benchmark (42 tests, one worker) runs in about 121 s on this engine
+On a Pixel 7 API 36 emulator, 42 deterministic tests of the mobile
+benchmark (one worker) runs in about 121 s on this engine
 and 290 s on `@e2e-dev/mobile`. Both pass every test.
 
 ## Limits
