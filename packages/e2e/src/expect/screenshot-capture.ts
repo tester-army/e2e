@@ -8,7 +8,7 @@
 import type { LocatorExpression } from '../engine/surface.ts';
 import { ConfigurationError, isE2EError } from '../internal/errors.ts';
 import { clipBox, cropImage, decodePng, fillBoxes, resampleImage, type ImageBox, type RgbaImage } from '../internal/image.ts';
-import { isOperationTimeout, type ReadWindow } from '../internal/time.ts';
+import type { ReadWindow } from '../internal/time.ts';
 import { isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
 import type { ScreenContext } from '../locator/screen.ts';
@@ -29,21 +29,13 @@ export type Capture = { readonly image: RgbaImage } | { readonly missing: string
 /**
  * Captures for one call. The subject is scrolled into view once, the first
  * time it is found; a subject that is not there yet is a capture still
- * missing, so the call's poll keeps waiting and fails as an assertion. So is
- * a capture the deadline cut short: the call then fails on what the
- * captures before it showed.
+ * missing, so the call's poll keeps waiting and fails as an assertion. A
+ * capture the deadline cut short throws, and the poll judges it as it judges
+ * any read it cut off.
  */
 export function screenshotCapturer(context: ScreenContext, request: CaptureRequest, reads: ReadWindow): () => Promise<Capture> {
-  const { engine } = context;
-  const state = { scrolled: !engine.session.actions.has('scrollIntoView') };
-  return async () => {
-    try {
-      return await captureOnce(context, request, reads, state);
-    } catch (cause) {
-      if (reads.deadline.expired() && isOperationTimeout(cause)) return { missing: 'the last screenshot ran past the timeout' };
-      throw cause;
-    }
-  };
+  const state = { scrolled: !context.engine.session.actions.has('scrollIntoView') };
+  return () => captureOnce(context, request, reads, state);
 }
 
 /** One capture; `state.scrolled` records that the subject was scrolled into view. */

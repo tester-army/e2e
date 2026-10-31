@@ -106,7 +106,11 @@ function makeEngine(script: ScreenScript, options: { actionTimeout?: number; bud
           });
         throw new EngineError('NOT_ACTIONABLE', 'covered by overlay', { retryable: false });
       },
+      async performAt(point: unknown, action: unknown) {
+        performed.push({ point, action });
+      },
       actions: new Set(LOCATOR_ACTION_KINDS),
+      pointerActions: new Set(['tap']),
   } as unknown as TargetSession;
   const engine = new LocatorEngine({
     session,
@@ -302,6 +306,22 @@ describe('LocatorEngine perform contract', () => {
     });
     expect(calls.resolve).toBe(2);
     expect(calls.perform).toBe(0);
+  });
+
+  it('never sends a positioned tap whose target became visible past the deadline', async () => {
+    const visible: SemanticNode = { ...NODE, rect: { x: 10, y: 10, width: 100, height: 40 } };
+    const { engine, performed } = makeEngine(
+      {
+        resolve: [() => [REF], slowResolve(200, []), slowResolve(200, [REF])] as unknown as Array<() => readonly NodeRef[]>,
+        read: [() => visible, () => visible],
+      },
+      { actionTimeout: 350 },
+    );
+    await expect(engine.performWithin(EXPRESSION, { x: 5, y: 5 }, { kind: 'tap' })).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: expect.stringContaining('before the tap was sent'),
+    });
+    expect(performed).toEqual([{ kind: 'scrollIntoView' }]);
   });
 
   it('marks every action it performs with the test origin, so an engine can act without settling', async () => {

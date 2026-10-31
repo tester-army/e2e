@@ -470,6 +470,11 @@ export class LocatorEngine {
         ...(code === undefined ? {} : { code }),
         detail: `${action.kind} at (${Math.round(point.x)}, ${Math.round(point.y)})`,
       });
+    if (deadline.expired()) {
+      const failure = lateAction(action.kind, `(${Math.round(point.x)}, ${Math.round(point.y)})`);
+      record('failed', failure.code);
+      throw failure;
+    }
     try {
       await this.session.performAt(point, action, this.operationWithin(deadline));
     } catch (cause) {
@@ -549,10 +554,8 @@ export class LocatorEngine {
       const resolved = typeof action === 'function' ? await action(deadline, ref) : action;
       const record = (status: StepEvent['status'], code?: string): void =>
         this.recordAction({ node, kind: resolved.kind, startedAt, startedMs, waitedMs, stale, status, code });
-      // A read may finish past the deadline so its result is classed right,
-      // but an action that would start past it is never sent.
       if (deadline.expired()) {
-        const failure = new TestError('ACTION_FAILED', `operation timed out before the ${resolved.kind} was sent: ${describeExpression(expression)}`);
+        const failure = lateAction(resolved.kind, describeExpression(expression));
         record('failed', failure.code);
         throw failure;
       }
@@ -649,6 +652,15 @@ export function locatorDetails(expression: LocatorExpression, waitedMs?: number)
     ...expressionHints(expression),
     ...(waitedMs === undefined ? {} : { waitedMs }),
   };
+}
+
+/**
+ * The failure of an action whose deadline passed before it was sent. A read
+ * may finish past its deadline so its result is classed right; an action
+ * never starts past it.
+ */
+function lateAction(kind: string, target: string): TestError {
+  return new TestError('ACTION_FAILED', `operation timed out before the ${kind} was sent: ${target}`);
 }
 
 /** Translates an engine error into the runner-owned public taxonomy. */

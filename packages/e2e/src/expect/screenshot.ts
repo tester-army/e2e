@@ -137,7 +137,7 @@ async function matchOrSettle(run: Run, expected: RgbaImage | undefined, deadline
       return false;
     },
     onTimeout: (cause) => {
-      if (latest === undefined) return failure(run.api, missing ?? 'no screenshot was taken', run.stored, 'no screenshot', cause);
+      if (latest === undefined) return failure(run.api, missing ?? (cause === undefined ? 'no screenshot was taken' : 'the last screenshot ran past the timeout'), run.stored, 'no screenshot', cause);
       if (!settles && expected !== undefined && latest.comparison !== undefined && latest.comparison.kind !== 'match') {
         return mismatch(run, expected, latest.image, latest.comparison, cause);
       }
@@ -201,7 +201,7 @@ async function expectDifferent(run: Run, expected: RgbaImage | undefined, deadli
     onTimeout: (cause) =>
       compared
         ? failure(run.api, `the screen still matches ${run.stored.shown}`, run.stored, 'matching', cause)
-        : failure(run.api, missing ?? 'no screenshot was taken', run.stored, 'no screenshot', cause),
+        : failure(run.api, missing ?? (cause === undefined ? 'no screenshot was taken' : 'the last screenshot ran past the timeout'), run.stored, 'no screenshot', cause),
   });
 }
 
