@@ -314,7 +314,7 @@ export interface TransportContext {
   /** The project root. */
   readonly cwd: string;
   readonly signal: AbortSignal;
-  /** The target's app, from `prepare` or `init`: what a transport installs, since a server elsewhere cannot read the project's files. */
+  /** The target's app, from `prepare`, `init`, or `doctor`: what a transport installs, since a server elsewhere cannot read the project's files. */
   readonly app?: EngineAppInfo;
 }
 
