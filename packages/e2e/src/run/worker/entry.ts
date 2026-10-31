@@ -16,7 +16,7 @@ import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trac
 import { DebugTrace } from '../../internal/debug.ts';
 import { classifyError, ConfigurationError, serializeError } from '../../internal/errors.ts';
 import { StreamRedactor } from '../../internal/redact.ts';
-import { ConfigLoadHold } from '../process-output.ts';
+import { ConfigLoadHold, writtenChunk } from '../process-output.ts';
 import { processSecrets, registerStaticSecrets, staticSecretLedger } from '../secrecy.ts';
 import { SessionStore } from '../sessions.ts';
 import type {
@@ -104,8 +104,9 @@ function captureOutput(pairInFlight: () => OutputMessage['pair']): () => void {
     const output = (text: string, pair: OutputMessage['pair']): Promise<void> =>
       text === '' ? Promise.resolve() : send({ type: 'output', pair, stream: name, text });
     flushes.push(() => void output(redactor.flush(), heldFor));
-    const write = (chunk: string | Uint8Array, encoding?: BufferEncoding | Done, callback?: Done): boolean => {
+    const write = (written: string | Uint8Array, encoding?: BufferEncoding | Done, callback?: Done): boolean => {
       const done = typeof encoding === 'function' ? encoding : callback;
+      const chunk = writtenChunk(written, encoding);
       if (configLoad.hold(name, chunk)) {
         if (done !== undefined) process.nextTick(done);
         return true;

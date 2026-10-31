@@ -677,9 +677,11 @@ export class SecretLedger {
  * value split across two writes is still caught. Each `push` returns what is
  * safe to pass on and holds back the rest: the tail a later piece could
  * complete into a value or a `<secret:name>` marker, as the ledger measures
- * it. Bytes are decoded as UTF-8 with a character split across pieces kept
- * whole. `flush` releases what is held, redacted, when the stream ends. The
- * pieces together redact to exactly what the whole text would.
+ * it. Bytes are decoded as UTF-8 with a character split across byte pieces
+ * kept whole; a string piece ends an unfinished character first, as a
+ * terminal shows the bytes Node wrote before it. `flush` releases what is
+ * held, redacted, when the stream ends. The pieces together redact to
+ * exactly what the whole text would.
  */
 export class StreamRedactor {
   private readonly decoder = new StringDecoder('utf8');
@@ -689,7 +691,8 @@ export class StreamRedactor {
 
   /** Redacts and returns what `chunk` completes; the rest waits for the next piece or `flush`. */
   push(chunk: string | Uint8Array): string {
-    const text = this.held + (typeof chunk === 'string' ? chunk : this.decoder.write(chunk));
+    if (chunk.length === 0) return '';
+    const text = this.held + (typeof chunk === 'string' ? this.decoder.end() + chunk : this.decoder.write(chunk));
     const cut = this.ledger.holdFrom(text);
     this.held = text.slice(cut);
     return this.ledger.redact(text.slice(0, cut));
