@@ -97,11 +97,12 @@ suites that consume the built packages the way a user would.
   clients (`ResolvedTarget.engine` is an `EngineClientHandle`); a
   `defineEngine` handle is served over `loopbackTransport`, so a contract
   change that cannot cross the wire fails in every suite.
-- `packages/ios` - private, experimental `@e2e-dev/ios`: an engine protocol
-  server in Swift, hosted by an XCUITest bundle on the simulator
-  (`server/E2EServer.xcodeproj`), without agent-device. The root `build`
-  compiles its TypeScript; the server builds with `build:server` (Xcode).
-  See its README.
+- `packages/ios` - the published, experimental `@e2e-dev/ios`: an engine
+  protocol server in Swift, hosted by an XCUITest bundle on the simulator
+  (`server/E2EServer.xcodeproj`, shipped in the package), without
+  agent-device. The root `build` compiles its TypeScript; the transport
+  builds the server with Xcode on first use into the user's cache
+  (`build:server` or the `e2e-ios-build` bin does it ahead). See its README.
 - `packages/kernel` - the published `@e2e-dev/kernel` package: Kernel hosted
   browsers for the web engine. An official integration with a hosted service
   is one package per service, named after it (`@e2e-dev/<service>`), with the

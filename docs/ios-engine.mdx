@@ -1,0 +1,106 @@
+---
+title: Native iOS engine (experimental)
+sidebarTitle: Native iOS (experimental)
+description: Run iOS simulator tests on @e2e-dev/ios, an experimental engine that drives the app from XCUITest without agent-device.
+icon: "flask"
+---
+
+`ios()` from `@e2e-dev/ios` is an experimental engine for iOS simulators.
+It runs an [engine protocol](/reference/engine-protocol) server written in
+Swift inside an XCUITest bundle on the simulator, so reads and gestures run
+in process. Tests use the same `screen`, `app`, and `expect` APIs as with
+[`@e2e-dev/mobile`](/mobile).
+
+<Warning>
+Experimental. Options and behavior can change in any release. Use
+`@e2e-dev/mobile` for suites you depend on.
+</Warning>
+
+## Set up
+
+<Note>
+Needs macOS with Xcode and one booted iOS simulator.
+</Note>
+
+Install the engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/ios
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/ios
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/ios
+```
+</CodeGroup>
+
+Set the target's engine to `ios()`:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { ios } from '@e2e-dev/ios';
+
+export default {
+  targets: [
+    {
+      name: 'ios',
+      engine: ios(),
+      app: { bundleId: 'com.example.app', appPath: './build/MyApp.app' },
+    },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+- `app.bundleId` is required. When `app.appPath` is set, the engine installs
+  that `.app` when the run starts.
+- The engine drives `ios({ udid })`, else `E2E_IOS_UDID`, else the one booted
+  simulator.
+- `app.restart()` and `app.clearState()` relaunch the app with `simctl`.
+
+## Build the server
+
+The package ships the server's Xcode project. The first run builds it with
+`xcodebuild` and keeps the build in `~/Library/Caches/e2e/ios-server`. Set
+`E2E_IOS_BUILD_DIR` to keep it elsewhere. A new package version or Xcode
+builds again.
+
+In CI, build it before the tests, so the first test doesn't wait for Xcode:
+
+<CodeGroup>
+```bash npm
+npx e2e-ios-build
+```
+
+```bash pnpm
+pnpm exec e2e-ios-build
+```
+
+```bash bun
+bunx e2e-ios-build
+```
+</CodeGroup>
+
+## Limits
+
+- Simulators only, one worker per target.
+- `app.url`, `app.launchArguments`, and `app.permissions` aren't supported.
+- The `device` fixture has `back()` only. Use `@e2e-dev/mobile` for location,
+  network, orientation, and other device controls.
+- No video recording.
+- A double tap goes through XCUITest, which can deliver it as two taps.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Mobile" icon="mobile-screen" href="/mobile">
+    The default mobile engine, for simulators, emulators, and phones.
+  </Card>
+  <Card title="Engine servers" icon="network-wired" href="/engine-servers">
+    How an engine in another language speaks to the runner.
+  </Card>
+</CardGroup>

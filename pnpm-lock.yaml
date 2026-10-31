@@ -318,6 +318,9 @@ importers:
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../packages/decision
+      '@e2e-dev/ios':
+        specifier: workspace:*
+        version: link:../packages/ios
       '@e2e-dev/limrun':
         specifier: workspace:*
         version: link:../packages/limrun
@@ -579,6 +582,9 @@ importers:
       typescript:
         specifier: 7.0.2
         version: 7.0.2
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@types/node@26.6.5)(vite@8.1.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/kernel:
     devDependencies:

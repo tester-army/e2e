@@ -11,6 +11,7 @@
     "@ai-sdk/typesafe-ai": "3.0.31",
     "@e2e-dev/browserstack": "workspace:*",
     "@e2e-dev/decision": "workspace:*",
+    "@e2e-dev/ios": "workspace:*",
     "@e2e-dev/limrun": "workspace:*",
     "@e2e-dev/mobile": "workspace:*",
     "@e2e-dev/testmu": "workspace:*",
