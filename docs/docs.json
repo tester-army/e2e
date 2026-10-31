@@ -73,6 +73,7 @@
             "pages": [
               "web",
               "mobile",
+              "android",
               "api-testing"
             ]
           },

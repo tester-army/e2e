@@ -54,6 +54,14 @@ jobs:
         run: pnpm plugins:check
       - name: MCP Registry entry matches the runner
         run: pnpm mcp-server:check
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
+      # The image's Android SDK compiles the device server that `prepack`
+      # ships in @e2e-dev/android, so a broken server fails here, not at release.
+      - name: Android engine server
+        run: pnpm --filter @e2e-dev/android build:server
       # The registry rejects an invalid entry only at publish, from a release
       # tag that can no longer change.
       - uses: ./.github/actions/mcp-publisher

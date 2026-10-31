@@ -97,11 +97,12 @@ suites that consume the built packages the way a user would.
   clients (`ResolvedTarget.engine` is an `EngineClientHandle`); a
   `defineEngine` handle is served over `loopbackTransport`, so a contract
   change that cannot cross the wire fails in every suite.
-- `packages/android` - private, experimental `@e2e-dev/android`: an engine
-  protocol server in Java that runs on the device as an instrumentation and
-  drives it through `UiAutomation`, without agent-device. The root `build`
-  compiles its TypeScript; the server APK needs an Android SDK and builds
-  with `build:server` only. See its README.
+- `packages/android` - the published, experimental `@e2e-dev/android`: an
+  engine protocol server in Java that runs on the device as an
+  instrumentation and drives it through `UiAutomation`, without
+  agent-device. The root `build` compiles its TypeScript; the server APK
+  needs an Android SDK and JDK 17, builds with `build:server`, and `prepack`
+  builds it into the published tarball. See its README.
 - `packages/kernel` - the published `@e2e-dev/kernel` package: Kernel hosted
   browsers for the web engine. An official integration with a hosted service
   is one package per service, named after it (`@e2e-dev/<service>`), with the

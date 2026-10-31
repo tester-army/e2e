@@ -5,6 +5,7 @@
  * provisions the device, and the checks only the host can make.
  */
 
+import { test as base } from 'e2e';
 import { ConfigurationError, connectEngine, type EngineHandle } from 'e2e/engine';
 import { MANIFEST } from './manifest.ts';
 import { androidTransport, type AndroidTransportOptions } from './transport.ts';
@@ -51,3 +52,12 @@ export function android(options: AndroidTransportOptions = {}): EngineHandle {
 export interface AndroidDevice {
   back(): Promise<void>;
 }
+
+/**
+ * `test` typed with this engine's contributed `device` fixture. The same
+ * runtime `test` as `e2e`'s; only the fixture types differ.
+ */
+export const test = base.extend<{ device: AndroidDevice }>();
+
+/** `describe` and the hooks, the same functions as `test.describe` and `test.beforeEach`, typed with the `device` fixture. */
+export const { describe, beforeEach, afterEach, beforeAll, afterAll } = test;

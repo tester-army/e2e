@@ -1,0 +1,111 @@
+---
+title: Android engine (experimental)
+description: Run Android tests on a native engine that drives the device directly, about twice as fast as the mobile engine.
+icon: "android"
+---
+
+`@e2e-dev/android` is an experimental engine for Android emulators and
+phones. It runs a small server on the device that reads the screen and
+injects touches and keys in process, with no adb call per action. Tests use
+the same `screen`, `app`, and `expect` APIs as the
+[mobile engine](/mobile).
+
+<Warning>
+The engine is experimental. Its options and behavior can change in any
+release. Use [`@e2e-dev/mobile`](/mobile) for suites that must stay stable.
+</Warning>
+
+## Set up
+
+<Note>
+You need the Android SDK (`ANDROID_HOME`, or `adb` on `PATH`) and one
+booted emulator or connected phone. The package ships the device server, so
+you don't need a JDK.
+</Note>
+
+<CodeGroup>
+```bash npm
+npm install -D @e2e-dev/android
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/android
+```
+
+```bash bun
+bun add -d @e2e-dev/android
+```
+</CodeGroup>
+
+Set `android()` as the engine of an Android target:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { android } from '@e2e-dev/android';
+
+export default {
+  tests: 'tests/**/*.e2e.ts',
+  targets: [
+    {
+      name: 'android',
+      engine: android(),
+      app: { bundleId: 'com.example.app', appPath: './app-release.apk' },
+    },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+The engine installs its server on the device the first time, and again
+when the package updates. It installs `app.appPath` when you set it, then
+launches `app.bundleId`.
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `serial` | `ANDROID_SERIAL`, else the one device attached | The adb serial of the device to drive. |
+| `adb` | `$ANDROID_HOME/platform-tools/adb`, else `adb` | The adb executable. |
+| `serverApk` | The APK in the package | A device server you built yourself. |
+
+## Write a test
+
+Import `test` from `@e2e-dev/android` for the typed `device` fixture. It
+has one control, `back()`:
+
+```ts title="tests/login.e2e.ts"
+import { expect } from 'e2e';
+import { test } from '@e2e-dev/android';
+
+test('signs in', async ({ app, screen, device }) => {
+  await app.open();
+  await screen.getByRole('button', 'Log in').tap();
+  await expect(screen.getByText('Welcome')).toBeVisible();
+  await device.back();
+});
+```
+
+## Speed
+
+On a Pixel 7 API 36 emulator, the deterministic Android suite of the
+mobile benchmark (42 tests, one worker) runs in about 121 s on this engine
+and 290 s on `@e2e-dev/mobile`. Both pass every test.
+
+## Limits
+
+- One device per run: set `workers: 1`.
+- `device` has only `back()`. There is no `installApp`, permission,
+  location, network, or deep link control yet.
+- No video recording, `selector` locators, `app.launchArguments`, or
+  `app.permissions`.
+- Text that the virtual keyboard can't spell, such as emoji, is set on the
+  field instead of typed key by key.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Mobile" icon="mobile-screen" href="/mobile">
+    The stable iOS and Android engine.
+  </Card>
+  <Card title="Engine servers" icon="network-wired" href="/engine-servers">
+    How an engine runs on another device over the engine protocol.
+  </Card>
+</CardGroup>

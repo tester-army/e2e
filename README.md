@@ -66,6 +66,7 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | [`@e2e-dev/testmu`](https://www.npmjs.com/package/@e2e-dev/testmu) | TestMu AI (formerly LambdaTest) hosted Android emulators, iOS simulators, and real devices for the mobile engine, and hosted Chrome and Edge for the web engine. |
 | [`@e2e-dev/acp`](https://e2e.tester.army/docs/subscriptions#use-your-coding-agent) | Runs agent steps on your own coding agent (Claude Code or Codex) over the Agent Client Protocol. |
 | [`@e2e-dev/browserstack`](https://www.npmjs.com/package/@e2e-dev/browserstack) | BrowserStack App Automate real Android and iOS devices for the mobile engine. |
+| [`@e2e-dev/android`](https://e2e.tester.army/docs/android) | Experimental Android engine: a native server on the device, about twice as fast as the mobile engine. |
 
 ## Documentation
 

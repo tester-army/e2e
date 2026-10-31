@@ -1,9 +1,32 @@
 {
   "name": "@e2e-dev/android",
   "version": "0.0.0",
-  "private": true,
-  "description": "Experimental Android engine for e2e that drives the device in process over the engine protocol, without agent-device",
+  "description": "Experimental Android engine for e2e: a native engine server on the device, driven over the engine protocol",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "mobile-testing",
+    "android",
+    "uiautomation",
+    "emulator",
+    "engine"
+  ],
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/android"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/android#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
   "type": "module",
   "exports": {
     ".": {
@@ -12,16 +35,20 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "build/e2e-android-server.apk",
+    "NOTICE"
   ],
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
     "build:server": "node scripts/build-server.ts",
+    "prepack": "node scripts/build-server.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
     "typecheck": "tsc --noEmit",
     "bench": "node bench/bench.ts"
   },
   "peerDependencies": {
-    "e2e": ">=0.21.2 <1"
+    "e2e": ">=0.21.4 <1"
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
