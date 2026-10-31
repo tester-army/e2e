@@ -14,11 +14,6 @@ import XCTest
 final class EngineServer: XCTestCase {
   func testServe() throws {
     continueAfterFailure = true
-    guard Quiescence.install() else {
-      print("E2E_SERVER_FAILED waitForIdle: false needs XCTest's private idle wait, which this Xcode does not have")
-      XCTFail("the idle wait could not be turned off")
-      return
-    }
     let environment = ProcessInfo.processInfo.environment
     let port = UInt16(environment["E2E_PORT"] ?? "") ?? 8765
     let server = try Server(port: port, device: Device())
@@ -85,6 +80,9 @@ struct Operation {
     self.agent = operation?["origin"] as? String == "agent"
     self.aborted = aborted
   }
+
+  /// The operation's budget in seconds.
+  var seconds: Double { timeoutMs / 1000 }
 
   /// Throws `CANCELLED` once the client abandoned this operation.
   func check() throws {

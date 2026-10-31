@@ -9,7 +9,8 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { ConfigurationError, connectEngine, EngineError, type EngineHandle, type OperationContext } from 'e2e/engine';
 import { MANIFEST } from './manifest.ts';
-import { iosTransport, run, type IosTransportOptions } from './transport.ts';
+import { run } from './run.ts';
+import { iosTransport, type IosTransportOptions } from './transport.ts';
 
 export type { IosTransportOptions as IosOptions } from './transport.ts';
 
@@ -19,9 +20,6 @@ export type { IosTransportOptions as IosOptions } from './transport.ts';
  * Locators resolve on the host over each observation.
  */
 export function ios(options: IosTransportOptions = {}): EngineHandle {
-  if (options.transition !== undefined && (!Number.isSafeInteger(options.transition) || options.transition < 0)) {
-    throw new ConfigurationError('INVALID_CONFIG', 'ios: `transition` must be a non-negative integer of milliseconds');
-  }
   let target: { udid: string; bundleId: string | undefined } | undefined;
   // Relaunching and clearing the app are done from the Mac: `simctl`
   // relaunches without XCUITest's launch wait, and the app's data container
@@ -31,14 +29,14 @@ export function ios(options: IosTransportOptions = {}): EngineHandle {
       throw new EngineError('INVALID_STATE', 'the ios engine has no app to launch: init has not run', { retryable: false });
     }
     const { udid, bundleId } = target;
-    await run('xcrun', ['simctl', 'terminate', udid, bundleId], operation.signal).catch(() => undefined);
     if (clear) {
+      await run('xcrun', ['simctl', 'terminate', udid, bundleId], operation.signal).catch(() => undefined);
       const container = (await run('xcrun', ['simctl', 'get_app_container', udid, bundleId, 'data'], operation.signal)).trim();
       for (const folder of ['Documents', 'Library', 'tmp']) {
         await rm(path.join(container, folder), { recursive: true, force: true });
       }
     }
-    await run('xcrun', ['simctl', 'launch', udid, bundleId], operation.signal);
+    await run('xcrun', ['simctl', 'launch', '--terminate-running-process', udid, bundleId], operation.signal);
     // The relaunch is done once the app answers an observation, as
     // XCUITest's own launch waits for it.
     const deadline = Date.now() + operation.timeoutMs;

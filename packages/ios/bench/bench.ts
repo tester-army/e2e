@@ -186,8 +186,7 @@ const udid = process.env['E2E_IOS_UDID'];
 if (udid === undefined) throw new Error('set E2E_IOS_UDID to the simulator to measure on');
 const factories: Record<string, () => EngineHandle> = {
   'agent-device': () => mobile({ platform: 'ios', device: udid, session: 'e2e-ios-bench', transition: 1_500 }),
-  direct: () => ios({ udid }),
-  'direct, no idle wait': () => ios({ udid, waitForIdle: false }),
+  native: () => ios({ udid }),
 };
 // One engine that fails to run still leaves the others' samples.
 for (const [label, engine] of Object.entries(factories)) {

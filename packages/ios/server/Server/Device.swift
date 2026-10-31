@@ -43,11 +43,6 @@ final class Device {
   /// How many nodes of the newest observation share each address, so only a unique one is resolved to an element.
   private var addresses: [String: Int] = [:]
   private var generation = 0
-  /// How long a control that arrived with the last action gets to finish arriving; see `arrived`.
-  private let transition = (Double(ProcessInfo.processInfo.environment["E2E_TRANSITION_MS"] ?? "") ?? 500) / 1000
-  /// When the last action returned, and where each control was in the observation it was resolved from.
-  private var lastActionAt = Date.distantPast
-  private var beforeAction: [String: CGRect] = [:]
 
   /// One observed node: where it was, and how XCUITest can find it again.
   struct Observed {
@@ -57,6 +52,8 @@ final class Device {
     let checked: Bool?
     let identifier: String
     let label: String
+    /// The process that hosts the node: the app's, or another's whose view the app shows, such as a system sheet.
+    let pid: Int32?
   }
 
   func initialize(app declared: [String: Any]?, _ operation: Operation) throws {
@@ -116,7 +113,7 @@ final class Device {
       // XCTest reports an empty field's placeholder as its value.
       let value = spelled.map { $0.value } ?? (raw == node.placeholderValue ? nil : raw)
       let checked = spelled?.checked ?? (Device.checkable.contains(role) ? Device.checkedValue(value) : nil)
-      fresh[id] = Observed(frame: node.frame, type: node.elementType, value: value, checked: checked, identifier: node.identifier, label: node.label)
+      fresh[id] = Observed(frame: node.frame, type: node.elementType, value: value, checked: checked, identifier: node.identifier, label: node.label, pid: Device.processIdentifier(node))
       for address in Device.addresses(node.elementType, node.identifier, node.label) { counts[address, default: 0] += 1 }
       var out: [String: Any] = ["ref": ["id": id, "revision": ""], "role": role]
       if isSecure { secureFrames.append(node.frame) }
@@ -209,50 +206,17 @@ final class Device {
     return nil
   }
 
-  /// Lets a control that came with the last action finish arriving, as the
-  /// mobile engine does: one already at the same place in the observation
-  /// the last action was resolved from is acted on at once; anything else
-  /// waits out the rest of the transition budget since that action. A view
-  /// presenting reports its final frame from the first frame of the
-  /// transition and drops touches until it lands, so time is the only signal.
-  private func arrived(_ node: Observed, _ operation: Operation) throws {
-    let remaining = transition - Date().timeIntervalSince(lastActionAt)
-    guard remaining > 0 else { return }
-    if let key = Device.addresses(node.type, node.identifier, node.label).first, beforeAction[key] == node.frame { return }
-    let until = Date(timeIntervalSinceNow: remaining)
-    while Date() < until {
-      try operation.check()
-      Thread.sleep(forTimeInterval: min(0.025, until.timeIntervalSinceNow))
+  /// Refuses a node tapped at a point when the app has moved it since the
+  /// observation: with the app idle, a fresh snapshot must still have a
+  /// node of its type, identifier, and label at its frame. A list still
+  /// coasting from a fling when the screen was read fails this, and the
+  /// harness resolves the locator again.
+  private func unmoved(_ node: Observed, _ id: String, _ app: XCUIApplication) throws {
+    func same(_ fresh: XCUIElementSnapshot) -> Bool {
+      if fresh.elementType == node.type, fresh.frame == node.frame, fresh.identifier == node.identifier, fresh.label == node.label { return true }
+      return fresh.children.contains(where: same)
     }
-  }
-
-  /// Records an action: when it returned, and the observation it was resolved from.
-  private func acted() {
-    lastActionAt = Date()
-    var places: [String: CGRect] = [:]
-    for node in nodes.values {
-      if let key = Device.addresses(node.type, node.identifier, node.label).first, addresses[key] == 1 { places[key] = node.frame }
-    }
-    beforeAction = places
-  }
-
-  /// Waits for an element that moved since the observation to come to rest:
-  /// a sheet still sliding in swallows a tap, and XCUITest's idle wait does
-  /// not cover a view another process animates. One where the observation
-  /// saw it is acted on at once; otherwise two reads a frame apart must agree.
-  private func settle(_ element: XCUIElement, observed: CGRect, _ operation: Operation) throws {
-    guard element.exists else { return }
-    var current = element.frame
-    if current == observed { return }
-    let deadline = Date(timeIntervalSinceNow: min(2, operation.timeoutMs / 1000))
-    while Date() < deadline {
-      try operation.check()
-      Thread.sleep(forTimeInterval: 0.05)
-      guard element.exists else { return }
-      let next = element.frame
-      if next == current { return }
-      current = next
-    }
+    if !same(try app.snapshot()) { throw EngineFailure.stale(id) }
   }
 
   // MARK: actions
@@ -263,50 +227,57 @@ final class Device {
     let kind = action["kind"] as? String ?? ""
     if id == "root" {
       guard kind == "swipe" else { throw EngineFailure.unsupported("the screen root only takes a swipe") }
-      defer { acted() }
-      try swipe(in: app.frame, direction: action["direction"] as? String ?? "down", momentum: action["momentum"] as? String, app)
+      try swipe(in: app.frame, direction: action["direction"] as? String ?? "down", momentum: action["momentum"] as? String, app, operation)
       return
     }
     guard let node = nodes[id] else { throw EngineFailure.stale(id) }
-    try arrived(node, operation)
+    // A view another process presents over the app (a system sheet)
+    // animates there, where the app's own idle wait does not look.
+    if let pid = node.pid, pid != Device.processIdentifier(app) { Idle.wait(Device.hostProcess(pid), timeout: operation.seconds) }
     let target = element(node, app)
-    if let target { try settle(target, observed: node.frame, operation) }
+    // Read once the app is idle, so a list still coasting from a step swipe has stopped.
+    Idle.wait(Idle.process(app), timeout: operation.seconds)
+    if let target {
+      // A row a list unmounted while it coasted is gone, not at its old point.
+      if !target.exists { throw EngineFailure.stale(id) }
+    } else {
+      try unmoved(node, id, app)
+    }
     let center = try actionable(node.frame, id, app)
-    defer { acted() }
     let tap = {
-      if let target, target.exists { target.tap() } else { self.coordinate(center, app).tap() }
+      try self.event(app, operation) { if let target, target.exists { target.tap() } else { self.coordinate(center, app).tap() } }
     }
     switch kind {
     case "tap", "focus":
-      tap()
+      try tap()
     case "doubleTap":
-      if let target, target.exists { target.doubleTap() } else { coordinate(center, app).doubleTap() }
+      try event(app, operation) { if let target, target.exists { target.doubleTap() } else { coordinate(center, app).doubleTap() } }
     case "longPress":
       let duration = (action["durationMs"] as? Double ?? 800) / 1000
-      if let target, target.exists { target.press(forDuration: duration) } else { coordinate(center, app).press(forDuration: duration) }
+      try event(app, operation) { if let target, target.exists { target.press(forDuration: duration) } else { coordinate(center, app).press(forDuration: duration) } }
     case "check", "uncheck":
       guard let checked = node.checked else { throw EngineFailure.unsupported("node \(id) reports no checked state") }
-      if checked != (kind == "check") { tap() }
+      if checked != (kind == "check") { try tap() }
     case "fill", "clear":
       guard node.type == .textField || node.type == .secureTextField || node.type == .searchField || node.type == .textView else {
         throw EngineFailure.notActionable("node \(id) does not take text")
       }
-      tap()
+      try tap()
       if node.type == .secureTextField {
         // iOS empties a secure field on the first keystroke after it takes
         // focus, so typing replaces it; a clear types one character and
         // deletes it.
-        app.typeText(kind == "fill" ? action["value"] as? String ?? "" : "x" + XCUIKeyboardKey.delete.rawValue)
+        try type(kind == "fill" ? action["value"] as? String ?? "" : "x" + XCUIKeyboardKey.delete.rawValue, app, operation)
         return
       }
       let existing = node.value?.count ?? 0
-      if existing > 0 { app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing)) }
-      if kind == "fill" { app.typeText(action["value"] as? String ?? "") }
+      if existing > 0 { try type(String(repeating: XCUIKeyboardKey.delete.rawValue, count: existing), app, operation) }
+      if kind == "fill" { try type(action["value"] as? String ?? "", app, operation) }
     case "press":
-      if node.type == .textField || node.type == .secureTextField || node.type == .textView { tap() }
+      if node.type == .textField || node.type == .secureTextField || node.type == .textView { try tap() }
       try press(action["key"] as? String ?? "", operation)
     case "swipe":
-      try swipe(in: node.frame, direction: action["direction"] as? String ?? "down", momentum: action["momentum"] as? String, app)
+      try swipe(in: node.frame, direction: action["direction"] as? String ?? "down", momentum: action["momentum"] as? String, app, operation)
     default:
       throw EngineFailure.unsupported("the \"\(kind)\" action is not supported")
     }
@@ -315,21 +286,20 @@ final class Device {
   func performAt(_ point: CGPoint, _ action: [String: Any], _ operation: Operation) throws {
     try operation.check()
     let app = try requireApp()
-    defer { acted() }
     let at = coordinate(point, app)
     switch action["kind"] as? String ?? "" {
-    case "tap": at.tap()
-    case "doubleTap": at.doubleTap()
-    case "longPress": at.press(forDuration: (action["durationMs"] as? Double ?? 800) / 1000)
+    case "tap": try event(app, operation) { at.tap() }
+    case "doubleTap": try event(app, operation) { at.doubleTap() }
+    case "longPress": try event(app, operation) { at.press(forDuration: (action["durationMs"] as? Double ?? 800) / 1000) }
     case "dragTo", "swipeTo":
       let target = action["target"] as? [String: Any] ?? [:]
       let end = coordinate(CGPoint(x: target["x"] as? Double ?? 0, y: target["y"] as? Double ?? 0), app)
       let hold = action["kind"] as? String == "dragTo" ? 0.6 : 0.05
-      at.press(forDuration: hold, thenDragTo: end)
+      try event(app, operation) { at.press(forDuration: hold, thenDragTo: end) }
     case "swipe":
       let size = app.frame.size
       let half = min(size.width, size.height) / 4
-      try swipe(in: CGRect(x: point.x - half, y: point.y - half, width: half * 2, height: half * 2), direction: action["direction"] as? String ?? "down", momentum: action["momentum"] as? String, app)
+      try swipe(in: CGRect(x: point.x - half, y: point.y - half, width: half * 2, height: half * 2), direction: action["direction"] as? String ?? "down", momentum: action["momentum"] as? String, app, operation)
     default:
       throw EngineFailure.unsupported("the \"\(action["kind"] ?? "")\" action at a point is not supported")
     }
@@ -342,12 +312,12 @@ final class Device {
       let focused = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasKeyboardFocus == true"))
       guard focused.exists else { throw EngineFailure.notActionable("nothing that takes text has focus") }
       if focused.elementType == .secureTextField {
-        app.typeText("x" + XCUIKeyboardKey.delete.rawValue)
+        try type("x" + XCUIKeyboardKey.delete.rawValue, app, operation)
       } else if let value = focused.value as? String, !value.isEmpty, value != focused.placeholderValue {
-        app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count))
+        try type(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count), app, operation)
       }
     }
-    app.typeText(text)
+    try type(text, app, operation)
   }
 
   func press(_ key: String, _ operation: Operation) throws {
@@ -358,13 +328,13 @@ final class Device {
       throw EngineFailure.unsupported("the soft keyboard cannot hold \(modifier) (\(key))")
     }
     switch key {
-    case "Enter": app.typeText("\n")
-    case "Tab": app.typeText("\t")
-    case "Backspace": app.typeText(XCUIKeyboardKey.delete.rawValue)
-    case "Space": app.typeText(" ")
+    case "Enter": try type("\n", app, operation)
+    case "Tab": try type("\t", app, operation)
+    case "Backspace": try type(XCUIKeyboardKey.delete.rawValue, app, operation)
+    case "Space": try type(" ", app, operation)
     default:
       guard key.count == 1 else { throw EngineFailure.unsupported("the soft keyboard cannot press \(key)") }
-      app.typeText(key)
+      try type(key, app, operation)
     }
   }
 
@@ -372,10 +342,31 @@ final class Device {
   func back(_ operation: Operation) throws {
     try operation.check()
     let app = try requireApp()
-    defer { acted() }
     let size = app.frame.size
     let from = coordinate(CGPoint(x: 2, y: size.height / 2), app)
-    from.press(forDuration: 0.05, thenDragTo: coordinate(CGPoint(x: size.width * 0.75, y: size.height / 2), app))
+    try event(app, operation) { from.press(forDuration: 0.05, thenDragTo: coordinate(CGPoint(x: size.width * 0.75, y: size.height / 2), app)) }
+  }
+
+  /// Runs one XCUITest gesture once the app is idle (`Idle`), with
+  /// XCUITest's own idle waits around it turned off through its interaction
+  /// options: the engine's wait replaces the one before, and the next
+  /// action's replaces the one after.
+  private func event(_ app: XCUIApplication, _ operation: Operation, _ body: () -> Void) throws {
+    try operation.check()
+    Idle.wait(Idle.process(app), timeout: operation.seconds)
+    let selector = NSSelectorFromString("_performWithInteractionOptions:block:")
+    guard app.responds(to: selector) else {
+      body()
+      return
+    }
+    let perform = unsafeBitCast(app.method(for: selector), to: (@convention(c) (AnyObject, Selector, UInt, @convention(block) () -> Void) -> Void).self)
+    // XCUIApplicationInteractionOptionSkipPreEventQuiescence | SkipPostEventQuiescence.
+    withoutActuallyEscaping(body) { body in perform(app, selector, 0b11, body) }
+  }
+
+  /// Types `text` as one XCUITest event (see `event`).
+  private func type(_ text: String, _ app: XCUIApplication, _ operation: Operation) throws {
+    try event(app, operation) { app.typeText(text) }
   }
 
   func restart(_ operation: Operation) throws {
@@ -399,6 +390,28 @@ final class Device {
   }
 
   // MARK: helpers
+
+  /// The process that hosts a snapshot node, read off its accessibility element.
+  private static func processIdentifier(_ node: XCUIElementSnapshot) -> Int32? {
+    ((node as? NSObject)?.value(forKeyPath: "accessibilityElement.processIdentifier") as? NSNumber)?.int32Value
+  }
+
+
+  private static func processIdentifier(_ app: XCUIApplication) -> Int32? {
+    ((app as NSObject).value(forKey: "processID") as? NSNumber)?.int32Value
+  }
+
+  /// XCTest's handle on another process whose views the app shows, such as a system sheet.
+  private static func hostProcess(_ pid: Int32) -> NSObject? {
+    guard let monitor = (XCUIDevice.shared as NSObject).value(forKey: "applicationMonitor") as? NSObject else { return nil }
+    let lookup = NSSelectorFromString("monitoredApplicationWithProcessIdentifier:")
+    guard monitor.responds(to: lookup) else { return nil }
+    let find = unsafeBitCast(monitor.method(for: lookup), to: (@convention(c) (AnyObject, Selector, Int32) -> NSObject?).self)
+    return find(monitor, lookup, pid)?.value(forKey: "currentProcess") as? NSObject
+  }
+
+
+
 
   /// The frames of every secure field in a fresh snapshot of the app.
   private func secureFrames() throws -> [CGRect] {
@@ -430,7 +443,7 @@ final class Device {
   }
 
   /// A scroll gesture inside `frame`: `down` reveals what is below, so the finger travels up.
-  private func swipe(in frame: CGRect, direction: String, momentum: String?, _ app: XCUIApplication) throws {
+  private func swipe(in frame: CGRect, direction: String, momentum: String?, _ app: XCUIApplication, _ operation: Operation) throws {
     let dx = frame.width * 0.3
     let dy = frame.height * 0.3
     let center = CGPoint(x: frame.midX, y: frame.midY)
@@ -442,12 +455,19 @@ final class Device {
     case "left": (from, to) = (CGPoint(x: center.x - dx, y: center.y), CGPoint(x: center.x + dx, y: center.y))
     default: throw EngineFailure.unsupported("unknown swipe direction \(direction)")
     }
-    let velocity: XCUIGestureVelocity = momentum == "fast" ? .fast : (momentum == "none" ? .slow : .default)
-    // The harness reads the screen again after a scroll, and the next
-    // tap waits for idle before its event: the swipe need not wait for the
-    // content to stop coasting.
-    Quiescence.skipped {
-      coordinate(from, app).press(forDuration: 0.05, thenDragTo: coordinate(to, app), withVelocity: velocity, thenHoldForDuration: momentum == "none" ? 0.1 : 0)
+    // `none` ends at rest. `fast` flings, and waits for the content to
+    // stop. `slow` steps through content: it releases at the speed of
+    // XCUITest's default drag (about 400 points a second), so the content
+    // coasts as far, after covering most of the travel quickly, and waits
+    // for the app neither before nor after: a long list coasts and renders
+    // for seconds, the next step's touch catches it as a finger would, and
+    // the harness reads the screen after every step. An action on a node
+    // checks it is still where it was read (`settle`, `unmoved`).
+    let towards = CGPoint(x: from.x + (to.x - from.x) * 0.85, y: from.y + (to.y - from.y) * 0.85)
+    switch momentum {
+    case "none": try Gesture.drag(from: from, path: [(to, 0.3)], hold: 0.1, idleBefore: true, idleAfter: false, timeout: operation.seconds, app)
+    case "fast": try Gesture.drag(from: from, path: [(to, 0.2)], hold: 0, idleBefore: true, idleAfter: true, timeout: operation.seconds, app)
+    default: try Gesture.drag(from: from, path: [(towards, 0.15), (to, 0.35)], hold: 0, idleBefore: false, idleAfter: false, timeout: operation.seconds, app)
     }
   }
 

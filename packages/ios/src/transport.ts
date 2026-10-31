@@ -6,44 +6,21 @@
  * connects: a simulator shares its Mac's loopback, so no forward is needed.
  */
 
-import { execFile, spawn, type ChildProcess } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { spawn, type ChildProcess } from 'node:child_process';
 import { connect, createServer, type Socket } from 'node:net';
 import path from 'node:path';
 import { ConfigurationError, InfrastructureError, type EngineAppInfo, type EngineTransport, type TransportContext } from 'e2e/engine';
+import { buildServer } from './build.ts';
+import { run } from './run.ts';
 
 /** Options of the iOS transport. */
 export interface IosTransportOptions {
   /** The simulator's UDID; defaults to `E2E_IOS_UDID`, else the one booted simulator. */
   readonly udid?: string;
-  /**
-   * Whether XCUITest waits for the app to go idle around every gesture, its
-   * default. `false` skips the wait through private XCTest API, as
-   * WebDriverAgent can; the harness's polling then waits for outcomes.
-   */
-  readonly waitForIdle?: boolean;
-  /**
-   * How long a control that appeared or moved with the last action is given
-   * to finish arriving before it is acted on, in milliseconds; default 500,
-   * as the mobile engine's `transition`. A presenting view drops touches and
-   * reports its final frame throughout, so the budget is the only signal.
-   */
-  readonly transition?: number;
 }
 
-const PRODUCTS = path.join(import.meta.dirname, '..', 'build', 'DerivedData', 'Build', 'Products');
 /** How long `xcodebuild` may take to start the runner and the server to listen. */
 const READY_TIMEOUT_MS = 180_000;
-
-/** Runs a tool and resolves with its stdout. */
-export function run(command: string, args: readonly string[], signal?: AbortSignal): Promise<string> {
-  return new Promise((resolve, reject) => {
-    execFile(command, [...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, ...(signal === undefined ? {} : { signal }) }, (error, stdout, stderr) => {
-      if (error) reject(new InfrastructureError('ENGINE_FAILURE', `${command} ${args.join(' ')} failed: ${stderr.trim() || error.message}`));
-      else resolve(stdout);
-    });
-  });
-}
 
 async function simulator(options: IosTransportOptions, env: TransportContext['env'], signal: AbortSignal): Promise<string> {
   const chosen = options.udid ?? env['E2E_IOS_UDID'];
@@ -61,20 +38,6 @@ async function simulator(options: IosTransportOptions, env: TransportContext['en
   return devices[0]!.udid;
 }
 
-function xctestrun(): string {
-  const file = (() => {
-    try {
-      return readdirSync(PRODUCTS).find((entry) => entry.endsWith('.xctestrun'));
-    } catch {
-      return undefined;
-    }
-  })();
-  if (file === undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', 'the ios engine server is not built; run pnpm --filter @e2e-dev/ios build:server');
-  }
-  return path.join(PRODUCTS, file);
-}
-
 /** A TCP port free on the loopback right now. */
 function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
@@ -88,13 +51,13 @@ function freePort(): Promise<number> {
 }
 
 /** Starts the server's UI test and resolves once it listens. */
-function startServer(udid: string, port: number, options: IosTransportOptions, signal: AbortSignal): Promise<{ process: ChildProcess; output: () => string }> {
+function startServer(xctestrun: string, udid: string, port: number, signal: AbortSignal): Promise<{ process: ChildProcess; output: () => string }> {
   // xcodebuild hands the runner every `TEST_RUNNER_`-prefixed variable with
-  // the prefix removed: the server reads `E2E_PORT`, `E2E_WAIT_FOR_IDLE`, and `E2E_TRANSITION_MS`.
+  // the prefix removed: the server reads `E2E_PORT`.
   const child = spawn(
     'xcodebuild',
-    ['test-without-building', '-xctestrun', xctestrun(), '-destination', `id=${udid}`, '-only-testing:E2EServer/EngineServer/testServe'],
-    { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TEST_RUNNER_E2E_PORT: String(port), TEST_RUNNER_E2E_WAIT_FOR_IDLE: options.waitForIdle === false ? '0' : '1', TEST_RUNNER_E2E_TRANSITION_MS: String(options.transition ?? 500) } },
+    ['test-without-building', '-xctestrun', xctestrun, '-destination', `id=${udid}`, '-only-testing:E2EServer/EngineServer/testServe'],
+    { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, TEST_RUNNER_E2E_PORT: String(port) } },
   );
   let output = '';
   const tail = (): string => output.trim().slice(-2048);
@@ -139,8 +102,9 @@ export function iosTransport(
       const udid = await simulator(options, context.env, context.signal);
       onOpen(udid, context.app);
       if (context.app?.appPath !== undefined) await run('xcrun', ['simctl', 'install', udid, path.resolve(context.cwd, context.app.appPath)], context.signal);
+      const xctestrun = await buildServer({ env: context.env, signal: context.signal });
       const port = await freePort();
-      const server = await startServer(udid, port, options, context.signal);
+      const server = await startServer(xctestrun, udid, port, context.signal);
       let socket: Socket;
       try {
         socket = connect({ host: '127.0.0.1', port });
