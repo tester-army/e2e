@@ -28,6 +28,8 @@ export interface PriorStep {
   readonly status: StepRecord['status'];
   /** The step's handoff: an agent verdict summary or judgment explanation. */
   readonly explanation?: string;
+  /** Whether the cache replayed the step whole, so its handoff came from an earlier run. */
+  readonly replayed: boolean;
 }
 
 /**
@@ -36,21 +38,25 @@ export interface PriorStep {
  * that names runner internals.
  */
 export function projectPriorSteps(records: readonly StepRecord[]): PriorStep[] {
-  return records.map((step) => ({
-    api: step.api,
-    label: boundedText(step.label),
-    status: step.status,
-    ...(step.explanation === undefined ? {} : { explanation: boundedText(handoffOf(step)) }),
-  }));
+  return records.map((step) => {
+    const replayed = step.cache?.mode === 'self-finalized';
+    return {
+      api: step.api,
+      label: boundedText(step.label),
+      status: step.status,
+      ...(step.explanation === undefined ? {} : { explanation: boundedText(handoffOf(step, replayed)) }),
+      replayed,
+    };
+  });
 }
 
 /**
  * A replayed step's handoff is the verdict its recording run wrote; the replay
  * notice in front of it describes the cache, which the model has no use for.
  */
-function handoffOf(step: StepRecord): string {
+function handoffOf(step: StepRecord, replayed: boolean): string {
   const explanation = step.explanation ?? '';
-  return step.cache?.mode === 'self-finalized' ? recordedVerdictOf(explanation) : explanation;
+  return replayed ? recordedVerdictOf(explanation) : explanation;
 }
 
 function boundedText(text: string): string {
@@ -92,5 +98,5 @@ function formatEntry(step: PriorStep, position: number): string {
   const head = `${position}. ${step.api} ${step.status}${label === '' ? '' : ` :: ${label}`}`;
   if (step.explanation === undefined) return head;
   const handoff = truncateUtf8(step.explanation, MAX_HANDOFF_BYTES);
-  return `${head}\n   observed: ${handoff}`;
+  return `${head}\n   ${step.replayed ? 'recorded in an earlier run' : 'observed'}: ${handoff}`;
 }

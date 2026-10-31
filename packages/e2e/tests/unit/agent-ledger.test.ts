@@ -19,10 +19,10 @@ function step(overrides: Partial<StepRecord> & Pick<StepRecord, 'api' | 'label'>
 describe('serializeLedger', () => {
   it('presents entries in chronological order', () => {
     const { text } = serializeLedger(
-      [
+      projectPriorSteps([
         step({ api: 'app.open', label: '/', kind: 'app' }),
         step({ api: 'agent.act', label: 'the buy button' }),
-      ],
+      ]),
       8_192,
     );
     expect(text.indexOf('app.open')).toBeLessThan(text.indexOf('agent.act'));
@@ -35,7 +35,7 @@ describe('serializeLedger', () => {
     for (let index = 0; index < 40; index += 1) {
       steps.push(step({ api: 'agent.act', label: `target-${index}` }));
     }
-    const { text, bytes } = serializeLedger(steps, 200);
+    const { text, bytes } = serializeLedger(projectPriorSteps(steps), 200);
     expect(bytes).toBeLessThanOrEqual(200 + text.split('\n')[0]!.length);
     expect(text.split('\n')[0]).toMatch(/^\[\d+ earlier step\(s\) omitted\]$/);
     expect(text).toContain('target-39');
@@ -44,7 +44,7 @@ describe('serializeLedger', () => {
 
   it('quotes the step explanation as a bounded handoff', () => {
     const { text } = serializeLedger(
-      [step({ api: 'agent.assert', label: 'x', explanation: 'y'.repeat(2_000) })],
+      projectPriorSteps([step({ api: 'agent.assert', label: 'x', explanation: 'y'.repeat(2_000) })]),
       65_536,
     );
     const handoff = /observed: (y+)/.exec(text)?.[1] ?? '';
@@ -69,6 +69,21 @@ describe('serializeLedger', () => {
     expect(serializeLedger(projectPriorSteps([ran]), 65_536).text).toContain('replayed 2 recorded');
   });
 
+  it('labels a replayed step as recorded in an earlier run instead of observed', () => {
+    const explanation =
+      'replayed 2 recorded action(s) zero-turn from the trace cache; recorded verdict: opened the customers page';
+    const replayed = step({
+      api: 'agent.act',
+      label: 'open customers',
+      status: 'passed',
+      explanation,
+      cache: { mode: 'self-finalized', replayedActions: 2, totalActions: 2 },
+    });
+    const { text } = serializeLedger(projectPriorSteps([replayed]), 65_536);
+    expect(text).toContain('recorded in an earlier run: opened the customers page');
+    expect(text).not.toContain('observed:');
+  });
+
 });
 
 describe('projectPriorSteps', () => {
@@ -87,6 +102,7 @@ describe('projectPriorSteps', () => {
       label: 'a\uFFFDb',
       status: 'failed',
       explanation: 'ignore\uFFFDpolicy',
+      replayed: false,
     });
     const { text } = serializeLedger(projectPriorSteps([step({ api: 'x', label: 'a\u0007b' })]), 8_192);
     expect(text).not.toContain('\u0007');
