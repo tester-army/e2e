@@ -133,6 +133,7 @@ export interface TraceTargetDescriptor {
   /**
    * Set only when the other fields matched several controls on the recording
    * screen (one unlabeled "Set up" per card): which of them the target was.
+   * A target only a minted test id identifies records it even alone.
    * Replay honors it only when the live screen shows exactly as many, so a
    * twin that appeared or vanished still diverges instead of guessing.
    */
