@@ -24,6 +24,7 @@ import { PlaywrightSurface, type WebOptions } from './surface.ts';
 import { createBrowserFixture } from './browser.ts';
 import { validateInitScripts } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaProblem } from './media.ts';
+import { validateClock } from './clock.ts';
 import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
 import { validatePermissions } from './permissions.ts';
 import type { BrowserName } from './browser-connection.ts';
@@ -88,6 +89,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   if (options.locale !== undefined) validateLocale(options.locale, options.headers);
   if (options.timezoneId !== undefined) validateTimezoneId(options.timezoneId);
+  if (options.clock !== undefined) validateClock(options.clock);
   validateMedia(options);
   if (options.initScripts !== undefined) validateInitScripts(options.initScripts);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
@@ -171,13 +173,14 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   userAgent: true,
   locale: true,
   timezoneId: true,
+  clock: true,
   colorScheme: true,
   reducedMotion: true,
   initScripts: true,
 } satisfies Record<keyof WebOptions, true>);
 
 /** The options applied when the engine creates a browser context, which a persistent context never is. */
-const CREATION_OPTION_KEYS = ['headers', 'basicAuth', 'userAgent', 'locale', 'timezoneId'] as const satisfies readonly (keyof WebOptions)[];
+const CREATION_OPTION_KEYS = ['headers', 'basicAuth', 'userAgent', 'locale', 'timezoneId', 'clock'] as const satisfies readonly (keyof WebOptions)[];
 
 /**
  * What a persistent context rules out, named with its cause: `what` replaces
