@@ -1,0 +1,3 @@
+build/
+bench/results.json
+**/xcuserdata/

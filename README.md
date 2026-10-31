@@ -56,6 +56,7 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | [`e2e`](https://www.npmjs.com/package/e2e) | The SDK, runner, and CLI. |
 | [`@e2e-dev/web`](https://www.npmjs.com/package/@e2e-dev/web) | Browser engine: Chromium, Firefox, and WebKit through Playwright. |
 | [`@e2e-dev/mobile`](https://www.npmjs.com/package/@e2e-dev/mobile) | iOS and Android engine: simulators and emulators through agent-device. |
+| [`@e2e-dev/ios`](https://e2e.tester.army/docs/ios-engine) | Experimental native iOS simulator engine: a Swift engine server on XCUITest, without agent-device. |
 | [`@e2e-dev/github`](https://www.npmjs.com/package/@e2e-dev/github) | Reporter that posts results as a pull request comment. |
 | [`@e2e-dev/kernel`](https://www.npmjs.com/package/@e2e-dev/kernel) | Kernel hosted browsers for the web engine. |
 | [`@e2e-dev/lightpanda`](https://www.npmjs.com/package/@e2e-dev/lightpanda) | Lightpanda, the open-source headless browser, started per run for the web engine. |

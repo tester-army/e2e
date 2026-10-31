@@ -151,6 +151,12 @@ jobs:
         run: |
           xcodebuild -version
           xcrun simctl list runtimes available
+      # The experimental @e2e-dev/ios engine ships its Swift server as source;
+      # compiling it in one suite's job keeps it building on the Xcode CI has.
+      - name: Build the native iOS engine server
+        if: ${{ matrix.suite == 'deterministic' }}
+        run: node packages/ios/src/bin.ts
+        working-directory: .
       - name: Expo app
         id: app
         uses: ./.github/actions/expo-app

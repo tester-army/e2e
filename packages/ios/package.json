@@ -1,0 +1,68 @@
+{
+  "name": "@e2e-dev/ios",
+  "version": "0.0.0",
+  "description": "Experimental native iOS simulator engine for e2e: an engine protocol server in Swift on XCUITest",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "mobile-testing",
+    "ios",
+    "xcuitest",
+    "simulator",
+    "engine"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/ios"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/ios#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "e2e-ios-build": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "server",
+    "!server/**/xcuserdata",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "build:server": "node src/bin.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/unit",
+    "bench": "node bench/bench.ts"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.22.1 <1"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "workspace:*",
+    "@types/node": "26.6.6",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.0.5"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}
