@@ -9,13 +9,13 @@
     "source": "github",
     "subfolder": "packages/e2e"
   },
-  "version": "0.22.0",
+  "version": "0.22.1",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "e2e",
-      "version": "0.22.0",
+      "version": "0.22.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

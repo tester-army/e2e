@@ -1,5 +1,11 @@
 # @e2e-dev/web
 
+## 0.15.5
+
+### Patch Changes
+
+- [#1479](https://github.com/tester-army/e2e/pull/1479) [`d15a98e`](https://github.com/tester-army/e2e/commit/d15a98e0711a185873a7a57a108dd254673e327c) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `app.baseUrl` no longer ends in a slash, so `${app.baseUrl}/api/users` requests `/api/users` instead of `//api/users`. With `test` from `@e2e-dev/web`, `app.baseUrl` is typed `string`, since a `web()` target always declares `app.url`. A test that relied on the trailing slash, such as `${app.baseUrl}api/users` or `new URL('users', app.baseUrl)` on a URL with a path, adds the slash itself.
+
 ## 0.15.4
 
 ### Patch Changes

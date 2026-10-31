@@ -1,5 +1,11 @@
 # @e2e-dev/mobile
 
+## 0.12.6
+
+### Patch Changes
+
+- [#1464](https://github.com/tester-army/e2e/pull/1464) [`57f9ed9`](https://github.com/tester-army/e2e/commit/57f9ed9eda7469535fba72bd24f9ff2ce7ad023e) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Snapshots and screenshots now run within the timeout of the call that takes them (an action's `timeout`, an `expect` timeout), so a device that stops answering fails the step instead of holding it until the test timeout. Requires `e2e` 0.22.0 or later.
+
 ## 0.12.5
 
 ### Patch Changes
