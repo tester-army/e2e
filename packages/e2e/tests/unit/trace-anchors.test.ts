@@ -201,6 +201,46 @@ describe('describeDelta', () => {
     expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: 'Item added' }], gone: [{ text: '41 items' }] });
   });
 
+  describe('volatile anchors across both sides of the delta', () => {
+    const record = node('row', { role: 'row', name: 'Example record' });
+
+    it('drops a clock that appeared when the other side holds a stable result', () => {
+      const before = nodes([heading, record, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('clock', { text: '09:59' })]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [], gone: [{ role: 'row', name: 'Example record' }] });
+    });
+
+    it('drops a clock that disappeared when the other side holds a stable result', () => {
+      const before = nodes([heading, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('done', { role: 'status', text: 'Record created' }), node('clock', { text: '10:01' })]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [{ role: 'status', text: 'Record created' }], gone: [] });
+    });
+
+    it('keeps the volatile anchors when no side of the delta has a stable one', () => {
+      const before = nodes([heading, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('clock', { text: '09:59' })]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [{ text: '09:59' }], gone: [{ text: '10:00' }] });
+    });
+
+    it('keeps the count an import reports when the other side holds a stable result', () => {
+      const before = nodes([heading, node('dialog', { role: 'dialog', name: 'Import CSV' }), node('result', { role: 'status', text: '0 records imported' })]);
+      const after = nodes([heading, node('result', { role: 'status', text: '3 records imported' })]);
+      expect(describeDelta(before, after, false)).toEqual({
+        appeared: [{ role: 'status', text: '3 records imported' }],
+        gone: [{ role: 'dialog', name: 'Import CSV' }],
+      });
+    });
+
+    it('still records an alert beside a clock', () => {
+      const before = nodes([heading, record, node('clock', { text: '10:00' })]);
+      const after = nodes([heading, node('alert', { role: 'alert', text: 'Delete failed' }), node('clock', { text: '09:59' })]);
+      expect(describeDelta(before, after, false)).toEqual({
+        appeared: [{ role: 'alert', text: 'Delete failed' }],
+        gone: [{ role: 'row', name: 'Example record' }],
+      });
+    });
+  });
+
   describe('a radio the pick replaces with its summary', () => {
     const radio = (id: string, name: string) => node(id, { role: 'radio', name });
     const label = (id: string, text: string) => node(id, { text });
