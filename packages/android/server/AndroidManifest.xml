@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.e2e.android.server"
+    android:versionCode="1"
+    android:versionName="0.1.0">
+  <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="36" />
+  <application android:label="e2e Android engine" />
+  <instrumentation
+      android:name="dev.e2e.android.EngineInstrumentation"
+      android:targetPackage="dev.e2e.android.server" />
+</manifest>

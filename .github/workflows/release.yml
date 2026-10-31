@@ -44,6 +44,12 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # `prepack` of @e2e-dev/android builds its device server with JDK 17
+      # and the image's Android SDK.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 17
 
       # No test gate here: `spec.yml` already covers every commit on `main`.
       # Check main is green before merging the release PR. Peer ranges are the
@@ -139,6 +145,13 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
         if: ${{ steps.changed.outputs.skip != 'true' }}
+      # `prepack` of @e2e-dev/android builds its device server with JDK 17
+      # and the image's Android SDK.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: ${{ steps.changed.outputs.skip != 'true' }}
+        with:
+          distribution: temurin
+          java-version: 17
 
       # Bumps every public package together so each engine's peer range names
       # the runner build it ships with (see `scripts/canary-changeset.ts`), then
