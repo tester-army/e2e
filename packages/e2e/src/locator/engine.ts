@@ -19,8 +19,8 @@ import {
   type ErrorDetails,
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { describeExpression, expressionHints } from './expression.ts';
-import { cutOffAtDeadline, Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
+import { describeExpression, expressionHints, filterSpine } from './expression.ts';
+import { abortError, cancelledError, cutOffAtDeadline, Deadline, POLL_INTERVAL_MS, sleep } from '../internal/time.ts';
 import { timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { targetLabel } from '../cache/trace.ts';
@@ -60,6 +60,14 @@ export function denySecureRead(nodes: readonly SemanticNode[], label: string): v
  * it like a node that is not there yet, `empty` answers zero matches.
  */
 type MissingFrame = 'wait' | 'empty';
+
+/** The budget the whole diagnostic failure walk shares: best effort, never a wait.
+ * One deadline bounds every prefix resolve, so a multi-step chain cannot cost
+ * more than one short budget even on mobile, where `session.locate()` ignores
+ * the operation timeout and a snapshot that starts just before the deadline
+ * still runs to completion — the real bound is the budget plus one snapshot.
+ */
+const STEP_COUNT_BUDGET_MS = 500;
 
 interface LocatorEngineOptions {
   readonly session: TargetSession;
@@ -224,11 +232,16 @@ export class LocatorEngine {
     const startedMs = Date.now();
     // The wait as it happened: a deadline capped by the test's remaining
     // budget waited less than the action timeout, and the report says so.
-    const notFound = (cause?: unknown) =>
-      new TestError('LOCATOR_NOT_FOUND', `locator matched no nodes within ${describeExpression(expression)}`, {
-        details: locatorDetails(expression, Date.now() - startedMs),
+    const notFound = async (cause?: unknown) => {
+      // The wait as it happened, read before the diagnostic pass runs: the
+      // prefix resolves below are not part of the locator's wait.
+      const waitedMs = Date.now() - startedMs;
+      const lines = await this.candidateCounts(expression);
+      return new TestError('LOCATOR_NOT_FOUND', `locator matched no nodes within ${describeExpression(expression)}${lines}`, {
+        details: locatorDetails(expression, waitedMs),
         ...(cause === undefined ? {} : { cause }),
       });
+    };
     let sampled = false;
     for (let rounds = 1; ; rounds += 1) {
       const startedWithMs = deadline.remaining();
@@ -237,15 +250,56 @@ export class LocatorEngine {
         refs = await this.resolveOnce(expression, deadline);
       } catch (cause) {
         // A resolve the deadline cut off, after one that matched nothing, is the wait running out.
-        if (sampled && cutOffAtDeadline(cause, startedWithMs)) throw notFound(cause);
+        if (sampled && cutOffAtDeadline(cause, startedWithMs)) throw await notFound(cause);
         throw cause;
       }
       sampled = true;
-      const ref = assertSingle(refs, expression);
+      const ref = await this.singleOf(refs, expression);
       if (ref !== null) return { ref, waitedMs: rounds > 1 ? Date.now() - startedMs : 0 };
-      if (deadline.expired()) throw notFound();
+      if (deadline.expired()) throw await notFound();
       await sleep(POLL_INTERVAL_MS, this.signal);
     }
+  }
+
+  /**
+   * The diagnostic on a filtered locator's failure: one immediate resolve per
+   * prefix of its chain, innermost first, and how many candidates each left,
+   * as the message's per-step lines. One deadline bounds the whole walk, so
+   * even on mobile, where `session.locate()` ignores the operation timeout,
+   * a chain whose walk cannot finish lists only the prefixes it read and says
+   * so, or lists nothing when a read failed outright. The counts are read
+   * after the failure, so a page that changed since can disagree with the
+   * failing attempt, and the message says so.
+   */
+  private async candidateCounts(expression: LocatorExpression): Promise<string> {
+    const spine = filterSpine(expression);
+    if (spine.length === 0) return '';
+    const deadline = Deadline.min(new Deadline(STEP_COUNT_BUDGET_MS), this.options.budget.deadline);
+    const lines: string[] = [];
+    try {
+      for (const prefix of spine) {
+        if (deadline.expired()) break;
+        const refs = await this.resolveNow(prefix, deadline);
+        lines.push(`${describeExpression(prefix)}: ${refs.length}`);
+      }
+    } catch {
+      if (this.signal.aborted) throw abortError(this.signal, () => cancelledError());
+      // A diagnostic read failure must not fail the failure: partial counts
+      // must not read as a completed walk, so return nothing.
+      return '';
+    }
+    if (lines.length === 0) return '';
+    const stopped = lines.length < spine.length ? `, walk stopped after ${lines.length} of ${spine.length} steps` : '';
+    return `; candidates left after each filter step${stopped}, counted after the failure:\n${lines.join('\n')}`;
+  }
+
+  /** Zero matches -> null; one -> the ref; many -> LOCATOR_AMBIGUOUS with the per-step counts. */
+  private async singleOf(refs: readonly NodeRef[], expression: LocatorExpression): Promise<NodeRef | null> {
+    if (refs.length <= 1) return refs[0] ?? null;
+    const lines = await this.candidateCounts(expression);
+    throw new TestError('LOCATOR_AMBIGUOUS', `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}${lines}`, {
+      details: { ...locatorDetails(expression), matches: refs.length },
+    });
   }
 
   /**
@@ -335,7 +389,7 @@ export class LocatorEngine {
     deadline: Deadline,
     missingFrame: MissingFrame,
   ): Promise<{ node: SemanticNode | null; count: number }> {
-    const ref = assertSingle(await this.resolveOnce(expression, deadline, missingFrame), expression);
+    const ref = await this.singleOf(await this.resolveOnce(expression, deadline, missingFrame), expression);
     if (ref === null) return { node: null, count: 0 };
     try {
       const node = await this.session.read(ref, this.operationWithin(deadline));
@@ -602,18 +656,6 @@ function describeNode(node: SemanticNode, redact: (text: string) => string): str
     placeholder: field(node.attributes?.['placeholder']),
     testId: field(node.testId),
   }));
-}
-
-/** Zero matches -> null; one -> the ref; many -> LOCATOR_AMBIGUOUS. */
-function assertSingle(refs: readonly NodeRef[], expression: LocatorExpression): NodeRef | null {
-  if (refs.length > 1) {
-    throw new TestError(
-      'LOCATOR_AMBIGUOUS',
-      `locator matched ${refs.length} nodes, expected exactly one: ${describeExpression(expression)}`,
-      { details: { ...locatorDetails(expression), matches: refs.length } },
-    );
-  }
-  return refs[0] ?? null;
 }
 
 /**

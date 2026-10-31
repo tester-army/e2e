@@ -19,7 +19,7 @@ import { Deadline } from '../../src/internal/time.ts';
 import { AttemptBudget } from '../../src/run/budget.ts';
 import { defineEngine, LOCATOR_ACTION_KINDS } from '../../src/engine/index.ts';
 import { createEngineSession } from '../../src/engine/session.ts';
-import { roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
+import { describeExpression, filterExpression, indexExpression, roleQuery, testIdQuery, textQuery } from '../../src/locator/expression.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 import { useFakeTime } from '../helpers/fake-time.ts';
 
@@ -608,5 +608,249 @@ describe('LocatorEngine retries a cross-realm driver failure', () => {
     const { engine, calls } = makeEngine({ perform: ['foreign-stale', () => {}] });
     await engine.perform(EXPRESSION, { kind: 'tap' });
     expect(calls.perform).toBe(2);
+  });
+});
+
+describe('locator failure candidate counts', () => {
+  const base = roleQuery('listitem', undefined, undefined);
+  const texted = filterExpression(base, { hasText: 'Order 1042' });
+  const chain = filterExpression(texted, { has: roleQuery('button', { name: 'Cancel order' }, undefined) });
+
+  /**
+   * A session that answers per expression, keyed by the rendered locator, so a
+   * test pins exactly which expressions a failure path resolves and how much
+   * deadline each resolve was given.
+   */
+  function makeCountingEngine(answers: ReadonlyMap<string, readonly NodeRef[] | Error>, options: { actionTimeout?: number } = {}) {
+    const resolved: string[] = [];
+    const resolveTimeouts: number[] = [];
+    const session = {
+      async locate(expression: LocatorExpression, operation: OperationContext) {
+        const key = describeExpression(expression);
+        resolved.push(key);
+        resolveTimeouts.push(operation.timeoutMs);
+        const answer = answers.get(key);
+        if (answer === undefined) throw new Error(`unexpected locate: ${key}`);
+        if (answer instanceof Error) throw answer;
+        return answer;
+      },
+      async read() {
+        throw new Error('unexpected read');
+      },
+      async perform() {
+        throw new Error('unexpected perform');
+      },
+      actions: new Set(LOCATOR_ACTION_KINDS),
+    } as unknown as TargetSession;
+    const engine = new LocatorEngine({
+      session,
+      budget: new AttemptBudget(new AbortController().signal, new Deadline(30_000)),
+      runId: 'run-1',
+      attemptId: 'attempt-1',
+      actionTimeout: options.actionTimeout ?? 20,
+      assertionTimeout: 1_000,
+    });
+    return { engine, resolved, resolveTimeouts };
+  }
+
+  function answersFor(...entries: Array<[LocatorExpression, readonly NodeRef[] | Error]>): ReadonlyMap<string, readonly NodeRef[] | Error> {
+    return new Map(entries.map(([expression, answer]) => [describeExpression(expression), answer]));
+  }
+
+  it('lists how many candidates each filter step left, counted after the failure', async () => {
+    const { engine, resolved, resolveTimeouts } = makeCountingEngine(
+      answersFor(
+        [chain, []],
+        [base, Array.from({ length: 6 }, () => REF)],
+        [texted, [REF]],
+      ),
+    );
+    const failure = await engine.read(chain).then(
+      () => {
+        throw new Error('expected a rejection');
+      },
+      (cause: E2EError) => cause,
+    );
+    expect(failure.code).toBe('LOCATOR_NOT_FOUND');
+    expect(failure.message).toContain('candidates left after each filter step, counted after the failure');
+    expect(failure.message).toContain(`${describeExpression(base)}: 6`);
+    expect(failure.message).toContain(`${describeExpression(texted)}: 1`);
+    expect(failure.message).toContain(`${describeExpression(chain)}: 0`);
+    // The walk re-resolves the prefixes innermost first, after the failing resolve's polls.
+    expect(resolved[0]).toBe(describeExpression(chain));
+    expect(resolved.slice(-3)).toEqual([describeExpression(base), describeExpression(texted), describeExpression(chain)]);
+    // The failing resolve polled on the action deadline; the diagnostic resolves
+    // arrived after it, each bounded by the 500 ms diagnostic budget.
+    expect(resolveTimeouts[0]).toBe(20);
+    const diagnostic = resolveTimeouts.slice(-3);
+    expect(diagnostic.length).toBe(3);
+    for (const timeoutMs of diagnostic) {
+      expect(timeoutMs).toBeGreaterThan(0);
+      expect(timeoutMs).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it('keeps a locator with no filter step unlisted', async () => {
+    const { engine, resolved } = makeCountingEngine(answersFor([base, []]));
+    await expect(engine.read(base)).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: expect.not.stringContaining('counted after the failure'),
+    });
+    // Only the failing resolve polled; no walk ran.
+    expect(resolved.every((key) => key === describeExpression(base))).toBe(true);
+  });
+
+  it('keeps the plain failure when the diagnostic pass cannot read', async () => {
+    const { engine, resolved } = makeCountingEngine(
+      answersFor(
+        [chain, []],
+        [base, new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false })],
+      ),
+    );
+    await expect(engine.read(chain)).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: expect.not.stringContaining('counted after the failure'),
+    });
+    // The walk stopped at the prefix that refused to read; only the full chain polled.
+    expect(resolved.filter((key) => key !== describeExpression(chain))).toEqual([describeExpression(base)]);
+  });
+
+  it('lists the step counts on an ambiguous filtered locator', async () => {
+    const { engine, resolved } = makeCountingEngine(
+      answersFor(
+        [chain, [REF, REF]],
+        [base, Array.from({ length: 6 }, () => REF)],
+        [texted, [REF, REF, REF]],
+      ),
+    );
+    await expect(engine.read(chain)).rejects.toMatchObject({
+      code: 'LOCATOR_AMBIGUOUS',
+      details: { matches: 2 },
+      message: expect.stringContaining(`${describeExpression(base)}: 6`),
+    });
+    expect(resolved).toEqual([describeExpression(chain), describeExpression(base), describeExpression(texted), describeExpression(chain)]);
+  });
+
+  it('counts an index step between filters under its own label', async () => {
+    const indexed = indexExpression(texted, 'first');
+    const chained = filterExpression(indexed, { hasText: '1042' });
+    const { engine } = makeCountingEngine(
+      answersFor(
+        [chained, []],
+        [base, [REF, REF]],
+        [texted, [REF]],
+        [indexed, [REF]],
+      ),
+    );
+    const message = await engine.read(chained).catch((cause: E2EError) => cause.message);
+    expect(message).toContain(`${describeExpression(base)}: 2`);
+    expect(message).toContain(`${describeExpression(texted)}: 1`);
+    expect(message).toContain(`${describeExpression(indexed)}: 1`);
+    expect(message).toContain(`${describeExpression(chained)}: 0`);
+  });
+
+  /**
+   * A session the way mobile's `locate()` behaves: it ignores the operation
+   * timeout and every call runs to completion. The walk shares one deadline,
+   * so a three-step chain reads two prefixes and then says it stopped, rather
+   * than starting a third full snapshot the budget cannot cover.
+   */
+  it('bounds the whole walk by one shared deadline when locate ignores the operation timeout', async () => {
+    const resolved: string[] = [];
+    const resolveTimeouts: number[] = [];
+    const session = {
+      async locate(expression: LocatorExpression, operation: OperationContext) {
+        resolved.push(describeExpression(expression));
+        resolveTimeouts.push(operation.timeoutMs);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return [];
+      },
+      async read() {
+        throw new Error('unexpected read');
+      },
+      async perform() {
+        throw new Error('unexpected perform');
+      },
+      actions: new Set(LOCATOR_ACTION_KINDS),
+    } as unknown as TargetSession;
+    const engine = new LocatorEngine({
+      session,
+      budget: new AttemptBudget(new AbortController().signal, new Deadline(30_000)),
+      runId: 'run-1',
+      attemptId: 'attempt-1',
+      actionTimeout: 20,
+      assertionTimeout: 1_000,
+    });
+
+    const failure = await engine.read(chain).then(
+      () => {
+        throw new Error('expected a rejection');
+      },
+      (cause: E2EError) => cause,
+    );
+    expect(failure.code).toBe('LOCATOR_NOT_FOUND');
+    // The failing resolve polls once, then the walk resolves two of the three
+    // prefixes inside the shared budget and refuses the third.
+    expect(resolved).toEqual([describeExpression(chain), describeExpression(base), describeExpression(texted)]);
+    expect(failure.message).toContain('walk stopped after 2 of 3 steps');
+    for (const timeoutMs of resolveTimeouts.slice(1)) {
+      expect(timeoutMs).toBeGreaterThan(0);
+      expect(timeoutMs).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it('surfaces cancellation when the signal aborts mid-walk', async () => {
+    const controller = new AbortController();
+    const resolved: string[] = [];
+    const session = {
+      async locate(expression: LocatorExpression) {
+        const key = describeExpression(expression);
+        resolved.push(key);
+        // Abort during the walk's second prefix, as a mobile session would
+        // when the attempt's signal fires between two snapshot reads.
+        if (key === describeExpression(texted)) {
+          controller.abort();
+          throw new Error('boom');
+        }
+        return [];
+      },
+      async read() {
+        throw new Error('unexpected read');
+      },
+      async perform() {
+        throw new Error('unexpected perform');
+      },
+      actions: new Set(LOCATOR_ACTION_KINDS),
+    } as unknown as TargetSession;
+    const engine = new LocatorEngine({
+      session,
+      budget: new AttemptBudget(controller.signal, new Deadline(30_000)),
+      runId: 'run-1',
+      attemptId: 'attempt-1',
+      actionTimeout: 20,
+      assertionTimeout: 1_000,
+    });
+
+    await expect(engine.read(chain)).rejects.toMatchObject({ code: 'CANCELLED' });
+  });
+
+  it('drops the counts when a later prefix cannot be read', async () => {
+    const { engine, resolved } = makeCountingEngine(
+      answersFor(
+        [chain, []],
+        [base, [REF]],
+        [texted, new EngineError('ENGINE_FAILURE', 'engine died', { retryable: false })],
+      ),
+    );
+    await expect(engine.read(chain)).rejects.toMatchObject({
+      code: 'LOCATOR_NOT_FOUND',
+      message: expect.not.stringContaining('counted after the failure'),
+    });
+    // The walk read the base, then the next prefix refused: a partial list
+    // must not present itself as the per-step counts of a completed walk.
+    expect(resolved.filter((key) => key !== describeExpression(chain))).toEqual([
+      describeExpression(base),
+      describeExpression(texted),
+    ]);
   });
 });

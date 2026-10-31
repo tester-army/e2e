@@ -109,8 +109,8 @@ category a blocked verdict reports as the obstacle.
 | `CANCELLED` | The runner cancelled the operation without a process signal: an `e2e mcp` `open_session` cut short by a client cancel, a closed connection, or the server's shutdown, after it stopped what it had started | infrastructure | 3 |
 | `MODEL_OUTPUT_INVALID` | Structured output still failed validation after the repair budget was spent. Under a [decision model](/decision-models): an answer without a valid choice distribution, a choice the request never offered, or a question the provider refused. Decisions are not repaired | test | 1 |
 | `APP_NOT_OPEN` | An operation needed an open app: `app.open()` had not run, or the engine reported invalid state | test | 1 |
-| `LOCATOR_NOT_FOUND` | No matching node within the deadline, or an agent action refers to a node that is no longer available | test | 1 |
-| `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails at once, with no polling. | test | 1 |
+| `LOCATOR_NOT_FOUND` | No matching node within the deadline, or an agent action refers to a node that is no longer available. For a filtered locator the message can also list how many candidates each filter step left, counted after the failure, when that diagnostic pass can read the chain | test | 1 |
+| `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails at once, with no polling, and for a filtered locator can list how many candidates each filter step left, counted after the failure, when that diagnostic pass can read the chain | test | 1 |
 | `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
 | `STEP_BUDGET_EXHAUSTED` | The model-call or action-step budget ran out before a conclusion | test | 1 |
 | `STEP_TIMEOUT` | The invocation deadline expired, including an operation that timed out within a poll tick of it. Carries the last judgment where one exists, with the [vision hint](/reference/agent#agent-assert) when that judgment was inconclusive | test | 1 |
