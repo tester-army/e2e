@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resultId } from '../../src/internal/ids.ts';
 import { visibleWidth } from '../../src/report/format.ts';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
@@ -51,13 +52,17 @@ function result(overrides: {
   agent?: string;
   /** Which `--repeat-each` run this is; 0 unless the case is about repeats. */
   repeat?: number;
+  /** The line the test is declared on in its file, recorded under `/project` as a run records it. */
+  line?: number;
 }): RunEventResult {
+  const file = overrides.file ?? 'tests/case.e2e.ts';
   return {
     test: {
       titlePath: overrides.title ?? ['suite', 'case'],
       id: overrides.id ?? 'test-1',
-      file: overrides.file ?? 'tests/case.e2e.ts',
+      file,
       declarationIndex: overrides.declarationIndex ?? 0,
+      ...(overrides.line === undefined ? {} : { source: { file: `/project/${file}`, line: overrides.line, column: 1 } }),
     },
     target: { name: overrides.target ?? 'chromium', platform: 'web' },
     agent: overrides.agent ?? 'default',
@@ -254,7 +259,7 @@ describe('ListReporter', () => {
   });
 
   describe('file blocks', () => {
-    it('prints one line per file with its badge, counts, and total duration once the file completes', () => {
+    it('without a live window, prints each test as it finishes and the file line once the file completes', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(runStarted());
@@ -263,16 +268,37 @@ describe('ListReporter', () => {
       reporter.handle(finished(
         result({ status: 'passed', id: 'a', file: 'tests/auth.e2e.ts', title: ['auth', 'signs in'], attempts: [attempt({ durationMs: 80 })] }),
       ));
+      expect(lines).toEqual(['   ✓ |chromium| tests/auth.e2e.ts > auth > signs in 80ms']);
+      reporter.handle(finished(
+        result({ status: 'failed', id: 'b', file: 'tests/auth.e2e.ts', title: ['auth', 'signs out'], attempts: [failedAttempt('still signed in')] }),
+      ));
+      expect(lines).toEqual([
+        '   ✓ |chromium| tests/auth.e2e.ts > auth > signs in 80ms',
+        '   × |chromium| tests/auth.e2e.ts > auth > signs out 120ms',
+        '     → still signed in',
+        ' ❯ |chromium| tests/auth.e2e.ts (2 tests | 1 failed) 200ms',
+      ]);
+    });
+
+    it('with a live window, prints one line per file with its badge, counts, and total duration once the file completes', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter({ ...output, raw: () => {} }, true);
+      reporter.handle(runStarted());
+      reporter.handle(plan([{ file: 'tests/auth.e2e.ts', tests: 2 }, { file: 'tests/home.e2e.ts', tests: 1 }]));
+      lines.length = 0;
+      reporter.handle(finished(
+        result({ status: 'passed', id: 'a', file: 'tests/auth.e2e.ts', title: ['auth', 'signs in'], attempts: [attempt({ durationMs: 80 })] }),
+      ));
       expect(lines).toEqual([]);
       reporter.handle(finished(
         result({ status: 'passed', id: 'b', file: 'tests/auth.e2e.ts', title: ['auth', 'signs out'], attempts: [attempt({ durationMs: 70 })] }),
       ));
-      expect(lines[0]).toBe(' ✓ |chromium| tests/auth.e2e.ts (2 tests) 150ms');
+      expect(lines).toEqual([' ✓ |chromium| tests/auth.e2e.ts (2 tests) 150ms']);
     });
 
     it('lists every test under the run\u2019s only file', () => {
       const { lines, output } = capture();
-      const reporter = plainReporter(output);
+      const reporter = plainReporter({ ...output, raw: () => {} }, true);
       reporter.handle(plan([{ file: 'tests/auth.e2e.ts', tests: 1 }]));
       reporter.handle(finished(
         result({ status: 'passed', file: 'tests/auth.e2e.ts', title: ['auth', 'signs in'], attempts: [attempt({ durationMs: 80 })] }),
@@ -300,16 +326,16 @@ describe('ListReporter', () => {
       }
       expect(lines).toEqual([
         '   ✓ checkout > pays [buyer] > agent.act "pay" 4.20s · 3 model calls',
+        '   ✓ |chromium| tests/checkout.e2e.ts > checkout > pays 80ms',
+        '   ✓ |chromium| tests/checkout.e2e.ts > checkout > pays [buyer] 80ms',
+        '   ✓ |chromium| tests/checkout.e2e.ts > checkout > pays [admin] 80ms',
         ' ✓ |chromium| tests/checkout.e2e.ts (3 tests) 240ms',
-        '   ✓ checkout > pays 80ms',
-        '   ✓ checkout > pays [buyer] 80ms',
-        '   ✓ checkout > pays [admin] 80ms',
       ]);
     });
 
     it('sums durations across attempts and marks flaky results', () => {
       const { lines, output } = capture();
-      const reporter = plainReporter(output);
+      const reporter = plainReporter({ ...output, raw: () => {} }, true);
       reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }, { file: 'tests/b.e2e.ts', tests: 1 }]));
       reporter.handle(finished(
         result({
@@ -338,9 +364,9 @@ describe('ListReporter', () => {
       const reporter = plainReporter(output);
       reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 3 }]));
       reporter.handle(finished(result({ status: 'passed', id: 'a', file: 'tests/a.e2e.ts', title: ['first'] })));
-      expect(lines).toEqual([]);
+      expect(lines).toEqual(['   ✓ |chromium| tests/a.e2e.ts > first 120ms']);
       reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
-      expect(lines[0]).toBe(' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms');
+      expect(lines[1]).toBe(' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms');
     });
 
     it('groups the same file per target, colored by target order', () => {
@@ -353,7 +379,7 @@ describe('ListReporter', () => {
       ]));
       reporter.handle(finished(result({ status: 'passed', target: 'firefox', file: 'tests/a.e2e.ts' })));
       reporter.handle(finished(result({ status: 'passed', target: 'chromium', file: 'tests/a.e2e.ts' })));
-      const blocks = chunks.filter((line) => line.includes('tests/a.e2e.ts'));
+      const blocks = chunks.filter((line) => line.includes('tests/a.e2e.ts') && !line.includes(' > '));
       expect(blocks).toHaveLength(2);
       expect(blocks[0]).toContain(' firefox ');
       expect(blocks[1]).toContain(' chromium ');
@@ -415,6 +441,31 @@ describe('ListReporter', () => {
       expect(lines).toContain(' ❯ screen .e2e/artifacts/chromium/a/attempt-0/screen.txt');
     });
 
+    it('quotes the first app errors under the tally, loopback origins dropped, and counts the rest', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      const failed = failedAttempt('locator matched 2 nodes');
+      const at = (second: number): string => `2026-01-01T00:00:0${second}.000Z`;
+      failed.appLog = [
+        { source: 'console', level: 'error', text: 'late fallout', at: at(4), step: 0 },
+        { source: 'console', level: 'warning', text: 'each child needs a key', at: at(0), step: 0 },
+        { source: 'network', level: 'error', text: 'GET http://127.0.0.1:4271/api/me 500', at: at(3), step: 0 },
+        { source: 'console', level: 'error', text: 'Error occurred prerendering page "/profile"', at: at(1), step: 0 },
+        { source: 'error', level: 'error', text: 'TypeError: x is undefined', at: at(2), step: 0 },
+        { source: 'console', level: 'info', text: 'ready', at: at(5), step: 0 },
+      ];
+      reporter.handle(finished(result({ status: 'failed', attempts: [failed] })));
+      reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
+      const app = lines.findIndex((line) => line === ' ❯ app 4 errors, 1 warning logged');
+      expect(app).toBeGreaterThan(-1);
+      expect(lines.slice(app + 1, app + 5)).toEqual([
+        '   × console error: Error occurred prerendering page "/profile"',
+        '   × uncaught error: TypeError: x is undefined',
+        '   × network error: GET /api/me 500',
+        '   1 more app error logged',
+      ]);
+    });
+
     it('names the status when a failure recorded no error', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
@@ -462,6 +513,49 @@ describe('ListReporter', () => {
   });
 
   describe('summary', () => {
+    it('closes with each failed test after the reporter rows: its file and failing line, else its declaration, the error, and the trace page', () => {
+      /** A failed attempt whose error the runner located at `file:line`. */
+      const thrownAt = (message: string, file: string, line: number): AttemptRecord => {
+        const failed = failedAttempt(message);
+        failed.error!.source = { file, line, column: 1 };
+        return failed;
+      };
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted());
+      reporter.handle(finished(result({
+        status: 'failed',
+        id: 'a',
+        title: ['login', 'welcomes'],
+        line: 3,
+        attempts: [thrownAt('expected "Welcome"\ngot "Sign in"', 'tests/case.e2e.ts', 9)],
+      })));
+      reporter.handle(finished(result({
+        status: 'timed-out',
+        id: 'b',
+        title: ['login', 'slow'],
+        line: 12,
+        attempts: [thrownAt('took too long', 'tests/helpers.ts', 4)],
+      })));
+      reporter.handle(finished(result({ status: 'passed', id: 'c', title: ['login', 'opens'] })));
+      reporter.handle({
+        ...runFinished({ status: 'failed', exitCode: 1, reportPath: '.e2e/report.json' }),
+        traces: { [resultId('a', 'chromium', 'default', 0)]: '.e2e/results/login-welcomes/trace.md' },
+      } as RunEventFact);
+      expect(lines.join('\n')).not.toContain('Failed  ');
+      reporter.rows([{ label: 'JUnit', text: '.e2e/junit.xml' }]);
+      expect(lines.slice(-8)).toEqual([
+        '      JUnit  .e2e/junit.xml',
+        '',
+        '     Failed  × |chromium| tests/case.e2e.ts:9 > login > welcomes',
+        '               ASSERTION_FAILED: expected "Welcome"',
+        '               trace .e2e/results/login-welcomes/trace.md',
+        '             × |chromium| tests/case.e2e.ts:12 > login > slow',
+        '               ASSERTION_FAILED: took too long',
+        '',
+      ]);
+    });
+
     it('counts timed-out results as failures and interrupted ones on their own, listing an interrupted test under its file but not among the failures', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
@@ -480,7 +574,7 @@ describe('ListReporter', () => {
       cut.handle(finished(result({ status: 'passed', id: 'c', file: 'tests/b.e2e.ts' })));
       cut.handle(runFinished({ status: 'interrupted', exitCode: 130, reportPath: '.e2e/report.json' }));
       expect(interrupted.lines).toContain(' ❯ |chromium| tests/a.e2e.ts (2 tests | 1 interrupted) 240ms');
-      expect(interrupted.lines).toContain('   × cut (interrupted) 120ms');
+      expect(interrupted.lines).toContain('   × |chromium| tests/a.e2e.ts > cut (interrupted) 120ms');
       expect(interrupted.lines.join('\n')).not.toContain('Failed Tests');
       expect(interrupted.lines).toContain(' Test Files  1 interrupted | 1 passed (2)');
       expect(interrupted.lines).toContain('      Tests  1 interrupted | 2 passed (3)');
@@ -682,11 +776,12 @@ describe('ListReporter', () => {
       reporter.handle(runStarted());
       reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'started' });
       reporter.handle({ type: 'setup', step: { kind: 'service', label: 'service "compose"' }, state: 'finished', durationMs: 41_200 });
-      reporter.handle({ type: 'setup', step: { kind: 'app', label: 'target "chromium" command' }, state: 'started' });
-      reporter.handle({ type: 'setup', step: { kind: 'app', label: 'target "chromium" command' }, state: 'finished', durationMs: 1_800, outcome: 'reused' });
+      const app = { kind: 'app', label: 'target "chromium" command', url: 'http://127.0.0.1:4310/' } as const;
+      reporter.handle({ type: 'setup', step: app, state: 'started' });
+      reporter.handle({ type: 'setup', step: app, state: 'finished', durationMs: 1_800, outcome: 'reused' });
       reporter.handle(runFinished({ reportPath: 'r.json' }));
       expect(lines).toContain(' ✓ service "compose" ready 41.20s');
-      expect(lines).toContain(' ✓ target "chromium" command reused 1.80s');
+      expect(lines).toContain(' ✓ target "chromium" command at http://127.0.0.1:4310/ reused 1.80s');
       expect(lines.find((line) => line.includes('Duration'))).toMatch(/^   Duration  \S+ \(startup 43\.00s\)$/);
     });
 
@@ -770,13 +865,13 @@ describe('ListReporter', () => {
       ], { status: 'failed' }));
       expect(lines).toEqual([]);
       reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })));
-      expect(lines).toEqual([]);
+      expect(lines).toEqual(['   ✓ |chromium| tests/case.e2e.ts > wizard > step 1 400ms ai 1.0k tokens']);
       reporter.handle(finished(result({ status: 'failed', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })));
       expect(lines).toEqual([
-        ' ❯ |chromium| tests/case.e2e.ts (2 tests | 1 failed) 650ms ai 1.0k tokens',
-        '   ✓ wizard > step 1 400ms ai 1.0k tokens',
-        '   × wizard > step 2 250ms',
+        '   ✓ |chromium| tests/case.e2e.ts > wizard > step 1 400ms ai 1.0k tokens',
+        '   × |chromium| tests/case.e2e.ts > wizard > step 2 250ms',
         '     → plan step failed',
+        ' ❯ |chromium| tests/case.e2e.ts (2 tests | 1 failed) 650ms ai 1.0k tokens',
       ]);
       reporter.handle(runFinished({ status: 'failed', exitCode: 1 }));
       expect(lines).toContain('ASSERTION_FAILED: plan step failed');
@@ -847,7 +942,7 @@ describe('ListReporter', () => {
       reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'late' })));
       reporter.handle(serialGroup('late', [{ members: [serialMember('m1')] }]));
       reporter.handle(runFinished({ reportPath: 'r.json' }));
-      expect(lines[0]).toBe(' ✓ |chromium| tests/case.e2e.ts (1 test)');
+      expect(lines[1]).toBe(' ✓ |chromium| tests/case.e2e.ts (1 test)');
       expect(lines.join('\n')).toContain('Tests  1 passed (1)');
     });
 
@@ -916,7 +1011,7 @@ describe('ListReporter', () => {
           };
     }
 
-    it('without a live window, prints finished agent steps at once with their test, then the block', () => {
+    it('without a live window, prints finished agent steps at once with their test, then the test and its file', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);
       reporter.handle(plan([{ file: 'tests/flow.e2e.ts', tests: 1 }]));
@@ -935,9 +1030,9 @@ describe('ListReporter', () => {
       expect(lines).toEqual([
         '   ✓ checkout > agent.act "add to cart" 4.20s · 3 model calls',
         '   × checkout > agent.act "pay" 4.20s · 3 model calls failed',
-        ' ❯ |chromium| tests/flow.e2e.ts (1 test | 1 failed) 120ms',
-        '   × checkout 120ms',
+        '   × |chromium| tests/flow.e2e.ts > checkout 120ms',
         '     → pay step failed',
+        ' ❯ |chromium| tests/flow.e2e.ts (1 test | 1 failed) 120ms',
       ]);
     });
 
@@ -1601,6 +1696,7 @@ describe('ListReporter goldens', () => {
         'expect.toContainText failed\nexpected "Welcome", got "Sign in"',
         `TestError: expect.toContainText failed\n    at async Object.fn (${source}:4:22)`,
       );
+      failed.error!.source = { file: 'tests/login.e2e.ts', line: 4, column: 22 };
       failed.failure = { url: 'https://app.test/login', candidates: ['heading "Sign in"'], screen: 'attempt-1:artifact:2' };
       failed.artifacts = [
         { id: 'attempt-1:artifact:0', kind: 'video', mediaType: 'video/webm', path: 'chromium/login/attempt-0/video/video.webm', startedAt: new Date(0).toISOString(), redaction: 'incomplete', producer: { kind: 'attempt' } },
@@ -1618,6 +1714,7 @@ describe('ListReporter goldens', () => {
         finished(result({ status: 'flaky', id: 'retry', file: 'tests/retry.e2e.ts', title: ['retries'], attempts: [failedAttempt('first try'), attempt({ id: 'attempt-2', index: 1, durationMs: 50, steps: [judged] })] })),
       );
       reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: path.join(root, '.e2e', 'report.json') }));
+      reporter.rows([{ label: 'JUnit', text: '.e2e/junit.xml' }]);
       expectGolden('list-fail.txt', stable(lines.join('\n'), root));
     } finally {
       rmSync(root, { recursive: true, force: true });
@@ -1923,5 +2020,52 @@ describe('explore runs', () => {
     expect(lines.join('\n')).toContain('AUTOMATION_UNSUPPORTED: exploration concluded nothing');
     expect(lines).toContain('   Findings  none');
     expect(lines).toContain('      Steps  0 of 4 · the run was cut short');
+  });
+});
+
+describe('screenshots row', () => {
+  const step = (api: string, artifacts: string[]) =>
+    ({ id: api, index: 0, kind: 'app', api, label: '', status: 'passed', startedAt: new Date(0).toISOString(), durationMs: 1, events: [], artifacts }) as unknown as AttemptRecord['steps'][number];
+  const shot = (id: string, file: string): AttemptRecord['artifacts'][number] =>
+    ({ id, kind: 'screenshot', mediaType: 'image/png', path: file, redaction: 'complete', producer: { kind: 'step', stepId: 'app.screenshot' } });
+
+  it('names each app.screenshot file, ordinary and serial, and leaves out assertion and failure screenshots', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 2 }]));
+    const group = serialGroup('g1', [{ members: [serialMember('m1', { steps: [step('app.screenshot', ['g:0'])] })] }]) as RunEventOf<'serial-group'>;
+    group.group.attempts[0]!.artifacts.push(shot('g:0', 'wizard/attempt-1/screenshots/001-wizard.png'));
+    reporter.handle(group);
+    reporter.handle(finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })));
+    const taken = attempt({
+      steps: [step('app.screenshot', ['a:0']), step('agent.assert', ['a:1'])],
+      artifacts: [shot('a:0', 'case/attempt-1/screenshots/001-plan.png'), shot('a:1', 'case/attempt-1/screenshots/002-assert.png'), shot('a:2', 'case/attempt-1/failure.png')],
+    });
+    reporter.handle(finished(result({ status: 'passed', declarationIndex: 1, attempts: [taken] })));
+    reporter.handle(runFinished());
+    expect(lines.filter((line) => line.includes('.png'))).toEqual([
+      'Screenshots  .e2e/artifacts/wizard/attempt-1/screenshots/001-wizard.png',
+      '             .e2e/artifacts/case/attempt-1/screenshots/001-plan.png',
+    ]);
+  });
+
+  it('counts the files past the first ten', () => {
+    const { lines, output } = capture();
+    const reporter = plainReporter(output);
+    reporter.handle(runStarted());
+    reporter.handle(plan([{ file: 'tests/case.e2e.ts', tests: 1 }]));
+    const ids = Array.from({ length: 12 }, (_, index) => `a:${index}`);
+    reporter.handle(finished(result({
+      status: 'passed',
+      attempts: [attempt({ steps: [step('app.screenshot', ids)], artifacts: ids.map((id, index) => shot(id, `s/${index}.png`)) })],
+    })));
+    reporter.handle(runFinished());
+    const row = lines.findIndex((line) => line.startsWith('Screenshots'));
+    expect(lines.slice(row, row + 11)).toEqual([
+      'Screenshots  .e2e/artifacts/s/0.png',
+      ...Array.from({ length: 9 }, (_, index) => `             .e2e/artifacts/s/${index + 1}.png`),
+      '             and 2 more (the report lists every artifact)',
+    ]);
   });
 });

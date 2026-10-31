@@ -118,7 +118,8 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
 ### app
 
 - `baseUrl` (`string | undefined`): the target's app URL with the run's
-  port; `undefined` when the target declares no `app.url`.
+  port and no trailing slash (`${app.baseUrl}/api/users`); `undefined` when
+  the target declares no `app.url`. `string` with `test` from `@e2e-dev/web`.
 - `open(path?)`: opens the target's `app.url`, a relative path, or an absolute
   http(s) URL. On a device it takes no path and relaunches the pinned app.
 - `back()`: one history step back.
@@ -127,7 +128,8 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
 - `clearState()`: clears cookies and storage, recreates the context, reopens
   the base URL.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
-  absolute path. It masks secure fields only (see Sign-in sessions).
+  absolute path; the `list` summary names the first 10 under `Screenshots`. It masks
+  secure fields only (see Sign-in sessions).
 - `startRecording({ name? })`, then `stopRecording()`: records one span and
   returns its videos (`path` or hosted `url`). Fails while the test's
   `video` records: set `{ video: 'off' }` on the test.
@@ -423,7 +425,7 @@ const projectTest = test.extend<{ project: { id: string } }>({
   project: async ({ app, browser }, use) => {
     const cookie = (await browser.cookies()).map((c) => `${c.name}=${c.value}`).join('; ');
     const api = (path: string, init: RequestInit = {}) =>
-      fetch(new URL(path, app.baseUrl), { ...init, headers: { cookie, 'content-type': 'application/json' } });
+      fetch(`${app.baseUrl}${path}`, { ...init, headers: { cookie, 'content-type': 'application/json' } });
     const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name: `Project ${Date.now()}` }) });
     const project = expect(await created.json()).toMatchSchema(z.object({ id: z.string() }));
     await use(project);
@@ -532,7 +534,7 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
   `browser.locator('.btn-primary')`.
 - Test data gets a run-unique name (`Invoice ${Date.now()}`) and `afterEach`
   cleanup, so replays and retries never trip over leftovers.
-- APIs live in the same suite: `fetch(new URL('/api/users', app.baseUrl))`
+- APIs live in the same suite: ``fetch(`${app.baseUrl}/api/users`)``
   plus value matchers, in a `test.extend` fixture that reads `browser.cookies()`
   when the API needs the session.
 - No sleeps, fixed delays, or polling loops. Wait for the state, not a

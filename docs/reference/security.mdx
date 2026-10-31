@@ -82,6 +82,7 @@ These calls fail with `POLICY_DENIED`.
 | `browser.setCookies` with a cookie URL that isn't `http:` or `https:` | Only a web origin holds cookies. |
 | `toHaveScreenshot()` when the engine can't prove every secure field is masked | The screenshot isn't kept. |
 | An agent, executor, or MCP `upload` of a file outside the project root, a hidden file, or a file under a hidden directory | Only project files can leave the computer through a form. |
+| An MCP `screenshot` `path` outside the project root, hidden, or under a hidden directory | A session writes only project files, and never over `.git` or `.e2e`. |
 
 ### Navigation
 

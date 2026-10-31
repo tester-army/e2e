@@ -1,5 +1,41 @@
 # @e2e-dev/mobile
 
+## 0.12.5
+
+### Patch Changes
+
+- [#1379](https://github.com/tester-army/e2e/pull/1379) [`9e53c40`](https://github.com/tester-army/e2e/commit/9e53c40a94fed6585d4e57cf14b8e91c405cb5d8) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A mobile target without `device` skips a booted simulator or emulator that another agent-device session holds, such as one another tool is driving, and drives the free ones. When every booted device is held, the run fails at `prepare` naming the holding sessions instead of failing on the first one.
+
+- [#1420](https://github.com/tester-army/e2e/pull/1420) [`512eed7`](https://github.com/tester-army/e2e/commit/512eed789dd1234011c5997b680ab1b90e3f8772) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.33.
+
+- [#1458](https://github.com/tester-army/e2e/pull/1458) [`450be72`](https://github.com/tester-army/e2e/commit/450be721e46a0bc024d873db85b5a7a6c3692965) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Update agent-device and @agent-device/testmu to 0.21.35. An unscoped boot picks the newest of several shut-down devices, and on iOS, pressing return with nothing focused keeps the runner session.
+
+- [#1382](https://github.com/tester-army/e2e/pull/1382) [`3a8d6f1`](https://github.com/tester-army/e2e/commit/3a8d6f1b6cdaa4c7975c55bf25f67d2e76143b21) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.31, zod to 4.6.7, @modelcontextprotocol/server to 2.4.0, and oxc to 0.155.0.
+
+- [#1380](https://github.com/tester-army/e2e/pull/1380) [`c3c4238`](https://github.com/tester-army/e2e/commit/c3c4238e8d47caeebf2926f522e8cd8b8fb7cb51) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Add the unstable `device.unstable_raw`, which may change or go away in any release: the test's agent-device session name, the device's id and name, and an agent-device `client` bound to that session, for what the `device` methods don't cover. Client calls aren't recorded as steps, replayed from the agent cache, or redacted.
+
+- [#1334](https://github.com/tester-army/e2e/pull/1334) [`6c8e71f`](https://github.com/tester-army/e2e/commit/6c8e71f1ddab036d5cd82ca671163de6e9e82ca0) Thanks [@21prnv](https://github.com/21prnv)! - `locator.filter()` takes `hasNot`, which drops matches whose subtree resolves a locator, as in Playwright. Third-party engines must handle the new `hasNot` field of a `filter` expression.
+
+- [#1410](https://github.com/tester-army/e2e/pull/1410) [`b309bcd`](https://github.com/tester-army/e2e/commit/b309bcdc89d5b990a7908ef8ea8e3ae2dadfc4b1) Thanks [@bheemreddy-samsara](https://github.com/bheemreddy-samsara)! - Re-read mobile fill and clear targets before typing, including cached replay. Missing inputs, changed security state, or incomplete captures retry after a fresh observation.
+
+- [#1449](https://github.com/tester-army/e2e/pull/1449) [`abb10cf`](https://github.com/tester-army/e2e/commit/abb10cfe154cd979ccec7747b2c799b4929d4c30) Thanks [@bheemreddy-samsara](https://github.com/bheemreddy-samsara)! - Update agent-device to 0.21.34. Hosted WebDriver fills replace the confirmed focused field instead of appending, and an unsupported active-element lookup refuses before tapping. The pre-tap focus probe no longer reads the previous field's geometry.
+
+- [#1427](https://github.com/tester-army/e2e/pull/1427) [`75ae2ab`](https://github.com/tester-army/e2e/commit/75ae2aba3ee71959ee4f3d83e1864e7096dc1dfc) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Read the placeholder an empty Compose Multiplatform field folds into its iOS label as the field's placeholder, so an empty field no longer reads as holding the example text. `fill` and `clear` type into an unclassified iOS element that holds a value or only text, the way a custom-drawn Compose Multiplatform or Flutter field can read.
+
+- [#1297](https://github.com/tester-army/e2e/pull/1297) [`bdd7315`](https://github.com/tester-army/e2e/commit/bdd7315b7f74840581a2ce72b77f251ef05047fa) Thanks [@shamilovtim](https://github.com/shamilovtim)! - A test step on a control the keyboard moves now waits for it to land instead of tapping where it was. Moving-target refusals are retried when agent-device sent no input.
+
+- [#1307](https://github.com/tester-army/e2e/pull/1307) [`64432f1`](https://github.com/tester-army/e2e/commit/64432f10891d9772494137b0ba328d8ef440deae) Thanks [@malopezr7](https://github.com/malopezr7)! - Add `@e2e-dev/mobile/lease` for device-provider packages: `agentDeviceLeases()` leases devices from a cloud agent-device runs sessions on, one isolated daemon per worker slot, and fails a release that agent-device can't confirm ended the session.
+
+- [#1413](https://github.com/tester-army/e2e/pull/1413) [`eeacc8a`](https://github.com/tester-army/e2e/commit/eeacc8aa394362037d94573a11c98c906a464acc) Thanks [@samanyudas](https://github.com/samanyudas)! - A mobile action on a node that a newer snapshot replaced finds the node again instead of acting on a different element.
+
+- [#1300](https://github.com/tester-army/e2e/pull/1300) [`4af1aa8`](https://github.com/tester-army/e2e/commit/4af1aa83127820eb0a352597e98b42bd05688900) Thanks [@shamilovtim](https://github.com/shamilovtim)! - Re-resolve a locator when its target changes during the transition wait, instead of tapping a stale native reference that may now identify another control.
+
+- [#1037](https://github.com/tester-army/e2e/pull/1037) [`a481fd3`](https://github.com/tester-army/e2e/commit/a481fd39c69e3e0f88a94c1fe3f4acada164cbf6) Thanks [@rudycelekli](https://github.com/rudycelekli)! - `locator.filter()` takes `hasNotText`, which drops matches whose text contains a string or matches a RegExp, as in Playwright. Third-party engines must handle the new `hasNotText` field of a `filter` expression.
+
+- [#1421](https://github.com/tester-army/e2e/pull/1421) [`46df78d`](https://github.com/tester-army/e2e/commit/46df78d9bab769583b198be32851f93df91e1874) Thanks [@okwasniewski](https://github.com/okwasniewski)! - The `open_app` agent tool returns to the target's app when called without an app, so the agent can recover after a system sheet or another app takes the foreground. Device errors no longer end with agent-device's CLI advice, such as "Run apps to discover...".
+
+- [#1421](https://github.com/tester-army/e2e/pull/1421) [`46df78d`](https://github.com/tester-army/e2e/commit/46df78d9bab769583b198be32851f93df91e1874) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `press('Enter')` on a field taps it first when it is not focused, as a character key already did. Before, Enter went to whatever held focus, and on iOS failed when the keyboard was down.
+
 ## 0.12.4
 
 ### Patch Changes

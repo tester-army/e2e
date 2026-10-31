@@ -670,7 +670,7 @@ cache, `-` when it reports no split. The report records the same per step
 
 | Reporter | Writes |
 | --- | --- |
-| `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress shows the current agent step, model turns, tool calls, and reasoning excerpts. Untrusted fields are capped at 8 KiB and stripped of control characters. |
+| `list` | Terminal progress, failures with code frames, and a run summary. On a TTY, live progress shows the current agent step, model turns, tool calls, and reasoning excerpts; when stdout is not a terminal (piped, redirected, most CI), each test prints as it finishes. The output ends with each failed test's file and line, first error line, and trace page when one was written. Untrusted fields are capped at 8 KiB and stripped of control characters. |
 | `json` | The report document to stdout, and nothing else there, so `e2e run --reporter json \| jq` works. It is the `<output>/report.json` document, described by `schema/report-v1.schema.json` in the package. The shape changes only with the `schemaVersion` field (`report-1` today). |
 | `junit` | `junit.xml` beside the report. One `<testsuite>` per file, one `<testcase>` per test-target pair named `title > path [target]`. A test-class error is a `<failure>`, any other an `<error>`, a skip a `<skipped>` with its reason. An interrupted test reached no verdict, so it is a `<skipped>` whose message starts `interrupted:`. A test a [test filter](/filters) left out is a `<skipped>` whose message starts `left out by filter <name>:`; other tests the run did not select are not listed. Run-level errors form a `run` suite. |
 | `markdown` | `summary.md` beside the report: counts, cost, errors, and failure details, each naming its trace page when one was kept. Exploration runs show findings. [`@e2e-dev/github`](/github) uses this summary for pull request comments. |
@@ -689,6 +689,9 @@ run's files in place. That covers a config or collection error, `NO_TESTS`,
 an interrupt. Its errors are on the terminal and in the exit code. A
 `junit.xml` or `summary.md` that could not be written is a line on stderr,
 never a run error.
+
+The `list` reporter prints run errors under `Run Errors`. Without `list`,
+each run error prints on stderr as `CODE: message`, with `json` too.
 
 `run.summary` in the report counts the results:
 

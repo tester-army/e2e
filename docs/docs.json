@@ -92,8 +92,7 @@
             "pages": [
               "models",
               "decision-models",
-              "subscriptions",
-              "acp"
+              "subscriptions"
             ]
           },
           {
@@ -115,7 +114,8 @@
               "integrations/eas",
               "integrations/smol",
               "integrations/limrun",
-              "integrations/testmu"
+              "integrations/testmu",
+              "integrations/browserstack"
             ]
           },
           {
@@ -124,8 +124,15 @@
               "tools",
               "fixtures",
               "executors",
-              "filters",
-              "writing-an-engine"
+              "filters"
+            ]
+          },
+          {
+            "group": "Engines",
+            "pages": [
+              "engines",
+              "writing-an-engine",
+              "engine-servers"
             ]
           },
           {
@@ -194,9 +201,10 @@
             ]
           },
           {
-            "group": "Engine contract",
+            "group": "Engines",
             "pages": [
-              "reference/engine"
+              "reference/engine",
+              "reference/engine-protocol"
             ]
           }
         ]
@@ -211,6 +219,10 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/acp",
+      "destination": "/subscriptions#use-your-coding-agent"
+    },
     {
       "source": "/page-objects",
       "destination": "/page-object-model"

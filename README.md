@@ -64,17 +64,22 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | [`@e2e-dev/smol`](https://www.npmjs.com/package/@e2e-dev/smol) | smol machines browsers for the web engine: by default, each attempt branches a warm Chromium microVM. |
 | [`@e2e-dev/decision`](https://e2e.tester.army/docs/decision-models) | Decision-model executors for bounded semantic actions and assertions, and `decisionFilter()`, which leaves out the tests a pull request is unlikely to affect. |
 | [`@e2e-dev/testmu`](https://www.npmjs.com/package/@e2e-dev/testmu) | TestMu AI (formerly LambdaTest) hosted Android emulators, iOS simulators, and real devices for the mobile engine, and hosted Chrome and Edge for the web engine. |
-| [`@e2e-dev/acp`](https://e2e.tester.army/docs/acp) | Runs agent steps on your own coding agent (Claude Code, Codex, and more) over the Agent Client Protocol. |
+| [`@e2e-dev/acp`](https://e2e.tester.army/docs/subscriptions#use-your-coding-agent) | Runs agent steps on your own coding agent (Claude Code or Codex) over the Agent Client Protocol. |
+| [`@e2e-dev/browserstack`](https://www.npmjs.com/package/@e2e-dev/browserstack) | BrowserStack App Automate real Android and iOS devices for the mobile engine. |
 
 ## Documentation
 
 [e2e.tester.army/docs](https://e2e.tester.army/docs). The `e2e` package ships
 every page, so coding agents can read them offline in `node_modules/e2e/docs`.
 
-## Contributing
+## Join us
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Questions go to
-[Discord](https://tester.army/discord).
+Join us in changing how software gets tested.
+[We are hiring.](https://tester.army/contact?utm_source=e2e&utm_medium=github&utm_campaign=readme_hiring)
+
+Or, if you want to hack on e2e, see [Contributing](./CONTRIBUTING.md). We
+prefer [GitHub issues](https://github.com/tester-army/e2e/issues) and [Discord discussions](https://tester.army/discord)
+over drive-by pull requests.
 
 ## Security
 

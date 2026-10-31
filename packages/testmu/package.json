@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/testmu",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "TestMu AI (formerly LambdaTest) for e2e: hosted Android emulators, iOS simulators, and real devices for mobile tests, and hosted Chrome and Edge for web tests",
   "keywords": [
     "e2e",
@@ -63,7 +63,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2e-dev/mobile": ">=0.11.1 <1",
+    "@e2e-dev/mobile": ">=0.12.5 <1",
     "@e2e-dev/web": ">=0.11.0 <1",
     "e2e": ">=0.15.0 <1"
   },
@@ -78,7 +78,7 @@
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
     "@e2e-dev/web": "workspace:*",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
@@ -87,7 +87,6 @@
     "node": "^22.22.3 || >=24.8.0"
   },
   "dependencies": {
-    "@agent-device/testmu": "0.21.35",
-    "agent-device": "0.21.35"
+    "@agent-device/testmu": "0.21.35"
   }
 }

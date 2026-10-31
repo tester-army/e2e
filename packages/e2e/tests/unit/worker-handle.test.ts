@@ -8,9 +8,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it, vi } from 'vitest';
 import { resolveConfig } from '../../src/config/resolve.ts';
-import { defineEngine, type EngineCleanupContext } from '../../src/engine/index.ts';
+import { defineEngine, type EngineCleanupContext, type EngineHandle } from '../../src/engine/index.ts';
 import { SessionStore } from '../../src/run/sessions.ts';
 import { TargetWorker } from '../../src/run/worker/session.ts';
 import { childProcessSpawner } from '../../src/run/worker/handle.ts';
@@ -20,6 +20,17 @@ function deferred<T = void>(): { promise: Promise<T>; resolve: (value: T | Promi
   let resolve!: (value: T | PromiseLike<T>) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
+}
+
+/**
+ * Runs `init` on the target's protocol client, as a worker's first session
+ * would: `dispose` reaches an engine only over a connection `init` opened.
+ */
+async function initialized(engine: EngineHandle): Promise<void> {
+  await engine.init!({
+    runId: 'run', targetName: 'fake', projectRoot: PACKAGE_ROOT, app: {}, env: {}, headed: false, workerSlot: 0,
+    signal: new AbortController().signal, log: () => {},
+  });
 }
 
 /** The worker runs from the package like the runner's own do. */
@@ -119,6 +130,7 @@ describe('TargetWorker disposal', () => {
       },
     });
     const config = resolveConfig({ targets: [{ name: 'fake', platform: 'ios', engine }], cache: 'off' }, { projectRoot: PACKAGE_ROOT, env: {} });
+    await initialized(config.targets[0]!.engine!);
     const worker = new TargetWorker({
       emit: (message) => {
         if (message.type === 'ready') ready.resolve();
@@ -139,7 +151,7 @@ describe('TargetWorker disposal', () => {
     try {
       expect(events).toEqual(['dispose-reusable']);
       worker.handle({ type: escalation });
-      expect(events).toEqual(['dispose-reusable', 'close']);
+      await vi.waitFor(() => expect(events).toEqual(['dispose-reusable', 'close']));
       worker.handle({ type: 'terminate' });
     } finally {
       finishDisposal.resolve();
@@ -162,6 +174,7 @@ describe('TargetWorker disposal', () => {
       },
     });
     const config = resolveConfig({ targets: [{ name: 'fake', platform: 'ios', engine }], cache: 'off' }, { projectRoot: PACKAGE_ROOT, env: {} });
+    await initialized(config.targets[0]!.engine!);
     const worker = new TargetWorker({
       emit: (message) => { if (message.type === 'ready') ready.resolve(); },
       fatal: (cause) => { throw cause; }, finished: () => finished.resolve(),

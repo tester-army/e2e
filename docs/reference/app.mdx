@@ -47,9 +47,12 @@ The resolved base URL of the target's app.
 const health = await fetch(`${app.baseUrl}/api/health`);
 ```
 
+- It has no trailing slash, so `${app.baseUrl}/path` joins with one slash.
 - When `app.url` declares port `0`, `baseUrl` carries the port the run
   allocated.
-- On a target that declares no `app.url`, it is `undefined`.
+- On a target that declares no `app.url`, it is `undefined`. With `test`
+  from `@e2e-dev/web` it is typed `string`: a `web()` target always declares
+  `app.url`.
 
 ### `open`
 
@@ -132,6 +135,8 @@ const shot = await app.screenshot('after-checkout');
 
 - The file is an attempt artifact under `screenshots/`. The returned path is
   absolute. The report records the path relative to the artifact root.
+- The `list` reporter's summary names up to 10 files in a `Screenshots` row,
+  then counts the rest.
 - `label` names the step and joins the file name.
 
 | Throws | When |
@@ -198,8 +203,9 @@ if ('path' in video) console.log(video.path);
 export interface App {
   /**
    * The resolved base URL of the target's app, with the port the run
-   * allocated when `app.url` declared port 0; undefined for a target that
-   * declares no `app.url`.
+   * allocated when `app.url` declared port 0 and no trailing slash, so
+   * `${app.baseUrl}/api/users` joins with one slash; undefined for a target
+   * that declares no `app.url`.
    */
   readonly baseUrl: string | undefined;
   /**

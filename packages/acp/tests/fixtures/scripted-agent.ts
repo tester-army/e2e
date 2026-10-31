@@ -12,7 +12,16 @@
 
 import { appendFileSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
-import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION, RequestError, type McpServer, type Usage } from '@agentclientprotocol/sdk';
+import {
+  agent,
+  methods,
+  ndJsonStream,
+  PROTOCOL_VERSION,
+  RequestError,
+  type McpServer,
+  type RequestPermissionResponse,
+  type Usage,
+} from '@agentclientprotocol/sdk/unstable';
 import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 
 type Move =
@@ -55,144 +64,141 @@ let turn = 0;
 let cancelRequested = false;
 let cancelled: (() => void) | undefined;
 
-const connection = new AgentSideConnection(
-  (client) => ({
-    initialize: () =>
-      process.env['ACP_HANG_INIT'] === undefined
-        ? {
-            protocolVersion: PROTOCOL_VERSION,
-            agentCapabilities: { mcpCapabilities: { http: true }, sessionCapabilities: { close: {} } },
-            agentInfo: { name: 'scripted-agent', version: '1' },
-            authMethods: [],
-          }
-        : new Promise<never>(() => undefined),
-    newSession: async (params) => {
-      const server = params.mcpServers[0] as Extract<McpServer, { type: 'http' }>;
-      mcp = new Client({ name: 'scripted-agent', version: '1' });
-      await mcp.connect(new StreamableHTTPClientTransport(new URL(server.url)));
-      const { tools } = await mcp.listTools();
-      log({ session: { cwd: params.cwd, server: server.name, meta: params._meta ?? null, tools: tools.map((tool) => tool.name) } });
-      return {
-        sessionId: 's1',
-        configOptions: [
-          {
-            id: 'model',
-            name: 'Model',
-            category: 'model',
-            type: 'select',
-            currentValue: 'fast',
-            options: [
-              { value: 'fast', name: 'Fast' },
-              { value: 'slow', name: 'Slow' },
-            ],
-          },
-        ],
-        modes: {
-          currentModeId: 'default',
-          availableModes: [
-            { id: 'default', name: 'Default' },
-            { id: 'read-only', name: 'Read only' },
+agent()
+  .onRequest(methods.agent.initialize, () =>
+    process.env['ACP_HANG_INIT'] === undefined
+      ? {
+          protocolVersion: PROTOCOL_VERSION,
+          agentCapabilities: { mcpCapabilities: { http: true }, sessionCapabilities: { close: {} } },
+          agentInfo: { name: 'scripted-agent', version: '1' },
+          authMethods: [],
+        }
+      : new Promise<never>(() => undefined),
+  )
+  .onRequest(methods.agent.session.new, async ({ params }) => {
+    const server = params.mcpServers[0] as Extract<McpServer, { type: 'http' }>;
+    mcp = new Client({ name: 'scripted-agent', version: '1' });
+    await mcp.connect(new StreamableHTTPClientTransport(new URL(server.url)));
+    const { tools } = await mcp.listTools();
+    log({ session: { cwd: params.cwd, server: server.name, meta: params._meta ?? null, tools: tools.map((tool) => tool.name) } });
+    return {
+      sessionId: 's1',
+      configOptions: [
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'fast',
+          options: [
+            { value: 'fast', name: 'Fast' },
+            { value: 'slow', name: 'Slow' },
           ],
         },
-      };
-    },
-    setSessionMode: (params) => {
-      log({ mode: params.modeId });
-      return {};
-    },
-    setSessionConfigOption: (params) => {
-      log({ config: { [params.configId]: params.value } });
-      return { configOptions: [] };
-    },
-    authenticate: () => ({}),
-    closeSession: () => {
-      log({ closed: true });
-      return {};
-    },
-    cancel: () => {
-      log({ cancelled: true });
-      cancelRequested = true;
-      cancelled?.();
-    },
-    prompt: async (params) => {
-      const text = params.prompt.map((block) => (block.type === 'text' ? block.text : '')).join('\n');
-      log({ prompt: text });
-      screen = text;
-      cancelRequested = false;
-      for (const move of movesFor(text, turn++)) {
-        if ('say' in move) {
-          await client.sessionUpdate({ sessionId: 's1', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: move.say } } });
-        } else if ('fail' in move) {
-          throw RequestError.internalError({ message: move.fail });
-        } else if ('own' in move) {
-          const toolCall = {
-            toolCallId: `own-${turn}-${move.own}`,
-            title: move.own,
-            ...(move.kind === undefined ? {} : { kind: move.kind as 'execute' }),
-            ...(move.rawInput === undefined ? {} : { rawInput: move.rawInput }),
-            ...(move.meta === undefined ? {} : { _meta: move.meta }),
-          };
-          await client.sessionUpdate({ sessionId: 's1', update: { sessionUpdate: 'tool_call', ...toolCall } });
-          const answer = await client.requestPermission({
-            sessionId: 's1',
-            toolCall,
-            ...(move.requestMeta === undefined ? {} : { _meta: move.requestMeta }),
-            options: [
-              { optionId: 'yes', name: 'Allow', kind: 'allow_once' },
-              { optionId: 'no', name: 'Reject', kind: 'reject_once' },
-            ],
-          });
-          log({ permission: move.own, outcome: answer.outcome });
-          if (move.status !== undefined) {
-            await client.sessionUpdate({ sessionId: 's1', update: { sessionUpdate: 'tool_call_update', toolCallId: toolCall.toolCallId, status: move.status } });
-          }
-        } else if ('ran' in move) {
-          // A tool of the agent's own that runs without asking.
-          const toolCallId = `ran-${turn}-${move.ran}`;
-          await client.sessionUpdate({ sessionId: 's1', update: { sessionUpdate: 'tool_call', toolCallId, title: move.ran, kind: (move.kind ?? 'read') as 'read', status: 'in_progress' } });
-          if (move.status !== 'in_progress') {
-            await client.sessionUpdate({ sessionId: 's1', update: { sessionUpdate: 'tool_call_update', toolCallId, status: move.status ?? 'completed' } });
-          }
-          log({ ran: move.ran });
-        } else if ('batch' in move) {
-          await Promise.all(
-            move.batch.map(async ({ call, args }) => log({ call, result: await mcp!.callTool({ name: call, arguments: { ...args } }) })),
-          );
-        } else if ('ignoreCancel' in move) {
-          await new Promise<never>(() => undefined);
-        } else if ('hang' in move) {
-          if (!cancelRequested) {
-            await new Promise<void>((resolve) => {
-              cancelled = resolve;
-            });
-          }
-          if (move.thenRan !== undefined) {
-            // Logged first: the executor stops this agent as soon as it reports the tool.
-            log({ ran: move.thenRan });
-            await client.sessionUpdate({
-              sessionId: 's1',
-              update: { sessionUpdate: 'tool_call', toolCallId: `ran-${turn}-${move.thenRan}`, title: move.thenRan, kind: 'read', status: 'in_progress' },
-            });
-          }
-          return { stopReason: 'cancelled' };
-        } else {
-          const id = move.on === undefined ? undefined : idOf(move.on);
-          const result = await mcp!.callTool({ name: move.call, arguments: { ...move.args, ...(id === undefined ? {} : { target: id }) } });
-          const content = (result.content as { type: string; text?: string }[] | undefined) ?? [];
-          if (result.isError !== true) screen = `${content.map((part) => part.text ?? '').join('\n')}\n${screen}`;
-          log({ call: move.call, result });
+      ],
+      modes: {
+        currentModeId: 'default',
+        availableModes: [
+          { id: 'default', name: 'Default' },
+          { id: 'read-only', name: 'Read only' },
+        ],
+      },
+    };
+  })
+  .onRequest(methods.agent.session.setMode, ({ params }) => {
+    log({ mode: params.modeId });
+    return {};
+  })
+  .onRequest(methods.agent.session.setConfigOption, ({ params }) => {
+    log({ config: { [params.configId]: params.value } });
+    return { configOptions: [] };
+  })
+  .onRequest(methods.agent.authenticate, () => ({}))
+  .onRequest(methods.agent.session.close, () => {
+    log({ closed: true });
+    return {};
+  })
+  .onNotification(methods.agent.session.cancel, () => {
+    log({ cancelled: true });
+    cancelRequested = true;
+    cancelled?.();
+  })
+  .onRequest(methods.agent.session.prompt, async ({ params, client }) => {
+    const text = params.prompt.map((block) => (block.type === 'text' ? block.text : '')).join('\n');
+    log({ prompt: text });
+    screen = text;
+    cancelRequested = false;
+    for (const move of movesFor(text, turn++)) {
+      if ('say' in move) {
+        await client.notify(methods.client.session.update, { sessionId: 's1', update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: move.say } } });
+      } else if ('fail' in move) {
+        throw RequestError.internalError({ message: move.fail });
+      } else if ('own' in move) {
+        const toolCall = {
+          toolCallId: `own-${turn}-${move.own}`,
+          title: move.own,
+          ...(move.kind === undefined ? {} : { kind: move.kind as 'execute' }),
+          ...(move.rawInput === undefined ? {} : { rawInput: move.rawInput }),
+          ...(move.meta === undefined ? {} : { _meta: move.meta }),
+        };
+        await client.notify(methods.client.session.update, { sessionId: 's1', update: { sessionUpdate: 'tool_call', ...toolCall } });
+        const answer: RequestPermissionResponse = await client.request(methods.client.session.requestPermission, {
+          sessionId: 's1',
+          toolCall,
+          ...(move.requestMeta === undefined ? {} : { _meta: move.requestMeta }),
+          options: [
+            { optionId: 'yes', name: 'Allow', kind: 'allow_once' },
+            { optionId: 'no', name: 'Reject', kind: 'reject_once' },
+          ],
+        });
+        log({ permission: move.own, outcome: answer.outcome });
+        if (move.status !== undefined) {
+          await client.notify(methods.client.session.update, { sessionId: 's1', update: { sessionUpdate: 'tool_call_update', toolCallId: toolCall.toolCallId, status: move.status } });
         }
+      } else if ('ran' in move) {
+        // A tool of the agent's own that runs without asking.
+        const toolCallId = `ran-${turn}-${move.ran}`;
+        await client.notify(methods.client.session.update, { sessionId: 's1', update: { sessionUpdate: 'tool_call', toolCallId, title: move.ran, kind: (move.kind ?? 'read') as 'read', status: 'in_progress' } });
+        if (move.status !== 'in_progress') {
+          await client.notify(methods.client.session.update, { sessionId: 's1', update: { sessionUpdate: 'tool_call_update', toolCallId, status: move.status ?? 'completed' } });
+        }
+        log({ ran: move.ran });
+      } else if ('batch' in move) {
+        await Promise.all(
+          move.batch.map(async ({ call, args }) => log({ call, result: await mcp!.callTool({ name: call, arguments: { ...args } }) })),
+        );
+      } else if ('ignoreCancel' in move) {
+        await new Promise<never>(() => undefined);
+      } else if ('hang' in move) {
+        if (!cancelRequested) {
+          await new Promise<void>((resolve) => {
+            cancelled = resolve;
+          });
+        }
+        if (move.thenRan !== undefined) {
+          // Logged first: the executor stops this agent as soon as it reports the tool.
+          log({ ran: move.thenRan });
+          await client.notify(methods.client.session.update, {
+            sessionId: 's1',
+            update: { sessionUpdate: 'tool_call', toolCallId: `ran-${turn}-${move.thenRan}`, title: move.thenRan, kind: 'read', status: 'in_progress' },
+          });
+        }
+        return { stopReason: 'cancelled' };
+      } else {
+        const id = move.on === undefined ? undefined : idOf(move.on);
+        const result = await mcp!.callTool({ name: move.call, arguments: { ...move.args, ...(id === undefined ? {} : { target: id }) } });
+        const content = (result.content as { type: string; text?: string }[] | undefined) ?? [];
+        if (result.isError !== true) screen = `${content.map((part) => part.text ?? '').join('\n')}\n${screen}`;
+        log({ call: move.call, result });
       }
-      await client.sessionUpdate({
-        sessionId: 's1',
-        update: { sessionUpdate: 'usage_update', used: 100, size: 1000, cost: { amount: 0.01 * turn, currency: 'USD' } },
-      });
-      return { stopReason: 'end_turn', usage: JSON.parse(process.env['ACP_USAGE'] ?? '{"totalTokens":15,"inputTokens":10,"outputTokens":5,"cachedReadTokens":4}') as Usage };
-    },
-  }),
-  ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>),
-);
-void connection;
+    }
+    await client.notify(methods.client.session.update, {
+      sessionId: 's1',
+      update: { sessionUpdate: 'usage_update', used: 100, size: 1000, cost: { amount: 0.01 * turn, currency: 'USD' } },
+    });
+    return { stopReason: 'end_turn', usage: JSON.parse(process.env['ACP_USAGE'] ?? '{"totalTokens":15,"inputTokens":10,"outputTokens":5,"cachedReadTokens":4}') as Usage };
+  })
+  .connect(ndJsonStream(Writable.toWeb(process.stdout) as WritableStream<Uint8Array>, Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>));
 
 function idOf(on: string): string | undefined {
   const line = screen.split('\n').find((entry) => entry.includes(on));

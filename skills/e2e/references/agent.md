@@ -52,11 +52,11 @@ and upload paths. See the shipped `docs/decision-models.mdx` or
 [the online guide](https://e2e.tester.army/docs/decision-models) for setup,
 gates, and limits.
 
-A coding agent the user already signs in to runs agent steps over ACP:
+A coding agent the user already signs in to runs agent steps over the Agent Client Protocol:
 install `@e2e-dev/acp` and its adapter, and put
 `claudeCode({ model: 'sonnet' })` or `codex()` under
-`executor`; no model provider is needed. See the shipped `docs/acp.mdx` or
-[the online guide](https://e2e.tester.army/docs/acp).
+`executor`; no model provider is needed. See the shipped `docs/subscriptions.mdx` or
+[the online guide](https://e2e.tester.army/docs/subscriptions#use-your-coding-agent).
 
 - Pass a model instance, not a string (`INVALID_CONFIG`).
 - An agents entry is one plain object of `model`, `judge`, `system`,
@@ -199,9 +199,13 @@ expect(data.titles).toContain('Buy milk');
   screen first and ask about what is visible. Judged from the tree alone,
   it adds `pass vision: true when the answer is in pixels`, as does
   `waitFor`'s timeout after an inconclusive round.
-- Judgments see the assertion and the current screen only, never prior
-  steps or the act loop's summaries; malformed output gets one repair
-  round, then `MODEL_OUTPUT_INVALID`.
+- Judgments see the assertion, its params, the agent's context, the test
+  title, and the current screen, never prior steps or the act loop's
+  summaries; malformed output gets one repair round, then
+  `MODEL_OUTPUT_INVALID`.
+- `assert` and `waitFor` take `params` like `act`:
+  `assert('the table lists {name}', { params: { name } })`. The judge sees a
+  `Secret` by name only; check a secret's value with a locator assertion.
 - A value shown in more than one place (a total in the summary and on the
   pay button) must agree everywhere, or the judgment fails. Name the one
   you mean (`'the order summary total is $42.00'`) when only it matters.

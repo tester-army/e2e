@@ -1,5 +1,0 @@
----
-"e2e": patch
----
-
-`e2e mcp`'s `open_session` takes a `test`, named like an `e2e run` positional (`tests/checkout.e2e.ts:12`), and runs that one test in the session before handing it over: its hooks, `test.extend` fixtures, and body, as `e2e run` runs them. The session then stays on the screen where the test passed or failed, and the opening text leads with the outcome: the error code and message, the failing line with the code around it, the URL, the nodes nearest a locator that matched nothing, and the steps that ran. `afterEach` hooks and fixture teardown run at `close_session`. The test's own steps print no test line; the session's lines start with the agent's first action, and `test_lines` returns them as the lines that continue the test. Agent steps replay and record in the replay cache as on a run's first attempt. A name that selects several tests fails with `TEST_AMBIGUOUS`, and a serial group member, a test that starts from a setup test's session, or a test that runs as several agents fails with `SESSION_TEST_UNSUPPORTED`. The bundled skill tells the coding agent to fix a failing test this way instead of clicking through the flow again.

@@ -10,12 +10,6 @@ import type { ProviderRecordContext } from 'e2e/engine';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { testmu, type TestmuOptions } from '../../src/index.ts';
 
-vi.mock('agent-device', () => ({
-  createAgentDeviceClient: () => {
-    throw new Error('recording starts no daemon');
-  },
-}));
-
 const API = 'https://mobile-api.lambdatest.com/mobile-automation/api/v1';
 const VIDEO = 'https://videos.example.com/orgId-1/T2/video/video.mp4?X-Amz-Signature=secret-signature';
 const options: TestmuOptions = { device: 'Galaxy S22 Ultra 5G', osVersion: '14', app: 'lt://APP1' };

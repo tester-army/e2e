@@ -37,12 +37,14 @@ import { loadAiSdk } from '../agent/ai-sdk.ts';
 import { leaveWorkBehind } from '../internal/abandoned.ts';
 import { AiTraceCollector, AiTraceRecorder, registerAiTraceRecorder } from '../internal/ai-trace.ts';
 import { DebugTrace } from '../internal/debug.ts';
+import { printableUrl } from '../internal/urls.ts';
 import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ExploreProgress } from '../explore/progress.ts';
 import { buildReport, projectSource, type Report1Document, type ReportChanges, type ReportExplore, type ReportFilter, type TargetProvenance } from '../report/build.ts';
 import { agentStepTable } from '../report/debug-steps.ts';
 import { writeTracePages, type TracePages } from '../report/traces.ts';
 import { STATELESS_REPORTERS } from '../report/builtin.ts';
+import { failureLine } from '../report/format.ts';
 import { ListReporter } from '../report/list.ts';
 import { writeJsonReport } from '../report/write.ts';
 import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCode, type RunStatus, type RunEventFact, type SetupOutcome, type SetupStep } from './events.ts';
@@ -726,6 +728,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // The list reporter has printed its summary and stopped its window; a
     // line another reporter left unfinished on `run-finished` prints too.
     processOutput?.showThrough(undefined);
+    // Only the list reporter prints run errors, and a run that stopped before
+    // its tests writes no file to read them in, so without it they go to stderr.
+    if (listReporter === undefined && options.quiet !== true) {
+      for (const error of report.run.errors) process.stderr.write(failureLine(error));
+    }
     if (debug.enabled) {
       process.stderr.write(debug.summary());
       process.stderr.write(agentStepTable(results, serialGroups));
@@ -946,17 +953,18 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
 
     // Each selected target declares the app it drives and the command that
     // starts it. Nothing spawns once the run was interrupted. Each command is
-    // one setup step; a reused process or an ignored `reuseExisting` narrates
-    // as a run notice.
+    // one setup step, named with the URL it answers on; a reused process or
+    // an ignored `reuseExisting` narrates as a run notice.
+    const appStep = (label: string, url: string | undefined) => ({ kind: 'app' as const, label, ...(url === undefined ? {} : { url: printableUrl(url) }) });
     const processHooks = () => ({
       ci: isCiMode(env),
       env,
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
-      starting: (label: string) => emit({ type: 'setup', step: { kind: 'app', label }, state: 'started' }),
-      ready: (label: string, durationMs: number, reused: boolean) =>
+      starting: (label: string, url: string | undefined) => emit({ type: 'setup', step: appStep(label, url), state: 'started' }),
+      ready: (label: string, url: string | undefined, durationMs: number, reused: boolean) =>
         emit({
           type: 'setup',
-          step: { kind: 'app', label },
+          step: appStep(label, url),
           state: 'finished',
           durationMs,
           ...(reused ? { outcome: 'reused' as const } : {}),

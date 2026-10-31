@@ -65,6 +65,7 @@ import {
   VERDICT_RULES,
   type ScreenOutput,
 } from '../../src/agent/public.ts';
+import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import type { Report } from '../../src/index.ts';
 import type { ToolSet } from 'ai';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
@@ -599,6 +600,8 @@ await agent.assert('the form is not covered', { vision: 'only' });
 // @ts-expect-error a judgment's vision is a closed set: true, false, or 'only'
 await agent.assert('the chart trends upward', { vision: 'always' });
 await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+await agent.assert('the table lists {name}', { params: { name: unique('acme'), owner: credentials.user('admin').password } });
+await agent.waitFor('the table lists {name}', { params: { name: unique('acme') } });
 // @ts-expect-error the wait interval is `interval`, in milliseconds
 await agent.waitFor('the page settles', { intervalMs: 500 });
 // @ts-expect-error extract has a fixed budget: one extraction plus one repair round
@@ -981,3 +984,10 @@ serialReportAttempt.cutRetry = 'interrupted';
 void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
 // @ts-expect-error an alternative must be a Locator
 void screen.getByRole('tab').or('tab');
+// The engine protocol: a connected server is an engine handle like any other.
+const protocolManifest = { name: 'kiosk', version: '1.0.0', spiVersion: 1, methods: ['engine/observe'] } satisfies EngineManifest;
+void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }) }) satisfies EngineHandle);
+// @ts-expect-error a manifest names only protocol methods
+void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
+// @ts-expect-error initialization options cross the wire, so they are JSON
+void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });

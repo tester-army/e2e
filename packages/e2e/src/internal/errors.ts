@@ -254,7 +254,8 @@ export class E2EError extends Error {
   }
 }
 
-const CATEGORIES: ReadonlySet<unknown> = new Set<ErrorCategory>([
+/** Every error category, for checking one read off the wire. */
+export const ERROR_CATEGORIES: ReadonlySet<unknown> = new Set<ErrorCategory>([
   'test',
   'configuration',
   'infrastructure',
@@ -272,13 +273,14 @@ export function isE2EError(value: unknown): value is Error & {
   category: ErrorCategory;
   code: string;
   retryable: boolean;
+  details?: ErrorDetails | undefined;
 } {
   return (
     value instanceof Error &&
     E2E_ERROR_MARKER in value &&
     value[E2E_ERROR_MARKER] === true &&
     'category' in value &&
-    CATEGORIES.has(value.category) &&
+    ERROR_CATEGORIES.has(value.category) &&
     'code' in value &&
     typeof value.code === 'string'
   );

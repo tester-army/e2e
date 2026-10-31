@@ -797,6 +797,37 @@
       }
     },
     {
+      "slug": "expo-simulators",
+      "title": "Testing an Expo app on Expo Simulators with e2e",
+      "shortTitle": "Expo Simulators",
+      "description": "An Expo UI greeting form tested on hosted iOS simulators and Android emulators, in EAS Workflows on every pull request, and on web.",
+      "icon": "expo.svg",
+      "invertIcon": true,
+      "source": "partner",
+      "repository": "https://github.com/expo/examples/tree/master/with-e2e",
+      "author": {
+        "name": "Expo",
+        "github": "expo",
+        "website": "https://expo.dev"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/expo/examples/blob/master/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "cloud-devices"
+        ],
+        "platform": [
+          "web",
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
       "slug": "pipedash",
       "title": "Testing Pipedash's App Store screenshot editor with e2e",
       "shortTitle": "Pipedash",

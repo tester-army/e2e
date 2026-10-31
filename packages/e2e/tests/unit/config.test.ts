@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { discoverConfig } from '../../src/config/load.ts';
 import { isCiMode, resolveConfig, type CliOverrides } from '../../src/config/resolve.ts';
 import { ConfigurationError, defineEngine } from '../../src/engine/index.ts';
+import { protocolEngine } from '../../src/engine/protocol/client.ts';
 import { secrets } from '../../src/secrets.ts';
 import type { CommandConfig, E2EConfig, Target, TargetApp, TestFilter } from '../../src/types.ts';
 import { snapshot } from '../helpers/snapshot.ts';
@@ -324,7 +325,7 @@ describe('resolveConfig', () => {
 
   it('defaults a target name to its platform', () => {
     const engine = fakeEngine();
-    expect(resolve({ targets: [{ platform: 'ios', engine }] }).targets[0]).toMatchObject({ name: 'ios', platform: 'ios', engine });
+    expect(resolve({ targets: [{ platform: 'ios', engine }] }).targets[0]).toMatchObject({ name: 'ios', platform: 'ios', engine: protocolEngine(engine) });
     expect(resolve({ targets: [{ platform: 'ios' }, { platform: 'android' }] }).targets.map((target) => target.name)).toEqual([
       'ios',
       'android',
@@ -1304,8 +1305,14 @@ describe('discoverConfig', () => {
         configPath: path.join(root, 'custom/my.config.ts'),
         projectRoot: path.join(root, 'custom'),
       });
-      expect(() => discoverConfig(root, 'missing.config.ts')).toThrow(
-        expect.objectContaining({ code: 'CONFIG_NOT_FOUND', message: 'config file not found: missing.config.ts' }),
+      expect(() => discoverConfig(path.join(root, 'custom'), 'custom/my.config.ts')).toThrow(
+        expect.objectContaining({
+          code: 'CONFIG_NOT_FOUND',
+          message: `config file not found: ${path.join(root, 'custom/custom/my.config.ts')} (custom/my.config.ts resolved against the working directory ${path.join(root, 'custom')}); pass an absolute path, or a path relative to that directory`,
+        }),
+      );
+      expect(() => discoverConfig(root, path.join(root, 'missing.config.ts'))).toThrow(
+        expect.objectContaining({ code: 'CONFIG_NOT_FOUND', message: `config file not found: ${path.join(root, 'missing.config.ts')}` }),
       );
     });
   });

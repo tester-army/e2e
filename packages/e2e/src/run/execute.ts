@@ -350,8 +350,9 @@ export class TargetExecutor implements SerialHost {
 
   /**
    * Disposes the engine at worker end of life, bounded by the cleanup budget.
-   * Runs whether or not `init` did: an engine may hold resources it acquired
-   * lazily, and the contract makes `dispose` safe to call on a cold engine.
+   * Every engine runs over the protocol, whose client forwards `dispose` only
+   * once `init` was called: a worker that never initialized opened no
+   * connection, so the engine has nothing of it to release.
    */
   async dispose(options: Pick<EngineDisposeContext, 'reuseSignal'> = {}): Promise<void> {
     const disposeEngine = this.target.engine?.dispose?.bind(this.target.engine);
@@ -676,7 +677,7 @@ export class TargetExecutor implements SerialHost {
     }
     const ledger = sessionLedger(session, this.config.allSecrets);
     const plaintext = await resolveSecretValue(secret, this.config.allSecrets, ledger);
-    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], ledger);
+    registerDerivedSecrets(secret.name, (await options?.derived?.(plaintext)) ?? [], ledger);
     return plaintext;
   }
 

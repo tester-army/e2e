@@ -6,6 +6,7 @@
  * credentials, or budget.
  */
 
+import type { JsonValue } from '../types.ts';
 import type { ExecutorPixels } from './executor.ts';
 import type { AgentObservation } from './observation.ts';
 
@@ -56,6 +57,8 @@ export interface PromptInput {
   readonly request: string;
   /** Untrusted test-author instruction or condition. */
   readonly instruction: string;
+  /** The values the instruction refers to, projected and redacted; fenced with it. */
+  readonly params?: Readonly<Record<string, JsonValue>> | undefined;
   readonly observation?: AgentObservation | undefined;
   /**
    * Leaves the attached screenshot as the only evidence in the request, for
@@ -85,6 +88,7 @@ export function buildPrompt(input: PromptInput): string {
     '',
     '<instruction>',
     input.instruction,
+    ...(input.params === undefined ? [] : [`Parameters: ${JSON.stringify(input.params)}`]),
     '</instruction>',
   ];
   const observation = input.observation;

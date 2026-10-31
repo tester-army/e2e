@@ -223,6 +223,12 @@ interface GrammarToolSetup extends GrammarToolOptions {
    * (`observe`) returns the whole screen.
    */
   readonly screen?: ScreenPresenter;
+  /**
+   * Saves a screenshot to a file, given as the caller wrote it, and returns
+   * the absolute path. With it, `screenshot` takes an optional `path`; `e2e
+   * mcp` sets it, the testing agent does not.
+   */
+  readonly saveScreenshot?: ((file: string) => Promise<string>) | undefined;
 }
 
 /**
@@ -580,12 +586,28 @@ export function grammarTools(
   // tap, hover, or drag reaches the engine as bare points where it takes
   // them, and a type, press, or select acts on a listed control under the
   // point by id, else through the keyboard.
-  tools['screenshot'] = screenTool({
-    description:
-      'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.',
-    inputSchema: z.object({}),
-    execute: () => inOrder(() => guard(async () => screen.present(await context.observe({ pixels: true })))),
-  });
+  const description =
+    'Attach a screenshot of the current viewport. Use it when the screen lists too little to act on (a canvas, a map, an image, a game, a system sheet) or contradicts what you expect. From then on every action result carries a fresh screenshot too, so you can see what each action did.';
+  const look = async (): Promise<ScreenOutput> => screen.present(await context.observe({ pixels: true }));
+  const save = options.saveScreenshot;
+  tools['screenshot'] =
+    save === undefined
+      ? screenTool({ description, inputSchema: z.object({}), execute: () => inOrder(() => guard(look)) })
+      : screenTool({
+          description: `${description} With path, also saves the masked full-resolution screenshot as a PNG file and returns its absolute path.`,
+          inputSchema: z.object({
+            path: z.string().regex(/\.png$/i, 'a .png file').optional().describe('PNG file to save it to, inside the project and relative to its root, e.g. "screenshots/checkout.png"'),
+          }),
+          execute: ({ path }) =>
+            inOrder(() =>
+              guard(async () => {
+                const shown = await look();
+                if (path === undefined) return shown;
+                const saved = `Saved to ${await save(path)}`;
+                return typeof shown === 'string' ? `${shown}\n${saved}` : { ...shown, text: `${shown.text}\n${saved}` };
+              }),
+            ),
+        });
   Object.assign(tools, createPointTools(context, { screen, inOrder, perform }));
   // Offered only when the step declared secrets and the surface can fill: an
   // empty vocabulary is better than a tool the model can only be rejected on.

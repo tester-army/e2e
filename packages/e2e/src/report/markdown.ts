@@ -27,6 +27,7 @@ import { filterDecision, formatCost, formatTokens, repeatSuffix, shortCommit, st
 import { leftOutTests } from './left-out.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
+  appErrorLines,
   attemptsLine,
   detailLines,
   evidenceOf,
@@ -316,7 +317,8 @@ function runErrorLine(error: ReportError): string {
  * under it, where the reader looks first; one lead sentence naming the
  * error and the step it happened at; what the error and the agent said,
  * quoted; the facts as a list (expected and observed, whether every attempt
- * failed alike, the last turns, the screen); and the evidence. The file is
+ * failed alike, the last turns, the screen, what the app logged as an
+ * error); and the evidence. The file is
  * named once, in the source link. The steps before the failed one are not
  * retold: the lead says where in the flow it was, and the trace page has
  * the rest. A flaky test's story is its last failed attempt, not the retry that
@@ -330,7 +332,7 @@ function failureBlock({ result, final }: Entry, manyTargets: boolean, options: M
   const name = error === undefined ? `**${cell(result.status, MAX_ID_CHARS)}**` : errorName(error);
   const lead = at === undefined ? name : `${name} ${stepClause(told.steps, at)}`;
   const alike = attemptsLine(result, final);
-  const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told)];
+  const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told), ...appErrorLines(told)];
   const where = evidence(evidenceOf(told), options);
   const page = options.traces?.get(result.id);
   const about = [sourceText(failureSource(result, told), options.sourceUrl), ...(manyTargets ? [cell(result.targetId, MAX_ID_CHARS)] : [])];

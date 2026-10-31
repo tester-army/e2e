@@ -28,8 +28,8 @@ const root = fileURLToPath(new URL('../../../', import.meta.url));
 const password = 'acp-live-secret-value';
 const preset = process.env['ACP_AGENT'] ?? 'claudeCode';
 const ADAPTERS: Record<string, string> = {
-  claudeCode: '@agentclientprotocol/claude-agent-acp@0.88.0',
-  codex: '@agentclientprotocol/codex-acp@2.1.1',
+  claudeCode: '@agentclientprotocol/claude-agent-acp@0.99.1',
+  codex: '@agentclientprotocol/codex-acp@2.5.0',
 };
 if (!(preset in ADAPTERS)) throw new Error(`ACP_AGENT must be one of ${Object.keys(ADAPTERS).join(', ')}`);
 const model = process.env['ACP_MODEL'] ?? (preset === 'claudeCode' ? 'sonnet' : '');

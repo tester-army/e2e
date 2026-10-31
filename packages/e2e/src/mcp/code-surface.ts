@@ -159,7 +159,7 @@ export const LEFT_OUT: ReadonlyMap<string, string> = new Map(
     debug: "prints to the server's own output; read the screen with screen.tree() or the observe tool",
     all: 'returns locators, not a result; use count() or nth(i)',
     setInputFiles: 'reads files from disk; attach files with the upload tool, which checks the paths',
-    screenshot: 'writes an unmasked screenshot file; use the screenshot tool, which masks secure fields',
+    screenshot: 'writes into the test attempt; use the screenshot tool with path to save a file',
     toHaveScreenshot: 'compares against screenshots kept beside a test file, so it runs only in a test; look with the screenshot tool',
     startRecording: 'records into a test attempt; use the start_recording tool',
     stopRecording: 'records into a test attempt; use the stop_recording tool',

@@ -11,6 +11,9 @@ the `e2e/engine` contract. Write one to test a desktop app, a TV, or another
 platform. `@e2e-dev/web` and `@e2e-dev/mobile` use the same public
 `defineEngine` API and are complete examples.
 
+This page builds one in TypeScript, served in the runner's process. To run
+one in another process or language, see [Engine servers](/engine-servers).
+
 Engines drive user interfaces only. For an inbox, a database, or a test API,
 write a fixture with [`test.extend`](/reference/test#your-own-fixtures).
 
@@ -248,7 +251,9 @@ Throw `EngineError` with a code from the
 
 An engine can contribute fixtures such as `browser` or `device`. Wrap their
 methods with `context.fixture` to record each call as a `<fixture>.<method>`
-step, with its own artifacts and failures.
+step, with its own artifacts and failures. Fixtures run in the runner's
+process, beside the test. An engine server gets them from `connectEngine`; see
+[Keep host work on the client](/engine-servers#keep-host-work-on-the-client).
 
 ```ts
 fixtures: {
@@ -295,5 +300,8 @@ has examples of these checks.
   </Card>
   <Card title="Mobile engine reference" icon="mobile-screen" href="/reference/mobile">
     A complete device engine to read alongside.
+  </Card>
+  <Card title="Engine servers" icon="network-wired" href="/engine-servers">
+    Run the engine in another process, machine, or language.
   </Card>
 </CardGroup>

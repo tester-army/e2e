@@ -139,11 +139,15 @@ leaves the last run's files, and a `--last-failed` rerun keeps the files
 the report it reruns names and writes its own under each test's `rerun-<n>/`. The report records every artifact path, a
 hosted service's video by URL.
 
-- `list` (default): setup steps, one line per file and target, a `Failed
+- `list` (default): setup steps, one line per file and target (when stdout
+  is not a terminal, each test also prints as it finishes), a `Failed
   Tests` section (error, code, failing line, code frame), then the
   summary rows `Test Files`, `Tests`, `AI`, `Cache` (when the replay cache
   ran), `Repeats` (with `--repeat-each`), `Errors`, `Start at`, `Duration`,
-  `Traces` (when a page was written), `AI trace` (with `--ai-trace`). Past a minute `Duration`
+  `Traces` (when a page was written), `Screenshots` (the first 10
+  `app.screenshot` files, then a count), `AI trace` (with `--ai-trace`), and
+  last `Failed`, one entry per failed test (file and line, error's first
+  line, trace page when written), so `| tail` keeps it. Past a minute `Duration`
   repeats as minutes and seconds, setup time split out as `startup` in the
   same parenthetical (`682.97s (11m 23s, startup 43.00s)`).
 - `report.json`, for scripts rather than reading (`jq`, CI tools; a reader

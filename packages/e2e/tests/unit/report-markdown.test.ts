@@ -314,6 +314,18 @@ describe('renderMarkdownReport', () => {
         '- Expected: hidden or absent\n- Observed: default states (1 match)\n- Screen: `/dashboard/p1/settings?tab=env`\n- Closest to the locator: `#n41 button "Save Changes" [disabled]`',
       ].join('\n\n'),
     );
+    // The errors the app logged come last among the facts, oldest first, warnings and info left to the trace page.
+    const logged = attempt({ status: 'failed', error, steps: locators });
+    logged.appLog = [
+      { source: 'console', level: 'info', text: 'ready', at: '2026-01-01T00:00:00.000Z', step: 0 },
+      { source: 'error', level: 'error', text: 'TypeError: x at http://127.0.0.1:3100/app.js:3:7', at: '2026-01-01T00:00:02.000Z', step: 1 },
+      { source: 'console', level: 'error', text: 'Error occurred prerendering page "/settings"', at: '2026-01-01T00:00:01.000Z', step: 0 },
+      { source: 'console', level: 'warning', text: 'deprecated', at: '2026-01-01T00:00:03.000Z', step: 1 },
+    ];
+    const withLog = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [logged] })] }));
+    expect(withLog).toContain('- Observed: default states (1 match)\n- App console error: `Error occurred prerendering page "/settings"`\n- App uncaught error: `TypeError: x at /app.js:3:7`\n\n');
+    expect(withLog).not.toContain('`ready`');
+    expect(withLog).not.toContain('deprecated');
     // A message that says more than the api is quoted, first line only: the facts carry the rest.
     const worded = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [attempt({ status: 'failed', error: { ...error, message: 'the Save button stayed\nexpected: hidden' }, steps: locators })] })] }));
     expect(worded).toContain(', after 15.1s\n\n> the Save button stayed\n\n- Expected:');

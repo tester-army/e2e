@@ -1,0 +1,388 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/engine-manifest-v1.schema.json",
+  "title": "e2e engine manifest, engine protocol 1",
+  "description": "What an engine server is: the manifest a client declares in connectEngine and the server returns from initialize.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "name",
+    "version",
+    "spiVersion",
+    "methods"
+  ],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "spiVersion": {
+      "const": 1
+    },
+    "platform": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "workers": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "methods": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "engine/observe",
+          "engine/locate",
+          "engine/perform",
+          "engine/performAt",
+          "keyboard/type",
+          "keyboard/press",
+          "keyboard/dismiss",
+          "state/capture",
+          "state/restore",
+          "artifacts/screenshot",
+          "artifacts/startVideo",
+          "artifacts/stopVideo",
+          "session/open",
+          "session/back",
+          "session/restart",
+          "session/reset",
+          "lifecycle/prepare",
+          "lifecycle/finish",
+          "lifecycle/init",
+          "lifecycle/startAttempt",
+          "lifecycle/settleAttempt",
+          "lifecycle/endAttempt",
+          "lifecycle/dispose"
+        ]
+      }
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "tap",
+          "doubleTap",
+          "secondaryTap",
+          "longPress",
+          "fill",
+          "clear",
+          "press",
+          "check",
+          "uncheck",
+          "focus",
+          "hover",
+          "scrollIntoView",
+          "selectOption",
+          "setInputFiles",
+          "dragTo",
+          "swipe"
+        ]
+      }
+    },
+    "pointerActions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "tap",
+          "doubleTap",
+          "secondaryTap",
+          "longPress",
+          "hover",
+          "dragTo",
+          "swipe",
+          "swipeTo"
+        ]
+      }
+    },
+    "tapModifiers": {
+      "type": "boolean"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "engine/perform"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "actions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "actions"
+        ]
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "engine/perform"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "tapModifiers": {
+            "const": true
+          }
+        },
+        "required": [
+          "tapModifiers"
+        ]
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "engine/perform"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "engine/performAt"
+            }
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "pointerActions"
+        ]
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "pointerActions"
+        ]
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "engine/performAt"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "enum": [
+                "engine/perform",
+                "engine/locate",
+                "engine/performAt",
+                "keyboard/type",
+                "keyboard/press",
+                "keyboard/dismiss"
+              ]
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "engine/observe"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "keyboard/type"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "keyboard/press"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "keyboard/press"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "keyboard/type"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "keyboard/dismiss"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "keyboard/type"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "state/capture"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "state/restore"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "state/restore"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "state/capture"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "artifacts/startVideo"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "artifacts/stopVideo"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "artifacts/stopVideo"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "artifacts/startVideo"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "artifacts/startVideo"
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "methods": {
+            "contains": {
+              "const": "artifacts/screenshot"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -15,7 +15,8 @@ import { rejectUnknownOptions } from '../internal/options.ts';
 import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
 import { sleep } from '../internal/time.ts';
 import type { StepRunOptions } from '../run/steps.ts';
-import type { Agent, StandardSchemaV1, VisionMode } from '../types.ts';
+import type { Agent, AgentParams, JsonValue, StandardSchemaV1, VisionMode } from '../types.ts';
+import { redactParams, validateParams } from './act-validation.ts';
 import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
@@ -65,9 +66,9 @@ const VISION_HINT = 'the judge saw the semantic tree only; pass vision: true whe
 const VISION_HINT_UNPROVEN =
   'the judge saw the semantic tree only; if the engine captures pixels, pass vision: true when the answer is in pixels';
 
-const WAIT_FOR_KEYS = ['timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
+const WAIT_FOR_KEYS = ['params', 'timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
-const ASSERT_KEYS = ['timeout', 'screenshot', 'vision', 'agent'] as const;
+const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -125,8 +126,9 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
   /**
    * One judgment call against a fresh observation. The judge is shown the
-   * instruction and the screen, never the prior steps or the acting agent's
-   * summaries: a verdict rests on evidence, not on what the actor said it did.
+   * instruction, its params, the agent's context, and the screen, never the
+   * prior steps or the acting agent's summaries: a verdict rests on evidence,
+   * not on what the actor said it did.
    */
   const askJudgment = (invocation: Invocation, instruction: string, observation: AgentObservation) =>
     invocation.ask({
@@ -136,12 +138,26 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       prompt: { request: JUDGMENT_REQUEST, instruction, observation },
     });
 
+  /**
+   * A judgment's params as the judge reads them: projected as `act` projects
+   * them, a `Secret` by name only and a `unique()` value as its string, then
+   * redacted per call, so a registered value spelled into a param never reaches the model.
+   */
+  const judgmentParams = (
+    params: AgentParams | undefined,
+    api: string,
+  ): Readonly<Record<string, JsonValue>> | undefined => {
+    const { projected, templates } = validateParams(params, api);
+    return projected === undefined ? undefined : redactParams(projected, templates, runtime.redact, api).params;
+  };
+
   const agent: Agent = {
     // The rest parameter exists only to catch the pre-0.8 three-argument call.
     act: (instruction, options, ...legacy: readonly unknown[]) =>
       runActStep(runtime, instruction, options, legacy.length),
     waitFor(condition, options) {
       rejectUnknownOptions('agent.waitFor', options, WAIT_FOR_KEYS);
+      const params = judgmentParams(options?.params, 'agent.waitFor');
       const intervalMs = validateInterval(options?.interval);
       const { config } = runtime.select(options?.agent);
       const vision = resolveVision(options?.vision);
@@ -149,6 +165,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
         {
           api: 'agent.waitFor',
           agent: options?.agent,
+          params,
           task: 'judge whether a condition holds',
           timeoutMs: resolveTimeout(options?.timeout, config.judgmentTimeout),
           maxModelCalls: resolveBoundedBudget(options?.maxModelCalls, config.maxModelCalls, 'maxModelCalls'),
@@ -249,11 +266,13 @@ export function createAgentFixture(runtime: AgentContext): Agent {
       if (customExecutor) {
         return runAssertStep(runtime, assertion, options);
       }
+      const params = judgmentParams(options?.params, 'agent.assert');
       const vision = resolveVision(options?.vision);
       return step(
         {
           api: 'agent.assert',
           agent: options?.agent,
+          params,
           task: 'judge whether an assertion holds',
           timeoutMs: resolveTimeout(options?.timeout, config.judgmentTimeout),
           maxModelCalls: ASSERT_MODEL_CALLS,

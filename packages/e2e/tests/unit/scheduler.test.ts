@@ -4,6 +4,7 @@
  * without spawning processes or browsers.
  */
 
+import { protocolEngine } from '../../src/engine/protocol/client.ts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CollectedFile, CollectedTest, Collection } from '../../src/collect/collect.ts';
 import type {
@@ -65,7 +66,7 @@ function makeTarget(name: string, index: number, engine?: EngineHandle): Resolve
     name,
     index,
     platform: 'web',
-    engine,
+    engine: engine === undefined ? undefined : protocolEngine(engine),
     app: EMPTY_APP,
     declaredApp: EMPTY_DECLARED,
     trace: { mode: 'off', source: 'default' },

@@ -1,15 +1,14 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import type { DeviceProvider, DeviceRequest } from '../../src/provider.ts';
 
+const leases = { acquire: vi.fn(), release: vi.fn() };
+const agentDeviceLeases = vi.fn(() => leases);
+// Docs and mobile resolve the same built @e2e-dev/mobile through the workspace link.
+vi.doMock('../../../../docs/node_modules/@e2e-dev/mobile/dist/lease/index.js', () => ({ agentDeviceLeases }));
 // Load the executable docs without including them in the mobile package's rootDir.
 const exampleModule = new URL('../../../../docs/examples/mobile/device-cloud-provider.ts', import.meta.url).href;
-const sdk = { allocate: vi.fn(), release: vi.fn() };
-// Docs and mobile can resolve different pnpm peer instances of agent-device.
-vi.doMock('../../../../docs/node_modules/agent-device', () => ({
-  createAgentDeviceClient: vi.fn(() => ({ leases: sdk })),
-}));
 const { cloudDevices } = (await import(exampleModule)) as {
-  cloudDevices: (options: { provider: string; stateDir: string }) => DeviceProvider;
+  cloudDevices: (options: { provider: string; device: string; osVersion: string; app: string }) => DeviceProvider;
 };
 
 const request: DeviceRequest = {
@@ -18,55 +17,34 @@ const request: DeviceRequest = {
   targetName: 'ios',
   slot: 0,
   slots: 1,
-  agentDeviceVersion: '0.21.28',
+  agentDeviceVersion: '0.21.35',
   projectRoot: '/project',
-  env: {},
+  env: { CLOUD_TOKEN: 'token' },
   signal: new AbortController().signal,
   log: () => undefined,
 };
-const grant = { tenantId: 'allocated-tenant', runId: 'run-1', leaseId: 'allocated-lease' };
-const scope = {
-  tenant: grant.tenantId,
-  runId: grant.runId,
-  leaseId: grant.leaseId,
-  leaseBackend: 'ios-instance',
-  leaseProvider: 'cloud',
-};
-const releaseContext = { ...request };
+const options = { provider: 'cloud', device: 'iPhone 16', osVersion: '18', app: 'cloud://APP' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  sdk.release.mockResolvedValue({});
+  leases.acquire.mockResolvedValue({ id: 'lease-1', client: { leaseId: 'lease-1' } });
 });
 
-it('hands a retained cloud grant to the worker and releases the allocated scope', async () => {
-  sdk.allocate.mockResolvedValue({ ...grant, retainOnClose: true });
-  const cloud = cloudDevices({ provider: 'cloud', stateDir: '/state' });
+it('leases with the token, the selectors, and a summary, and releases through the same leases', async () => {
+  const cloud = cloudDevices(options);
+  expect(agentDeviceLeases).toHaveBeenCalledWith({ provider: 'cloud', label: 'cloud' });
   const lease = await cloud.acquire(request);
-
-  expect(sdk.allocate).toHaveBeenCalledWith({
-    tenant: 'cloud', runId: request.runId, leaseBackend: 'ios-instance',
-    leaseProvider: 'cloud', retainOnClose: true, platform: 'ios', target: 'mobile',
+  expect(leases.acquire).toHaveBeenCalledWith(request, {
+    env: { CLOUD_TOKEN: 'token' },
+    selectors: { device: 'iPhone 16', providerOsVersion: '18', providerApp: 'cloud://APP' },
+    summary: 'iPhone 16, ios 18',
   });
-  expect(lease).toEqual({ id: grant.leaseId, client: { stateDir: '/state/run-1', ...scope } });
-  expect(sdk.release).not.toHaveBeenCalled();
-  await cloud.release(lease, releaseContext);
-  expect(sdk.release).toHaveBeenCalledExactlyOnceWith(scope);
+  const context = { runId: 'run-1', targetName: 'ios', env: request.env, signal: request.signal, log: request.log };
+  await cloud.release(lease, context);
+  expect(leases.release).toHaveBeenCalledWith(lease, context);
 });
 
-it('releases a declined retention grant before rejecting acquisition, without keeping it for release', async () => {
-  sdk.allocate.mockResolvedValue({ ...grant, retainOnClose: false });
-  let finishRelease!: () => void;
-  sdk.release.mockImplementationOnce(() => new Promise<void>((resolve) => { finishRelease = resolve; }));
-  const cloud = cloudDevices({ provider: 'cloud', stateDir: '/state' });
-  const settled = vi.fn();
-  const acquiring = cloud.acquire(request);
-  void acquiring.then(settled, settled);
-
-  await vi.waitFor(() => expect(sdk.release).toHaveBeenCalledExactlyOnceWith(scope));
-  expect(settled).not.toHaveBeenCalled();
-  finishRelease();
-  await expect(acquiring).rejects.toThrow(/retainOnClose/);
-  await cloud.release({ id: grant.leaseId }, releaseContext);
-  expect(sdk.release).toHaveBeenCalledExactlyOnceWith(scope);
+it('leases nothing without a token', async () => {
+  await expect(cloudDevices(options).acquire({ ...request, env: {} })).rejects.toThrow('CLOUD_TOKEN is not set');
+  expect(leases.acquire).not.toHaveBeenCalled();
 });

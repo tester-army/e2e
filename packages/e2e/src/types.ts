@@ -149,6 +149,11 @@ export interface AgentOption {
 
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /**
+   * Values the assertion refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default. */
@@ -157,6 +162,11 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
+  /**
+   * Values the condition refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
@@ -589,8 +599,9 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
 export interface App {
   /**
    * The resolved base URL of the target's app, with the port the run
-   * allocated when `app.url` declared port 0; undefined for a target that
-   * declares no `app.url`.
+   * allocated when `app.url` declared port 0 and no trailing slash, so
+   * `${app.baseUrl}/api/users` joins with one slash; undefined for a target
+   * that declares no `app.url`.
    */
   readonly baseUrl: string | undefined;
   /**

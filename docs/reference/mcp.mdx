@@ -50,7 +50,9 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 #### `--config`
 
 The config every session loads unless `open_session` names one. Each
-session loads it afresh ([Several sessions](#several-sessions)).
+session loads it afresh ([Several sessions](#several-sessions)) with the
+server's environment: `process.env` in the config reads the variables the
+MCP client started `e2e mcp` with, not the agent's shell.
 
 #### `--target`
 
@@ -95,6 +97,17 @@ device the [pinned app](/mobile#point-at-your-app), launched fresh. It installs
 no build, so a local device target needs `app.bundleId`. Returns the session
 id, the catalog, and the first observation.
 
+The summary names the app's URL, with the port a free-port `url` was
+assigned, and the app command: its executable, readiness URL, `env` and
+`inheritEnv` names, and log file. It prints no `args`, no `env` values, and
+no URL userinfo or query. e2e starts no other app process, so a database the
+app uses runs outside it.
+
+```text wrap
+App: http://127.0.0.1:57162/ (port 57162, assigned for the declared port 0).
+Process: app.command "node" (ready at http://127.0.0.1:57162/; env PORT, DATABASE_URL; log .e2e/app.log). e2e starts no other app process for this session; a database or other service the app uses runs outside e2e.
+```
+
 ```txt
 open_session {target: "web", headed: true}
 ```
@@ -102,7 +115,7 @@ open_session {target: "web", headed: true}
 | Input | Type | Required | Does |
 | --- | --- | --- | --- |
 | `target` | string | no | The target to open. Otherwise `--target`, else the only target. |
-| `config` | string (path) | no | The config for this session. Otherwise `--config`, else discovered like `e2e run`. |
+| `config` | string (path) | no | The config for this session, absolute or relative to the server's working directory (`cwd` in the client's MCP config). Otherwise `--config`, else discovered like `e2e run`. |
 | `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
 | `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
 
@@ -170,7 +183,7 @@ What `call` can run depends on the session's target.
 | [`locate`](#locate) | Tries a semantic locator |
 | [`run_code`](#run_code) | Runs test statements |
 | [`test_lines`](#test_lines) | Returns the session's test lines |
-| [`screenshot`](#screenshot) | Returns the masked viewport |
+| [`screenshot`](#screenshot) | Returns the masked viewport, optionally saved to a file |
 | [Point tools](#point-tools) | Act at a screenshot point |
 | [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
 | [Project tools](#project-tools) | Your `defineTool` tools |
@@ -335,10 +348,20 @@ through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
 
-The masked viewport as an image. Takes no arguments.
+The masked viewport as an image.
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Optional. Also saves the screenshot as a PNG file, resolved against the project root, and returns its absolute path. A path outside the project, a hidden file, or one under a hidden directory is `POLICY_DENIED`. |
+
+```json
+{ "tool": "screenshot", "args": { "path": "screenshots/checkout.png" } }
+```
 
 - From then on every action result carries a fresh screenshot.
 - It masks secure fields only, after a secret fill too.
+- The file is a second, full-resolution capture, masked as `app.screenshot`
+  masks it. The attached image may be scaled down.
 
 #### Point tools
 
