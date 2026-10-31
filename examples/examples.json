@@ -27,6 +27,14 @@
         "label": "TanStack Start"
       },
       {
+        "id": "vue",
+        "label": "Vue"
+      },
+      {
+        "id": "nuxt",
+        "label": "Nuxt"
+      },
+      {
         "id": "expo",
         "label": "Expo"
       },
@@ -155,6 +163,26 @@
       {
         "id": "email",
         "label": "Email"
+      },
+      {
+        "id": "i18n",
+        "label": "Internationalization"
+      },
+      {
+        "id": "file-uploads",
+        "label": "File uploads"
+      },
+      {
+        "id": "location",
+        "label": "Location"
+      },
+      {
+        "id": "biometrics",
+        "label": "Biometrics"
+      },
+      {
+        "id": "deep-links",
+        "label": "Deep links"
       }
     ],
     "platform": [
@@ -709,6 +737,140 @@
         ],
         "platform": [
           "web"
+        ]
+      }
+    },
+    {
+      "slug": "i18n",
+      "title": "Testing a site in three languages with e2e",
+      "shortTitle": "i18n",
+      "description": "A Nuxt contact form in English, German, and Spanish, with tests written once in English and each agent step handed to a persona who reads that language.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-i18n",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-i18n/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nuxt",
+          "vue"
+        ],
+        "useCase": [
+          "i18n"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "file-upload",
+      "title": "Testing file uploads with e2e",
+      "shortTitle": "File upload",
+      "description": "Image uploads from a Next.js page to a private Vercel Blob store: picking and dropping a file, refusing the wrong one, and a download checked byte for byte.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-file-upload",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-file-upload/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "file-uploads"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "location",
+      "title": "Testing location in an Expo app with e2e",
+      "shortTitle": "Location",
+      "description": "The permission prompt, a moving device, going offline on Android, and turning location back on in Settings, in an Expo app on iOS and Android.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-location",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-location/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "location"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "biometrics",
+      "title": "Testing Face ID and fingerprint unlock with e2e",
+      "shortTitle": "Biometrics",
+      "description": "An Expo lock screen on iOS and Android: Face ID and fingerprint matches and misses, the PIN fallback, and relocking when the app goes to the background.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-biometrics",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-biometrics/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "biometrics",
+          "authentication"
+        ],
+        "platform": [
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
+      "slug": "deep-links",
+      "title": "Testing deep links in an Expo app with e2e",
+      "shortTitle": "Deep links",
+      "description": "Order links opened from a cold start and while the app runs, an unknown order, and a link to no screen, in an Expo app on iOS and Android.",
+      "source": "official",
+      "repository": "https://github.com/tester-army/e2e-deep-links",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/tester-army/e2e-deep-links/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "deep-links"
+        ],
+        "platform": [
+          "ios",
+          "android"
         ]
       }
     },
