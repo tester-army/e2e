@@ -77,9 +77,9 @@
     }
   },
   "devDependencies": {
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "@types/pngjs": "6.0.5",
-    "ai": "7.0.153",
+    "ai": "7.0.159",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

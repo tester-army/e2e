@@ -3,7 +3,7 @@ import { AgentError, type JsonValue, type StepExecutor, type StepExecutorContext
 import { BASE_RULES, VERDICT_RULES } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import { claudeCodeLaunch, codexLaunch } from './presets.ts';
-import type { Usage } from '@agentclientprotocol/sdk';
+import type { Usage } from '@agentclientprotocol/sdk/unstable';
 import { startSession, type AcpSession, type AgentLaunch, type TurnReport } from './session.ts';
 import { activeStep, missingTools, openingScreen, stepTools, verdictOf, type ActiveStep, type StepSlot } from './tools.ts';
 import type { ServedTool } from './mcp.ts';

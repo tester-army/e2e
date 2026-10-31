@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit --project examples/tsconfig.json"
   },
   "devDependencies": {
-    "@ai-sdk/typesafe-ai": "3.0.27",
+    "@ai-sdk/typesafe-ai": "3.0.31",
     "@e2e-dev/browserstack": "workspace:*",
     "@e2e-dev/decision": "workspace:*",
     "@e2e-dev/limrun": "workspace:*",
@@ -16,8 +16,8 @@
     "@e2e-dev/testmu": "workspace:*",
     "@e2e-dev/web": "workspace:*",
     "@openrouter/ai-sdk-provider": "3.1.0",
-    "@types/node": "26.6.5",
-    "ai": "7.0.153",
+    "@types/node": "26.6.6",
+    "ai": "7.0.159",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "zod": "4.6.7"

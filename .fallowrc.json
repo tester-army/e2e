@@ -46,6 +46,12 @@
     "@oxc-project/runtime",
     "@agent-device/testmu"
   ],
+  "ignoreExports": [
+    {
+      "file": "packages/e2e/src/types.ts",
+      "exports": ["StandardSchemaV1"]
+    }
+  ],
   "rules": {
     "unused-class-member": "warn",
     "dev-dependencies-in-production": "warn"

@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
