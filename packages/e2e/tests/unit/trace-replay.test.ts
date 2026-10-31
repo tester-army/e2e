@@ -121,8 +121,12 @@ function screen(nodes: readonly SemanticNode[], viewport = VIEWPORT) {
 describe('verifyEndState', () => {
   const saved: SemanticNode = { ref: { id: 'm', revision: 'r1' }, role: 'status', name: 'Marker', text: 'saved' };
   const savedAnchor = { role: 'status', name: 'Marker', text: 'saved' };
-  const verifyAnchors = (host: ReplayHost, endAnchors: readonly TraceTargetDescriptor[], waitMs?: number) =>
-    verifyEndState(host, (live) => deltaMismatch({ endAnchors }, live.nodes, new Map()) === undefined, waitMs === undefined ? {} : { waitMs });
+  /** The shortest wait a recording carries: an end state that showed at once, plus the margin. */
+  const RECORDED_WAIT_MS = 10_000;
+  /** The step clock a replay outside `cache.strict` keeps for a hand-off. */
+  const HAND_OFF_RESERVE_MS = 20_000;
+  const verifyAnchors = (host: ReplayHost, endAnchors: readonly TraceTargetDescriptor[], waitMs = RECORDED_WAIT_MS, sinceMs = Date.now()) =>
+    verifyEndState(host, (live) => deltaMismatch({ endAnchors }, live.nodes, new Map()) === undefined, { sinceMs, waitMs, minWaitMs: 0, reserveMs: HAND_OFF_RESERVE_MS });
 
   /** A host with `remainingMs` on the step clock whose screen shows the saved marker from `afterMs` on. */
   const savedAfter = (afterMs: number, remainingMs: number): TestHost => {
@@ -173,6 +177,52 @@ describe('verifyEndState', () => {
     expect(shown).toBe(true);
   });
 
+  it('gives up when the recorded wait runs out, with no poll of its own before it', async () => {
+    const startedMs = Date.now();
+    await expect(verifyAnchors(savedAfter(Infinity, 120_000), [savedAnchor], 10_718)).resolves.toBe(false);
+    expect(Date.now() - startedMs).toBe(10_718);
+  });
+
+  it('counts the wait from the last action, so time spent before the first look comes off it', async () => {
+    const startedMs = Date.now();
+    await expect(verifyAnchors(savedAfter(Infinity, 120_000), [savedAnchor], 10_000, startedMs - 4_000)).resolves.toBe(false);
+    expect(Date.now() - startedMs).toBe(6_000);
+  });
+
+  it('sees a late end state within a second of it showing', async () => {
+    const startedMs = Date.now();
+    await expect(verifyAnchors(savedAfter(12_500, 120_000), [savedAnchor], 30_000)).resolves.toBe(true);
+    expect(Date.now() - startedMs).toBe(13_000);
+  });
+
+  it('still takes the quick looks of a re-render when the step clock keeps nothing back for a wait', async () => {
+    await expect(verifyAnchors(savedAfter(300, 15_000), [savedAnchor])).resolves.toBe(true);
+  });
+
+  it('still takes the quick looks of a re-render when a slow route used up the recorded wait', async () => {
+    await expect(verifyAnchors(savedAfter(300, 120_000), [savedAnchor], 10_718, Date.now() - 11_000)).resolves.toBe(true);
+  });
+
+  it('counts its shortest wait from the first look, so a slow route does not shorten it', async () => {
+    const startedMs = Date.now();
+    const options = { sinceMs: startedMs - 10_000, waitMs: 11_000, minWaitMs: 15_000, reserveMs: 2_000 };
+    await expect(verifyEndState(savedAfter(Infinity, 120_000), () => false, options)).resolves.toBe(false);
+    expect(Date.now() - startedMs).toBe(15_000);
+  });
+
+  it('takes no look the step clock cannot finish, so the step ends as a mismatch, not timed out', async () => {
+    const stepEndsMs = Date.now() + 25_000;
+    const host = makeHost({});
+    host.remainingMs = () => stepEndsMs - Date.now();
+    host.capture = async () => {
+      // A device snapshot on a loaded simulator.
+      await new Promise((resolve) => setTimeout(resolve, 2_200));
+      return screen([upgrade]);
+    };
+    await expect(verifyEndState(host, () => false, { sinceMs: Date.now(), waitMs: 30_000, minWaitMs: 15_000, reserveMs: 2_000 })).resolves.toBe(false);
+    expect(Date.now()).toBeLessThanOrEqual(stepEndsMs);
+  });
+
   it('waits past the settling backoff for an effect the recording waited longer for, while the step clock keeps its reserve', async () => {
     const startedMs = Date.now();
     await expect(verifyAnchors(savedAfter(20_000, 120_000), [savedAnchor], 30_000)).resolves.toBe(true);
@@ -187,7 +237,7 @@ describe('verifyEndState', () => {
     const pixelsFrom = Date.now() + 16_000;
     const blind = makeHost({ remainingMs: 120_000 });
     blind.capture = async () => (Date.now() >= pixelsFrom ? { kind: 'pixels', viewport: VIEWPORT } : screen([upgrade]));
-    await expect(verifyEndState(blind, () => Date.now() >= pixelsFrom, { waitMs: 30_000 })).resolves.toBe(false);
+    await expect(verifyEndState(blind, () => Date.now() >= pixelsFrom, { sinceMs: Date.now(), waitMs: 30_000, minWaitMs: 0, reserveMs: HAND_OFF_RESERVE_MS })).resolves.toBe(false);
     expect(Date.now()).toBe(pixelsFrom);
   });
 });

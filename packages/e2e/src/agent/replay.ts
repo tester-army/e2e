@@ -392,50 +392,64 @@ export async function replayTrace(
   return { completed: true, executed: summaries.length, total, summaries };
 }
 
+/** How long a replay waits for a trace's end state, as `verifyEndState` takes it. */
+interface EndWait {
+  /** When the replay's last action returned: `waitMs` counts from there, as the recording's wait did. */
+  readonly sinceMs: number;
+  /** How long after `sinceMs` the end state may take to show. */
+  readonly waitMs: number;
+  /** The shortest wait, counted from the first look. */
+  readonly minWaitMs: number;
+  /** Step clock kept back from the wait for what follows it. */
+  readonly reserveMs: number;
+  /** A semantic screen already captured after the last action, read as the first look. */
+  readonly initial?: SemanticScreen;
+}
+
 /**
  * Waits for a trace's recorded end state on the live screen: `holds` (the
  * recorded delta, `cache/anchors.ts`) must be true of one look, or the
- * replay must not pass on its own. Waits on the same settling backoff
- * relocation uses, because the recording run's final look came seconds of
- * model latency after its last action and a replay's comes right away: a
- * save still in flight is a wait, not a divergence. A surface that cannot be
- * observed at all is a mismatch too — the executor gets the step and judges
- * the live state; only runtime hard stops propagate.
+ * replay must not pass on its own. The deadline is the later of `waitMs`
+ * after the last action and `minWaitMs` after the first look, cut short so
+ * `reserveMs` of the step clock stays. The quick looks of a re-render are
+ * always taken. A surface that cannot be observed at all is a mismatch too;
+ * only runtime hard stops propagate.
  */
 export async function verifyEndState(
   host: ReplayHost,
   holds: (screen: SemanticScreen) => boolean,
-  options: { readonly waitMs?: number; readonly initial?: SemanticScreen } = {},
+  options: EndWait,
 ): Promise<boolean> {
   const startedMs = Date.now();
+  const wantedUntil = Math.max(options.sinceMs + options.waitMs, startedMs + Math.max(options.minWaitMs, END_WAIT_SETTLE_MS));
+  const allowedUntil = startedMs + Math.max(END_WAIT_SETTLE_MS, host.remainingMs() - options.reserveMs);
+  const deadline = Math.min(wantedUntil, allowedUntil);
+  let slowestLookMs = 0;
   try {
-    const present = await pollSettled(host, (screen) =>
-      holds(screen) ? true : undefined,
-      options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial },
-    );
-    if (present === true) return true;
-    // The settling backoff covers a slow re-render; the recorded run may have
-    // waited far longer than that for its effect — a report that takes half a
-    // minute — and so does the replay, up to what the recording needed, while
-    // the step clock leaves room for a hand-off to act.
-    const deadline = startedMs + Math.min(options.waitMs ?? 0, Math.max(0, host.remainingMs() - END_WAIT_RESERVE_MS));
-    while (Date.now() < deadline && !host.signal.aborted) {
-      await sleep(Math.min(END_WAIT_POLL_MS, deadline - Date.now()), host.signal);
-      const screen = await host.observe('raw');
+    let screen = await firstLook(host, options.initial === undefined ? HELD_STILL : { kind: 'in-hand', screen: options.initial });
+    for (let attempt = 0; ; attempt += 1) {
       if (screen.kind === 'pixels' || !host.traceEligible) return false;
       if (holds(screen)) return true;
+      const delay = Math.min(END_WAIT_DELAYS_MS[attempt] ?? END_WAIT_POLL_MS, deadline - Date.now());
+      // A look the step clock cannot finish would end the step as timed out, not as a mismatch.
+      if (delay <= 0 || host.signal.aborted || host.remainingMs() <= delay + slowestLookMs) return false;
+      await sleep(delay, host.signal);
+      const lookedAtMs = Date.now();
+      screen = await host.observe('raw');
+      slowestLookMs = Math.max(slowestLookMs, Date.now() - lookedAtMs);
     }
-    return false;
   } catch (cause) {
     if (isReplayFatal(cause, host.signal)) throw cause;
     return false;
   }
 }
 
-/** Poll cadence while a replay waits for the recorded end state beyond the settling backoff. */
+/** The first delays between looks while a replay waits for the recorded end state. */
+const END_WAIT_DELAYS_MS = [100, 300, 600] as const;
+/** Those first looks' span, always taken: a re-render after the last action. */
+const END_WAIT_SETTLE_MS = END_WAIT_DELAYS_MS.reduce((total, delay) => total + delay, 0);
+/** The delay between looks after those. */
 const END_WAIT_POLL_MS = 1_000;
-/** Step clock kept back from that wait, so a hand-off still has room to act. */
-const END_WAIT_RESERVE_MS = 20_000;
 
 /** Relocates one descriptor against the settling screen, looking again while `retryable` says the failure may pass. */
 async function relocate(

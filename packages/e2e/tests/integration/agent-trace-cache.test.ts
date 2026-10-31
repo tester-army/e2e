@@ -364,8 +364,8 @@ test('saves the marker', async ({ app, agent, screen }) => {
 });
 `;
 
-/** Taps "Save marker" once (unless a replayed prefix already did) and checks the marker. */
-function saveMarkerExecutor(record: ExecutorRecord): StepExecutor {
+/** Taps "Save marker" once (unless a replayed prefix already did), checks the marker, and takes `thinkMs` before its verdict. */
+function saveMarkerExecutor(record: ExecutorRecord, thinkMs = 0): StepExecutor {
   return {
     name: 'save-marker-executor',
     version: 'test',
@@ -380,6 +380,7 @@ function saveMarkerExecutor(record: ExecutorRecord): StepExecutor {
       if (!/"Marker"[^\n]*text="saved"/.test(observation.text)) {
         return { status: 'failed' as const, summary: 'the marker was not saved' };
       }
+      await new Promise((resolve) => setTimeout(resolve, thinkMs));
       return { status: 'passed' as const, summary: 'the marker reads saved' };
     },
   };
@@ -427,6 +428,35 @@ describe('trace cache: the recorded end state gates self-finalization', () => {
     expect(records.at(-1)!.calls).toBe(0);
     const step = resultByTitle(second, 'saves the marker').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
     expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
+  }, 240_000);
+});
+
+describe("trace cache: the recorded end wait leaves out the executor's last turn", () => {
+  /** The margin the runner adds to a measured end wait. */
+  const END_WAIT_MARGIN_MS = 10_000;
+  /** The executor's turn after it saw the marker, before its verdict. */
+  const THINK_MS = 8_000;
+
+  it('measures the wait to the look that showed the end state, not to the verdict', async () => {
+    const app = await startFixtureApp();
+    const project = createProject({ 'tests/storage.e2e.ts': STORAGE_SUITE });
+    try {
+      const run = await runExisting(project, {
+        appUrl: app.url,
+        config: {
+          tests: 'tests/**/*.e2e.ts',
+          agents: { default: { executor: saveMarkerExecutor({ calls: 0, prefixes: [] }, THINK_MS) } },
+          cache: 'read-write' as const,
+        },
+      });
+      expect(run.exitCode).toBe(0);
+      const { endWaitMs } = readOnlyEntry(project).entry.payload;
+      expect(endWaitMs).toBeGreaterThanOrEqual(END_WAIT_MARGIN_MS);
+      expect(endWaitMs).toBeLessThan(END_WAIT_MARGIN_MS + THINK_MS);
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
   }, 240_000);
 });
 
