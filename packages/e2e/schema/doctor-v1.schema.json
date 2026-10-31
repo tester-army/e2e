@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/doctor-v1.schema.json",
+  "title": "e2e doctor-1",
+  "description": "The report `e2e doctor --reporter json` prints. A host reads `ok`, or a check's `status`: only `fail` stops a run; `warn`, `skip`, and `unknown` never do.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "version", "ok", "checks"],
+  "properties": {
+    "schemaVersion": { "const": "doctor-1" },
+    "version": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "ok": { "type": "boolean" },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+  },
+  "$defs": {
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+        "status": { "enum": ["pass", "warn", "fail", "skip", "unknown"] },
+        "target": { "type": "string", "minLength": 1 },
+        "agent": { "type": "string", "minLength": 1 },
+        "code": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "message": { "type": "string" },
+        "path": { "type": "string", "minLength": 1 },
+        "targets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "platform"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "platform": { "type": "string", "minLength": 1 },
+              "engine": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "model": { "$ref": "#/$defs/model" },
+        "judge": { "$ref": "#/$defs/model" },
+        "login": { "enum": ["openai", "github-copilot", "opencode-console", "spacexai"] },
+        "executor": { "type": "string", "minLength": 1 }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "modelId"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "modelId": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -24,6 +24,7 @@ import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERR
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
+import { doctor, formatDoctorReport } from './doctor.ts';
 import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
@@ -455,6 +456,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run --tag smoke --reporter list,junit',
           "e2e explore 'Explore checkout like a first-time buyer and find bugs'",
           'e2e list --tag smoke',
+          'e2e doctor',
           'e2e cache ls',
           'e2e guide',
           'e2e upgrade',
@@ -931,6 +933,41 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         process.exitCode = 0;
       },
     );
+
+  program
+    .command('doctor')
+    .summary('check that e2e run can start here, without starting anything')
+    .description(
+      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app, no engine, and no worker, and calls no model unless --check-model is given. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise.',
+    )
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
+    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
+    .option('--headed', 'check for what a headed run needs, when the engine tells the two apart')
+    .option('--check-model', "call each agent's model once to prove it answers; costs one small request per model")
+    .addOption(new Option('--reporter <id>', 'list prints one line per check; json prints the doctor-1 report').choices(LIST_REPORTERS).default('list'))
+    .addHelpText(
+      'after',
+      ['', examples(['e2e doctor', 'e2e doctor --reporter json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
+    )
+    .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; reporter: ListReporter }) => {
+      const output = claimRunnerOutput();
+      if (options.reporter === 'json') output.keepStdoutForReport();
+      const report = await doctor({
+        version,
+        cwd: process.cwd(),
+        env: process.env,
+        config: options.config,
+        targets: options.target,
+        headed: options.headed === true,
+        checkModel: options.checkModel === true,
+        signal: new AbortController().signal,
+        output,
+      });
+      output.end();
+      if (options.reporter === 'json') writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
+      else process.stdout.write(formatDoctorReport(report));
+      process.exitCode = report.ok ? 0 : 2;
+    });
 
   registerCacheCommand(program);
 

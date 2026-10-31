@@ -11,6 +11,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
+import { withLogin } from './login-model.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
 import { markUnservedModel } from '../internal/unserved-model.ts';
 import { loginHint } from './providers.ts';
@@ -36,11 +37,14 @@ export function copilot(modelId: string): LanguageModelV4 {
     fetch,
     includeUsage: true,
   }).chatModel(modelId);
-  return protocolDelegate(
-    chat,
-    () => responsesModel(modelId, fetch),
-    () => copilotProtocolFor(modelId, fetch, AbortSignal.timeout(LISTING_TIMEOUT_MS)),
-    modelId,
+  return withLogin(
+    protocolDelegate(
+      chat,
+      () => responsesModel(modelId, fetch),
+      () => copilotProtocolFor(modelId, fetch, AbortSignal.timeout(LISTING_TIMEOUT_MS)),
+      modelId,
+    ),
+    'github-copilot',
   );
 }
 

@@ -418,6 +418,22 @@ describe('engine protocol', () => {
     expect(calls).toEqual(['dispose', 'dispose', 'finish']);
   });
 
+  it('runs doctor over the protocol with its info and returns its findings', async () => {
+    const seen: { targetName: string; headed: boolean; log: boolean }[] = [];
+    const { remote } = overLoopback(
+      toy({
+        async doctor(info) {
+          seen.push({ targetName: info.targetName, headed: info.headed, log: typeof info.log === 'function' });
+          return [{ id: 'toolchain', status: 'warn', message: 'downloads on first run' }];
+        },
+      }),
+    );
+    const findings = await remote.doctor!({ targetName: 'toy', projectRoot: process.cwd(), app: {}, env: {}, headed: true, signal: new AbortController().signal, log: () => {} });
+    expect(findings).toEqual([{ id: 'toolchain', status: 'warn', message: 'downloads on first run' }]);
+    expect(seen).toEqual([{ targetName: 'toy', headed: true, log: true }]);
+    expect(overLoopback(toy()).remote.doctor).toBeUndefined();
+  });
+
   it('answers session hooks the client declares instead of the server', async () => {
     const calls: string[] = [];
     const { remote } = overLoopback(toy({ session: { back: async () => { calls.push('server back'); } } }), {

@@ -14,6 +14,8 @@
 npx e2e run [files...] [options]   # run tests
 npx e2e explore [goal] [options]   # explore toward a goal without a test file (topic explore)
 npx e2e list [files...] [options]  # print what run would select
+npx e2e doctor [--check-model]     # can a run start: config, engine setup, models;
+                                   # --reporter json for a host, exit 2 on a failed check
 npx e2e init [directory] [--yes]   # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill; topics: setup, writing-tests, agent,
                                    # running, explore, debugging, mcp, bug-bash

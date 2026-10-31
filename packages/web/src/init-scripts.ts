@@ -6,7 +6,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { ConfigurationError, TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
+import { ConfigurationError, TestError, validateJsonValue, type EngineDoctorCheck, type JsonValue } from 'e2e/engine';
 import { KEEP_NAMES_HELPER, pageFunctionSource } from './evaluation.ts';
 import { message } from './support.ts';
 
@@ -44,6 +44,17 @@ export class ConfiguredInitScripts {
         throw new ConfigurationError('INVALID_CONFIG', `web({ initScripts })[${index}] ${message(cause)}`, { cause });
       }
     }));
+  }
+
+  /** The `init-scripts` check of `e2e doctor`: none without scripts, else whether every file reads. */
+  async doctor(projectRoot: string): Promise<EngineDoctorCheck[]> {
+    if (this.scripts.length === 0) return [];
+    try {
+      await this.load(projectRoot);
+    } catch (cause) {
+      return [{ id: 'init-scripts', status: 'fail', message: message(cause) }];
+    }
+    return [{ id: 'init-scripts', status: 'pass', message: `${String(this.scripts.length)} ${this.scripts.length === 1 ? 'script reads' : 'scripts read'}` }];
   }
 
   /** A new attempt's init scripts: the configured ones, to which `browser.addInitScript` appends. */

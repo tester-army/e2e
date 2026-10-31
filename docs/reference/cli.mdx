@@ -80,6 +80,7 @@ $ npx e2e --version
 | [`e2e run`](#e2e-run) | Runs the tests |
 | [`e2e explore`](#e2e-explore) | Explores the app toward a goal |
 | [`e2e list`](#e2e-list) | Prints the tests a run selects |
+| [`e2e doctor`](#e2e-doctor) | Checks that a run can start |
 | [`e2e cache`](#e2e-cache) | Inspects or clears the replay cache |
 | [`e2e upgrade`](#e2e-upgrade) | Upgrades e2e and its packages |
 | [`e2e feedback`](#e2e-feedback) | Sends feedback to the e2e team |
@@ -958,6 +959,61 @@ bunx e2e list --changed-since origin/main
 
 Pairs a selection flag removed are not listed. [`list` from `e2e/runner`](/reference/runner)
 runs the same selection in process and also returns the removed pairs.
+
+#### `e2e doctor`
+
+Checks whether `e2e run` can start here without starting anything. It loads the
+config, runs each target's engine checks, and names the model each agent
+resolved to. It starts no app, engine session, or worker, and makes no model
+call unless you pass `--check-model`.
+
+<CodeGroup>
+```bash npm
+npx e2e doctor
+npx e2e doctor --reporter json
+npx e2e doctor --check-model
+npx e2e doctor --target web --headed
+```
+
+```bash pnpm
+pnpm exec e2e doctor
+pnpm exec e2e doctor --reporter json
+pnpm exec e2e doctor --check-model
+pnpm exec e2e doctor --target web --headed
+```
+
+```bash bun
+bunx e2e doctor
+bunx e2e doctor --reporter json
+bunx e2e doctor --check-model
+bunx e2e doctor --target web --headed
+```
+</CodeGroup>
+
+| Option | Description |
+| --- | --- |
+| `--config <path>` | As for [`run`](#flags). |
+| `--target <ids>` | Checks only these targets. As for [`run`](#flags). |
+| `--headed` | Checks for what a headed run needs, such as the full Chromium build instead of the headless shell. |
+| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt. Each model is called once even when several agents share it. |
+| `--reporter <id>` | `list` or `json`. Default: `list`. |
+
+| Check | Status |
+| --- | --- |
+| `node` | `pass`: the Node.js version. On an unsupported runtime, `--reporter json` still prints a report with `node` as `fail`. |
+| `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` is the last check. |
+| Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`. `engine` is `skip` when the engine has no checks and `fail` when its checks threw. |
+| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login, with `login` set. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent. |
+
+| Reporter | Writes |
+| --- | --- |
+| `list` | One line per check: a mark, the check id, the target or agent in brackets, and the details. The last line says whether a run can start. |
+| `json` | The `doctor-1` report to stdout: `{ "schemaVersion": "doctor-1", "version", "ok", "checks": [...] }`. Each check carries `id`, `status` (`pass`, `warn`, `fail`, `skip`, or `unknown`), and, when they apply, `target`, `agent`, `code`, `message`, and the fields in the table above. The JSON Schema ships in the package as `schema/doctor-v1.schema.json`. |
+
+| Exit code | When |
+| --- | --- |
+| 0 | No check failed. `warn`, `skip`, and `unknown` never fail. |
+| 2 | At least one check failed. |
 
 #### `e2e cache`
 

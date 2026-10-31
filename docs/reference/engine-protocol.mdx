@@ -73,7 +73,9 @@ A handle opens its connections where the harness calls the engine. In the
 runner, one connection per target lives from `prepare` to `finish`, and
 opens only when the server answers `lifecycle/prepare` or
 `lifecycle/finish`. In each worker, one connection lives from `init` to
-`dispose`. A call outside `init`..`dispose` fails with `INVALID_STATE`.
+`dispose`. `e2e doctor` opens one connection per target for
+`lifecycle/doctor` alone and closes it after. A call outside
+`init`..`dispose` fails with `INVALID_STATE`.
 A worker that never ran `init` has no connection, so the server gets no
 `lifecycle/dispose` for it.
 Whether two connections share state is the server's choice: a spawned
@@ -87,7 +89,7 @@ a `session` hook replaces the server's method of the same name. See
 [Keep host work on the client](/engine-servers#keep-host-work-on-the-client).
 
 <Warning>
-`lifecycle/prepare`, `lifecycle/init`, and `lifecycle/finish` carry the
+`lifecycle/prepare`, `lifecycle/init`, `lifecycle/finish`, and `lifecycle/doctor` carry the
 run's environment, model keys and `E2E_SECRET_*` values included, and
 `attempt/resolveSecret` answers with plaintext. Connect only to a server you
 trust: `socketTransport` doesn't encrypt.
@@ -229,6 +231,7 @@ params are the member's arguments by name, with every `OperationContext` as
 | `session/back`, `session/restart`, `session/reset` | `{ operation }` | `null` |
 | `lifecycle/prepare` | `EnginePrepareInfo` without `log` | `EnginePrepareResult` or `null` |
 | `lifecycle/finish` | `EngineFinishInfo` without `log` | `null` |
+| `lifecycle/doctor` | `EngineDoctorInfo` without `log` | `EngineDoctorCheck[]` |
 | `lifecycle/init` | `EngineInitInfo` without `log` | `null` |
 | `lifecycle/startAttempt` | `{ attemptId, artifactsDir, signal, screens }` | `null` |
 | `lifecycle/settleAttempt`, `lifecycle/endAttempt` | `{ signal, timeoutMs }` | `null` |
