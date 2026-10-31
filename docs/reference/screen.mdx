@@ -123,8 +123,9 @@ Names follow the same rules:
   matched.
 - A role that accname names from content (a button, link, heading, tab, menu
   item, option, checkbox, radio, switch, cell, row or column header, row, tree
-  item, tooltip) takes its name from its descendants, a custom element's
-  shadow tree included. So `getByRole('checkbox', { name })` and
+  item, tooltip) takes its name from its descendants, including a custom
+  element's shadow tree and text linked through `aria-owns`. So
+  `getByRole('checkbox', { name })` and
   `toHaveAccessibleName(name)` agree on a `<div role="checkbox">`.
 - An `<input type="submit">` or `type="reset"` with no `value` reads `Submit`
   or `Reset`.

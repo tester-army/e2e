@@ -206,6 +206,8 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <button aria-labelledby="l3">Own text</button><span id="l3" title="Spaced reference"> </span>
       <button><img alt="Trash" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"> Empty trash</button>
       <button>  Spaced   out   label  </button>
+      <button aria-owns="owned-name" style="width:120px;height:30px"></button>
+      <span id="owned-name">Save changes</span>
       <button><span aria-hidden="true">★</span> Star</button>
       <button><span style="display:none">Hidden</span>Visible</button>
       <label>Wrapped <select><option>One</option></select></label>
