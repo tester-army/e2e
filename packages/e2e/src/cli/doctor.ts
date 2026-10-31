@@ -202,8 +202,8 @@ async function engineChecks(target: ResolvedTarget, config: ResolvedConfig, opti
   } catch (cause) {
     // The hook stops at the signal; waiting for it keeps doctor from exiting
     // while a protocol engine still shuts its server down.
-    await withinCleanupBudget(pending, { signal: NEVER_ABORTS, timeoutMs: ENGINE_DOCTOR_TEARDOWN_MS });
     const timedOut = deadline.aborted && !options.signal.aborted;
+    await withinCleanupBudget(pending, { signal: NEVER_ABORTS, timeoutMs: ENGINE_DOCTOR_TEARDOWN_MS });
     const failure = timedOut
       ? new InfrastructureError('ENGINE_FAILURE', `engine "${engine.name}" did not finish its checks within ${String(ENGINE_DOCTOR_TIMEOUT_MS / 1000)}s`)
       : cause;
