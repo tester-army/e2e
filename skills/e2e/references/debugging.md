@@ -68,7 +68,10 @@ default.
 3. `.e2e/report.json` holds the same facts for scripts, not for reading:
    each step's `events` (`engine`, `poll`, `navigation`) and the attempt's
    `appLog` (each line's `step` is a step `index`) are what the page's step
-   lines are rendered from, before it filters and caps them.
+   lines are rendered from, before it filters and caps them. When those caps
+   (100 info, 200 error/warning) hide what you need, `appLog: { file: true }`
+   (config or a test's option) writes every entry, redacted and uncapped, to
+   `attempt-<n>/app-log.txt` beside the screenshots.
 4. When a script needs them:
 
 ```bash

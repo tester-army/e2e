@@ -302,6 +302,13 @@ unique(7);
 ({ targets, video: true }) satisfies E2EConfig;
 // @ts-expect-error trace is a mode, not a boolean
 ({ targets: [{ name: 'phone', engine, trace: true }] }) satisfies E2EConfig;
+({ targets, appLog: { file: true, maxBytes: 20_000_000 } }) satisfies E2EConfig;
+({ targets, appLog: { file: false } }) satisfies E2EConfig;
+({ targets, appLog: { maxBytes: 5_000 } }) satisfies E2EConfig;
+// @ts-expect-error appLog.file is a boolean, not a path to write to
+({ targets, appLog: { file: 'app.log' } }) satisfies E2EConfig;
+// @ts-expect-error an appLog key is file or maxBytes
+({ targets, appLog: { path: 'app.log' } }) satisfies E2EConfig;
 ({ put: async (artifact) => ({ ref: artifact.startedAt ?? artifact.sha256 }) }) satisfies ArtifactStore;
 ({
   put: async (artifact) => ({ ref: artifact.sha256 }),
@@ -670,6 +677,11 @@ test.describe('untraced', { trace: 'off' }, () => {});
 // @ts-expect-error a test's trace is a mode
 test('traced', { trace: 'all' }, async () => {});
 test.describe('admin flows', { agent: 'admin' }, () => {});
+// A test's `appLog` takes the same object as the config's; a noisy test opts out of a run that turned it on.
+test('every app-log entry to a file', { appLog: { file: true } }, async () => {});
+test.describe('roomier cap', { appLog: { file: true, maxBytes: 1_000_000 } }, () => {});
+// @ts-expect-error a test's appLog.file is a boolean
+test('bad appLog', { appLog: { file: 'yes' } }, async () => {});
 await agent.act('approve it', { agent: 'admin' });
 await agent.assert('it is approved', { agent: 'buyer' });
 // An agents entry is one plain object: model, how it works, the app's vocabulary, and its tools.

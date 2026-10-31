@@ -324,6 +324,7 @@ blocked event loop hangs it.
 | [`agent`](#agent) | `string \| readonly string[]` | the run's agents |
 | [`trace`](#trace) | `RecordingMode` | the run's |
 | [`video`](#video) | `RecordingMode` | the run's |
+| [`appLog`](/reference/config#applog) | `AppLogConfig` | the run's |
 | [`serial`](#serial) | `boolean` | - |
 | [`sessions`](#sessions) | `readonly string[]` | required |
 
@@ -332,8 +333,8 @@ every option but `only` and `sessions`. `test.setup` requires `sessions` and
 takes no `session`, `only`, or `skip`.
 
 Resolution order: test, nearest group, outer groups, config, built-in
-default. Inside a [serial group](#serial), the group's `retries`, `trace`, and
-`video` apply.
+default. Inside a [serial group](#serial), the group's `retries`, `trace`,
+`video`, and `appLog` apply.
 
 | Throws | When |
 | --- | --- |

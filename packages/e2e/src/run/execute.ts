@@ -1,5 +1,6 @@
 /** Test-target execution engine. */
 
+import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { EngineDisposeContext, EngineSnapshot, ResolveSecretOptions } from '../engine/index.ts';
@@ -32,7 +33,8 @@ import { keeps, type AttemptRecordings, type VideoRecording } from '../internal/
 import type { ArtifactStore, Secret } from '../types.ts';
 import { attemptSegments, createAttemptArtifacts, resultSegment } from './artifacts.ts';
 import { AttemptBudget } from './budget.ts';
-import { createEngineSession } from '../engine/session.ts';
+import { createEngineSession, isAppLogEntry } from '../engine/session.ts';
+import { APP_LOG_FILE, createAppLogFile, type AppLogFileWriter } from './app-log-file.ts';
 import { createExtendedFixtures } from './extended-fixtures.ts';
 import { captureFailureEvidence } from './failure-evidence.ts';
 import { createFixtures, type ArtifactSink } from './fixtures.ts';
@@ -156,6 +158,13 @@ export interface ClosingRecord {
 export interface SessionPlan {
   readonly session: string | undefined;
   readonly recordings: AttemptRecordings;
+  /**
+   * Present when the attempt streams its app log to `app-log.txt`: the file's
+   * byte ceiling. Absent leaves the capture off; resolution already happened in
+   * `resolveOptions` (ordinary and serial attempts) or against `config.appLog`
+   * (a hosted or standalone attempt).
+   */
+  readonly appLog?: { readonly maxBytes: number } | undefined;
 }
 
 /** What closing an attempt's session needs besides its verdict: the video it started. */
@@ -198,6 +207,8 @@ export class TargetExecutor implements SerialHost {
   private engineReady: Promise<void> | undefined;
   /** The stored screenshots the run wrote, so no comparison passes against one nobody reviewed. */
   private readonly writtenScreenshots: WrittenScreenshots;
+  /** The live app-log file writer per session, set when a plan turns the capture on; read and dropped at `closeSession`. */
+  private readonly appLogFiles = new WeakMap<TargetSession, AppLogFileWriter>();
 
   constructor(private readonly options: TargetExecutorOptions) {
     this.target = options.target;
@@ -606,6 +617,16 @@ export class TargetExecutor implements SerialHost {
     }
     const { video } = plan.recordings;
     const session = createEngineSession({ engine, targetName: this.target.name, traced: plan.recordings.trace !== undefined });
+    // Open the file writer before `startAttempt`, so entries the engine reports
+    // while the app loads — the case the report's hold quota drops — are caught.
+    const appLogFile = plan.appLog === undefined
+      ? undefined
+      : createAppLogFile({
+          dir: artifactsDir,
+          maxBytes: plan.appLog.maxBytes,
+          redact: (text) => redactForSession(session, this.config.allSecrets, text),
+        });
+    if (appLogFile !== undefined) this.appLogFiles.set(session, appLogFile);
     const launch = <T>(label: string, run: (launchSignal: AbortSignal) => Promise<T>) =>
       this.lifecycle(label, this.config.launchTimeout, 'LAUNCH_TIMEOUT', signal, run);
     const launchOp = (launchSignal: AbortSignal) =>
@@ -620,7 +641,12 @@ export class TargetExecutor implements SerialHost {
               artifactsDir,
               signal: launchSignal,
               resolveSecret: (secret, options) => this.resolveEngineSecret(session, secret, options),
-              appLog: (entry) => session.appLog.push(entry),
+              appLog: (entry) => {
+                // Tee the validated entry to the file first: the session's
+                // pre-route hold quota can still drop it from the report.
+                if (appLogFile !== undefined && isAppLogEntry(entry)) appLogFile.write(entry, timestamp());
+                session.appLog.push(entry);
+              },
               navigation: (line) => session.appLog.navigated(line),
               ...(session.screens.traced ? { screen: (snapshot: EngineSnapshot) => session.screens.push(snapshot) } : {}),
               environment: (facts) => session.environment.push(facts),
@@ -652,6 +678,20 @@ export class TargetExecutor implements SerialHost {
       // open it: end it within the cleanup budget, or the retry opens a second
       // one. An engine without startAttempt makes this a no-op.
       await this.endAttempt(session, attemptId).catch(() => undefined);
+      // A launch that failed never reaches closeSession: close the writer so no
+      // fd leaks across retries, and drop the half-file so a later attempt's
+      // directory is the only place the log lives.
+      const failedWriter = this.appLogFiles.get(session);
+      if (failedWriter !== undefined) {
+        this.appLogFiles.delete(session);
+        if (failedWriter.close()) {
+          try {
+            rmSync(path.join(artifactsDir, APP_LOG_FILE), { force: true });
+          } catch {
+            // Nothing to remove.
+          }
+        }
+      }
       throw cause;
     }
     return session;
@@ -739,6 +779,36 @@ export class TargetExecutor implements SerialHost {
     } catch (cause) {
       record.cleanup = 'failed';
       secondaryErrors.push(serializeError(classifyError(cause), { phase: 'cleanup' }));
+    }
+    // Finalize the app-log file after `endAttempt`: the engine may report its
+    // last entries while it closes. Streamed lines were redacted with the
+    // ledger as they arrived, but a value resolved later still taints earlier
+    // ones, so the whole file goes through the ledger again before it is
+    // registered — the way a text download is (`run/artifacts.ts` redactDownload).
+    const appLogFile = this.appLogFiles.get(session);
+    if (appLogFile !== undefined) {
+      this.appLogFiles.delete(session);
+      if (appLogFile.close()) {
+        const absolute = path.join(artifactSink.dir, APP_LOG_FILE);
+        const ledger = sessionLedger(session, this.config.allSecrets);
+        if (!ledger.isEmpty) {
+          try {
+            const text = readFileSync(absolute, 'utf8');
+            const redacted = ledger.redactFragments(text);
+            if (redacted !== text) writeFileSync(absolute, redacted);
+          } catch {
+            // The file cannot be verified redacted: never register bytes that
+            // could leak a secret under a `complete` claim.
+            try {
+              rmSync(absolute, { force: true });
+            } catch {
+              // Nothing to remove; it is simply not registered.
+            }
+            return;
+          }
+        }
+        artifactSink.register('log', APP_LOG_FILE);
+      }
     }
   }
 
@@ -1004,7 +1074,16 @@ export class TargetExecutor implements SerialHost {
     try {
       const session =
         shared?.session ??
-        (await this.launchSession({ session: pair.options.session, recordings }, attemptId, artifacts.dir, attemptAbort.signal));
+        (await this.launchSession(
+          {
+            session: pair.options.session,
+            recordings,
+            ...(pair.options.appLog.file ? { appLog: { maxBytes: pair.options.appLog.maxBytes } } : {}),
+          },
+          attemptId,
+          artifacts.dir,
+          attemptAbort.signal,
+        ));
       openSession = session;
       // A serial group's session serves one member at a time; what the app
       // logs from here is this attempt's.

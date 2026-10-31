@@ -133,7 +133,8 @@ its own tools.
 `<output>` (`.e2e` by default) holds `report.json`, `junit.xml`,
 `summary.md`, `ai-trace.json`, `sessions/`, and `results/`, one directory
 per test with its `trace.md` and an `attempt-<n>/` per attempt
-(screenshots, videos, `--debug` transcripts, downloads).
+(screenshots, videos, `--debug` transcripts, downloads, and `app-log.txt`
+when `appLog.file` is on and the attempt logged an entry).
 `results/` is cleared once a run's tests start; a run stopping before
 leaves the last run's files, and a `--last-failed` rerun keeps the files
 the report it reruns names and writes its own under each test's `rerun-<n>/`. The report records every artifact path, a

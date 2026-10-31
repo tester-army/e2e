@@ -51,6 +51,7 @@ export default {
 | [`artifacts`](#artifacts) | `ArtifactsConfig` | local only |
 | [`trace`](#trace) | `RecordingMode` | `'retain-on-failure'` |
 | [`video`](#video) | `RecordingMode` | `'off'` |
+| [`appLog`](#applog) | `AppLogConfig` | no file |
 | [`agents`](#agents) | `Record<string, AgentConfig>` | `default`, no model |
 | [`filters`](#filters) | `TestFilter[]` | - |
 | [`cache`](#cache) | `CacheMode \| CacheConfig` | `'read-write'`, `'read-only'` in CI |
@@ -851,6 +852,46 @@ engine.
 Under `retain-on-failure` a link is left out of the report of a passed
 attempt, but the service still holds the recording.
 </Note>
+
+### appLog
+
+`report.appLog` caps what an attempt collects at the first 100 `info` lines and
+the first 200 errors and warnings, each cut to 300 characters; the failure page
+then shows only the first 50 of those. On an app that chats while it loads, that
+quota is gone before the test does anything, and the lines leading up to the
+interesting warning are dropped. `appLog: { file: true }` writes **every** entry
+an engine reports for an attempt, through the run's secret redaction, to
+`app-log.txt` beside the attempt's screenshots
+(`.e2e/results/<test>/attempt-1/app-log.txt`), one line per entry, up to
+`maxBytes`:
+
+```ts
+export default defineConfig({
+  appLog: { file: true, maxBytes: 20_000_000 },
+});
+```
+
+```text
+2026-10-21T04:05:06.123Z warning console SDK paused on an unrecognised screen (at https://cdn.example/sdk.js:118)
+```
+
+The file is registered as a `log` artifact of the attempt (`redaction:
+'complete'`), so an `artifacts.store` receives it too. Past `maxBytes` (default
+20 MB) the file ends with a line saying it stopped and later entries are dropped
+(a cap too small to also hold that stop line keeps the entries it fits and
+omits the marker). The whole-file redaction
+pass can lengthen a late-resolved value's marker a
+little past the ceiling, exactly as a redacted text download already does. An
+attempt that logs no entry gets no file. A test takes the same object
+as its own option, where `file: false` opts a noisy test out of a run that
+turned it on; inside a serial group the group's chain decides and the group
+attempt gets one file. Navigations (`app.open` steps, tabs, frames) are step
+events, not entries, and are not in the file.
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `file` | `boolean` | `false` |
+| `maxBytes` | `number` | `20000000` |
 
 ### agents
 

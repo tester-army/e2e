@@ -52,7 +52,10 @@ the test ran on, it shows:
 - **App log.** Console output, uncaught exceptions, failed requests, and
   4xx and 5xx responses, each with its step: up to 50 lines, errors and
   warnings first. An attempt keeps at most 200 errors and warnings and 100
-  other lines.
+  other lines. When those caps hide what you need, `appLog: { file: true }`
+  writes every entry the attempt emits, redacted, to `app-log.txt` beside the
+  attempt's screenshots (`attempt-<n>/app-log.txt`), bounded by `appLog.maxBytes`
+  (20 MB by default; past it the file ends with a stop line); `report.appLog` stays capped.
 - **The agent's last turns.**
 - **Screen at failure.** The screenshot and the semantic tree, captured in
   at most 5 s. An app that doesn't answer in time gets no screen section.

@@ -412,7 +412,16 @@ async function runSerialAttempt(
   try {
     shared = {
       // Members share the group's session and recordings, which selection resolved alike for each.
-      session: await host.launchSession({ session: first.options.session, recordings }, attemptId, artifacts.dir, host.interruptSignal),
+      session: await host.launchSession(
+        {
+          session: first.options.session,
+          recordings,
+          ...(first.options.appLog.file ? { appLog: { maxBytes: first.options.appLog.maxBytes } } : {}),
+        },
+        attemptId,
+        artifacts.dir,
+        host.interruptSignal,
+      ),
       attemptId,
       artifactSegments,
       priorSteps: [],

@@ -275,6 +275,7 @@ const TEST_OPTION_KEYS: readonly string[] = Object.keys({
   agent: true,
   trace: true,
   video: true,
+  appLog: true,
 } satisfies Record<keyof TestOptions, true>);
 
 /** The keys `test.setup()` takes beside `sessions`, which registration lifts out first. */
@@ -288,6 +289,7 @@ const SETUP_OPTION_KEYS: readonly string[] = Object.keys({
   agent: true,
   trace: true,
   video: true,
+  appLog: true,
 } satisfies Record<Exclude<keyof SetupOptions, 'sessions'>, true>);
 
 /** The keys `test.describe()` takes. */
@@ -303,6 +305,7 @@ const DESCRIBE_OPTION_KEYS: readonly string[] = Object.keys({
   agent: true,
   trace: true,
   video: true,
+  appLog: true,
   serial: true,
 } satisfies Record<keyof DescribeOptions, true>);
 
@@ -336,6 +339,27 @@ function validateCommonOptions(options: TestOptions | DescribeOptions, label: st
           : `${label}: trace ${legacy.was} is the old spelling of trace: '${legacy.mode}'; the modes are ${RECORDING_MODES.join(', ')}`,
       );
     }
+  }
+  if (options.appLog !== undefined) validateAppLogOption(options.appLog, label);
+}
+
+/**
+ * A test's `appLog` object: `file` a boolean, `maxBytes` a positive safe
+ * integer, and no other key. A misspelled sub-key would silently leave the
+ * run's value in place, exactly as an unchecked top-level option would.
+ */
+function validateAppLogOption(appLog: object, label: string): void {
+  if (appLog === null || typeof appLog !== 'object' || Array.isArray(appLog)) {
+    throw new CollectionError(`${label}: appLog must be an object: { file, maxBytes }`);
+  }
+  const unknown = unknownKeyMessage(`${label}: appLog`, appLog, ['file', 'maxBytes']);
+  if (unknown !== undefined) throw new CollectionError(unknown);
+  const { file, maxBytes } = appLog as Partial<{ readonly file: unknown; readonly maxBytes: unknown }>;
+  if (file !== undefined && typeof file !== 'boolean') {
+    throw new CollectionError(`${label}: appLog.file must be a boolean, got ${describeValue(file)}`);
+  }
+  if (maxBytes !== undefined && (!Number.isSafeInteger(maxBytes) || (maxBytes as number) <= 0)) {
+    throw new CollectionError(`${label}: appLog.maxBytes must be a positive safe integer, got ${describeValue(maxBytes)}`);
   }
 }
 

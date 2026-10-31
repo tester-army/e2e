@@ -34,6 +34,7 @@ const defaultOptions: ResolvedTestOptions = {
   serial: false,
   trace: undefined,
   video: undefined,
+  appLog: { file: false, maxBytes: 20_000_000 },
 };
 
 const EMPTY_APP: ResolvedTarget['app'] = {

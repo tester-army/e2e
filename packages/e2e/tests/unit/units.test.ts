@@ -85,6 +85,7 @@ const defaultOptions: ResolvedTestOptions = {
   serial: false,
   trace: undefined,
   video: undefined,
+  appLog: { file: false, maxBytes: 20_000_000 },
 };
 
 function makePair(test: CollectedTest, overrides: Partial<TestTargetPair> = {}): TestTargetPair {

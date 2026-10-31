@@ -170,7 +170,15 @@ export async function launchAttempt(
     return { status: classifyAttemptStatus(error, step?.status === 'timed-out', error.code === 'CANCELLED'), error };
   };
   const video = attemptVideo(target.video, 0);
-  session = await executor.launchSession({ session: undefined, recordings: { trace: undefined, video } }, attemptId, artifacts.dir, attemptSignal);
+  // A one-shot session that names a test honors that test's resolved appLog;
+  // a bare host/explore session has no test, so it takes the config's.
+  const appLog = test?.pair.options.appLog ?? config.appLog;
+  session = await executor.launchSession(
+    { session: undefined, recordings: { trace: undefined, video }, ...(appLog.file ? { appLog: { maxBytes: appLog.maxBytes } } : {}) },
+    attemptId,
+    artifacts.dir,
+    attemptSignal,
+  );
   const opened = session;
   const closeOpened = (record: ClosingRecord): Promise<void> =>
     executor.closeSession(opened, { attemptId, video }, record, artifacts.sink, attemptErrors);

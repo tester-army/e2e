@@ -16,6 +16,7 @@ import { compileGlob, compileGlobList, literalPrefix } from '../internal/globs.t
 import { isRecord } from './command.ts';
 import { boundedInt, describeValue, positiveInt, timerMs } from './validate.ts';
 import type {
+  AppLogConfig,
   ArtifactStore,
   ArtifactsConfig,
   BuiltinReporter,
@@ -92,6 +93,8 @@ export interface ResolvedConfig {
   /** Every configured agent, `default` included, by name. */
   readonly agents: ReadonlyMap<string, ResolvedAgentConfig>;
   readonly cache: ResolvedCacheConfig;
+  /** The resolved `appLog` key: whether every attempt writes its app log to a file, and the file's byte ceiling. */
+  readonly appLog: { readonly file: boolean; readonly maxBytes: number };
   /** `--update-snapshots`: `toHaveScreenshot` rewrites a stored screenshot that differs. */
   readonly updateSnapshots: boolean;
   readonly limits: ResolvedLimits;
@@ -176,6 +179,7 @@ const TOP_LEVEL_KEYS = new Set([
   'maxDuration',
   'workers',
   'artifacts',
+  'appLog',
   'output',
   'trace',
   'video',
@@ -189,6 +193,11 @@ const TOP_LEVEL_KEYS = new Set([
 
 const CACHE_KEYS = new Set(['mode', 'store', 'dir', 'strict']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
+
+const APP_LOG_KEYS = new Set(['file', 'maxBytes']);
+
+/** Default byte ceiling of one attempt's `app-log.txt`; past it the file ends with a line saying it stopped. */
+const DEFAULT_APP_LOG_MAX_BYTES = 20_000_000;
 
 const APP_BELONGS_TO_TARGET =
   "the app under test is declared on its target: targets: [{ engine: web(), app: { url } }] for a browser, targets: [{ engine: mobile({ platform }), app: { bundleId } }] for a device";
@@ -336,6 +345,7 @@ export function resolveConfig(
     agent,
     agents,
     cache,
+    appLog: resolveAppLog(raw),
     updateSnapshots: cli.updateSnapshots === true,
     limits,
     credentials,
@@ -624,6 +634,39 @@ function resolveArtifactStore(raw: E2EConfig): ArtifactStore | undefined {
     );
   }
   return store;
+}
+
+/**
+ * Resolves the `appLog` key, `{ file, maxBytes }`: whether every attempt
+ * writes the app log it reports to an uncapped `app-log.txt` beside its
+ * artifacts, and that file's byte ceiling. Unset resolves to off with the
+ * default ceiling.
+ */
+function resolveAppLog(raw: E2EConfig): ResolvedConfig['appLog'] {
+  const value: unknown = raw.appLog;
+  if (value === undefined) {
+    return { file: false, maxBytes: DEFAULT_APP_LOG_MAX_BYTES };
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'appLog must be an object: { file, maxBytes }');
+  }
+  for (const key of Object.keys(value)) {
+    if (!APP_LOG_KEYS.has(key)) {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `unknown appLog config key "${key}"${didYouMean(key, [...APP_LOG_KEYS])}`,
+      );
+    }
+  }
+  const block = value as AppLogConfig;
+  if (block.file !== undefined && typeof block.file !== 'boolean') {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `appLog.file must be a boolean, got ${describeValue(block.file)}`,
+    );
+  }
+  const maxBytes = positiveInt(block.maxBytes, 'appLog.maxBytes') ?? DEFAULT_APP_LOG_MAX_BYTES;
+  return { file: block.file === true, maxBytes };
 }
 
 /** Checks one `trace` or `video` value: a mode, or undefined when the key is unset. */

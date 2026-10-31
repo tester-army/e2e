@@ -731,6 +731,13 @@ export interface TestOptions {
    * records as one unit. A mode set here is required of the target's engine.
    */
   video?: RecordingMode;
+  /**
+   * Writes this test's app log to a file beyond the capped report, in place
+   * of the run's: the same object as the config's `appLog`. Innermost wins;
+   * inside a serial group the group's value applies, since the group runs as
+   * one unit.
+   */
+  appLog?: AppLogConfig;
 }
 
 export interface DescribeOptions extends Omit<TestOptions, 'only'> {
@@ -1407,6 +1414,23 @@ export interface ArtifactsConfig {
   store?: ArtifactStore;
 }
 
+/** App log beyond the report: an uncapped, redacted file per attempt. */
+export interface AppLogConfig {
+  /**
+   * Besides the capped `report.appLog`: every entry the engine reports for
+   * an attempt is written, redacted and uncapped, as `app-log.txt` beside its
+   * screenshots; default false. A test's own `appLog.file` wins over it, and
+   * `false` there opts a noisy test out. Serial groups share one session, so
+   * the group's chain decides and the group attempt gets one file.
+   */
+  file?: boolean;
+  /**
+   * Byte ceiling for one attempt's file; default 20000000. Past it the file
+   * ends with one line saying it stopped; later entries are dropped.
+   */
+  maxBytes?: number;
+}
+
 /**
  * AI SDK provider options, keyed by provider then option name, e.g.
  * `{ openai: { reasoningEffort: 'low' } }`. Sent with every model call of
@@ -1681,6 +1705,13 @@ export interface E2EConfig {
    * Applies to the targets whose engine can record.
    */
   video?: RecordingMode;
+  /**
+   * Beyond the capped report: `{ file: true }` writes every app-log entry
+   * an attempt's engine reports, redacted and uncapped, to
+   * `app-log.txt` beside its screenshots; default off. `maxBytes` caps the
+   * file. A test's own `appLog` wins over it.
+   */
+  appLog?: AppLogConfig;
   /**
    * The directory a run writes its results to, relative to the project root;
    * default `.e2e`. It holds `report.json`, `junit.xml`, `summary.md`,

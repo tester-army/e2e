@@ -33,6 +33,15 @@ export interface ResolvedTestOptions {
   readonly trace: RecordingMode | undefined;
   /** The test's own `video`, on the same terms as `trace`. */
   readonly video: RecordingMode | undefined;
+  /**
+   * The attempt's app-log file capture, resolved to concrete values: `file`
+   * whether every entry the engine reports is streamed to `app-log.txt` beside
+   * the attempt, `maxBytes` that file's ceiling. A test's `appLog` replaces
+   * only the field it names; the rest fall to the run's config. Inside a serial
+   * group the group's chain decides and the group attempt gets one file, since
+   * the group runs as one unit.
+   */
+  readonly appLog: { readonly file: boolean; readonly maxBytes: number };
 }
 
 /** Why a pair did not run; only a `filtered` one can name the test filter that left it out. */
@@ -166,6 +175,8 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
   let skipReason: string | undefined;
   let trace: TestOptions['trace'];
   let video: TestOptions['video'];
+  let appLogFile: boolean | undefined;
+  let appLogMaxBytes: number | undefined;
   const agentContextParts: string[] = [];
 
   for (const layer of layers) {
@@ -173,6 +184,8 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     if (layer.retries !== undefined) retries = layer.retries;
     if (layer.trace !== undefined) trace = layer.trace;
     if (layer.video !== undefined) video = layer.video;
+    if (layer.appLog?.file !== undefined) appLogFile = layer.appLog.file;
+    if (layer.appLog?.maxBytes !== undefined) appLogMaxBytes = layer.appLog.maxBytes;
     if (layer.platforms !== undefined) platforms = layer.platforms;
     if (layer.requires !== undefined) requires = layer.requires;
     if (layer.session !== undefined) session = layer.session;
@@ -190,15 +203,21 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     let serialRetries = config.retries;
     let serialTrace: TestOptions['trace'];
     let serialVideo: TestOptions['video'];
+    let serialAppLogFile: boolean | undefined;
+    let serialAppLogMaxBytes: number | undefined;
     for (const group of chain) {
       if (group.options.retries !== undefined) serialRetries = group.options.retries;
       if (group.options.trace !== undefined) serialTrace = group.options.trace;
       if (group.options.video !== undefined) serialVideo = group.options.video;
+      if (group.options.appLog?.file !== undefined) serialAppLogFile = group.options.appLog.file;
+      if (group.options.appLog?.maxBytes !== undefined) serialAppLogMaxBytes = group.options.appLog.maxBytes;
       if (group === serialRoot) break;
     }
     retries = serialRetries;
     trace = serialTrace;
     video = serialVideo;
+    appLogFile = serialAppLogFile;
+    appLogMaxBytes = serialAppLogMaxBytes;
   }
 
   // A pin names configured agents, or the test never runs: the error lands
@@ -222,6 +241,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     serial: serialRoot !== undefined,
     trace,
     video,
+    appLog: { file: appLogFile ?? config.appLog.file, maxBytes: appLogMaxBytes ?? config.appLog.maxBytes },
   };
 }
 
