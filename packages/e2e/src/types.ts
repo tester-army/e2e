@@ -230,6 +230,12 @@ export interface ActionEvent {
   readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
+  /** Dispatched viewport point for `tapAt` and `hoverAt`, in CSS pixels from the top-left. Absent for node-ID actions. */
+  readonly point?: Point;
+  /** Dispatched start of `dragAt`, in viewport CSS pixels. */
+  readonly from?: Point;
+  /** Dispatched end of `dragAt`, in viewport CSS pixels. */
+  readonly to?: Point;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
   readonly source: 'model' | 'replay';
 }
