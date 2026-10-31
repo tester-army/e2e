@@ -96,4 +96,12 @@ describe('planInstruction', () => {
     expect(text).toContain('work as the signed-in user rather than signing in again');
     expect(text).not.toContain('sign in with the accounts listed above');
   });
+
+  it('plans from the change the context holds only when the run explores one', () => {
+    const without = planInstruction(fresh(), { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(without).not.toContain('<change>');
+    const text = planInstruction(fresh(), { mustFinish: false, exploresChange: true, remainingMs: 300_000, timeoutMs: 60_000 });
+    expect(text).toContain('Plan from the code change between <change> and </change> in the context:');
+    expect(text).toContain('never plan a step that expects it');
+  });
 });

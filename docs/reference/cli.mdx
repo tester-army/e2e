@@ -843,6 +843,7 @@ bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 | `--target <id>` | The one target to explore. Default: the first configured target; with several targets and no flag, it explores the first and says so on stderr. An unknown name is `UNKNOWN_TARGET`. |
 | `--agent <name>` | The configured agent to explore as. Default: `default`. Its model, `system`, tools, and context are reused. The built-in agent replaces a hand-rolled `StepExecutor`, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
 | `--session <name>` | Starts signed in. The setup test in the config's test files that declares this session runs first. The exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
+| `--changed-since <ref>` | Explores the change since the merge base of the ref and HEAD. The planner and the agent read the commit messages and the changed files in path order, as many as a size budget lists, and a count of the rest: a committed one with its line counts when git gives them and, within a size budget, its patch; one no commit changed, such as a file CI wrote, by name only, its contents never read. With no goal and files changed, the goal is `Explore what this change affects and find bugs in it`; with none changed, it's the usual default. No change since the base prints a notice, and the run explores the goal alone. An empty ref, one starting with `-`, or one git can't measure from is `INVALID_CHANGED_SINCE`. The report records the change as `run.explore.change`. See [Explore a pull request's change](/explore#explore-a-pull-requests-change). |
 | `--max-steps <n>` | Exploration steps at most, an integer 1-12. Default: `8`. Out of range exits 2. |
 | `--timeout <ms>` | The run's wall clock, an integer 180000-900000. Default: `600000`. The last minute is kept for the closing assessment. Out of range exits 2. |
 | `--headed` | Requests visible UI when the engine supports it. |
@@ -874,7 +875,8 @@ flag, or write `--trace=<mode>` or `--video=<mode>`.
   the config's agents, cache, and retries.
 - `<output>/report.json` gains `run.explore`: the goal, the budgets, why the
   run ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
-  assessment, the steps, and the findings.
+  assessment, the change with `--changed-since` (`base` and `files`), the
+  steps, and the findings.
 - Artifacts go to a directory named from the goal's first words and a digest
   of the goal, target, and agent, such as
   `<output>/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/`. A rerun

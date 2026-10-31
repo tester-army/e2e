@@ -64,6 +64,7 @@ import { budgetText, withAbort } from '../internal/time.ts';
 import type { BuiltinReporter, E2EConfig, FinishedRun, RecordingMode, Reporter, ReporterSummary } from '../types.ts';
 import { modelLabel } from '../config/agent.ts';
 import { boundedInt, describeValue, positiveInt, timerMs } from '../config/validate.ts';
+import { validateChangedSince } from './changes.ts';
 import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { AppProcesses } from './managed-process.ts';
@@ -1321,13 +1322,7 @@ function validateRunOptions(options: SelectionRunOptions): void {
     const total = positiveInt(options.shard.total, 'shard.total');
     boundedInt(options.shard.index, 'shard.index', 1, total!);
   }
-  const ref = options.changedSince;
-  if (ref !== undefined && typeof ref !== 'string') {
-    throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${describeValue(ref)}`);
-  }
-  if (ref !== undefined && (ref === '' || ref.startsWith('-'))) {
-    throw new ConfigurationError('INVALID_CHANGED_SINCE', `--changed-since must name a git ref, such as origin/main; got ${JSON.stringify(ref)}`);
-  }
+  validateChangedSince(options.changedSince);
 }
 
 /** Resolves the run's config: a supplied value, or the discovered file. */

@@ -142,6 +142,7 @@ console.log(result.status, result.explore.ended, result.explore.findings.length)
 | `target` | `'web'` | `string` | the first configured target |
 | `agent` | `'smart'` | `string` | `agents.default` |
 | `session` | `'loggedIn'` | `string` | - |
+| `changedSince` | `'origin/main'` | `string` | - |
 | `maxSteps` | `4` | `number` | `8` |
 | `timeoutMs` | `300_000` | `number` | `600_000` |
 | `interruptSignal` | `controller.signal` | `AbortSignal` | - |
@@ -150,6 +151,8 @@ console.log(result.status, result.explore.ended, result.explore.findings.length)
 - `goal` is at most 2,000 characters.
 - `session` names a session a [setup test](/authentication) saves. That setup
   runs first, and the exploration starts from it, as `--session` does.
+- `changedSince` explores the change since that ref, as
+  [`--changed-since`](/reference/cli#e2e-explore) does.
 - `maxSteps` is from 1 to 12. `timeoutMs` is from `180000` to `900000`.
 - `onEvent` receives the same events as for `run`, plus an `explore` event
   for each planning decision, step, and finding. What `e2e explore` prints
@@ -168,6 +171,7 @@ record `report.run.explore` also holds.
 | `explore.goal`, `explore.budgets` | The goal, with secret values redacted, and the step and time budgets it ran with. |
 | `explore.ended` | Why exploration stopped: `finished`, `step-limit`, `time`, `stuck`, or `aborted`. |
 | `explore.summary` | The agent's closing assessment, when it gave one. |
+| `explore.change` | With `changedSince`, the change it planned from: `base`, the merge base, and `files`, how many changed. |
 | `explore.steps` | Each step the agent planned and ran, with its status: `passed`, `failed`, `blocked`, or `exhausted`. |
 | `explore.findings` | Each finding: `kind`, `severity` from 1 to 5, `title`, `expected`, `actual`, and `reproduction`. An `issue` fails the run; a `warning` does not. |
 
@@ -181,6 +185,7 @@ reject first, as the matching `e2e explore` flags do. Recognize them with
 | `INVALID_CONFIG` | `goal`, `maxSteps`, or `timeoutMs` is out of range, or `agent` names no configured agent. |
 | `UNKNOWN_TARGET` | `target` names no configured target. |
 | `MODEL_UNAVAILABLE` | The agent has no model. |
+| `INVALID_CHANGED_SINCE` | `changedSince` is empty, starts with `-`, or names a ref git can't measure a change from. |
 | `RUNNER_BUSY` | A suite or an exploration is running, or a host is open. |
 | The codes `run` records | The config is missing, or the loader refused it. |
 

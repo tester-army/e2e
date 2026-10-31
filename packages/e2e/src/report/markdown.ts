@@ -605,7 +605,13 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
     explore === undefined
       ? [errors, ...failures, flaky, repeatsSection(entries, manyTargets), filtersSection(run, manyTargets, leftOut), allTests(groups, selected.length, manyTargets)]
       : [
-          [`**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `, `**Steps:** ${exploreSteps(explore)}`],
+          [
+            `**Goal:** ${cell(explore.goal, MAX_GOAL_CHARS)}  `,
+            ...(explore.change === undefined
+              ? []
+              : [`**Change:** ${plural(explore.change.files, 'file')} changed since ${code(shortCommit(explore.change.base))}  `]),
+            `**Steps:** ${exploreSteps(explore)}`,
+          ],
           errors,
           ...failures,
           flaky,

@@ -503,6 +503,7 @@ describe('telemetry events', () => {
       budgets: { maxSteps: 8, timeoutMs: 600_000 },
       ended: 'step-limit',
       summary: 'The acme checkout loses the cart',
+      change: { base: 'abc1234def5678abc1234def5678abc1234def56', files: 3 },
       steps: [
         { index: 1, title: 'Acme cart', instruction: 'Add an acme item', status: 'passed', startedAt: REPORT_AT, durationMs: 10 },
         { index: 2, title: 'Acme pay', instruction: 'Pay', status: 'exhausted', errorCode: 'AGENT_BUDGET', startedAt: REPORT_AT, durationMs: 10 },
@@ -518,6 +519,7 @@ describe('telemetry events', () => {
     expect(event.properties).toMatchObject({
       command: 'explore',
       explore_ended: 'step-limit',
+      explore_changed_files: 3,
       explore_max_steps: 8,
       explore_timeout_ms: 600_000,
       explore_steps: 2,
@@ -530,7 +532,10 @@ describe('telemetry events', () => {
       explore_warnings: 1,
       explore_findings_by_severity: { '1': 0, '2': 1, '3': 0, '4': 0, '5': 1 },
     });
-    expect(JSON.stringify(event)).not.toMatch(/acme|Pay|kept|lost/iu);
+    expect(JSON.stringify(event)).not.toMatch(/acme|Pay|kept|lost|abc1234/iu);
+    expect(event.properties['filters_changed_files']).toBe(0);
+    (report.run as { explore?: ReportExplore }).explore = { ...explore, change: undefined };
+    expect(runCompletedEvent(report, { ...RUN, command: 'explore' }).properties['explore_changed_files']).toBe(0);
     expect(runCompletedEvent(sampleReport(), RUN).properties).not.toHaveProperty('explore_ended');
   });
 });

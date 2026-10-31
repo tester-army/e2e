@@ -180,8 +180,18 @@ export interface ReportExplore {
   ended: 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted';
   /** The agent's closing assessment, when it gave one. */
   summary?: string | undefined;
+  /** The code change it planned from, with `--changed-since`. */
+  change?: ReportExploreChange | undefined;
   steps: readonly ReportExploreStep[];
   findings: readonly ReportExploreFinding[];
+}
+
+/** The change since `--changed-since` an exploration planned from, by counts. */
+export interface ReportExploreChange {
+  /** The merge base the change is measured from. */
+  base: string;
+  /** How many files changed since `base`; 0 when nothing did. */
+  files: number;
 }
 
 // --- report-1 wire shapes (schema/report-v1.schema.json) ---

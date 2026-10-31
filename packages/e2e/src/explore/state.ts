@@ -1,6 +1,7 @@
 /**
- * The record of one exploration: the goal, its budgets, the steps the agent
- * planned and ran, and the findings it reported. One instance is shared by
+ * The record of one exploration: the goal, its budgets, the change it plans
+ * from, the steps the agent planned and ran, and the findings it reported.
+ * One instance is shared by
  * the planner, the explorer's finding tool, the exploration body, and the
  * run's event spine, and its snapshot becomes `run.explore` in the report.
  * The state is the report boundary: every free text is bounded to the
@@ -9,7 +10,7 @@
  */
 
 import { timestamp, uuidv7 } from '../internal/ids.ts';
-import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import type { ReportExplore, ReportExploreChange, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
 import type { ExploreBudgets, ExploreListener, ExploreProgress, OpenedStep } from './progress.ts';
 
 export type { ExploreBudgets, OpenedStep } from './progress.ts';
@@ -38,12 +39,18 @@ export class ExploreState {
   #summary: string | undefined;
   #open: OpenStep | undefined;
   readonly #listeners: ExploreListener[] = [];
+  /** The code change it plans from, with `--changed-since`. */
+  readonly change: ReportExploreChange | undefined;
+  private readonly now: () => number;
 
   constructor(
     readonly goal: string,
     readonly budgets: ExploreBudgets,
-    private readonly now: () => number = Date.now,
-  ) {}
+    options: { readonly change?: ReportExploreChange | undefined; readonly now?: (() => number) | undefined } = {},
+  ) {
+    this.change = options.change;
+    this.now = options.now ?? Date.now;
+  }
 
   /** Why exploration stopped; `aborted` until `end` says otherwise. */
   get ended(): ReportExplore['ended'] {
@@ -167,6 +174,7 @@ export class ExploreState {
       budgets: { maxSteps: this.budgets.maxSteps, timeoutMs: this.budgets.timeoutMs },
       ended: this.#ended,
       ...(this.#summary === undefined ? {} : { summary: this.#summary }),
+      ...(this.change === undefined ? {} : { change: { ...this.change } }),
       steps: [...this.steps],
       findings: [...this.findings],
     };

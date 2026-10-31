@@ -409,6 +409,7 @@ const SEVERITIES = [1, 2, 3, 4, 5] as const;
 function exploreProperties(explore: ReportExplore): Record<string, JsonValue> {
   return {
     explore_ended: explore.ended,
+    explore_changed_files: explore.change?.files ?? 0,
     explore_max_steps: explore.budgets.maxSteps,
     explore_timeout_ms: explore.budgets.timeoutMs,
     explore_steps: explore.steps.length,

@@ -168,7 +168,7 @@ describe('the exploration body', () => {
 
   it('caps a step at the time left and ends on the clock', async () => {
     let clock = 0;
-    const state = new ExploreState('goal', { maxSteps: 8, timeoutMs: 300_000 }, () => clock);
+    const state = new ExploreState('goal', { maxSteps: 8, timeoutMs: 300_000 }, { now: () => clock });
     const planInstructions: string[] = [];
     const timeouts: (number | undefined)[] = [];
     let plans = 0;
@@ -200,7 +200,7 @@ describe('the exploration body', () => {
 
   it('skips app.open when told the target has no URL, and ends on the clock when a slow plan leaves no room for a step', async () => {
     let clock = 0;
-    const state = new ExploreState('goal', { maxSteps: 8, timeoutMs: 300_000 }, () => clock);
+    const state = new ExploreState('goal', { maxSteps: 8, timeoutMs: 300_000 }, { now: () => clock });
     const opened: string[] = [];
     const acts: string[] = [];
     const agent = {

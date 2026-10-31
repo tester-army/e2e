@@ -709,6 +709,12 @@ describe('renderMarkdownReport for an exploration', () => {
     expect(body).not.toContain('<details>');
   });
 
+  it('names the change an exploration with --changed-since planned from', () => {
+    const document = explored({ change: { base: 'abc1234def5678abc1234def5678abc1234def56', files: 3 } });
+    expect(renderMarkdownReport(document)).toContain('**Goal:** Explore checkout  \n**Change:** 3 files changed since `abc1234`  \n**Steps:**');
+    expect(renderMarkdownReport(explored())).not.toContain('**Change**');
+  });
+
   it('keeps a backtick inside a linkable token by lengthening the code span delimiter, as GFM reads it', () => {
     const body = renderMarkdownReport(
       explored({ summary: 'open https://example.test/`code` then https://x.example/``q`` and https://y.example/z` or plain https://ok.example' }),

@@ -79,6 +79,8 @@ export interface PlanRequest {
   readonly accounts?: readonly PlanAccount[] | undefined;
   /** The saved session the exploration started from, when it started signed in. */
   readonly session?: string | undefined;
+  /** Whether the run explores a code change, which the context holds between `<change>` tags. */
+  readonly exploresChange?: boolean | undefined;
   /** Why it must end, in the planner's prompt. */
   readonly reason?: string | undefined;
   readonly remainingMs: number;
@@ -146,6 +148,23 @@ const STATUS_MARKS: Record<ReportExploreStep['status'], string> = {
   exhausted: 'ended at its limit',
 };
 
+/**
+ * How to plan from the change the context holds: the rules that kept
+ * TesterArmy's pull request planner from filing false bugs against healthy
+ * deploys.
+ */
+const CHANGE_RULES = [
+  'Plan from the code change between <change> and </change> in the context:',
+  '- Spend the steps on the screens and flows the change can affect, the ones it adds or edits first. Name them as',
+  '  the app would, not by file. Cover the rest of the app only as far as the change reaches into it.',
+  '- Whatever only removed lines show is expected to be gone: never plan a step that expects it.',
+  '- Code that branches on configuration (feature flags, environment variables, build variants, plan tiers) shows a',
+  '  condition, not an outcome. Do not have the agent expect either branch unless the goal says which one applies.',
+  '- When the change touches no screen (server code, configuration, tests, docs), cover the main flows that rely on',
+  '  it briefly and finish early rather than inventing work.',
+  '- Ask the agent to check exact wording only where the change edits that wording.',
+];
+
 /** The planner's instruction: the goal, the record so far, the budget, and how to decide. */
 export function planInstruction(state: ExploreState, request: PlanRequest): string {
   const used = state.steps.length;
@@ -174,6 +193,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     'Findings so far:',
     findings,
     ...(request.session === undefined ? [] : ['', signedInContext(request.session)]),
+    ...(request.exploresChange === true ? ['', ...CHANGE_RULES] : []),
     ...(request.accounts === undefined || request.accounts.length === 0
       ? []
       : [

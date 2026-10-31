@@ -93,6 +93,63 @@ Screenshots mask the password field. A value the app shows anywhere else
 reaches the model. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
+## Explore a pull request's change
+
+Add `--changed-since <ref>` to explore what the branch changed. The planner
+reads the commit messages and their diff since the merge base with the ref,
+and spends its steps on the screens that the change can affect. A file no
+commit changed is listed by name only. With no
+goal, the goal is `Explore what this change affects and find bugs in it`.
+
+<CodeGroup>
+```bash npm
+npx e2e explore --changed-since origin/main
+```
+
+```bash pnpm
+pnpm exec e2e explore --changed-since origin/main
+```
+
+```bash bun
+bunx e2e explore --changed-since origin/main
+```
+</CodeGroup>
+
+On GitHub Actions, run it in its own job on `pull_request`. With the
+[GitHub reporter](/github) in the config, the findings go to their own pull
+request comment. A fork's run can't post; see
+[when nothing is posted](/github#when-nothing-is-posted).
+
+```yaml title=".github/workflows/explore.yml"
+on: pull_request
+
+jobs:
+  explore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    # An issue exits 1. Keep the findings as a review aid, not a merge gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # ...install, browsers
+      - run: npx e2e explore --changed-since origin/${{ github.base_ref }}
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          GITHUB_TOKEN: ${{ github.token }}
+```
+
+`fetch-depth: 0` puts the base branch in the checkout. Without it, the run
+fails with `INVALID_CHANGED_SINCE`.
+
+<Warning>
+Never run it on `pull_request_target`. That run holds your secrets, and the
+model reads the diff and commit messages a fork wrote.
+</Warning>
+
 ## If the run stops too early
 
 A run stops after 8 steps or 10 minutes. To reach further into the flow,

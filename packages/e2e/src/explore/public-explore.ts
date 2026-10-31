@@ -18,7 +18,7 @@ export interface ExplorationOptions {
   readonly cwd?: string | undefined;
   /** A config file path, or a config value in place of a file. Omit it to discover `e2e.config.ts` from `cwd`. */
   readonly config?: string | E2EConfig | undefined;
-  /** What to explore, at most 2,000 characters; default: `Explore the app and find bugs`. */
+  /** What to explore, at most 2,000 characters; default: `Explore the app and find bugs`, or `Explore what this change affects and find bugs in it` when `changedSince` finds changed files. */
   readonly goal?: string | undefined;
   /** The target to explore; default: the first configured. */
   readonly target?: string | undefined;
@@ -26,6 +26,8 @@ export interface ExplorationOptions {
   readonly agent?: string | undefined;
   /** A session a setup test saves: that setup runs first, and the exploration starts from the state it saved. */
   readonly session?: string | undefined;
+  /** A git ref, such as `origin/main`: the exploration plans from what changed since its merge base with HEAD. */
+  readonly changedSince?: string | undefined;
   /** Exploration steps, from 1 through 12; default: 8. */
   readonly maxSteps?: number | undefined;
   /** The exploration's time limit in milliseconds, from 180000 through 900000; default: 600000. */
@@ -66,6 +68,7 @@ export async function runExploration(options: ExplorationOptions = {}): Promise<
       target: options.target,
       agent: options.agent,
       session: options.session,
+      changedSince: options.changedSince,
       maxSteps: options.maxSteps,
       timeoutMs: options.timeoutMs,
       ...owned,
