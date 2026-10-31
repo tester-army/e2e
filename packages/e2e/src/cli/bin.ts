@@ -9,6 +9,8 @@ function wantsDoctorJson(args: readonly string[]): boolean {
   return args[0] === 'doctor' && args.some((arg, index) => arg === '--reporter=json' || (arg === '--reporter' && args[index + 1] === 'json'));
 }
 
+ignoreBrokenPipes([process.stdout, process.stderr]);
+
 // Checked before the CLI module loads: that module and its dependencies are
 // what an old runtime would fail on, with a stack trace instead of a sentence.
 const unsupported = unsupportedRuntimeMessage();
@@ -23,8 +25,6 @@ if (unsupported !== undefined) {
   }
   process.exit(2);
 }
-
-ignoreBrokenPipes([process.stdout, process.stderr]);
 
 const { main } = await import('./index.ts');
 await main(process.argv);
