@@ -169,7 +169,7 @@ record `report.run.explore` also holds.
 | Field | Meaning |
 | --- | --- |
 | `explore.goal`, `explore.budgets` | The goal, with secret values redacted, and the step and time budgets it ran with. |
-| `explore.ended` | Why exploration stopped: `finished`, `step-limit`, `time`, `stuck`, or `aborted`. |
+| `explore.ended` | Why exploration stopped: `finished`, `skipped` (with `changedSince`, the planner judged the change has nothing a user can see; the run passes), `step-limit`, `time`, `stuck`, or `aborted`. |
 | `explore.summary` | The agent's closing assessment, when it gave one. |
 | `explore.change` | With `changedSince`, the change it planned from: `base`, the merge base, and `files`, how many changed. |
 | `explore.steps` | Each step the agent planned and ran, with its status: `passed`, `failed`, `blocked`, or `exhausted`. |

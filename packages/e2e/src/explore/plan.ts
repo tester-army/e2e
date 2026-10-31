@@ -26,36 +26,49 @@ const DERIVED_TITLE_CHARS = 80;
 const MAX_FIELD_CHARS = 8_000;
 
 /**
- * A flat object with every field required rather than a union: OpenAI's
- * strict structured output rejects a schema whose `required` omits a
- * property, and every provider renders a flat object. Fields the decision
- * does not use are empty strings. The shape is lenient on purpose: a model
- * that puts the whole charter into `title` and leaves `instruction` empty
- * (seen live) has still planned a step, and `repairPlan` derives the missing
- * field rather than spending the repair round on it.
+ * The planner's answer, with `skip` among the decisions only when `skip`
+ * offers it, so a model can't answer it anywhere else. A flat object with
+ * every field required rather than a union: OpenAI's strict structured
+ * output rejects a schema whose `required` omits a property, and every
+ * provider renders a flat object. Fields the decision does not use are empty
+ * strings. The shape is lenient on purpose: a model that puts the whole
+ * charter into `title` and leaves `instruction` empty (seen live) has still
+ * planned a step, and `repairPlan` derives the missing field rather than
+ * spending the repair round on it.
  */
-export const PLAN_SCHEMA = z
-  .object({
-    decision: z.enum(['step', 'finish']),
-    title: z.string().max(MAX_FIELD_CHARS).describe('For a step: the area or flow as a heading of two to five words, e.g. "Cart quantities". Empty for finish.'),
-    instruction: z.string().max(MAX_FIELD_CHARS).describe('For a step: the concrete charter. Empty for finish.'),
-    summary: z.string().max(MAX_FIELD_CHARS).describe('For finish: the overall assessment. Empty for a step.'),
-  })
-  .superRefine((value, context) => {
-    if (value.decision === 'step') {
-      if (`${value.title}${value.instruction}`.trim() === '') {
-        context.addIssue({ code: 'custom', path: ['instruction'], message: 'a step needs a concrete instruction' });
+export function planSchema(options: { readonly skip: boolean }) {
+  const decisions: readonly [PlanDecision['kind'], ...PlanDecision['kind'][]] = options.skip ? ['step', 'finish', 'skip'] : ['step', 'finish'];
+  return z
+    .object({
+      decision: z.enum(decisions),
+      title: z.string().max(MAX_FIELD_CHARS).describe('For a step: the area or flow as a heading of two to five words, e.g. "Cart quantities". Empty otherwise.'),
+      instruction: z.string().max(MAX_FIELD_CHARS).describe('For a step: the concrete charter. Empty otherwise.'),
+      summary: z
+        .string()
+        .max(MAX_FIELD_CHARS)
+        .describe(options.skip ? 'For finish: the overall assessment. For skip: why the change has nothing to explore. Empty for a step.' : 'For finish: the overall assessment. Empty for a step.'),
+    })
+    .superRefine((value, context) => {
+      if (value.decision === 'step') {
+        if (`${value.title}${value.instruction}`.trim() === '') {
+          context.addIssue({ code: 'custom', path: ['instruction'], message: 'a step needs a concrete instruction' });
+        }
+      } else if (value.summary.trim().length < MIN_SUMMARY_CHARS) {
+        context.addIssue({ code: 'custom', path: ['summary'], message: 'finishing needs an overall assessment' });
       }
-    } else if (value.summary.trim().length < MIN_SUMMARY_CHARS) {
-      context.addIssue({ code: 'custom', path: ['summary'], message: 'finishing needs an overall assessment' });
-    }
-  });
+    });
+}
 
-type PlanAnswer = z.output<typeof PLAN_SCHEMA>;
+const PLAN_SCHEMA = planSchema({ skip: false });
+const SKIPPABLE_PLAN_SCHEMA = planSchema({ skip: true });
+
+type PlanAnswer = z.output<typeof SKIPPABLE_PLAN_SCHEMA>;
 
 export type PlanDecision =
   | { readonly kind: 'step'; readonly title: string; readonly instruction: string }
-  | { readonly kind: 'finish'; readonly summary: string };
+  | { readonly kind: 'finish'; readonly summary: string }
+  /** The change has nothing a user can see; offered only on a skippable change. */
+  | { readonly kind: 'skip'; readonly summary: string };
 
 /** One configured credential the explorer can sign in with, by name; the password stays out of every prompt. */
 export interface PlanAccount {
@@ -79,8 +92,12 @@ export interface PlanRequest {
   readonly accounts?: readonly PlanAccount[] | undefined;
   /** The saved session the exploration started from, when it started signed in. */
   readonly session?: string | undefined;
-  /** Whether the run explores a code change, which the context holds between `<change>` tags. */
-  readonly exploresChange?: boolean | undefined;
+  /**
+   * The code change the run explores, which the context holds between
+   * `<change>` tags; `skippable` on the first plan of a change the context
+   * shows in full, the one time the planner may answer `skip`.
+   */
+  readonly change?: { readonly skippable: boolean } | undefined;
   /** Why it must end, in the planner's prompt. */
   readonly reason?: string | undefined;
   readonly remainingMs: number;
@@ -89,7 +106,8 @@ export interface PlanRequest {
 
 /** Asks the model for the next charter or the closing assessment. */
 export async function planNext(agent: Agent, state: ExploreState, request: PlanRequest): Promise<PlanDecision> {
-  return repairPlan(await agent.extract(planInstruction(state, request), { schema: PLAN_SCHEMA, timeout: request.timeoutMs }));
+  const schema = request.change?.skippable === true ? SKIPPABLE_PLAN_SCHEMA : PLAN_SCHEMA;
+  return repairPlan(await agent.extract(planInstruction(state, request), { schema, timeout: request.timeoutMs }));
 }
 
 /**
@@ -109,7 +127,7 @@ export async function planNext(agent: Agent, state: ExploreState, request: PlanR
  * clips them to the report's ceilings when the step opens.
  */
 export function repairPlan(answer: PlanAnswer): PlanDecision {
-  if (answer.decision === 'finish') return { kind: 'finish', summary: unpad(answer.summary) };
+  if (answer.decision !== 'step') return { kind: answer.decision, summary: unpad(answer.summary) };
   const title = unpad(answer.title);
   const instruction = unpad(answer.instruction);
   const charter = instruction === '' ? title : instruction;
@@ -160,9 +178,17 @@ const CHANGE_RULES = [
   '- Whatever only removed lines show is expected to be gone: never plan a step that expects it.',
   '- Code that branches on configuration (feature flags, environment variables, build variants, plan tiers) shows a',
   '  condition, not an outcome. Do not have the agent expect either branch unless the goal says which one applies.',
-  '- When the change touches no screen (server code, configuration, tests, docs), cover the main flows that rely on',
-  '  it briefly and finish early rather than inventing work.',
+  '- When the change touches no screen (server code, configuration, build or CI files, tests, docs), cover the main',
+  '  flows that rely on it briefly and finish early rather than inventing work.',
   '- Ask the agent to check exact wording only where the change edits that wording.',
+];
+
+/** The skip, offered before the first step of a change the context shows in full. */
+const SKIP_RULES = [
+  '- "skip": only when no changed file can change what a user sees or does: documentation, code comments, test files,',
+  '  formatting only. Anything else, or any doubt, is a step: a wasted step costs minutes, a missed regression reaches',
+  '  users. Such a change is a "skip", not a "finish". "summary" names the changed files and says why none of them',
+  '  reaches a screen.',
 ];
 
 /** The planner's instruction: the goal, the record so far, the budget, and how to decide. */
@@ -193,7 +219,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     'Findings so far:',
     findings,
     ...(request.session === undefined ? [] : ['', signedInContext(request.session)]),
-    ...(request.exploresChange === true ? ['', ...CHANGE_RULES] : []),
+    ...(request.change === undefined ? [] : ['', ...CHANGE_RULES]),
     ...(request.accounts === undefined || request.accounts.length === 0
       ? []
       : [
@@ -207,6 +233,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     request.session === undefined
       ? 'sign in with the accounts listed above (or made-up credentials when none are configured)'
       : 'work as the signed-in user rather than signing in again';
+  const skippable = request.change?.skippable === true;
   if (request.mustFinish) {
     return [
       ...header,
@@ -229,6 +256,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '  step confirming it.',
     '- "finish": the goal is covered, or nothing new is reachable. "summary" is the closing assessment.',
     ...ASSESSMENT_RULES.map((line) => `  ${line}`),
-    'Respond with every field present: {"decision": "step", "title": "...", "instruction": "...", "summary": ""} or {"decision": "finish", "title": "", "instruction": "", "summary": "..."}.',
+    ...(skippable ? SKIP_RULES : []),
+    `Respond with every field present: {"decision": "step", "title": "...", "instruction": "...", "summary": ""} or {"decision": "finish", "title": "", "instruction": "", "summary": "..."}${skippable ? ' or {"decision": "skip", "title": "", "instruction": "", "summary": "..."}' : ''}.`,
   ].join('\n');
 }

@@ -709,6 +709,13 @@ describe('renderMarkdownReport for an exploration', () => {
     expect(body).not.toContain('<details>');
   });
 
+  it('says there was nothing to explore when the planner skipped the change', () => {
+    const body = renderMarkdownReport(explored({ ended: 'skipped', summary: 'Only README.md changed.', steps: [], findings: [] }, 'passed'));
+    expect(body).toContain('### 🟢 e2e explore: nothing to explore\n');
+    expect(body).toContain('0 of 8 steps · the change has nothing a user can see');
+    expect(renderMarkdownReport(explored({ steps: [], findings: [] }, 'passed'))).toContain('### 🟢 e2e explore: no findings\n');
+  });
+
   it('names the change an exploration with --changed-since planned from', () => {
     const document = explored({ change: { base: 'abc1234def5678abc1234def5678abc1234def56', files: 3 } });
     expect(renderMarkdownReport(document)).toContain('**Goal:** Explore checkout  \n**Change:** 3 files changed since `abc1234`  \n**Steps:**');

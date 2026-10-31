@@ -7,7 +7,8 @@
  * three failed or blocked steps in a row, the step cap, or the clock end the
  * run with a closing assessment; findings of kind `issue` fail the run; a run
  * that explored nothing and found nothing, or whose charters were all blocked,
- * stays blocked.
+ * stays blocked. A change the planner skips, with nothing a user can see,
+ * ends `skipped` and passes.
  */
 
 import { AgentError, isAgentError } from '../agent/error.ts';
@@ -50,8 +51,12 @@ export interface ExploreBodyOptions {
    * password itself never reaches the model.
    */
   readonly accounts?: readonly PlanAccount[] | undefined;
-  /** Whether the run explores a code change (`--changed-since`), which the planner is told to plan from. */
-  readonly exploresChange?: boolean | undefined;
+  /**
+   * The code change the run explores (`--changed-since`), which the planner
+   * plans from; `complete` when the context shows every changed file in
+   * full, the one case the planner may skip it.
+   */
+  readonly change?: { readonly complete: boolean } | undefined;
   readonly now?: (() => number) | undefined;
 }
 
@@ -67,7 +72,7 @@ interface Loop {
   readonly state: ExploreState;
   readonly accounts: readonly PlanAccount[];
   readonly session: string | undefined;
-  readonly exploresChange: boolean | undefined;
+  readonly change: { readonly complete: boolean } | undefined;
   /** The accounts with their passwords as secrets, once resolved; undefined when none is configured. */
   readonly secrets: AgentParams | undefined;
   readonly stepTimeoutMs: number;
@@ -90,7 +95,7 @@ export function createExploreBody(options: ExploreBodyOptions): TestFn {
         : Object.fromEntries(
             accounts.map((account) => [account.name, { username: account.username, password: credentials.user(account.name).password }]),
           );
-    const ending = await runSteps({ agent, state, accounts, session: options.session, exploresChange: options.exploresChange, secrets, stepTimeoutMs: options.stepTimeoutMs, remaining: () => deadline - now() });
+    const ending = await runSteps({ agent, state, accounts, session: options.session, change: options.change, secrets, stepTimeoutMs: options.stepTimeoutMs, remaining: () => deadline - now() });
     state.end(ending.ended, ending.summary);
     conclude(state);
   };
@@ -116,7 +121,7 @@ async function runSteps(loop: Loop): Promise<Ending> {
         reason: stop?.reason,
         accounts: loop.accounts,
         session: loop.session,
-        exploresChange: loop.exploresChange,
+        change: loop.change === undefined ? undefined : { skippable: loop.change.complete && state.steps.length === 0 && stop === undefined },
         remainingMs: remaining(),
         timeoutMs: Math.max(MIN_PLAN_TIMEOUT_MS, Math.min(PLAN_TIMEOUT_MS, remaining())),
       });
@@ -137,6 +142,7 @@ async function runSteps(loop: Loop): Promise<Ending> {
       plan = state.steps.length === 0 ? SURVEY_STEP : CONTINUE_STEP;
     }
     if (plan.kind === 'finish') return { ended: stop?.ended ?? 'finished', summary: plan.summary };
+    if (plan.kind === 'skip') return { ended: 'skipped', summary: plan.summary };
     // Asked to finish, the model planned a step anyway: the budget wins.
     if (stop !== undefined) return { ended: stop.ended };
 
@@ -215,8 +221,9 @@ const CONTINUE_STEP: PlanDecision = {
     'Continue the exploration: from the goal on the Test: line and the previously completed steps, pick the flow or screen the goal names that no step has covered yet, exercise it end to end with realistic inputs, and report any defect you see on the way.',
 };
 
-/** Turns the record into the run's verdict. */
+/** Turns the record into the run's verdict: a skipped change passes. */
 function conclude(state: ExploreState): void {
+  if (state.ended === 'skipped') return;
   if (state.steps.length === 0 && state.findings.length === 0) {
     throw new AgentError(
       'AUTOMATION_UNSUPPORTED',

@@ -73,7 +73,7 @@ configured secrets are redacted (topic `writing-tests`).
 | `--target <id>` | first configured target | The one target to explore. |
 | `--agent <name>` | `default` | Build the explorer from another configured agent (`agents.<name>`). |
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
-| `--changed-since <ref>` | none | Explore the change since the merge base of the ref and HEAD: the planner reads the commit messages and their diff (a file no commit changed by name only) and plans charters for the screens the change can affect. With files changed, the default goal becomes `Explore what this change affects and find bugs in it`; with none, the usual default. Patches are cut to a size budget. Needs the base in the checkout (`fetch-depth: 0` in CI). `run.explore.change` records it. |
+| `--changed-since <ref>` | none | Explore the change since the merge base of the ref and HEAD: the planner reads the commit messages and their diff (a file no commit changed by name only) and plans charters for the screens the change can affect. With files changed, the default goal becomes `Explore what this change affects and find bugs in it`; with none, the usual default. Patches are cut to a size budget. When every changed file is shown in full and none reaches a screen (docs, comments, tests, formatting only), the planner may skip before the first step; the run ends `skipped` and passes, the assessment saying why. Needs the base in the checkout (`fetch-depth: 0` in CI). `run.explore.change` records it. |
 | `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
 | `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. The exploration is one attempt, so a retry mode (`on-first-retry`, `on-all-retries`) records nothing (the run's notice says to pass `--trace on`); put the goal before a bare `--trace` or `--video`. |
@@ -86,8 +86,9 @@ exploration.
 ## Reading the result
 
 Exit code `0`: steps ran, no `issue` was reported, and not every charter was
-blocked; warnings are allowed. Exit code `1`: at least one `issue`, or no step
-ran and nothing was found. If every charter was blocked and no `issue` was
+blocked; warnings are allowed. With `--changed-since`, a change the planner
+skipped before the first step (no file a user can see) is also `0`. Exit
+code `1`: at least one `issue`, or no step ran and nothing was found. If every charter was blocked and no `issue` was
 reported, the run is `blocked` even with warnings, and the exit code is the
 first blocker's own, as for `run`: 1 for an automation limit, 2 for a missing
 model, credentials, seed data, or test setup, 3 for an unavailable
@@ -108,7 +109,7 @@ medium 3, low 2, trivial 1. `.e2e/report.json` has the record under
 {
   "goal": "...",
   "budgets": { "maxSteps": 8, "timeoutMs": 600000 },
-  "ended": "finished | step-limit | time | stuck | aborted",
+  "ended": "finished | skipped | step-limit | time | stuck | aborted",
   "summary": "the closing assessment",
   "change": { "base": "<merge base sha>", "files": 3 },
   "steps": [{ "index": 1, "title": "...", "instruction": "...", "status": "passed | failed | blocked | exhausted", "summary": "...", "errorCode": "...", "startedAt": "...", "durationMs": 0 }],

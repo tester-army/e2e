@@ -53,7 +53,14 @@ export interface ExploreChange {
   /** The change by counts, as `run.explore.change` records it. */
   readonly report: ReportExploreChange;
   /** The brief the planner and the explorer read; undefined when nothing changed since the base. */
-  readonly brief: string | undefined;
+  readonly brief: ChangeBrief | undefined;
+}
+
+/** The change as the models read it. */
+export interface ChangeBrief {
+  readonly text: string;
+  /** Whether it shows every changed file, each committed with its whole patch, a file left off the list having none: only then may the planner skip the run. */
+  readonly complete: boolean;
 }
 
 interface ChangedFile {
@@ -97,7 +104,8 @@ export async function readExploreChange(options: {
     const files = changes.files.map((file): ChangedFile => ({ file, committed: counts === undefined ? 'unknown' : counts.get(file) }));
     const listed = listedFiles(files);
     const patches = await read.patches(changes.base, listed);
-    return { report, brief: renderBrief(changes.base, files.length, listed, patches, commits) };
+    const complete = files.every((file) => isWhole(patches.get(file.file)));
+    return { report, brief: { text: renderBrief(changes.base, files.length, listed, patches, commits), complete } };
   } catch (cause) {
     if (options.signal.aborted) throw new E2EError('interrupted', 'INTERRUPTED', 'interrupted while reading the change to explore', { cause });
     throw cause;
@@ -214,6 +222,11 @@ function cutLines(text: string, bytes: number): Patch {
   return { text: kept.join('\n'), cutLines: lines.length - kept.length, cappedLines };
 }
 
+/** Whether a file's patch is in the brief whole: every line, none capped. */
+function isWhole(patch: Patch | undefined): boolean {
+  return patch !== undefined && patch.cutLines === 0 && !patch.cappedLines;
+}
+
 /**
  * The brief as the models read it: the commits, then the files the list
  * has room for, each with its line counts and how much of its patch
@@ -239,8 +252,8 @@ function describe(file: ChangedFile, patch: Patch | undefined): string {
   if (file.committed.lines === undefined) return 'binary';
   const counts = `+${file.committed.lines.added} -${file.committed.lines.removed}`;
   if (patch === undefined) return `${counts}; patch not shown`;
-  if (patch.cutLines > 0) return `${counts}; patch cut, ${patch.cutLines} more line${patch.cutLines === 1 ? '' : 's'}`;
-  return patch.cappedLines ? `${counts}; patch below, long lines cut` : `${counts}; full patch below`;
+  if (isWhole(patch)) return `${counts}; full patch below`;
+  return patch.cutLines > 0 ? `${counts}; patch cut, ${patch.cutLines} more line${patch.cutLines === 1 ? '' : 's'}` : `${counts}; patch below, long lines cut`;
 }
 
 /** A path as the brief lists it: quoted, as git quotes one, when it holds a quote, a backslash, or a control character, so a name can't add lines of its own. */

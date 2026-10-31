@@ -23,11 +23,16 @@ function branchWith(base: Readonly<Record<string, string>>, files: Readonly<Reco
   return { dir, point };
 }
 
-/** The brief of the change since `main` in `dir`, read within `budgetMs`. */
-async function briefOf(dir: string, budgetMs?: number): Promise<string> {
+/** The change since `main` in `dir`, its brief read within `budgetMs`. */
+async function changeOf(dir: string, budgetMs?: number): Promise<{ readonly text: string; readonly complete: boolean }> {
   const change = await readExploreChange({ cwd: dir, changedSince: 'main', signal: new AbortController().signal, budgetMs });
   if (change.brief === undefined) throw new Error('expected a change');
   return change.brief;
+}
+
+/** The brief's text of the change since `main` in `dir`, read within `budgetMs`. */
+async function briefOf(dir: string, budgetMs?: number): Promise<string> {
+  return (await changeOf(dir, budgetMs)).text;
 }
 
 describe('readExploreChange', () => {
@@ -39,7 +44,8 @@ describe('readExploreChange', () => {
     );
     const change = await readExploreChange({ cwd: dir, changedSince: 'main', signal: new AbortController().signal });
     expect(change.report).toEqual({ base: point, files: 1 });
-    expect(change.brief).toBe(
+    expect(change.brief?.complete).toBe(true);
+    expect(change.brief?.text).toBe(
       [
         `Changed since ${point.slice(0, 7)}: 1 file.`,
         '',
@@ -74,6 +80,18 @@ describe('readExploreChange', () => {
     expect(brief).not.toContain('edited in the working tree');
   });
 
+  it('is not shown whole once an uncommitted file is listed', async () => {
+    const { dir } = branchWith({ 'a.txt': 'a\n' }, { 'a.txt': 'b\n' });
+    expect((await changeOf(dir)).complete).toBe(true);
+    writeFileSync(path.join(dir, 'notes.txt'), 'local\n');
+    expect((await changeOf(dir)).complete).toBe(false);
+  });
+
+  it('is not shown whole with a binary file', async () => {
+    const { dir } = branchWith({ 'a.txt': 'a\n' }, { 'a.txt': 'b\n', 'logo.png': 'PNG\0data' });
+    expect((await changeOf(dir)).complete).toBe(false);
+  });
+
   it('reads a file whose name looks like a pattern as that file only', async () => {
     const { dir } = branchWith({ 'p/i.tsx': 'i\n', 'p/d.tsx': 'd\n' }, { 'p/[id].tsx': 'route\n', 'p/i.tsx': 'i2\n', 'p/d.tsx': 'd2\n' });
     const brief = await briefOf(dir);
@@ -85,7 +103,8 @@ describe('readExploreChange', () => {
     const big = Array.from({ length: 2_000 }, (_, index) => `line ${index}`).join('\n');
     const files = Object.fromEntries(Array.from({ length: 12 }, (_, index) => [`f${String(index).padStart(2, '0')}.txt`, `${big}\n`]));
     const { dir } = branchWith({ 'a.txt': 'a\n' }, files);
-    const brief = await briefOf(dir);
+    const { text: brief, complete } = await changeOf(dir);
+    expect(complete).toBe(false);
     expect(brief).toMatch(/f00\.txt \(\+2000 -0; patch cut, \d+ more lines\)/u);
     expect(brief).toContain('f11.txt (+2000 -0; patch not shown)');
     expect(Buffer.byteLength(brief)).toBeLessThan(12_000);
@@ -93,14 +112,16 @@ describe('readExploreChange', () => {
 
   it('says a patch with a line cut at its length is not the full patch', async () => {
     const { dir } = branchWith({ 'a.txt': 'a\n' }, { 'bundle.js': `${'x'.repeat(400)}\n` });
-    const brief = await briefOf(dir);
+    const { text: brief, complete } = await changeOf(dir);
+    expect(complete).toBe(false);
     expect(brief).toContain(`bundle.js (+1 -0; patch below, long lines cut)\n@@ -0,0 +1 @@\n+${'x'.repeat(299)}…`);
   });
 
   it('counts the files past the list budget', async () => {
     const files = Object.fromEntries(Array.from({ length: 80 }, (_, index) => [`packages/app/src/features/${'deep/'.repeat(4)}f${String(index).padStart(2, '0')}.txt`, `${index}\n`]));
     const { dir } = branchWith({ 'a.txt': 'a\n' }, files);
-    const brief = await briefOf(dir);
+    const { text: brief, complete } = await changeOf(dir);
+    expect(complete).toBe(false);
     const listed = brief.split('\n').filter((line) => line.startsWith('packages/')).length;
     expect(listed).toBeGreaterThan(20);
     expect(listed).toBeLessThan(80);
@@ -114,7 +135,7 @@ describe('readExploreChange', () => {
     for (let index = 0; index < 4; index += 1) {
       commitFiles(dir, { [`f${index}.txt`]: `${index}\n` }, [`Commit ${index}`, '', ...Array.from({ length: 50 }, (_, line) => `detail ${line} of commit ${index}`)].join('\n'));
     }
-    const brief = await readExploreChange({ cwd: dir, changedSince: 'main', signal: new AbortController().signal }).then((change) => change.brief!);
+    const brief = await briefOf(dir);
     expect(brief).toContain('- Commit 3\n');
     expect(brief).toContain('detail 1 of commit 3');
     expect(brief).not.toContain('detail 49 of commit 3');

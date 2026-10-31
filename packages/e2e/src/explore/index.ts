@@ -24,7 +24,7 @@ import { run, type RunOutcome } from '../run/runner.ts';
 import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
 import type { AgentConfig, BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
 import { createExploreBody } from './body.ts';
-import { changeContext, readExploreChange, type ExploreChange } from './change.ts';
+import { changeContext, readExploreChange, type ChangeBrief, type ExploreChange } from './change.ts';
 import { explorerAgent, withFindingTool } from './executor.ts';
 import { signedInContext, type PlanAccount } from './plan.ts';
 import { ExploreState } from './state.ts';
@@ -328,14 +328,14 @@ function credentialAccounts(credentials: ReadonlyMap<string, ResolvedCredential>
  */
 function exploreRegistration(
   state: ExploreState,
-  start: { readonly openApp: boolean; readonly accounts: readonly PlanAccount[]; readonly session: string | undefined; readonly brief: string | undefined },
+  start: { readonly openApp: boolean; readonly accounts: readonly PlanAccount[]; readonly session: string | undefined; readonly brief: ChangeBrief | undefined },
 ): ModuleRegistration {
   const title = state.goal;
   const { openApp, accounts, session, brief } = start;
   // The change rides in the trusted context, never in a step's label: the
   // planner reads it, the explorer judges against it, and the report and
   // the trace page never copy it; only the opt-in AI trace records prompts.
-  const context = [...(session === undefined ? [] : [signedInContext(session)]), ...(brief === undefined ? [] : [changeContext(brief)])];
+  const context = [...(session === undefined ? [] : [signedInContext(session)]), ...(brief === undefined ? [] : [changeContext(brief.text)])];
   const test: RegisteredTest = {
     kind: 'test',
     title,
@@ -350,7 +350,7 @@ function exploreRegistration(
     },
     sessions: [],
     tags: [],
-    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, accounts, session, exploresChange: brief !== undefined }),
+    fn: createExploreBody({ state, stepTimeoutMs: STEP_TIMEOUT_MS, openApp, accounts, session, change: brief === undefined ? undefined : { complete: brief.complete } }),
     fixtures: [],
     group: undefined,
     mode: 'normal',

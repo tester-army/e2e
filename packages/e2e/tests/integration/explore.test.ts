@@ -35,7 +35,7 @@ const { explore: exploreBuilt } = (await import(builtExploreModule)) as typeof i
 const builtRunnerModule = '../../dist/runner.js';
 const { explore: publicExplore, run: publicRun } = (await import(builtRunnerModule)) as typeof import('../../src/runner.ts');
 
-type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish'; summary: string };
+type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish' | 'skip'; summary: string };
 
 /**
  * One model for both paths: a request offering `complete_step` is a step of
@@ -258,6 +258,30 @@ describe('e2e explore', () => {
         code: 'INVALID_CHANGED_SINCE',
         message: '--changed-since must name a git ref, such as origin/main; got "--output=/tmp/x"',
       });
+    } finally {
+      changed.cleanup();
+    }
+  }, 120_000);
+
+  it('passes when the planner skips a change with nothing a user can see, and offers no skip without a change', async () => {
+    const changed = createProject({ 'README.md': 'app\n' });
+    try {
+      initRepo(changed.dir);
+      commitFiles(changed.dir, {}, 'project');
+      runGit(changed.dir, 'branch', '--quiet', 'base');
+      commitFiles(changed.dir, { 'README.md': 'app, documented\n' }, 'Document the app');
+      const model = installExploreModel({
+        plan: () => ({ decision: 'skip', summary: 'Only README.md changed: documentation, nothing a user sees.' }),
+        loop: () => [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+      });
+      const skipped = await runExplore(changed, app, model, { goal: undefined, changedSince: 'base' });
+      expect(skipped).toMatchObject({ status: 'passed', exitCode: 0 });
+      expect(skipped.report.run.explore).toMatchObject({ ended: 'skipped', steps: [], findings: [], summary: 'Only README.md changed: documentation, nothing a user sees.' });
+      assertValidReport(skipped.report);
+      const unchanged = await runExplore(changed, app, model);
+      // Without a change the grammar has no skip: the answer is invalid, and the built-in survey runs instead.
+      expect(unchanged.report.run.explore!.ended).not.toBe('skipped');
+      expect(unchanged.report.run.explore!.steps.map((step) => step.title)).toEqual(['Survey the app']);
     } finally {
       changed.cleanup();
     }

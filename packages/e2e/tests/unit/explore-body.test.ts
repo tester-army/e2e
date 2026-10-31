@@ -5,8 +5,9 @@ import { isSecret } from '../../src/secrets.ts';
 import { CONSECUTIVE_FAILURE_LIMIT, createExploreBody } from '../../src/explore/body.ts';
 import { ExploreState } from '../../src/explore/state.ts';
 import type { Agent, App, TestFixtures } from '../../src/types.ts';
+import type { ZodType } from 'zod';
 
-type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish'; summary: string };
+type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { decision: 'finish' | 'skip'; summary: string };
 type ActOutcome = { summary: string } | { throws: AgentError };
 
 interface Script {
@@ -17,14 +18,17 @@ interface Script {
 }
 
 /** A fixture set whose agent replays a script and records what the body asked. */
-function fixtures(script: Script, state: ExploreState) {
+function fixtures(script: Script, state: ExploreState, change?: { readonly complete: boolean }) {
   const planInstructions: string[] = [];
+  /** Per planner call, whether its schema offered `skip`. */
+  const skipOffered: boolean[] = [];
   const actCalls: { instruction: string; timeout: number | undefined }[] = [];
   let plan = 0;
   let act = 0;
   const agent = {
-    extract: async (instruction: string) => {
+    extract: async (instruction: string, options: { readonly schema: ZodType }) => {
       planInstructions.push(instruction);
+      skipOffered.push(options.schema.safeParse({ decision: 'skip', title: '', instruction: '', summary: 'Only README.md changed.' }).success);
       const answer = script.plans[plan];
       plan += 1;
       if (answer === undefined) throw new Error(`unscripted planner call ${plan}`);
@@ -42,10 +46,11 @@ function fixtures(script: Script, state: ExploreState) {
   } as unknown as Agent;
   const opened: string[] = [];
   const app = { open: async (target?: string) => void opened.push(target ?? '/') } as unknown as App;
-  const body = createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true });
+  const body = createExploreBody({ state, stepTimeoutMs: 240_000, openApp: true, ...(change === undefined ? {} : { change }) });
   return {
     run: () => body({ agent, app, screen: {} as never, platform: 'web' } as TestFixtures),
     planInstructions,
+    skipOffered,
     actCalls,
     opened,
   };
@@ -287,6 +292,50 @@ describe('the exploration body', () => {
       (error: unknown) => isAgentError(error) && error.code === 'AUTOMATION_UNSUPPORTED' && error.blocked,
     );
     expect(state.ended).toBe('finished');
+  });
+
+  it('ends skipped and passes when the planner skips a change shown in full', async () => {
+    const state = new ExploreState('goal', budgets);
+    const harness = fixtures({ plans: [{ decision: 'skip', summary: 'Only README.md changed: documentation.' }] }, state, { complete: true });
+    await harness.run();
+    expect(harness.skipOffered).toEqual([true]);
+    expect(harness.planInstructions[0]).toContain('- "skip": only when no changed file can change what a user sees or does');
+    expect(state.steps).toHaveLength(0);
+    expect(state.ended).toBe('skipped');
+    expect(state.summary).toBe('Only README.md changed: documentation.');
+  });
+
+  it.each([
+    ['a change the brief does not show in full', { complete: false }],
+    ['a run with no change', undefined],
+  ])('does not offer the skip for %s', async (_, change) => {
+    const harness = fixtures({ plans: [{ decision: 'finish', summary: 'Nothing to explore here at all.' }] }, new ExploreState('goal', budgets), change);
+    await expect(harness.run()).rejects.toSatisfy((error: unknown) => isAgentError(error) && error.code === 'AUTOMATION_UNSUPPORTED' && error.blocked);
+    expect(harness.skipOffered).toEqual([false]);
+    expect(harness.planInstructions[0]).not.toContain('"skip"');
+  });
+
+  it('offers the skip only before the first step', async () => {
+    const harness = fixtures(
+      { plans: [{ decision: 'step', title: 'Cart', instruction: 'Open the cart' }, { decision: 'finish', summary: 'The cart works as the change intends.' }], acts: [{ summary: 'Opened' }] },
+      new ExploreState('goal', budgets),
+      { complete: true },
+    );
+    await harness.run();
+    expect(harness.skipOffered).toEqual([true, false]);
+  });
+
+  it('does not offer the skip when the run must finish before its first step', async () => {
+    const state = new ExploreState('goal', { maxSteps: 4, timeoutMs: 100_000 });
+    const harness = fixtures({ plans: [{ decision: 'finish', summary: 'No time was left to explore.' }] }, state, { complete: true });
+    await expect(harness.run()).rejects.toSatisfy((error: unknown) => isAgentError(error) && error.blocked);
+    expect(harness.skipOffered).toEqual([false]);
+    expect(state.ended).toBe('time');
+  });
+
+  it('stays blocked when the planner finishes a change run before its first step', async () => {
+    const harness = fixtures({ plans: [{ decision: 'finish', summary: 'The app shows an error page; nothing is reachable.' }] }, new ExploreState('goal', budgets), { complete: true });
+    await expect(harness.run()).rejects.toSatisfy((error: unknown) => isAgentError(error) && error.code === 'AUTOMATION_UNSUPPORTED' && error.blocked);
   });
 
   it('keeps the first blocker when every charter was blocked, with warnings', async () => {

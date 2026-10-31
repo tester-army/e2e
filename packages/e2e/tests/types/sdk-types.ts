@@ -857,7 +857,7 @@ void explore({
 } satisfies ExploreOptions);
 void explore({ config: 'e2e.config.ts' });
 void (exploreResult satisfies RunResult);
-void (exploreResult.explore.ended satisfies 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted');
+void (exploreResult.explore.ended satisfies 'finished' | 'skipped' | 'step-limit' | 'time' | 'stuck' | 'aborted');
 void (exploreResult.explore.findings[0]?.severity satisfies 1 | 2 | 3 | 4 | 5 | undefined);
 void (exploreResult.explore.steps[0]?.status satisfies 'passed' | 'failed' | 'blocked' | 'exhausted' | undefined);
 // @ts-expect-error runtime configuration uses config, not the internal rawConfig name

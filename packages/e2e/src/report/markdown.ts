@@ -507,7 +507,15 @@ function exploreHeadline(run: ReportRun, results: readonly ReportResult[], explo
   const warnings = explore.findings.length - issues;
   const counts = [...(issues > 0 ? [plural(issues, 'issue')] : []), ...(warnings > 0 ? [plural(warnings, 'warning')] : [])];
   const summary =
-    counts.length > 0 ? counts.join(', ') : run.status === 'blocked' ? 'explored nothing' : run.status === 'passed' ? 'no findings' : 'did not finish';
+    counts.length > 0
+      ? counts.join(', ')
+      : explore.ended === 'skipped'
+        ? 'nothing to explore'
+        : run.status === 'blocked'
+          ? 'explored nothing'
+          : run.status === 'passed'
+            ? 'no findings'
+            : 'did not finish';
   return `### ${runIcon(run, results)} ${pageName(options)} explore: ${summary}`;
 }
 

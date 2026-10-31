@@ -100,6 +100,11 @@ reads the commit messages and their diff since the merge base with the ref,
 and spends its steps on the screens that the change can affect. A file no
 commit changed is listed by name only. With no
 goal, the goal is `Explore what this change affects and find bugs in it`.
+When the planner sees every changed file in full and none can change what a
+user sees, such as a change to docs or tests only, it can skip the run
+before the first step. It says why, the run ends `skipped` in the report,
+and it passes. The branch's own commit messages and code can sway that call,
+so to tell a skip from a clean exploration, read `run.explore.ended`.
 
 <CodeGroup>
 ```bash npm

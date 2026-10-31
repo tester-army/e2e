@@ -318,7 +318,7 @@ export class ExploreView {
   record(badge: string, withSteps: boolean): string[] {
     const { pc } = this;
     const lines = withSteps ? ['', this.header(badge, 'Explored'), ...this.steps.flatMap((step) => this.stepLines(step))] : [];
-    if (this.steps.length === 0) lines.push(`${ROW_INDENT}${pc.dim('no step ran')}`);
+    if (this.steps.length === 0 && this.ended !== 'skipped') lines.push(`${ROW_INDENT}${pc.dim('no step ran')}`);
     lines.push(`${ROW_INDENT}${pc.dim(`ended: ${ENDED_TEXT[this.ended ?? 'aborted']}`)}`);
     return lines;
   }

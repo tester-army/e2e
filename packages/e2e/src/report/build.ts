@@ -177,7 +177,7 @@ export interface ReportExplore {
   goal: string;
   budgets: { maxSteps: number; timeoutMs: number };
   /** Why exploration stopped. */
-  ended: 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted';
+  ended: 'finished' | 'skipped' | 'step-limit' | 'time' | 'stuck' | 'aborted';
   /** The agent's closing assessment, when it gave one. */
   summary?: string | undefined;
   /** The code change it planned from, with `--changed-since`. */

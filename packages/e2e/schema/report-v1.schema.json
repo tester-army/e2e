@@ -828,7 +828,10 @@
             "timeoutMs": { "type": "integer", "minimum": 1 }
           }
         },
-        "ended": { "enum": ["finished", "step-limit", "time", "stuck", "aborted"] },
+        "ended": {
+          "description": "Why exploration stopped. skipped: the planner judged, before any step, that the change since --changed-since has nothing a user can see; the run passes.",
+          "enum": ["finished", "skipped", "step-limit", "time", "stuck", "aborted"]
+        },
         "summary": { "type": "string", "maxLength": 4000 },
         "change": {
           "description": "The code change since --changed-since the exploration planned from, by counts only. Present when the run passed --changed-since.",
