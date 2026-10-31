@@ -82,13 +82,15 @@ export const POLL_INTERVAL_MS = 100;
  * a cap, reads end at the deadline.
  */
 export class ReadWindow {
+  readonly deadline: Deadline;
+  private readonly cap: Deadline;
   private slowestMs = 0;
   private lastStartedWithMs = Number.POSITIVE_INFINITY;
 
-  constructor(
-    readonly deadline: Deadline,
-    private readonly cap: Deadline = deadline,
-  ) {}
+  constructor(deadline: Deadline, cap: Deadline = deadline) {
+    this.deadline = deadline;
+    this.cap = cap;
+  }
 
   /** The budget for an engine read starting now, never under 1 ms. */
   timeoutMs(): number {
