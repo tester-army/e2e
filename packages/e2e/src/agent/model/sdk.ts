@@ -103,6 +103,7 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
         if (schema === undefined) {
           const result = await generateText(settings);
           finished = result;
+          if (result.finishReason === 'error') throw errorFinish(result);
           const parsed = parseJsonObject(result.text);
           const validation = call.validate(parsed);
           if (!validation.ok) {
@@ -138,12 +139,7 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
         // the `output` getter); update it if the SDK changes that rule.
         const hasParsedOutput = finishReason === 'stop' || (finishReason !== 'tool-calls' && rawText !== '');
         if (!hasParsedOutput) {
-          if (finishReason === 'error') {
-            throw new AgentError(
-              'MODEL_PROVIDER_FAILED',
-              `model provider failed: the call ended on an error finish (raw finish reason: ${result.rawFinishReason ?? finishReason})`,
-            );
-          }
+          if (finishReason === 'error') throw errorFinish(result);
           throw new ModelOutputInvalidError(
             `model returned no structured output (finish reason: ${result.rawFinishReason ?? finishReason})`,
             rawText === '' ? {} : { rawText },
@@ -237,6 +233,14 @@ function readUsage(result: UsageCarrier, inputBound: number): ModelUsage {
     accounting: 'adapter-upper-bound',
     estimatedCostUsd,
   };
+}
+
+/** `MODEL_PROVIDER_FAILED` for a call the provider ended on an `error` finish: whatever text came with it is not an answer. */
+function errorFinish(result: FinishedCall): AgentError {
+  return new AgentError(
+    'MODEL_PROVIDER_FAILED',
+    `model provider failed: the call ended on an error finish (raw finish reason: ${result.rawFinishReason ?? result.finishReason})`,
+  );
 }
 
 /**

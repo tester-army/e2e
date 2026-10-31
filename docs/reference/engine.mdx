@@ -90,7 +90,7 @@ rules:
 | `spiVersion` | Anything but `1`. |
 | `platform` | Empty. |
 | `workers` | Not a positive safe integer. |
-| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
+| `observe`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
 | any other top-level key | On an object literal, `app` included: declare the app on the target and check it in `validateApp`. A class instance's own fields are not checked. |
 | `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
 | `perform`, `actions` | One without the other. An `actions` list that is empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`. |
@@ -131,7 +131,7 @@ The body of one target. Every member but `name`, `version`, and
 | [`validateApp`](#app) | method |
 | [`secrets`](#startattempt) | `Secret[]` |
 | [`session`](#session) | `EngineSession` |
-| [`prepare`, `finish`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
+| [`prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`](#lifecycle) | hooks |
 
 ```ts
 /** The body of one target: typed, model-free, capability-graded. */
@@ -272,6 +272,14 @@ export interface Engine {
    * failure is a cleanup-phase run error.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
+  /**
+   * Checks this machine for what a run on the target needs, for
+   * `e2e doctor`. Read-only and quick: never install, launch, lease, or
+   * start anything a check could instead look up, and never call `prepare`.
+   * A check that cannot tell reports nothing rather than guess. A throw is
+   * reported as one failed check of the target.
+   */
+  doctor?(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held
@@ -516,6 +524,7 @@ optional. The `Engine` declaration's JSDoc above states each hook's contract.
 | --- | --- |
 | [`prepare(info)`](#prepare) | Once per target, before any worker |
 | [`finish(info)`](#finish) | After the target's last worker is gone |
+| [`doctor(info)`](#doctor) | Once per target in `e2e doctor`, never in a run |
 | [`init(info)`](#init) | Once per worker, before its first step |
 | [`startAttempt(context)`](#startattempt) | Before each attempt |
 | [`settleAttempt(context)`](#settleattempt) | After the body and after teardown |
@@ -634,6 +643,59 @@ export interface EngineFinishInfo extends EngineCleanupContext {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Reports one line of progress, streamed as a `notice` run event like `prepare`'s. */
   readonly log: (line: string) => void;
+}
+```
+
+#### `doctor`
+
+Runs once per target when [`e2e doctor`](/reference/cli#e2e-doctor) checks
+the project, never during a run. Report what a run on this machine needs and
+whether it's there. Each finding becomes a check under the target. Without the
+hook, the target gets one `engine` check with status `skip`.
+
+```ts
+async doctor(info) {
+  const sdk = await findToolchain(info.env);
+  if (sdk === undefined) return [{ id: 'toolchain', status: 'fail', message: 'install the toolchain' }];
+  return [{ id: 'toolchain', status: 'pass', message: `toolchain ${sdk.version}` }];
+},
+```
+
+`e2e doctor` gives the hook 30 seconds. A throw, a timeout, or a finding
+that isn't an `EngineDoctorCheck` becomes an `engine` check with status
+`fail`.
+
+```ts
+/** Facts handed to `doctor`, once per target in the process `e2e doctor` runs in. */
+export interface EngineDoctorInfo {
+  /** The target being checked. */
+  readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
+  /** The app the target declares, as `prepare` receives it. */
+  readonly app: EngineAppInfo;
+  /** The environment a run would start with. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
+  readonly headed: boolean;
+  /** Aborts 30 seconds in, when the checks fail as timed out; stop then: `e2e doctor` waits at most 10 more seconds for the hook to return. */
+  readonly signal: AbortSignal;
+  /** Reports one line of progress; `e2e doctor` prints it to stderr. */
+  readonly log: (line: string) => void;
+}
+
+/** One finding of `doctor`. */
+export interface EngineDoctorCheck {
+  /** What was checked, in kebab case: `browser`, `toolchain`. */
+  readonly id: string;
+  /**
+   * `pass`; `warn` for something a run handles on its own, slower (a
+   * first-run download); `fail` for something that stops a run; `skip` for
+   * a check that does not apply to this target.
+   */
+  readonly status: 'pass' | 'warn' | 'fail' | 'skip';
+  /** One line: what was found and, unless it passed, what to do. */
+  readonly message?: string;
 }
 ```
 

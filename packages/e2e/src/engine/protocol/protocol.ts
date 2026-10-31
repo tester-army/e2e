@@ -35,7 +35,7 @@ export interface OperationMethod {
 /** A method that carries one lifecycle hook, whose single argument is an info or cleanup object. */
 export interface LifecycleMethod {
   readonly kind: 'lifecycle';
-  readonly member: 'prepare' | 'finish' | 'init' | 'startAttempt' | 'settleAttempt' | 'endAttempt' | 'dispose';
+  readonly member: 'prepare' | 'finish' | 'doctor' | 'init' | 'startAttempt' | 'settleAttempt' | 'endAttempt' | 'dispose';
 }
 
 const operation = (member: string, args: readonly string[], result?: OperationMethod['result']): OperationMethod =>
@@ -66,6 +66,7 @@ export const METHODS = {
   'session/reset': operation('session.reset', ['operation']),
   'lifecycle/prepare': lifecycle('prepare'),
   'lifecycle/finish': lifecycle('finish'),
+  'lifecycle/doctor': lifecycle('doctor'),
   'lifecycle/init': lifecycle('init'),
   'lifecycle/startAttempt': lifecycle('startAttempt'),
   'lifecycle/settleAttempt': lifecycle('settleAttempt'),
@@ -121,7 +122,7 @@ export interface InitializeParams {
   readonly clientInfo: { readonly name: string; readonly version: string };
   /**
    * `run` for the runner's connection, which only ever carries `prepare` and
-   * `finish`; `worker` for a worker's, which carries everything from `init`
+   * `finish`, or `doctor` alone; `worker` for a worker's, which carries everything from `init`
    * to `dispose`.
    */
   readonly role: ConnectionRole;

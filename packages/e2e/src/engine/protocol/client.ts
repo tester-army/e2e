@@ -29,6 +29,8 @@ import type {
   EngineAttemptContext,
   EngineCleanupContext,
   EngineDisposeContext,
+  EngineDoctorCheck,
+  EngineDoctorInfo,
   EngineFinishInfo,
   EngineHandle,
   EngineInitInfo,
@@ -237,6 +239,7 @@ class EngineClient {
         validateApp: this.#options.validateApp,
         prepare: runs ? (info: EnginePrepareInfo) => this.#prepare(info) : undefined,
         finish: runs ? (info: EngineFinishInfo) => this.#finish(info) : undefined,
+        doctor: has('lifecycle/doctor') ? (info: EngineDoctorInfo) => this.#doctor(info) : undefined,
         settleAttempt: has('lifecycle/settleAttempt')
           ? (context: EngineCleanupContext) => this.#forward('lifecycle/settleAttempt', context)
           : undefined,
@@ -286,6 +289,22 @@ class EngineClient {
       }
     } finally {
       await this.#close(link, deadline - Date.now());
+    }
+  }
+
+  /**
+   * Opens a connection of its own for `doctor` alone and closes it after:
+   * `e2e doctor` starts no run. A server that ignores the signal is
+   * abandoned at it, so the connection still closes.
+   */
+  async #doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    const { signal, log, ...rest } = info;
+    const link = await this.#open('run', { env: info.env, cwd: info.projectRoot, signal, app: info.app, log });
+    try {
+      const call = this.#call(link, 'lifecycle/doctor', { ...rest, signal: link.signals.encode(signal) });
+      return (await withAbort(call, signal, cancelledError)) as readonly EngineDoctorCheck[];
+    } finally {
+      await this.#close(link, DEFAULT_CLOSE_MS);
     }
   }
 

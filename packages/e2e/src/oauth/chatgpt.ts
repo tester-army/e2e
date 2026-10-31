@@ -8,6 +8,7 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createOAuthFetch } from './fetch.ts';
+import { withLogin } from './login-model.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
 import { loginHint } from './providers.ts';
 import { createCodexProvider } from './providers/openai.ts';
@@ -21,5 +22,5 @@ export function chatgpt(modelId: string): LanguageModelV4 {
     loginHint: loginHint('openai'),
   });
   // The key header is removed per request; the value only satisfies the constructor.
-  return withoutServerStorage(createOpenAI({ apiKey: 'oauth', fetch, name: 'chatgpt' }).responses(modelId));
+  return withLogin(withoutServerStorage(createOpenAI({ apiKey: 'oauth', fetch, name: 'chatgpt' }).responses(modelId)), 'openai');
 }

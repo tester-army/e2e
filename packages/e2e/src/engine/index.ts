@@ -440,6 +440,38 @@ export interface EngineFinishInfo extends EngineCleanupContext {
   readonly log: (line: string) => void;
 }
 
+/** Facts handed to `doctor`, once per target in the process `e2e doctor` runs in. */
+export interface EngineDoctorInfo {
+  /** The target being checked. */
+  readonly targetName: string;
+  /** Directory relative paths in the config resolve against; see `EngineInitInfo.projectRoot`. */
+  readonly projectRoot: string;
+  /** The app the target declares, as `prepare` receives it. */
+  readonly app: EngineAppInfo;
+  /** The environment a run would start with. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
+  readonly headed: boolean;
+  /** Aborts 30 seconds in, when the checks fail as timed out; stop then: `e2e doctor` waits at most 10 more seconds for the hook to return. */
+  readonly signal: AbortSignal;
+  /** Reports one line of progress; `e2e doctor` prints it to stderr. */
+  readonly log: (line: string) => void;
+}
+
+/** One finding of `doctor`. */
+export interface EngineDoctorCheck {
+  /** What was checked, in kebab case: `browser`, `toolchain`. */
+  readonly id: string;
+  /**
+   * `pass`; `warn` for something a run handles on its own, slower (a
+   * first-run download); `fail` for something that stops a run; `skip` for
+   * a check that does not apply to this target.
+   */
+  readonly status: 'pass' | 'warn' | 'fail' | 'skip';
+  /** One line: what was found and, unless it passed, what to do. */
+  readonly message?: string;
+}
+
 /** Run identity and harness-resolved facts handed to `init`, once per worker before the first step. */
 export interface EngineInitInfo {
   /** The run id. */
@@ -822,6 +854,14 @@ export interface Engine {
    * cleanup-phase run error, never a crash.
    */
   finish?(info: EngineFinishInfo): Promise<void>;
+  /**
+   * Checks this machine for what a run on the target needs, for
+   * `e2e doctor`. Read-only and quick: never install, launch, lease, or
+   * start anything a check could instead look up, and never call `prepare`.
+   * A check that cannot tell reports nothing rather than guess. A throw is
+   * reported as one failed check of the target.
+   */
+  doctor?(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]>;
   /**
    * Once per worker, before the first step; boot devices here, not in a step
    * budget. The same handle can be booted again after `dispose`: a config-held

@@ -21,7 +21,7 @@ export interface TransportContext {
   /** The project root, where relative paths resolve. */
   readonly cwd: string;
   /**
-   * The app the target declares, as `prepare` and `init` receive it: what a
+   * The app the target declares, as `prepare`, `init`, and `doctor` receive it: what a
    * transport that provisions a machine installs there (a build at
    * `appPath`, relative to `cwd`), since a server elsewhere cannot read the
    * project's files. Absent for a connection opened outside those hooks.

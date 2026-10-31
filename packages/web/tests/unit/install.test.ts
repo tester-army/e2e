@@ -4,8 +4,18 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ensureBrowsersInstalled, installArgs } from '../../src/install.ts';
+import { browserCheck, ensureBrowsersInstalled, installArgs } from '../../src/install.ts';
 import { browserType, type BrowserName } from '../../src/browser-connection.ts';
+
+describe('browserCheck', () => {
+  it('passes an installed browser, warns of a first-run download, and reports nothing it cannot tell', () => {
+    expect(browserCheck('chromium', {}, false, () => true)).toEqual([{ id: 'browser', status: 'pass', message: 'chromium is installed' }]);
+    expect(browserCheck('firefox', {}, false, () => false)).toEqual([
+      { id: 'browser', status: 'warn', message: 'firefox is not installed; the first run downloads it, or run "npx @e2e-dev/web install firefox" now' },
+    ]);
+    expect(browserCheck('chromium', {}, false, () => undefined)).toEqual([]);
+  });
+});
 
 describe('ensureBrowsersInstalled', () => {
   it('does nothing when every browser is installed', async () => {

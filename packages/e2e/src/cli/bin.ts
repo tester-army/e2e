@@ -1,16 +1,30 @@
 #!/usr/bin/env node
 import { unsupportedRuntimeMessage } from '../internal/node-version.ts';
+import { packageVersion } from '../internal/package-version.ts';
 import { ignoreBrokenPipes } from './broken-pipe.ts';
+import type { DoctorReport } from './doctor.ts';
+
+/** Whether `args` ask for `e2e doctor --reporter json`, which a host parses even when the runtime is refused. */
+function wantsDoctorJson(args: readonly string[]): boolean {
+  return args[0] === 'doctor' && args.some((arg, index) => arg === '--reporter=json' || (arg === '--reporter' && args[index + 1] === 'json'));
+}
+
+ignoreBrokenPipes([process.stdout, process.stderr]);
 
 // Checked before the CLI module loads: that module and its dependencies are
 // what an old runtime would fail on, with a stack trace instead of a sentence.
 const unsupported = unsupportedRuntimeMessage();
 if (unsupported !== undefined) {
-  process.stderr.write(`${unsupported}\n`);
+  if (wantsDoctorJson(process.argv.slice(2))) {
+    const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
+    const report: DoctorReport = { schemaVersion: 'doctor-1', version, ok: false, checks: [{ id: 'node', status: 'fail', message: unsupported }] };
+    // Exits once the report is flushed: a host reading a pipe would otherwise get it cut short.
+    await new Promise((resolve) => process.stdout.write(`${JSON.stringify(report, null, 2)}\n`, resolve));
+  } else {
+    process.stderr.write(`${unsupported}\n`);
+  }
   process.exit(2);
 }
-
-ignoreBrokenPipes([process.stdout, process.stderr]);
 
 const { main } = await import('./index.ts');
 await main(process.argv);

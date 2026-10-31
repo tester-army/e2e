@@ -2,13 +2,14 @@
  * An engine server process for the protocol tests: a toy engine served over
  * stdio, which reports what it received on stderr so a test can read it off
  * a failure message. `initializationOptions.crashOnObserve` makes `observe`
- * exit the process mid-request.
+ * exit the process mid-request; `hangDoctor` adds a `doctor` that logs the pid
+ * and never returns, in a process that ignores SIGTERM.
  */
 
 import { defineEngine, serveEngine } from '../../src/engine/index.ts';
 
 await serveEngine((options) => {
-  const crash = (options as { crashOnObserve?: boolean } | undefined)?.crashOnObserve === true;
+  const { crashOnObserve: crash = false, hangDoctor = false } = (options ?? {}) as { crashOnObserve?: boolean; hangDoctor?: boolean };
   return defineEngine({
     name: 'toy-server',
     version: '1.0.0',
@@ -30,5 +31,15 @@ await serveEngine((options) => {
     async init(info) {
       info.log(`init slot ${String(info.workerSlot)}`);
     },
+    ...(hangDoctor
+      ? {
+          async doctor(info) {
+            process.on('SIGTERM', () => {});
+            setInterval(() => {}, 1000);
+            info.log(`pid:${String(process.pid)}`);
+            return new Promise(() => {});
+          },
+        }
+      : {}),
   });
 });
