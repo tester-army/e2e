@@ -191,9 +191,10 @@ page on any other origin is another route.
 - An alert that the replay raised and the recording never saw stops the
   replay. The web engine does not observe Next.js App Router's route
   announcer, so its title echo never counts.
-- Text that differs on every run, such as a date, a duration, or an id,
-  is skipped while a stable change exists. With nothing else, it is kept,
-  and a changed value hands the replay off. In an alert, it reads as a placeholder.
+- Text that differs on every run, such as a date, a duration, an age in
+  words like `just now`, or an id, is skipped while a stable change exists.
+  With nothing else, it is kept, and a changed value hands the replay off.
+  In an alert, it reads as a placeholder.
 - A count that names what it counts, such as `3 records imported`, must read
   the same on replay when the step made it appear on the screen it acted
   on. A count that only moved (`41 items` to `42 items`), one on a screen the

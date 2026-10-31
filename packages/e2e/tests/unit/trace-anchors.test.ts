@@ -159,6 +159,23 @@ describe('describeDelta', () => {
     expect(appeared(nodes([heading]), end)).toEqual([{ text: 'Release pipeline' }]);
   });
 
+  it('skips an age in words, the way moment, date-fns, and apps print a recent one', () => {
+    const end = nodes([
+      heading,
+      node('m', { text: 'Last refreshed a few seconds ago' }),
+      node('f', { text: 'Updated less than a minute ago' }),
+      node('a', { text: 'Edited about an hour ago' }),
+      node('j', { text: 'Saved just now' }),
+      node('n', { text: 'Saved' }),
+    ]);
+    expect(appeared(nodes([heading]), end)).toEqual([{ text: 'Saved' }]);
+  });
+
+  it('keeps words that only look like an age', () => {
+    const end = nodes([heading, node('a', { text: 'About us' }), node('b', { text: 'Setup takes a minute' }), node('c', { text: 'Not now' }), node('d', { text: 'Not just now' })]);
+    expect(appeared(nodes([heading]), end)).toHaveLength(4);
+  });
+
   it('keeps volatile anchors when nothing stable appeared, so the replay hands off rather than passing blind', () => {
     const end = nodes([heading, node('k', { text: 'sk_b1bccf4e03c5_...' })]);
     expect(appeared(nodes([heading]), end)).toEqual([{ text: 'sk_b1bccf4e03c5_...' }]);
@@ -292,6 +309,15 @@ describe('deltaMismatch', () => {
     expect(holds(recorded, [saved('a', '2026-10-24T15:30+02:00')])).toBe(true);
     expect(holds([{ role: 'alert', text: 'Saved at 2026-10-24T15:30:00Z' }], [saved('a', '2026-10-24T15:30:00.250Z')])).toBe(true);
     expect(holds(recorded, [node('x', { role: 'alert', text: 'Save failed' })])).toBe(false);
+  });
+
+  it('reads an age in an alert as one placeholder, in words or in digits', () => {
+    const synced = (id: string, age: string) => node(id, { role: 'alert', text: `Synced ${age}` });
+    expect(holds([{ role: 'alert', text: 'Synced a few seconds ago' }], [synced('a', '3 minutes ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced just now' }], [synced('a', '2 hours ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced less than a minute ago' }], [synced('a', '3 minutes ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced half a minute ago' }], [synced('a', 'about 1 hour ago')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Synced 5 minutes ago' }], [node('x', { role: 'alert', text: 'Sync failed 5 minutes ago' })])).toBe(false);
   });
 
   it('forgives a churned test id when the other fields still identify the node', () => {

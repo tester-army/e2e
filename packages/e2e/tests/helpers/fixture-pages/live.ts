@@ -1,8 +1,31 @@
 /** Screens that keep changing after the page loads or after an action lands. */
 
-import { constant, type PageRenderer } from './page.ts';
+import { constant, escapeHtml, type PageRenderer } from './page.ts';
+
+/** `/refresh?format=` ages: what a formatter reads right after a refresh, and a few minutes later under the `later` variant. */
+const REFRESH_AGES: Record<string, string> = {
+  moment: 'a few seconds ago',
+  'date-fns': 'less than a minute ago',
+  app: 'just now',
+};
 
 export const LIVE_PAGES: Record<string, PageRenderer> = {
+  // A refresh shows its age in words, which reads otherwise on a replay later in the suite.
+  '/refresh': (_state, url) => {
+    const age = url.searchParams.get('variant') === 'later' ? '3 minutes ago' : (REFRESH_AGES[url.searchParams.get('format') ?? ''] ?? '');
+    return `<!doctype html>
+<title>Reports</title>
+<h1>Reports</h1>
+<button>Refresh</button>
+<p role="status">Not refreshed</p>
+<p id="age" hidden>Last refreshed ${escapeHtml(age)}</p>
+<script>
+  document.querySelector('button').addEventListener('click', () => {
+    document.querySelector('[role=status]').textContent = 'Refreshed';
+    document.getElementById('age').hidden = false;
+  });
+</script>`;
+  },
   // Next.js App Router's shadow live region echoes the title on its own
   // schedule; an app alert with the same text must still gate replay.
   '/route-announcer': (_state, url) => `<!doctype html>
