@@ -19,6 +19,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.ViewConfiguration;
 import android.view.WindowManager;
+import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityWindowInfo;
 import java.io.ByteArrayOutputStream;
@@ -33,6 +34,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -405,8 +407,7 @@ final class Device {
       }
       case "swipeTo": {
         JSONObject target = action.getJSONObject("target");
-        gesture(point, new float[] {(float) target.getDouble("x"), (float) target.getDouble("y")}, action.optLong("durationMs", 300), 0, operation);
-        awaitRest(operation);
+        gestureToRest(point, new float[] {(float) target.getDouble("x"), (float) target.getDouble("y")}, action.optLong("durationMs", 300), 0, false, operation);
         break;
       }
       default:
@@ -596,10 +597,15 @@ final class Device {
   }
 
   private void drag(float[] from, float[] to, Operation operation) throws EngineException {
-    gesture(from, to, 400, ViewConfiguration.getLongPressTimeout() + 200, operation);
+    gesture(from, to, 400, ViewConfiguration.getLongPressTimeout() + 200, false, operation);
   }
 
-  /** A scroll gesture inside `bounds`: `down` reveals what is below, so the finger travels up. */
+  /**
+   * A scroll gesture inside `bounds`: `down` reveals what is below, so the
+   * finger travels up. `none` drags and rests before lifting; `slow` slows
+   * down toward the end, as a hand does, so the content coasts a little;
+   * `fast` lifts at full speed, a long fling.
+   */
   private void swipe(Rect bounds, String direction, String momentum, Operation operation) throws EngineException {
     float cx = bounds.exactCenterX();
     float cy = bounds.exactCenterY();
@@ -628,31 +634,82 @@ final class Device {
         throw EngineException.unsupported("unknown swipe direction " + direction);
     }
     long duration = "fast".equals(momentum) ? 120 : 400;
-    gesture(from, to, duration, "none".equals(momentum) ? 0 : -1, operation);
-    awaitRest(operation);
+    gestureToRest(from, to, duration, "none".equals(momentum) ? 0 : -1, "slow".equals(momentum), operation);
+  }
+
+  /** Runs a gesture, then waits for what it set moving to come to rest. */
+  private void gestureToRest(float[] from, float[] to, long durationMs, long holdMs, boolean easeOut, Operation operation) throws EngineException {
+    AtomicReference<AccessibilityNodeInfo> scrolled = new AtomicReference<>();
+    automation.setOnAccessibilityEventListener(event -> {
+      if (event.getEventType() != AccessibilityEvent.TYPE_VIEW_SCROLLED) return;
+      AccessibilityNodeInfo source = event.getSource();
+      if (source != null) scrolled.set(source);
+    });
+    try {
+      gesture(from, to, durationMs, holdMs, easeOut, operation);
+      awaitRest(scrolled.get(), operation);
+    } finally {
+      automation.setOnAccessibilityEventListener(null);
+    }
   }
 
   /**
    * Waits for content a gesture set moving to come to rest: a list coasts
    * after the finger lifts, and a touch on it then stops the fling instead
-   * of pressing what is under it. Scrolling raises accessibility events, so
-   * a pause in them is the list at rest.
+   * of pressing what is under it. A container that scrolled is read every
+   * frame until its content holds still for four frames. Content that moved
+   * without scrolling (an animated view) only raises accessibility events,
+   * so a pause in them is its rest.
    */
-  private void awaitRest(Operation operation) {
-    try {
-      automation.waitForIdle(150, Math.min(3000, operation.timeoutMs));
-    } catch (java.util.concurrent.TimeoutException ignored) {
-      // Content that never rests (an animation) is acted on as it is.
+  private void awaitRest(AccessibilityNodeInfo scrolled, Operation operation) throws EngineException {
+    long timeoutMs = Math.min(3000, operation.timeoutMs);
+    if (scrolled == null) {
+      try {
+        automation.waitForIdle(150, timeoutMs);
+      } catch (java.util.concurrent.TimeoutException ignored) {
+        // Content that never rests (an animation) is acted on as it is.
+      }
+      return;
+    }
+    long deadline = SystemClock.uptimeMillis() + timeoutMs;
+    String last = layout(scrolled);
+    for (int still = 0; last != null && still < 4 && SystemClock.uptimeMillis() < deadline; ) {
+      pause(16, operation);
+      String next = layout(scrolled);
+      still = last.equals(next) ? still + 1 : 0;
+      last = next;
+    }
+  }
+
+  /** Where a scroll container's content is on screen, up to three levels down; null once it left the screen. */
+  private static String layout(AccessibilityNodeInfo container) {
+    if (!container.refresh()) return null;
+    StringBuilder out = new StringBuilder();
+    appendLayout(container, 0, out, new int[] {0});
+    return out.toString();
+  }
+
+  private static void appendLayout(AccessibilityNodeInfo node, int depth, StringBuilder out, int[] count) {
+    Rect bounds = new Rect();
+    for (int index = 0; index < node.getChildCount() && count[0] < 24; index++) {
+      AccessibilityNodeInfo child = node.getChild(index);
+      if (child == null) continue;
+      child.getBoundsInScreen(bounds);
+      out.append(bounds.toShortString());
+      count[0] += 1;
+      if (depth < 2) appendLayout(child, depth + 1, out, count);
     }
   }
 
   /**
    * A finger moving from `from` to `to` over `durationMs`. `holdMs` above
    * zero holds before moving (a drag); zero rests at the end before lifting,
-   * so nothing flings; below zero lifts while moving, a fling. An abandoned
-   * gesture still lifts the finger where it is.
+   * so nothing flings; below zero lifts while moving, a fling. `easeOut`
+   * slows the finger toward the end, so the fling is short. Only the down
+   * and up wait for delivery: the dispatcher keeps the moves in order. An
+   * abandoned gesture still lifts the finger where it is.
    */
-  private void gesture(float[] from, float[] to, long durationMs, long holdMs, Operation operation) throws EngineException {
+  private void gesture(float[] from, float[] to, long durationMs, long holdMs, boolean easeOut, Operation operation) throws EngineException {
     long down = SystemClock.uptimeMillis();
     float[] at = {from[0], from[1]};
     touch(down, down, MotionEvent.ACTION_DOWN, at[0], at[1]);
@@ -661,11 +718,12 @@ final class Device {
       int steps = Math.max(5, (int) (durationMs / 16));
       long start = SystemClock.uptimeMillis();
       for (int step = 1; step <= steps; step++) {
-        float fraction = (float) step / steps;
+        float linear = (float) step / steps;
+        float fraction = easeOut ? 1 - (1 - linear) * (1 - linear) * (1 - linear) : linear;
         long wait = start + (durationMs * step) / steps - SystemClock.uptimeMillis();
         if (wait > 0) pause(wait, operation);
         at = new float[] {from[0] + (to[0] - from[0]) * fraction, from[1] + (to[1] - from[1]) * fraction};
-        touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, at[0], at[1]);
+        touch(down, SystemClock.uptimeMillis(), MotionEvent.ACTION_MOVE, at[0], at[1], false);
       }
       if (holdMs == 0) pause(50, operation);
     } finally {
@@ -674,10 +732,15 @@ final class Device {
   }
 
   private void touch(long downTime, long eventTime, int action, float x, float y) throws EngineException {
+    touch(downTime, eventTime, action, x, y, true);
+  }
+
+  /** Injects one touch event; with `sync`, returns once the app received it. */
+  private void touch(long downTime, long eventTime, int action, float x, float y, boolean sync) throws EngineException {
     MotionEvent event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0);
     event.setSource(InputDevice.SOURCE_TOUCHSCREEN);
     try {
-      if (!automation.injectInputEvent(event, true)) throw EngineException.failure("the touch was not delivered");
+      if (!automation.injectInputEvent(event, sync)) throw EngineException.failure("the touch was not delivered");
     } finally {
       event.recycle();
     }

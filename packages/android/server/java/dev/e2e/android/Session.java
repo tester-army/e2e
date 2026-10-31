@@ -1,6 +1,7 @@
 package dev.e2e.android;
 
 import android.net.LocalSocket;
+import android.os.SystemClock;
 import android.util.Log;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -154,6 +155,7 @@ final class Session implements Runnable {
 
   private void answer(Object id, String method, JSONObject params) {
     JSONObject response = new JSONObject();
+    long start = SystemClock.uptimeMillis();
     try {
       response.put("jsonrpc", "2.0");
       response.put("id", id);
@@ -170,9 +172,16 @@ final class Session implements Runnable {
         response.put("error", error);
       }
       send(response);
+      Log.d(EngineInstrumentation.TAG, method + operationLabel(method, params) + " " + (SystemClock.uptimeMillis() - start) + "ms" + (response.has("error") ? " error" : ""));
     } catch (Throwable failure) {
       Log.e(EngineInstrumentation.TAG, "could not answer " + method, failure);
     }
+  }
+
+  /** The action kind of a perform, for the timing log. */
+  private static String operationLabel(String method, JSONObject params) {
+    JSONObject action = params.optJSONObject("action");
+    return action == null ? "" : " " + action.optString("kind");
   }
 
   private Object dispatch(String method, JSONObject params) throws Exception {
