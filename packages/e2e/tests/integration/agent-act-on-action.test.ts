@@ -20,7 +20,9 @@ const SUITE = `import { test, expect } from 'e2e';
 test(${JSON.stringify(TITLE)}, async ({ app, agent, screen }) => {
   await app.open();
   await agent.act('increment the counter twice', {
-    onAction: async ({ index, action, source, summary }) => {
+    onAction: async (event) => {
+      const { index, action, source, summary } = event;
+      for (const field of ['point', 'from', 'to']) expect(event).not.toHaveProperty(field);
       await app.screenshot(\`\${index} \${source} \${action}: \${summary}\`);
     },
   });
@@ -191,6 +193,56 @@ describe('agent.act onAction', () => {
         expect.stringMatching(/^1 replay tap: /),
         expect.stringMatching(/^2 replay tap: /),
       ]);
+    } finally {
+      project.cleanup();
+    }
+  }, 240_000);
+
+  it('exposes dispatched viewport points for taps, hovers, and drags, including replay', async () => {
+    let calls = 0;
+    const executor: StepExecutor = {
+      name: 'point-executor',
+      async runStep(context) {
+        calls += 1;
+        await context.observe();
+        await context.actions.hoverAt({ x: -10, y: -20 });
+        await context.actions.tapAt({ x: 300.4, y: 60.4 });
+        await context.actions.dragAt({ x: 300.4, y: 60.4 }, { x: 200.4, y: 100.4 });
+        return { status: 'passed', summary: 'hovered, tapped, and dragged the pin' };
+      },
+    };
+    const project = createProject({ 'tests/points.e2e.ts': `import { test, expect } from 'e2e';
+
+test('captures point geometry', async ({ app, agent, screen }) => {
+  await app.open('/canvas');
+  const events = [];
+  await agent.act('hover, tap the red pin, and drag it to the middle', {
+    onAction: (event) => { events.push(event); },
+  });
+  expect(events.map(({ action, point, from, to }) => ({ action, point, from, to }))).toEqual([
+    { action: 'hoverAt', point: { x: 0, y: 0 }, from: undefined, to: undefined },
+    { action: 'tapAt', point: { x: 300, y: 60 }, from: undefined, to: undefined },
+    { action: 'dragAt', point: undefined, from: { x: 300, y: 60 }, to: { x: 200, y: 100 } },
+  ]);
+  await expect(screen.getByRole('status')).toHaveText('moved red to 200,100');
+});
+` });
+    const options = {
+      appUrl: app.url,
+      config: {
+        tests: 'tests/**/*.e2e.ts',
+        agents: { default: { executor } },
+        cache: 'read-write' as const,
+      },
+    };
+    try {
+      const recorded = await runExisting(project, options);
+      expect(resultByTitle(recorded, 'captures point geometry').attempts.at(-1)?.error).toBeUndefined();
+      expect(resultByTitle(recorded, 'captures point geometry').status).toBe('passed');
+      const replayed = await runExisting(project, options);
+      expect(resultByTitle(replayed, 'captures point geometry').attempts.at(-1)?.error).toBeUndefined();
+      expect(resultByTitle(replayed, 'captures point geometry').status).toBe('passed');
+      expect(calls).toBe(1);
     } finally {
       project.cleanup();
     }
