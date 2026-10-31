@@ -674,7 +674,7 @@ export class ActionDispatcher {
     }
     this.armAfter(action.name);
     this.recordTrace(action);
-    await this.notify(action.name, action.name, () => describeAction(action, redaction).summary);
+    await this.notify(action.name, action.name, () => describeAction(action, redaction).summary, action);
   }
 
   /** Writes a committed action to the step's trace cache, when caching is on. */
@@ -707,7 +707,7 @@ export class ActionDispatcher {
    * on, the settle's or the hook's, hard-stops the step instead of reaching
    * the executor as a failed action to retry, or the replay as a divergence.
    */
-  private async notify(kind: RecordedAction['name'], action: string, summary: () => string): Promise<void> {
+  private async notify(kind: RecordedAction['name'], action: string, summary: () => string, committed?: RecordableAction): Promise<void> {
     const hook = this.options.onAction;
     if (hook === undefined || this.accounting.closed) return;
     await this.invokeHook('onAction', async () => {
@@ -716,6 +716,8 @@ export class ActionDispatcher {
         index: this.accounting.metrics.actionSteps,
         action,
         summary: summary(),
+        ...(committed?.name === 'tapAt' || committed?.name === 'hoverAt' ? { point: { ...committed.point } } : {}),
+        ...(committed?.name === 'dragAt' ? { from: { ...committed.from.point }, to: { ...committed.to.point } } : {}),
         source: this.accounting.replayingTrace ? 'replay' : 'model',
       });
     });

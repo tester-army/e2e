@@ -579,6 +579,15 @@ await agent.act('open billing', { onBeforeAction: async event => {
   // @ts-expect-error no engine target or geometry is exposed
   event.target;
 } });
+await agent.act('tap and drag the pin', { onAction: event => {
+  event.point satisfies { readonly x: number; readonly y: number } | undefined;
+  event.from satisfies { readonly x: number; readonly y: number } | undefined;
+  event.to satisfies { readonly x: number; readonly y: number } | undefined;
+  // @ts-expect-error node-ID and non-pointer actions need not expose coordinates
+  event.point.x;
+  // @ts-expect-error hook coordinates are read-only
+  if (event.from) event.from.x = 1;
+} });
 // @ts-expect-error the observer is a function
 await agent.act('open billing', { onBeforeAction: true });
 // @ts-expect-error assertions have no before-action observer
