@@ -700,7 +700,11 @@ never a run error.
 - `interrupted` is a test the run stopped before its verdict (a signal,
   `--max-failures`, `--max-duration`, or a run-level error such as
   `MODEL_UNAVAILABLE`), never a failure.
-- `executed` is the selected results that ran at least one attempt.
+- `executed` is the selected results that ran at least one attempt. A
+  serial member ran one when one of its group's attempts reached it: its body
+  started, including a body that called `test.skip()`, or the attempt failed
+  on it, as at launch. A member that a failed hook, a failed predecessor, or
+  the run's interrupt kept from starting did not.
 
 With `--ai-trace`, the run also writes `<output>/ai-trace.json`, an AI SDK
 devtools database. It holds one entry per model round trip: the exact prompt,

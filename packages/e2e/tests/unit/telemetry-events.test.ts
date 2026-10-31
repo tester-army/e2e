@@ -293,7 +293,7 @@ describe('telemetry events', () => {
     const test = (id: string, ...attempts: ReturnType<typeof reportStep>[][]) =>
       reportResult({ id, attempts: attempts.map((steps, index) => reportAttempt({ index, steps })) });
     const serial = sampleReport().run.serialGroups[0]!;
-    const member = (index: number, status: 'passed' | 'skipped', steps: readonly ReturnType<typeof reportStep>[]) => ({
+    const member = (index: number, status: 'passed' | 'skipped', steps: readonly ReturnType<typeof reportStep>[], skipped = false) => ({
       id: `member-${index}`,
       index,
       testId: `tests/flow.e2e.ts::flow::${index}`,
@@ -301,6 +301,7 @@ describe('telemetry events', () => {
       startedAt: REPORT_AT,
       durationMs: 10,
       steps,
+      ...(skipped ? { skip: { cause: 'explicit' as const, reason: 'not here' } } : {}),
       secondaryErrors: [],
     });
     const report = reportDocument({
@@ -313,15 +314,17 @@ describe('telemetry events', () => {
         test('live', [uncached, judge]),
         reportResult({ id: 'unselected', selected: false, status: 'skipped', attempts: [] }),
         reportResult({ id: 'serial-member', serialGroupId: serial.id, attempts: [] }),
+        reportResult({ id: 'serial-self-skipped', serialGroupId: serial.id, status: 'skipped', attempts: [] }),
       ],
-      serialGroups: [{ ...serial, attempts: [{ ...serial.attempts[0]!, members: [member(0, 'passed', [replayed]), member(1, 'skipped', [])] }] }],
-      summary: { discovered: 8, selected: 7, executed: 7, passed: 7, failed: 0, interrupted: 0, flaky: 0, skipped: 0 },
+      // Member 1 never started; member 2 ran and skipped itself.
+      serialGroups: [{ ...serial, attempts: [{ ...serial.attempts[0]!, members: [member(0, 'passed', [replayed]), member(1, 'skipped', []), member(2, 'skipped', [reportStep()], true)] }] }],
+      summary: { discovered: 9, selected: 8, executed: 8, passed: 7, failed: 0, interrupted: 0, flaky: 0, skipped: 1 },
     });
     const { properties } = runCompletedEvent(report, RUN);
     const tiers = ['tests_code_only', 'tests_replayed', 'tests_assisted', 'tests_live'].map((key) => properties[key] as number);
     expect(tiers.reduce((total, count) => total + count, 0)).toBe(properties['tests_executed']);
     expect(properties).toMatchObject({
-      tests_code_only: 1,
+      tests_code_only: 2,
       tests_replayed: 2,
       tests_assisted: 3,
       tests_live: 1,
