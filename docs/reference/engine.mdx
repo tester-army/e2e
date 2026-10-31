@@ -680,7 +680,7 @@ export interface EngineDoctorInfo {
   readonly headed: boolean;
   /** Aborts when `e2e doctor` stops waiting for the checks, 30 seconds in. */
   readonly signal: AbortSignal;
-  /** Reports one line of progress. */
+  /** Reports one line of progress; `e2e doctor` prints it to stderr. */
   readonly log: (line: string) => void;
 }
 

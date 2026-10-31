@@ -995,15 +995,15 @@ bunx e2e doctor --target web --headed
 | `--config <path>` | As for [`run`](#flags). |
 | `--target <ids>` | Checks only these targets. As for [`run`](#flags). |
 | `--headed` | Checks for what a headed run needs, such as the full Chromium build instead of the headless shell. |
-| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt. Each model is called once even when several agents share it. |
+| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt and the agent's provider options. Agents that share a model and its provider options share the call. |
 | `--reporter <id>` | `list` or `json`. Default: `list`. |
 
 | Check | Status |
 | --- | --- |
 | `node` | `pass`: the Node.js version. On an unsupported runtime, `--reporter json` still prints a report with `node` as `fail`. |
 | `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` is the last check. |
-| Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`. `engine` is `skip` when the engine has no checks and `fail` when its checks threw. |
-| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login, with `login` set. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent. |
+| Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`. An engine that reports nothing adds no check. `engine` is `skip` when the engine has no `doctor` hook, and `fail` when the hook threw, timed out, or returned a malformed check. |
+| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent. |
 
 | Reporter | Writes |
 | --- | --- |

@@ -16,7 +16,8 @@ if (unsupported !== undefined) {
   if (wantsDoctorJson(process.argv.slice(2))) {
     const version = packageVersion(import.meta.url, '../../package.json', '0.0.0');
     const report: DoctorReport = { schemaVersion: 'doctor-1', version, ok: false, checks: [{ id: 'node', status: 'fail', message: unsupported }] };
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    // Exits once the report is flushed: a host reading a pipe would otherwise get it cut short.
+    await new Promise((resolve) => process.stdout.write(`${JSON.stringify(report, null, 2)}\n`, resolve));
   } else {
     process.stderr.write(`${unsupported}\n`);
   }

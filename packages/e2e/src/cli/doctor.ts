@@ -22,7 +22,8 @@ import { classifyError, InfrastructureError } from '../internal/errors.ts';
 import { SUPPORTED_NODE_RANGE } from '../internal/node-version.ts';
 import { withAbort } from '../internal/time.ts';
 import { loginOf } from '../oauth/login-model.ts';
-import { credentialSource, loginHint, type ProviderId } from '../oauth/providers.ts';
+import { apiKeyFor, getProvider, loginHint, type ProviderId } from '../oauth/providers.ts';
+import { defaultCredentialStore } from '../oauth/store.ts';
 import { bounded } from '../report/format.ts';
 import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
 import type { RunnerOutput } from '../run/process-output.ts';
@@ -92,6 +93,8 @@ export interface DoctorOptions {
   readonly signal: AbortSignal;
   /** Holds back what the config prints while it loads, redacted, as `e2e run` does. */
   readonly output: RunnerOutput;
+  /** Where an engine's progress lines go, under the target they concern. */
+  readonly notice: (targetName: string, line: string) => void;
 }
 
 /**
@@ -183,7 +186,7 @@ async function engineChecks(target: ResolvedTarget, config: ResolvedConfig, opti
         env: options.env,
         headed: options.headed,
         signal,
-        log: () => {},
+        log: (line) => options.notice(target.name, line),
       }),
       signal,
       () => new EngineError('OPERATION_TIMEOUT', `engine "${engine.name}" did not finish its checks within ${String(ENGINE_DOCTOR_TIMEOUT_MS / 1000)}s`, { retryable: false }),
@@ -270,9 +273,11 @@ async function modelCheck(
     ...outcome,
   });
   if (sdkFailure !== undefined) return result('fail', errorOutcome(sdkFailure));
+  const credentials: string[] = [];
   for (const provider of logins) {
-    const missing = await missingLogin(provider);
-    if (missing !== undefined) return result('fail', { code: 'MODEL_UNAVAILABLE', message: missing });
+    const credential = await loginCredential(provider);
+    if (!credential.ok) return result('fail', { code: 'MODEL_UNAVAILABLE', message: credential.message });
+    credentials.push(credential.message);
   }
   if (call !== undefined) {
     for (const entry of models) {
@@ -282,7 +287,7 @@ async function modelCheck(
     return result('pass', { message: models.length === 1 ? 'answered' : 'both answered' });
   }
   if (models.every((entry) => loginOf(entry.model) !== undefined)) {
-    return result('pass', { message: `the stored ${logins.join(' and ')} login is present` });
+    return result('pass', { message: credentials.join('; ') });
   }
   return result('unknown', { message: 'the model reads its own credential; --check-model calls it' });
 }
@@ -291,14 +296,15 @@ function doctorModel(model: ResolvedModel): DoctorModel {
   return { provider: model.provider, modelId: model.id };
 }
 
-/** Why `provider`'s stored login cannot serve a call, or undefined when it is there (or its API key variable is set). */
-async function missingLogin(provider: ProviderId): Promise<string | undefined> {
+/** The credential `provider`'s calls read: its API key variable when set, else the stored login, which must be there. */
+async function loginCredential(provider: ProviderId): Promise<{ readonly ok: boolean; readonly message: string }> {
+  const variable = getProvider(provider).apiKeyEnv;
+  if (variable !== undefined && apiKeyFor(provider) !== undefined) return { ok: true, message: `${variable} is set` };
   try {
-    const { store } = credentialSource(provider);
-    if ((await store.get(provider)) !== undefined) return undefined;
-    return `no stored ${provider} login: ${loginHint(provider)}`;
+    if ((await defaultCredentialStore().get(provider)) !== undefined) return { ok: true, message: `the stored ${provider} login is present` };
+    return { ok: false, message: `no stored ${provider} login: ${loginHint(provider)}` };
   } catch (cause) {
-    return `the ${provider} login could not be read: ${cause instanceof Error ? cause.message : String(cause)}`;
+    return { ok: false, message: `the ${provider} login could not be read: ${cause instanceof Error ? cause.message : String(cause)}` };
   }
 }
 

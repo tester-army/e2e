@@ -74,7 +74,7 @@ runner, one connection per target lives from `prepare` to `finish`, and
 opens only when the server answers `lifecycle/prepare` or
 `lifecycle/finish`. In each worker, one connection lives from `init` to
 `dispose`. `e2e doctor` opens one connection per target for
-`lifecycle/doctor` alone and closes it after. A call outside
+`lifecycle/doctor` alone and closes it after. An operation call outside
 `init`..`dispose` fails with `INVALID_STATE`.
 A worker that never ran `init` has no connection, so the server gets no
 `lifecycle/dispose` for it.

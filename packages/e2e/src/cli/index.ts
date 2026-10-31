@@ -962,6 +962,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         checkModel: options.checkModel === true,
         signal: new AbortController().signal,
         output,
+        notice: (targetName, line) => process.stderr.write(`${bounded(`[${targetName}] ${line}`)}\n`),
       });
       output.end();
       if (options.reporter === 'json') writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
