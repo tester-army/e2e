@@ -135,11 +135,11 @@ test.describe('selectors get by', { requires: ['browser'] }, () => {
   });
 
   test('getBy escaping', async ({ screen, browser }) => {
-    const setAttributes = (value: string) => `() => { const input = document.querySelector('input'); for (const name of ['placeholder', 'title', 'alt']) input.setAttribute(name, ${JSON.stringify(value)}); }`;
+    const setAttributes = "(value) => { const input = document.querySelector('input'); for (const name of ['placeholder', 'title', 'alt']) input.setAttribute(name, value); }";
 
     await browser.goto(content(`<label id=label for=control>Hello my
 wo"rld</label><input id=control />`));
-    await browser.evaluate(setAttributes('hello my\nwo"rld'));
+    await browser.evaluate(setAttributes, 'hello my\nwo"rld');
     await expect.soft(screen.getByText('hello my\nwo"rld', { exact: false })).toHaveAttribute('id', 'label');
     await expect.soft(screen.getByText('hello       my     wo"rld', { exact: false })).toHaveAttribute('id', 'label');
     await expect.soft(screen.getByLabel('hello my\nwo"rld', { exact: false })).toHaveAttribute('id', 'control');
@@ -147,14 +147,14 @@ wo"rld</label><input id=control />`));
 
     await browser.goto(content(`<label id=label for=control>Hello my
 world</label><input id=control />`));
-    await browser.evaluate(setAttributes('hello my\nworld'));
+    await browser.evaluate(setAttributes, 'hello my\nworld');
     await expect.soft(screen.getByText('hello my\nworld', { exact: false })).toHaveAttribute('id', 'label');
     await expect.soft(screen.getByText('hello        my    world', { exact: false })).toHaveAttribute('id', 'label');
     await expect.soft(screen.getByLabel('hello my\nworld', { exact: false })).toHaveAttribute('id', 'control');
     await expect.soft(screen.getByPlaceholder('hello my\nworld', { exact: false })).toHaveAttribute('id', 'control');
 
     await browser.goto(content(`<label for=target>foo &gt;&gt; bar</label><input id=target>`));
-    await browser.evaluate(setAttributes('foo >> bar'));
+    await browser.evaluate(setAttributes, 'foo >> bar');
     expect.soft(await screen.getByText('foo >> bar', { exact: false }).textContent()).toBe('foo >> bar');
     await expect.soft(browser.locator('label')).toHaveText('foo >> bar');
     await expect.soft(screen.getByText('foo >> bar', { exact: false })).toHaveText('foo >> bar');

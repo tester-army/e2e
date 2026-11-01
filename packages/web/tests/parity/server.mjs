@@ -2,8 +2,8 @@
  * The parity suite's app: Playwright's test assets (`assets/`, copied from
  * microsoft/playwright `tests/assets` at v1.64.1, Apache-2.0) plus the few
  * dynamic routes Playwright's test server sets per test, fixed here as paths.
- * Serves every interface, so `127.0.0.1` and `localhost` on one port are two
- * origins for the cross-origin cases.
+ * Listens on loopback only; `127.0.0.1` and `localhost` on one port are the
+ * two origins of the cross-origin cases, and the only ones it trusts.
  */
 
 import { createReadStream, existsSync, statSync } from 'node:fs';
@@ -12,7 +12,34 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets');
+const PORT = Number(process.env.PORT ?? 4311);
+const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
+const MAX_DELAY_MS = 30_000;
+const MAX_BYTES = 16 << 20;
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain' };
+
+/** `value` as a number in [0, max], `fallback` when absent. */
+function bounded(value, fallback, max) {
+  return Math.min(Math.max(Number(value ?? fallback) || 0, 0), max);
+}
+
+/** A redirect target on this server (a path, or either origin), else the empty page. */
+function sameServer(target) {
+  if (target === null) return '/empty.html';
+  if (target.startsWith('/') && !target.startsWith('//')) return target;
+  const resolved = URL.canParse(target) ? new URL(target) : undefined;
+  return resolved !== undefined && ORIGINS.has(resolved.origin) ? resolved.href : '/empty.html';
+}
+
+/**
+ * The request's origin when it is one of the server's own, the only ones
+ * granted credentials, or `null`, the origin a cross-origin redirect leaves.
+ */
+function trustedOrigin(request) {
+  const { origin } = request.headers;
+  if (origin === 'null') return 'null';
+  return origin !== undefined && ORIGINS.has(origin) ? origin : `http://127.0.0.1:${PORT}`;
+}
 
 /** The request body, read whole. */
 function body(request) {
@@ -48,13 +75,13 @@ const server = createServer(async (request, response) => {
       setTimeout(() => {
         response.writeHead(200, { 'content-type': query.get('type') ?? 'text/plain', 'access-control-allow-origin': '*' });
         response.end(query.get('body') ?? 'slow');
-      }, Number(query.get('ms') ?? 1000));
+      }, bounded(query.get('ms'), 1000, MAX_DELAY_MS));
       return;
     case '/never':
       request.on('close', () => response.destroy());
       return;
     case '/redirect':
-      response.writeHead(302, { location: query.get('to') ?? '/empty.html' });
+      response.writeHead(302, { location: sameServer(query.get('to')) });
       response.end();
       return;
     case '/download':
@@ -74,7 +101,7 @@ const server = createServer(async (request, response) => {
       return;
     case '/cors-echo': {
       const allow = {
-        'access-control-allow-origin': request.headers.origin ?? '*',
+        'access-control-allow-origin': trustedOrigin(request),
         'access-control-allow-credentials': 'true',
         'access-control-allow-methods': 'POST, GET, OPTIONS, DELETE',
         'access-control-allow-headers': request.headers['access-control-request-headers'] ?? '*',
@@ -91,8 +118,8 @@ const server = createServer(async (request, response) => {
     }
     case '/bounce': {
       const headers = {
-        location: query.get('to') ?? '/empty.html',
-        'access-control-allow-origin': request.headers.origin ?? '*',
+        location: sameServer(query.get('to')),
+        'access-control-allow-origin': trustedOrigin(request),
         'access-control-allow-credentials': 'true',
         'access-control-allow-headers': request.headers['access-control-request-headers'] ?? '*',
         ...(query.has('cookie') ? { 'set-cookie': query.get('cookie') } : {}),
@@ -124,7 +151,8 @@ const server = createServer(async (request, response) => {
       return;
     case '/upload': {
       const received = await body(request);
-      const boundary = Buffer.from(`--${/boundary=(.+)$/.exec(request.headers['content-type'] ?? '')?.[1] ?? ''}`);
+      const type = request.headers['content-type'] ?? '';
+      const boundary = Buffer.from(`--${type.includes('boundary=') ? type.slice(type.indexOf('boundary=') + 'boundary='.length) : ''}`);
       const files = [];
       for (let start = received.indexOf(boundary); start !== -1;) {
         const next = received.indexOf(boundary, start + boundary.length);
@@ -147,7 +175,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     case '/binary': {
-      const data = Buffer.alloc(Number(query.get('bytes') ?? 1 << 20));
+      const data = Buffer.alloc(bounded(query.get('bytes'), 1 << 20, MAX_BYTES));
       for (let i = 0; i < data.length; i++) data[i] = Math.imul(i + 1, 2654435761) >>> 24;
       response.writeHead(200, { 'content-type': 'application/zip', 'content-length': data.length });
       response.end(data);
@@ -175,4 +203,4 @@ const server = createServer(async (request, response) => {
   createReadStream(file).pipe(response);
 });
 
-server.listen(Number(process.env.PORT ?? 4311));
+server.listen(PORT, '127.0.0.1');
