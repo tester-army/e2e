@@ -198,7 +198,7 @@ describe('agent.act onAction', () => {
     }
   }, 240_000);
 
-  it('exposes dispatched viewport points for taps, hovers, and drags, including replay', async () => {
+  it('exposes dispatched viewport points and isolates hook mutations from replay', async () => {
     let calls = 0;
     const executor: StepExecutor = {
       name: 'point-executor',
@@ -217,7 +217,12 @@ test('captures point geometry', async ({ app, agent, screen }) => {
   await app.open('/canvas');
   const events = [];
   await agent.act('hover, tap the red pin, and drag it to the middle', {
-    onAction: (event) => { events.push(event); },
+    onAction: (event) => {
+      events.push(structuredClone(event));
+      for (const point of [event.point, event.from, event.to]) {
+        if (point) Object.assign(point, { x: 50, y: 50 });
+      }
+    },
   });
   expect(events.map(({ action, point, from, to }) => ({ action, point, from, to }))).toEqual([
     { action: 'hoverAt', point: { x: 0, y: 0 }, from: undefined, to: undefined },
@@ -239,6 +244,11 @@ test('captures point geometry', async ({ app, agent, screen }) => {
       const recorded = await runExisting(project, options);
       expect(resultByTitle(recorded, 'captures point geometry').attempts.at(-1)?.error).toBeUndefined();
       expect(resultByTitle(recorded, 'captures point geometry').status).toBe('passed');
+      expect(readEntries(project)[0]?.entry.payload.actions).toMatchObject([
+        { name: 'hoverAt', point: { x: 0, y: 0 } },
+        { name: 'tapAt', point: { x: 300, y: 60 } },
+        { name: 'dragAt', from: { point: { x: 300, y: 60 } }, to: { point: { x: 200, y: 100 } } },
+      ]);
       const replayed = await runExisting(project, options);
       expect(resultByTitle(replayed, 'captures point geometry').attempts.at(-1)?.error).toBeUndefined();
       expect(resultByTitle(replayed, 'captures point geometry').status).toBe('passed');

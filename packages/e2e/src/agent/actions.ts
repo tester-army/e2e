@@ -24,7 +24,7 @@ import {
 import { sanitizeText } from '../internal/errors.ts';
 import type { KeyModifier } from '../engine/contract.ts';
 import { bound, collapseText } from '../internal/text.ts';
-import type { ScrollDirection } from '../types.ts';
+import type { ActionEvent, ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
@@ -208,6 +208,19 @@ const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, (where: string) => stri
 
 /** How each point verb reads: `tap the point (x, y)`, `hover over the point (x, y)`. */
 const POINT_ACTION_PROSE: Readonly<Record<PointActionName, string>> = { tapAt: 'tap', hoverAt: 'hover over' };
+
+/** Copies dispatched coordinates for observers without sharing the recorder's points. */
+export function actionGeometry(action: RecordableAction): Pick<ActionEvent, 'point' | 'from' | 'to'> {
+  switch (action.name) {
+    case 'tapAt':
+    case 'hoverAt':
+      return { point: { ...action.point } };
+    case 'dragAt':
+      return { from: { ...action.from.point }, to: { ...action.to.point } };
+    default:
+      return {};
+  }
+}
 
 /**
  * Describes one committed action for recording and for the live event. Its

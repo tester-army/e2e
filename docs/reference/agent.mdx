@@ -89,10 +89,11 @@ A check inside it never confirms the step's recording.
 
 For `tapAt` and `hoverAt`, `event.point` holds the dispatched point. For
 `dragAt`, `event.from` and `event.to` hold its endpoints. Coordinates are
-viewport CSS pixels from the top-left, after screenshot scaling, rounding,
-and clamping. Replay reports the points it dispatches on the current screen.
-Node-ID actions, including point tools that fall back to node IDs, and
-non-pointer actions omit these fields.
+in the same space as `screen.tapAt` and `boundingBox()`, rounded and clamped
+to the viewport: CSS pixels on the web, iOS points, and Android physical pixels.
+Replay reports the points it dispatches on the current screen. Mobile engines
+only report `point` for `tapAt`. Node-ID actions, including point tools that
+fall back to node IDs, and non-pointer actions omit these fields.
 
 ```ts
 await agent.act('open settings and turn on dark mode', {
@@ -606,11 +607,15 @@ export interface ActionEvent {
   readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
-  /** Dispatched viewport point for `tapAt` and `hoverAt`, in CSS pixels from the top-left. Absent for node-ID actions. */
+  /**
+   * Dispatched point for `tapAt` and `hoverAt`, in the same space as
+   * `screen.tapAt` and `boundingBox()`, rounded and clamped to the viewport.
+   * Mobile engines report only `tapAt`. Absent for node-ID and non-pointer actions.
+   */
   readonly point?: Point;
-  /** Dispatched start of `dragAt`, in viewport CSS pixels. */
+  /** Dispatched start of `dragAt`, in the same space as `point`. Absent for other actions, including node-ID fallbacks. */
   readonly from?: Point;
-  /** Dispatched end of `dragAt`, in viewport CSS pixels. */
+  /** Dispatched end of `dragAt`, in the same space as `point`. Absent for other actions, including node-ID fallbacks. */
   readonly to?: Point;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
   readonly source: 'model' | 'replay';
