@@ -54,24 +54,27 @@ test.describe('page filechooser', { requires: ['browser'] }, () => {
     const filesCount = 10;
     await browser.goto('/input/fileupload-multi.html');
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-parity-chooser-'));
-    const uploadFile = path.join(dir, '50MB_1.zip');
-    const str = 'A'.repeat(1024);
-    const stream = fs.createWriteStream(uploadFile);
-    for (let i = 0; i < 49 * 1024; i++) {
-      await new Promise<void>((fulfill, reject) => stream.write(str, (error) => (error ? reject(error) : fulfill())));
+    try {
+      const uploadFile = path.join(dir, '50MB_1.zip');
+      const str = 'A'.repeat(1024);
+      const stream = fs.createWriteStream(uploadFile);
+      for (let i = 0; i < 49 * 1024; i++) {
+        await new Promise<void>((fulfill, reject) => stream.write(str, (error) => (error ? reject(error) : fulfill())));
+      }
+      await new Promise((fulfill) => stream.end(fulfill));
+      const uploadFiles = [uploadFile];
+      for (let i = 2; i <= filesCount; i++) {
+        const dstFile = path.join(dir, `50MB_${i}.zip`);
+        fs.copyFileSync(uploadFile, dstFile);
+        uploadFiles.push(dstFile);
+      }
+      await browser.evaluate("() => { const button = document.createElement('button'); button.textContent = 'pick'; button.type = 'button'; button.onclick = () => document.querySelector('input[type=\"file\"]').click(); document.body.append(button); }");
+      await browser.locator('button').setInputFiles(uploadFiles);
+      const filesLen = await browser.evaluate('document.getElementsByTagName("input")[0].files.length');
+      expect(filesLen).toEqual(filesCount);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
-    await new Promise((fulfill) => stream.end(fulfill));
-    const uploadFiles = [uploadFile];
-    for (let i = 2; i <= filesCount; i++) {
-      const dstFile = path.join(dir, `50MB_${i}.zip`);
-      fs.copyFileSync(uploadFile, dstFile);
-      uploadFiles.push(dstFile);
-    }
-    await browser.evaluate("() => { const button = document.createElement('button'); button.textContent = 'pick'; button.type = 'button'; button.onclick = () => document.querySelector('input[type=\"file\"]').click(); document.body.append(button); }");
-    await browser.locator('button').setInputFiles(uploadFiles);
-    const filesLen = await browser.evaluate('document.getElementsByTagName("input")[0].files.length');
-    expect(filesLen).toEqual(filesCount);
-    fs.rmSync(dir, { recursive: true });
   });
 
   test('should work when file input is not attached to DOM', async ({ browser }) => {

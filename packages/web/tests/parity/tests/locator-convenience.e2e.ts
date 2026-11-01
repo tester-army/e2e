@@ -36,7 +36,6 @@ test.describe('locator convenience', { requires: ['browser'] }, () => {
   });
 
   test('inputValue should work', async ({ browser }) => {
-    e2eGap('`inputValue()` on an element that is no input reads "" instead of throwing');
     await browser.goto('/dom.html');
 
     await browser.locator('#select').selectOption({ value: 'foo' });
@@ -48,6 +47,7 @@ test.describe('locator convenience', { requires: ['browser'] }, () => {
     await browser.locator('#input').fill('input value');
     expect(await browser.locator('#input').inputValue()).toBe('input value');
 
+    e2eGap('`inputValue()` on an element that is no input reads "" instead of throwing');
     const error = await browser.locator('#inner').inputValue().catch((e: unknown) => e);
     expect(error).toEqual(expect.any(Error));
   });
@@ -77,12 +77,12 @@ test.describe('locator convenience', { requires: ['browser'] }, () => {
   });
 
   test('isChecked should work', async ({ browser }) => {
-    e2eGap('`isChecked()` on an element that is no checkbox reads false instead of throwing');
     await browser.goto(content(`<input type='checkbox' checked><div>Not a checkbox</div>`));
     const element = browser.locator('input');
     expect(await element.isChecked()).toBe(true);
     await browser.evaluate("() => { document.querySelector('input').checked = false; }");
     expect(await element.isChecked()).toBe(false);
+    e2eGap('`isChecked()` on an element that is no checkbox reads false instead of throwing');
     const error = await browser.locator('div').isChecked().catch((e: unknown) => e);
     expect(error).toEqual(expect.any(Error));
   });

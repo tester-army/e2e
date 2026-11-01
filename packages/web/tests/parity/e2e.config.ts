@@ -7,6 +7,7 @@ import { web } from '@e2e-dev/web';
  * Run it on both browsers (`BROWSER=chromium|firefox`); see README.md.
  */
 const port = Number(process.env['PARITY_PORT'] ?? 4311);
+if (!Number.isInteger(port) || port <= 0) throw new Error(`PARITY_PORT must be a fixed port, got ${process.env['PARITY_PORT']}`);
 
 export default {
   projectId: 'dev.e2e.web-parity',

@@ -25,5 +25,6 @@ BROWSER=chromium node ../../node_modules/e2e/dist/cli/bin.js run
 BROWSER=firefox node ../../node_modules/e2e/dist/cli/bin.js run
 ```
 
-`PARITY_PORT` (default 4311) moves the server; `--output .e2e-<name>` keeps
-parallel runs apart.
+`PARITY_PORT` (default 4311) moves the server. Parallel runs each need their
+own `PARITY_PORT` and `--output .e2e-<name>`, and must not share a browser:
+`page-screenshot` writes its goldens into the shared `tests/` snapshot folder.

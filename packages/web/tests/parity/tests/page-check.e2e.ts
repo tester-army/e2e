@@ -81,8 +81,10 @@ test.describe('page check', { requires: ['browser'] }, () => {
   });
 
   test('should uncheck the box by aria role', async ({ browser }) => {
-    e2eGap('`uncheck` refuses any radio, a `role=menuitemradio` one included, where Playwright clicks it');
-    for (const role of ['checkbox', 'menuitemcheckbox', 'option', 'radio', 'switch', 'menuitemradio', 'treeitem']) {
+    const radios = ['radio', 'menuitemradio'];
+    const roles = ['checkbox', 'menuitemcheckbox', 'option', 'radio', 'switch', 'menuitemradio', 'treeitem'];
+    for (const role of [...roles.filter((name) => !radios.includes(name)), ...radios]) {
+      if (role === radios[0]) e2eGap('`uncheck` refuses any radio, a `role=radio` or `role=menuitemradio` one included, where Playwright clicks it');
       await browser.goto(content(`<div role='${role}' id='checkbox' aria-checked="true">CHECKBOX</div>
         <script>
           checkbox.addEventListener('click', () => checkbox.setAttribute('aria-checked', 'false'));

@@ -6,6 +6,7 @@
  * two origins of the cross-origin cases, and the only ones it trusts.
  */
 
+import { createHash } from 'node:crypto';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import path from 'node:path';
@@ -16,7 +17,7 @@ const PORT = Number(process.env.PORT ?? 4311);
 const ORIGINS = new Set([`http://127.0.0.1:${PORT}`, `http://localhost:${PORT}`]);
 const MAX_DELAY_MS = 30_000;
 const MAX_BYTES = 16 << 20;
-const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain' };
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.pdf': 'application/pdf', '.svg': 'image/svg+xml', '.txt': 'text/plain' };
 
 /** `value` as a number in [0, max], `fallback` when absent. */
 function bounded(value, fallback, max) {
@@ -26,9 +27,9 @@ function bounded(value, fallback, max) {
 /** A redirect target on this server (a path, or either origin), else the empty page. */
 function sameServer(target) {
   if (target === null) return '/empty.html';
-  if (target.startsWith('/') && !target.startsWith('//')) return target;
-  const resolved = URL.canParse(target) ? new URL(target) : undefined;
-  return resolved !== undefined && ORIGINS.has(resolved.origin) ? resolved.href : '/empty.html';
+  const resolved = URL.canParse(target, `http://127.0.0.1:${PORT}`) ? new URL(target, `http://127.0.0.1:${PORT}`) : undefined;
+  if (resolved === undefined || !ORIGINS.has(resolved.origin)) return '/empty.html';
+  return target.startsWith('/') ? `${resolved.pathname}${resolved.search}${resolved.hash}` : resolved.href;
 }
 
 /**
@@ -201,6 +202,19 @@ const server = createServer(async (request, response) => {
   }
   response.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' });
   createReadStream(file).pipe(response);
+});
+
+// `/ws` accepts the handshake and holds the socket open, as Playwright's
+// server does, so an open WebSocket is in the page during network-idle tests.
+server.on('upgrade', (request, socket) => {
+  const key = request.headers['sec-websocket-key'];
+  if (new URL(request.url, 'http://localhost').pathname !== '/ws' || typeof key !== 'string') {
+    socket.destroy();
+    return;
+  }
+  const accept = createHash('sha1').update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
+  socket.on('error', () => socket.destroy());
+  socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
 });
 
 server.listen(PORT, '127.0.0.1');
