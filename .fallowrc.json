@@ -14,6 +14,9 @@
     "apps/mobile-benchmark/e2e.*.config.ts",
     "apps/mobile-benchmark/tests*/**/*.ts",
     "apps/mobile-benchmark/index.ts",
+    "packages/web/tests/parity/e2e.config.ts",
+    "packages/web/tests/parity/server.mjs",
+    "packages/web/tests/parity/tests/**/*.ts",
     "packages/e2e/tests/types/sdk-types.ts",
     "packages/web/tests/types/connection.ts",
     "packages/web/tests/types/init-scripts.ts",
@@ -35,6 +38,8 @@
     "examples/**",
     "**/next-env.d.ts",
     "**/.e2e/**",
+    "packages/web/tests/parity/assets/**",
+    "packages/web/tests/parity/.e2e-*/**",
     "packages/e2e/tests/tmp-projects/**"
   ],
   "ignoreDependencies": [

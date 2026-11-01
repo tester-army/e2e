@@ -1,0 +1,178 @@
+/**
+ * The parity suite's app: Playwright's test assets (`assets/`, copied from
+ * microsoft/playwright `tests/assets` at v1.64.1, Apache-2.0) plus the few
+ * dynamic routes Playwright's test server sets per test, fixed here as paths.
+ * Serves every interface, so `127.0.0.1` and `localhost` on one port are two
+ * origins for the cross-origin cases.
+ */
+
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { createServer } from 'node:http';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets');
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.txt': 'text/plain' };
+
+/** The request body, read whole. */
+function body(request) {
+  return new Promise((resolve) => {
+    const chunks = [];
+    request.on('data', (chunk) => chunks.push(chunk));
+    request.on('end', () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+const counts = new Map();
+const logs = new Map();
+
+const server = createServer(async (request, response) => {
+  const url = new URL(request.url, 'http://localhost');
+  const query = url.searchParams;
+  switch (url.pathname) {
+    case '/content':
+      response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      response.end(Buffer.from(query.get('html') ?? '', 'base64url'));
+      return;
+    case '/echo': {
+      const received = await body(request);
+      response.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
+      response.end(JSON.stringify({ method: request.method, headers: request.headers, body: received.toString(), url: request.url }));
+      return;
+    }
+    case '/status':
+      response.writeHead(Number(query.get('code') ?? 200), { 'content-type': 'text/plain' });
+      response.end(query.get('body') ?? '');
+      return;
+    case '/slow':
+      setTimeout(() => {
+        response.writeHead(200, { 'content-type': query.get('type') ?? 'text/plain', 'access-control-allow-origin': '*' });
+        response.end(query.get('body') ?? 'slow');
+      }, Number(query.get('ms') ?? 1000));
+      return;
+    case '/never':
+      request.on('close', () => response.destroy());
+      return;
+    case '/redirect':
+      response.writeHead(302, { location: query.get('to') ?? '/empty.html' });
+      response.end();
+      return;
+    case '/download':
+      response.writeHead(200, {
+        'content-type': 'application/octet-stream',
+        'content-disposition': `attachment${query.has('name') ? `; filename=${query.get('name')}` : ''}`,
+      });
+      response.end(query.get('body') ?? 'Hello world');
+      return;
+    case '/set-cookie':
+      response.writeHead(200, { 'set-cookie': query.get('cookie') ?? 'name=value', 'content-type': 'text/html' });
+      response.end('<title>cookie</title>');
+      return;
+    case '/respond':
+      response.writeHead(Number(query.get('status') ?? 200), JSON.parse(query.get('headers') ?? '{}'));
+      response.end(query.get('body') ?? '');
+      return;
+    case '/cors-echo': {
+      const allow = {
+        'access-control-allow-origin': request.headers.origin ?? '*',
+        'access-control-allow-credentials': 'true',
+        'access-control-allow-methods': 'POST, GET, OPTIONS, DELETE',
+        'access-control-allow-headers': request.headers['access-control-request-headers'] ?? '*',
+      };
+      if (request.method === 'OPTIONS' && query.has('preflight')) {
+        response.writeHead(204, allow);
+        response.end();
+        return;
+      }
+      const received = await body(request);
+      response.writeHead(200, { 'content-type': 'text/plain', ...allow });
+      response.end(JSON.stringify({ method: request.method, headers: request.headers, body: received.toString(), url: request.url }));
+      return;
+    }
+    case '/bounce': {
+      const headers = {
+        location: query.get('to') ?? '/empty.html',
+        'access-control-allow-origin': request.headers.origin ?? '*',
+        'access-control-allow-credentials': 'true',
+        'access-control-allow-headers': request.headers['access-control-request-headers'] ?? '*',
+        ...(query.has('cookie') ? { 'set-cookie': query.get('cookie') } : {}),
+      };
+      if (request.method === 'OPTIONS') delete headers.location;
+      response.writeHead(request.method === 'OPTIONS' ? 204 : Number(query.get('status') ?? 302), headers);
+      response.end();
+      return;
+    }
+    case '/count': {
+      const key = query.get('key') ?? '';
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      response.writeHead(200, { 'content-type': 'text/plain' });
+      response.end(String(counts.get(key) * 11));
+      return;
+    }
+    case '/options': {
+      const key = query.get('key') ?? '';
+      logs.set(key, [...(logs.get(key) ?? []), `${request.method}:${url.pathname}`]);
+      response.writeHead(200, request.method === 'OPTIONS'
+        ? { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, GET, OPTIONS, DELETE', 'access-control-allow-headers': '*', 'cache-control': 'no-cache' }
+        : { 'access-control-allow-origin': '*' });
+      response.end(request.method === 'OPTIONS' ? 'Hello' : 'World');
+      return;
+    }
+    case '/options-log':
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(logs.get(query.get('key') ?? '') ?? []));
+      return;
+    case '/upload': {
+      const received = await body(request);
+      const boundary = Buffer.from(`--${/boundary=(.+)$/.exec(request.headers['content-type'] ?? '')?.[1] ?? ''}`);
+      const files = [];
+      for (let start = received.indexOf(boundary); start !== -1;) {
+        const next = received.indexOf(boundary, start + boundary.length);
+        if (next === -1) break;
+        const part = received.subarray(start + boundary.length + 2, next - 2);
+        const split = part.indexOf('\r\n\r\n');
+        const head = part.subarray(0, split).toString();
+        const data = part.subarray(split + 4);
+        files.push({
+          name: /name="([^"]*)"/.exec(head)?.[1],
+          filename: /filename="([^"]*)"/.exec(head)?.[1],
+          mimetype: /content-type: (.+)/i.exec(head)?.[1],
+          size: data.length,
+          base64: data.length <= 65536 ? data.toString('base64') : undefined,
+        });
+        start = next;
+      }
+      response.writeHead(200, { 'content-type': 'text/plain', 'access-control-allow-origin': '*' });
+      response.end(JSON.stringify(files));
+      return;
+    }
+    case '/binary': {
+      const data = Buffer.alloc(Number(query.get('bytes') ?? 1 << 20));
+      for (let i = 0; i < data.length; i++) data[i] = Math.imul(i + 1, 2654435761) >>> 24;
+      response.writeHead(200, { 'content-type': 'application/zip', 'content-length': data.length });
+      response.end(data);
+      return;
+    }
+    case '/download-stall':
+      response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-disposition': 'attachment; filename=file.txt' });
+      response.write('a'.repeat(4096));
+      response.write('foo');
+      request.on('close', () => response.destroy());
+      return;
+    case '/sse':
+      response.writeHead(200, { 'content-type': 'text/event-stream', connection: 'keep-alive', 'cache-control': 'no-cache' });
+      response.write('data: hello\n\n');
+      request.on('close', () => response.destroy());
+      return;
+  }
+  const file = path.join(ROOT, path.normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, ''));
+  if (!file.startsWith(ROOT) || !existsSync(file) || statSync(file).isDirectory()) {
+    response.writeHead(404, { 'content-type': 'text/plain' });
+    response.end('Not found');
+    return;
+  }
+  response.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' });
+  createReadStream(file).pipe(response);
+});
+
+server.listen(Number(process.env.PORT ?? 4311));
