@@ -208,8 +208,8 @@ test.describe('page request continue', { requires: ['browser'] }, () => {
     await browser.goto('/preload.html');
     await browser.evaluate('() => new Promise((resolve) => { const check = () => window.preloadedStyles ? resolve(true) : setTimeout(check, 20); check(); })');
     expect(intercepted).toBe(true);
-    const color = await browser.evaluate('() => window.getComputedStyle(document.body).backgroundColor');
-    expect(color).toBe('rgb(255, 192, 203)');
+    // preload.html sets the flag before switching the link to a stylesheet, which applies a task later.
+    await expect.poll(() => browser.evaluate('() => window.getComputedStyle(document.body).backgroundColor')).toBe('rgb(255, 192, 203)');
   });
 
   test('should respect set-cookie in redirect response', async ({ browser }) => {

@@ -200,8 +200,8 @@ test.describe('page request fulfill', { requires: ['browser'] }, () => {
     expect(response.headers['custom']).toBe('value');
     await browser.evaluate(waitForFunction('window.preloadedStyles'));
     expect(intercepted).toBe(true);
-    const color = await browser.evaluate('() => window.getComputedStyle(document.body).backgroundColor');
-    expect(color).toBe('rgb(0, 128, 0)');
+    // preload.html sets the flag before switching the link to a stylesheet, which applies a task later.
+    await expect.poll(() => browser.evaluate('() => window.getComputedStyle(document.body).backgroundColor')).toBe('rgb(0, 128, 0)');
   });
 
   test('should fulfill json', async ({ browser }) => {
