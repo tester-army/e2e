@@ -797,13 +797,13 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     forward: navigationCall,
     url: action,
     title: action,
-    waitForURL: { ...navigationCall, verifies: true, label: (url) => String(url) },
+    waitForURL: { ...navigationCall, verifies: true, label: patternLabel },
     evaluate: action,
     addInitScript: { ...action, label: (script) => initScriptLabel(script) },
-    route: { ...action, label: (pattern) => String(pattern) },
-    unroute: { ...action, label: (pattern) => String(pattern) },
+    route: { ...action, label: patternLabel },
+    unroute: { ...action, label: patternLabel },
     unrouteAll: action,
-    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: (pattern) => String(pattern) },
+    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: patternLabel },
     cookies: action,
     setCookies: action,
     clearCookies: action,
@@ -947,6 +947,11 @@ function requireSelector(method: string, selector: unknown): string {
     throw new TestError('INVALID_LOCATOR', `${method}() requires a nonempty selector`);
   }
   return selector;
+}
+
+/** A URL pattern as steps and errors name it: a string quoted, a RegExp as its literal. */
+function patternLabel(pattern: string | RegExp): string {
+  return typeof pattern === 'string' ? JSON.stringify(pattern) : String(pattern);
 }
 
 /**
