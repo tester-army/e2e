@@ -90,9 +90,8 @@ A check inside it never confirms the step's recording.
 For `tapAt` and `hoverAt`, `event.point` holds the dispatched point. For
 `dragAt`, `event.from` and `event.to` hold its endpoints. Coordinates are
 in the same space as `screen.tapAt` and `boundingBox()`, rounded and clamped
-to the viewport: CSS pixels on the web, iOS points, and Android physical pixels.
-Replay reports the points it dispatches on the current screen. Mobile engines
-only report `point` for `tapAt`. Node-ID actions, including point tools that
+to the viewport. Replay reports the points it dispatches on the current screen.
+Mobile engines only report `point` for `tapAt`. Node-ID actions, including point tools that
 fall back to node IDs, and non-pointer actions omit these fields.
 
 ```ts

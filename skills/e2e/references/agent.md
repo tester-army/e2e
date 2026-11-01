@@ -243,10 +243,9 @@ It runs before replayed actions too, does not wait for the screen to settle,
 and a failed action gets a capture but no `onAction`.
 `onAction` exposes `point` for `tapAt`/`hoverAt` and `from`/`to` for
 `dragAt`, including replay. Coordinates are in the same space as
-`screen.tapAt` and `boundingBox()`, rounded and clamped to the viewport:
-CSS pixels on the web, iOS points, and Android physical pixels. Mobile engines
-only report `point` for `tapAt`. Node-ID fallbacks and non-pointer actions
-omit coordinates.
+`screen.tapAt` and `boundingBox()`, rounded and clamped to the viewport.
+Mobile engines only report `point` for `tapAt`. Node-ID fallbacks and
+non-pointer actions omit coordinates.
 
 `vision` on a judgment picks the evidence: `false` (default) the tree;
 `true` the tree plus a masked screenshot; `'only'` the screenshot alone, for
