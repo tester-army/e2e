@@ -15,6 +15,12 @@ Please read the [code of conduct](./CODE_OF_CONDUCT.md) before you post.
 Security issues go through [`SECURITY.md`](./SECURITY.md), not the issue
 tracker.
 
+## Issues
+
+- Bug reports need a link to a public repository or sandbox that reproduces
+  the bug. Reports without one are closed.
+- Feature requests need the proposed API, its upsides, and its downsides.
+
 ## Pull requests
 
 The changes most likely to be accepted:
