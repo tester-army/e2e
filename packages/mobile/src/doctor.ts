@@ -27,14 +27,14 @@ const CHECK_ID = /^[a-z][a-z0-9-]*$/;
 /**
  * Runs agent-device's doctor once per device the target names (once with no
  * device, for the booted one a run picks) and checks the build `appPath`
- * names. A provider's devices are not on this machine, so only the build is
- * checked for one.
+ * names. A provider's devices are not on this machine, and the provider
+ * reads `appPath` its own way, so neither is checked for one.
  */
 export async function mobileDoctor(options: MobileOptions, createClient: ClientFactory, session: string, info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
-  const build = await buildCheck(info);
   const { device } = options;
   const devices = device === undefined ? [undefined] : typeof device === 'string' ? [device] : isDeviceList(device) ? device : undefined;
-  if (devices === undefined) return [...build, { id: 'device', status: 'skip', message: `devices come from the "${(device as DeviceProvider).name}" provider` }];
+  if (devices === undefined) return [{ id: 'device', status: 'skip', message: `devices and the build come from the "${(device as DeviceProvider).name}" provider` }];
+  const build = await buildCheck(info);
   const targetApp = info.app.appPath === undefined ? info.app.bundleId : undefined;
   const client = createClient(session);
   const checks: EngineDoctorCheck[] = [...build];

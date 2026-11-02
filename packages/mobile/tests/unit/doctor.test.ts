@@ -94,10 +94,10 @@ describe('doctor', () => {
     expect((await missing.engine.doctor!(info(missing, dir)))[0]).toMatchObject({ id: 'app-path', status: 'fail' });
   });
 
-  it("skips the device for a provider's leases without calling agent-device", async () => {
+  it("skips the device and the build for a provider's leases without calling agent-device", async () => {
     const provider = { name: 'cloud', acquire: () => Promise.reject(new Error('unused')), release: () => Promise.resolve() };
-    const h = doctorHarness({ device: provider });
-    expect(await h.engine.doctor!(info(h))).toEqual([{ id: 'device', status: 'skip', message: 'devices come from the "cloud" provider' }]);
+    const h = doctorHarness({ device: provider, appPath: 'hosted.app' });
+    expect(await h.engine.doctor!(info(h))).toEqual([{ id: 'device', status: 'skip', message: 'devices and the build come from the "cloud" provider' }]);
     expect(h.fake.methods()).toEqual([]);
   });
 });

@@ -38,7 +38,8 @@ bunx e2e doctor
 </CodeGroup>
 
 It checks agent-device, Xcode or the Android SDK, each device the target
-names, the `bundleId` on the one booted device, and the `appPath` build. See
+names, and the `appPath` build. Without `appPath`, it checks that the
+`bundleId` is installed when one device is booted. See
 [`e2e doctor`](/reference/cli#e2e-doctor).
 
 ## Point at your app
