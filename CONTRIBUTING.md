@@ -18,7 +18,7 @@ tracker.
 ## Issues
 
 - Bug reports need a link to a public repository or sandbox that reproduces
-  the bug. Reports without one are closed.
+  the bug, and the steps to run it. Reports without them are closed.
 - Feature requests need the proposed API, its upsides, and its downsides.
 
 ## Pull requests
