@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/github",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "GitHub reporter for e2e: one pull request comment per run, from GitHub Actions",
   "keywords": [
     "e2e",
@@ -54,8 +54,8 @@
     "e2e": ">=0.15.0 <1"
   },
   "devDependencies": {
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
-    "@types/node": "26.6.5",
     "typescript": "7.0.2",
     "vitest": "5.0.5"
   },

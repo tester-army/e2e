@@ -14,7 +14,7 @@ import {
   type TextPattern,
 } from '../internal/text.ts';
 import { isValueControl } from '../internal/roles.ts';
-import { Deadline, pollCondition } from '../internal/time.ts';
+import { pollReads, type ReadWindow } from '../internal/time.ts';
 import { SampleHistory } from './samples.ts';
 import { attributeOf, denySecureRead, isNodeVisible } from '../locator/engine.ts';
 import { describeExpression } from '../locator/expression.ts';
@@ -173,12 +173,13 @@ class AsyncExpectationImpl implements AsyncExpectation {
       let lastSample: Sample = { count: 0, node: null, nodes: [] };
       const samples = new SampleHistory('expect', (text) => engine.redact(text));
       await samples.record(engine, () =>
-        pollCondition({
+        pollReads({
           deadline,
+          reads: engine.reads(deadline),
           signal: engine.signal,
           negated: this.negated,
-          evaluate: async () => {
-            const sample = await this.sample(spec, deadline);
+          evaluate: async (reads) => {
+            const sample = await this.sample(spec, reads);
             lastSample = sample;
             if (spec.readsWithheld === true) {
               denySecureRead(sample.node === null ? sample.nodes : [sample.node], this.label);
@@ -221,18 +222,18 @@ class AsyncExpectationImpl implements AsyncExpectation {
     return spec.evaluableNode?.(sample.node) ?? true;
   }
 
-  private async sample(spec: MatcherSpec, deadline: Deadline): Promise<Sample> {
+  private async sample(spec: MatcherSpec, reads: ReadWindow): Promise<Sample> {
     const { engine } = this.internals.context;
     if (spec.wholeSet === 'read') {
-      const nodes = await engine.readAllNow(this.internals.expression, deadline);
+      const nodes = await engine.readAllNow(this.internals.expression, reads);
       return { count: nodes.length, node: null, nodes };
     }
     if (spec.wholeSet === true) {
-      const refs = await engine.resolveNow(this.internals.expression, deadline);
+      const refs = await engine.resolveNow(this.internals.expression, reads);
       return { count: refs.length, node: null, nodes: [] };
     }
     const missingFrame = spec.evaluableWithoutNode === true ? 'empty' : 'wait';
-    const { node, count } = await engine.tryRead(this.internals.expression, deadline, missingFrame);
+    const { node, count } = await engine.tryRead(this.internals.expression, reads, missingFrame);
     return { count, node, nodes: [] };
   }
 

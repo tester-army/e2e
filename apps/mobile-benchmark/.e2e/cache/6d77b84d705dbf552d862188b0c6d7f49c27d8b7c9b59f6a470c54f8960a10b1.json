@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-15T15:52:08.777Z",
+  "createdAt": "2026-10-30T17:02:47.170Z",
   "payload": {
     "actions": [
       {
@@ -26,18 +26,13 @@
       },
       {
         "name": "type",
-        "summary": "type \"At least ten characters\" into textbox \"Vertical scroll bar, 1 page\"",
+        "summary": "type \"These are at least ten characters of no…\" into textbox \"notes-input\"",
         "target": {
           "role": "textbox",
-          "name": "Vertical scroll bar, 1 page",
           "testId": "notes-input",
           "selector": "id=notes-input"
         },
-        "value": "At least ten characters"
-      },
-      {
-        "name": "dismissKeyboard",
-        "summary": "dismiss the keyboard"
+        "value": "These are at least ten characters of notes."
       },
       {
         "name": "tap",
@@ -62,18 +57,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Entered username “tester,” a four-digit PIN, and notes exceeding ten characters, then submitted. The screen displays “Form submitted.”",
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "Entered notes (43 characters) with the existing username and 4-digit PIN, then submitted. The screen shows “Form submitted.”",
     "startPath": "dev.e2e.benchmark / Text Input Variations",
     "endPath": "dev.e2e.benchmark / Text Input Variations",
     "endAnchors": [
-      {
-        "role": "other",
-        "name": "Form submitted"
-      },
-      {
-        "role": "scroll-view",
-        "name": "Form submitted"
-      },
       {
         "role": "text",
         "name": "Form submitted",
@@ -82,16 +73,8 @@
     ],
     "goneAnchors": [
       {
-        "role": "text",
-        "name": "Username (min 3 chars)"
-      },
-      {
         "role": "textbox",
         "testId": "username-input"
-      },
-      {
-        "role": "text",
-        "name": "PIN (exactly 4 digits, secure)"
       },
       {
         "role": "textbox",
@@ -99,24 +82,28 @@
         "inputPurpose": "password"
       },
       {
-        "role": "text",
-        "name": "Notes (multiline, min 10 chars) — 0/10"
-      },
-      {
         "role": "other",
         "name": "Submit",
         "testId": "submit-button"
       },
       {
-        "role": "other",
+        "role": "text",
         "name": "Username (min 3 chars)"
       },
       {
-        "role": "scroll-view",
-        "name": "Username (min 3 chars)"
+        "role": "text",
+        "name": "PIN (exactly 4 digits, secure)"
+      },
+      {
+        "role": "text",
+        "name": "Notes (multiline, min 10 chars) — 0/10"
+      },
+      {
+        "role": "textbox",
+        "testId": "notes-input"
       }
     ],
-    "endWaitMs": 13233,
+    "endWaitMs": 12130,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

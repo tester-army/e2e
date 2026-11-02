@@ -209,17 +209,19 @@ await screen.getByLabel('Password').fill(credentials.user('admin').password);`);
     });
 
     it('fills a generic secret into a plain field and redacts it from every read and failure', async () => {
-      const echoed = await runCode(`await app.open('/echo');
-await screen.getByLabel('Token').fill(secrets.get('apiKey'));
-await screen.getByLabel('Token').inputValue();
+      const filled = await runCode(`await app.open('/echo');
+await screen.getByLabel('Token').fill(secrets.get('apiKey'));`);
+      expect(filled.isError, filled.text).toBe(false);
+      // The short timeout is for the assertion meant to fail; the open and the fill above need the default one under load.
+      const echoed = await runCode(`await screen.getByLabel('Token').inputValue();
 await screen.getByTestId('plain').textContent();
 await screen.getByTestId('upper').allTextContents();
 await expect(screen.getByTestId('plain')).toHaveText('nothing yet');`, 300);
       expect(echoed.isError).toBe(true);
-      expect(echoed.text).toContain("3. passed: await screen.getByLabel('Token').inputValue();\n   returned \"<secret:apiKey>\"");
-      expect(echoed.text).toContain("4. passed: await screen.getByTestId('plain').textContent();\n   returned \"<secret:apiKey>\"");
+      expect(echoed.text).toContain("1. passed: await screen.getByLabel('Token').inputValue();\n   returned \"<secret:apiKey>\"");
+      expect(echoed.text).toContain("2. passed: await screen.getByTestId('plain').textContent();\n   returned \"<secret:apiKey>\"");
       expect(echoed.text).toContain('returned ["<secret:apiKey>"]');
-      expect(echoed.text).toContain('6. failed:');
+      expect(echoed.text).toContain('4. failed:');
       expect(echoed.text).toContain('observed: text "<secret:apiKey>"');
     });
 

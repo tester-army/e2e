@@ -16,18 +16,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import {
-  ClientSideConnection,
+  client,
+  methods,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type Client,
+  type ClientContext,
   type InitializeResponse,
+  type NewSessionResponse,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionConfigOption,
   type SessionNotification,
   type ToolCallUpdate,
   type Usage,
-} from '@agentclientprotocol/sdk';
+} from '@agentclientprotocol/sdk/unstable';
 import { ConfigurationError } from 'e2e/engine';
 import { MCP_SERVER_NAME, serveTools, type ServedTool, type ToolServer } from './mcp.ts';
 
@@ -137,15 +139,13 @@ export async function startSession(
   const ours = new Set(tools.map((tool) => tool.name));
   const calls = new Map<string, Partial<ToolCallUpdate>>();
   const turn: TurnState = { cost: undefined, text: '', own: { allowed: new Set(), rejected: new Map(), ran: new Map() } };
-  const client: Client = {
-    requestPermission: (params) => answerPermission(params, ours, calls, turn.own),
-    sessionUpdate: (params) => observe(params, ours, calls, turn, onOwnTool),
-  };
-  const connection = new ClientSideConnection(
-    () => client,
-    ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>),
-  );
+  const connection = client({ name: 'e2e' })
+    .onRequest(methods.client.session.requestPermission, ({ params }) => answerPermission(params, ours, calls, turn.own))
+    .onNotification(methods.client.session.update, ({ params }) => observe(params, ours, calls, turn, onOwnTool))
+    .connect(ndJsonStream(Writable.toWeb(child.stdin) as WritableStream<Uint8Array>, Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>));
+  const agent = connection.agent;
   const teardown = () => {
+    connection.close();
     child.stdin.end();
     child.kill('SIGTERM');
     setTimeout(() => {
@@ -161,7 +161,7 @@ export async function startSession(
   try {
     server = await startup(serving);
     initialize = await startup(
-      connection.initialize({
+      agent.request(methods.agent.initialize, {
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: { fs: { readTextFile: false, writeTextFile: false }, terminal: false },
         clientInfo: { name: 'e2e', version: '1' },
@@ -171,7 +171,7 @@ export async function startSession(
       throw new ConfigurationError('INVALID_CONFIG', `${launch.command} does not accept MCP servers over HTTP, which the step tools need`);
     }
     const session = await startup(
-      connection.newSession({
+      agent.request(methods.agent.session.new, {
         cwd,
         mcpServers: [{ type: 'http', name: MCP_SERVER_NAME, url: server.url, headers: [] }],
         ...(launch.sessionMeta === undefined ? {} : { _meta: { ...launch.sessionMeta } }),
@@ -187,12 +187,12 @@ export async function startSession(
           `the agent does not offer model ${launch.model}${offered.length === 0 ? '' : `; it offers ${offered.join(', ')}`}`,
         );
       }
-      await startup(connection.setSessionConfigOption({ sessionId, configId: modelOption.id, value: launch.model }));
+      await startup(agent.request(methods.agent.session.setConfigOption, { sessionId, configId: modelOption.id, value: launch.model }));
       modelId = launch.model;
     } else if (modelOption?.type === 'select') {
       modelId = String(modelOption.currentValue);
     }
-    if (launch.mode !== undefined) await startup(selectMode(connection, session, launch.mode));
+    if (launch.mode !== undefined) await startup(selectMode(agent, session, launch.mode));
   } catch (error) {
     teardown();
     if (isAuthRequired(error)) {
@@ -212,7 +212,7 @@ export async function startSession(
       turn.own = { allowed: new Set(), rejected: new Map(), ran: new Map() };
       const costBefore = turn.cost;
       const started = Date.now();
-      const response = await Promise.race([connection.prompt({ sessionId, prompt: [{ type: 'text', text }] }), exited]).catch((error: unknown) => {
+      const response = await Promise.race([agent.request(methods.agent.session.prompt, { sessionId, prompt: [{ type: 'text', text }] }), exited]).catch((error: unknown) => {
         throw withDetails(error);
       });
       const costUsd = turn.cost === undefined ? undefined : turn.cost - (costBefore ?? 0);
@@ -228,14 +228,14 @@ export async function startSession(
       };
     },
     cancel() {
-      void connection.cancel({ sessionId }).catch(() => undefined);
+      void agent.notify(methods.agent.session.cancel, { sessionId }).catch(() => undefined);
     },
     close() {
       if (closed) return;
       closed = true;
       // Synchronous to the end, so a worker exiting right after the attempt still stops the agent.
       if (initialize.agentCapabilities?.sessionCapabilities?.close != null) {
-        void connection.closeSession({ sessionId }).catch(() => undefined);
+        void agent.request(methods.agent.session.close, { sessionId }).catch(() => undefined);
       }
       teardown();
     },
@@ -265,16 +265,12 @@ function isAuthRequired(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === AUTH_REQUIRED;
 }
 
-async function selectMode(
-  connection: ClientSideConnection,
-  session: Awaited<ReturnType<ClientSideConnection['newSession']>>,
-  mode: string,
-): Promise<void> {
+async function selectMode(agent: ClientContext, session: NewSessionResponse, mode: string): Promise<void> {
   const option = session.configOptions?.find((entry) => entry.category === 'mode');
   if (option !== undefined && selectValues(option).includes(mode)) {
-    await connection.setSessionConfigOption({ sessionId: session.sessionId, configId: option.id, value: mode });
+    await agent.request(methods.agent.session.setConfigOption, { sessionId: session.sessionId, configId: option.id, value: mode });
   } else if (session.modes?.availableModes.some((entry) => entry.id === mode) === true) {
-    await connection.setSessionMode({ sessionId: session.sessionId, modeId: mode });
+    await agent.request(methods.agent.session.setMode, { sessionId: session.sessionId, modeId: mode });
   } else {
     throw new ConfigurationError('INVALID_CONFIG', `the agent has no mode ${mode}`);
   }

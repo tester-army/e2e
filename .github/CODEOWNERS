@@ -1,6 +1,6 @@
 # Review routing. Order matters: the last matching pattern wins.
 
-*                         @okwasniewski @szymonrybczak
+*                         @okwasniewski
 
 # Public contract: emitted types, type assertions, wire schemas.
 /packages/e2e/src/types.ts        @okwasniewski
@@ -14,8 +14,8 @@
 /SECURITY.md                      @okwasniewski
 
 # Engines.
-/packages/web/             @okwasniewski @szymonrybczak
-/packages/mobile/           @szymonrybczak @okwasniewski
+/packages/web/             @okwasniewski
+/packages/mobile/           @okwasniewski
 
 # Examples.
 /examples/                        @kacperkapusciak

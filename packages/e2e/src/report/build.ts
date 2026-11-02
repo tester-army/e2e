@@ -285,6 +285,12 @@ export interface ReportSerialMember {
 }
 
 export interface ReportSerialAttempt extends ReportAttemptBase {
+  status: SerialAttemptRecord['status'];
+  /**
+   * The retry was interrupted, or it never reached its members, so this
+   * attempt's member records are not the verdict. Absent in older reports.
+   */
+  cutRetry?: boolean;
   members: readonly ReportSerialMember[];
 }
 
@@ -550,7 +556,12 @@ function serializeSerialMember(member: SerialMemberRecord): ReportSerialMember {
 }
 
 function serializeSerialAttempt(attempt: SerialAttemptRecord): ReportSerialAttempt {
-  return { ...serializeAttemptBase(attempt), members: attempt.members.map(serializeSerialMember) };
+  return {
+    ...serializeAttemptBase(attempt),
+    status: attempt.status,
+    cutRetry: attempt.cutRetry,
+    members: attempt.members.map(serializeSerialMember),
+  };
 }
 
 function serializeSerialGroup(group: SerialGroupRecord): ReportSerialGroup {

@@ -47,7 +47,7 @@ describe('unique() through validateParams', () => {
       qty: 2,
       owner: { email: unique('a@b.test'), tags: ['vip', unique('new-customer')] },
       'a/b': unique('slash'),
-    });
+    }, 'agent.act');
     expect(projected).toEqual({
       name: 'E2E abc Company',
       plan: 'pro',
@@ -244,6 +244,15 @@ describe('templateTrace and expandTrace', () => {
     expect(expandText('/companies/{{param:/name|slug}}', values([{ pointer: '/name', value: "Ada's Shop & Co" }]))).toBe('/companies/ada-s-shop-co');
     // A value whose slug is empty has no slug spelling.
     expect(templateText('x -- y', [{ pointer: '/v', value: '--' }])).toBe('x {{param:/v}} y');
+  });
+
+  it('spells a multi-line value on one line, as the screen shows it, and fills it back the same way', () => {
+    const templates = [{ pointer: '/address', value: 'Ada Lovelace\n12 Example Street\nE2E 1' }];
+    expect(templateText('Saved: Ada Lovelace 12 Example Street E2E 1', templates)).toBe('Saved: {{param:/address|flat}}');
+    expect(templateText('Ada Lovelace\n12 Example Street\nE2E 1', templates)).toBe('{{param:/address}}');
+    // A textarea keeps `\r\n` as `\n`, so a value joined with `\r\n` shows on one line too.
+    expect(templateText('Saved: Ada Lovelace 12 Example Street E2E 1', [{ pointer: '/address', value: 'Ada Lovelace\r\n12 Example Street\r\nE2E 1' }])).toBe('Saved: {{param:/address|flat}}');
+    expect(expandText('Saved: {{param:/address|flat}}', values([{ pointer: '/address', value: ' Grace Hopper\n\n 7 Navy Way\tE2E 2 ' }]))).toBe('Saved: Grace Hopper 7 Navy Way E2E 2');
   });
 
   it('refuses a placeholder whose encoding it does not know', () => {

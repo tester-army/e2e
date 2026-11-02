@@ -13,6 +13,12 @@ test('observes the first navigation response', { requires: ['browser'], tags: ['
   await expect(screen.getByRole('heading', 'Network')).toBeVisible();
 });
 
+test('calls the API at a path joined onto app.baseUrl', { tags: ['network'] }, async ({ app }) => {
+  const response = await fetch(`${app.baseUrl}/api/users`);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toHaveLength(3);
+});
+
 test.describe('network', { requires: ['browser'], tags: ['network'] }, () => {
   test.beforeEach(async ({ app }) => {
     await app.open('/network');

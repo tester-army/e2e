@@ -26,7 +26,7 @@ import type {
   StepRecorder,
   VisionDegradation,
 } from '../run/steps.ts';
-import type { VisionMode } from '../types.ts';
+import type { JsonValue, VisionMode } from '../types.ts';
 import { AgentError } from './error.ts';
 import { ModelUsage, reasoningField, tokenFields } from './usage.ts';
 import type { ExecutorAttempt, StepExecutor } from './executor.ts';
@@ -126,6 +126,8 @@ export interface InvocationOptions {
   readonly agent?: string | undefined;
   /** Caller's instruction, e.g. the target phrase, used for debug step labels. */
   readonly label?: string;
+  /** The values the instruction refers to, projected and redacted; every prompt carries them, and the input budget counts them. */
+  readonly params?: Readonly<Record<string, JsonValue>> | undefined;
   /** Short task description placed in the system message. */
   readonly task: string;
   readonly timeoutMs: number;
@@ -187,7 +189,9 @@ export class Invocation {
     this.pixelTier = options.vision === true || options.vision === 'only';
     this.system = runtime.redact(buildSystem(options.task, this.agent.agentContext));
     this.systemBytes = tokenUpperBound(this.system);
-    this.instructionBytes = tokenUpperBound(runtime.redact(options.label ?? ''));
+    this.instructionBytes =
+      tokenUpperBound(runtime.redact(options.label ?? '')) +
+      (options.params === undefined ? 0 : tokenUpperBound(JSON.stringify(options.params)));
   }
 
   get session(): TargetSession {
@@ -325,6 +329,7 @@ export class Invocation {
       const prompt = this.runtime.redact(
         buildPrompt({
           ...request.prompt,
+          ...(this.options.params === undefined ? {} : { params: this.options.params }),
           titlePath: this.runtime.attempt.titlePath,
           ...(this.treeWithheld ? { withholdTree: true } : {}),
           ...(repair === undefined

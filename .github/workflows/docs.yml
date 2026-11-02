@@ -47,7 +47,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Fails on a broken link or anchor, a docs or skill code block that
       # drifted from docs/examples, a package manager command outside its
-      # tabs, or a vendor page without its logos.
+      # tabs, a vendor page without its logos, or a page that doesn't
+      # compile as standard MDX.
       - name: Check docs
         run: pnpm run docs:check
 

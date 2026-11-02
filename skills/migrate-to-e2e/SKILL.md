@@ -1,6 +1,6 @@
 ---
 name: migrate-to-e2e
-description: Moves an existing Playwright, Cypress, Selenium, Detox, or Maestro suite to e2e one slice at a time, with the old suite running beside the new one until each ported test is proven. Keeps a MIGRATION.md progress file so any later session resumes where the last stopped. Optionally plants a defect to show both suites catch it. Use for /migrate-to-e2e, "migrate our tests to e2e", "port these Maestro flows", or when a project has an e2e config and an older suite still running.
+description: Moves an existing Playwright, Cypress, Selenium, Detox, Maestro, or TesterArmy suite to e2e one slice at a time, with the old suite running beside the new one until each ported test is proven. Keeps a MIGRATION.md progress file so any later session resumes where the last stopped. Optionally plants a defect to show both suites catch it. Use for /migrate-to-e2e, "migrate our tests to e2e", "port these Maestro flows", "move our TesterArmy tests", or when a project has an e2e config and an older suite still running.
 ---
 
 # Migrate a suite to e2e
@@ -34,12 +34,38 @@ the inventory and before writing any code. Each later step leans on them.
 | Selenium | `selenium-webdriver`, Selenium in a `pom.xml`, `build.gradle`, or `requirements.txt` | [migrate/selenium](https://e2e.tester.army/docs/migrate/selenium.md) | [web](https://e2e.tester.army/docs/web.md) |
 | Detox | `.detoxrc*`, `detox` in `package.json` | [migrate/detox](https://e2e.tester.army/docs/migrate/detox.md) | [mobile](https://e2e.tester.army/docs/mobile.md) |
 | Maestro | YAML flows opening with `appId:` and `---`, `.maestro/`, `maestro test` in a script or workflow | [migrate/maestro](https://e2e.tester.army/docs/migrate/maestro.md) | [mobile](https://e2e.tester.army/docs/mobile.md) |
+| TesterArmy | `testerarmy` MCP tools, a `testerarmy` entry in an MCP config, `testerarmy` or `tester.army` in a script or workflow, or the user says so | [migrate/testerarmy](https://e2e.tester.army/docs/migrate/testerarmy.md) | [web](https://e2e.tester.army/docs/web.md) or [mobile](https://e2e.tester.army/docs/mobile.md), by the project's type |
 
 WebdriverIO and Appium have no guide. Map their WebDriver calls with the
 Selenium guide; map Appium's device commands with the Detox and Maestro
 guides, on the mobile engine. Tell the user the mapping is partial. A
 project with two source runners migrates one at a time, one section of the
 progress file each.
+
+### TesterArmy
+
+TesterArmy tests live in TesterArmy, not in the repo. Read them through
+the TesterArmy MCP server. When your client has no `testerarmy` tools, add
+the server as the guide's "Connect the TesterArmy MCP server" section says,
+ask the user to sign in and restart the session, and wait.
+
+- Ask which project to migrate (`list_projects`). Its settings,
+  environments, credentials, memories, and files are the harness inputs
+  (step 3); its groups are the slices (step 4).
+- A source file is a saved test. Its row's Source is the test's title and
+  id, and its assertions are its `assert` steps. A disabled test counts as
+  skipped. A disabled step is left out and not counted.
+- Use the read tools only. `run_test` and `run_group` start cloud runs
+  against the deployed app: in step 6, call them only when the user agrees,
+  else record `Run old: not run`. Never create, update, or delete anything
+  in TesterArmy; retiring a test means the user disables or deletes it.
+- TesterArmy never returns passwords or TOTP secrets. Name each credential
+  in the config and ask the user to set its environment variable.
+- The literal port of a step is an agent call (`agent.act`, `agent.assert`),
+  so the config needs a model (step 3.2). A step that needs no judgment
+  ports to a locator call instead, as the guide's "Map each step" section
+  says. Learn the exact name first (step 5), and note each swap in the
+  row's Notes.
 
 ## 1. Resume or start
 

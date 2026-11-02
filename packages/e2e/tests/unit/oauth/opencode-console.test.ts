@@ -8,7 +8,8 @@ import { listModels } from '../../../src/oauth/models.ts';
 import { createOpencodeConsoleProvider } from '../../../src/oauth/providers/opencode-console.ts';
 import type { CodexCredentials } from '../../../src/oauth/providers/openai.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
-import { json, useServers, useVendor, type Received } from './helpers/server.ts';
+import { json, useServers, type Received } from '../../helpers/recording-server.ts';
+import { useVendor } from './helpers/vendor.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);

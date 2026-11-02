@@ -11,6 +11,9 @@ import {
   secrets,
   unique,
   test,
+  type ActionDetails,
+  type ActionEvent,
+  type ActionName,
   type Agent,
   type App,
   type ArtifactStore,
@@ -65,6 +68,7 @@ import {
   VERDICT_RULES,
   type ScreenOutput,
 } from '../../src/agent/public.ts';
+import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import type { Report } from '../../src/index.ts';
 import type { ToolSet } from 'ai';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
@@ -578,6 +582,27 @@ await agent.act('open billing', { onBeforeAction: async event => {
   // @ts-expect-error no engine target or geometry is exposed
   event.target;
 } });
+await agent.act('tap and drag the pin', { onAction: event => {
+  // @ts-expect-error details exist only once `action` is narrowed
+  event.point;
+  if (event.action === 'tapAt' || event.action === 'hoverAt') event.point satisfies { readonly x: number; readonly y: number };
+  if (event.action === 'dragAt') {
+    event.from satisfies { readonly x: number; readonly y: number };
+    event.to satisfies { readonly x: number; readonly y: number };
+    // @ts-expect-error hook coordinates are read-only
+    event.from.x = 1;
+  }
+  if (event.action === 'tap') {
+    // @ts-expect-error node-ID actions carry no coordinates
+    event.point;
+  }
+  if (event.action.startsWith('tool:')) event.summary satisfies string;
+  // @ts-expect-error action names are the committed actions'
+  if (event.action === 'tap_at') return;
+} });
+({ point: { x: 1, y: 2 } }) satisfies ActionDetails['tapAt'];
+'tapAt' satisfies ActionName;
+'tool:seed' satisfies ActionEvent['action'];
 // @ts-expect-error the observer is a function
 await agent.act('open billing', { onBeforeAction: true });
 // @ts-expect-error assertions have no before-action observer
@@ -599,6 +624,8 @@ await agent.assert('the form is not covered', { vision: 'only' });
 // @ts-expect-error a judgment's vision is a closed set: true, false, or 'only'
 await agent.assert('the chart trends upward', { vision: 'always' });
 await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+await agent.assert('the table lists {name}', { params: { name: unique('acme'), owner: credentials.user('admin').password } });
+await agent.waitFor('the table lists {name}', { params: { name: unique('acme') } });
 // @ts-expect-error the wait interval is `interval`, in milliseconds
 await agent.waitFor('the page settles', { intervalMs: 500 });
 // @ts-expect-error extract has a fixed budget: one extraction plus one repair round
@@ -970,6 +997,21 @@ session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
 
+/** Serial verdict provenance is optional on reports written by older runners. */
+type SerialReportAttempt = Report['run']['serialGroups'][number]['attempts'][number];
+declare const serialReportAttempt: SerialReportAttempt;
+const cutSerialRetry: boolean | undefined = serialReportAttempt.cutRetry;
+void cutSerialRetry;
+// @ts-expect-error the runner's cut-retry decision is a boolean, never a status string
+serialReportAttempt.cutRetry = 'interrupted';
+
 void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
 // @ts-expect-error an alternative must be a Locator
 void screen.getByRole('tab').or('tab');
+// The engine protocol: a connected server is an engine handle like any other.
+const protocolManifest = { name: 'kiosk', version: '1.0.0', spiVersion: 1, methods: ['engine/observe'] } satisfies EngineManifest;
+void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }) }) satisfies EngineHandle);
+// @ts-expect-error a manifest names only protocol methods
+void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
+// @ts-expect-error initialization options cross the wire, so they are JSON
+void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });

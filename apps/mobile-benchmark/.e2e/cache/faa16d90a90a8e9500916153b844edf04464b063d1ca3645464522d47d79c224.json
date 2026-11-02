@@ -1,11 +1,11 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-15T15:50:49.471Z",
+  "createdAt": "2026-10-30T17:01:24.722Z",
   "payload": {
     "actions": [
       {
         "name": "scrollUntil",
-        "summary": "scroll down until \"Item 137\" shows (10 screens)",
+        "summary": "scroll down until \"Item 137\" shows (13 screens)",
         "text": "Item 137",
         "direction": "down"
       },
@@ -32,14 +32,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Scrolled the paginated list until Item 137 appeared and tapped it. The screen now shows “Found item 137.”",
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "The screen shows “Found item 137,” confirming the list item was tapped and the scenario completed.",
     "startPath": "dev.e2e.benchmark / Infinite Scroll List",
     "endPath": "dev.e2e.benchmark / Infinite Scroll List",
     "endAnchors": [
-      {
-        "role": "other",
-        "name": "Found item 137"
-      },
       {
         "role": "text",
         "name": "Found item 137",
@@ -48,8 +48,9 @@
     ],
     "goneAnchors": [
       {
-        "role": "text",
-        "name": "Scroll down and tap Item 137 to complete"
+        "role": "other",
+        "name": "Item 1",
+        "testId": "item-1"
       },
       {
         "role": "other",
@@ -87,7 +88,7 @@
         "testId": "item-8"
       }
     ],
-    "endWaitMs": 12399,
+    "endWaitMs": 10160,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

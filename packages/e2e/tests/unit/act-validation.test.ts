@@ -52,9 +52,9 @@ describe('redactParams', () => {
     const { projected, templates } = validateParams({
       note: SECRET,
       [`account ${SECRET}`]: { name: unique(`E2E ${SECRET} 42`), tags: [SECRET, 7] },
-    });
+    }, 'agent.act');
     expect(templates).toEqual([{ pointer: `/account ${SECRET}/name`, value: `E2E ${SECRET} 42` }]);
-    const redacted = redactParams(projected!, templates, redact);
+    const redacted = redactParams(projected!, templates, redact, 'agent.act');
     expect(redacted.params).toEqual({
       note: '<secret:probe>',
       'account <secret:probe>': { name: 'E2E <secret:probe> 42', tags: ['<secret:probe>', 7] },
@@ -67,15 +67,15 @@ describe('redactParams', () => {
   });
 
   it('keeps a __proto__ key as an own property', () => {
-    const { projected, templates } = validateParams(JSON.parse(`{"__proto__":"${SECRET}","note":"x"}`) as Record<string, string>);
-    const redacted = redactParams(projected!, templates, redact);
+    const { projected, templates } = validateParams(JSON.parse(`{"__proto__":"${SECRET}","note":"x"}`) as Record<string, string>, 'agent.act');
+    const redacted = redactParams(projected!, templates, redact, 'agent.act');
     expect(Object.hasOwn(redacted.params, '__proto__')).toBe(true);
     expect(JSON.stringify(redacted.params)).toBe('{"__proto__":"<secret:probe>","note":"x"}');
   });
 
   it('refuses two keys that redact alike instead of dropping one', () => {
-    const { projected, templates } = validateParams({ nested: { [`id ${SECRET}`]: 1, 'id <secret:probe>': 2 } });
-    expect(() => redactParams(projected!, templates, redact)).toThrow(
+    const { projected, templates } = validateParams({ nested: { [`id ${SECRET}`]: 1, 'id <secret:probe>': 2 } }, 'agent.act');
+    expect(() => redactParams(projected!, templates, redact, 'agent.act')).toThrow(
       expect.objectContaining({
         code: 'INVALID_ARGUMENT',
         message: 'agent.act params has two keys that read "id <secret:probe>" once secret values are redacted; a key cannot be told apart by a secret',

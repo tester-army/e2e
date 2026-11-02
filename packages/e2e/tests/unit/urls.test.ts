@@ -3,6 +3,7 @@ import {
   isLoopbackHost,
   normalizeBaseUrl,
   portOf,
+  printableUrl,
   requestsFreePort,
   resolveNavigationUrl,
   sameSite,
@@ -65,6 +66,13 @@ describe('normalizeBaseUrl', () => {
     expect(normalizeBaseUrl('127.0.0.1:8080/base/').basePath).toBe('/base/');
     expect(normalizeBaseUrl('[::1]:4000').origin).toBe('http://[::1]:4000');
     expect(() => normalizeBaseUrl('tester.army?q=1')).toThrow(/query/);
+  });
+});
+
+describe('printableUrl', () => {
+  it('drops userinfo, query, and fragment, any of which may carry a credential', () => {
+    expect(printableUrl('http://user:pw@127.0.0.1:4310/health?token=abc#x')).toBe('http://127.0.0.1:4310/health');
+    expect(printableUrl('http://127.0.0.1:4310')).toBe('http://127.0.0.1:4310/');
   });
 });
 

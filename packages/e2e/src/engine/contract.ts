@@ -32,7 +32,11 @@ export interface OperationContext {
    * abort at `timeoutMs`: bound each call by that budget yourself.
    */
   readonly signal: AbortSignal;
-  /** Remaining operation budget when the call starts. */
+  /**
+   * Remaining operation budget when the call starts. A waiting call's last
+   * locate or read can get more than its deadline leaves: as long as the
+   * slowest one it has seen.
+   */
   readonly timeoutMs: number;
   /** The run id. */
   readonly runId: string;

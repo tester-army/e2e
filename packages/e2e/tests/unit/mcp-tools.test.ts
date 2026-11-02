@@ -109,6 +109,8 @@ describe('invokeTool', () => {
       session: {} as never,
       tools: {},
       redaction: { redact: (text) => text, redactCut: (text) => text },
+      projectRoot: '/project',
+      attemptDir: '/project/.e2e/results/attempt',
       recorder: undefined,
       warn: () => undefined,
     });

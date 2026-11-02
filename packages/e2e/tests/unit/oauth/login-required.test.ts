@@ -9,7 +9,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { chatgpt } from '../../../src/oauth/chatgpt.ts';
 import { grok } from '../../../src/oauth/grok.ts';
 import { opencodeConsole } from '../../../src/oauth/opencode-console.ts';
-import { json, useServers, useVendor } from './helpers/server.ts';
+import { json, useServers } from '../../helpers/recording-server.ts';
+import { useVendor } from './helpers/vendor.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);

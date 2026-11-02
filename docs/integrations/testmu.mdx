@@ -227,6 +227,11 @@ An attempt that records [video](/reference/config#video) gets:
   [idle timeout](https://www.lambdatest.com/support/docs/desired-capabilities-in-appium/)
   (120 seconds by default) ends it, about three minutes after its last
   command.
+- **Unconfirmed release fails the run.** A release fails the run when
+  agent-device can't confirm it ended the device session, even when every
+  test passed: a forced daemon stop, a lost shutdown report, or a daemon that
+  exited during the run. Find the session on the dashboard by its `build` and
+  `sessionName`.
 - **Device settings and logs.** Device settings (permissions, location,
   network, appearance), system alerts, recording and device logs through
   agent-device, and port reverse are not available. Read logs on the TestMu

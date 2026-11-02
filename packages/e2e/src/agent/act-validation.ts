@@ -99,26 +99,26 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
  * JSON Pointer for the trace cache to template. The JSON round-trip is
  * deliberate: it bounds the canonical size (spec 02) and freezes what the
  * executor sees, so a getter or proxy cannot change values — or run code —
- * during later serialization.
+ * during later serialization. `api` names the call in error messages.
  */
-export function validateParams(params: AgentParams | undefined): {
+export function validateParams(params: AgentParams | undefined, api: string): {
   projected: Readonly<Record<string, JsonValue>> | undefined;
   secrets: ReadonlyMap<string, Secret>;
   templates: readonly ParamTemplate[];
 } {
   if (params === undefined) return { projected: undefined, secrets: new Map(), templates: [] };
   if (typeof params !== 'object' || params === null || Array.isArray(params)) {
-    throw new TestError('INVALID_ARGUMENT', 'agent.act params must be a plain object');
+    throw new TestError('INVALID_ARGUMENT', `${api} params must be a plain object`);
   }
   const found: FoundParams = { secrets: new Map(), templates: [] };
-  const projectedRaw = projectParams(params, '', found, new Set());
-  validateJsonValue(projectedRaw, 'agent.act params', { maxDepth: MAX_PARAMS_DEPTH });
+  const projectedRaw = projectParams(params, '', found, new Set(), api);
+  validateJsonValue(projectedRaw, `${api} params`, { maxDepth: MAX_PARAMS_DEPTH });
   const canonical = JSON.stringify(projectedRaw);
   const bytes = new TextEncoder().encode(canonical).byteLength;
   if (bytes > MAX_PARAMS_BYTES) {
     throw new TestError(
       'INVALID_ARGUMENT',
-      `agent.act params are ${bytes} canonical bytes; the maximum is ${MAX_PARAMS_BYTES}`,
+      `${api} params are ${bytes} canonical bytes; the maximum is ${MAX_PARAMS_BYTES}`,
     );
   }
   return {
@@ -133,15 +133,17 @@ export function validateParams(params: AgentParams | undefined): {
  * Projected params with `redact` applied to every string in them, object
  * keys included, and their `unique()` templates moved with their leaves: a
  * template's pointer follows the redacted keys and its value is redacted as
- * the leaf is, so the trace cache slots what the params hold.
+ * the leaf is, so the trace cache slots what the params hold. `api` names
+ * the call in error messages.
  */
 export function redactParams(
   params: Readonly<Record<string, JsonValue>>,
   templates: readonly ParamTemplate[],
   redact: (text: string) => string,
+  api: string,
 ): { params: Readonly<Record<string, JsonValue>>; templates: readonly ParamTemplate[] } {
   const pointers = new Map<string, string>();
-  const redacted = redactJson(params, redact, { from: '', to: '' }, pointers) as Readonly<Record<string, JsonValue>>;
+  const redacted = redactJson(params, redact, { from: '', to: '' }, pointers, api) as Readonly<Record<string, JsonValue>>;
   return {
     params: redacted,
     templates: templates.map((template) => ({
@@ -162,12 +164,13 @@ function redactJson(
   redact: (text: string) => string,
   at: { readonly from: string; readonly to: string },
   pointers: Map<string, string>,
+  api: string,
 ): JsonValue {
   pointers.set(at.from, at.to);
   if (typeof value === 'string') return redact(value);
   if (Array.isArray(value)) {
     return value.map((entry, index) =>
-      redactJson(entry, redact, { from: paramPointer(at.from, index), to: paramPointer(at.to, index) }, pointers),
+      redactJson(entry, redact, { from: paramPointer(at.from, index), to: paramPointer(at.to, index) }, pointers, api),
     );
   }
   if (typeof value !== 'object' || value === null) return value;
@@ -177,12 +180,12 @@ function redactJson(
     if (Object.hasOwn(out, clean)) {
       throw new TestError(
         'INVALID_ARGUMENT',
-        `agent.act params has two keys that read ${JSON.stringify(clean)} once secret values are redacted; a key cannot be told apart by a secret`,
+        `${api} params has two keys that read ${JSON.stringify(clean)} once secret values are redacted; a key cannot be told apart by a secret`,
       );
     }
     // Defined, not assigned, so a `__proto__` key stays an own property.
     Object.defineProperty(out, clean, {
-      value: redactJson(entry, redact, { from: paramPointer(at.from, key), to: paramPointer(at.to, clean) }, pointers),
+      value: redactJson(entry, redact, { from: paramPointer(at.from, key), to: paramPointer(at.to, clean) }, pointers, api),
       enumerable: true,
       writable: true,
       configurable: true,
@@ -198,7 +201,7 @@ interface FoundParams {
 }
 
 /** Replaces every Secret leaf with its placeholder and every Unique leaf with its value, collecting both. */
-function projectParams(value: unknown, pointer: string, found: FoundParams, seen: Set<unknown>): unknown {
+function projectParams(value: unknown, pointer: string, found: FoundParams, seen: Set<unknown>, api: string): unknown {
   if (isSecret(value)) {
     found.secrets.set(value.name, value);
     return { kind: 'secret', name: value.name, purpose: value.purpose };
@@ -209,14 +212,14 @@ function projectParams(value: unknown, pointer: string, found: FoundParams, seen
   }
   if (typeof value !== 'object' || value === null) return value;
   if (seen.has(value)) {
-    throw new TestError('INVALID_ARGUMENT', 'agent.act params contains a cycle');
+    throw new TestError('INVALID_ARGUMENT', `${api} params contains a cycle`);
   }
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map((entry, index) => projectParams(entry, paramPointer(pointer, index), found, seen));
+    return value.map((entry, index) => projectParams(entry, paramPointer(pointer, index), found, seen, api));
   }
   return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, projectParams(entry, paramPointer(pointer, key), found, seen)]),
+    Object.entries(value).map(([key, entry]) => [key, projectParams(entry, paramPointer(pointer, key), found, seen, api)]),
   );
 }
 

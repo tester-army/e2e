@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-15T15:51:12.070Z",
+  "createdAt": "2026-10-30T17:01:50.111Z",
   "payload": {
     "actions": [
       {
@@ -25,10 +25,11 @@
       },
       {
         "name": "tap",
-        "summary": "tap button \"Confirm\"",
+        "summary": "tap button \"Confirm\" in \"Confirm action\"",
         "target": {
           "role": "button",
-          "name": "Confirm"
+          "name": "Confirm",
+          "within": "Confirm action"
         }
       }
     ],
@@ -44,14 +45,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Opened the modal, tapped Continue, and confirmed the native “Confirm action” alert. The screen now displays “Flow completed.”",
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "The current screen shows “Flow completed,” confirming the modal flow completed after continuing and confirming the alert.",
     "startPath": "dev.e2e.benchmark / Modal Flow",
     "endPath": "dev.e2e.benchmark / Modal Flow",
     "endAnchors": [
-      {
-        "role": "other",
-        "name": "Flow completed"
-      },
       {
         "role": "text",
         "name": "Flow completed",
@@ -61,10 +62,11 @@
     "goneAnchors": [
       {
         "role": "other",
-        "name": "Open modal"
+        "name": "Open modal",
+        "testId": "open-modal-button"
       }
     ],
-    "endWaitMs": 12596,
+    "endWaitMs": 10165,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

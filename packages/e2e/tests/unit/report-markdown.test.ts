@@ -203,7 +203,7 @@ describe('renderMarkdownReport', () => {
           '</details>',
         ].join('\n'),
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web · [run artifacts](https://github.com/o/r/actions/runs/9)</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web · [run artifacts](https://github.com/o/r/actions/runs/9)</sub>',
         '',
       ].join('\n'),
     );
@@ -216,7 +216,7 @@ describe('renderMarkdownReport', () => {
         '',
         '<details>\n<summary>All 1 test in 1 file</summary>\n\n|  | Test | Time |\n| --- | --- | --- |\n| 🟢 | **tests/smoke.e2e.ts** · 1 passed | 850ms |\n| 🟢 | opens the app | 850ms |\n</details>',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
@@ -314,6 +314,18 @@ describe('renderMarkdownReport', () => {
         '- Expected: hidden or absent\n- Observed: default states (1 match)\n- Screen: `/dashboard/p1/settings?tab=env`\n- Closest to the locator: `#n41 button "Save Changes" [disabled]`',
       ].join('\n\n'),
     );
+    // The errors the app logged come last among the facts, oldest first, warnings and info left to the trace page.
+    const logged = attempt({ status: 'failed', error, steps: locators });
+    logged.appLog = [
+      { source: 'console', level: 'info', text: 'ready', at: '2026-01-01T00:00:00.000Z', step: 0 },
+      { source: 'error', level: 'error', text: 'TypeError: x at http://127.0.0.1:3100/app.js:3:7', at: '2026-01-01T00:00:02.000Z', step: 1 },
+      { source: 'console', level: 'error', text: 'Error occurred prerendering page "/settings"', at: '2026-01-01T00:00:01.000Z', step: 0 },
+      { source: 'console', level: 'warning', text: 'deprecated', at: '2026-01-01T00:00:03.000Z', step: 1 },
+    ];
+    const withLog = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [logged] })] }));
+    expect(withLog).toContain('- Observed: default states (1 match)\n- App console error: `Error occurred prerendering page "/settings"`\n- App uncaught error: `TypeError: x at /app.js:3:7`\n\n');
+    expect(withLog).not.toContain('`ready`');
+    expect(withLog).not.toContain('deprecated');
     // A message that says more than the api is quoted, first line only: the facts carry the rest.
     const worded = renderMarkdownReport(page({ status: 'failed', results: [named({ title: 'settings', status: 'failed', attempts: [attempt({ status: 'failed', error: { ...error, message: 'the Save button stayed\nexpected: hidden' }, steps: locators })] })] }));
     expect(worded).toContain(', after 15.1s\n\n> the Save button stayed\n\n- Expected:');
@@ -331,7 +343,7 @@ describe('renderMarkdownReport', () => {
   });
 
   it('says no tests selected when nothing ran and nothing failed', () => {
-    expect(renderMarkdownReport(page())).toBe('### 🟢 e2e: no tests selected\n\n<sub>e2e 0.9.0 · 8.4s · web</sub>\n');
+    expect(renderMarkdownReport(page())).toBe('### 🟢 e2e: no tests selected\n\n<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>\n');
   });
 
   it('escapes what a test wrote, keeps it on one line, and keeps a link destination closed', () => {
@@ -442,7 +454,7 @@ describe('renderMarkdownReport', () => {
     const one = renderMarkdownReport(page({ status: 'failed', results: [failing, passing], targets: twoTargets }));
     expect(one).not.toContain('(web)');
     expect(one).toContain('`tests/members.e2e.ts:41`\n\n');
-    expect(one).toContain('<sub>e2e 0.9.0 · 8.4s · web</sub>');
+    expect(one).toContain('<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>');
     // One file on two targets is two groups and one file.
     const twice = renderMarkdownReport(page({ results: [passing, { ...passing, targetId: 'mobile' }], targets: [reportTarget(), reportTarget({ id: 'mobile', index: 1 })] }));
     expect(twice).toContain('<summary>All 2 tests in 1 file</summary>');
@@ -496,9 +508,10 @@ describe('renderMarkdownReport', () => {
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [
-        { ...attempt({ status: 'failed', artifacts: ['video'] }), members: [] },
+        { ...attempt({ status: 'failed', artifacts: ['video'] }), status: 'failed', members: [] },
         {
           ...attempt({ status: 'failed', artifacts: ['screenshot'] }),
+          status: 'failed',
           members: [
             {
               id: 'm',
@@ -525,17 +538,17 @@ describe('renderMarkdownReport', () => {
     expect(renderMarkdownReport(page({ status: 'failed', results: [member] }))).toContain('**🔴 step two**  \n`tests/example.e2e.ts:3`\n\n**failed**\n');
   });
 
-  it('tells a serial member from the attempt that failed it when the interrupted retry skipped it', () => {
+  it.each(['interrupted', 'failed'] as const)('tells a serial member from its verdict when a %s retry was cut', (status) => {
     const member = named({ title: 'step two', status: 'failed', serialGroupId: 'g1' });
-    const memberRecord = (status: 'failed' | 'skipped') => ({
-      id: `m-${status}`,
+    const memberRecord = (memberStatus: 'failed' | 'skipped') => ({
+      id: `m-${memberStatus}`,
       index: 0,
       testId: member.testId,
-      status,
+      status: memberStatus,
       startedAt: REPORT_AT,
       durationMs: 40,
-      steps: status === 'failed' ? [step({ index: 0, label: 'tap Next', status: 'failed', error: reportError({ message: 'nope' }) })] : [],
-      ...(status === 'failed'
+      steps: memberStatus === 'failed' ? [step({ index: 0, label: 'tap Next', status: 'failed', error: reportError({ message: 'nope' }) })] : [],
+      ...(memberStatus === 'failed'
         ? { error: { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'nope', retryable: false } }
         : { skip: { cause: 'serial-predecessor-failed' as const, reason: 'group attempt did not reach this member' } }),
       secondaryErrors: [],
@@ -554,13 +567,14 @@ describe('renderMarkdownReport', () => {
       memberTestIds: [member.testId],
       status: 'failed',
       attempts: [
-        { ...attempt({ status: 'failed' }), members: [memberRecord('failed')] },
-        { ...attempt({ status: 'interrupted', error: { code: 'INTERRUPTED', message: 'run interrupted in phase body' } }), members: [memberRecord('skipped')] },
+        { ...attempt({ status: 'failed' }), status: 'failed', members: [memberRecord('failed')] },
+        { ...attempt({ status, error: { code: 'INTERRUPTED', message: 'retry could not finish' } }), status, cutRetry: true, members: [{ ...memberRecord(status === 'failed' ? 'failed' : 'skipped'), error: reportError({ code: 'INTERRUPTED', message: 'retry could not finish' }), steps: [] }] },
       ],
     };
     const body = renderMarkdownReport(page({ status: 'interrupted', results: [member], serialGroups: [group] }));
     expect(body).toContain('**ASSERTION_FAILED** at step 1 of 1: `screen.tap tap Next`');
-    expect(body).not.toContain('INTERRUPTED');
+    if (status === 'interrupted') expect(body).not.toContain('INTERRUPTED');
+    else expect(body).toContain('then **INTERRUPTED**');
   });
 
   it('tolerates a document written before results carried repeat, or one giving a flaky test a single attempt', () => {
@@ -686,7 +700,7 @@ describe('renderMarkdownReport for an exploration', () => {
         '',
         'The cart is the weak spot.',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );
@@ -845,7 +859,7 @@ describe('a run test filters narrowed', () => {
         '',
         '<details>\n<summary>All 1 test in 1 file</summary>\n\n|  | Test | Time |\n| --- | --- | --- |\n| 🟢 | **tests/smoke.e2e.ts** · 1 passed | 850ms |\n| 🟢 | opens the app | 850ms |\n</details>',
         '',
-        '<sub>e2e 0.9.0 · 8.4s · web</sub>',
+        '<sub>Tested by [e2e](https://e2e.tester.army) 0.9.0 · 8.4s · web</sub>',
         '',
       ].join('\n'),
     );

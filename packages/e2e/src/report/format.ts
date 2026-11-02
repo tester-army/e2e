@@ -34,6 +34,15 @@ export function bounded(text: string): string {
 }
 
 /**
+ * A failure for stderr, `CODE: message`: how the CLI prints what
+ * stopped a command before its run, and how the runner prints a run error
+ * when no list reporter shows it.
+ */
+export function failureLine(error: { readonly code: string; readonly message: string }): string {
+  return `${bounded(error.code)}: ${bounded(error.message)}\n`;
+}
+
+/**
  * Clips to `max` code points with an ellipsis; untouched when it fits. For
  * text measured in characters (a markdown cell); a terminal row budget is
  * `fitColumns`.

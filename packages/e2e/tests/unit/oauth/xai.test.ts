@@ -4,7 +4,8 @@ import { createOAuthFetch } from '../../../src/oauth/fetch.ts';
 import { createXaiProvider } from '../../../src/oauth/providers/xai.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { grok } from '../../../src/oauth/grok.ts';
-import { fakeJwt, json, useServers, useVendor, type Received } from './helpers/server.ts';
+import { json, useServers, type Received } from '../../helpers/recording-server.ts';
+import { fakeJwt, useVendor } from './helpers/vendor.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);

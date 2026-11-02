@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/mobile",
-  "version": "0.12.4",
+  "version": "0.12.5",
   "description": "Mobile engine (iOS and Android) for e2e agentic end-to-end testing, built on agent-device",
   "keywords": [
     "e2e",
@@ -44,6 +44,10 @@
     "./tools": {
       "types": "./dist/tools.d.ts",
       "default": "./dist/tools.js"
+    },
+    "./lease": {
+      "types": "./dist/lease/index.d.ts",
+      "default": "./dist/lease/index.js"
     }
   },
   "files": [
@@ -59,13 +63,13 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "agent-device": "0.21.33",
+    "agent-device": "0.21.35",
     "pngjs": "7.0.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
     "ai": "^7.0.0",
-    "e2e": ">=0.15.0 <1"
+    "e2e": ">=0.22.0 <1"
   },
   "peerDependenciesMeta": {
     "ai": {
@@ -73,9 +77,9 @@
     }
   },
   "devDependencies": {
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "@types/pngjs": "6.0.5",
-    "ai": "7.0.153",
+    "ai": "7.0.159",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

@@ -3,7 +3,7 @@ import { AgentError, type JsonValue, type StepExecutor, type StepExecutorContext
 import { BASE_RULES, VERDICT_RULES } from 'e2e/agent';
 import { ConfigurationError } from 'e2e/engine';
 import { claudeCodeLaunch, codexLaunch } from './presets.ts';
-import type { Usage } from '@agentclientprotocol/sdk';
+import type { Usage } from '@agentclientprotocol/sdk/unstable';
 import { startSession, type AcpSession, type AgentLaunch, type TurnReport } from './session.ts';
 import { activeStep, missingTools, openingScreen, stepTools, verdictOf, type ActiveStep, type StepSlot } from './tools.ts';
 import type { ServedTool } from './mcp.ts';
@@ -71,22 +71,7 @@ function executor(name: string, options: AcpAgentOptions, launch: () => Promise<
     version: '1',
     cache: 'inherit',
     async runStep(ctx) {
-      const held = hold(ctx, launch, memoryKey);
-      let session: AcpSession;
-      try {
-        session = await untilAborted(held.session, ctx.signal);
-      } catch (error) {
-        // The next step starts a fresh agent rather than wait on this one.
-        ctx.attempt.memory.delete(memoryKey);
-        ctx.signal.throwIfAborted();
-        if (error instanceof ConfigurationError) throw error;
-        throw new AgentError('MODEL_PROVIDER_FAILED', `The ACP agent did not start: ${message(error)}`, { cause: error });
-      }
-      if (!(await settled(held.turn, LAST_TURN_GRACE_MS))) {
-        session.close();
-        ctx.attempt.memory.delete(memoryKey);
-        throw new AgentError('MODEL_PROVIDER_FAILED', 'The ACP agent did not stop the turn of a step that already ended');
-      }
+      const { held, session } = await ready(ctx, launch, memoryKey);
       const active = activeStep(ctx);
       const text = await stepMessage(active, held.tools, held.introduced ? undefined : [RULES, options.system, ctx.agentContext]);
       // A step that ended while its screen was read sends no prompt, which no cancel would reach.
@@ -122,6 +107,29 @@ function executor(name: string, options: AcpAgentOptions, launch: () => Promise<
       return verdictOf(active) ?? noConclusion(report);
     },
   };
+}
+
+/** The attempt's session once the turn of the step before it stopped, or a fresh one when that turn's end closed it. */
+async function ready(ctx: StepExecutorContext, launch: () => Promise<AgentLaunch>, memoryKey: string): Promise<{ held: Held; session: AcpSession }> {
+  const held = hold(ctx, launch, memoryKey);
+  let session: AcpSession;
+  try {
+    session = await untilAborted(held.session, ctx.signal);
+  } catch (error) {
+    // The next step starts a fresh agent rather than wait on this one.
+    ctx.attempt.memory.delete(memoryKey);
+    ctx.signal.throwIfAborted();
+    if (error instanceof ConfigurationError) throw error;
+    throw new AgentError('MODEL_PROVIDER_FAILED', `The ACP agent did not start: ${message(error)}`, { cause: error });
+  }
+  if (!(await settled(held.turn, LAST_TURN_GRACE_MS))) {
+    session.close();
+    ctx.attempt.memory.delete(memoryKey);
+    throw new AgentError('MODEL_PROVIDER_FAILED', 'The ACP agent did not stop the turn of a step that already ended');
+  }
+  // A tool of the agent's own that ran as that turn stopped closed the session and dropped it from the attempt.
+  if (ctx.attempt.memory.get(memoryKey) !== held) return ready(ctx, launch, memoryKey);
+  return { held, session };
 }
 
 /** Counts one prompt turn as one model call, with what the agent reported of it. */

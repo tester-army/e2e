@@ -1,0 +1,24 @@
+{
+  "name": "android",
+  "version": "0.1.0",
+  "spiVersion": 1,
+  "platform": "android",
+  "workers": 1,
+  "methods": [
+    "engine/observe",
+    "engine/perform",
+    "engine/performAt",
+    "keyboard/type",
+    "keyboard/press",
+    "keyboard/dismiss",
+    "artifacts/screenshot",
+    "session/back",
+    "session/restart",
+    "session/reset",
+    "lifecycle/init",
+    "lifecycle/startAttempt",
+    "lifecycle/endAttempt"
+  ],
+  "actions": ["tap", "doubleTap", "longPress", "fill", "clear", "press", "check", "uncheck", "focus", "scrollIntoView", "dragTo", "swipe"],
+  "pointerActions": ["tap", "doubleTap", "longPress", "dragTo", "swipe", "swipeTo"]
+}

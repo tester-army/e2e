@@ -6,7 +6,8 @@ import { listModels } from '../../../src/oauth/models.ts';
 import { MemoryCredentialStore } from './helpers/store.ts';
 import { chatgpt } from '../../../src/oauth/chatgpt.ts';
 import { extractAccountId, parseAuthorizationInput, sendCodexRequest } from '../../../src/oauth/providers/openai.ts';
-import { echoUpstream, fakeJwt, json, startServer, useServers, useVendor, type Echo, type Received } from './helpers/server.ts';
+import { json, startServer, useServers, type Received } from '../../helpers/recording-server.ts';
+import { echoUpstream, fakeJwt, useVendor, type Echo } from './helpers/vendor.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);

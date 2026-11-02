@@ -14,7 +14,7 @@ import { claimRunnerOutput } from './run-output.ts';
 import { writeTerminal } from '../run/process-output.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
-import { bounded } from '../report/format.ts';
+import { bounded, failureLine } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { discoverConfig } from '../config/load.ts';
@@ -381,7 +381,7 @@ function recordOutcome(telemetry: Telemetry, command: Command, outcome: RunOutco
 /** Prints a failure that stopped a command before it could run, sets the exit code, and names it in the session. */
 function reportFailure(telemetry: Telemetry, cause: unknown): void {
   const error = classifyError(cause);
-  process.stderr.write(`${error.code}: ${error.message}\n`);
+  process.stderr.write(failureLine(error));
   process.exitCode = exitCodeForCategory(error.category);
   telemetry.failSession(error.code);
 }

@@ -1,0 +1,162 @@
+---
+title: Engine servers
+description: Run an engine in another process, on another machine, or in another language.
+icon: "network-wired"
+---
+
+An engine server answers the [engine protocol](/reference/engine-protocol)
+outside the runner's process: in a child process, on another machine, or on
+a device, written in any language. `connectEngine` turns a server into an
+engine handle, and the runner drives it like any other engine.
+
+## Connect to a server
+
+Set a `connectEngine` handle as the target's engine. The manifest says what
+the server answers; the runner needs it at config load, before any server
+starts.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { connectEngine, spawnTransport } from 'e2e/engine';
+
+export default {
+  targets: [
+    {
+      name: 'kiosk',
+      engine: connectEngine({
+        manifest: {
+          name: 'kiosk',
+          version: '1.0.0',
+          spiVersion: 1,
+          platform: 'kiosk',
+          methods: ['engine/observe', 'engine/perform'],
+          actions: ['tap'],
+        },
+        transport: spawnTransport({ command: './kiosk-engine' }),
+        resolveLocators: true,
+      }),
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+- The server's manifest from `initialize` must match the declared one. When
+  it differs, the first connection fails with `ENGINE_FAILURE` and names
+  each field.
+- With `resolveLocators`, the client resolves locators over each
+  observation, so a server only has to produce a tree.
+- `spawnTransport` starts a server per connection. `socketTransport`
+  reaches one that already listens on a port.
+
+<Warning>
+A server receives what an engine in the runner's process would: the run's
+environment, model keys and `E2E_SECRET_*` values included, and secrets in
+plaintext. Connect only to a server you trust, over a channel you trust.
+`socketTransport` doesn't encrypt.
+</Warning>
+
+## Keep host work on the client
+
+Some members hold functions, or need the machine the runner is on. Pass
+them to `connectEngine`; they run in the runner's process:
+
+| Option | Runs on the client |
+| --- | --- |
+| `fixtures` | Fixture factories, such as a `device` fixture. They reach the server through the engine's members. |
+| `validateApp` | The app check at config load. |
+| `secrets` | The `secrets.get()` handles the server may resolve. |
+| `session` | Session hooks that replace the server's, such as relaunching an app with `simctl`. |
+
+```ts
+const engine = connectEngine({
+  manifest,
+  transport,
+  session: { restart: (operation) => relaunch(operation) },
+  fixtures: {
+    device: (context) => context.fixture('device', { back: () => engine.session!.back!(context.operation()) }, { back: { kind: 'resource' } }),
+  },
+});
+```
+
+## Serve a TypeScript engine
+
+`serveEngine` answers the protocol with a `defineEngine` engine, over stdin
+and stdout by default. Run it as the command of a `spawnTransport`, and
+declare its manifest with `describeEngine`.
+
+```ts title="server.ts"
+import { serveEngine } from 'e2e/engine';
+import { kiosk } from './src/index.ts';
+
+await serveEngine((options) => kiosk(options as { host: string }));
+```
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { connectEngine, describeEngine, spawnTransport } from 'e2e/engine';
+import { kiosk } from './src/index.ts';
+
+export default {
+  targets: [
+    {
+      name: 'kiosk',
+      engine: connectEngine({
+        manifest: describeEngine(kiosk({ host: 'localhost' })),
+        transport: spawnTransport({ command: 'node', args: ['server.ts'] }),
+        initializationOptions: { host: 'localhost' },
+      }),
+    },
+  ],
+} satisfies E2EConfig;
+```
+
+Keep the server's own logging on stderr: stdout carries the protocol.
+
+## Write a server in another language
+
+A server reads and writes JSON-RPC 2.0 messages, each after a
+`Content-Length` header, as a language server does. It answers:
+
+1. `initialize`, with `{ protocolVersion: 1, manifest }`. Refuse any other
+   protocol version.
+2. Each method its manifest lists, such as `engine/observe`. Its params are
+   the member's arguments by name.
+3. `shutdown`, then the `exit` notification, after which the server stops.
+
+Ignore notifications you don't know. Report a failure as error `-32000`
+with the e2e error in `data`, so the runner classifies it as a local
+engine's. The [messages reference](/reference/engine-protocol#messages)
+lists every params and result shape. The manifest's JSON Schema ships as
+`schema/engine-manifest-v1.schema.json` in the `e2e` package.
+
+## Write a transport
+
+Write a transport when a server needs setup first, such as an app installed
+on a device and a port forwarded to it. `open` receives the target's app,
+because a server elsewhere can't read the project's files.
+
+```ts
+import type { EngineTransport } from 'e2e/engine';
+
+export function deviceTransport(serial: string): EngineTransport {
+  return {
+    label: `device ${serial}`,
+    async open(context) {
+      if (context.app?.appPath !== undefined) await install(serial, context.app.appPath);
+      const socket = await forward(serial, context.signal);
+      return { input: socket, output: socket, close: async () => void socket.destroy() };
+    },
+  };
+}
+```
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Engine protocol" icon="book" href="/reference/engine-protocol">
+    Every function, message, and error code.
+  </Card>
+  <Card title="Writing an engine" icon="code" href="/writing-an-engine">
+    The members an engine implements, in TypeScript.
+  </Card>
+</CardGroup>

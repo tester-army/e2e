@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { OAuthError } from '../../../src/oauth/errors.ts';
 import { rfc8628Flow, runDeviceFlow, type DevicePoll } from '../../../src/oauth/device-code.ts';
-import { json, useServers, type Handler } from './helpers/server.ts';
+import { json, useServers, type Handler } from '../../helpers/recording-server.ts';
 import { onFakeTimeouts } from './helpers/time.ts';
 
 const serve = useServers(afterEach);

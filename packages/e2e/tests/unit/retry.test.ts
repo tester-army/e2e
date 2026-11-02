@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRetryEligible, retryVerdict, runWithRetries, type RetryAttempt } from '../../src/run/retry.ts';
+import { isCutSerialRetry, isRetryEligible, retryVerdict, runWithRetries, type RetryAttempt } from '../../src/run/retry.ts';
 import type { SerializedError } from '../../src/internal/errors.ts';
 
 function error(category: SerializedError['category']): SerializedError {
@@ -140,5 +140,21 @@ describe('retryVerdict', () => {
     [[failed, { status: 'skipped' }], 'skipped'],
   ])('reads %j as %s', (attempts, verdict) => {
     expect(retryVerdict(attempts)).toBe(verdict);
+  });
+});
+
+describe('isCutSerialRetry', () => {
+  it.each(['passed', 'failed', 'timed-out', 'interrupted'] as const)('keeps the first %s attempt even when it never reached members', (status) => {
+    expect(isCutSerialRetry(status, 0, false)).toBe(false);
+    expect(isCutSerialRetry(status, 0, true)).toBe(false);
+  });
+
+  it.each(['failed', 'timed-out'] as const)('cuts an unreached %s retry but keeps a reached one', (status) => {
+    expect(isCutSerialRetry(status, 1, false)).toBe(true);
+    expect(isCutSerialRetry(status, 1, true)).toBe(false);
+  });
+
+  it('cuts an interrupted retry even after it reached members', () => {
+    expect(isCutSerialRetry('interrupted', 1, true)).toBe(true);
   });
 });

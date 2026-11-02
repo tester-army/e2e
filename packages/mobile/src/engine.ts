@@ -31,10 +31,10 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
     dispose: (context) => surface.dispose(context),
-    observe: (operation, options) => surface.observe(operation, options),
-    locate: (expression, operation) => surface.locate(expression, operation),
     // The harness signal does not abort at an operation's budget, so each
-    // input enforces its own; see InputBudget in support.ts.
+    // operation enforces its own; see InputBudget in support.ts.
+    observe: (operation, options) => surface.observe(operation, options, surface.inputBudget('observe', operation.timeoutMs)),
+    locate: (expression, operation) => surface.locate(expression, operation, surface.inputBudget('locate', operation.timeoutMs)),
     perform: (ref, action, operation) => surface.perform(ref, action, operation, surface.inputBudget(action.kind, operation.timeoutMs)),
     actions: DEVICE_ACTIONS,
     performAt: (point, action, operation) => surface.performAt(point, action, operation, surface.inputBudget(action.kind, operation.timeoutMs)),
@@ -54,7 +54,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
       reset: (operation) => surface.reset(operation),
     },
     artifacts: {
-      screenshot: (label, operation) => surface.screenshot(label, operation),
+      screenshot: (label, operation) => surface.screenshot(label, operation, surface.inputBudget('screenshot', operation.timeoutMs)),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },

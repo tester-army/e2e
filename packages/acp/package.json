@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/acp",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Run e2e agent steps on a coding agent you already use (Claude Code, Codex, Cursor, ...) over the Agent Client Protocol",
   "keywords": [
     "e2e",
@@ -46,7 +46,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.7.0",
+    "@agentclientprotocol/sdk": "2.2.0",
     "@modelcontextprotocol/server": "2.4.0",
     "zod": "4.6.7"
   },
@@ -55,7 +55,7 @@
   },
   "devDependencies": {
     "@modelcontextprotocol/client": "2.4.0",
-    "@types/node": "26.6.5",
+    "@types/node": "26.6.6",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.0.5"

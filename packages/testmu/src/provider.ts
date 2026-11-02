@@ -5,15 +5,13 @@
  * daemon, which runs the session over TestMu AI's Appium hub.
  */
 
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { isAbsolute, join, resolve } from 'node:path';
-import type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from '@e2e-dev/mobile';
+import { isAbsolute, resolve } from 'node:path';
+import type { DeviceLease, DeviceProvider, DeviceRequest } from '@e2e-dev/mobile';
+import { agentDeviceLeases, type LeaseSelectors } from '@e2e-dev/mobile/lease';
 import { ConfigurationError, rejectUnknownKeys, type ProviderRecordContext, type ProviderRecording } from 'e2e/engine';
-import { testmuCredentials, type TestmuCredentials } from './credentials.ts';
-import { assertDriverVersion, installPlugin, startDriver, stopDriver } from './daemon.ts';
+import { testmuCredentials } from './credentials.ts';
+import { assertPluginVersion, installPlugin } from './daemon.ts';
 import { DEFAULT_PROJECT, defaultSessionName } from './dashboard.ts';
-import { LEASE_TTL_MS, startHeartbeat } from './heartbeat.ts';
 import { findSession, sessionVideoUrl, testmuApiEndpoint, type SessionRef } from './sessions.ts';
 
 /** agent-device's name for TestMu AI, as the lease provider and the tenant. */
@@ -92,23 +90,6 @@ export interface TestmuOptions {
 }
 
 
-type LeaseBackend = 'ios-instance' | 'android-instance';
-type Held = { dir: string; stateDir: string; env: NodeJS.ProcessEnv; stopHeartbeat?: () => Promise<void>; releasing?: Promise<void> | undefined };
-
-function driverEnv(env: DeviceRequest['env'], home: string, credentials: TestmuCredentials): NodeJS.ProcessEnv {
-  const result = { ...env };
-  // A user's daemon settings must not select a different daemon or plugin home.
-  for (const key of Object.keys(result)) {
-    // Keep the user's security policy on both the daemon and its clients.
-    if (key === 'AGENT_DEVICE_DAEMON_POLICY') continue;
-    if (key.startsWith('AGENT_DEVICE_')) delete result[key];
-  }
-  result.AGENT_DEVICE_HOME = home;
-  result.LT_USERNAME = credentials.username;
-  result.LT_ACCESS_KEY = credentials.accessKey;
-  return result;
-}
-
 /**
  * TestMu AI devices for `mobile({ device: testmu({ device, osVersion, app }) })`:
  * one hosted device and isolated agent-device daemon per worker slot. Allocating
@@ -143,34 +124,15 @@ export function testmu(options: TestmuOptions): DeviceProvider {
     if (value !== undefined) deviceFeatures[leaseKey] = value;
   }
   const { device, osVersion, app, project, build, sessionName } = options;
-  const held = new Map<string, Held>();
-
-  /** One release per lease, shared by every caller; a failed one may be tried again. */
-  function release(id: string | undefined, resource: Held, signal: AbortSignal): Promise<void> {
-    resource.releasing ??= (async () => {
-      await resource.stopHeartbeat?.();
-      await stopDriver(resource.stateDir, resource.env, signal);
-      await rm(resource.dir, { recursive: true, force: true });
-      if (id !== undefined) held.delete(id);
-    })();
-    resource.releasing.catch(() => { resource.releasing = undefined; });
-    return resource.releasing;
-  }
+  const leases = agentDeviceLeases({ provider: PROVIDER, label: 'TestMu AI' });
 
   return {
     name: PROVIDER,
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
-      assertDriverVersion(request.agentDeviceVersion);
+      assertPluginVersion(request.agentDeviceVersion);
       if (request.appPath !== undefined) throw new Error("TestMu AI installs the app from `app`; leave the target's `app.appPath` out");
       const credentials = testmuCredentials(request.env);
-      request.signal.throwIfAborted();
-      const dir = await mkdtemp(join(tmpdir(), 'e2e-testmu-'));
-      const home = join(dir, 'home');
-      const resource: Held = { dir, stateDir: join(dir, 'state'), env: driverEnv(request.env, home, credentials) };
-      const leaseBackend: LeaseBackend = request.platform === 'ios' ? 'ios-instance' : 'android-instance';
       const selectors = {
-        platform: request.platform,
-        target: 'mobile' as const,
         device,
         providerOsVersion: osVersion,
         providerApp: appSource(app, request.projectRoot),
@@ -179,47 +141,15 @@ export function testmu(options: TestmuOptions): DeviceProvider {
         providerBuild: build ?? request.runId,
         providerSessionName: slotSessionName(sessionName, request),
         ...deviceFeatures,
-      };
-      let id: string | undefined;
-      try {
-        await installPlugin(home);
-        const grant = await startDriver({
-          stateDir: resource.stateDir,
-          allocate: {
-            tenant: PROVIDER,
-            runId: request.runId,
-            leaseBackend,
-            leaseProvider: PROVIDER,
-            ttlMs: LEASE_TTL_MS,
-            // Retain the provider lease when closeApp or cleanup closes the engine session.
-            // The provider releases the lease at run end.
-            retainOnClose: true,
-            ...selectors,
-          },
-        }, resource.env);
-        id = grant.leaseId;
-        held.set(id, resource);
-        if (request.signal.aborted) throw new Error('cancelled');
-        if (!grant.retainOnClose) throw new Error('agent-device did not acknowledge retainOnClose. Closing the engine session could end the TestMu AI lease before run-end release');
-        const scope = { tenant: grant.tenantId, runId: grant.runId, leaseId: grant.leaseId, leaseBackend, leaseProvider: PROVIDER };
-        resource.stopHeartbeat = await startHeartbeat(resource.stateDir, scope, request.log);
-        request.log(`lease ${id}: ${device}, ${request.platform} ${osVersion} (${deviceType}); session ${selectors.providerSessionName} started`);
-        // The worker's client is created with these fields: the scope picks the lease, and the selectors match the session it holds.
-        return { id, client: { stateDir: resource.stateDir, ...scope, ...selectors } };
-      } catch (cause) {
-        // The engine releases only leases `acquire` returned.
-        try {
-          await release(id, resource, AbortSignal.timeout(30_000));
-        } catch (cleanup) {
-          throw new AggregateError([cause, cleanup], `TestMu AI lease failed: ${messageOf(cause)}; cleanup also failed: ${messageOf(cleanup)}`, { cause: cleanup });
-        }
-        throw cause;
-      }
+      } satisfies LeaseSelectors;
+      return leases.acquire(request, {
+        env: { LT_USERNAME: credentials.username, LT_ACCESS_KEY: credentials.accessKey },
+        selectors,
+        summary: `${device}, ${request.platform} ${osVersion} (${deviceType}); session ${selectors.providerSessionName} started`,
+        prepareHome: installPlugin,
+      });
     },
-    async release(lease: DeviceLease, context: DeviceReleaseContext): Promise<void> {
-      const resource = held.get(lease.id);
-      if (resource) await release(lease.id, resource, context.signal);
-    },
+    release: (lease, context) => leases.release(lease, context),
     // Runs in the worker, from the lease alone. TestMu AI records the whole session, so its video starts when the session did.
     async record(lease: DeviceLease, context: ProviderRecordContext): Promise<ProviderRecording> {
       const calledAt = new Date().toISOString();
@@ -258,8 +188,4 @@ function sessionRef({ client }: DeviceLease): SessionRef | undefined {
   const sessionName = client?.providerSessionName;
   if (typeof build !== 'string' || build === '' || typeof sessionName !== 'string' || sessionName === '') return undefined;
   return { build, sessionName };
-}
-
-function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
 }

@@ -30,6 +30,7 @@ import { openStandaloneAttempt, type StandaloneAttempt } from '../run/standalone
 import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
+import { appLines } from './app-lines.ts';
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
@@ -68,7 +69,7 @@ interface LiveSession {
 export interface OpenSessionOptions {
   /** The target to open; otherwise the server's `--target`, else the config's only target. */
   readonly target?: string | undefined;
-  /** A config file to load instead of the server's default, relative to the server's directory. */
+  /** A config file to load instead of the server's default, absolute or relative to the server's working directory. */
   readonly config?: string | undefined;
   /** Whether this session shows its UI; otherwise the server's `headed`. */
   readonly headed?: boolean | undefined;
@@ -318,6 +319,8 @@ export class SessionHost {
         session: attempt.session,
         tools: config.agent.tools,
         redaction: { redact: attempt.agentRuntime.redact, redactCut: attempt.agentRuntime.redactCut },
+        projectRoot: config.projectRoot,
+        attemptDir: attempt.artifactsDir,
         recorder,
         appBase: target.app.base,
         fills: {
@@ -454,14 +457,9 @@ export class SessionHost {
     const engine = live.target.engine;
     const lines = [
       ...(outcome === undefined ? [] : [outcome, '']),
-      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}.`,
+      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}, read with the e2e mcp server's environment, not your shell's.`,
     ];
-    const pinned = launchesPinnedApp(live.target) ? (live.target.app.bundleId ?? live.target.app.appPath) : undefined;
-    if (live.target.app.base !== undefined) {
-      lines.push(`App: ${live.target.app.base.href}.`);
-    } else if (pinned !== undefined) {
-      lines.push(outcome === undefined ? `App: ${pinned}, launched fresh.` : `App: ${pinned}.`);
-    }
+    lines.push(...appLines(live.target, outcome !== undefined));
     if (config.credentials.size > 0) {
       const described = [...config.credentials.values()].map(
         (credential) => `"${credential.name}" (username ${JSON.stringify(credential.username)}, password secret "${credential.password.name}")`,
@@ -524,7 +522,7 @@ export class SessionHost {
         'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. With test, it runs that one test first and stops on the screen where the test passed or failed, with the failure and its line ahead of the catalog. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
-        config: z.string().min(1).optional().describe("Path to an e2e config file, relative to the server's directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
+        config: z.string().min(1).optional().describe("Path to an e2e config file, absolute or relative to the server's working directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
         headed: z
           .boolean()
           .optional()

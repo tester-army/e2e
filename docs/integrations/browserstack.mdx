@@ -1,0 +1,144 @@
+---
+title: BrowserStack
+sidebarTitle: BrowserStack
+description: Run mobile targets on BrowserStack App Automate real Android and iOS devices with the browserstack() device provider from @e2e-dev/browserstack.
+icon: "/images/icons/browserstack.svg"
+"og:image": "https://e2e.tester.army/docs/images/og/integrations/browserstack.png?v=e37c085f7a"
+"twitter:image": "https://e2e.tester.army/docs/images/og/integrations/browserstack.png?v=e37c085f7a"
+---
+
+`browserstack()` from `@e2e-dev/browserstack` is a
+[device provider](/mobile#hosted-devices) for
+[BrowserStack App Automate](https://www.browserstack.com/app-automate) real
+Android and iOS devices. Each worker slot leases one device when the run
+starts and releases it when the run ends.
+
+<Tip>
+No Mac, Xcode, or Android SDK on the machine that runs e2e.
+</Tip>
+
+## Setup
+
+Install the integration alongside the mobile engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/browserstack
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/mobile @e2e-dev/browserstack
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/mobile @e2e-dev/browserstack
+```
+</CodeGroup>
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { browserstack } from '@e2e-dev/browserstack';
+
+const apk = 'https://www.browserstack.com/app-automate/sample-apps/android/WikipediaSample.apk';
+
+export default {
+  targets: [
+    {
+      name: 'pixel-7',
+      engine: mobile({
+        platform: 'android',
+        device: browserstack({ device: 'Google Pixel 7', osVersion: '13.0', app: apk, appiumVersion: '3.2.0' }),
+      }),
+      app: { bundleId: 'org.wikipedia.alpha' },
+    },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+`device` and `osVersion` must match BrowserStack's App Automate catalog
+exactly, as the [device list](https://www.browserstack.com/list-of-browsers-and-platforms/app_automate)
+shows them: `13.0` on Android, `18` on iOS.
+
+`app` is the build BrowserStack installs on every session: a `bs://` app id
+from an earlier upload; an `https` URL, which BrowserStack fetches once per
+run; or a local path, resolved against the directory of `e2e.config.ts` and
+uploaded. Use an `.apk` or `.aab` on Android and a signed `.ipa` on iOS.
+Leave the target's `app.appPath` out, and keep `app.bundleId` for
+`app.open()`.
+
+Set `appiumVersion`: without it BrowserStack runs its default Appium 1.x,
+which lacks the `mobile:` commands deep links and hardware buttons use.
+
+Tests are the same as on a local device:
+
+```ts title="tests/home.e2e.ts"
+import { test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+test('Wikipedia home screen', async ({ app, screen }) => {
+  await app.open();
+  await expect(screen.getByText('Search Wikipedia').first()).toBeVisible();
+});
+```
+
+## Authenticate
+
+Set `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY` in the environment
+`e2e run` starts in, such as CI secrets. Copy them from **Account & Profile →
+My profile → Authentication & Security**. The username is the one shown
+there, not your email address. Without either, the lease fails before
+anything starts. Your plan needs App Automate.
+
+## Options
+
+| Option           | Default         | Meaning |
+| ---------------- | --------------- | ------- |
+| `device`         | required        | Device name as the App Automate catalog lists it (`'Google Pixel 7'`, `'iPhone 16'`). |
+| `osVersion`      | required        | OS version as the catalog lists it for that device. |
+| `app`            | required        | The build BrowserStack installs: a `bs://` app id, an `https` URL, or a local path. |
+| `project`        | `'e2e'`         | Dashboard project the sessions are grouped under. |
+| `build`          | the run id      | Dashboard build the sessions are grouped under. |
+| `sessionName`    | `e2e-<run id>-<target>-<slot>` | Session name on the dashboard. With more than one worker slot, `-<slot>` is appended. |
+| `orientation`    | the device's    | `'portrait'` or `'landscape'`. |
+| `geoLocation`    | BrowserStack's  | Country code the device's IP geolocates to (`'US'`). |
+| `timezone`       | the device's    | Time zone (`'New_York'`). |
+| `language`       | the app's       | Language (`'fr'`). |
+| `locale`         | the device's    | Locale (`'fr_FR'`). |
+| `appiumVersion`  | BrowserStack's (1.x) | Appium version for the session (`'3.2.0'`). |
+| `networkProfile` | none            | A named network condition profile (`'4g-lte-advanced-good'`). Not with `customNetwork`. |
+| `customNetwork`  | none            | A custom network shape. Not with `networkProfile`. |
+| `noResignApp`    | `false`         | iOS only: keep the uploaded app's signature instead of BrowserStack's re-signing, which strips entitlements such as push notifications. |
+
+Device features are set when the session starts and hold for the whole
+session. Unknown options and invalid option types fail config load with
+`INVALID_CONFIG`; catalog values and platform-specific constraints are
+checked when the device lease starts.
+
+An attempt that records [video](/reference/config#video) links BrowserStack's
+recording of the session, found by its `build` and `sessionName`. The
+recording covers the whole session, so every attempt on a worker slot links
+the same video. Runs that overlap and share a fixed `build` and
+`sessionName` can link each other's videos; the defaults never do.
+
+## Limits
+
+- Each session starts when its slot's device is leased, while e2e prepares
+  the target. Provisioning takes about 20 to 50 seconds, and the session is
+  billed until the run releases it, even when no test runs on it. Keep
+  `workers` times the number of BrowserStack targets within your plan's
+  parallel sessions.
+- BrowserStack keeps an upload for 30 days after its last use. A run with an
+  `https` `app` uploads it again; reuse a `bs://` id to skip that.
+- If the runner is killed before it releases a device, BrowserStack's idle
+  timeout ends the session after its last command.
+- A release fails the run when agent-device can't confirm it ended the
+  session, even when every test passed. The causes: the session end ran past
+  agent-device's shutdown window of about 3 seconds, a forced daemon stop, a
+  lost shutdown report, or a daemon that exited during the run. Find the
+  session on the dashboard by its `build` and `sessionName`.
+- Device settings (permissions, location, network, appearance), system
+  alerts, recording and device logs through agent-device, and port reverse
+  are not available. Read logs on the BrowserStack dashboard, and use
+  BrowserStack Local to reach a server on your network.

@@ -5,7 +5,7 @@
  * `credentials`, and `secrets` come from `e2e` itself.
  */
 
-import { test as base } from 'e2e';
+import { test as base, type App } from 'e2e';
 import type { Browser } from './browser.ts';
 
 export { web, surfaceOf } from './engine.ts';
@@ -37,11 +37,17 @@ export type {
   WebRoute,
 } from './browser.ts';
 
+/** `app` on a web target. A `web()` target always declares `app.url`, so `baseUrl` is always set. */
+export interface WebApp extends App {
+  /** The target's `app.url` with the run's port and no trailing slash: `${app.baseUrl}/api/users`. */
+  readonly baseUrl: string;
+}
+
 /**
- * `test` typed with this engine's contributed `browser` fixture. The same
- * runtime `test` as `e2e`'s; only the fixture types differ.
+ * `test` typed with this engine's contributed `browser` fixture and its
+ * `app`. The same runtime `test` as `e2e`'s; only the fixture types differ.
  */
-export const test = base.extend<{ browser: Browser }>();
+export const test = base.extend<{ browser: Browser; app: WebApp }>();
 
 /** `describe` and the hooks, the same functions as `test.describe` and `test.beforeEach`, typed with the `browser` fixture. */
 export const { describe, beforeEach, afterEach, beforeAll, afterAll } = test;

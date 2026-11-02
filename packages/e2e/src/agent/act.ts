@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { resolveVision } from '../config/agent.ts';
 import { ConfigurationError } from '../internal/errors.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
-import type { ActionHook, ActOptions, BeforeActionHook, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
+import type { ActionHook, ActOptions, AssertOptions, BeforeActionHook, ActResult, AgentErrorCode, JsonValue, ModelInstance, Secret, VisionMode } from '../types.ts';
 import { AgentError, CATEGORY_BY_CODE, toAgentError } from './error.ts';
 import { redactParams, validateActOptions, validateInstruction, validateParams, validateVerdict } from './act-validation.ts';
 import { ActionDispatcher } from './action-dispatcher.ts';
@@ -82,7 +82,7 @@ export async function runActStep(
 ): Promise<ActResult> {
   const normalized = validateInstruction(instruction, 'agent.act');
   validateActOptions(options, extraArguments);
-  const { projected, secrets, templates } = validateParams(options?.params);
+  const { projected, secrets, templates } = validateParams(options?.params, 'agent.act');
   return dispatchAgentStep(runtime, {
     api: 'agent.act',
     kind: 'act',
@@ -112,9 +112,11 @@ export async function runActStep(
 export async function runAssertStep(
   runtime: AgentContext,
   assertion: string,
-  options: { timeout?: number; vision?: VisionMode; screenshot?: boolean; agent?: string } | undefined,
+  options: AssertOptions | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
+  // An assert changes no state, so its secrets are named to the executor but never fillable.
+  const { projected, templates } = validateParams(options?.params, 'agent.assert');
   const agent = runtime.select(options?.agent);
   const vision = resolveVision(options?.vision);
   if (options?.vision !== undefined && agent.executor.vision !== true) {
@@ -127,9 +129,9 @@ export async function runAssertStep(
     api: 'agent.assert',
     kind: 'assert',
     instruction: normalized,
-    params: undefined,
+    params: projected,
     secrets: new Map(),
-    templates: [],
+    templates,
     defaultFailureCode: 'ASSERTION_FAILED',
     timeout: options?.timeout,
     maxSteps: undefined,
@@ -195,7 +197,7 @@ export async function dispatchAgentStep(
 function redactSpec(spec: DispatchSpec, redact: (text: string) => string): DispatchSpec {
   const instruction = redact(spec.instruction);
   if (spec.params === undefined) return { ...spec, instruction };
-  return { ...spec, instruction, ...redactParams(spec.params, spec.templates, redact) };
+  return { ...spec, instruction, ...redactParams(spec.params, spec.templates, redact, spec.api) };
 }
 
 /** One step's wiring: the collaborators, the executor's context, and the verdict mapping. */

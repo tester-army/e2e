@@ -116,7 +116,8 @@ await expect(screen.getByRole('heading', { name })).toBeVisible();
 
 Use `unique()` for data the flow enters or checks, and ordinary params for
 choices that change the flow, such as a plan name. The substitution also
-covers the value as a URL spells it (`%20`, `+`). When a `unique()` value
+covers the value as a URL spells it (`%20`, `+`) and a multi-line value as
+the screen shows it, on one line. When a `unique()` value
 equals or sits inside another param's value, the step isn't recorded:
 `step.cache.notRecorded` reads `param-collision`, and the next run records
 it.
@@ -161,6 +162,11 @@ matches the screen.
 
 Typed values replay as recorded. A secret fill resolves the current value
 by name and goes through authorization again.
+
+A replay finishes as soon as the recorded changes show, which can be before
+content below them has loaded. To check content that loads after the step,
+use `agent.waitFor`, which waits for it, rather than `agent.assert`, which
+judges the screen once.
 
 <Accordion title="What counts as the same route">
 A route is the origin, the path, and the query. The record id and the

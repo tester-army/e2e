@@ -176,6 +176,7 @@ function serialAttempt(index: number, error: SerializedError): SerialAttemptReco
   });
   return {
     id: uuidv7(),
+    cutRetry: false,
     index,
     status: 'failed',
     startedAt: AT,
@@ -214,6 +215,14 @@ function failedSerialGroup(...errors: SerializedError[]): Pick<BuildReportOption
 }
 
 describe('run status derivation for a serial group', () => {
+  it('serializes the runner cut-retry decision', () => {
+    const records = failedSerialGroup(productFailure, productFailure);
+    const attempts = records.serialGroups![0]!.attempts;
+    attempts[1]!.cutRetry = true;
+    const serialized = build(records).run.serialGroups[0]!.attempts;
+    expect(serialized.map((attempt) => attempt.cutRetry)).toEqual([false, true]);
+  });
+
   it('is blocked when the failing member of the last attempt carries a blockable code', () => {
     expect(build(failedSerialGroup(blocked)).run.status).toBe('blocked');
   });

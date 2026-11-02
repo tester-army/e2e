@@ -42,6 +42,8 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/mobile/device-cloud-provider.ts': 'docs/mobile.mdx',
   'docs/examples/mobile/testmu.config.ts': 'docs/integrations/testmu.mdx',
   'docs/examples/mobile/testmu.e2e.ts': 'docs/integrations/testmu.mdx',
+  'docs/examples/mobile/browserstack.config.ts': 'docs/integrations/browserstack.mdx',
+  'docs/examples/mobile/browserstack.e2e.ts': 'docs/integrations/browserstack.mdx',
   'docs/examples/web/browser-provider.ts': 'docs/browser.mdx',
   'docs/examples/web/testmu-browsers.config.ts': 'docs/integrations/testmu.mdx',
   'docs/examples/fixtures/tests/fixtures.ts': 'docs/fixtures.mdx',

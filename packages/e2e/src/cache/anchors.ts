@@ -139,7 +139,7 @@ function deltaSide(
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
- * a countdown or age, a date, a clock time, a timing in milliseconds. An
+ * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in milliseconds. An
  * anchor made of it hands every replay off, so it is skipped while some
  * stable anchor exists; with nothing else, the volatile ones stay, because a
  * replay that always hands off is still safer than one that passes on
@@ -147,6 +147,7 @@ function deltaSide(
  * as placeholders (`alertShape`).
  */
 const VOLATILE_TEXT: readonly RegExp[] = [
+  /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?/,
   /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/,
   /\b\d+\s*(?:ms|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
   /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,?\s+\d{4})?\b/i,

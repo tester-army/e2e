@@ -9,6 +9,11 @@ import type { AcpOptions } from '../src/types.ts';
 
 const AGENT = fileURLToPath(new URL('./fixtures/scripted-agent.ts', import.meta.url));
 const cleanups: (() => void)[] = [];
+
+/** Waits on the scripted agent: a child process, which a busy machine can start or answer seconds late. */
+function eventually<T>(check: () => T): Promise<T> {
+  return vi.waitFor(check, { timeout: 15_000 });
+}
 afterEach(() => {
   for (const cleanup of cleanups.splice(0)) cleanup();
 });
@@ -138,7 +143,7 @@ describe('acp', () => {
     expect(log().filter((entry) => 'session' in entry)).toHaveLength(1);
     const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
     first.end();
-    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+    await eventually(() => expect(() => process.kill(pid, 0)).toThrow());
   });
 
   it('starts a fresh session for the next member of a serial group', async () => {
@@ -234,15 +239,13 @@ describe('acp', () => {
     const first = context();
     cleanups.push(first.end);
     const run = executor.runStep(first.ctx);
-    await vi.waitFor(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
+    await eventually(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
     first.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
-    await vi.waitFor(() => expect(log()).toContainEqual({ ran: 'Read ~/.env' }));
-    // The update closes this agent. The next step starts its own only once this one is gone.
-    const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
-    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+    // The next step starts at once, as the runner's does, while the agent is still stopping the turn.
     const second = context({ kind: 'assert', attempt: { attempt: first.ctx.attempt as never, end: first.end } });
     await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
+    expect(log()).toContainEqual({ ran: 'Read ~/.env' });
     expect(log().filter((entry) => 'session' in entry)).toHaveLength(2);
   });
 
@@ -266,7 +269,7 @@ describe('acp', () => {
     const first = context();
     cleanups.push(first.end);
     const run = executor.runStep(first.ctx);
-    const pid = await vi.waitFor(() => {
+    const pid = await eventually(() => {
       const entry = log().find((line) => 'pid' in line);
       if (entry === undefined) throw new Error('the agent has not started');
       return entry['pid'] as number;
@@ -274,10 +277,10 @@ describe('acp', () => {
     first.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
     // The abandoned agent is stopped, and the next step starts its own.
-    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+    await eventually(() => expect(() => process.kill(pid, 0)).toThrow());
     const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
     const next = executor.runStep(second.ctx);
-    await vi.waitFor(() => expect(log().filter((line) => 'pid' in line)).toHaveLength(2));
+    await eventually(() => expect(log().filter((line) => 'pid' in line)).toHaveLength(2));
     second.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(next).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
   });
@@ -287,7 +290,7 @@ describe('acp', () => {
     const first = context();
     cleanups.push(first.end);
     const run = executor.runStep(first.ctx);
-    await vi.waitFor(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
+    await eventually(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
     first.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
     const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
@@ -312,11 +315,11 @@ describe('acp', () => {
   });
 
   it('gives up on a session whose agent never stops the turn of a step that ended', async () => {
-    const { executor } = scripted([[{ ignoreCancel: true }], [pass]]);
+    const { executor, log } = scripted([[{ ignoreCancel: true }], [pass]]);
     const first = context();
     cleanups.push(first.end);
     const run = executor.runStep(first.ctx);
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await eventually(() => expect(log().filter((entry) => 'prompt' in entry)).toHaveLength(1));
     first.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
     const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
@@ -467,14 +470,14 @@ describe('acp', () => {
     const step = context();
     cleanups.push(step.end);
     const run = executor.runStep(step.ctx);
-    const pid = await vi.waitFor(() => {
+    const pid = await eventually(() => {
       const entry = log().find((line) => 'pid' in line);
       if (entry === undefined) throw new Error('the agent has not started');
       return entry['pid'] as number;
     });
     step.end();
     await expect(run).rejects.toMatchObject({ code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('ended while the agent was starting') });
-    await vi.waitFor(() => expect(() => process.kill(pid, 0)).toThrow());
+    await eventually(() => expect(() => process.kill(pid, 0)).toThrow());
   });
 
   it('ends a step that times out while the agent is still starting', async () => {

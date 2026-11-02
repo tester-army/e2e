@@ -213,7 +213,7 @@ describe('basic-auth credentials from a secret', () => {
   it('registers the Authorization credential the password becomes, padded and not, for redaction', async () => {
     const asked: { name: string; derived: readonly string[] }[] = [];
     const credentials = await httpCredentials({ username: 'ada', password: secrets.get('stagingPassword') }, async (secret, options) => {
-      asked.push({ name: secret.name, derived: options?.derived?.('pa55word!') ?? [] });
+      asked.push({ name: secret.name, derived: (await options?.derived?.('pa55word!')) ?? [] });
       return 'pa55word!';
     });
     expect(credentials).toEqual({ username: 'ada', password: 'pa55word!' });

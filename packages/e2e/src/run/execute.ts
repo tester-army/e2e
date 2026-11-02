@@ -49,10 +49,10 @@ import type {
   SerialGroupRecord,
   SerialMemberRecord,
 } from './records.ts';
-import { isFailedStatus } from './records.ts';
+import { isFailedStatus, type SerialAttemptRecord } from './records.ts';
 import { traceScreen } from './step-screens.ts';
 import { runWithRetries } from './retry.ts';
-import { runSerialUnit, type SerialAttemptRun, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
+import { runSerialUnit, type SerialAttemptStart, type SerialHost, type SharedSerialSession } from './serial.ts';
 import { interruptedInPhase, interruptedSkip, pairKey, pairResult, unstartedResult } from './units.ts';
 import { adoptSecrets, carriedSecrets, processSecrets, registerDerivedSecrets, redactForSession, resolveSecretValue, sessionLedger, staticSecretLedger } from './secrecy.ts';
 import { isSecret } from '../secrets.ts';
@@ -74,7 +74,7 @@ export interface ExecutionEvents {
   /** One member that finished in a serial group attempt, ahead of the group. */
   onSerialMember?(groupId: string, attempt: SerialAttemptStart, member: SerialMemberRecord): void;
   /** One finished serial group attempt, ahead of the group. */
-  onSerialAttempt?(groupId: string, run: SerialAttemptRun): void;
+  onSerialAttempt?(groupId: string, attempt: SerialAttemptRecord): void;
   /** Fires before a runnable pair starts; a serial unit announces each member as it begins. */
   onPairStart?(pair: TestTargetPair): void;
   /** Live step progress of one running attempt, for reporters. */
@@ -247,8 +247,8 @@ export class TargetExecutor implements SerialHost {
   }
 
   /** Streams one finished serial group attempt (SerialHost). */
-  serialAttemptFinished(groupId: string, run: SerialAttemptRun): void {
-    this.options.events?.onSerialAttempt?.(groupId, run);
+  serialAttemptFinished(groupId: string, attempt: SerialAttemptRecord): void {
+    this.options.events?.onSerialAttempt?.(groupId, attempt);
   }
 
   /** Builds one engine operation context. */
@@ -350,8 +350,9 @@ export class TargetExecutor implements SerialHost {
 
   /**
    * Disposes the engine at worker end of life, bounded by the cleanup budget.
-   * Runs whether or not `init` did: an engine may hold resources it acquired
-   * lazily, and the contract makes `dispose` safe to call on a cold engine.
+   * Every engine runs over the protocol, whose client forwards `dispose` only
+   * once `init` was called: a worker that never initialized opened no
+   * connection, so the engine has nothing of it to release.
    */
   async dispose(options: Pick<EngineDisposeContext, 'reuseSignal'> = {}): Promise<void> {
     const disposeEngine = this.target.engine?.dispose?.bind(this.target.engine);
@@ -676,7 +677,7 @@ export class TargetExecutor implements SerialHost {
     }
     const ledger = sessionLedger(session, this.config.allSecrets);
     const plaintext = await resolveSecretValue(secret, this.config.allSecrets, ledger);
-    registerDerivedSecrets(secret.name, options?.derived?.(plaintext) ?? [], ledger);
+    registerDerivedSecrets(secret.name, (await options?.derived?.(plaintext)) ?? [], ledger);
     return plaintext;
   }
 

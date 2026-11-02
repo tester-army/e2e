@@ -1,6 +1,7 @@
 import { generateText } from 'ai';
 import { afterEach, expect, it, vi } from 'vitest';
-import { json, useServers, useVendor } from './helpers/server.ts';
+import { json, useServers } from '../../helpers/recording-server.ts';
+import { useVendor } from './helpers/vendor.ts';
 
 vi.mock('@ai-sdk/openai', () => {
   throw new Error("Cannot find package '@ai-sdk/openai'");

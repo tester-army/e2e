@@ -100,17 +100,13 @@ function screenUrl(url: string): string {
 }
 
 /**
- * The attempt whose story a block tells: a flaky test's last failure; for a
- * failed or timed-out test, the last attempt that reached that verdict, so a
- * retry the run interrupted (or a serial member that retry never reached)
- * tells nothing; otherwise the final one.
+ * The attempt whose story a block tells: a flaky test's last failure;
+ * otherwise the outcome's verdict attempt, so a retry the run interrupted (or
+ * a serial member that retry never reached) tells nothing.
  */
 export function toldAttempt(result: ReportResult, final: Outcome): AttemptView {
   if (result.status === 'flaky') return final.lastFailed ?? final.final;
-  if (result.status === 'failed' || result.status === 'timed-out') {
-    return final.attempts.findLast((attempt) => attempt.status === 'failed' || attempt.status === 'timed-out') ?? final.final;
-  }
-  return final.final;
+  return final.verdict;
 }
 
 /** A step that did not pass. */
@@ -221,6 +217,37 @@ export function screenLines(told: AttemptView): string[] {
     lines.push(`Closest to the locator: ${shown.join(', ')}`);
   }
   return lines;
+}
+
+/** App errors a failure block quotes; the trace page lists every one. */
+const MAX_SUMMARY_APP_ERRORS = 3;
+
+/** The errors the app logged during an attempt, as a failure block quotes them. */
+export interface AppErrors {
+  /** How many it logged. */
+  readonly count: number;
+  /** The first few, oldest first: where each came from (`console error`) and its text, loopback origins dropped. */
+  readonly shown: readonly { readonly label: string; readonly text: string }[];
+  /** `2 more app errors logged`, when the block leaves some out. */
+  readonly more: string | undefined;
+}
+
+/**
+ * The errors a failure block quotes: the first few, oldest first, since a
+ * later error is often fallout of an earlier one. Each is redacted and
+ * clipped already, as the trace page shows it.
+ */
+export function appErrorsOf(appLog: readonly AppLogRecord[]): AppErrors {
+  const errors = appLog.filter((entry) => entry.level === 'error').toSorted((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  const shown = errors.slice(0, MAX_SUMMARY_APP_ERRORS).map((entry) => ({ label: `${APP_SOURCE_TEXT[entry.source]} error`, text: shortenLoopback(entry.text) }));
+  const left = errors.length - shown.length;
+  return { count: errors.length, shown, more: left === 0 ? undefined : `${plural(left, 'more app error')} logged` };
+}
+
+/** `App console error: \`...\``, one line per error the run page quotes, then how many it left out. */
+export function appErrorLines(told: AttemptView): string[] {
+  const { shown, more } = appErrorsOf(told.appLog);
+  return [...shown.map(({ label, text }) => `App ${label}: ${code(text, MAX_DETAIL_CHARS)}`), ...(more === undefined ? [] : [more])];
 }
 
 /** Artifacts of the told attempt by id, the failure's own first, one per kind. */

@@ -1,0 +1,10 @@
+{
+  "name": "android",
+  "version": "0.1.0",
+  "spiVersion": 1,
+  "methods": [
+    "engine/observe",
+    "engine/perform",
+    "engine/teleport"
+  ]
+}

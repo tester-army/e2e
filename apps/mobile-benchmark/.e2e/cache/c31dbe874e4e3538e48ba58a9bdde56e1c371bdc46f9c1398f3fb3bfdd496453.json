@@ -1,6 +1,6 @@
 {
   "schemaVersion": "trace-1",
-  "createdAt": "2026-10-15T16:13:03.122Z",
+  "createdAt": "2026-10-30T17:07:00.127Z",
   "payload": {
     "actions": [
       {
@@ -58,14 +58,14 @@
       "callIndex": 0,
       "agent": "default"
     },
-    "summary": "Long-pressed the first target, swiped the card left, and double-tapped the last target. The screen now confirms “All gestures completed.”",
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "Completed the long-press and left-swipe actions, then double-tapped the final target. The screen now confirms “All gestures completed.”",
     "startPath": "dev.e2e.benchmark / Gestures",
     "endPath": "dev.e2e.benchmark / Gestures",
     "endAnchors": [
-      {
-        "role": "other",
-        "name": "All gestures completed"
-      },
       {
         "role": "text",
         "name": "All gestures completed",
@@ -74,20 +74,16 @@
     ],
     "goneAnchors": [
       {
-        "role": "text",
-        "name": "Step 1 of 3"
-      },
-      {
         "role": "other",
         "name": "Hold me",
         "testId": "long-press-target"
       },
       {
-        "role": "other",
+        "role": "text",
         "name": "Step 1 of 3"
       }
     ],
-    "endWaitMs": 15088,
+    "endWaitMs": 13065,
     "keyedBy": {
       "cacheSchema": "trace-1",
       "policyVersion": "conservative/6",

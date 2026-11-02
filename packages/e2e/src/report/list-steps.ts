@@ -40,7 +40,7 @@ const REASONING_SEPARATOR_WIDTH = 3;
 const MIN_REASONING_COLUMNS = 24;
 
 /** One-line, quoted step label; `maxColumns` clips it further to fit a row. */
-export function stepLabel(label: string, maxColumns = MAX_STEP_LABEL_COLUMNS): string {
+export function quotedLabel(label: string, maxColumns = MAX_STEP_LABEL_COLUMNS): string {
   const max = Math.min(MAX_STEP_LABEL_COLUMNS, Math.max(MIN_STEP_LABEL_COLUMNS, maxColumns));
   return `"${fitColumns(collapseText(label), max)}"`;
 }
@@ -67,7 +67,7 @@ export function stepLine(pc: Colors, step: FinishedStep, options: StepLineOption
     options.maxWidth === undefined
       ? undefined
       : options.maxWidth - visibleWidth(head) - visibleWidth(tail) - LABEL_CHROME;
-  return `${head}${stepLabel(step.label, room)} ${tail}`;
+  return `${head}${quotedLabel(step.label, room)} ${tail}`;
 }
 
 /** Recording mismatches under one test, deduplicated across its attempts. */
@@ -91,7 +91,7 @@ export function replayNotices(attempts: readonly (readonly StepRecord[])[], conf
 /** A recording mismatch under its test in the file block. */
 export function replayLine(pc: Colors, notice: ReplayNotice): string {
   const label = modelLabel({ provider: notice.source.provider, id: notice.source.model });
-  return `${pc.dim(notice.api)} ${stepLabel(notice.label)} ${pc.dim(`replayed · recorded with ${fitColumns(collapseText(label), MAX_RECORDED_MODEL_COLUMNS)}`)}`;
+  return `${pc.dim(notice.api)} ${quotedLabel(notice.label)} ${pc.dim(`replayed · recorded with ${fitColumns(collapseText(label), MAX_RECORDED_MODEL_COLUMNS)}`)}`;
 }
 
 /**

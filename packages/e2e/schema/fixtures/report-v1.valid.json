@@ -49,7 +49,76 @@
         "stateCapability": true
       }
     ],
-    "serialGroups": [],
+    "serialGroups": [
+      {
+        "id": "serial-example",
+        "serialId": "checkout",
+        "declarationIndex": 0,
+        "file": "tests/example.e2e.ts",
+        "source": {
+          "file": "tests/example.e2e.ts",
+          "line": 1,
+          "column": 1
+        },
+        "titlePath": [
+          "checkout"
+        ],
+        "targetId": "web",
+        "platform": "web",
+        "memberTestIds": [
+          "tests/example.e2e.ts::checkout::retains%20serial%20verdict"
+        ],
+        "status": "failed",
+        "attempts": [
+          {
+            "id": "018f0f5c-7b2a-7abc-8abc-0123456789ac",
+            "index": 0,
+            "cutRetry": false,
+            "status": "failed",
+            "startedAt": "2026-07-24T12:00:00.000Z",
+            "durationMs": 1250,
+            "members": [
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789ad",
+                "index": 0,
+                "testId": "tests/example.e2e.ts::checkout::retains%20serial%20verdict",
+                "status": "failed",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "durationMs": 1250,
+                "steps": [],
+                "secondaryErrors": []
+              }
+            ],
+            "artifacts": [],
+            "secondaryErrors": [],
+            "cleanup": "complete"
+          },
+          {
+            "id": "018f0f5c-7b2a-7abc-8abc-0123456789ae",
+            "index": 1,
+            "cutRetry": true,
+            "status": "failed",
+            "startedAt": "2026-07-24T12:00:00.000Z",
+            "durationMs": 0,
+            "members": [
+              {
+                "id": "018f0f5c-7b2a-7abc-8abc-0123456789af",
+                "index": 0,
+                "testId": "tests/example.e2e.ts::checkout::retains%20serial%20verdict",
+                "status": "failed",
+                "startedAt": "2026-07-24T12:00:00.000Z",
+                "durationMs": 0,
+                "steps": [],
+                "secondaryErrors": []
+              }
+            ],
+            "artifacts": [],
+            "secondaryErrors": [],
+            "cleanup": "complete"
+          }
+        ]
+      }
+    ],
     "results": [
       {
         "id": "4bbfd0a6dbf44ac1018dd6ca1a6243d742b24607aa735b28d57541e1128507d3",
@@ -392,6 +461,31 @@
         }
       },
       {
+        "id": "80fe5341cb7c41a943eedcda9a16a1b1f305842b8cfc8bf5f8f5330274b8bf1f",
+        "testId": "tests/example.e2e.ts::checkout::retains%20serial%20verdict",
+        "kind": "test",
+        "tags": [],
+        "declarationIndex": 2,
+        "titlePath": [
+          "checkout",
+          "retains serial verdict"
+        ],
+        "file": "tests/example.e2e.ts",
+        "source": {
+          "file": "tests/example.e2e.ts",
+          "line": 7,
+          "column": 1
+        },
+        "targetId": "web",
+        "platform": "web",
+        "agent": "default",
+        "repeat": 0,
+        "selected": true,
+        "status": "failed",
+        "attempts": [],
+        "serialGroupId": "serial-example"
+      },
+      {
         "id": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
         "testId": "tests/example.e2e.ts::imports%20a%20report",
         "kind": "test",
@@ -436,11 +530,11 @@
       }
     ],
     "summary": {
-      "discovered": 3,
-      "selected": 2,
-      "executed": 2,
+      "discovered": 4,
+      "selected": 3,
+      "executed": 3,
       "passed": 1,
-      "failed": 0,
+      "failed": 1,
       "interrupted": 0,
       "flaky": 0,
       "skipped": 1

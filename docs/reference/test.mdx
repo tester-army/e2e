@@ -506,7 +506,8 @@ describe('checkout', { serial: true }, () => {
   fails to launch. Then the first member fails with that error, and the rest
   skip with cause `serial-predecessor-failed`. When the run is interrupted
   during the launch, every member skips instead.
-- On a retry, the members keep the verdicts of the attempt before it.
+- If a retry is interrupted or never reaches its members, they keep the
+  verdicts and durations of the last attempt that ran them.
 - The exit code follows the error's category, as for any other test.
 
 | Throws | When |

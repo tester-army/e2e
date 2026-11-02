@@ -22,7 +22,9 @@ const SUITE = `import { test, credentials, expect } from 'e2e';
 
 test('taps a canvas pin the tree does not list', async ({ app, agent, screen }) => {
   await app.open('/canvas');
-  await agent.act('pick the red pin on the map');
+  await agent.act('pick the red pin on the map', {
+    onAction: ({ point }) => { expect(point).toEqual({ x: 300, y: 60 }); },
+  });
   await expect(screen.getByRole('status')).toHaveText('red');
 });
 
@@ -40,7 +42,12 @@ test('taps the bare point inside a full-screen control whose center is covered',
 
 test('drags a drawn pin the tree does not list', async ({ app, agent, screen }) => {
   await app.open('/canvas');
-  await agent.act('drag the red pin to the middle of the map');
+  await agent.act('drag the red pin to the middle of the map', {
+    onAction: ({ from, to }) => {
+      expect(from).toEqual({ x: 300, y: 60 });
+      expect(to).toEqual({ x: 200, y: 100 });
+    },
+  });
   await expect(screen.getByRole('status')).toHaveText('moved red to 200,100');
   await screen.tapAt({ x: 200, y: 100 });
   await expect(screen.getByRole('status')).toHaveText('red');
@@ -579,8 +586,12 @@ describe('actions.tapAt on an engine that taps listed nodes only', () => {
     };
     const run = await runProject(
       {
-        'tests/outside.e2e.ts': `import { test } from 'e2e';
-test('taps outside the popover', async ({ agent }) => { await agent.act('dismiss the calendar popover'); });
+        'tests/outside.e2e.ts': `import { test, expect } from 'e2e';
+test('taps outside the popover', async ({ agent }) => {
+  await agent.act('dismiss the calendar popover', {
+    onAction: (event) => { expect(event).not.toHaveProperty('point'); },
+  });
+});
 `,
       },
       {
@@ -643,8 +654,15 @@ describe('actions.dragAt on an engine that drags listed nodes only', () => {
     };
     const run = await runProject(
       {
-        'tests/board.e2e.ts': `import { test } from 'e2e';
-test('moves the card to done', async ({ agent }) => { await agent.act('move the card to done'); });
+        'tests/board.e2e.ts': `import { test, expect } from 'e2e';
+test('moves the card to done', async ({ agent }) => {
+  await agent.act('move the card to done', {
+    onAction: (event) => {
+      expect(event).not.toHaveProperty('from');
+      expect(event).not.toHaveProperty('to');
+    },
+  });
+});
 `,
       },
       {

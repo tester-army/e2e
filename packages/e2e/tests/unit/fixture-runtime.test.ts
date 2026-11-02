@@ -602,6 +602,19 @@ describe('app steering hooks', () => {
     expect(steps.all().map((step) => step.api)).toEqual(['app.restart', 'app.clearState']);
   });
 
+  it('baseUrl has no trailing slash, so a template joins a path onto it; app.open still resolves against the base path', async () => {
+    const origin = steerable({ url: 'http://127.0.0.1:4599' });
+    expect(runtime(origin.engine, {}, origin.app).fixtures.app.baseUrl).toBe('http://127.0.0.1:4599');
+    const nested = steerable({ url: 'http://127.0.0.1:4599/app/' });
+    const { fixtures } = runtime(nested.engine, {}, nested.app);
+    expect(fixtures.app.baseUrl).toBe('http://127.0.0.1:4599/app');
+    expect(`${fixtures.app.baseUrl}/api/hooks`).toBe('http://127.0.0.1:4599/app/api/hooks');
+    await fixtures.app.open();
+    await fixtures.app.open('settings');
+    expect(nested.calls).toEqual(['open http://127.0.0.1:4599/app/', 'open http://127.0.0.1:4599/app/settings']);
+    expect(runtime(empty()).fixtures.app.baseUrl).toBeUndefined();
+  });
+
   it('reopen nothing on a surface without an address', async () => {
     const { engine, calls, app } = steerable({});
     const { fixtures } = runtime(engine, {}, app);

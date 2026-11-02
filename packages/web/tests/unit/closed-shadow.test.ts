@@ -107,4 +107,19 @@ describe('closed shadow root record', () => {
     expect(() => untracked.queryAll(document, 'input')).toThrow(/tracking is unavailable/);
     expect(engine(SEARCH_ROOTS_SELECTOR_ENGINE).queryAll(document, '')).toEqual([document]);
   });
+
+  it('keeps the record tracked on a page that replaced the global WeakMap', () => {
+    const record = publish(1);
+    const host = root(1);
+    const field = { shadowRoot: null };
+    record.set(host, root(9, [field]));
+    const native = globalThis.WeakMap;
+    Reflect.set(globalThis, 'WeakMap', Map);
+    try {
+      const masks = engine(CLOSED_SHADOW_SELECTOR_ENGINE);
+      expect(masks.queryAll(root(9, [host]), 'input[type="password" i]')).toEqual([field]);
+    } finally {
+      Reflect.set(globalThis, 'WeakMap', native);
+    }
+  });
 });

@@ -1,7 +1,6 @@
 # @e2e-dev/acp
 
-Run `agent.act` and `agent.assert` on a coding agent you already use, such as
-Claude Code, Codex, or Cursor, over the
+Run `agent.act` and `agent.assert` on Claude Code or Codex over the
 [Agent Client Protocol](https://agentclientprotocol.com). The agent signs in
 with its own login, so e2e needs no model provider.
 
@@ -22,8 +21,7 @@ export default {
 
 - `claudeCode()` starts Claude Code through `@agentclientprotocol/claude-agent-acp`.
 - `codex()` starts Codex through `@agentclientprotocol/codex-acp`.
-- `acp({ command, args })` starts any other agent that speaks ACP on stdio.
 
 The runner records every action, so steps replay from the cache without the
-agent. See the [guide](https://e2e.tester.army/docs/acp) for options,
+agent. See the [guide](https://e2e.tester.army/docs/subscriptions#use-your-coding-agent) for options,
 containment, and limits.

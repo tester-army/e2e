@@ -6,6 +6,8 @@ import {
   NEGATION_GRACE_MS,
   POLL_INTERVAL_MS,
   pollCondition,
+  pollReads,
+  ReadWindow,
   sleep,
   withTimeout,
 } from '../../src/internal/time.ts';
@@ -356,6 +358,125 @@ describe('pollCondition', () => {
       onTimeout: () => new Error('poll timed out'),
     });
     await expect(early).rejects.toBe(cut);
+  });
+
+  it('lets the last read run past the deadline by the longest read the poll finished, up to the window cap', async () => {
+    vi.useFakeTimers();
+    const deadline = new Deadline(350);
+    const timeouts: number[] = [];
+    let calls = 0;
+    const promise = pollReads({
+      deadline,
+      reads: new ReadWindow(deadline, new Deadline(400)),
+      signal: new AbortController().signal,
+      negated: false,
+      evaluate: (reads) =>
+        reads.read(async (timeoutMs) => {
+          timeouts.push(timeoutMs);
+          calls += 1;
+          const readDuration = calls === 1 ? 200 : 50;
+          await withTimeout(sleep(readDuration), timeoutMs, () => new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false }));
+          return calls === 2;
+        }),
+      onTimeout: () => new Error('poll timed out'),
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(promise).resolves.toBeUndefined();
+    expect(timeouts).toEqual([350, 100]);
+  });
+
+  it('shares the extra time past the deadline across the reads that run in it', async () => {
+    vi.useFakeTimers();
+    const deadline = new Deadline(100);
+    const reads = new ReadWindow(deadline, new Deadline(10_000));
+    const slow = reads.read(() => sleep(300));
+    await vi.advanceTimersByTimeAsync(300);
+    await slow;
+    expect(reads.timeoutMs()).toBe(100);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(reads.timeoutMs()).toBe(50);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(reads.timeoutMs()).toBe(1);
+  });
+
+  it('judges a cut-off read by when that read started, not when its sample did', async () => {
+    vi.useFakeTimers();
+    const deadline = new Deadline(1_000);
+    const timedOut = () => new EngineError('OPERATION_TIMEOUT', 'read timed out', { retryable: false });
+    let samples = 0;
+    const promise = pollReads({
+      deadline,
+      reads: new ReadWindow(deadline, new Deadline(10_000)),
+      signal: new AbortController().signal,
+      negated: false,
+      evaluate: async (reads) => {
+        samples += 1;
+        if (samples === 1) {
+          await reads.read(() => sleep(300));
+          return false;
+        }
+        // The sample starts with 600 ms left; its second read starts with 100.
+        await reads.read(() => sleep(500));
+        await reads.read((timeoutMs) => withTimeout(sleep(10_000), timeoutMs, timedOut));
+        return true;
+      },
+      onTimeout: () => new Error('poll timed out'),
+    });
+    const settled = expect(promise).rejects.toThrow('poll timed out');
+    await vi.advanceTimersByTimeAsync(5_000);
+    await settled;
+  });
+
+  it('counts a negation as held only until the deadline, not through a last read past it', async () => {
+    vi.useFakeTimers();
+    const deadline = new Deadline(3_000);
+    let samples = 0;
+    const promise = pollReads({
+      deadline,
+      reads: new ReadWindow(deadline, new Deadline(10_000)),
+      signal: new AbortController().signal,
+      negated: true,
+      evaluate: async (reads) => {
+        samples += 1;
+        // The first read sees the condition; the second starts 400 ms before the deadline and ends 1.1 s past it.
+        await reads.read(() => sleep(samples === 1 ? 2_500 : 1_500));
+        return samples === 1;
+      },
+      onTimeout: () => new Error('negation timed out'),
+    });
+    const settled = expect(promise).rejects.toThrow('negation timed out');
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settled;
+  });
+
+  it('ends on a read cut off within the longest read time of the deadline, and fails on one that hung with more left', async () => {
+    vi.useFakeTimers();
+    const cut = new EngineError('OPERATION_TIMEOUT', 'locate timed out', { retryable: false });
+    const poll = (timeoutMs: number) => {
+      const deadline = new Deadline(timeoutMs);
+      let calls = 0;
+      return pollReads({
+        deadline,
+        reads: new ReadWindow(deadline),
+        signal: new AbortController().signal,
+        negated: false,
+        evaluate: (reads) =>
+          reads.read(async () => {
+            calls += 1;
+            await sleep(300);
+            if (calls === 1) return false;
+            throw cut;
+          }),
+        onTimeout: () => new Error('poll timed out'),
+      });
+    };
+    // The second read starts with 200 ms left: under the 300 ms the first took, so the deadline cut it.
+    const within = expect(poll(600)).rejects.toThrow('poll timed out');
+    // With 600 ms left, more than any read took, the read hung.
+    const hung = expect(poll(1_000)).rejects.toBe(cut);
+    await vi.advanceTimersByTimeAsync(2_000);
+    await within;
+    await hung;
   });
 
   it('keeps a read that hung most of the wait a failure, and never lets a negation pass on it', async () => {

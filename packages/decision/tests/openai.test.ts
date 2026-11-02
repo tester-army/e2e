@@ -19,7 +19,7 @@ type WireAnswer =
 /** A Decisions API request body, as the OpenAI provider sends it. */
 interface WireRequest {
   model: string;
-  input: { role: string; content: { type: string; text?: string; image_url?: string }[] }[];
+  input: { role: string; content: { type: string; text?: string; data?: unknown; image_url?: string }[] }[];
   questions: { type: string; name: string; instructions: string; choices?: { value: string; description?: string }[]; levels?: { label: string }[] }[];
 }
 
@@ -69,8 +69,8 @@ describe('OpenAI Decisions API', () => {
     expect(fixture.actions.tap).toHaveBeenCalledTimes(1);
     const first = requests[0];
     expect(first?.model).toBe('gpt-6-luna');
-    expect(first?.input.map((message) => message.content.map((part) => part.type))).toEqual([['input_text']]);
-    expect(JSON.parse(first?.input[0]?.content[0]?.text ?? '')).toMatchObject({ goal: 'Do the thing', elements: expect.any(Array) });
+    expect(first?.input.map((message) => message.content.map((part) => part.type))).toEqual([['input_json']]);
+    expect(first?.input[0]?.content[0]?.data).toMatchObject({ goal: 'Do the thing', elements: expect.any(Array) });
     expect(first?.questions.map((question) => question.name)).toEqual(['operation']);
     const second = requests[1];
     expect(second?.questions.map((question) => question.name)).toEqual(['target']);
@@ -110,11 +110,11 @@ describe('vision through the SDK model', () => {
     const text = scriptedOutputs([{ target: 'the Add key' }]);
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, maxModelCalls: 4, model: text.model });
     await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
-    expect(requests[0]?.input[0]?.content.map((part) => part.type)).toEqual(['input_text']);
+    expect(requests[0]?.input[0]?.content.map((part) => part.type)).toEqual(['input_json']);
     const look = requests[1]?.input;
     expect(look?.[0]?.role).toBe('user');
-    expect(look?.[0]?.content.map((part) => part.type)).toEqual(['input_text', 'input_image']);
+    expect(look?.[0]?.content.map((part) => part.type)).toEqual(['input_json', 'input_image']);
     expect(look?.[0]?.content[1]?.image_url).toMatch(/^data:image\/png;base64,/);
-    expect(JSON.parse(look?.[0]?.content[0]?.text ?? '{}')).toMatchObject({ goal: 'Do the thing' });
+    expect(look?.[0]?.content[0]?.data).toMatchObject({ goal: 'Do the thing' });
   });
 });

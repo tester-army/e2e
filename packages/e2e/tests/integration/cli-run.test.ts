@@ -1,8 +1,9 @@
 /**
  * `e2e run` and `e2e list` through the built CLI on the fake engine, for what
  * only the process boundary decides: the exit code a crashed worker maps to,
- * shards that split one selection between two machines, and the defaults a
- * worker resolves for itself when `CI` is set.
+ * shards that split one selection between two machines, the defaults a
+ * worker resolves for itself when `CI` is set, and where a run error prints
+ * when no reporter prints to the terminal.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -57,7 +58,7 @@ function rerun(existing: FixtureProject, args: readonly string[], env: Record<st
     timeout: 60_000,
   });
   expect(result.error).toBeUndefined();
-  return { exitCode: result.status, output: result.stdout + result.stderr, stdout: result.stdout };
+  return { exitCode: result.status, output: result.stdout + result.stderr, stdout: result.stdout, stderr: result.stderr };
 }
 
 /** The report the last run wrote. */
@@ -231,5 +232,30 @@ test('fails once', async ({ app }) => {
     const report = JSON.parse(stdout) as Report1Document;
     assertValidReport(report);
     expect(report.run.results).toHaveLength(titles.length);
+  });
+
+  it('prints a run error on stderr once, whichever reporters run, and keeps the json document whole', () => {
+    const project = fixture({
+      'e2e.config.ts': fakeConfig(),
+      'tests/broken.e2e.ts': "import { test } from 'e2e';\ntest('broken', async () => { const text = 'unterminated; });\n",
+    });
+    const reason = /COLLECTION_ERROR[\s\S]*failed to collect tests\/broken\.e2e\.ts: .*Unterminated string/u;
+    const timesNamed = (text: string) => text.split('failed to collect tests/broken.e2e.ts').length - 1;
+    for (const reporter of ['junit', 'markdown']) {
+      const ran = rerun(project, ['run', '--reporter', reporter]);
+      expect(ran.exitCode, reporter).toBe(2);
+      expect(ran.stderr, reporter).toMatch(reason);
+      expect(timesNamed(ran.output), reporter).toBe(1);
+    }
+    const json = rerun(project, ['run', '--reporter', 'json']);
+    expect(json.exitCode).toBe(2);
+    const report = JSON.parse(json.stdout) as Report1Document;
+    assertValidReport(report);
+    expect(report.run.errors.map((error) => error.code)).toEqual(['COLLECTION_ERROR']);
+    expect(json.stderr).toMatch(reason);
+    const list = rerun(project, ['run', '--reporter', 'list,junit']);
+    expect(list.exitCode).toBe(2);
+    expect(list.stdout).toMatch(reason);
+    expect(timesNamed(list.output)).toBe(1);
   });
 });
