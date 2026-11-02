@@ -7,7 +7,7 @@ import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
-import type { RecordableAction } from './agent/actions.ts';
+import type { RecordedAction } from './cache/trace.ts';
 import type { PROJECT_TOOL_EVENT_PREFIX } from './agent/action-names.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
@@ -225,7 +225,7 @@ export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
 
 /** The name `onAction` reports a committed grammar action under, e.g. `tap`, `navigate`, or `dragAt`. */
-export type ActionName = RecordableAction['name'];
+export type ActionName = Exclude<RecordedAction['name'], 'tool'>;
 
 /**
  * The fields `onAction` adds for an action, by action name; other actions add
