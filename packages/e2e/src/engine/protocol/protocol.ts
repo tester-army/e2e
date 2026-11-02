@@ -113,8 +113,8 @@ export interface EngineManifest {
   readonly tapModifiers?: boolean;
 }
 
-/** Which of a worker's two lives a connection serves. */
-export type ConnectionRole = 'run' | 'worker';
+/** What a connection serves: a run's provisioning, a worker, or `e2e doctor`'s checks. */
+export type ConnectionRole = 'run' | 'worker' | 'doctor';
 
 /** Params of `initialize`. */
 export interface InitializeParams {
@@ -122,8 +122,9 @@ export interface InitializeParams {
   readonly clientInfo: { readonly name: string; readonly version: string };
   /**
    * `run` for the runner's connection, which only ever carries `prepare` and
-   * `finish`, or `doctor` alone; `worker` for a worker's, which carries everything from `init`
-   * to `dispose`.
+   * `finish`; `worker` for a worker's, which carries everything from `init`
+   * to `dispose`; `doctor` for `e2e doctor`'s, which carries `doctor` alone
+   * and must not install, launch, or lease anything.
    */
   readonly role: ConnectionRole;
   /** Engine options the config passed through, as JSON. */

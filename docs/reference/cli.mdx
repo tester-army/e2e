@@ -964,8 +964,9 @@ runs the same selection in process and also returns the removed pairs.
 
 Checks whether `e2e run` can start here without starting anything. It loads the
 config, runs each target's engine checks, and names the model each agent
-resolved to. It starts no app, engine session, or worker, and makes no model
-call unless you pass `--check-model`.
+resolved to. It starts no app, engine session, or worker, only the server of
+an engine that runs in its own process, and makes no model call unless you
+pass `--check-model`.
 
 <CodeGroup>
 ```bash npm
@@ -995,7 +996,7 @@ bunx e2e doctor --target web --headed
 | `--config <path>` | As for [`run`](#flags). |
 | `--target <ids>` | Checks only these targets. As for [`run`](#flags). |
 | `--headed` | Checks for what a headed run needs, such as the full Chromium build instead of the headless shell. |
-| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt and the agent's provider options. Agents that share a model and its provider options share the call. |
+| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt and the agent's provider options. Agents that share a model and equal provider options share the call. A reply that isn't the JSON asked for, or a refusal, still counts as an answer. |
 | `--reporter <id>` | `list` or `json`. Default: `list`. |
 
 | Check | Status |
@@ -1003,7 +1004,7 @@ bunx e2e doctor --target web --headed
 | `node` | `pass`: the Node.js version. On an unsupported runtime, `--reporter json` still prints a report with `node` as `fail`. |
 | `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` is the last check. |
 | Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`. An engine that reports nothing adds no check. `engine` is `skip` when the engine has no `doctor` hook, and `fail` when the hook threw, timed out, or returned a malformed check. |
-| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code, its message prefixed `model:` or `judge:` when the agent has both. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent and declares no model or judge; any model it declares is checked like an agent's. |
+| `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set when the agent's models read one login. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code, its message prefixed `model:` or `judge:` when the agent has both. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent and declares no model or judge; any model it declares is checked like an agent's. |
 
 | Reporter | Writes |
 | --- | --- |
@@ -1014,6 +1015,7 @@ bunx e2e doctor --target web --headed
 | --- | --- |
 | 0 | No check failed. `warn`, `skip`, and `unknown` never fail. |
 | 2 | At least one check failed. |
+| 130 | Interrupted with Ctrl-C or SIGTERM. The checks stop and the report is printed; an engine or model check that was cut short is `fail` with `CANCELLED`. A third Ctrl-C exits at once. |
 
 #### `e2e cache`
 

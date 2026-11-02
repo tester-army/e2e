@@ -18,7 +18,7 @@ import { InfrastructureError } from '../../internal/errors.ts';
 import { obj } from '../../internal/objects.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { relativeToProjectRoot } from '../../internal/paths.ts';
-import { cancelledError, withAbort } from '../../internal/time.ts';
+import { abortError, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../../internal/time.ts';
 import { secretHandle } from '../../secrets.ts';
 import { EngineError } from '../contract.ts';
 import { defineEngine } from '../manifest.ts';
@@ -108,6 +108,9 @@ type ScreenshotResult = { readonly path: string } | { readonly data: string; rea
 
 /** Budget of the `shutdown` handshake when a connection closes outside a cleanup hook. */
 const DEFAULT_CLOSE_MS = 5000;
+
+/** How long a server's `doctor` may take to stop once its signal aborted, before its connection closes. */
+const DOCTOR_ABORT_GRACE_MS = 5000;
 
 /** The runner version `initialize` reports; servers check the protocol version, never this. */
 const CLIENT_VERSION = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
@@ -293,16 +296,20 @@ class EngineClient {
   }
 
   /**
-   * Opens a connection of its own for `doctor` alone and closes it after:
-   * `e2e doctor` starts no run. A server that ignores the signal is
-   * abandoned at it, so the connection still closes.
+   * Opens a `doctor` connection for the hook alone and closes it after:
+   * `e2e doctor` starts no run. At the signal the server is told to stop and
+   * gets `DOCTOR_ABORT_GRACE_MS` to answer before the connection closes.
    */
   async #doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
     const { signal, log, ...rest } = info;
-    const link = await this.#open('run', { env: info.env, cwd: info.projectRoot, signal, app: info.app, log });
+    if (signal.aborted) throw abortError(signal, cancelledError);
+    const link = await this.#open('doctor', { env: info.env, cwd: info.projectRoot, signal, app: info.app, log });
+    const call = this.#call(link, 'lifecycle/doctor', { ...rest, signal: link.signals.encode(signal) });
     try {
-      const call = this.#call(link, 'lifecycle/doctor', { ...rest, signal: link.signals.encode(signal) });
       return (await withAbort(call, signal, cancelledError)) as readonly EngineDoctorCheck[];
+    } catch (cause) {
+      if (signal.aborted) await withinCleanupBudget(call, { signal: NEVER_ABORTS, timeoutMs: DOCTOR_ABORT_GRACE_MS });
+      throw cause;
     } finally {
       await this.#close(link, DEFAULT_CLOSE_MS);
     }

@@ -418,6 +418,39 @@ describe('engine protocol', () => {
     expect(calls).toEqual(['dispose', 'dispose', 'finish']);
   });
 
+  it('opens a doctor connection, never one for an already aborted signal, and gives an aborted doctor its grace', async () => {
+    const roles: string[] = [];
+    const stopped: string[] = [];
+    const local = defineEngine(
+      toy({
+        doctor: (info) =>
+          new Promise((resolve) => {
+            info.signal.addEventListener('abort', () => setTimeout(() => {
+              stopped.push('stopped');
+              resolve([]);
+            }, 100));
+          }),
+      }),
+    );
+    const loopback = loopbackTransport(local);
+    const transport: EngineTransport = {
+      label: 'recording',
+      open: (context) => {
+        roles.push(context.role);
+        return loopback.open(context);
+      },
+    };
+    const remote = connectEngine({ manifest: describeEngine(local), transport });
+    const info = (signal: AbortSignal) => ({ targetName: 'toy', projectRoot: process.cwd(), app: {}, env: {}, headed: false, signal, log: () => {} });
+    await expect(remote.doctor!(info(AbortSignal.abort()))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(roles).toEqual([]);
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 50);
+    await expect(remote.doctor!(info(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(roles).toEqual(['doctor']);
+    expect(stopped).toEqual(['stopped']);
+  });
+
   it('runs doctor over the protocol with its info and returns its findings', async () => {
     const seen: { targetName: string; headed: boolean; log: boolean }[] = [];
     const { remote } = overLoopback(

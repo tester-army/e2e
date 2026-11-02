@@ -10,6 +10,7 @@ import picocolors from 'picocolors';
 import { createModelAdapter } from '../agent/model/sdk.ts';
 import { ModelOutputInvalidError } from '../agent/model/adapter.ts';
 import { loadAiSdk } from '../agent/ai-sdk.ts';
+import { AgentError, isAgentError } from '../agent/error.ts';
 import { engineAppInfo } from '../config/app.ts';
 import { modelLabel, type ResolvedAgentConfig, type ResolvedModel } from '../config/agent.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
@@ -19,7 +20,7 @@ import { selectTargets } from '../collect/select.ts';
 import type { EngineDoctorCheck } from '../engine/index.ts';
 import { classifyError, InfrastructureError } from '../internal/errors.ts';
 import { SUPPORTED_NODE_RANGE } from '../internal/node-version.ts';
-import { cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../internal/time.ts';
+import { budgetText, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../internal/time.ts';
 import { loginOf } from '../oauth/login-model.ts';
 import { apiKeyFor, getProvider, loginHint, type ProviderId } from '../oauth/providers.ts';
 import { defaultCredentialStore } from '../oauth/store.ts';
@@ -33,14 +34,17 @@ const DOCTOR_SCHEMA_VERSION = 'doctor-1';
 /** How long one engine's `doctor` hook may take: it should only look things up. */
 const ENGINE_DOCTOR_TIMEOUT_MS = 30_000;
 
-/** How long a timed-out or cancelled engine `doctor` hook may take to close its connection: a protocol engine shuts its server down within this. */
-const ENGINE_DOCTOR_TEARDOWN_MS = 10_000;
+/** How long a timed-out or cancelled engine `doctor` hook may take to settle: a protocol engine's 5 s grace and its connection's close fit in it. */
+const ENGINE_DOCTOR_TEARDOWN_MS = 15_000;
 
 /** How long one `--check-model` call may take, transport retries included. */
 const MODEL_CALL_TIMEOUT_MS = 60_000;
 
 /** A check id: kebab case, as `EngineDoctorCheck.id` declares. */
 const CHECK_ID = /^[a-z][a-z0-9-]*$/;
+
+/** The ids of doctor's own checks, which an engine's finding cannot take. */
+const RESERVED_IDS: ReadonlySet<string> = new Set(['node', 'config', 'engine', 'model']);
 
 const ENGINE_STATUSES: ReadonlySet<string> = new Set<EngineDoctorCheck['status']>(['pass', 'warn', 'fail', 'skip']);
 
@@ -97,6 +101,8 @@ export interface DoctorOptions {
   readonly output: RunnerOutput;
   /** Where an engine's progress lines go, under the target they concern. */
   readonly notice: (targetName: string, line: string) => void;
+  /** How long each engine's `doctor` hook may take; defaults to 30 seconds. */
+  readonly engineTimeoutMs?: number | undefined;
 }
 
 /**
@@ -179,8 +185,12 @@ async function engineChecks(target: ResolvedTarget, config: ResolvedConfig, opti
     return [{ id: 'engine', status: 'skip', target: target.name, message: `engine "${engine.name}" has no doctor checks` }];
   }
   const hook = engine.doctor.bind(engine);
-  const deadline = AbortSignal.timeout(ENGINE_DOCTOR_TIMEOUT_MS);
-  const signal = AbortSignal.any([options.signal, deadline]);
+  const timeoutMs = options.engineTimeoutMs ?? ENGINE_DOCTOR_TIMEOUT_MS;
+  // A held timer, unlike `AbortSignal.timeout`: a hook that awaits nothing
+  // else must not let the process exit under it.
+  const deadline = new AbortController();
+  const timer = setTimeout(() => deadline.abort(), timeoutMs);
+  const signal = AbortSignal.any([options.signal, deadline.signal]);
   const pending = Promise.resolve().then(() =>
     hook({
       targetName: target.name,
@@ -202,12 +212,14 @@ async function engineChecks(target: ResolvedTarget, config: ResolvedConfig, opti
   } catch (cause) {
     // The hook stops at the signal; waiting for it keeps doctor from exiting
     // while a protocol engine still shuts its server down.
-    const timedOut = deadline.aborted && !options.signal.aborted;
+    const timedOut = deadline.signal.aborted && !options.signal.aborted;
     await withinCleanupBudget(pending, { signal: NEVER_ABORTS, timeoutMs: ENGINE_DOCTOR_TEARDOWN_MS });
     const failure = timedOut
-      ? new InfrastructureError('ENGINE_FAILURE', `engine "${engine.name}" did not finish its checks within ${String(ENGINE_DOCTOR_TIMEOUT_MS / 1000)}s`)
+      ? new InfrastructureError('ENGINE_FAILURE', `engine "${engine.name}" did not finish its checks within ${budgetText(timeoutMs)}`)
       : cause;
     return [failed('engine', failure, { target: target.name })];
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -218,6 +230,7 @@ function isEngineFinding(value: unknown): value is EngineDoctorCheck {
   return (
     typeof id === 'string' &&
     CHECK_ID.test(id) &&
+    !RESERVED_IDS.has(id) &&
     typeof status === 'string' &&
     ENGINE_STATUSES.has(status) &&
     (message === undefined || typeof message === 'string')
@@ -236,17 +249,18 @@ function malformedFinding(engine: string, value: unknown): InfrastructureError {
 async function modelChecks(config: ResolvedConfig, options: DoctorOptions): Promise<DoctorCheck[]> {
   const agents = [...config.agents];
   const sdk = agents.some(([, agent]) => agent.model !== undefined || agent.judge !== undefined) ? await loadAiSdk().then(() => undefined, (cause: unknown) => cause) : undefined;
-  const calls = new Map<object, Map<unknown, Promise<unknown>>>();
+  const calls = new Map<object, Map<string, Promise<unknown>>>();
   const call = (model: ResolvedModel, agent: ResolvedAgentConfig): Promise<unknown> => {
     let byOptions = calls.get(model.model);
     if (byOptions === undefined) {
       byOptions = new Map();
       calls.set(model.model, byOptions);
     }
-    let pending = byOptions.get(agent.providerOptions);
+    const key = JSON.stringify(agent.providerOptions ?? null);
+    let pending = byOptions.get(key);
     if (pending === undefined) {
       pending = callModel(model, agent, options.signal);
-      byOptions.set(agent.providerOptions, pending);
+      byOptions.set(key, pending);
     }
     return pending;
   };
@@ -327,9 +341,9 @@ async function loginCredential(provider: ProviderId): Promise<{ readonly ok: boo
 
 /**
  * One small call to `model` with the agent's provider options, resolving to
- * the failure or undefined. A call that finished with a reply that is not the
- * JSON asked for still proves the model answered: the adapter throws a
- * provider failure for one that ended on an error.
+ * the failure or undefined. A reply that is not the JSON asked for, or a
+ * refusal, still proves the model answered: the adapter throws a provider
+ * failure for a call that ended on an error.
  */
 async function callModel(model: ResolvedModel, agent: ResolvedAgentConfig, signal: AbortSignal): Promise<unknown> {
   try {
@@ -347,7 +361,11 @@ async function callModel(model: ResolvedModel, agent: ResolvedAgentConfig, signa
     });
     return undefined;
   } catch (cause) {
-    return cause instanceof ModelOutputInvalidError ? undefined : cause;
+    if (cause instanceof ModelOutputInvalidError || (isAgentError(cause) && cause.code === 'MODEL_REFUSED')) return undefined;
+    if (isAgentError(cause) && cause.code === 'STEP_TIMEOUT') {
+      return new AgentError('MODEL_PROVIDER_FAILED', `the model did not answer within ${budgetText(MODEL_CALL_TIMEOUT_MS)}`, { cause });
+    }
+    return cause;
   }
 }
 

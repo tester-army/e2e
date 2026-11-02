@@ -24,7 +24,7 @@ import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERR
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
-import { doctor, formatDoctorReport } from './doctor.ts';
+import { doctor, formatDoctorReport, type DoctorReport } from './doctor.ts';
 import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
@@ -938,7 +938,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .command('doctor')
     .summary('check that e2e run can start here, without starting anything')
     .description(
-      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app, no engine, and no worker, and calls no model unless --check-model is given. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise.',
+      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app and no worker, only the server of an engine that runs in its own process, and calls no model unless --check-model is given. Ctrl-C stops the checks and reports what ran. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise, and 130 when interrupted.',
     )
     .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
@@ -952,22 +952,31 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; reporter: ListReporter }) => {
       const output = claimRunnerOutput();
       if (options.reporter === 'json') output.keepStdoutForReport();
-      const report = await doctor({
-        version,
-        cwd: process.cwd(),
-        env: process.env,
-        config: options.config,
-        targets: options.target,
-        headed: options.headed === true,
-        checkModel: options.checkModel === true,
-        signal: new AbortController().signal,
-        output,
-        notice: (targetName, line) => process.stderr.write(`${bounded(`[${targetName}] ${line}`)}\n`),
-      });
+      // Ctrl-C stops the checks, which then report: an engine server is
+      // shut down before the process exits instead of left running.
+      const signals = new SignalLadder();
+      const disarm = signals.arm();
+      let report: DoctorReport;
+      try {
+        report = await doctor({
+          version,
+          cwd: process.cwd(),
+          env: process.env,
+          config: options.config,
+          targets: options.target,
+          headed: options.headed === true,
+          checkModel: options.checkModel === true,
+          signal: signals.interruptSignal,
+          output,
+          notice: (targetName, line) => process.stderr.write(`${bounded(`[${targetName}] ${line}`)}\n`),
+        });
+      } finally {
+        disarm();
+      }
       output.end();
       if (options.reporter === 'json') writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
       else process.stdout.write(formatDoctorReport(report));
-      process.exitCode = report.ok ? 0 : 2;
+      process.exitCode = signals.interruptSignal.aborted ? 130 : report.ok ? 0 : 2;
     });
 
   registerCacheCommand(program);

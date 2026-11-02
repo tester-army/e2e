@@ -661,9 +661,10 @@ async doctor(info) {
 },
 ```
 
-`e2e doctor` gives the hook 30 seconds. A throw, a timeout, or a finding
-that isn't an `EngineDoctorCheck` becomes an `engine` check with status
-`fail`.
+`e2e doctor` gives the hook 30 seconds, starting a protocol engine's
+server included. A throw, a timeout, a finding that isn't an
+`EngineDoctorCheck`, or one with an id `e2e doctor` uses itself (`node`,
+`config`, `engine`, `model`) becomes an `engine` check with status `fail`.
 
 ```ts
 /** Facts handed to `doctor`, once per target in the process `e2e doctor` runs in. */
@@ -678,7 +679,7 @@ export interface EngineDoctorInfo {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
   readonly headed: boolean;
-  /** Aborts 30 seconds in, when the checks fail as timed out; stop then: `e2e doctor` waits at most 10 more seconds for the hook to return. */
+  /** Aborts 30 seconds in, when the checks fail as timed out, or when `e2e doctor` is interrupted; return within 5 seconds of it, when the connection closes. */
   readonly signal: AbortSignal;
   /** Reports one line of progress; `e2e doctor` prints it to stderr. */
   readonly log: (line: string) => void;

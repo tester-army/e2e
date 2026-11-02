@@ -4,7 +4,7 @@
  * agent's model with and without `--check-model`.
  */
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -28,7 +28,8 @@ afterEach(() => {
  * `agents` as given.
  */
 function config(agents = ''): string {
-  return `import type { E2EConfig } from 'e2e';
+  return `import { appendFileSync } from 'node:fs';
+import type { E2EConfig } from 'e2e';
 import { defineEngine } from 'e2e/engine';
 import { createFakeEngine, FAKE_APP } from '../../helpers/fake-engine.ts';
 import { createScriptedInstance, scriptedResult } from '../../helpers/scripted-model.ts';
@@ -42,12 +43,22 @@ const checked = defineEngine({
   async doctor(info) {
     if (process.env.TOOLCHAIN === 'throw') throw new Error('toolchain probe crashed');
     if (process.env.TOOLCHAIN === 'malformed') return [{ id: 'Bad Id', status: 'ok' }] as never;
+    if (process.env.TOOLCHAIN === 'reserved') return [{ id: 'model', status: 'pass' }];
+    if (process.env.TOOLCHAIN === 'hang') {
+      info.log('checking');
+      return new Promise((resolve) => info.signal.addEventListener('abort', () => resolve([])));
+    }
     if (process.env.TOOLCHAIN === 'leak') return [{ id: 'toolchain', status: 'fail', message: 'token sk_live_generic_4242 rejected' }];
     const status = process.env.TOOLCHAIN === 'missing' ? 'fail' : 'pass';
     return [{ id: 'toolchain', status, message: \`\${info.targetName} headed=\${String(info.headed)}\` }];
   },
 });
 const answering = createScriptedInstance('scripted', 'answers', async () => scriptedResult([{ type: 'text', text: 'OK' }], 'stop'));
+const counted = createScriptedInstance('scripted', 'counted', async () => {
+  appendFileSync('calls', 'call\\n');
+  return scriptedResult([{ type: 'text', text: 'OK' }], 'stop');
+});
+const refusing = createScriptedInstance('scripted', 'refuses', async () => scriptedResult([], 'content-filter'));
 const erroring = createScriptedInstance('scripted', 'errors', async () => scriptedResult([], 'error'));
 const failing = createScriptedInstance('scripted', 'fails', async () => {
   throw new Error('provider is down');
@@ -121,6 +132,8 @@ describe('e2e doctor', () => {
     const malformed = doctorJson({ 'e2e.config.ts': config() }, ['--target', 'checked'], { TOOLCHAIN: 'malformed' });
     expect(malformed.exitCode).toBe(2);
     expect(malformed.report.checks.at(-2)).toMatchObject({ id: 'engine', status: 'fail', target: 'checked', code: 'ENGINE_FAILURE' });
+    const reserved = doctorJson({ 'e2e.config.ts': config() }, ['--target', 'checked'], { TOOLCHAIN: 'reserved' });
+    expect(reserved.report.checks.at(-2)).toMatchObject({ id: 'engine', status: 'fail', target: 'checked', code: 'ENGINE_FAILURE' });
     const leaked = doctorJson({ 'e2e.config.ts': config() }, ['--target', 'checked'], { TOOLCHAIN: 'leak' });
     expect(leaked.report.checks.find((check) => check.id === 'toolchain')?.message).toBe('token <secret:stripe-key> rejected');
     expect(doctor({ 'e2e.config.ts': config() }, [], { TOOLCHAIN: 'leak' }).stdout).not.toContain('sk_live_generic_4242');
@@ -168,6 +181,48 @@ describe('e2e doctor', () => {
       { agent: 'broken', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('error finish') },
       { agent: 'brought', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('provider is down') },
     ]);
+  });
+
+  it('makes one call for agents with equal provider options, and counts a refusal as an answer', () => {
+    const files = {
+      'e2e.config.ts': config(
+        "agents: { default: { model: counted, providerOptions: { scripted: { effort: 'low' } } }, twin: { model: counted, providerOptions: { scripted: { effort: 'low' } } }, shy: { model: refusing } },",
+      ),
+    };
+    const project = createProject(files);
+    projects.push(project);
+    const result = spawnSync(process.execPath, [CLI, 'doctor', '--reporter', 'json', '--check-model'], {
+      cwd: project.dir,
+      env: { ...process.env, CI: '', NO_COLOR: '1', XDG_CONFIG_HOME: path.join(project.dir, '.config') },
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+    const report = JSON.parse(result.stdout) as DoctorReport;
+    expect(result.status).toBe(0);
+    expect(report.checks.filter((check) => check.id === 'model').map(({ agent, status }) => ({ agent, status }))).toEqual([
+      { agent: 'default', status: 'pass' },
+      { agent: 'twin', status: 'pass' },
+      { agent: 'shy', status: 'pass' },
+    ]);
+    expect(readFileSync(path.join(project.dir, 'calls'), 'utf8')).toBe('call\n');
+  });
+
+  it('stops the checks at Ctrl-C, reports them, and exits 130', async () => {
+    const project = createProject({ 'e2e.config.ts': config() });
+    projects.push(project);
+    const child = spawn(process.execPath, [CLI, 'doctor', '--reporter', 'json', '--target', 'checked'], {
+      cwd: project.dir,
+      env: { ...process.env, CI: '', NO_COLOR: '1', XDG_CONFIG_HOME: path.join(project.dir, '.config'), TOOLCHAIN: 'hang' },
+    });
+    let stdout = '';
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stderr.on('data', (chunk: Buffer) => {
+      if (chunk.toString().includes('[checked] checking')) child.kill('SIGINT');
+    });
+    const code = await new Promise<number | null>((resolve) => child.once('exit', resolve));
+    expect(code).toBe(130);
+    const report = JSON.parse(stdout) as DoctorReport;
+    expect(report.checks.find((check) => check.target === 'checked')).toMatchObject({ id: 'engine', status: 'fail', code: 'CANCELLED' });
   });
 
   it('checks the stored login of a subscription model without calling it', () => {

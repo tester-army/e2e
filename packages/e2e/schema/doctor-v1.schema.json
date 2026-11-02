@@ -40,7 +40,7 @@
         },
         "model": { "$ref": "#/$defs/model" },
         "judge": { "$ref": "#/$defs/model" },
-        "login": { "enum": ["openai", "github-copilot", "opencode-console", "spacexai"] },
+        "login": { "type": "string", "minLength": 1, "description": "The `e2e login` provider whose stored login the models read, such as `openai`; absent when they read none or more than one. New providers can appear." },
         "executor": { "type": "string", "minLength": 1 }
       }
     },

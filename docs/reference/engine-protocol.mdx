@@ -73,8 +73,10 @@ A handle opens its connections where the harness calls the engine. In the
 runner, one connection per target lives from `prepare` to `finish`, and
 opens only when the server answers `lifecycle/prepare` or
 `lifecycle/finish`. In each worker, one connection lives from `init` to
-`dispose`. `e2e doctor` opens one connection per target for
-`lifecycle/doctor` alone and closes it after. An operation call outside
+`dispose`. `e2e doctor` opens one `doctor` connection per target for
+`lifecycle/doctor` alone and closes it after; a transport must not install,
+launch, or lease anything for it. At the doctor signal the server gets 5
+seconds to answer before the connection closes. An operation call outside
 `init`..`dispose` fails with `INVALID_STATE`.
 A worker that never ran `init` has no connection, so the server gets no
 `lifecycle/dispose` for it.
@@ -309,7 +311,7 @@ export interface EngineTransport {
 }
 
 export interface TransportContext {
-  readonly role: 'run' | 'worker';
+  readonly role: 'run' | 'worker' | 'doctor';
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The project root. */
   readonly cwd: string;

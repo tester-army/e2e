@@ -6,7 +6,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { doctor } from '../../src/cli/doctor.ts';
+import { doctor, type DoctorOptions, type DoctorReport } from '../../src/cli/doctor.ts';
 import { cancelledError } from '../../src/internal/time.ts';
 import { withProcessOutput } from '../../src/run/process-output.ts';
 import { processSecrets } from '../../src/run/secrecy.ts';
@@ -18,10 +18,10 @@ afterEach(() => {
   for (const project of projects.splice(0)) project.cleanup();
 });
 
-describe('doctor', () => {
-  it("waits for a cancelled engine to close its connection before it reports", async () => {
-    const project = createProject({
-      'e2e.config.ts': `import { writeFileSync } from 'node:fs';
+/** A project whose one target's engine checks until aborted, then closes its connection 200 ms later, marking `closed`. */
+function slowProject(): FixtureProject {
+  const project = createProject({
+    'e2e.config.ts': `import { writeFileSync } from 'node:fs';
 import { connectEngine, defineEngine, describeEngine, loopbackTransport, type EngineTransport } from '../../../src/engine/index.ts';
 import { FAKE_APP } from '../../helpers/fake-engine.ts';
 
@@ -31,7 +31,7 @@ const hanging = defineEngine({
   spiVersion: 1,
   platform: 'fake',
   observe: async () => ({ root: { ref: { id: 'root', revision: '' }, role: 'root' }, viewport: { width: 1, height: 1 } }),
-  doctor: () => new Promise(() => {}),
+  doctor: (info) => new Promise((resolve) => info.signal.addEventListener('abort', () => resolve([]))),
 });
 const inner = loopbackTransport(hanging);
 const transport: EngineTransport = {
@@ -52,14 +52,37 @@ const slow = connectEngine({ manifest: describeEngine(hanging), transport });
 
 export default { tests: 'tests/**/*.e2e.ts', targets: [{ name: 'slow', engine: slow, app: FAKE_APP }] };
 `,
-    });
-    projects.push(project);
+  });
+  projects.push(project);
+  return project;
+}
+
+/** Runs `doctor` on `project` with `signal` and any other options. */
+function run(project: FixtureProject, signal: AbortSignal, extra: Partial<DoctorOptions> = {}): Promise<DoctorReport> {
+  return withProcessOutput(processSecrets, (output) =>
+    doctor({ version: '0.0.0', cwd: project.dir, env: process.env, headed: false, checkModel: false, signal, output, notice: () => {}, ...extra }),
+  );
+}
+
+describe('doctor', () => {
+  it('waits for a cancelled engine to close its connection before it reports', async () => {
+    const project = slowProject();
     const controller = new AbortController();
     setTimeout(() => controller.abort(cancelledError()), 200);
-    const report = await withProcessOutput(processSecrets, (output) =>
-      doctor({ version: '0.0.0', cwd: project.dir, env: process.env, headed: false, checkModel: false, signal: controller.signal, output, notice: () => {} }),
-    );
+    const report = await run(project, controller.signal);
     expect(existsSync(path.join(project.dir, 'closed'))).toBe(true);
     expect(report.checks.find((check) => check.target === 'slow')).toMatchObject({ id: 'engine', status: 'fail', code: 'CANCELLED' });
+  });
+
+  it('fails an engine that outlives its budget as ENGINE_FAILURE, after its connection closed', async () => {
+    const project = slowProject();
+    const report = await run(project, new AbortController().signal, { engineTimeoutMs: 100 });
+    expect(existsSync(path.join(project.dir, 'closed'))).toBe(true);
+    expect(report.checks.find((check) => check.target === 'slow')).toMatchObject({
+      id: 'engine',
+      status: 'fail',
+      code: 'ENGINE_FAILURE',
+      message: 'engine "slow" did not finish its checks within 100ms',
+    });
   });
 });

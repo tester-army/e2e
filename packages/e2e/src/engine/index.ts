@@ -452,7 +452,7 @@ export interface EngineDoctorInfo {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Whether the run would show the surface (`--headed`), as `prepare` receives it. */
   readonly headed: boolean;
-  /** Aborts 30 seconds in, when the checks fail as timed out; stop then: `e2e doctor` waits at most 10 more seconds for the hook to return. */
+  /** Aborts 30 seconds in, when the checks fail as timed out, or when `e2e doctor` is interrupted; return within 5 seconds of it, when the connection closes. */
   readonly signal: AbortSignal;
   /** Reports one line of progress; `e2e doctor` prints it to stderr. */
   readonly log: (line: string) => void;
