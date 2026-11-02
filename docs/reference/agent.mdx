@@ -93,6 +93,20 @@ await agent.act('open settings and turn on dark mode', {
 });
 ```
 
+Narrow on `event.action` to read an action's details: `point` for `tapAt`
+and `hoverAt`, `from` and `to` for `dragAt`. Points are in the same space as
+`screen.tapAt` and `boundingBox()`, rounded and clamped to the viewport.
+Replay reports the points it dispatches on the current screen. Mobile
+engines have no `hoverAt` or `dragAt`.
+
+```ts
+await agent.act('move the pin to Warsaw', {
+  onAction: (event) => {
+    if (event.action === 'dragAt') console.log(event.from, event.to);
+  },
+});
+```
+
 `onBeforeAction` runs before each action, replayed ones included, with the
 same `index` that action's `onAction` gets. Use it to capture the screen an
 action started on. The step waits for it, and it does not wait for the screen
@@ -591,17 +605,48 @@ export interface ActResult {
   readonly actions: number;
 }
 
-/** One completed action of an `act` step, as `onAction` receives it. */
-export interface ActionEvent {
+/** The name `onAction` reports a committed grammar action under, e.g. `tap`, `navigate`, or `dragAt`. */
+export type ActionName =
+  | 'tap' | 'doubleTap' | 'longPress' | 'secondaryTap' | 'hover' | 'scrollTo'
+  | 'type' | 'typeSecret' | 'press' | 'select' | 'check' | 'upload' | 'drag'
+  | 'scroll' | 'scrollUntil' | 'navigate' | 'back' | 'typeText' | 'pressKey'
+  | 'dismissKeyboard' | 'tapAt' | 'hoverAt' | 'dragAt';
+
+/**
+ * The fields `onAction` adds for an action, by action name; other actions add
+ * none. Points are in the same space as `screen.tapAt` and `boundingBox()`,
+ * rounded and clamped to the viewport.
+ */
+export interface ActionDetails {
+  /** The dispatched point. */
+  readonly tapAt: { readonly point: Point };
+  /** The dispatched point. Mobile engines have no `hoverAt`. */
+  readonly hoverAt: { readonly point: Point };
+  /** The dispatched start and end. Mobile engines have no `dragAt`. */
+  readonly dragAt: { readonly from: Point; readonly to: Point };
+}
+
+/** What every `onAction` event carries. */
+interface ActionEventBase {
   /** 1-based position in the step's action budget; a failed attempt uses a number too. */
   readonly index: number;
-  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
-  readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
   readonly source: 'model' | 'replay';
 }
+
+/**
+ * One completed action of an `act` step, as `onAction` receives it. Narrow on
+ * `action` to read its {@link ActionDetails}; a mutating project tool reads
+ * `tool:<name>`.
+ */
+export type ActionEvent = ActionEventBase &
+  (
+    | { readonly action: 'tapAt' | 'hoverAt'; readonly point: Point }
+    | { readonly action: 'dragAt'; readonly from: Point; readonly to: Point }
+    | { readonly action: Exclude<ActionName, keyof ActionDetails> | `tool:${string}` }
+  );
 
 /** One action of an `act` step about to run, as `onBeforeAction` receives it. */
 export interface BeforeActionEvent {

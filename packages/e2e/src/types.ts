@@ -7,6 +7,8 @@ import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
+import type { RecordedAction } from './cache/trace.ts';
+import type { PROJECT_TOOL_EVENT_PREFIX } from './agent/action-names.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
 import type { KeyModifier, Momentum, ScrollDirection, SelectOption, ViewportPoint } from './engine/contract.ts';
@@ -222,17 +224,43 @@ export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void
 /** The `onAction` hook of an `act` call. */
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
 
-/** One completed action of an `act` step, as `onAction` receives it. */
-export interface ActionEvent {
+/** The name `onAction` reports a committed grammar action under, e.g. `tap`, `navigate`, or `dragAt`. */
+export type ActionName = Exclude<RecordedAction['name'], 'tool'>;
+
+/**
+ * The fields `onAction` adds for an action, by action name; other actions add
+ * none. Points are in the same space as `screen.tapAt` and `boundingBox()`,
+ * rounded and clamped to the viewport.
+ */
+export interface ActionDetails {
+  /** The dispatched point. */
+  readonly tapAt: { readonly point: Point };
+  /** The dispatched point. Mobile engines have no `hoverAt`. */
+  readonly hoverAt: { readonly point: Point };
+  /** The dispatched start and end. Mobile engines have no `dragAt`. */
+  readonly dragAt: { readonly from: Point; readonly to: Point };
+}
+
+/** What every `onAction` event carries. */
+interface ActionEventBase {
   /** 1-based position in the step's action budget; a failed attempt uses a number too. */
   readonly index: number;
-  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
-  readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
   readonly source: 'model' | 'replay';
 }
+
+/**
+ * One completed action of an `act` step, as `onAction` receives it. Narrow on
+ * `action` to read its {@link ActionDetails}; a mutating project tool reads
+ * `tool:<name>`.
+ */
+export type ActionEvent =
+  | {
+      readonly [A in ActionName]: ActionEventBase & { readonly action: A } & (A extends keyof ActionDetails ? ActionDetails[A] : unknown);
+    }[ActionName]
+  | (ActionEventBase & { readonly action: `${typeof PROJECT_TOOL_EVENT_PREFIX}${string}` });
 
 /** One action of an `act` step about to run, as `onBeforeAction` receives it. */
 export interface BeforeActionEvent {
