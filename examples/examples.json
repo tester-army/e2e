@@ -1659,13 +1659,13 @@
       "shortTitle": "Automation Exercise",
       "description": "Navigation, product catalog search, and cart validation journeys for the Automation Exercise store, tested with locators.",
       "source": "community",
-      "repository": "https://github.com/Mohsintl/e2e-automation-exercise/tree/151daac1315d0d791b16f19ba1a7ca377667deac",
+      "repository": "https://github.com/Mohsintl/e2e-automation-exercise/tree/c7c83678d689077a07e530c5a4050d2986e803c0",
       "author": {
         "name": "Tingri Lohar Mohammed Mohsin",
         "github": "Mohsintl"
       },
       "license": "MIT",
-      "licenseUrl": "https://github.com/Mohsintl/e2e-automation-exercise/blob/151daac1315d0d791b16f19ba1a7ca377667deac/LICENSE",
+      "licenseUrl": "https://github.com/Mohsintl/e2e-automation-exercise/blob/c7c83678d689077a07e530c5a4050d2986e803c0/LICENSE",
       "tags": {
         "framework": [
           "nodejs"
