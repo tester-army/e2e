@@ -74,8 +74,9 @@ runner, one connection per target lives from `prepare` to `finish`, and
 opens only when the server answers `lifecycle/prepare` or
 `lifecycle/finish`. In each worker, one connection lives from `init` to
 `dispose`. `e2e doctor` opens one `doctor` connection per target for
-`lifecycle/doctor` alone and closes it after; a transport must not install,
-launch, or lease anything for it. At the doctor signal the server gets 5
+`lifecycle/doctor` alone and closes it after. A transport may start the
+server for it, as `spawnTransport` does, but must not provision a machine,
+lease a device, or install the app. At the doctor signal the server gets 5
 seconds to answer before the connection closes. An operation call outside
 `init`..`dispose` fails with `INVALID_STATE`.
 A worker that never ran `init` has no connection, so the server gets no

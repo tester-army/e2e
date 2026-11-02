@@ -108,11 +108,12 @@ export interface DoctorOptions {
 /**
  * Runs every check: the runtime, then the config, then each selected
  * target's engine and each agent's model. A config that does not load ends
- * the checks there, since the rest read it.
+ * the checks there, since the rest read it; so does the signal, after the
+ * check it cut short.
  */
 export async function doctor(options: DoctorOptions): Promise<DoctorReport> {
   const checks: DoctorCheck[] = [nodeCheck()];
-  const loaded = await loadConfig(options).then(
+  const loaded = await withAbort(loadConfig(options), options.signal, cancelledError).then(
     (config) => ({ config }),
     (cause: unknown) => ({ failure: failed('config', cause) }),
   );
@@ -134,8 +135,11 @@ export async function doctor(options: DoctorOptions): Promise<DoctorReport> {
     ...(config.configPath === undefined ? {} : { path: config.configPath }),
     targets: targets.map((target) => ({ name: target.name, platform: target.platform, ...(target.engine === undefined ? {} : { engine: target.engine.name }) })),
   });
-  for (const target of targets) checks.push(...(await engineChecks(target, config, options)));
-  checks.push(...(await modelChecks(config, options)));
+  for (const target of targets) {
+    if (options.signal.aborted) return doctorReport(options.version, checks);
+    checks.push(...(await engineChecks(target, config, options)));
+  }
+  if (!options.signal.aborted) checks.push(...(await modelChecks(config, options)));
   return doctorReport(options.version, checks);
 }
 
@@ -256,7 +260,8 @@ async function modelChecks(config: ResolvedConfig, options: DoctorOptions): Prom
       byOptions = new Map();
       calls.set(model.model, byOptions);
     }
-    const key = JSON.stringify(agent.providerOptions ?? null);
+    const key = callKey(agent);
+    if (key === undefined) return callModel(model, agent, options.signal);
     let pending = byOptions.get(key);
     if (pending === undefined) {
       pending = callModel(model, agent, options.signal);
@@ -265,8 +270,20 @@ async function modelChecks(config: ResolvedConfig, options: DoctorOptions): Prom
     return pending;
   };
   const checks: DoctorCheck[] = [];
-  for (const [name, agent] of agents) checks.push(await modelCheck(name, agent, sdk, options.checkModel ? call : undefined));
+  for (const [name, agent] of agents) {
+    if (options.signal.aborted) break;
+    checks.push(await modelCheck(name, agent, sdk, options.checkModel ? call : undefined));
+  }
   return checks;
+}
+
+/** What makes two agents' calls to one model the same call: their provider options and input limit. Undefined for options JSON cannot hold, which are never shared. */
+function callKey(agent: ResolvedAgentConfig): string | undefined {
+  try {
+    return JSON.stringify([agent.providerOptions ?? null, agent.maxInputTokens]);
+  } catch {
+    return undefined;
+  }
 }
 
 /**

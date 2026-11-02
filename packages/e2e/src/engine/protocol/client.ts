@@ -5,11 +5,12 @@
  * drives an engine in its own process. Nothing past this file knows the
  * difference.
  *
- * A handle opens at most two kinds of connection in one process, mirroring
- * where the harness calls an engine: a `run` connection per target from
- * `prepare` to `finish`, in the runner, and a `worker` connection from
- * `init` to `dispose`, in each worker. Neither shares state with the other,
- * exactly as a runner and its child-process workers share none.
+ * A handle opens three kinds of connection, mirroring where the harness
+ * calls an engine: a `run` connection per target from `prepare` to
+ * `finish`, in the runner; a `worker` connection from `init` to `dispose`,
+ * in each worker; and a `doctor` connection per target for `e2e doctor`'s
+ * one call. None shares state with another, exactly as a runner and its
+ * child-process workers share none.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';

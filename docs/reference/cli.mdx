@@ -996,7 +996,7 @@ bunx e2e doctor --target web --headed
 | `--config <path>` | As for [`run`](#flags). |
 | `--target <ids>` | Checks only these targets. As for [`run`](#flags). |
 | `--headed` | Checks for what a headed run needs, such as the full Chromium build instead of the headless shell. |
-| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt and the agent's provider options. Agents that share a model and equal provider options share the call. A reply that isn't the JSON asked for, or a refusal, still counts as an answer. |
+| `--check-model` | Calls each agent's model, and its judge when that is a different model, once with a short prompt and the agent's provider options. Agents that share a model, equal provider options, and `maxInputTokens` share the call. A reply that isn't the JSON asked for, or a refusal, still counts as an answer. |
 | `--reporter <id>` | `list` or `json`. Default: `list`. |
 
 | Check | Status |
@@ -1015,7 +1015,7 @@ bunx e2e doctor --target web --headed
 | --- | --- |
 | 0 | No check failed. `warn`, `skip`, and `unknown` never fail. |
 | 2 | At least one check failed. |
-| 130 | Interrupted with Ctrl-C or SIGTERM. The checks stop and the report is printed; an engine or model check that was cut short is `fail` with `CANCELLED`. A third Ctrl-C exits at once. |
+| 130 | Interrupted with Ctrl-C or SIGTERM. The checks stop and the report is printed: the check that was cut short is `fail` with `CANCELLED`, and the checks after it are left out. A third Ctrl-C exits at once. |
 
 #### `e2e cache`
 

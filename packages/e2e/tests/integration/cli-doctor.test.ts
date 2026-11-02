@@ -186,7 +186,7 @@ describe('e2e doctor', () => {
   it('makes one call for agents with equal provider options, and counts a refusal as an answer', () => {
     const files = {
       'e2e.config.ts': config(
-        "agents: { default: { model: counted, providerOptions: { scripted: { effort: 'low' } } }, twin: { model: counted, providerOptions: { scripted: { effort: 'low' } } }, shy: { model: refusing } },",
+        "agents: { default: { model: counted, providerOptions: { scripted: { effort: 'low' } } }, twin: { model: counted, providerOptions: { scripted: { effort: 'low' } } }, narrow: { model: counted, providerOptions: { scripted: { effort: 'low' } }, maxInputTokens: 50000 }, shy: { model: refusing } },",
       ),
     };
     const project = createProject(files);
@@ -202,9 +202,10 @@ describe('e2e doctor', () => {
     expect(report.checks.filter((check) => check.id === 'model').map(({ agent, status }) => ({ agent, status }))).toEqual([
       { agent: 'default', status: 'pass' },
       { agent: 'twin', status: 'pass' },
+      { agent: 'narrow', status: 'pass' },
       { agent: 'shy', status: 'pass' },
     ]);
-    expect(readFileSync(path.join(project.dir, 'calls'), 'utf8')).toBe('call\n');
+    expect(readFileSync(path.join(project.dir, 'calls'), 'utf8')).toBe('call\ncall\n');
   });
 
   it('stops the checks at Ctrl-C, reports them, and exits 130', async () => {
@@ -219,10 +220,22 @@ describe('e2e doctor', () => {
     child.stderr.on('data', (chunk: Buffer) => {
       if (chunk.toString().includes('[checked] checking')) child.kill('SIGINT');
     });
-    const code = await new Promise<number | null>((resolve) => child.once('exit', resolve));
+    const code = await new Promise<number | null>((resolve) => child.once('close', resolve));
     expect(code).toBe(130);
     const report = JSON.parse(stdout) as DoctorReport;
     expect(report.checks.find((check) => check.target === 'checked')).toMatchObject({ id: 'engine', status: 'fail', code: 'CANCELLED' });
+  });
+
+  it('reports a config still loading at Ctrl-C as cancelled', async () => {
+    const project = createProject({ 'e2e.config.ts': "process.stderr.write('loading\\n');\nawait new Promise((resolve) => setTimeout(resolve, 60_000));\nexport default {};\n" });
+    projects.push(project);
+    const child = spawn(process.execPath, [CLI, 'doctor', '--reporter', 'json'], { cwd: project.dir, env: { ...process.env, CI: '', NO_COLOR: '1' } });
+    let stdout = '';
+    child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    setTimeout(() => child.kill('SIGINT'), 2000);
+    const code = await new Promise<number | null>((resolve) => child.once('close', resolve));
+    expect(code).toBe(130);
+    expect((JSON.parse(stdout) as DoctorReport).checks.at(-1)).toMatchObject({ id: 'config', status: 'fail', code: 'CANCELLED' });
   });
 
   it('checks the stored login of a subscription model without calling it', () => {
