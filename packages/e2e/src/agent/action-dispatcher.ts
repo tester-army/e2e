@@ -18,7 +18,7 @@ import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { ActionEvent, ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
-import { actionGeometry, containerKey, describeAction, type PlacedPoint, type Placement, type RecordableAction } from './actions.ts';
+import { actionEvent, containerKey, describeAction, type PlacedPoint, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
 import { appNavigation } from '../cache/route.ts';
 import { isTapActionName, type NodeActionName, type PointActionName, type RecordedAction } from '../cache/trace.ts';
@@ -364,7 +364,7 @@ export class ActionDispatcher {
       const value = await instrumentPhase(this.runtime, { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name }, body);
       if (call.mutates) {
         this.armAfter('tool');
-        await this.notify('tool', () => ({ action: name, summary: `ran ${call.name}` }));
+        await this.notify('tool', (fields) => ({ ...fields, action: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`, summary: `ran ${call.name}` }));
       }
       return value;
     };
@@ -674,11 +674,7 @@ export class ActionDispatcher {
     }
     this.armAfter(action.name);
     this.recordTrace(action);
-    await this.notify(action.name, () => ({
-      action: action.name,
-      summary: describeAction(action, redaction).summary,
-      ...actionGeometry(action),
-    }));
+    await this.notify(action.name, (fields) => actionEvent(action, { ...fields, summary: describeAction(action, redaction).summary }));
   }
 
   /** Writes a committed action to the step's trace cache, when caching is on. */
@@ -711,16 +707,17 @@ export class ActionDispatcher {
    * on, the settle's or the hook's, hard-stops the step instead of reaching
    * the executor as a failed action to retry, or the replay as a divergence.
    */
-  private async notify(kind: RecordedAction['name'], event: () => Omit<ActionEvent, 'index' | 'source'>): Promise<void> {
+  private async notify(kind: RecordedAction['name'], event: (fields: Pick<ActionEvent, 'index' | 'source'>) => ActionEvent): Promise<void> {
     const hook = this.options.onAction;
     if (hook === undefined || this.accounting.closed) return;
     await this.invokeHook('onAction', async () => {
       await this.feed.settleNow(SETTLE_AFTER[kind].look);
-      await hook({
-        index: this.accounting.metrics.actionSteps,
-        ...event(),
-        source: this.accounting.replayingTrace ? 'replay' : 'model',
-      });
+      await hook(
+        event({
+          index: this.accounting.metrics.actionSteps,
+          source: this.accounting.replayingTrace ? 'replay' : 'model',
+        }),
+      );
     });
   }
 

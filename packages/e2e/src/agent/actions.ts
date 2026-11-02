@@ -24,7 +24,7 @@ import {
 import { sanitizeText } from '../internal/errors.ts';
 import type { KeyModifier } from '../engine/contract.ts';
 import { bound, collapseText } from '../internal/text.ts';
-import type { ActionEvent, ScrollDirection } from '../types.ts';
+import type { ActionDetails, ActionEvent, ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
@@ -209,17 +209,41 @@ const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, (where: string) => stri
 /** How each point verb reads: `tap the point (x, y)`, `hover over the point (x, y)`. */
 const POINT_ACTION_PROSE: Readonly<Record<PointActionName, string>> = { tapAt: 'tap', hoverAt: 'hover over' };
 
-/** Copies dispatched coordinates for observers without sharing the recorder's points. */
-export function actionGeometry(action: RecordableAction): Pick<ActionEvent, 'point' | 'from' | 'to'> {
-  switch (action.name) {
-    case 'tapAt':
-    case 'hoverAt':
-      return { point: { ...action.point } };
-    case 'dragAt':
-      return { from: { ...action.from.point }, to: { ...action.to.point } };
-    default:
-      return {};
-  }
+/** What every `onAction` event carries, whatever its action. */
+type ActionEventFields = Pick<ActionEvent, 'index' | 'summary' | 'source'>;
+
+/**
+ * The `onAction` event of each action that has `ActionDetails`. Points are
+ * copied, so a hook that mutates them cannot move what the trace cache records.
+ */
+const DETAILED_EVENTS: {
+  readonly [A in keyof ActionDetails]: (
+    action: RecordableAction & { readonly name: A },
+    fields: ActionEventFields,
+  ) => Extract<ActionEvent, { readonly action: A }>;
+} = {
+  tapAt: (action, fields) => ({ ...fields, action: action.name, point: { ...action.point } }),
+  hoverAt: (action, fields) => ({ ...fields, action: action.name, point: { ...action.point } }),
+  dragAt: (action, fields) => ({ ...fields, action: action.name, from: { ...action.from.point }, to: { ...action.to.point } }),
+};
+
+/** Whether `onAction` reports `ActionDetails` for the action. */
+function isDetailed(action: RecordableAction): action is RecordableAction & { readonly name: keyof ActionDetails } {
+  return Object.hasOwn(DETAILED_EVENTS, action.name);
+}
+
+/** The event of one action whose name has details. */
+function detailedEvent<A extends keyof ActionDetails>(
+  name: A,
+  action: RecordableAction & { readonly name: A },
+  fields: ActionEventFields,
+): ActionEvent {
+  return DETAILED_EVENTS[name](action, fields);
+}
+
+/** The `onAction` event for one committed action. */
+export function actionEvent(action: RecordableAction, fields: ActionEventFields): ActionEvent {
+  return isDetailed(action) ? detailedEvent(action.name, action, fields) : { ...fields, action: action.name };
 }
 
 /**

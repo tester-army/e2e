@@ -11,6 +11,9 @@ import {
   secrets,
   unique,
   test,
+  type ActionDetails,
+  type ActionEvent,
+  type ActionName,
   type Agent,
   type App,
   type ArtifactStore,
@@ -580,14 +583,26 @@ await agent.act('open billing', { onBeforeAction: async event => {
   event.target;
 } });
 await agent.act('tap and drag the pin', { onAction: event => {
-  event.point satisfies { readonly x: number; readonly y: number } | undefined;
-  event.from satisfies { readonly x: number; readonly y: number } | undefined;
-  event.to satisfies { readonly x: number; readonly y: number } | undefined;
-  // @ts-expect-error node-ID and non-pointer actions need not expose coordinates
-  event.point.x;
-  // @ts-expect-error hook coordinates are read-only
-  if (event.from) event.from.x = 1;
+  // @ts-expect-error details exist only once `action` is narrowed
+  event.point;
+  if (event.action === 'tapAt' || event.action === 'hoverAt') event.point satisfies { readonly x: number; readonly y: number };
+  if (event.action === 'dragAt') {
+    event.from satisfies { readonly x: number; readonly y: number };
+    event.to satisfies { readonly x: number; readonly y: number };
+    // @ts-expect-error hook coordinates are read-only
+    event.from.x = 1;
+  }
+  if (event.action === 'tap') {
+    // @ts-expect-error node-ID actions carry no coordinates
+    event.point;
+  }
+  if (event.action.startsWith('tool:')) event.summary satisfies string;
+  // @ts-expect-error action names are the committed actions'
+  if (event.action === 'tap_at') return;
 } });
+({ point: { x: 1, y: 2 } }) satisfies ActionDetails['tapAt'];
+'tapAt' satisfies ActionName;
+'tool:seed' satisfies ActionEvent['action'];
 // @ts-expect-error the observer is a function
 await agent.act('open billing', { onBeforeAction: true });
 // @ts-expect-error assertions have no before-action observer
