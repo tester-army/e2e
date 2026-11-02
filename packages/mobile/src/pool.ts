@@ -57,7 +57,8 @@ export function deviceSelection(
 /** The agent-device session slot `slot` of a target drives: the `session` option or `e2e-<target>`, then `-<slot>`. */
 type SessionNamer = (targetName: string, slot: number) => string;
 
-function isDeviceList(device: unknown): device is readonly string[] {
+/** Whether the `device` option names a pool of devices rather than one device or a provider. */
+export function isDeviceList(device: unknown): device is readonly string[] {
   return Array.isArray(device);
 }
 

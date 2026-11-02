@@ -27,6 +27,7 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     ...(surface.pool.size === undefined ? {} : { workers: surface.pool.size }),
     prepare: (info) => surface.pool.prepare(info),
     finish: (info) => surface.pool.finish(info),
+    doctor: (info) => surface.doctor(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),

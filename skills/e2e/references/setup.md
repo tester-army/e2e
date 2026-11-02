@@ -311,7 +311,7 @@ For an app started elsewhere, point `app.url` at it, literally or via
 phones through [agent-device](https://github.com/callstack/agent-device);
 needs Xcode with a simulator runtime or the Android SDK with an emulator (a
 phone needs Xcode with Developer Mode and runner signing, or adb with USB
-debugging authorized); run `npx agent-device doctor` once. Name a phone in `device` by the name
+debugging authorized); run `npx e2e doctor` to check it. Name a phone in `device` by the name
 `npx agent-device devices` lists, not its UDID or serial. On an iPhone, device
 settings (permissions, `clearState`, network, location, appearance,
 biometrics, keychain) and the clipboard are simulator-only.

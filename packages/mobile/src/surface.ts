@@ -26,6 +26,8 @@ import {
   withinCleanupBudget,
   type EngineAttemptContext,
   type EngineCleanupContext,
+  type EngineDoctorCheck,
+  type EngineDoctorInfo,
   type EngineInitInfo,
   type EngineObserveOptions,
   type EngineSnapshot,
@@ -61,6 +63,7 @@ import {
 import { keyboardDragStart } from './keyboard.ts';
 import { DEVICE_PERMISSIONS, type AgentDeviceClient, type ClientFactory, type DevicePermission, type LaunchPermissions, type MobileOptions, type PermissionState } from './options.ts';
 import { maskPng } from './png.ts';
+import { mobileDoctor } from './doctor.ts';
 import { deviceLabel, pinnedApp, type SlotBinding } from './bindings.ts';
 import { assertAppId } from './links.ts';
 import { DevicePool, deviceSelection, type DeviceSelection } from './pool.ts';
@@ -461,6 +464,11 @@ export class AgentDeviceSurface {
   /** Whether the target pins an app for `app.open()`, `app.restart()`, and `app.clearState()` to launch. */
   private get managesApp(): boolean {
     return this.app.bundleId !== undefined || this.app.appPath !== undefined;
+  }
+
+  /** The checks of `e2e doctor`, under the session a run's first slot uses; see `mobileDoctor`. */
+  doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    return mobileDoctor(this.options, this.createClient, this.pool.session(info.targetName, 0), info);
   }
 
   /** The app `app.open()` launches: the target's `bundleId`, else the app its build `appPath` installed. */
