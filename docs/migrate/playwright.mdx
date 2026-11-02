@@ -86,7 +86,8 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `use.colorScheme`, `use.reducedMotion` | `web({ colorScheme, reducedMotion })` | renamed |
 | `use.userAgent` | `web({ userAgent })` | renamed |
 | `devices['iPhone 15']`, `deviceScaleFactor`, `isMobile`, `hasTouch` | `web({ viewport })` sets the size only | missing |
-| `geolocation`, `permissions`, `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | missing |
+| `use.permissions` | `app.permissions` on the target, `{ 'clipboard-read': 'grant' }`: `grant` only, held by every page on any origin, see [Granting browser permissions](/web#granting-browser-permissions) | renamed |
+| `geolocation` (the position; the permission is `app.permissions` above), `ignoreHTTPSErrors`, `bypassCSP`, `offline`, `launchOptions`, `proxy` | not yet | missing |
 
 ## Rewrite one spec
 
