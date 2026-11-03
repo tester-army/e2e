@@ -1,0 +1,193 @@
+---
+title: E2B
+sidebarTitle: E2B
+description: Run Android targets and web targets in E2B sandboxes with the e2b() and e2bBrowsers() providers from @e2e-dev/e2b.
+---
+
+`@e2e-dev/e2b` runs your targets in [E2B](https://e2b.dev) sandboxes:
+Android 16 with `e2b()`, a [device provider](/mobile#hosted-devices), and
+Chromium with `e2bBrowsers()` from `@e2e-dev/e2b/web`, a
+[browser provider](/browser#hosted-browsers). Your tests stay the same.
+
+## Authenticate
+
+Set `E2B_API_KEY` in the environment that starts e2e. In CI, store it as
+a secret. Copy the key from the [E2B dashboard](https://e2b.dev/dashboard).
+For a dedicated E2B cluster, also set `E2B_DOMAIN`. Without a key, the
+provider fails with `INVALID_CONFIG`.
+
+## Run Android targets
+
+Each worker gets its own Android sandbox. The provider installs your
+`.apk` through agent-device, the same way `device.installApp()` does, and
+deletes the sandbox when the run ends. A sandbox is ready in about 15 to 30 seconds.
+
+<Tip>
+No Android SDK, emulator, or `adb` on the machine that runs e2e.
+</Tip>
+
+Install the integration alongside the mobile engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/e2b e2b
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/mobile @e2e-dev/e2b e2b
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/mobile @e2e-dev/e2b e2b
+```
+</CodeGroup>
+
+Set the target's `device` to `e2b()`:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { e2b } from '@e2e-dev/e2b';
+
+export default {
+  targets: [
+    {
+      name: 'android',
+      engine: mobile({ platform: 'android', device: e2b() }),
+      app: { bundleId: 'com.example.app', appPath: 'build/app-debug.apk' },
+    },
+  ],
+  workers: 4,
+} satisfies E2EConfig;
+```
+
+`bundleId` is optional: without it, `app.open()` opens the package that
+agent-device reports for the `.apk`.
+
+## Run web targets in browsers
+
+Each worker gets its own Chromium sandbox, and every attempt gets a new
+browser context in it, as in a local run. With `scope: 'attempt'`, every
+attempt gets a new sandbox instead
+([limits of that scope](/browser#pick-a-lease-scope)).
+
+Install the integration alongside the web engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/web @e2e-dev/e2b e2b
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/web @e2e-dev/e2b e2b
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/web @e2e-dev/e2b e2b
+```
+</CodeGroup>
+
+Build the browser template once, from the Playwright image. Use the image
+tag of the Playwright version your `@e2e-dev/web` uses, and give the
+template at least 2 GB of memory:
+
+```ts title="build-template.ts"
+import { Template, defaultBuildLogger } from 'e2b';
+
+const template = Template().fromImage('mcr.microsoft.com/playwright:v1.64.1-noble');
+await Template.build(template, 'e2e-chromium', {
+  cpuCount: 4,
+  memoryMB: 4096,
+  onBuildLogs: defaultBuildLogger(),
+});
+```
+
+Then set the target's `browser` to `e2bBrowsers()`. If you named the
+template something else, pass the name as `template`:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { e2bBrowsers } from '@e2e-dev/e2b/web';
+
+export default {
+  targets: [
+    {
+      name: 'e2b-web',
+      engine: web({ browser: e2bBrowsers() }),
+      app: { url: 'https://staging.example.com' },
+    },
+  ],
+  workers: 4,
+} satisfies E2EConfig;
+```
+
+The browser runs in E2B's cloud, so `app.url` must be reachable from the
+internet, not only from `localhost`.
+
+## Android options
+
+| Option      | Default        | Meaning |
+| ----------- | -------------- | ------- |
+| `template`  | `'android-16'` | Sandbox template that boots Android. |
+| `timeoutMs` | `3600000` (1 hour) | Sandbox lifetime. E2B kills the sandbox after it, even when the run is still using it. |
+
+## Browser options
+
+| Option      | Default          | Meaning |
+| ----------- | ---------------- | ------- |
+| `template`  | `'e2e-chromium'` | Sandbox template with Playwright's Chromium. |
+| `scope`     | `'worker'`       | `'worker'`: one sandbox per worker slot for the run. `'attempt'`: a new sandbox for every attempt. |
+| `timeoutMs` | `3600000` (1 hour) | Sandbox lifetime. E2B kills the sandbox after it, even when the run is still using it. |
+
+An unknown option or an invalid value fails with `INVALID_CONFIG` when
+the config loads.
+
+## How the sandboxes stay private
+
+Every sandbox refuses public traffic. E2B only answers requests that carry
+the sandbox's access token. The provider opens a local tunnel on
+`127.0.0.1` that adds the token, so the token never shows up in a log, a
+report, or an error.
+
+In a browser sandbox, Chromium's DevTools listens on the sandbox's
+loopback, and E2B forwards the tunnel's requests to it. Chromium refuses a
+request whose `Host` is not `localhost`, so the provider asks E2B to rewrite
+`Host` to `localhost` on each request it forwards (`maskRequestHost`).
+Nothing else runs next to Chromium, so the sandbox's traffic token is the
+one secret that gives control of the browser. It stays in the tunnel on
+your machine, which answers only requests addressed to it. As with a local
+Chromium, any program on your machine can use the tunnel while the run
+holds the lease.
+
+The provider takes its E2B settings only from the run's environment:
+`E2B_API_KEY`, `E2B_DOMAIN`, `E2B_API_URL`, and `E2B_SANDBOX_URL`. The
+E2B SDK also reads `E2B_SANDBOX_URL` from the shell that starts e2e, so the
+lease fails with `INVALID_CONFIG` when that shell sets it to a different
+value than the run's environment.
+
+## Limits
+
+- **Android only.** E2B has no iOS sandboxes, so `e2b()` refuses an iOS
+  target.
+- **Android image.** Android 16 on E2B is x86_64 only, without Google Play
+  Services, and renders in software. Apps with native libraries need x86_64
+  builds; see [E2B's Android page](https://e2b.dev/docs/use-cases/android).
+  The provider installs an `.apk`, not an `.aab`.
+- **Billing.** A sandbox is billed while it runs. Android sandboxes and
+  worker-scope browser sandboxes run from the start of the run to its end,
+  even while no test uses them; an attempt-scope browser sandbox runs only
+  for its attempt.
+- **Stopped runs.** If the runner is killed before it deletes a sandbox,
+  E2B deletes it when `timeoutMs` ends.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Hosted devices" icon="mobile" href="/mobile#hosted-devices">
+    How a device provider leases devices.
+  </Card>
+  <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
+    How a browser provider leases browsers.
+  </Card>
+</CardGroup>
