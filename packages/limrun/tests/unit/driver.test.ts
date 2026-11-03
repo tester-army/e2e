@@ -18,5 +18,5 @@ it.each(['ios', 'android'] as const)('uses the requested %s app when installatio
   const sent = new Promise<unknown>((resolve) => { complete = resolve; });
   vi.spyOn(process, 'send').mockImplementation((message) => { complete(message); return true; });
   listener({ stateDir: '/daemon', runId: 'run', slot: 0, platform, app: 'com.example.app', appPath: '/build' });
-  await expect(sent).resolves.toMatchObject({ binding: { installedApp: 'com.example.app' } });
+  await expect(sent).resolves.toMatchObject({ binding: { installedApp: 'com.example.app', client: { session: expect.stringMatching(/^e2e-lease-[0-9a-f]{8}$/) } } });
 });

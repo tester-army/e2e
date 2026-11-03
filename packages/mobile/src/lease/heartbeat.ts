@@ -1,11 +1,12 @@
 import { createAgentDeviceClient, type LeaseScopedOptions } from 'agent-device';
+import { leaseSession } from './session.ts';
 
 export const LEASE_TTL_MS = 60_000;
 
 /** Renew idle leases while other targets run; session retention alone does not prevent expiry. */
 export async function startHeartbeat(stateDir: string, scope: LeaseScopedOptions, log: (line: string) => void): Promise<() => Promise<void>> {
   // An explicit empty URL selects the local stateDir instead of an ambient remote daemon.
-  const client = createAgentDeviceClient({ stateDir, daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
+  const client = createAgentDeviceClient({ stateDir, session: leaseSession(stateDir), daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
   const controller = new AbortController();
   const beat = () => client.leases.heartbeat({ ...scope, ttlMs: LEASE_TTL_MS, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]) });
   await beat();
