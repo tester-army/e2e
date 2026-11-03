@@ -124,6 +124,26 @@ export function indexExpression(
 }
 
 /**
+ * The prefixes of a filtered locator's chain, innermost first: the base and
+ * every `filter` or `index` step applied over it. Empty when the chain has
+ * no filter step, since a plain query, selector, or frame has no step a
+ * candidate count can explain. A union at the base counts once like any other
+ * base; the walk stops there and never descends into its two sides.
+ */
+export function filterSpine(expression: LocatorExpression): LocatorExpression[] {
+  const steps: LocatorExpression[] = [];
+  let current = expression;
+  let filtered = false;
+  while (current.kind === 'filter' || current.kind === 'index') {
+    if (current.kind === 'filter') filtered = true;
+    steps.push(current);
+    current = current.source;
+  }
+  if (!filtered) return [];
+  return [current, ...steps.toReversed()];
+}
+
+/**
  * What an expression asks for, as the facts a failure report keeps beside
  * the rendered locator: the role and name of a role query, the text a label,
  * placeholder, text, or value query looks for, or a string test id (a
