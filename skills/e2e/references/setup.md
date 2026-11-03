@@ -361,7 +361,7 @@ export default {
 - `device` can be a `DeviceProvider` leasing hosted devices, one per worker
   slot: `expoSimulators({ buildId })` from `@e2e-dev/eas` takes the project
   from the app config's `extra.eas.projectId` (`projectId` overrides), reads
-  `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` EAS installs
+  `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` Expo installs
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.

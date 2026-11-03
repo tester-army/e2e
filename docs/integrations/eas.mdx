@@ -11,11 +11,11 @@ icon: "/images/icons/expo.svg"
 [device provider](/mobile#hosted-devices) for
 [Expo Simulators](https://expo.dev/services/simulators): hosted iOS
 simulators and Android emulators. The engine drives each one through the
-agent-device daemon that EAS runs beside it, so the machine that runs e2e
+agent-device daemon that Expo runs beside it, so the machine that runs e2e
 needs no Mac, Xcode, or Android SDK.
 
 <Note>
-To run e2e in EAS's CI service instead, see [EAS Workflows](/ci/eas-workflows).
+To run e2e in Expo's CI service instead, see [Expo Workflows](/ci/eas-workflows).
 </Note>
 
 ## Setup
@@ -112,8 +112,8 @@ The simulator boots with no apps. Choose one way to put yours on it:
 
 | Way | `expoSimulators()` | Target's `app` |
 | --- | --- | --- |
-| An EAS Build | `buildId`: a simulator build (`"ios": { "simulator": true }` in `eas.json`) or an APK. EAS installs and launches it before the session is ready. The build never leaves EAS. | `bundleId`, so `app.open()` knows what to launch. No `appPath`, or the lease fails. |
-| A URL | `applicationArchiveUrl`: an app archive that EAS downloads and installs the same way. | `bundleId`, no `appPath`. |
+| A build from Expo Build | `buildId`: a simulator build (`"ios": { "simulator": true }` in `eas.json`) or an APK. Expo installs and launches it before the session is ready. The build never leaves Expo. | `bundleId`, so `app.open()` knows what to launch. No `appPath`, or the lease fails. |
+| A URL | `applicationArchiveUrl`: an app archive that Expo downloads and installs the same way. | `bundleId`, no `appPath`. |
 | A local build | Neither option. | `bundleId`, `appPath`, and a fixture that calls `device.installApp()`, as with a [local simulator](/mobile). The build uploads through the session's daemon to each simulator. |
 
 ## Options
@@ -123,9 +123,9 @@ The simulator boots with no apps. Choose one way to put yours on it:
 | `projectId`             | the app config's | See [Link the Expo project](#link-the-expo-project). |
 | `buildId`               | none        | See [Install the app](#install-the-app). |
 | `applicationArchiveUrl` | none        | See [Install the app](#install-the-app). |
-| `device`                | EAS's pick  | iOS device name or UDID (`'iPhone 17 Pro'`), or an Android AVD hardware profile (`'pixel_9'`). |
-| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command before EAS stops the session, which also stops the sessions of a run that died. A shorter `maxDurationMinutes` lowers the default to one less. |
-| `maxDurationMinutes`    | account cap | Minutes a session can run after it is ready. EAS caps it at 40, or 115 on a high-priority plan. |
+| `device`                | Expo's pick | iOS device name or UDID (`'iPhone 17 Pro'`), or an Android AVD hardware profile (`'pixel_9'`). |
+| `maxIdleTimeMinutes`    | `10`        | Minutes without an agent-device command before Expo stops the session, which also stops the sessions of a run that died. A shorter `maxDurationMinutes` lowers the default to one less. |
+| `maxDurationMinutes`    | account cap | Minutes a session can run after it is ready. Expo caps it at 40, or 115 on a high-priority plan. |
 | `agentDeviceVersion`    | the engine's | The agent-device version of the session's daemon. The default matches the client that `@e2e-dev/mobile` pins. |
 | `tags`                  | `[]`        | Tags on every session, beside the run's own. |
 
@@ -141,20 +141,20 @@ files. They start in parallel before the run's clock starts, and take about
 three minutes each (queue, boot, build install). Tests start when all are
 ready.
 
-A run must fit in one session, because EAS stops a session
+A run must fit in one session, because Expo stops a session
 `maxDurationMinutes` after it is ready. Split a longer suite across more
 workers or CI jobs.
 
-EAS queues sessions beyond the account's concurrency limit. No session ends
-before the run does, so keep `workers` times the number of EAS targets
+Expo queues sessions beyond the account's concurrency limit. No session ends
+before the run does, so keep `workers` times the number of Expo targets
 within that limit:
 
 - A session still queued after two minutes logs
-  `still queued at EAS after two minutes`.
+  `still queued at Expo after two minutes`.
 - Targets prepare one after another, so one target's ready sessions idle
   while the next target's queue and boot.
 - A session still queued when another has been ready for
-  `maxIdleTimeMinutes` fails the lease, because EAS may be stopping the idle
+  `maxIdleTimeMinutes` fails the lease, because Expo may be stopping the idle
   one. The run then stops
   every session.
 
@@ -184,7 +184,7 @@ directory.
 
 Set the mobile engine's `videoTouches: false`, as in [Setup](#setup).
 agent-device draws touches into a recording when it stops, which takes
-minutes on an EAS iOS simulator. The attempt then runs out its
+minutes on an Expo iOS simulator. The attempt then runs out its
 `cleanupTimeout` and keeps no file. Without touches, the stop takes about
 two seconds.
 
@@ -197,7 +197,7 @@ queued too long (see [Sessions](#sessions)), or still boots 15 minutes after
 it leaves the queue.
 
 The provider stops the failed session and the run's other sessions. It
-cancels the job of a queued one, so EAS doesn't start it later and bill the
+cancels the job of a queued one, so Expo doesn't start it later and bill the
 account.
 
 ## Next
@@ -206,7 +206,7 @@ account.
   <Card title="Hosted devices" icon="mobile" href="/mobile#hosted-devices">
     How a device provider leases devices, and how to write your own.
   </Card>
-  <Card title="EAS Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
-    Run the suite in an EAS workflow.
+  <Card title="Expo Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
+    Run the suite in an Expo workflow.
   </Card>
 </CardGroup>

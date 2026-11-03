@@ -8,7 +8,7 @@ import { EXPO_TOKEN, expoCredentials } from './credentials.ts';
 import { appConfigProjectId } from './project.ts';
 
 /**
- * EAS stops a session no agent-device command reached for this long: the
+ * Expo stops a session no agent-device command reached for this long: the
  * backstop for a run that died before the engine could release its lease.
  */
 const DEFAULT_MAX_IDLE_TIME_MINUTES = 10;
@@ -26,7 +26,7 @@ const STARTUP_TIMEOUT_MS = 15 * 60_000;
 const POLL_FAILURES_TOLERATED = 3;
 
 /**
- * When EAS stops each ready session a run holds for idling, by run and
+ * When Expo stops each ready session a run holds for idling, by run and
  * session id, across every `expoSimulators()` of the run: targets prepare one
  * after another in the runner process, so a target's ready sessions sit idle
  * while the next target's queue.
@@ -62,40 +62,41 @@ export interface ExpoSimulatorsOptions {
    */
   readonly projectId?: string | undefined;
   /**
-   * EAS Build EAS installs and launches on every simulator before the session
-   * is ready: a simulator build (`ios.simulator: true`) or an APK. Pair it
-   * with the target's `app.bundleId` and leave `app.appPath` out.
+   * A build from Expo Build that Expo installs and launches on every
+   * simulator before the session is ready: a simulator build
+   * (`ios.simulator: true`) or an APK. Pair it with the target's
+   * `app.bundleId` and leave `app.appPath` out.
    */
   readonly buildId?: string | undefined;
-  /** URL of an app archive EAS downloads and installs in place of an EAS Build; excludes `buildId`. */
+  /** URL of an app archive Expo downloads and installs in place of a build from Expo Build; excludes `buildId`. */
   readonly applicationArchiveUrl?: string | undefined;
-  /** Simulator to start: an iOS device name or UDID (`iPhone 17 Pro`), or an Android AVD hardware profile (`pixel_9`). Absent, EAS picks. */
+  /** Simulator to start: an iOS device name or UDID (`iPhone 17 Pro`), or an Android AVD hardware profile (`pixel_9`). Absent, Expo picks. */
   readonly device?: string | undefined;
   /**
-   * Minutes without an agent-device command after which EAS stops the
+   * Minutes without an agent-device command after which Expo stops the
    * session. Must be a non-negative integer; zero omits the idle limit.
    * Defaults to 10, or one less than `maxDurationMinutes` when that
-   * is shorter, since EAS wants it below the duration. A session still
+   * is shorter, since Expo wants it below the duration. A session still
    * queued once another session of the run has been ready for that one's
-   * limit fails the lease: EAS is stopping that one.
+   * limit fails the lease: Expo is stopping that one.
    */
   readonly maxIdleTimeMinutes?: number | undefined;
-  /** Non-negative integer minutes a session may run once ready before EAS stops it. Absent, the account's cap: 40, or 115 on a high-priority plan. */
+  /** Non-negative integer minutes a session may run once ready before Expo stops it. Absent, the account's cap: 40, or 115 on a high-priority plan. */
   readonly maxDurationMinutes?: number | undefined;
   /**
-   * The agent-device version EAS starts the session's daemon at. Defaults to
+   * The agent-device version Expo starts the session's daemon at. Defaults to
    * the one `@e2e-dev/mobile` pins, so the remote daemon answers as the
-   * engine's client expects; EAS otherwise starts the latest.
+   * engine's client expects; Expo otherwise starts the latest.
    */
   readonly agentDeviceVersion?: string | undefined;
-  /** Tags on every session, beside the run's own; EAS stores them lowercased. */
+  /** Tags on every session, beside the run's own; Expo stores them lowercased. */
   readonly tags?: readonly string[] | undefined;
 }
 
 /**
  * Expo Simulators for `mobile({ device: expoSimulators() })`: one hosted
  * simulator per worker slot, started when the run starts and stopped when it
- * ends, each driven through the agent-device daemon EAS runs beside it.
+ * ends, each driven through the agent-device daemon Expo runs beside it.
  * Every session is named after its target and slot and tagged with the run,
  * in the project `projectId` names or the app config links.
  * It authenticates with `EXPO_TOKEN` from the run's environment, else with
@@ -114,10 +115,10 @@ export function expoSimulators(options: ExpoSimulatorsOptions = {}): DeviceProvi
     throw new ConfigurationError('INVALID_CONFIG', 'expoSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
   }
   if (options.maxIdleTimeMinutes !== undefined && maxDurationMinutes !== undefined && options.maxIdleTimeMinutes >= maxDurationMinutes) {
-    throw new ConfigurationError('INVALID_CONFIG', 'expoSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as EAS requires');
+    throw new ConfigurationError('INVALID_CONFIG', 'expoSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as Expo requires');
   }
   const idleMinutes = options.maxIdleTimeMinutes ?? (maxDurationMinutes === undefined ? DEFAULT_MAX_IDLE_TIME_MINUTES : Math.min(DEFAULT_MAX_IDLE_TIME_MINUTES, maxDurationMinutes - 1));
-  // EAS takes no idle limit of zero; a session that short runs to its duration.
+  // Expo takes no idle limit of zero; a session that short runs to its duration.
   const maxIdleTimeMinutes = idleMinutes >= 1 ? idleMinutes : undefined;
   const projectIdFor = (request: DeviceRequest): Promise<string> => {
     if (projectId !== undefined) return Promise.resolve(projectId);
@@ -153,12 +154,12 @@ export function expoSimulators(options: ExpoSimulatorsOptions = {}): DeviceProvi
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
       request.signal.throwIfAborted();
       if (request.appPath !== undefined && (buildId !== undefined || applicationArchiveUrl !== undefined)) {
-        throw new Error("EAS installs the app from `buildId` or `applicationArchiveUrl`; leave the target's `app.appPath` out");
+        throw new Error("Expo installs the app from `buildId` or `applicationArchiveUrl`; leave the target's `app.appPath` out");
       }
       const appId = await projectIdFor(request);
       const client = await clientFor(request.env);
       request.signal.throwIfAborted();
-      // Not the request's signal: an interrupt that lands after EAS created the session would leave it unknown, and billed.
+      // Not the request's signal: an interrupt that lands after Expo created the session would leave it unknown, and billed.
       const created = await client.create(
         {
           appId,
@@ -189,10 +190,10 @@ export function expoSimulators(options: ExpoSimulatorsOptions = {}): DeviceProvi
         leaseClients.set(created.id, client);
         return { id: created.id, daemon: { baseUrl: session.daemonUrl, authToken: session.daemonToken } };
       } catch (cause) {
-        // EAS bills a session from the moment it starts, and the engine holds only leases `acquire` returned.
+        // Expo bills a session from the moment it starts, and the engine holds only leases `acquire` returned.
         const outcome = await client.stop(created.id, AbortSignal.timeout(10_000)).then(
           () => 'stopped it',
-          (stopCause: unknown) => `stopping it failed, so EAS stops it at its idle or duration limit (${stopCause instanceof Error ? stopCause.message : String(stopCause)})`,
+          (stopCause: unknown) => `stopping it failed, so Expo stops it at its idle or duration limit (${stopCause instanceof Error ? stopCause.message : String(stopCause)})`,
         );
         const reason = request.signal.aborted ? 'cancelled' : cause instanceof Error ? cause.message : String(cause);
         throw new Error(`simulator session ${created.id} did not become ready: ${reason}; ${outcome}, ${created.url}`, { cause });
@@ -221,7 +222,7 @@ export const easSimulators: (options?: ExpoSimulatorsOptions) => DeviceProvider 
  * it has queued for two minutes, and gives up when it is still queued once
  * another session of the run has idled to its limit, boots for longer than
  * eas-cli waits, ends, or the API fails several polls in a row. The idle
- * clock counts from ready: warm-up commands may reset it at EAS, so the give
+ * clock counts from ready: warm-up commands may reset it at Expo, so the give
  * up can come that much early, never late.
  */
 async function ready(client: EasSessions, id: string, request: DeviceRequest): Promise<Extract<EasSessionState, { phase: 'ready' }>> {
@@ -246,12 +247,12 @@ async function ready(client: EasSessions, id: string, request: DeviceRequest): P
     if (state.phase === 'queued') {
       if (now >= Math.min(...(idleDeadlines.get(request.runId)?.values() ?? []))) {
         throw new Error(
-          'still queued while another session of this run idled to its `maxIdleTimeMinutes`, where EAS stops it; lower `workers` or raise `maxIdleTimeMinutes`',
+          'still queued while another session of this run idled to its `maxIdleTimeMinutes`, where Expo stops it; lower `workers` or raise `maxIdleTimeMinutes`',
         );
       }
       if (!noticed && now - queuedSince >= QUEUE_NOTICE_MS) {
         noticed = true;
-        request.log('still queued at EAS after two minutes; tests start once every worker has a simulator');
+        request.log('still queued at Expo after two minutes; tests start once every worker has a simulator');
       }
     } else {
       startedAt ??= now;

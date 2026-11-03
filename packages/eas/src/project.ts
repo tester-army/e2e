@@ -22,7 +22,7 @@ const STATIC_CONFIGS = ['app.config.json', 'app.json'];
 /** How long `expo config` may evaluate a dynamic config; it takes about a second. */
 const EXPO_CONFIG_TIMEOUT_MS = 60_000;
 
-const PASS_IT = 'pass `projectId` to expoSimulators(), or run `eas init` to link the app to an EAS project';
+const PASS_IT = 'pass `projectId` to expoSimulators(), or run `eas init` to link the app to an Expo project';
 
 /**
  * `extra.eas.projectId` from the app config in `projectRoot`. A dynamic
