@@ -79,10 +79,16 @@ describe('buildPrompt', () => {
 describe('locationShape', () => {
   it('ignores a clock in a device title, as the screen shape does', () => {
     expect(locationShape(capture('com.example / Recording 00:12'))).toBe(locationShape(capture('com.example / Recording 00:13')));
+    // A title alone, when the app is unknown, can parse as a URL with a `timer:` scheme.
+    expect(locationShape(capture('Timer: 00:12'))).toBe(locationShape(capture('Timer: 00:13')));
   });
 
   it('tells two addresses apart', () => {
     expect(locationShape(capture('https://app.test/a'))).not.toBe(locationShape(capture('https://app.test/b')));
+  });
+
+  it('sees a time change in a URL, which names another page', () => {
+    expect(locationShape(capture('https://app.test/at/10:15'))).not.toBe(locationShape(capture('https://app.test/at/10:16')));
   });
 
   it('sees a change in the query', () => {

@@ -221,8 +221,9 @@ await agent.waitFor('the upload progress reports completion', { interval: 500 })
 - After a false or inconclusive judgment it waits out `interval`. Then it
   observes every 500 ms (or every `interval`, when shorter) without a model
   call. It judges again only once the screen or its location differs from the
-  one last judged, pixels included under `vision`, and the location left out
-  under `vision: 'only'`, which is not shown it.
+  one last judged, pixels included under `vision`. Under `vision: 'only'` a
+  location change alone does not count, since that mode is not shown the
+  location.
 - Judgments follow the [`agent.assert`](#agent-assert) rules: a value shown
   in more than one place holds only once every instance agrees.
 
@@ -452,7 +453,7 @@ await agent.assert('no overlay covers the checkout form', { vision: 'only' }); /
 | --- | --- |
 | `false`, the default | Semantic tree |
 | `true` | Semantic tree and a masked screenshot |
-| `'only'` | Masked screenshot only |
+| `'only'` | Masked screenshot only, no tree or location |
 
 Use `'only'` for visual checks, such as whether an overlay covers a form or a
 chart looks correct. Screenshots show the current viewport, so scroll to the

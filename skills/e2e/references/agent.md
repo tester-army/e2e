@@ -225,7 +225,8 @@ await agent.waitFor('the export finished and a download link appeared', { timeou
 
 - `waitFor` needs a model even under a custom executor and is never cached,
   so each run spends judgments on it. It judges again on every screen
-  or location change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  change, and on every location change except under `vision: 'only'`, up
+  to `maxModelCalls` (25): for a long wait on a screen that keeps
   changing (a progress counter), raise `interval`. The test timeout still
   caps its `timeout`.
 

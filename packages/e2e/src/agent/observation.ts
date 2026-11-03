@@ -311,20 +311,28 @@ function observationPath(location: string): string {
 export function judgedLocation(observation: AgentObservation, appOrigin: string | undefined): string | undefined {
   const { location } = observation;
   if (location === undefined) return undefined;
-  if (!URL.canParse(location)) return boundHref(location);
+  if (!isHttpUrl(location)) return boundHref(location);
   const url = new URL(location);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return boundHref(location);
   url.username = '';
   url.password = '';
   return boundHref(appLocation(url.href, appOrigin));
 }
 
 /**
- * The location a wait compares: what a judgment reads, and a clock in a
- * device's screen title is no change, as in `observationShape`.
+ * The location a wait compares: what a judgment reads. A clock in a device's
+ * screen title is no change, as in `observationShape`; an http(s) URL is
+ * compared as it is, since a time in its path or query names another page.
  */
 export function locationShape(observation: AgentObservation): string | undefined {
-  return judgedLocation(observation, undefined)?.replaceAll(CLOCK_PATTERN, '<time>');
+  const location = judgedLocation(observation, undefined);
+  return location === undefined || isHttpUrl(location) ? location : location.replaceAll(CLOCK_PATTERN, '<time>');
+}
+
+/** An http(s) address. A device's screen title such as `Timer: 00:12` parses as a URL too, so the scheme decides. */
+function isHttpUrl(location: string): boolean {
+  if (!URL.canParse(location)) return false;
+  const { protocol } = new URL(location);
+  return protocol === 'http:' || protocol === 'https:';
 }
 
 /** Phase metrics describe a node count only when the capture actually read nodes. */
