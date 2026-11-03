@@ -149,7 +149,11 @@ const RETIRED_JUDGMENT = JSON.parse(
 ) as Record<string, unknown>;
 const PROVIDER_OPTIONS = { fake: { reasoningEffort: 'low' } };
 
-/** The running app, so a scripted judgment can release a `/moves` page. */
+/**
+ * The running app. The scripted judgment of a `/moves` wait releases the page's
+ * move itself, so the URL changes only after the first judgment was asked,
+ * never before it: a release from the test would race that judgment.
+ */
 let fixture: FixtureApp;
 
 /** Scripted responder: judge and extract from the observation. */

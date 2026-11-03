@@ -332,7 +332,6 @@ export class Invocation {
           ...request.prompt,
           ...(this.options.params === undefined ? {} : { params: this.options.params }),
           titlePath: this.runtime.attempt.titlePath,
-          appOrigin: this.runtime.app.base?.origin,
           ...(this.treeWithheld ? { withholdTree: true } : {}),
           ...(repair === undefined
             ? {}

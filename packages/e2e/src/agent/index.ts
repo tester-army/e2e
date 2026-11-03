@@ -21,7 +21,7 @@ import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
-import { locationShape, observationShape, type AgentObservation } from './observation.ts';
+import { judgmentShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
   type AgentContext,
@@ -327,8 +327,13 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * same at the same location the answer is the same and re-asking is a model call
  * that can only repeat itself. So a false judgment is followed by engine-only
  * observations until one of them changes, which is also what makes a condition that
- * came true two seconds ago cost two seconds rather than a full interval. The location
- * is compared on its own, not as part of the shape, since a settle waits on the shape.
+ * came true two seconds ago cost two seconds rather than a full interval.
+ *
+ * The screen and the location the judge is shown are compared with
+ * `judgmentShape`. The location is not part of `observationShape`, because the
+ * settles after an action wait on that and must not treat an address change as
+ * the screen moving. Under `vision: 'only'` the judge is not shown the location,
+ * so it is not compared there either.
  *
  * `interval` stays the rate limit it always was: at most one judgment per
  * interval, so a screen that changes continuously — a spinner, a countdown —
@@ -353,8 +358,7 @@ async function waitForNextJudgment(
 ): Promise<AgentObservation> {
   const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
   const judgedAt = Date.now();
-  const judgedShape = observationShape(options.since);
-  const judgedLocationShape = locationShape(options.since);
+  const judgedShape = judgmentShape(options.since, { treeWithheld: invocation.treeWithheld });
   const timedOut = (cause?: unknown): AgentError =>
     new AgentError(
       'STEP_TIMEOUT',
@@ -385,9 +389,7 @@ async function waitForNextJudgment(
       throw cause;
     });
     if (Date.now() - judgedAt < options.intervalMs) continue;
-    if (observationShape(observation) !== judgedShape) return observation;
-    // A vision-only judgment is not shown the location, so a new one is no new evidence.
-    if (!invocation.treeWithheld && locationShape(observation) !== judgedLocationShape) return observation;
+    if (judgmentShape(observation, { treeWithheld: invocation.treeWithheld }) !== judgedShape) return observation;
   }
 }
 

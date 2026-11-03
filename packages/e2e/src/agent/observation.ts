@@ -49,6 +49,8 @@ interface AgentObservationMetadata {
   readonly location?: string;
   /** Location projected to path and query when it is a URL, otherwise kept opaque. */
   readonly path?: string;
+  /** The location as a judgment is shown it (`judgeLocation`). */
+  readonly judgedLocation?: JudgedLocation;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -84,7 +86,7 @@ export function prepareObservation(
   const path = location === undefined ? undefined : observationPath(location);
   const metadata = {
     revision: observation.revision,
-    ...(location === undefined ? {} : { location }),
+    ...(location === undefined ? {} : { location, judgedLocation: judgeLocation(location, options.appOrigin) }),
     ...(path === undefined ? {} : { path }),
     viewport: observation.viewport,
   };
@@ -299,6 +301,12 @@ function observationPath(location: string): string {
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+/** Where a capture is, as a judgment is shown it, and whether that is an http(s) address. */
+interface JudgedLocation {
+  readonly text: string;
+  readonly url: boolean;
+}
+
 /**
  * Where a capture is, as a judgment reads it: redacted, query and fragment
  * included, a path on the app's origin and the whole address off it
@@ -308,24 +316,27 @@ function observationPath(location: string): string {
  * target, so a long query cannot push a dense screen past the request's token
  * ceiling.
  */
-export function judgedLocation(observation: AgentObservation, appOrigin: string | undefined): string | undefined {
-  const { location } = observation;
-  if (location === undefined) return undefined;
-  if (!isHttpUrl(location)) return boundHref(location);
+function judgeLocation(location: string, appOrigin: string | undefined): JudgedLocation {
+  if (!isHttpUrl(location)) return { text: boundHref(location), url: false };
   const url = new URL(location);
   url.username = '';
   url.password = '';
-  return boundHref(appLocation(url.href, appOrigin));
+  return { text: boundHref(appLocation(url.href, appOrigin)), url: true };
 }
 
 /**
- * The location a wait compares: what a judgment reads. A clock in a device's
- * screen title is no change, as in `observationShape`; an http(s) URL is
- * compared as it is, since a time in its path or query names another page.
+ * What a judgment is shown, as a wait compares it: the screen's shape, and
+ * the location unless the tree is withheld, since `vision: 'only'` is not
+ * shown it (`buildPrompt`). A clock in a device's screen title is no change,
+ * as in `observationShape`; an http(s) URL is compared as it is, since a time
+ * in its path or query names another page.
  */
-export function locationShape(observation: AgentObservation): string | undefined {
-  const location = judgedLocation(observation, undefined);
-  return location === undefined || isHttpUrl(location) ? location : location.replaceAll(CLOCK_PATTERN, '<time>');
+export function judgmentShape(observation: AgentObservation, options: { readonly treeWithheld: boolean }): string | undefined {
+  const shape = observationShape(observation);
+  const location = observation.judgedLocation;
+  if (options.treeWithheld || location === undefined) return shape;
+  const where = location.url ? location.text : location.text.replaceAll(CLOCK_PATTERN, '<time>');
+  return `${shape ?? ''}\n<location ${where}>`;
 }
 
 /** An http(s) address. A device's screen title such as `Timer: 00:12` parses as a URL too, so the scheme decides. */

@@ -8,7 +8,7 @@
 
 import type { JsonValue } from '../types.ts';
 import type { ExecutorPixels } from './executor.ts';
-import { judgedLocation, type AgentObservation } from './observation.ts';
+import type { AgentObservation } from './observation.ts';
 
 /** Immutable agent policy version recorded in every model-backed step. */
 export const POLICY_VERSION = 'policy-0.3';
@@ -60,8 +60,6 @@ export interface PromptInput {
   /** The values the instruction refers to, projected and redacted; fenced with it. */
   readonly params?: Readonly<Record<string, JsonValue>> | undefined;
   readonly observation?: AgentObservation | undefined;
-  /** The app base URL's origin: a location on it reads as a path. */
-  readonly appOrigin?: string | undefined;
   /**
    * Leaves the attached screenshot as the only evidence in the request, for
    * `vision: 'only'`. The observation is still captured — the runner hit-tests
@@ -98,7 +96,7 @@ export function buildPrompt(input: PromptInput): string {
     if (input.withholdTree !== true) {
       sections.push(
         '',
-        `<observation revision="${observation.revision}"${locationAttribute(judgedLocation(observation, input.appOrigin))} viewport="${observation.viewport.width}x${observation.viewport.height}">`,
+        `<observation revision="${observation.revision}"${locationAttribute(observation.judgedLocation?.text)} viewport="${observation.viewport.width}x${observation.viewport.height}">`,
         observation.text,
         '</observation>',
       );
@@ -204,6 +202,7 @@ export const EXTRACT_REQUEST = [
   'Never fill a gap with a placeholder such as an empty string or 0.',
   'An instruction that says what to answer when the data is absent, such as "or null when none is shown", is answered by that: respond with "found": true and that value.',
   'Take every value from the observation as it reads; never invent data.',
+  'The observation\'s location is the address of the screen: take a value from it only when the instruction asks about the address or route.',
   'The value is checked against the caller\'s schema. An attached response schema gives the value\'s shape, its types and fields;',
   'the caller\'s rules on values, such as ranges, lengths, and patterns, are not shown. Without an attached schema, follow',
   'the shape the instruction implies. Rejections list the errors and the required field paths.',
