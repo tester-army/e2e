@@ -40,8 +40,11 @@ will not protect you from your own dependencies.
 Text, accessibility trees, and pixels from the app under test are quoted to
 the model as untrusted; the runner, not the model, decides what a tool call
 may do. Every model tool call is parsed into a closed schema and authorized
-right before dispatch. Unknown tools or fields, stale observation references,
-and denied destinations fail with `POLICY_DENIED`. Model text is never
+right before dispatch. Unknown tools or undeclared fields never run; the
+model reads the refusal as the call's result and can try again. A node id
+that cannot be resolved on the current screen fails with
+`LOCATOR_NOT_FOUND`. Policy refusals, such as a denied destination or a
+forbidden secret fill, fail with `POLICY_DENIED`. Model text is never
 evaluated as code, selectors, shell, or config.
 
 Secrets follow from that split. A `Secret` value never reaches model input,
