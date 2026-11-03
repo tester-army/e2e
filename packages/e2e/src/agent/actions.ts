@@ -61,6 +61,8 @@ export type RecordableAction =
     } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
   | { readonly name: 'back' }
+  /** The viewport set to a size, in CSS pixels. */
+  | { readonly name: 'resize'; readonly size: ViewportSize }
   /** Keyboard input to whatever held focus, with no node resolved. */
   | { readonly name: 'typeText'; readonly value: string; readonly replace: boolean }
   | { readonly name: 'pressKey'; readonly key: string }
@@ -301,6 +303,8 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
         return `navigate to ${safe(action.url)}`;
       case 'back':
         return 'navigate back';
+      case 'resize':
+        return `resize the viewport to ${String(action.size.width)}x${String(action.size.height)}`;
       case 'typeText':
         return `type ${safe(action.value)} into the focused field${action.replace ? ', replacing its value' : ''}`;
       case 'pressKey':

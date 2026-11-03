@@ -20,6 +20,24 @@ export function requireFinitePoint(point: unknown, what: string): ViewportPoint 
   return { x, y };
 }
 
+/** The sides a resized viewport may have, in CSS pixels: narrower than any phone layout is no layout, wider than 4K is no screen. */
+export const VIEWPORT_LIMITS = { min: 200, max: 4096 } as const;
+
+/** Checks a viewport size the agent asked for: whole CSS pixels within `VIEWPORT_LIMITS` on each side. */
+export function requireViewportSize(size: unknown): ViewportSize {
+  const width = (size as { width?: unknown } | undefined)?.width;
+  const height = (size as { height?: unknown } | undefined)?.height;
+  const fits = (side: unknown): side is number =>
+    Number.isInteger(side) && (side as number) >= VIEWPORT_LIMITS.min && (side as number) <= VIEWPORT_LIMITS.max;
+  if (!fits(width) || !fits(height)) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `resize requires { width, height } in whole CSS pixels from ${String(VIEWPORT_LIMITS.min)} to ${String(VIEWPORT_LIMITS.max)}`,
+    );
+  }
+  return { width, height };
+}
+
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }

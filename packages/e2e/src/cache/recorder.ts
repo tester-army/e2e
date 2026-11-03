@@ -196,6 +196,8 @@ export class TraceRecorder {
         return { name: 'drag', summary, target: requireTarget(), destination: require(destination) };
       case 'back':
         return { name: 'back', summary };
+      case 'resize':
+        return { name: 'resize', summary, size: { width: action.size.width, height: action.size.height } };
       case 'type':
         return { name: 'type', summary, target: requireTarget(), value: this.verbatim(action.value) };
       case 'typeSecret':

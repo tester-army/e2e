@@ -469,13 +469,20 @@ describe('engine protocol', () => {
 
   it('answers session hooks the client declares instead of the server', async () => {
     const calls: string[] = [];
-    const { remote } = overLoopback(toy({ session: { back: async () => { calls.push('server back'); } } }), {
-      session: { restart: async () => { calls.push('client restart'); } },
-    });
+    const { remote } = overLoopback(
+      toy({
+        session: {
+          back: async () => { calls.push('server back'); },
+          resize: async (size) => { calls.push(`server resize ${String(size.width)}x${String(size.height)}`); },
+        },
+      }),
+      { session: { restart: async () => { calls.push('client restart'); } } },
+    );
     await remote.init!(initInfo());
     await remote.session!.back!(operation());
+    await remote.session!.resize!({ width: 390, height: 844 }, operation());
     await remote.session!.restart!(operation());
-    expect(calls).toEqual(['server back', 'client restart']);
+    expect(calls).toEqual(['server back', 'server resize 390x844', 'client restart']);
     await remote.dispose!(cleanup);
   });
 

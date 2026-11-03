@@ -244,6 +244,12 @@ export interface ExecutorActions {
   /** Navigates back once: browser history on a page, the in-app back on a device (`back` in `target.verbs`). */
   back(): Promise<void>;
   /**
+   * Sets the viewport to a size in whole CSS pixels, 200 to 4096 on each
+   * side, for this page and every page the attempt opens after it
+   * (`resize` in `target.verbs`).
+   */
+  resize(size: ViewportSize): Promise<void>;
+  /**
    * Taps one viewport point, in the CSS pixels of the newest observation
    * (`SemanticNode.rect` space; a point read off `pixels` is divided by its
    * `scale`). The engine gets the bare point when it has the `pointer`

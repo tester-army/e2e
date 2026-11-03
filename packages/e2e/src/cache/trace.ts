@@ -278,6 +278,12 @@ export interface BackAction extends ActionBase {
   readonly name: 'back';
 }
 
+/** The viewport set to a size, replayed as given. */
+export interface ResizeAction extends ActionBase {
+  readonly name: 'resize';
+  readonly size: TraceViewport;
+}
+
 /** A viewport size in CSS pixels, the precondition of a replayed point. */
 export interface TraceViewport {
   readonly width: number;
@@ -371,6 +377,7 @@ export type RecordedAction =
   | ScrollUntilAction
   | NavigateAction
   | BackAction
+  | ResizeAction
   | PointAction
   | PointDragAction
   | TypeTextAction
@@ -581,6 +588,7 @@ function mapActionText(action: RecordedAction, map: TraceTextMap): RecordedActio
       return from === undefined || to === undefined ? undefined : withSummary({ ...action, from, to });
     }
     case 'back':
+    case 'resize':
     case 'pressKey':
     case 'dismissKeyboard':
     case 'tool':

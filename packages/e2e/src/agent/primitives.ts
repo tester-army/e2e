@@ -15,6 +15,7 @@ import { isTapActionName, type NodeActionName, type PointActionName } from '../c
 import { KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { ViewportPoint } from '../engine/surface.ts';
 import { codedMessage, hasCause, TestError } from '../internal/errors.ts';
+import { VIEWPORT_LIMITS } from '../internal/geometry.ts';
 import type { AgentErrorCode } from '../types.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
@@ -580,6 +581,20 @@ export function grammarTools(
       description: 'Go back one step: the browser history on a page, the in-app back on a device. The result shows the screen you return to.',
       inputSchema: z.object({}),
       execute: () => acting({ done: 'Navigated back.', attempt: 'back' }, () => context.actions.back()),
+    });
+  }
+  if (verbs.has('resize')) {
+    const side = (what: string) => z.number().int().min(VIEWPORT_LIMITS.min).max(VIEWPORT_LIMITS.max).describe(`Viewport ${what} in CSS pixels.`);
+    tools['resize_viewport'] = screenTool({
+      description:
+        'Resize the viewport to check how the page lays out at another screen size, e.g. 1440x900 desktop, 768x1024 tablet, 390x844 phone. It stays at that size until resized again. The result shows the screen at the new size; take a screenshot to check the layout itself (overflow, overlap, clipped or hidden content).',
+      inputSchema: z.object({ width: side('width'), height: side('height') }),
+      execute: ({ width, height }) =>
+        acting(
+          { done: `Resized the viewport to ${String(width)}x${String(height)}.`, attempt: `resize_viewport ${String(width)}x${String(height)}` },
+          () => context.actions.resize({ width, height }),
+          { expectChange: false },
+        ),
     });
   }
   // The pixel verbs are the fallback for a target the tree does not list: a

@@ -81,7 +81,7 @@ async function harness(options: {
     ...base.actions,
     tap: ok, doubleTap: ok, longPress: ok, secondaryTap: ok, hover: ok, type: ok, typeSecret: ok, press: ok, select: ok,
     check: ok, drag: ok, scrollTo: ok, scrollUntil: ok, upload: ok, scroll: ok, navigate: ok, back: ok, typeText: ok, pressKey: ok,
-    dismissKeyboard: ok,
+    dismissKeyboard: ok, resize: ok,
     ...options.actions,
   };
   const observe = async (asked: ExecutorObserveOptions = {}): Promise<ExecutorObservation> => ({
@@ -417,6 +417,12 @@ describe('SessionTestLines', () => {
         'Paste it into a test body, async ({ app, screen }) => { ... }, and add an expect after each step that should change the screen.',
       ].join('\n'),
     );
+  });
+
+  it('prints no line for a resize, naming the size to set with the engine fixture', async () => {
+    const session = await harness({ screen: [save], matches: {} });
+    await session.run('resize_viewport', { width: 390, height: 844 });
+    expect(session.lines.draft()).toContain("// resize_viewport: no test line: set 390x844 with the engine fixture's viewport call");
   });
 
   it('drafts the lines after a test the session ran as the ones that continue it', async () => {

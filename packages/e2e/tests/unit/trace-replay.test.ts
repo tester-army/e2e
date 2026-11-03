@@ -74,6 +74,7 @@ function makeHost(options: {
     scroll: (direction, t) => act('scroll', { direction, t }),
     navigate: (url) => act('navigate', url),
     back: () => act('back'),
+    resize: (size) => act('resize', size),
     tapAt: async (point) => {
       await act('tapAt', point);
       return { point, summary: 'scripted' };
@@ -310,10 +311,12 @@ describe('replayTrace', () => {
         { name: 'check', summary: 'uncheck', target, checked: false },
         { name: 'upload', summary: 'upload', target, paths: ['fixtures/a.txt'] },
         { name: 'back', summary: 'back' },
+        { name: 'resize', summary: 'resize', size: { width: 390, height: 844 } },
       ]),
     );
-    expect(outcome).toMatchObject({ completed: true, executed: 8, total: 8 });
-    expect(host.calls).toEqual(['hover', 'doubleTap', 'longPress', 'secondaryTap', 'scrollTo', 'check', 'upload', 'back']);
+    expect(outcome).toMatchObject({ completed: true, executed: 9, total: 9 });
+    expect(host.calls).toEqual(['hover', 'doubleTap', 'longPress', 'secondaryTap', 'scrollTo', 'check', 'upload', 'back', 'resize']);
+    expect(details[8]).toEqual({ width: 390, height: 844 });
     expect(details[5]).toEqual({ t: { id: 'n1' }, checked: false });
     expect(details[6]).toEqual({ t: { id: 'n1' }, paths: ['fixtures/a.txt'] });
   });
