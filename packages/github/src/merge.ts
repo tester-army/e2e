@@ -54,6 +54,15 @@ function foldGroup(current: ReportSerialGroup, before: ReportSerialGroup | undef
 }
 
 /**
+ * Whether a serial member's record is a run of its body, a body that skipped
+ * itself included. Mirrors `memberRan` in e2e's `run/records.ts`, which the
+ * peer range keeps this package from importing.
+ */
+function memberRan(member: ReportSerialGroup['attempts'][number]['members'][number]): boolean {
+  return member.status !== 'skipped' || member.skip?.cause === 'explicit';
+}
+
+/**
  * The counts the way the runner tallies them, over the folded results: the
  * status counts are over the selected ones, and a serial member executed when
  * one of its group's attempts ran its body, a body that skipped itself included.
@@ -63,7 +72,7 @@ function summarize(results: readonly ReportResult[], serialGroups: readonly Repo
   const ranMembers = new Set(
     serialGroups.flatMap((group) =>
       group.attempts.flatMap((attempt) =>
-        attempt.members.filter((member) => member.status !== 'skipped' || member.skip?.cause === 'explicit').map((member) => `${group.id}\u0000${member.testId}`),
+        attempt.members.filter(memberRan).map((member) => `${group.id}\u0000${member.testId}`),
       ),
     ),
   );

@@ -486,13 +486,15 @@ test('sleeps forever', { timeout: 1500 }, async ({ app }) => {
   it(
     'counts a serial member executed when its body ran in an earlier group attempt',
     async () => {
-      const file = `import { test } from 'e2e';
+      const file = `import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { test } from 'e2e';
 
-const attempt = () => Number(process.env['SERIAL_ATTEMPT'] ?? '0');
+const log = process.env.HOOK_LOG!;
+const attempt = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\\n').length : 0);
 
 test.describe('wizard', { serial: true, retries: 1 }, () => {
   test('step 1 breaks on the retry', async () => {
-    process.env['SERIAL_ATTEMPT'] = String(attempt() + 1);
+    appendFileSync(log, 'attempt\\n');
     if (attempt() === 2) throw new Error('step 1 broke');
   });
   test('step 2 breaks first', async () => {
@@ -500,9 +502,8 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
   });
 });
 `;
-      process.env['SERIAL_ATTEMPT'] = '0';
+      process.env['HOOK_LOG'] = path.join('/tmp', `e2e-serialretry-${Date.now()}.log`);
       const { outcome, project } = await runProject({ 'tests/serialretry.e2e.ts': file }, {});
-      delete process.env['SERIAL_ATTEMPT'];
       const members = outcome.report.run.serialGroups[0]!.attempts.map((entry) => entry.members.map((member) => member.status));
       expect(members).toEqual([
         ['passed', 'failed'],
