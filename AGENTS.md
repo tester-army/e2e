@@ -114,7 +114,7 @@ suites that consume the built packages the way a user would.
 - `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
   `BrowserProvider` that starts a local `lightpanda serve` per worker slot
   and stops it with the run; no vendor SDK, the binary is the dependency.
-- `packages/eas` - the published `@e2e-dev/eas` package: EAS Simulators
+- `packages/eas` - the published `@e2e-dev/eas` package: Expo Simulators
   hosted iOS simulators and Android emulators for the mobile engine
   (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls
   Expo's GraphQL API with `fetch`, and `@e2e-dev/mobile` is its only peer.

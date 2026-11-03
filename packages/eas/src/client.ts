@@ -1,5 +1,5 @@
 /**
- * EAS Simulators' sessions through Expo's GraphQL API over `fetch`, the API
+ * Expo Simulators' sessions through Expo's GraphQL API over `fetch`, the API
  * `eas simulator:*` uses, so the integration installs no SDK.
  */
 
@@ -79,7 +79,7 @@ const QUEUED_JOB = new Set(['NEW', 'IN_QUEUE']);
 /** Job run states after which the session never becomes ready. */
 const ENDED_JOB = new Set(['ERRORED', 'CANCELED', 'FINISHED', 'PENDING_CANCEL']);
 
-/** EAS Simulators sessions for one Expo access token or eas-cli session. */
+/** Expo Simulators sessions for one Expo access token or eas-cli session. */
 export function easSessions(credentials: ExpoCredentials): EasSessions {
   const auth: Record<string, string> =
     'accessToken' in credentials ? { Authorization: `Bearer ${credentials.accessToken}` } : { 'expo-session': credentials.sessionSecret };

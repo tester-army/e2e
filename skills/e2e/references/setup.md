@@ -359,7 +359,7 @@ export default {
   it: for parallel MCP sessions or bug-bash explorers, declare one target per
   device, each naming its `device`.
 - `device` can be a `DeviceProvider` leasing hosted devices, one per worker
-  slot: `easSimulators({ buildId })` from `@e2e-dev/eas` takes the project
+  slot: `expoSimulators({ buildId })` from `@e2e-dev/eas` takes the project
   from the app config's `extra.eas.projectId` (`projectId` overrides), reads
   `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` EAS installs
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
