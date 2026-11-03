@@ -91,7 +91,7 @@ over drive-by pull requests.
 
 Please don't open public issues for security vulnerabilities. Follow
 [SECURITY.md](./SECURITY.md) and report them to
-[security@tester.army](mailto:security@tester.army).
+[security@e2e.com](mailto:security@e2e.com).
 
 ## Telemetry
 
