@@ -209,9 +209,10 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
   return [
     ...header,
     'Decide from the goal, the steps so far, and the current screen:',
-    '- "step": the next exploration charter. "title" names the area or flow in a few words. "instruction" is a concrete,',
-    '  self-contained charter for an agent that sees only the screen and that text: which flow to exercise, what inputs',
-    '  to try, what to check. One flow or screen per step, sized for five to fifteen actions; split anything bigger.',
+    '- "step": the next exploration charter. "title" names the area or flow, and the lens once one applies, in a few',
+    '  words. "instruction" is a concrete, self-contained charter for an agent that sees only the screen and that text:',
+    '  which flow to exercise, what inputs to try, what to check. One flow or screen per step, sized for five to fifteen',
+    '  actions; split anything bigger.',
     '  Ask the agent to interact, not only to look: submit forms with made-up test data, save and revisit,',
     `  ${signIn}, act on a non-first item of a list. Prefer breadth: touch the main`,
     '  flows the goal names before drilling deeper into one. Once each flow has a step, return to them with a new lens',
