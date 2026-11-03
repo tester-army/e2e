@@ -175,9 +175,9 @@ close_session {session: "<id>"}
 
 #### `run_tests`
 
-Runs `e2e run` in its own process and returns what it printed: the command,
-the exit code and its meaning, each test, the failure blocks, and the
-summary. It needs no session and leaves open sessions alone. See
+Runs `e2e run` in its own process and returns the command, the exit code and
+its meaning, and what the run printed: with the default `list` reporter, each
+test, the failure blocks, and the summary. It needs no session and leaves open sessions alone. See
 [Run tests next to a session](/mcp-server#run-tests-next-to-a-session) for a
 run beside one.
 
@@ -197,7 +197,7 @@ exit 1: a test failed or timed out
 | --- | --- | --- | --- |
 | `files` | string[] | no | `e2e run` positionals: files, directories, globs, or `file:line`. Without it, every test the config discovers. A file can't start with `-`. |
 | `config` | string (path) | no | `--config`. Otherwise the server's `--config`. |
-| `target` | string[] | no | `--target`. Otherwise the server's `--target`, else every target. |
+| `target` | string[] | no | `--target`, at least one. Otherwise the server's `--target`, else every target. |
 | `grep`, `grepInvert` | string | no | `--grep`, `--grep-invert`. |
 | `tag`, `excludeTag` | string[] | no | `--tag`, `--exclude-tag`. |
 | `lastFailed` | boolean | no | `--last-failed`. |
@@ -210,8 +210,10 @@ exit 1: a test failed or timed out
 - Exit 0 and 1 are results. Any other exit code is an error result
   (`isError: true`).
 - Output past 60,000 characters keeps its end, where the failures and the
-  summary are. `report.json` has every result.
-- With a progress token, each printed line is a progress notification.
+  summary are. Every result is in `<output>/report.json` (default `.e2e`)
+  once the run reaches its tests; see [Output](/reference/cli#output).
+- With a progress token, each non-empty stdout line is a progress
+  notification, cut at 1,000 characters.
 - Cancelling the call interrupts the run as Ctrl-C would, pressed again every
   15 seconds, and kills it 15 seconds after the third. The next `run_tests`
   waits for it to exit.

@@ -109,8 +109,9 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    that must receive one specific string, a count that must be one number.
 4. Run only the test you are working on:
    `npx e2e run tests/<feature>.e2e.ts:<line>` (over MCP,
-   `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`), the line its `test(` opens
-   on, with the flags in "Rerunning a test while you fix it" below. Agent
+   `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`, the flags as
+   camelCase fields such as `retries: 0`), the line its `test(` opens on,
+   with the flags in "Rerunning a test while you fix it" below. Agent
    steps need a model in the config and that provider's authentication (a
    saved subscription login, an API key); a local endpoint may need none.
    Tests without agent steps need no model.

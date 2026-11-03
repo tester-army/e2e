@@ -63,6 +63,7 @@ export class SignalLadder {
     process.on('SIGINT', escalate);
     process.on('SIGTERM', escalate);
     process.on('disconnect', parentGone);
+    if (process.connected === false) parentGone();
     return () => {
       process.removeListener('SIGINT', escalate);
       process.removeListener('SIGTERM', escalate);

@@ -81,7 +81,7 @@ interface RunResult {
   readonly progress: string[];
 }
 
-/** The `e2e run` processes still alive whose command line names `config`. */
+/** The `e2e run` processes still alive whose command line names `config`; POSIX `ps`, so the tests using it skip on Windows. */
 function runsAlive(config: string): string[] {
   const lines = execFileSync('ps', ['-axo', 'pid=,command='], { encoding: 'utf8' }).split('\n');
   return lines.filter((line) => line.includes('bin.js run') && line.includes(config));
@@ -226,16 +226,19 @@ describe('e2e mcp run_tests', { timeout: 120_000 }, () => {
     expect(run.text).toContain('NO_TESTS');
   });
 
-  it('refuses a file that reads as a flag, and takes no raw flags', async () => {
+  it('refuses a file that reads as a flag, an empty target list, and raw flags', async () => {
     const asFile = await runTests({ files: ['--watch'] });
     expect(asFile.isError).toBe(true);
     expect(asFile.text).toContain('a file cannot start with "-"');
     const raw = await runTests({ flags: ['--watch'] });
     expect(raw.isError).toBe(true);
     expect(raw.text).toContain('Unrecognized key: "flags"');
+    const noTargets = await runTests({ target: [] });
+    expect(noTargets.isError).toBe(true);
+    expect(noTargets.text).toContain('target');
   });
 
-  it('runs one suite at a time, and a cancelled call interrupts its run before the next starts', async () => {
+  it.skipIf(process.platform === 'win32')('runs one suite at a time, and a cancelled call interrupts its run before the next starts', async () => {
     const cancel = new AbortController();
     const { call: slow } = await startSlow('slow.config.ts', undefined, cancel.signal);
     const busy = await runTests({ files: ['tests/passing.e2e.ts'] });
@@ -262,7 +265,7 @@ describe('e2e mcp run_tests', { timeout: 120_000 }, () => {
     await client.callTool({ name: 'close_session', arguments: {} });
   });
 
-  it('starts no queued run once the server shuts down, and stops the one in flight', async () => {
+  it.skipIf(process.platform === 'win32')('starts no queued run once the server shuts down, and stops the one in flight', async () => {
     const { client: other } = await connect();
     const cancel = new AbortController();
     const { call: slow } = await startSlow('slow-shutdown.config.ts', other, cancel.signal);
@@ -278,7 +281,7 @@ describe('e2e mcp run_tests', { timeout: 120_000 }, () => {
     expect(runsAlive('queued.config.ts')).toEqual([]);
   });
 
-  it('interrupts its run when the server is killed', async () => {
+  it.skipIf(process.platform === 'win32')('interrupts its run when the server is killed', async () => {
     const { client: other, transport } = await connect();
     const { call: slow } = await startSlow('slow-killed.config.ts', other);
     expect(runsAlive('slow-killed.config.ts')).not.toEqual([]);

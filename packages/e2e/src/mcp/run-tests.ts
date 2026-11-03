@@ -47,7 +47,7 @@ const RunTestsArgs = z
       .optional()
       .describe('What e2e run takes as positionals: files, directories, quoted globs, or file:line for the test declared on that line (tests/checkout.e2e.ts:12). Default: every test the config discovers'),
     config: name.optional().describe("Path to an e2e config file, absolute or relative to the server's working directory; default: the server's --config, else the nearest e2e.config.ts"),
-    target: z.array(name).optional().describe("Target names to run on; default: the server's --target, else every target"),
+    target: z.array(name).min(1).optional().describe("Target names to run on; default: the server's --target, else every target"),
     grep: name.optional().describe('Only tests whose title (describe titles and test title, space-joined) matches this regular expression'),
     grepInvert: name.optional().describe('Leave out tests whose title matches this regular expression'),
     tag: z.array(name).optional().describe('Only tests carrying any of these tags'),

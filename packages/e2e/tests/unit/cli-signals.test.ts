@@ -57,6 +57,20 @@ describe('SignalLadder', () => {
     }
   });
 
+  it('climbs at once when the parent was gone before it armed', () => {
+    const connected = Object.getOwnPropertyDescriptor(process, 'connected');
+    Object.defineProperty(process, 'connected', { value: false, configurable: true });
+    const ladder = new SignalLadder();
+    const release = ladder.arm(() => undefined, 1_000);
+    try {
+      expect(ladder.interruptSignal.aborted).toBe(true);
+    } finally {
+      release();
+      if (connected === undefined) Reflect.deleteProperty(process, 'connected');
+      else Object.defineProperty(process, 'connected', connected);
+    }
+  });
+
   it('release removes its handlers', () => {
     const before = process.listenerCount('SIGINT');
     const disconnects = process.listenerCount('disconnect');
