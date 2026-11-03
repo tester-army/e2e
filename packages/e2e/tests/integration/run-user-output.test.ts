@@ -121,6 +121,43 @@ describe('e2e run redacts what user code prints outside a test', () => {
     expect(cli.stderr).not.toContain(TOKEN);
   });
 
+  it('decodes a string written with an encoding, in the config and a test body', () => {
+    const hex = (text: string) => Buffer.from(text).toString('hex');
+    const base64 = (text: string) => Buffer.from(text).toString('base64');
+    const latin1 = (text: string) => Buffer.from(text).toString('latin1');
+    const config = `import { defineEngine } from 'e2e/engine';
+
+process.stdout.write('${hex('config hex\n')}', 'hex');
+
+export default {
+  targets: [{ name: 'headless', platform: 'test', engine: defineEngine({ name: 'noop', version: '1', spiVersion: 1 }) }],
+  workers: 1,
+  secrets: { apiToken: '${TOKEN}' },
+};
+`;
+    const test = `import { test } from 'e2e';
+
+test('prints encoded', () => {
+  process.stdout.write('${hex(`test hex: ${TOKEN}\n`)}', 'hex');
+  process.stderr.write('${base64('test base64\n')}', 'base64');
+  process.stdout.write(${JSON.stringify(latin1('test latin1: café\n'))}, 'latin1');
+  process.stdout.write('${hex('test upper hex\n')}', 'HEX');
+});
+`;
+    const cli = runCli({ 'e2e.config.ts': config, 'tests/print.e2e.ts': test }, ['--reporter', 'junit']);
+    expect(cli.status, cli.stdout + cli.stderr).toBe(0);
+    const stdout = cli.stdout.split('\n');
+    expect(stdout.filter((line) => line === 'config hex'), cli.stdout).toHaveLength(2);
+    expect(stdout).toContain('test hex: <secret:apiToken>');
+    expect(stdout).toContain('test latin1: café');
+    expect(stdout).toContain('test upper hex');
+    expect(cli.stderr.split('\n')).toContain('test base64');
+    const output = `${cli.stdout}\n${cli.stderr}`;
+    for (const encoded of [hex('config hex\n'), hex(`test hex: ${TOKEN}\n`), base64('test base64\n'), latin1('test latin1: café\n'), hex('test upper hex\n')]) {
+      expect(output).not.toContain(encoded);
+    }
+  });
+
   it('withholds what a config printed before it failed to load', () => {
     const cli = runCli({ 'e2e.config.ts': BROKEN_CONFIG });
     const output = `${cli.stdout}\n${cli.stderr}`;

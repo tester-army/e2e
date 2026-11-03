@@ -545,6 +545,16 @@ describe('StreamRedactor', () => {
     expect(stream.push(Buffer.from([0x68, 0x69, 0xe2])) + stream.flush()).toBe('hi�');
   });
 
+  it('releases an unfinished character before a string write instead of letting the string pass it', () => {
+    const stream = new StreamRedactor(new SecretLedger());
+    expect(stream.push(Buffer.from([0xc3])) + stream.push('X') + stream.push(Buffer.from([0xa9])) + stream.flush()).toBe('�X�');
+  });
+
+  it('keeps an unfinished character across an empty string write, which writes nothing', () => {
+    const stream = new StreamRedactor(new SecretLedger());
+    expect(stream.push(Buffer.from([0xc3])) + stream.push('') + stream.push(Buffer.from([0xa9])) + stream.flush()).toBe('é');
+  });
+
   describe('a marker split across writes', () => {
     const short = (): SecretLedger => new SecretLedger([['apiKey', 'apq000']]);
 
