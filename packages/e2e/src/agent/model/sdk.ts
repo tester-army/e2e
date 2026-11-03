@@ -93,7 +93,7 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
           : { messages: [userMessage(call.prompt, images)] }),
         maxOutputTokens: call.maxOutputTokens,
         ...(providerOptions === undefined ? {} : { providerOptions: providerOptions as never }),
-        maxRetries: TRANSPORT_RETRIES,
+        maxRetries: call.maxRetries ?? TRANSPORT_RETRIES,
         headers: MODEL_REQUEST_HEADERS,
         abortSignal: call.signal,
         timeout: call.timeoutMs,

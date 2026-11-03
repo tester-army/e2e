@@ -496,6 +496,11 @@ describe('lifecycle', () => {
     expect(() => harness({ transition: 0.5 })).toThrow(/non-negative integer/);
   });
 
+  it('rejects a blank device name at config time', () => {
+    expect(() => harness({ device: '' })).toThrow(/must not be blank/);
+    expect(() => harness({ device: ['iPhone 17', ' '] })).toThrow(/must not be blank/);
+  });
+
   it('rejects an empty pool at config time', () => {
     expect(() => harness({ device: [] })).toThrow(/empty pool/);
   });

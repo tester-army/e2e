@@ -29,6 +29,7 @@ afterEach(() => {
  */
 function config(agents = ''): string {
   return `import { appendFileSync } from 'node:fs';
+import { APICallError } from 'ai';
 import type { E2EConfig } from 'e2e';
 import { defineEngine } from 'e2e/engine';
 import { createFakeEngine, FAKE_APP } from '../../helpers/fake-engine.ts';
@@ -62,6 +63,10 @@ const refusing = createScriptedInstance('scripted', 'refuses', async () => scrip
 const erroring = createScriptedInstance('scripted', 'errors', async () => scriptedResult([], 'error'));
 const failing = createScriptedInstance('scripted', 'fails', async () => {
   throw new Error('provider is down');
+});
+const refused = createScriptedInstance('scripted', 'refused', async () => {
+  appendFileSync('calls', 'call\\n');
+  throw new APICallError({ message: 'connect ECONNREFUSED 127.0.0.1:59999', url: 'http://127.0.0.1:59999', requestBodyValues: {}, isRetryable: true });
 });
 
 export default {
@@ -153,7 +158,7 @@ describe('e2e doctor', () => {
   it("names each agent's model and calls it only with --check-model", () => {
     const files = {
       'e2e.config.ts': config(
-        "agents: { default: { model: answering }, down: { model: failing }, split: { model: answering, judge: failing }, broken: { model: erroring }, brought: { executor: { name: 'own', runStep: async () => ({ status: 'done' }) } as never, judge: failing } },",
+        "agents: { default: { model: answering }, down: { model: failing }, split: { model: answering, judge: failing }, broken: { model: erroring }, both: { model: failing, judge: erroring }, brought: { executor: { name: 'own', runStep: async () => ({ status: 'done' }) } as never, judge: failing } },",
       ),
     };
     const unchecked = doctorJson(files);
@@ -170,6 +175,14 @@ describe('e2e doctor', () => {
         message: 'the model reads its own credential; --check-model calls it',
       },
       { id: 'model', status: 'unknown', agent: 'broken', model: { provider: 'scripted', modelId: 'errors' }, message: 'the model reads its own credential; --check-model calls it' },
+      {
+        id: 'model',
+        status: 'unknown',
+        agent: 'both',
+        model: { provider: 'scripted', modelId: 'fails' },
+        judge: { provider: 'scripted', modelId: 'errors' },
+        message: 'the model reads its own credential; --check-model calls it',
+      },
       { id: 'model', status: 'unknown', agent: 'brought', executor: 'own', judge: { provider: 'scripted', modelId: 'fails' }, message: 'the model reads its own credential; --check-model calls it' },
     ]);
     const checked = doctorJson(files, ['--check-model']);
@@ -179,6 +192,7 @@ describe('e2e doctor', () => {
       { agent: 'down', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('provider is down') },
       { agent: 'split', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringMatching(/^judge: .*provider is down/) },
       { agent: 'broken', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('error finish') },
+      { agent: 'both', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringMatching(/^model: .*provider is down.*; judge: .*error finish/) },
       { agent: 'brought', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('provider is down') },
     ]);
   });
@@ -205,6 +219,21 @@ describe('e2e doctor', () => {
       { agent: 'narrow', status: 'pass' },
       { agent: 'shy', status: 'pass' },
     ]);
+    expect(readFileSync(path.join(project.dir, 'calls'), 'utf8')).toBe('call\ncall\n');
+  });
+
+  it('retries a refused connection once and reports its error, not the call timeout', () => {
+    const project = createProject({ 'e2e.config.ts': config('agents: { default: { model: refused } },') });
+    projects.push(project);
+    const result = spawnSync(process.execPath, [CLI, 'doctor', '--json', '--check-model'], {
+      cwd: project.dir,
+      env: { ...process.env, CI: '', NO_COLOR: '1', XDG_CONFIG_HOME: path.join(project.dir, '.config') },
+      encoding: 'utf8',
+      timeout: 30_000,
+    });
+    const report = JSON.parse(result.stdout) as DoctorReport;
+    expect(result.status).toBe(2);
+    expect(report.checks.at(-1)).toMatchObject({ id: 'model', status: 'fail', code: 'MODEL_PROVIDER_FAILED', message: expect.stringContaining('ECONNREFUSED') });
     expect(readFileSync(path.join(project.dir, 'calls'), 'utf8')).toBe('call\ncall\n');
   });
 

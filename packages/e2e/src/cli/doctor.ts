@@ -40,6 +40,9 @@ const ENGINE_DOCTOR_TEARDOWN_MS = 15_000;
 /** How long one `--check-model` call may take, transport retries included. */
 const MODEL_CALL_TIMEOUT_MS = 60_000;
 
+/** Transport retries of a `--check-model` call: one rides out a blip, more would hide a refused connection behind the timeout. */
+const MODEL_CALL_RETRIES = 1;
+
 /** A check id: kebab case, as `EngineDoctorCheck.id` declares. */
 const CHECK_ID = /^[a-z][a-z0-9-]*$/;
 
@@ -326,12 +329,14 @@ async function modelCheck(
     credentials.push(credential.message);
   }
   if (call !== undefined) {
+    const failures: { readonly code: string; readonly message: string }[] = [];
     for (const entry of roles) {
       const failure = await call(entry.model, agent);
       if (failure === undefined) continue;
       const { code, message } = errorOutcome(failure);
-      return result('fail', { code, message: roles.length === 1 ? message : `${entry.role}: ${message}` });
+      failures.push({ code, message: roles.length === 1 ? message : `${entry.role}: ${message}` });
     }
+    if (failures.length > 0) return result('fail', { code: failures[0]!.code, message: failures.map((failure) => failure.message).join('; ') });
     return result('pass', { message: roles.length === 1 ? 'answered' : 'both answered' });
   }
   if (roles.every((entry) => loginOf(entry.model.model) !== undefined)) {
@@ -375,6 +380,7 @@ async function callModel(model: ResolvedModel, agent: ResolvedAgentConfig, signa
       providerOptions: agent.providerOptions,
       signal,
       timeoutMs: MODEL_CALL_TIMEOUT_MS,
+      maxRetries: MODEL_CALL_RETRIES,
     });
     return undefined;
   } catch (cause) {
