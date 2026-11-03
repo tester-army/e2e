@@ -9,7 +9,7 @@ rule and limit, as the code enforces it, is in
 
 Report privately through
 [GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
-or by mail to security@tester.army. Do not open a public issue for anything
+or by mail to security@e2e.com. Do not open a public issue for anything
 that lets a page, a model, or a committed file act with more authority than
 this document grants it.
 
