@@ -1,6 +1,6 @@
 /**
  * `e2e mcp` end to end: the built CLI serving a fixture project over stdio to
- * a real MCP client. The server's tool list is four tools; everything the
+ * a real MCP client. The server's tool list is five tools; everything the
  * session can do is a catalog behind `call`. Covers the catalog, a live
  * session driven through `call`, argument validation, the secret and pixel
  * invariants, a second session open beside the first, a second session after
@@ -175,9 +175,9 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     await app?.close();
   });
 
-  it('serves four fixed tools and the guide resources', async () => {
+  it('serves five fixed tools and the guide resources', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session']);
+    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session', 'run_tests']);
     const callTool = tools.find((tool) => tool.name === 'call')!;
     expect(callTool.description).toContain('call {tool: "tap", args: {target: "n42"}, session: "<id>"}');
     expect(callTool.inputSchema).toMatchObject({ type: 'object', required: ['tool'] });

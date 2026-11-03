@@ -21,6 +21,7 @@ import { loadAiSdk, loadAiSdkIfInstalled, loadedAiSdk } from '../agent/ai-sdk.ts
 import { isFailedResult } from '../agent/loop-guards.ts';
 import { codedMessage, ConfigurationError, errorMessage, InfrastructureError } from '../internal/errors.ts';
 import { describeIssue } from '../internal/standard-schema.ts';
+import { processSecrets } from '../run/secrecy.ts';
 import type { StandardSchemaV1 } from '../types.ts';
 
 /** One MCP content part this server emits. */
@@ -38,6 +39,8 @@ export interface McpToolResult {
 /** What a tool body gets from the request. */
 export interface McpToolCallExtra {
   readonly signal: AbortSignal;
+  /** Tells the client how a long call is going, when it asked for progress; otherwise does nothing. */
+  readonly progress?: ((message: string) => void) | undefined;
 }
 
 /** What the server registers: the contract and the body of one of its fixed tools. */
@@ -290,4 +293,25 @@ function contentFromModelOutput(output: ModelOutput): McpContent[] | undefined {
     default:
       return undefined;
   }
+}
+
+/**
+ * The tool with what it returns redacted with every secret value the process
+ * knows: the static values of each config a session loaded, and every value
+ * a session resolved or derived. A failure becomes a result the agent can
+ * react to, never a protocol error, and is redacted the same way.
+ */
+export function redacting(spec: McpToolSpec): McpToolSpec {
+  return {
+    ...spec,
+    call: async (args, extra) => {
+      let result: McpToolResult;
+      try {
+        result = await spec.call(args, extra);
+      } catch (cause) {
+        result = errorResult(cause);
+      }
+      return redactResult(result, (text) => processSecrets.redact(text));
+    },
+  };
 }

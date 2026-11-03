@@ -24,6 +24,7 @@ import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERR
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
+import { EXIT_CODES } from './exit-codes.ts';
 import { doctor, formatDoctorReport, type DoctorReport } from './doctor.ts';
 import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
@@ -258,16 +259,6 @@ function formatListedPair(pair: ListedPair): string {
   if (pair.filter !== undefined) return `${line} (left out by ${pair.filter}: ${bounded(pair.reason ?? '')})`;
   return pair.disposition === 'skip' ? `${line} (skipped: ${pair.reason ?? 'skipped'})` : line;
 }
-
-/** The exit-code table of the CLI reference; the runner decides which one applies. */
-const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
-  ['0', 'every selected test passed, was flaky, or was skipped'],
-  ['1', 'a test failed or timed out'],
-  ['2', 'CLI, config, or agent policy error'],
-  ['3', 'engine, app process, model provider, or artifact failure'],
-  ['4', 'internal runner error'],
-  ['130', 'interrupted by Ctrl-C or a CI signal'],
-];
 
 /** `explore` exits as `run` does; only what a pass and a failure mean differs. */
 const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {

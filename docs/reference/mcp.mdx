@@ -19,8 +19,9 @@ the agent, see the [MCP server guide](/mcp-server).
 }
 ```
 
-Four MCP tools manage the session and call its available app tools. The app
-tool catalog reloads from the config whenever a session opens.
+Four MCP tools manage the session and call its available app tools, and
+`run_tests` runs the suite as `e2e run` does. The app tool catalog reloads
+from the config whenever a session opens.
 
 ## Reference
 
@@ -85,6 +86,7 @@ e2e mcp --max-sessions 8 # default: 4
 | [`tools`](#tools-2) | Lists the catalog or one tool |
 | [`call`](#call) | Runs one catalog tool |
 | [`close_session`](#close_session) | Ends the session and its engine |
+| [`run_tests`](#run_tests) | Runs tests as `e2e run` does |
 
 `session` may be left out while exactly one session is open. See
 [Several sessions](#several-sessions).
@@ -170,6 +172,56 @@ close_session {session: "<id>"}
 | Input | Type | Required | Does |
 | --- | --- | --- | --- |
 | `session` | string | while several are open | The session id. |
+
+#### `run_tests`
+
+Runs `e2e run` in its own process and returns what it printed: the command,
+the exit code and its meaning, each test, the failure blocks, and the
+summary. It needs no session and leaves open sessions alone. See
+[Run tests next to a session](/mcp-server#run-tests-next-to-a-session) for a
+run beside one.
+
+```txt
+run_tests {files: ["tests/checkout.e2e.ts:12"]}
+```
+
+```text wrap
+e2e run tests/checkout.e2e.ts:12
+exit 1: a test failed or timed out
+
+ RUN  e2e v0.22.0 /work/shop
+ ...
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `files` | string[] | no | `e2e run` positionals: files, directories, globs, or `file:line`. Without it, every test the config discovers. A file can't start with `-`. |
+| `config` | string (path) | no | `--config`. Otherwise the server's `--config`. |
+| `target` | string[] | no | `--target`. Otherwise the server's `--target`, else every target. |
+| `grep`, `grepInvert` | string | no | `--grep`, `--grep-invert`. |
+| `tag`, `excludeTag` | string[] | no | `--tag`, `--exclude-tag`. |
+| `lastFailed` | boolean | no | `--last-failed`. |
+| `changedSince` | string | no | `--changed-since`. |
+| `headed` | boolean | no | `--headed`. Otherwise the server's `--headed`. |
+| `workers`, `retries`, `repeatEach`, `maxFailures`, `actionTimeout` | integer | no | `--workers`, `--retries`, `--repeat-each`, `--max-failures`, `--action-timeout`. |
+| `noCache` | boolean | no | `--no-cache`. |
+| `updateSnapshots` | boolean | no | `--update-snapshots`. |
+
+- Exit 0 and 1 are results. Any other exit code is an error result
+  (`isError: true`).
+- Output past 60,000 characters keeps its end, where the failures and the
+  summary are. `report.json` has every result.
+- With a progress token, each printed line is a progress notification.
+- Cancelling the call interrupts the run as Ctrl-C would, pressed again every
+  15 seconds, and kills it 15 seconds after the third. The next `run_tests`
+  waits for it to exit.
+- When the server shuts down it refuses new runs and interrupts the one in
+  flight. A run whose server dies interrupts itself the same way.
+
+| Throws | When |
+| --- | --- |
+| `RUNNER_BUSY` | A run is already in progress. |
+| `CANCELLED` | The call was cancelled before the run started, or the server is shutting down. |
 
 ### The catalog
 
@@ -509,8 +561,8 @@ A session closes:
 - on SIGINT or SIGTERM.
 
 The client disconnects when it closes the server's stdin or dies. Then every
-session closes, the app commands the sessions started stop, and the server
-exits.
+session closes, the app commands the sessions started stop, a `run_tests`
+run is interrupted, and the server exits.
 
 Sessions enforce what tests enforce:
 

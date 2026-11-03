@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { SignalLadder } from '../../src/cli/signals.ts';
 
 describe('SignalLadder', () => {
@@ -37,11 +37,34 @@ describe('SignalLadder', () => {
     expect(exits).toEqual([130]);
   });
 
+  it('climbs the whole ladder on its own once the parent closes its IPC channel', () => {
+    vi.useFakeTimers();
+    const exits: number[] = [];
+    const ladder = new SignalLadder();
+    const release = ladder.arm((code) => exits.push(code), 1_000);
+    try {
+      process.emit('disconnect');
+      expect(ladder.interruptSignal.aborted).toBe(true);
+      expect(ladder.forceSignal.aborted).toBe(false);
+      vi.advanceTimersByTime(1_000);
+      expect(ladder.forceSignal.aborted).toBe(true);
+      expect(exits).toEqual([]);
+      vi.advanceTimersByTime(1_000);
+      expect(exits).toEqual([130]);
+    } finally {
+      release();
+      vi.useRealTimers();
+    }
+  });
+
   it('release removes its handlers', () => {
     const before = process.listenerCount('SIGINT');
+    const disconnects = process.listenerCount('disconnect');
     const release = new SignalLadder().arm(() => undefined);
     expect(process.listenerCount('SIGINT')).toBe(before + 1);
+    expect(process.listenerCount('disconnect')).toBe(disconnects + 1);
     release();
     expect(process.listenerCount('SIGINT')).toBe(before);
+    expect(process.listenerCount('disconnect')).toBe(disconnects);
   });
 });
