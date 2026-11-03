@@ -4,9 +4,9 @@ import { packageVersion } from '../internal/package-version.ts';
 import { ignoreBrokenPipes } from './broken-pipe.ts';
 import type { DoctorReport } from './doctor.ts';
 
-/** Whether `args` ask for `e2e doctor --reporter json`, which a host parses even when the runtime is refused. */
+/** Whether `args` ask for `e2e doctor --json`, which a host parses even when the runtime is refused. */
 function wantsDoctorJson(args: readonly string[]): boolean {
-  return args[0] === 'doctor' && args.some((arg, index) => arg === '--reporter=json' || (arg === '--reporter' && args[index + 1] === 'json'));
+  return args[0] === 'doctor' && args.includes('--json');
 }
 
 ignoreBrokenPipes([process.stdout, process.stderr]);

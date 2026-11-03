@@ -28,7 +28,7 @@ import { bounded } from '../report/format.ts';
 import { processSecrets, registerStaticSecrets } from '../run/secrecy.ts';
 import type { RunnerOutput } from '../run/process-output.ts';
 
-/** The `schemaVersion` of `e2e doctor --reporter json`, described by `schema/doctor-v1.schema.json`. */
+/** The `schemaVersion` of `e2e doctor --json`, described by `schema/doctor-v1.schema.json`. */
 const DOCTOR_SCHEMA_VERSION = 'doctor-1';
 
 /** How long one engine's `doctor` hook may take: it should only look things up. */

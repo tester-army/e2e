@@ -944,14 +944,14 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
     .option('--headed', 'check for what a headed run needs, when the engine tells the two apart')
     .option('--check-model', "call each agent's model once to prove it answers; costs one small request per model")
-    .addOption(new Option('--reporter <id>', 'list prints one line per check; json prints the doctor-1 report').choices(LIST_REPORTERS).default('list'))
+    .option('--json', 'print the doctor-1 report as JSON instead of one line per check')
     .addHelpText(
       'after',
-      ['', examples(['e2e doctor', 'e2e doctor --reporter json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
+      ['', examples(['e2e doctor', 'e2e doctor --json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
     )
-    .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; reporter: ListReporter }) => {
+    .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; json?: boolean }) => {
       const output = claimRunnerOutput();
-      if (options.reporter === 'json') output.keepStdoutForReport();
+      if (options.json === true) output.keepStdoutForReport();
       // Ctrl-C stops the checks, which then report: an engine server is
       // shut down before the process exits instead of left running.
       const signals = new SignalLadder();
@@ -974,7 +974,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         disarm();
       }
       output.end();
-      if (options.reporter === 'json') writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
+      if (options.json === true) writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
       else process.stdout.write(formatDoctorReport(report));
       process.exitCode = signals.interruptSignal.aborted ? 130 : report.ok ? 0 : 2;
     });

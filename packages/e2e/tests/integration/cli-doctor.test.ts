@@ -90,9 +90,9 @@ function doctor(files: Record<string, string>, args: readonly string[], env: Rec
   return { exitCode: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
-/** Runs `e2e doctor --reporter json` and parses the report, which must match doctor-1. */
+/** Runs `e2e doctor --json` and parses the report, which must match doctor-1. */
 function doctorJson(files: Record<string, string>, args: readonly string[] = [], env: Record<string, string> = {}) {
-  const { exitCode, stdout, stderr } = doctor(files, ['--reporter', 'json', ...args], env);
+  const { exitCode, stdout, stderr } = doctor(files, ['--json', ...args], env);
   const report = JSON.parse(stdout) as DoctorReport;
   expect(validate(report), JSON.stringify(validate.errors)).toBe(true);
   return { exitCode, report, stderr };
@@ -191,7 +191,7 @@ describe('e2e doctor', () => {
     };
     const project = createProject(files);
     projects.push(project);
-    const result = spawnSync(process.execPath, [CLI, 'doctor', '--reporter', 'json', '--check-model'], {
+    const result = spawnSync(process.execPath, [CLI, 'doctor', '--json', '--check-model'], {
       cwd: project.dir,
       env: { ...process.env, CI: '', NO_COLOR: '1', XDG_CONFIG_HOME: path.join(project.dir, '.config') },
       encoding: 'utf8',
@@ -211,7 +211,7 @@ describe('e2e doctor', () => {
   it('stops the checks at Ctrl-C, reports them, and exits 130', async () => {
     const project = createProject({ 'e2e.config.ts': config() });
     projects.push(project);
-    const child = spawn(process.execPath, [CLI, 'doctor', '--reporter', 'json', '--target', 'checked'], {
+    const child = spawn(process.execPath, [CLI, 'doctor', '--json', '--target', 'checked'], {
       cwd: project.dir,
       env: { ...process.env, CI: '', NO_COLOR: '1', XDG_CONFIG_HOME: path.join(project.dir, '.config'), TOOLCHAIN: 'hang' },
     });
@@ -229,7 +229,7 @@ describe('e2e doctor', () => {
   it('reports a config still loading at Ctrl-C as cancelled', async () => {
     const project = createProject({ 'e2e.config.ts': "process.stderr.write('loading\\n');\nawait new Promise((resolve) => setTimeout(resolve, 60_000));\nexport default {};\n" });
     projects.push(project);
-    const child = spawn(process.execPath, [CLI, 'doctor', '--reporter', 'json'], { cwd: project.dir, env: { ...process.env, CI: '', NO_COLOR: '1' } });
+    const child = spawn(process.execPath, [CLI, 'doctor', '--json'], { cwd: project.dir, env: { ...process.env, CI: '', NO_COLOR: '1' } });
     let stdout = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
     setTimeout(() => child.kill('SIGINT'), 2000);

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://e2e.dev/schema/doctor-v1.schema.json",
   "title": "e2e doctor-1",
-  "description": "The report `e2e doctor --reporter json` prints. A host reads `ok`, or a check's `status`: only `fail` stops a run; `warn`, `skip`, and `unknown` never do.",
+  "description": "The report `e2e doctor --json` prints. A host reads `ok`, or a check's `status`: only `fail` stops a run; `warn`, `skip`, and `unknown` never do.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "version", "ok", "checks"],
