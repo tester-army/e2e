@@ -17,8 +17,12 @@ run summary counts the outcomes:
 
 ```text
            AI  4.1k tokens · 2 model calls · openai/gpt-6-luna-fast
-        Cache  4 replayed · 1 handed off · 1 missed
+        Cache  4 replayed · 1 handed off · 1 missed · 1 not saved
 ```
+
+`not saved` counts the steps of passing and flaky tests whose
+[`step.cache.write`](#when-a-recording-is-written) is `unconfirmed`,
+`no-change`, or `not-written` in the attempt that passed.
 
 ## When a recording is written
 

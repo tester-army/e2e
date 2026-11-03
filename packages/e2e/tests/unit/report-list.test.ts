@@ -7,6 +7,7 @@ import { resultId } from '../../src/internal/ids.ts';
 import { visibleWidth } from '../../src/report/format.ts';
 import { ListReporter } from '../../src/report/list.ts';
 import { userFrame } from '../../src/report/code-frame.ts';
+import type { CacheWrite } from '../../src/cache/context.ts';
 import type { RunEventFact, RunEventOf, RunEventResult } from '../../src/run/events.ts';
 import type { ResultStatus, AttemptRecord, SerialGroupRecord, SerialMemberRecord } from '../../src/run/records.ts';
 
@@ -747,6 +748,122 @@ describe('ListReporter', () => {
       reporter.handle(runFinished({ reportPath: 'r.json' }));
       const ai = lines.findIndex((line) => line.trimStart().startsWith('AI'));
       expect(lines[ai + 1]).toBe('      Cache  2 replayed · 1 handed off');
+    });
+
+    /** An `act` step that missed the cache and settled its recording as `write`. */
+    const cacheStep = (id: string, write: CacheWrite) =>
+      ({
+        id,
+        index: 0,
+        kind: 'agent',
+        api: 'agent.act',
+        label: 'do it',
+        status: 'passed',
+        startedAt: new Date(0).toISOString(),
+        durationMs: 10,
+        events: [],
+        artifacts: [],
+        cache: { mode: 'missed', reason: 'no-entry', write },
+        model: { provider: 'openai', model: 'gpt-5.6-luna-fast', calls: 1, inputTokens: 1_000, outputTokens: 100 },
+      }) as unknown as AttemptRecord['steps'][number];
+
+    /** The `Cache` row of the run summary after `facts`. */
+    const cacheRow = (facts: readonly RunEventFact[]) => {
+      const { lines, output } = capture();
+      const reporter = plainReporter(output);
+      reporter.handle(runStarted({ model: 'openai/gpt-5.6-luna-fast' }));
+      for (const fact of facts) reporter.handle(fact);
+      reporter.handle(runFinished({ reportPath: 'r.json' }));
+      return lines.find((line) => line.trimStart().startsWith('Cache'));
+    };
+
+    it('counts the steps whose recording was not saved', () => {
+      const steps = [
+        cacheStep('saved', 'saved'),
+        cacheStep('unconfirmed', 'unconfirmed'),
+        cacheStep('no-change', 'no-change'),
+        cacheStep('not-written', 'not-written'),
+      ];
+      expect(cacheRow([
+        plan([{ file: 'tests/a.e2e.ts', tests: 1 }]),
+        finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ steps })] })),
+      ])).toBe('      Cache  4 missed · 3 not saved');
+    });
+
+    it('counts not saved from the attempt that decided a passing result only', () => {
+      expect(cacheRow([
+        plan([{ file: 'tests/a.e2e.ts', tests: 2 }]),
+        finished(result({
+          status: 'flaky',
+          file: 'tests/a.e2e.ts',
+          attempts: [
+            attempt({ status: 'failed', steps: [cacheStep('first', 'unconfirmed')] }),
+            attempt({ id: 'attempt-2', index: 1, steps: [cacheStep('retry', 'saved')] }),
+          ],
+        })),
+        finished(result({
+          status: 'failed',
+          id: 'test-2',
+          file: 'tests/a.e2e.ts',
+          declarationIndex: 1,
+          attempts: [attempt({ status: 'failed', steps: [cacheStep('failed', 'unconfirmed')] })],
+        })),
+      ])).toBe('      Cache  3 missed');
+    });
+
+    it('counts not saved for a serial member from its last attempt only', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 1 }]),
+        serialGroup('g1', [
+          { members: [serialMember('m1', { status: 'failed', steps: [cacheStep('first', 'unconfirmed')] })], error: memberError },
+          { members: [serialMember('m1', { steps: [cacheStep('retry', 'saved'), cacheStep('trailing', 'unconfirmed')] })] },
+        ], { status: 'flaky' }),
+        finished(result({ status: 'flaky', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+      ])).toBe('      Cache  3 missed · 1 not saved');
+    });
+
+    it('counts not saved for a passing serial member from before a retry that never reached the members', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      const launchError = { category: 'infrastructure' as const, code: 'ENGINE_FAILURE', message: 'device lost on retry', retryable: true };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 2 }]),
+        serialGroup('g1', [
+          {
+            members: [serialMember('m1', { steps: [cacheStep('first', 'unconfirmed')] }), serialMember('m2', { status: 'failed', error: memberError })],
+            error: memberError,
+          },
+          { members: [serialMember('m1', { status: 'failed', error: launchError }), serialMember('m2', { status: 'skipped' })], error: launchError },
+        ], { status: 'failed' }),
+        finished(result({ status: 'passed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+        finished(result({ status: 'failed', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })),
+      ])).toBe('      Cache  1 missed · 1 not saved');
+    });
+
+    it('counts not saved from the latest of two passing serial runs', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 2 }]),
+        serialGroup('g1', [
+          { members: [serialMember('m1', { steps: [cacheStep('first', 'unconfirmed')] }), serialMember('m2', { status: 'failed', error: memberError })], error: memberError },
+          { members: [serialMember('m1', { steps: [cacheStep('retry', 'saved')] }), serialMember('m2')] },
+        ], { status: 'flaky' }),
+        finished(result({ status: 'flaky', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+        finished(result({ status: 'flaky', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })),
+      ])).toBe('      Cache  2 missed');
+    });
+
+    it('adds nothing for a failed serial member that passed in an earlier group attempt', () => {
+      const memberError = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'check failed', retryable: false };
+      expect(cacheRow([
+        plan([{ file: 'tests/case.e2e.ts', tests: 2 }]),
+        serialGroup('g1', [
+          { members: [serialMember('m1', { steps: [cacheStep('first', 'unconfirmed')] }), serialMember('m2', { status: 'failed', error: memberError })], error: memberError },
+          { members: [serialMember('m1', { status: 'failed', error: memberError, steps: [cacheStep('retry', 'unconfirmed')] }), serialMember('m2', { status: 'skipped' })], error: memberError },
+        ], { status: 'failed' }),
+        finished(result({ status: 'failed', id: 'm1', title: ['wizard', 'step 1'], serialGroupId: 'g1' })),
+        finished(result({ status: 'skipped', id: 'm2', title: ['wizard', 'step 2'], declarationIndex: 1, serialGroupId: 'g1' })),
+      ])).toBe('      Cache  2 missed');
     });
 
     it('names the interrupt from run-finished alone when the host aborted without the event', () => {
