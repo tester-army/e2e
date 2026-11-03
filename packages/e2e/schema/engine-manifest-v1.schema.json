@@ -57,6 +57,7 @@
           "session/reset",
           "lifecycle/prepare",
           "lifecycle/finish",
+          "lifecycle/doctor",
           "lifecycle/init",
           "lifecycle/startAttempt",
           "lifecycle/settleAttempt",

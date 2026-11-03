@@ -15,7 +15,7 @@ export const migrationPrompt = `Migrate this project's Detox tests to e2e, one s
 3. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 4. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 5. Port \`.detoxrc.js\` into the e2e config: one target per platform with \`mobile({ platform })\`, the app's \`bundleId\` and \`appPath\` on the target, and the device type as \`mobile({ device })\`. e2e uses the normal debug or release build, with no Detox framework.
-6. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
+6. Install dependencies, then run \`npx e2e doctor\` (e2e 0.22.1 or newer) and fix what it reports.
 7. List the Detox specs and ask me which one to move first. Suggest a flow that needs frequent maintenance.
 8. Rewrite that spec as a \`.e2e.ts\` file under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), not in the Detox folder, with the guide's tables. Start it with \`app.open()\`, since nothing launches on its own. Narrow queries that match several nodes.
 9. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted interactions breaks often, propose an \`agent.act\` goal for it instead.

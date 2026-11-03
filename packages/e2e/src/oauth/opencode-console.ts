@@ -13,6 +13,7 @@ import type { LanguageModelV4, LanguageModelV4CallOptions, LanguageModelV4Messag
 import { promptCacheKey } from '../agent/model/provider-hints.ts';
 import { OAuthError } from './errors.ts';
 import { createOAuthFetch } from './fetch.ts';
+import { withLogin } from './login-model.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
 import { credentialSource } from './providers.ts';
 import { createOpencodeConsoleProvider, opencodeConsoleChatRoute, opencodeConsoleRouteFor, type OpencodeConsoleRoute } from './providers/opencode-console.ts';
@@ -52,7 +53,7 @@ export function opencodeConsole(modelId: string): LanguageModelV4 {
   };
 
   // Fixed: the runner reads provider and modelId before and after the first call.
-  return {
+  const instance: LanguageModelV4 = {
     specificationVersion: chat.model.specificationVersion,
     provider: chatRoute.go ? 'opencode.go' : 'opencode',
     modelId: chatRoute.modelId,
@@ -68,6 +69,7 @@ export function opencodeConsole(modelId: string): LanguageModelV4 {
       return model.doStream(requestFor(npm, options, session));
     },
   };
+  return withLogin(instance, 'opencode-console');
 }
 
 /** `opencode.go` keeps Go's provider options under `opencode`, the name up to the first dot; `apiKey` only satisfies the constructors. */

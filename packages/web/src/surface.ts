@@ -19,6 +19,8 @@ import {
   type EngineAppInfo,
   type EngineAttemptContext,
   type EngineCleanupContext,
+  type EngineDoctorCheck,
+  type EngineDoctorInfo,
   type EngineInitInfo,
   type EngineObserveOptions,
   type EnginePrepareInfo,
@@ -46,7 +48,7 @@ import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './pro
 import { installAppLog } from './app-log.ts';
 import { TraceFeed } from './trace-feed.ts';
 import { DialogRouter } from './dialogs.ts';
-import { ensureBrowsersInstalled } from './install.ts';
+import { browserCheck, ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
 import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
@@ -338,6 +340,17 @@ export class PlaywrightSurface {
     if (this.leases !== undefined) return this.leases.prepare(info);
     if (this.connect !== undefined) return;
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log, headed: info.headed });
+  }
+
+  /**
+   * The checks of `e2e doctor`: the init scripts `prepare` reads, and the
+   * browser, which only a local launch needs on this machine.
+   */
+  async doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    const scripts = await this.configuredInitScripts.doctor(info.projectRoot);
+    if (this.leases !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: `browsers come from the "${this.leases.name}" provider` }];
+    if (this.connect !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: 'the browser is attached over CDP' }];
+    return [...scripts, ...browserCheck(this.browserName, info.env, info.headed)];
   }
 
   /** Releases the browsers `prepare` leased; a local launch or a `connect` has nothing to release. */

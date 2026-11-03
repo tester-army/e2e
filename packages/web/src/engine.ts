@@ -110,6 +110,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     platform: 'web',
     prepare: (info) => surface.prepare(info),
     finish: (info) => surface.finish(info),
+    doctor: (info) => surface.doctor(info),
     init: (info) => surface.init(info),
     startAttempt: (context) => surface.startAttempt(context),
     settleAttempt: (context) => surface.settleAttempt(context),

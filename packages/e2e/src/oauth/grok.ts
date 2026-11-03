@@ -7,6 +7,7 @@
 import type { LanguageModelV4 } from '@ai-sdk/provider';
 import { createXai } from '@ai-sdk/xai';
 import { createOAuthFetch } from './fetch.ts';
+import { withLogin } from './login-model.ts';
 import { USER_AGENT } from '../internal/client-identity.ts';
 import { loginHint } from './providers.ts';
 import { createXaiProvider } from './providers/xai.ts';
@@ -18,5 +19,5 @@ export function grok(modelId: string): LanguageModelV4 {
     userAgent: USER_AGENT,
     loginHint: loginHint('spacexai'),
   });
-  return createXai({ apiKey: 'oauth', fetch })(modelId);
+  return withLogin(createXai({ apiKey: 'oauth', fetch })(modelId), 'spacexai');
 }

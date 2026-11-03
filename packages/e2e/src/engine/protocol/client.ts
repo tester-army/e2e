@@ -5,11 +5,12 @@
  * drives an engine in its own process. Nothing past this file knows the
  * difference.
  *
- * A handle opens at most two kinds of connection in one process, mirroring
- * where the harness calls an engine: a `run` connection per target from
- * `prepare` to `finish`, in the runner, and a `worker` connection from
- * `init` to `dispose`, in each worker. Neither shares state with the other,
- * exactly as a runner and its child-process workers share none.
+ * A handle opens three kinds of connection, mirroring where the harness
+ * calls an engine: a `run` connection per target from `prepare` to
+ * `finish`, in the runner; a `worker` connection from `init` to `dispose`,
+ * in each worker; and a `doctor` connection per target for `e2e doctor`'s
+ * one call. None shares state with another, exactly as a runner and its
+ * child-process workers share none.
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -18,7 +19,7 @@ import { InfrastructureError } from '../../internal/errors.ts';
 import { obj } from '../../internal/objects.ts';
 import { packageVersion } from '../../internal/package-version.ts';
 import { relativeToProjectRoot } from '../../internal/paths.ts';
-import { cancelledError, withAbort } from '../../internal/time.ts';
+import { abortError, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../../internal/time.ts';
 import { secretHandle } from '../../secrets.ts';
 import { EngineError } from '../contract.ts';
 import { defineEngine } from '../manifest.ts';
@@ -29,6 +30,8 @@ import type {
   EngineAttemptContext,
   EngineCleanupContext,
   EngineDisposeContext,
+  EngineDoctorCheck,
+  EngineDoctorInfo,
   EngineFinishInfo,
   EngineHandle,
   EngineInitInfo,
@@ -106,6 +109,9 @@ type ScreenshotResult = { readonly path: string } | { readonly data: string; rea
 
 /** Budget of the `shutdown` handshake when a connection closes outside a cleanup hook. */
 const DEFAULT_CLOSE_MS = 5000;
+
+/** How long a server's `doctor` may take to stop once its signal aborted, before its connection closes. */
+const DOCTOR_ABORT_GRACE_MS = 5000;
 
 /** The runner version `initialize` reports; servers check the protocol version, never this. */
 const CLIENT_VERSION = packageVersion(import.meta.url, '../../../package.json', '0.0.0');
@@ -237,6 +243,7 @@ class EngineClient {
         validateApp: this.#options.validateApp,
         prepare: runs ? (info: EnginePrepareInfo) => this.#prepare(info) : undefined,
         finish: runs ? (info: EngineFinishInfo) => this.#finish(info) : undefined,
+        doctor: has('lifecycle/doctor') ? (info: EngineDoctorInfo) => this.#doctor(info) : undefined,
         settleAttempt: has('lifecycle/settleAttempt')
           ? (context: EngineCleanupContext) => this.#forward('lifecycle/settleAttempt', context)
           : undefined,
@@ -286,6 +293,26 @@ class EngineClient {
       }
     } finally {
       await this.#close(link, deadline - Date.now());
+    }
+  }
+
+  /**
+   * Opens a `doctor` connection for the hook alone and closes it after:
+   * `e2e doctor` starts no run. At the signal the server is told to stop and
+   * gets `DOCTOR_ABORT_GRACE_MS` to answer before the connection closes.
+   */
+  async #doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    const { signal, log, ...rest } = info;
+    if (signal.aborted) throw abortError(signal, cancelledError);
+    const link = await this.#open('doctor', { env: info.env, cwd: info.projectRoot, signal, app: info.app, log });
+    const call = this.#call(link, 'lifecycle/doctor', { ...rest, signal: link.signals.encode(signal) });
+    try {
+      return (await withAbort(call, signal, cancelledError)) as readonly EngineDoctorCheck[];
+    } catch (cause) {
+      if (signal.aborted) await withinCleanupBudget(call, { signal: NEVER_ABORTS, timeoutMs: DOCTOR_ABORT_GRACE_MS });
+      throw cause;
+    } finally {
+      await this.#close(link, DEFAULT_CLOSE_MS);
     }
   }
 
