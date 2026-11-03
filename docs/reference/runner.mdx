@@ -150,7 +150,7 @@ console.log(result.status, result.explore.ended, result.explore.findings.length)
 - `goal` is at most 2,000 characters.
 - `session` names a session a [setup test](/authentication) saves. That setup
   runs first, and the exploration starts from it, as `--session` does.
-- `maxSteps` is from 1 to 12. `timeoutMs` is from `180000` to `900000`.
+- `maxSteps` is from 1 to 100. `timeoutMs` is from `180000` to `7200000`.
 - `onEvent` receives the same events as for `run`, plus an `explore` event
   for each planning decision, step, and finding. What `e2e explore` prints
   before the run starts, such as the target it chose, arrives as a `notice`
