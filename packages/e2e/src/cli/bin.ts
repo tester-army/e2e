@@ -10,6 +10,8 @@ function wantsDoctorJson(args: readonly string[]): boolean {
 }
 
 ignoreBrokenPipes([process.stdout, process.stderr]);
+// A parent's IPC channel (`e2e mcp`'s `run_tests`) only tells the CLI when that parent dies (`SignalLadder`); it must not keep the process alive.
+process.channel?.unref();
 
 // Checked before the CLI module loads: that module and its dependencies are
 // what an old runtime would fail on, with a stack trace instead of a sentence.

@@ -108,8 +108,10 @@ test('a member upgrades to Pro', async ({ app, agent, screen, browser }) => {
    Exact values go through `screen`: a sign-in form in a setup test, a field
    that must receive one specific string, a count that must be one number.
 4. Run only the test you are working on:
-   `npx e2e run tests/<feature>.e2e.ts:<line>`, the line its `test(` opens
-   on, with the flags in "Rerunning a test while you fix it" below. Agent
+   `npx e2e run tests/<feature>.e2e.ts:<line>` (over MCP,
+   `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`, the flags as
+   camelCase fields such as `retries: 0`), the line its `test(` opens on,
+   with the flags in "Rerunning a test while you fix it" below. Agent
    steps need a model in the config and that provider's authentication (a
    saved subscription login, an API key); a local endpoint may need none.
    Tests without agent steps need no model.
@@ -195,7 +197,8 @@ lines you changed:
 - In a project without e2e, set it up when the user requests it. Otherwise
   ask before adding a test framework, and name any existing framework.
 - Live MCP tools need the project's own `e2e mcp` server registered in the
-  client (topic `mcp`); writing and running tests use the CLI directly.
+  client (topic `mcp`). Tests run with the CLI, or with the server's
+  `run_tests`, the same run without a shell.
   Keep a session open across runs while you write or fix a web test; topic
   `mcp` says when a run can go beside it, and what to do on
   `APP_ALREADY_RUNNING`.

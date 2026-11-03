@@ -36,7 +36,7 @@ import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
 import { describeTestOutcome } from './test-outcome.ts';
 import { SessionUsage, type McpSessionSummary, type SessionEndedBy } from './usage.ts';
-import { actionResult, catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
+import { actionResult, catalogLine, defineMcpTool, describeToolDetail, errorResult, invokeTool, redacting, redactResult, textResult, type McpToolCallExtra, type McpToolResult, type McpToolSpec } from './tools.ts';
 
 /** How long one session may live, whatever happens. */
 const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -578,25 +578,4 @@ export class SessionHost {
       call: async (args) => textResult(await this.close('closed by the agent', args.session)),
     });
   }
-}
-
-/**
- * The tool with what it returns redacted with every secret value the process
- * knows: the static values of each config a session loaded, and every value
- * a session resolved or derived. A failure becomes a result the agent can
- * react to, never a protocol error, and is redacted the same way.
- */
-function redacting(spec: McpToolSpec): McpToolSpec {
-  return {
-    ...spec,
-    call: async (args, extra) => {
-      let result: McpToolResult;
-      try {
-        result = await spec.call(args, extra);
-      } catch (cause) {
-        result = errorResult(cause);
-      }
-      return redactResult(result, (text) => processSecrets.redact(text));
-    },
-  };
 }

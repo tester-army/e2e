@@ -18,6 +18,7 @@ acts on it, and checks its work.
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
 | Fix a failing test | Clicks through the flow again | Runs the test and stops on the failure |
+| Run the suite | Needs a shell for `e2e run` | Runs it with `run_tests` |
 | Show a change in a PR | Describes it | Records a video |
 
 The server needs no model. A test it runs needs one only for an agent
@@ -151,8 +152,8 @@ limits.
 
 A session writes no test results, and only a test it runs with
 `open_session {test}` uses the replay cache. The agent runs suites with
-`e2e run` and, when a run can go beside the session, keeps the session
-open between runs. After a failed run, it goes to the failing screen in
+[`run_tests`](/reference/mcp#run_tests), the same run as `e2e run`, and,
+when a run can go beside the session, keeps the session open between runs. After a failed run, it goes to the failing screen in
 that session instead of opening a new one.
 
 On web, a run next to a session depends on the target's `app`:
