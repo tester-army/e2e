@@ -511,7 +511,10 @@ describe('e2e explore', () => {
     // A config that resolves, so only the flag can be what rejects.
     const resolvable = { targets: [{ platform: 'web' }] };
     await expect(explore({ cwd: project.dir, rawConfig: resolvable, goal: 'x'.repeat(2_001) })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
-    await expect(explore({ cwd: project.dir, rawConfig: resolvable, maxSteps: 13 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    await expect(explore({ cwd: project.dir, rawConfig: resolvable, maxSteps: 101 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    await expect(explore({ cwd: project.dir, rawConfig: resolvable, timeoutMs: 7_200_001 })).rejects.toMatchObject({ code: 'INVALID_CONFIG' });
+    // The largest budgets get past the flags, to the missing model.
+    await expect(explore({ cwd: project.dir, rawConfig: resolvable, maxSteps: 100, timeoutMs: 7_200_000 })).rejects.toMatchObject({ code: 'MODEL_UNAVAILABLE' });
     const credentials = Object.fromEntries(
       Array.from({ length: 400 }, (_, i) => [`account-${String(i)}`, { username: `${'u'.repeat(200)}@example.test`, password: 'password' }]),
     );
