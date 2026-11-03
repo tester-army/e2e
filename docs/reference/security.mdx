@@ -336,7 +336,7 @@ after download redaction, with the `redaction` label the report records.
 | `api.limrun.com` (or `LIMRUN_BASE_URL`) and its devices | Only from [`limrun()`](/integrations/limrun). It signs in with `LIMRUN_API_KEY`. |
 | The Kernel API and its hosted browsers | Only from [`kernel()`](/integrations/kernel). |
 | TestMu AI's CDP hub and its hosted browsers | Only from [`testmuBrowsers()`](/integrations/testmu#run-web-targets-in-browsers). The username and access key travel only in the CDP URL, never in a log line. |
-| The Expo API and the simulators' agent-device daemons | Only from [`easSimulators()`](/integrations/eas). It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
+| The Expo API and the simulators' agent-device daemons | Only from [`expoSimulators()`](/integrations/eas), or its deprecated alias `easSimulators()`. It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
 | `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright image. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |
 | The package registry | When `e2e init` installs dependencies. |
 | The app under test | Every run, plus whatever the app itself loads. |

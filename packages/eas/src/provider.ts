@@ -1,4 +1,4 @@
-/** EAS Simulators' hosted iOS simulators and Android emulators as a `DeviceProvider` for the mobile engine. */
+/** Expo Simulators' hosted iOS simulators and Android emulators as a `DeviceProvider` for the mobile engine. */
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from '@e2e-dev/mobile';
@@ -27,7 +27,7 @@ const POLL_FAILURES_TOLERATED = 3;
 
 /**
  * When EAS stops each ready session a run holds for idling, by run and
- * session id, across every `easSimulators()` of the run: targets prepare one
+ * session id, across every `expoSimulators()` of the run: targets prepare one
  * after another in the runner process, so a target's ready sessions sit idle
  * while the next target's queue.
  */
@@ -35,12 +35,12 @@ const idleDeadlines = new Map<string, Map<string, number>>();
 
 /**
  * The project id each run reads from an app config, by run and project root,
- * across every `easSimulators()` of the run, so two targets of one app read it
+ * across every `expoSimulators()` of the run, so two targets of one app read it
  * once. A failed read is not kept.
  */
 const projectIds = new Map<string, Promise<string>>();
 
-/** Every option `easSimulators()` takes, kept equal to `EasSimulatorsOptions` by the compiler. */
+/** Every option `expoSimulators()` takes, kept equal to `ExpoSimulatorsOptions` by the compiler. */
 const OPTION_KEYS: readonly string[] = Object.keys({
   projectId: true,
   buildId: true,
@@ -50,10 +50,10 @@ const OPTION_KEYS: readonly string[] = Object.keys({
   maxDurationMinutes: true,
   agentDeviceVersion: true,
   tags: true,
-} satisfies Record<keyof EasSimulatorsOptions, true>);
+} satisfies Record<keyof ExpoSimulatorsOptions, true>);
 
-/** What `easSimulators()` takes: the Expo project, the app each simulator starts with, and the simulator itself. */
-export interface EasSimulatorsOptions {
+/** What `expoSimulators()` takes: the Expo project, the app each simulator starts with, and the simulator itself. */
+export interface ExpoSimulatorsOptions {
   /**
    * The Expo project the sessions belong to: its id, not its slug. Absent,
    * `extra.eas.projectId` of the app config in the project root, the id
@@ -93,7 +93,7 @@ export interface EasSimulatorsOptions {
 }
 
 /**
- * EAS Simulators for `mobile({ device: easSimulators() })`: one hosted
+ * Expo Simulators for `mobile({ device: expoSimulators() })`: one hosted
  * simulator per worker slot, started when the run starts and stopped when it
  * ends, each driven through the agent-device daemon EAS runs beside it.
  * Every session is named after its target and slot and tagged with the run,
@@ -101,20 +101,20 @@ export interface EasSimulatorsOptions {
  * It authenticates with `EXPO_TOKEN` from the run's environment, else with
  * the session `eas login` stored, as eas-cli does.
  */
-export function easSimulators(options: EasSimulatorsOptions = {}): DeviceProvider {
-  rejectUnknownKeys('easSimulators()', options, OPTION_KEYS);
+export function expoSimulators(options: ExpoSimulatorsOptions = {}): DeviceProvider {
+  rejectUnknownKeys('expoSimulators()', options, OPTION_KEYS);
   for (const key of ['maxIdleTimeMinutes', 'maxDurationMinutes'] as const) {
     const value = options[key];
     if (value !== undefined && (!Number.isInteger(value) || value < 0)) {
-      throw new ConfigurationError('INVALID_CONFIG', `easSimulators: \`${key}\` must be a non-negative integer`);
+      throw new ConfigurationError('INVALID_CONFIG', `expoSimulators: \`${key}\` must be a non-negative integer`);
     }
   }
   const { projectId, buildId, applicationArchiveUrl, device, maxDurationMinutes, agentDeviceVersion, tags = [] } = options;
   if (buildId !== undefined && applicationArchiveUrl !== undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', 'easSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
+    throw new ConfigurationError('INVALID_CONFIG', 'expoSimulators: pass `buildId` or `applicationArchiveUrl`, not both');
   }
   if (options.maxIdleTimeMinutes !== undefined && maxDurationMinutes !== undefined && options.maxIdleTimeMinutes >= maxDurationMinutes) {
-    throw new ConfigurationError('INVALID_CONFIG', 'easSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as EAS requires');
+    throw new ConfigurationError('INVALID_CONFIG', 'expoSimulators: `maxIdleTimeMinutes` must be below `maxDurationMinutes`, as EAS requires');
   }
   const idleMinutes = options.maxIdleTimeMinutes ?? (maxDurationMinutes === undefined ? DEFAULT_MAX_IDLE_TIME_MINUTES : Math.min(DEFAULT_MAX_IDLE_TIME_MINUTES, maxDurationMinutes - 1));
   // EAS takes no idle limit of zero; a session that short runs to its duration.
@@ -149,7 +149,7 @@ export function easSimulators(options: EasSimulatorsOptions = {}): DeviceProvide
     return client;
   };
   return {
-    name: 'eas-simulators',
+    name: 'expo-simulators',
     async acquire(request: DeviceRequest): Promise<DeviceLease> {
       request.signal.throwIfAborted();
       if (request.appPath !== undefined && (buildId !== undefined || applicationArchiveUrl !== undefined)) {
@@ -209,6 +209,12 @@ export function easSimulators(options: EasSimulatorsOptions = {}): DeviceProvide
     },
   };
 }
+
+/** @deprecated Use `ExpoSimulatorsOptions` instead. */
+export type EasSimulatorsOptions = ExpoSimulatorsOptions;
+
+/** @deprecated Use `expoSimulators()` instead. */
+export const easSimulators: (options?: ExpoSimulatorsOptions) => DeviceProvider = expoSimulators;
 
 /**
  * Polls a session until its agent-device daemon is reachable. Says once when
