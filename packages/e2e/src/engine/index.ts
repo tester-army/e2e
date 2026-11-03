@@ -358,6 +358,8 @@ export interface EngineSession {
   open?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
+  /** Sets the viewport to `size` in CSS pixels, for this page and every page the attempt opens after it. */
+  resize?(size: ViewportSize, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */

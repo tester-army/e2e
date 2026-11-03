@@ -53,6 +53,7 @@
           "artifacts/stopVideo",
           "session/open",
           "session/back",
+          "session/resize",
           "session/restart",
           "session/reset",
           "lifecycle/prepare",

@@ -31,6 +31,7 @@ const ACCEPTED: Readonly<Record<string, Record<string, unknown>>> = {
   upload: { target: 'n1', files: ['fixtures/a.txt'] },
   navigate: { url: '/about' },
   back: {},
+  resize_viewport: { width: 390, height: 844 },
   screenshot: {},
   tap_at: { x: 10, y: 20 },
   hover_at: { x: 10, y: 20 },
@@ -94,6 +95,16 @@ describe('the grammar tools have closed schemas', () => {
     expectClosed(schemaOf(tools, 'scroll'), { direction: 'down' }, 'scroll');
     // Without the id-addressed verb a target is not a field of type at all.
     expect(schemaOf(tools, 'type').safeParse({ target: 'n1', value: 'ada' }).success).toBe(false);
+  });
+
+  it('offers resize_viewport only with the resize verb, in whole pixels within the bounds', () => {
+    expect(Object.keys(createGrammarTools(fakeExecutorContext({ verbs: ['tap', 'back'] }).context))).not.toContain('resize_viewport');
+    const resize = schemaOf(createGrammarTools(fakeExecutorContext({ verbs: ['resize'] }).context), 'resize_viewport');
+    expect(resize.safeParse({ width: 1440, height: 900 }).success).toBe(true);
+    expect(resize.safeParse({ width: 390.5, height: 844 }).success).toBe(false);
+    expect(resize.safeParse({ width: 100, height: 844 }).success).toBe(false);
+    expect(resize.safeParse({ width: 390, height: 5000 }).success).toBe(false);
+    expect(resize.safeParse({ width: 390 }).success).toBe(false);
   });
 
   it('closes complete_step', () => {

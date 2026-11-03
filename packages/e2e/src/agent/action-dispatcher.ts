@@ -11,10 +11,10 @@
  */
 
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
-import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint } from '../engine/surface.ts';
+import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
-import { clampToViewport, requireFinitePoint, viewportShare } from '../internal/geometry.ts';
+import { clampToViewport, requireFinitePoint, requireViewportSize, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { ActionEvent, ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
 import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
@@ -159,6 +159,7 @@ export class ActionDispatcher {
       scrollUntil: (text, direction, list) => this.scrollUntil(text, direction, list),
       navigate: (url) => this.navigate(url),
       back: () => this.back(),
+      resize: (size) => this.resize(size),
       tapAt: (point) => this.pointVerb('tapAt', point),
       hoverAt: (point) => this.pointVerb('hoverAt', point),
       dragAt: (from, to) => this.pointDrag(from, to),
@@ -442,6 +443,16 @@ export class ActionDispatcher {
     return this.runAction('back', async () => {
       await this.session.app.back(this.accounting.operation());
       return { name: 'back' };
+    });
+  }
+
+  /** Sets the viewport to whole CSS pixels within `VIEWPORT_LIMITS`, for a layout at another width. */
+  private async resize(size: ViewportSize): Promise<void> {
+    const { width, height } = requireViewportSize(size);
+    await this.runAction('resize', async () => {
+      await this.session.app.resize({ width, height }, this.accounting.operation());
+      this.runtime.steps.attachViewport({ width, height, scale: 1 });
+      return { name: 'resize', size: { width, height } };
     });
   }
 

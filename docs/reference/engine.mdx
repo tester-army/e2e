@@ -250,7 +250,7 @@ export interface Engine {
    * no value reaches the config digest.
    */
   readonly secrets?: readonly Secret[];
-  /** Steering hooks: open, back, restart, reset. */
+  /** Steering hooks: open, back, resize, restart, reset. */
   readonly session?: EngineSession;
   /**
    * Runs once per target in the runner, after collection and before workers,
@@ -371,7 +371,7 @@ member. Three gaps end differently:
 | `state` | `state` | - | `test.setup` sessions and the `session:` option. |
 | `artifacts` | `artifacts` | - | Screenshots and videos. |
 | `validateApp` | - | - | A config-load check of the target's `app`. |
-| `session` | - | - | The `app` steering methods and the agent's `navigate` and `back` verbs. |
+| `session` | - | - | The `app` steering methods and the agent's `navigate`, `back`, and `resize_viewport` verbs. |
 
 #### Agent verbs
 
@@ -396,6 +396,7 @@ An undeclared verb is absent from the toolset.
 | `upload` | `setInputFiles` |
 | `navigate` | `session.open` |
 | `back` | `session.back` |
+| `resize_viewport` | `session.resize` |
 | `tap_at`, `hover_at` | the `tap` or `hover` kind, in `actions` or in `pointerActions` |
 | `drag_at` | the `dragTo` kind, in `actions` or in `pointerActions` |
 | `type_at` | `fill` or `keyboard` |
@@ -1377,13 +1378,14 @@ export interface EngineAppInfo {
 
 ### Session
 
-Steering hooks behind the universal `app` fixture and the agent's `navigate`
-and `back` verbs.
+Steering hooks behind the universal `app` fixture and the agent's `navigate`,
+`back`, and `resize_viewport` verbs.
 
 | Hook | Behind |
 | --- | --- |
 | `open(url)` | `app.open()`, the agent's `navigate` verb, the reopen after `restart` and `reset` |
 | `back()` | `app.back()`, the agent's `back` verb |
+| `resize(size)` | the agent's `resize_viewport` verb; `size` is `{ width, height }` in CSS pixels and holds for the rest of the attempt |
 | `restart()` | `app.restart()` |
 | `reset()` | `app.clearState()` |
 
@@ -1416,6 +1418,8 @@ export interface EngineSession {
   open?(url: string, context: OperationContext): Promise<void>;
   /** Navigates back once in the surface's history. */
   back?(context: OperationContext): Promise<void>;
+  /** Sets the viewport to `size` in CSS pixels, for this page and every page the attempt opens after it. */
+  resize?(size: ViewportSize, context: OperationContext): Promise<void>;
   /** Recreates the execution context, keeping persisted state. */
   restart?(context: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the execution context. */

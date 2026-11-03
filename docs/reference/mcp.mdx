@@ -258,13 +258,14 @@ current path and revision. Takes no arguments.
 
 `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`,
 `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`,
-`back`, `type_secret`. Each returns the action's summary, the
-[test line](#test_lines) that repeats it, and what changed on screen.
+`back`, `resize_viewport`, `type_secret`. Each returns the action's summary, the
+[test line](#test_lines) that repeats it or why there is none, and what
+changed on screen.
 
 | Input | Does |
 | --- | --- |
 | A node id | From the newest observation. |
-| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name | What the verb needs. |
+| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, `width` and `height`, or secret name | What the verb needs. |
 | `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
 
 - A verb the engine does not declare is not in the catalog.
@@ -397,8 +398,9 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 | `navigate`, `back` | `app.open(url)`, with a URL on the app's origin as its path; `app.back()` |
 
 No line: `type` or `press` with no target, `press` with `times` over 1,
-`scroll`, `scroll_to` a text, `dismiss_keyboard`, and a `type` the node took
-through the keyboard. The [point tools](#point-tools) print nothing.
+`scroll`, `scroll_to` a text, `dismiss_keyboard`, `resize_viewport` (set the
+size with the engine fixture, `browser.setViewport` on web), and a `type` the
+node took through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
 

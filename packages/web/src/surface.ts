@@ -724,6 +724,11 @@ export class PlaywrightSurface {
     ));
   }
 
+  /** Sets the viewport for the agent's `resize` verb, as `browser.setViewport` does, and shows the screen after it. */
+  resize(size: ViewportSize, operation: OperationContext): Promise<void> {
+    return this.acted(operation, this.guard(operation, 'resize', () => this.setViewport(size)));
+  }
+
   /** Runs one navigation the engine itself makes, so the app log leaves it to the step that asked for it. */
   async navigating<T>(work: () => Promise<T>): Promise<T> {
     this.ownNavigations += 1;

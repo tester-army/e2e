@@ -67,6 +67,25 @@ reproduce it and, when possible, a screenshot. Compare each finding with
 its evidence before you act on it. For the other exit codes, the JSON
 report, and artifact paths, see the [CLI reference](/reference/cli#e2e-explore).
 
+## Check other screen sizes
+
+When the target's engine can resize the viewport (the web engine can), a
+goal can ask for layouts at other widths:
+
+<CodeGroup>
+```bash npm
+npx e2e explore 'Check the pricing page at desktop, tablet, and phone widths for broken layouts'
+```
+
+```bash pnpm
+pnpm exec e2e explore 'Check the pricing page at desktop, tablet, and phone widths for broken layouts'
+```
+
+```bash bun
+bunx e2e explore 'Check the pricing page at desktop, tablet, and phone widths for broken layouts'
+```
+</CodeGroup>
+
 ## Start signed in
 
 Add `--session <name>`, the name of a session that a

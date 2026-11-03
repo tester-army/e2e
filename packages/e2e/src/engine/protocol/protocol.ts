@@ -62,6 +62,7 @@ export const METHODS = {
   'artifacts/stopVideo': operation('artifacts.stopVideo', ['operation']),
   'session/open': operation('session.open', ['url', 'operation']),
   'session/back': operation('session.back', ['operation']),
+  'session/resize': operation('session.resize', ['size', 'operation']),
   'session/restart': operation('session.restart', ['operation']),
   'session/reset': operation('session.reset', ['operation']),
   'lifecycle/prepare': lifecycle('prepare'),
