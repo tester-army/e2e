@@ -44,6 +44,10 @@ here.
   `StepExecutor` with its own tools and transport; the engine is never touched.
 - `e2e.dogfood-edge.config.ts` + `tests-dogfood-edge/` — steps expected to
   conclude blocked or failed; the report, not the exit code, is the output.
+- `e2e.parity.config.ts` + `tests-parity/` + `parity/`: Playwright's own
+  page tests at v1.64.1, ported to the public API, on chromium and firefox.
+  `scripts/parity.ts` runs them and fails on any failure
+  `tests-parity/expected-gaps.txt` does not list; see `parity/README.md`.
 - `e2e.stress.config.ts` + `tests-stress/` — failures, timeouts, skips,
   flakes, and hostile titles for the reporters.
 - `e2e.explore.config.ts` + `scripts/explore-bench.mjs` — `e2e explore`
@@ -62,6 +66,7 @@ AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent     # real mode
 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:dogfood
 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed explore:garden
 pnpm --filter @e2e-dev/testbed test:stress                            # reporters only
+pnpm --filter @e2e-dev/testbed test:parity                            # Playwright parity, both browsers
 ```
 
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;

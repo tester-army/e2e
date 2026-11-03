@@ -14,6 +14,7 @@
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:dogfood": "node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts",
     "test:stress": "node node_modules/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
+    "test:parity": "node scripts/parity.ts",
     "explore": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.agent.config.ts",
     "explore:garden": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.explore.config.ts",
     "explore:bench": "node scripts/explore-bench.mjs"
@@ -27,7 +28,9 @@
   "devDependencies": {
     "@ai-sdk/devtools": "1.0.65",
     "@types/node": "26.6.6",
+    "@types/pngjs": "6.0.5",
     "ai": "7.0.162",
+    "pngjs": "7.0.0",
     "typescript": "7.0.2",
     "zod": "4.6.7"
   }

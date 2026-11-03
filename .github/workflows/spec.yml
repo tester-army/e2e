@@ -22,7 +22,7 @@ concurrency:
 jobs:
   check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,6 +72,24 @@ jobs:
         run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0}', github.base_ref) || '' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      # Playwright's own page tests on chromium and firefox: a failure not listed
+      # in apps/testbed/tests-parity/expected-gaps.txt fails, and so does a
+      # listed gap that passes.
+      - name: Playwright parity
+        run: |
+          node --test apps/testbed/scripts/parity-gaps.test.ts
+          pnpm --filter @e2e-dev/testbed test:parity
+      - name: Upload parity report
+        if: ${{ failure() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: parity-report
+          path: |
+            apps/testbed/.e2e-parity/report.json
+            apps/testbed/.e2e-parity/results
+          if-no-files-found: warn
+          retention-days: 7
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -118,54 +136,11 @@ jobs:
       - name: Fresh install with pnpm ${{ matrix.pnpm }}
         run: node scripts/install-smoke.ts ${{ matrix.pnpm }}
 
-  # Playwright's own page tests rewritten against the public API
-  # (packages/web/tests/parity), so web() keeps Playwright's behavior.
-  parity:
-    name: parity (${{ matrix.driver }} ${{ matrix.browser }})
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - driver: playwright
-            browser: chromium
-          - driver: playwright
-            browser: firefox
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm run build
-      - name: Install browsers
-        run: node packages/web/dist/bin.js install ${{ matrix.browser }} --with-deps
-      - name: Parity
-        working-directory: packages/web/tests/parity
-        env:
-          BROWSER: ${{ matrix.browser }}
-        run: node ../../node_modules/e2e/dist/cli/bin.js run
-      - name: Upload report
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: parity-${{ matrix.driver }}-${{ matrix.browser }}
-          path: |
-            packages/web/tests/parity/.e2e/report.json
-            packages/web/tests/parity/.e2e/results
-          if-no-files-found: warn
-          retention-days: 7
-
   # The one check the ruleset requires from this workflow. A skipped job
   # passes (the change cannot reach it); a failed or cancelled one fails it.
   gate:
     name: spec gate
-    needs: [check, test, install, parity]
+    needs: [check, test, install]
     if: ${{ always() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
