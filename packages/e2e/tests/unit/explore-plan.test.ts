@@ -110,4 +110,16 @@ describe('planInstruction', () => {
     expect(text).toContain('summary-100 ');
     expect(text.length).toBeLessThan(40_000);
   });
+
+  it('offers the other-account lens only with several accounts and no restored session', () => {
+    const accounts = [
+      { name: 'ada', username: 'ada@example.test' },
+      { name: 'bob', username: 'bob@example.test' },
+    ];
+    const plan = (request: { session?: string; accounts?: typeof accounts }) =>
+      planInstruction(fresh(), { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000, ...request });
+    expect(plan({ accounts })).toContain('another account or role');
+    expect(plan({ accounts: accounts.slice(0, 1) })).not.toContain('another account or role');
+    expect(plan({ accounts, session: 'admin' })).not.toContain('another account or role');
+  });
 });
