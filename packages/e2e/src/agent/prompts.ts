@@ -8,7 +8,7 @@
 
 import type { JsonValue } from '../types.ts';
 import type { ExecutorPixels } from './executor.ts';
-import type { AgentObservation } from './observation.ts';
+import { judgedLocation, type AgentObservation } from './observation.ts';
 
 /** Immutable agent policy version recorded in every model-backed step. */
 export const POLICY_VERSION = 'policy-0.3';
@@ -60,6 +60,8 @@ export interface PromptInput {
   /** The values the instruction refers to, projected and redacted; fenced with it. */
   readonly params?: Readonly<Record<string, JsonValue>> | undefined;
   readonly observation?: AgentObservation | undefined;
+  /** The app base URL's origin: a location on it reads as a path. */
+  readonly appOrigin?: string | undefined;
   /**
    * Leaves the attached screenshot as the only evidence in the request, for
    * `vision: 'only'`. The observation is still captured — the runner hit-tests
@@ -96,7 +98,7 @@ export function buildPrompt(input: PromptInput): string {
     if (input.withholdTree !== true) {
       sections.push(
         '',
-        `<observation revision="${observation.revision}" viewport="${observation.viewport.width}x${observation.viewport.height}">`,
+        `<observation revision="${observation.revision}"${locationAttribute(judgedLocation(observation, input.appOrigin))} viewport="${observation.viewport.width}x${observation.viewport.height}">`,
         observation.text,
         '</observation>',
       );
@@ -134,6 +136,11 @@ export function buildPrompt(input: PromptInput): string {
   return sections.join('\n');
 }
 
+/** Where the screen is, quoted as a node's text is: a device's location holds the app's own screen title. */
+function locationAttribute(location: string | undefined): string {
+  return location === undefined ? '' : ` location=${JSON.stringify(location)}`;
+}
+
 /** Describes the attached screenshot and its relation to the tree evidence. */
 function describePixels(
   pixels: ExecutorPixels,
@@ -167,7 +174,7 @@ function describePixels(
 
 /**
  * Request text for a judgment. The judge sees the instruction and the current
- * observation, and nothing about how the screen was reached: no prior steps,
+ * observation with its location, and nothing about how the screen was reached: no prior steps,
  * no acting agent's account of what it did. A judgment is evidence-only, and
  * the third verdict is what keeps it honest when the evidence is thin.
  */
@@ -178,6 +185,7 @@ export const JUDGMENT_REQUEST = [
   'When the same value or state is shown in more than one place, such as an order total in a summary and again as the amount on a pay button, the instruction holds only when every place agrees with it; one place that contradicts it is a "fails", even if another agrees.',
   'This applies only when the instruction does not say where to look: an instruction that names the place, such as "the order summary total", is judged on that place alone.',
   'It is about one value shown twice, not about different items: a claim about some item, such as "a todo is marked done", holds when one item matches.',
+  'The observation\'s location is the address of the screen: it is evidence only for an instruction about the address or route, never for or against what the screen shows.',
   'Quotation marks in the instruction delimit the words to look for; the marks themselves, their style (straight or curly), and the punctuation around them are not part of those words, so text that reads the same holds.',
   'Write the explanation first and let the verdict follow from it: the two must agree.',
   'Respond with { "protocolVersion": "agent-judgment-2", "explanation": <short reason grounded in the observation>, "verdict": "holds" | "fails" | "inconclusive" }.',

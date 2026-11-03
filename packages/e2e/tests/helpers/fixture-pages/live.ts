@@ -21,6 +21,19 @@ export const LIVE_PAGES: Record<string, PageRenderer> = {
     if (variant !== 'silent') announcer.firstElementChild.textContent = document.title;
   });
 </script>`,
+  // Only the address moves: the tree is final at once, and the page redirects
+  // on the client once the test releases its key (`FixtureApp.releaseMove`).
+  '/moves': (_state, url) => `<!doctype html>
+<title>Moves</title>
+<h1>Moves</h1>
+<script>
+  const poll = setInterval(async () => {
+    const response = await fetch('/api/moves?key=${url.searchParams.get('key') ?? ''}');
+    if (response.status !== 200) return;
+    clearInterval(poll);
+    history.replaceState({}, '', '/moved');
+  }, 50);
+</script>`,
   // Two identically named fields on a page whose layout keeps moving, the way a
   // lazily-loaded banner or an expanding summary shifts a booking form under the
   // cursor. Every node keeps its identity while its rectangle drifts between the

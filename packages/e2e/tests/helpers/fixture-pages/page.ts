@@ -13,6 +13,8 @@ export interface FixtureState {
   readonly todos: Set<string>;
   /** The variant every page renders when the request names none (`FixtureApp.setVariant`). */
   variant: string | null;
+  /** Keys whose `/moves` page may move its URL (`FixtureApp.releaseMove`). */
+  readonly movesReleased: Set<string>;
 }
 
 /** Renders one page for one request. */

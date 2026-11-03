@@ -21,7 +21,7 @@ import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
-import { observationShape, type AgentObservation } from './observation.ts';
+import { locationShape, observationShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
   type AgentContext,
@@ -126,7 +126,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
   /**
    * One judgment call against a fresh observation. The judge is shown the
-   * instruction, its params, the agent's context, and the screen, never the
+   * instruction, its params, the agent's context, and the screen with its location, never the
    * prior steps or the acting agent's summaries: a verdict rests on evidence,
    * not on what the actor said it did.
    */
@@ -324,10 +324,11 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * to spend it on.
  *
  * A judgment reads the observation and nothing else, so while the screen looks the
- * same the answer is the same and re-asking is a model call that can only repeat
- * itself. So a false judgment is followed by engine-only observations until the
- * screen actually changes, which is also what makes a condition that came true two
- * seconds ago cost two seconds rather than a full interval.
+ * same at the same location the answer is the same and re-asking is a model call
+ * that can only repeat itself. So a false judgment is followed by engine-only
+ * observations until one of them changes, which is also what makes a condition that
+ * came true two seconds ago cost two seconds rather than a full interval. The location
+ * is compared on its own, not as part of the shape, since a settle waits on the shape.
  *
  * `interval` stays the rate limit it always was: at most one judgment per
  * interval, so a screen that changes continuously — a spinner, a countdown —
@@ -353,6 +354,7 @@ async function waitForNextJudgment(
   const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
   const judgedAt = Date.now();
   const judgedShape = observationShape(options.since);
+  const judgedLocationShape = locationShape(options.since);
   const timedOut = (cause?: unknown): AgentError =>
     new AgentError(
       'STEP_TIMEOUT',
@@ -384,6 +386,8 @@ async function waitForNextJudgment(
     });
     if (Date.now() - judgedAt < options.intervalMs) continue;
     if (observationShape(observation) !== judgedShape) return observation;
+    // A vision-only judgment is not shown the location, so a new one is no new evidence.
+    if (!invocation.treeWithheld && locationShape(observation) !== judgedLocationShape) return observation;
   }
 }
 

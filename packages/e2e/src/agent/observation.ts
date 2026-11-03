@@ -1,6 +1,6 @@
 /** Observation capture, redaction, and model serialization. */
 
-import { appNavigation } from '../cache/route.ts';
+import { appLocation, appNavigation } from '../cache/route.ts';
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../engine/contract.ts';
 import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.ts';
 import type { SecretLedger } from '../internal/redact.ts';
@@ -297,6 +297,34 @@ function observationPath(location: string): string {
   if (!URL.canParse(location)) return location;
   const url = new URL(location);
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * Where a capture is, as a judgment reads it: redacted, query and fragment
+ * included, a path on the app's origin and the whole address off it
+ * (`appLocation`), since a path on another site would read as the app's own
+ * route. Userinfo is dropped, as a link target drops it. A location that is no
+ * http(s) URL, such as a device's screen, stays as it is. Bounded like a link
+ * target, so a long query cannot push a dense screen past the request's token
+ * ceiling.
+ */
+export function judgedLocation(observation: AgentObservation, appOrigin: string | undefined): string | undefined {
+  const { location } = observation;
+  if (location === undefined) return undefined;
+  if (!URL.canParse(location)) return boundHref(location);
+  const url = new URL(location);
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return boundHref(location);
+  url.username = '';
+  url.password = '';
+  return boundHref(appLocation(url.href, appOrigin));
+}
+
+/**
+ * The location a wait compares: what a judgment reads, and a clock in a
+ * device's screen title is no change, as in `observationShape`.
+ */
+export function locationShape(observation: AgentObservation): string | undefined {
+  return judgedLocation(observation, undefined)?.replaceAll(CLOCK_PATTERN, '<time>');
 }
 
 /** Phase metrics describe a node count only when the capture actually read nodes. */

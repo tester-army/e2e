@@ -157,8 +157,8 @@ await agent.assert('the dashboard shows a trial badge');
 await agent.assert('the table lists {name}', { params: { name } });
 ```
 
-- The judge sees the assertion, its `params`, the current observation, and
-  the agent's `context`, never prior steps or `act` summaries. It answers `holds`,
+- The judge sees the assertion, its `params`, the current observation with
+  its location, and the agent's `context`, never prior steps or `act` summaries. It answers `holds`,
   `fails`, or `inconclusive`.
 - When the subject appears more than once, such as a total in a summary and
   on a pay button, every instance must agree: one that contradicts it fails.
@@ -220,8 +220,9 @@ await agent.waitFor('the upload progress reports completion', { interval: 500 })
   holds.
 - After a false or inconclusive judgment it waits out `interval`. Then it
   observes every 500 ms (or every `interval`, when shorter) without a model
-  call. It judges again only once the screen differs from the one last
-  judged, pixels included under `vision`.
+  call. It judges again only once the screen or its location differs from the
+  one last judged, pixels included under `vision`, and the location left out
+  under `vision: 'only'`, which is not shown it.
 - Judgments follow the [`agent.assert`](#agent-assert) rules: a value shown
   in more than one place holds only once every instance agrees.
 

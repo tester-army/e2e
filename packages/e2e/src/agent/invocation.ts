@@ -104,7 +104,7 @@ export interface AgentContext {
   /**
    * Completed steps quoted as prior context for `agent.act`; serial members
    * see the whole group. A judgment never reads them: the judge sees the
-   * instruction and the current screen, not the acting agent's account.
+   * instruction and the current screen with its location, not the acting agent's account.
    */
   readonly priorSteps: () => readonly StepRecord[];
   readonly secrets: SecretResolver;
@@ -331,6 +331,7 @@ export class Invocation {
           ...request.prompt,
           ...(this.options.params === undefined ? {} : { params: this.options.params }),
           titlePath: this.runtime.attempt.titlePath,
+          appOrigin: this.runtime.app.base?.origin,
           ...(this.treeWithheld ? { withholdTree: true } : {}),
           ...(repair === undefined
             ? {}
