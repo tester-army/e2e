@@ -14,7 +14,7 @@ import { packageVersion } from '../internal/package-version.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
-import { someSkippedAfterFailure } from '../run/records.ts';
+import { memberRan, someSkippedAfterFailure } from '../run/records.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -624,8 +624,17 @@ function serializeTarget(
   };
 }
 
-/** Computes report-1 summary counts from results; the status counts are over the selected ones. */
-function computeSummary(results: readonly ResultRecord[]): ReportSummary {
+/**
+ * Computes report-1 summary counts from results; the status counts are over
+ * the selected ones. A result executed when it made an attempt; a serial
+ * member's attempts are its records in its group's attempts.
+ */
+function computeSummary(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): ReportSummary {
+  const ranMembers = new Set(
+    serialGroups.flatMap((group) =>
+      group.attempts.flatMap((attempt) => attempt.members.filter(memberRan).map((member) => `${group.id}\u0000${member.testId}`)),
+    ),
+  );
   let selected = 0;
   let executed = 0;
   let passed = 0;
@@ -634,7 +643,7 @@ function computeSummary(results: readonly ResultRecord[]): ReportSummary {
   let flaky = 0;
   let skipped = 0;
   for (const result of results) {
-    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && result.status !== 'skipped')) {
+    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && ranMembers.has(`${result.serialGroupId}\u0000${result.test.id}`))) {
       executed += 1;
     }
     if (!result.selected) continue;
@@ -805,7 +814,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
     .toSorted((a, b) => compareSerialGroups(a, b, targetIndex))
     .map(serializeSerialGroup);
 
-  const summary = computeSummary(options.results);
+  const summary = computeSummary(options.results, options.serialGroups);
 
   return {
     schemaVersion: 'report-1',

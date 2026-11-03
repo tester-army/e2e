@@ -171,6 +171,8 @@ test.describe('wizard', { serial: true }, () => {
       expect(step1.status).toBe('skipped');
       expect(step1.skip).toEqual({ cause: 'explicit', reason: 'nothing to set up' });
       expect(resultByTitle(outcome, 'step 2 runs').status).toBe('passed');
+      // Every body started, the two that skipped themselves included.
+      expect(outcome.report.run.summary).toMatchObject({ selected: 4, executed: 4, passed: 2, skipped: 2 });
       expect(outcome.exitCode).toBe(0);
       // One realm for the ordinary tests, one for the group: the skip closed neither early.
       expect(readFileSync(logPath, 'utf8').trim().split('\n')).toEqual([
@@ -397,6 +399,7 @@ test.describe('wizard', { serial: true }, () => {
       expect(group.status).toBe('failed');
       expect(group.attempts).toHaveLength(1);
       expect(group.attempts[0]!.error?.code).toBe('HOOK_FAILED');
+      expect(outcome.report.run.summary).toMatchObject({ selected: 2, executed: 0, skipped: 2 });
       expect(outcome.exitCode).not.toBe(0);
       project.cleanup();
     },
@@ -481,6 +484,40 @@ test('sleeps forever', { timeout: 1500 }, async ({ app }) => {
   );
 
   it(
+    'counts a serial member executed when its body ran in an earlier group attempt',
+    async () => {
+      const file = `import { test } from 'e2e';
+
+const attempt = () => Number(process.env['SERIAL_ATTEMPT'] ?? '0');
+
+test.describe('wizard', { serial: true, retries: 1 }, () => {
+  test('step 1 breaks on the retry', async () => {
+    process.env['SERIAL_ATTEMPT'] = String(attempt() + 1);
+    if (attempt() === 2) throw new Error('step 1 broke');
+  });
+  test('step 2 breaks first', async () => {
+    if (attempt() === 1) throw new Error('step 2 broke');
+  });
+});
+`;
+      process.env['SERIAL_ATTEMPT'] = '0';
+      const { outcome, project } = await runProject({ 'tests/serialretry.e2e.ts': file }, {});
+      delete process.env['SERIAL_ATTEMPT'];
+      const members = outcome.report.run.serialGroups[0]!.attempts.map((entry) => entry.members.map((member) => member.status));
+      expect(members).toEqual([
+        ['passed', 'failed'],
+        ['failed', 'skipped'],
+      ]);
+      const step2 = resultByTitle(outcome, 'step 2 breaks first');
+      expect(step2).toMatchObject({ status: 'skipped', skip: { cause: 'serial-predecessor-failed' } });
+      // Step 2 ran in the first attempt, as an ordinary test with a failed attempt counts.
+      expect(outcome.report.run.summary).toMatchObject({ selected: 2, executed: 2, failed: 1, skipped: 1 });
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'runs serial groups as one unit with shared state and predecessor skips',
     async () => {
       const file = `import { test, expect } from 'e2e';
@@ -532,6 +569,7 @@ test.describe('wizard', { serial: true }, () => {
         'failed',
         'skipped',
       ]);
+      expect(outcome.report.run.summary).toMatchObject({ selected: 4, executed: 3, skipped: 1 });
       expect(outcome.exitCode).toBe(1);
       expect(outcome.report.run.status).toBe('failed');
       project.cleanup();
