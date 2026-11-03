@@ -54,7 +54,7 @@ function request(overrides: Partial<DeviceRequest> = {}): DeviceRequest {
     targetName: 'android',
     slot: 0,
     slots: 2,
-    agentDeviceVersion: '0.21.35',
+    agentDeviceVersion: '0.21.36',
     projectRoot: '/project',
     env,
     signal: new AbortController().signal,

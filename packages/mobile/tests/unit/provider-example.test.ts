@@ -17,7 +17,7 @@ const request: DeviceRequest = {
   targetName: 'ios',
   slot: 0,
   slots: 1,
-  agentDeviceVersion: '0.21.35',
+  agentDeviceVersion: '0.21.36',
   projectRoot: '/project',
   env: { CLOUD_TOKEN: 'token' },
   signal: new AbortController().signal,
