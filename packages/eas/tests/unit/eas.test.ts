@@ -236,12 +236,12 @@ describe('expoSimulators()', () => {
     expect(eas.calls[1]?.variables).toEqual({ id: 's1' });
     expect(req.lines).toEqual([
       `simulator session s1, ${SESSION_URL}`,
-      'still queued at EAS after two minutes; tests start once every worker has a simulator',
+      'still queued at Expo after two minutes; tests start once every worker has a simulator',
       'watch at https://expo.dev/simulator-preview/s1',
     ]);
   });
 
-  it('stops the session on release, and one EAS no longer knows counts as stopped', async () => {
+  it('stops the session on release, and one Expo no longer knows counts as stopped', async () => {
     const provider = expoSimulators({ projectId: 'p1' });
     const req = request();
     const lease = await provider.acquire(req);
@@ -250,7 +250,7 @@ describe('expoSimulators()', () => {
     eas.errors.stop = notFound;
     await expect(provider.release(lease, releaseContext(req.runId))).resolves.toBeUndefined();
     eas.errors.stop = { message: 'Internal error', extensions: { errorCode: 'INTERNAL_SERVER_ERROR' } };
-    await expect(provider.release(lease, releaseContext(req.runId))).rejects.toThrow('EAS: Internal error');
+    await expect(provider.release(lease, releaseContext(req.runId))).rejects.toThrow('Expo: Internal error');
   });
 
   it('cancels the job of a session stopped while queued, which would otherwise start later and hold a concurrent session', async () => {
@@ -300,7 +300,7 @@ describe('expoSimulators()', () => {
     eas.onState = () => controller.abort();
     eas.errors.stop = { message: 'Service unavailable', extensions: { errorCode: 'INTERNAL_SERVER_ERROR' } };
     await expect(expoSimulators({ projectId: 'p1' }).acquire(request({ signal: controller.signal }))).rejects.toThrow(
-      `simulator session s1 did not become ready: cancelled; stopping it failed, so EAS stops it at its idle or duration limit (EAS: Service unavailable), ${SESSION_URL}`,
+      `simulator session s1 did not become ready: cancelled; stopping it failed, so Expo stops it at its idle or duration limit (Expo: Service unavailable), ${SESSION_URL}`,
     );
     expect(eas.calls.at(-1)?.operation).toBe('stop');
   });
@@ -313,7 +313,7 @@ describe('expoSimulators()', () => {
     const lease = await iosProvider.acquire(ios);
     eas.states = [{ status: 'NEW', turtleJobRun: { status: 'IN_QUEUE' }, remoteConfig: null }];
     await expect(expoSimulators({ projectId: 'p1', maxIdleTimeMinutes: 5 }).acquire(request({ runId: 'run-idle', platform: 'android', targetName: 'android', slots: 1 }))).rejects.toThrow(
-      'simulator session s1 did not become ready: still queued while another session of this run idled to its `maxIdleTimeMinutes`, where EAS stops it; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
+      'simulator session s1 did not become ready: still queued while another session of this run idled to its `maxIdleTimeMinutes`, where Expo stops it; lower `workers` or raise `maxIdleTimeMinutes`; stopped it',
     );
     expect(eas.calls.at(-1)?.operation).toBe('stop');
     await iosProvider.release(lease, releaseContext('run-idle'));
@@ -362,7 +362,7 @@ describe('expoSimulators()', () => {
     expect(eas.calls[0]?.variables['input']).not.toHaveProperty('maxIdleTimeMinutes');
   });
 
-  it('keeps the idle limit below a short duration, as EAS requires, and pins the agent-device an option names', async () => {
+  it('keeps the idle limit below a short duration, as Expo requires, and pins the agent-device an option names', async () => {
     await expoSimulators({ projectId: 'p1', maxDurationMinutes: 5, agentDeviceVersion: '0.22.0' }).acquire(request());
     expect(eas.calls[0]?.variables['input']).toMatchObject({ maxRunTimeMinutes: 5, maxIdleTimeMinutes: 4, packageVersion: '0.22.0' });
     eas.calls = [];
@@ -384,24 +384,24 @@ describe('expoSimulators()', () => {
     eas.stateOutages = 3;
     await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).resolves.toMatchObject({ id: 's1' });
     eas.stateOutages = 4;
-    await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('did not become ready: EAS: HTTP 502, Bad gateway; stopped it');
+    await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('did not become ready: Expo: HTTP 502, Bad gateway; stopped it');
   });
 
-  it('stops a session EAS created while the request was cancelled', async () => {
+  it('stops a session Expo created while the request was cancelled', async () => {
     const controller = new AbortController();
     eas.onCreate = () => controller.abort();
     await expect(expoSimulators({ projectId: 'p1' }).acquire(request({ signal: controller.signal }))).rejects.toThrow('simulator session s1 did not become ready: cancelled; stopped it');
     expect(eas.calls.map((call) => call.operation)).toEqual(['create', 'state', 'stop']);
   });
 
-  it('surfaces an EAS error with its message', async () => {
+  it('surfaces an Expo error with its message', async () => {
     eas.errors.create = { message: 'Device run sessions are not enabled for this account', extensions: { errorCode: 'FORBIDDEN' } };
-    await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('EAS: Device run sessions are not enabled for this account');
+    await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('Expo: Device run sessions are not enabled for this account');
   });
 
   it('names a response that is not GraphQL by its status', async () => {
     vi.stubGlobal('fetch', async () => new Response('Bad gateway', { status: 502 }));
-    await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('EAS: HTTP 502, Bad gateway');
+    await expect(expoSimulators({ projectId: 'p1' }).acquire(request())).rejects.toThrow('Expo: HTTP 502, Bad gateway');
   });
 
   it('fails without EXPO_TOKEN or an eas-cli login', async () => {
@@ -523,7 +523,7 @@ describe('expoSimulators()', () => {
   });
 
   it('names what is missing when the app config links no project, and starts no session', async () => {
-    const pass = 'pass `projectId` to expoSimulators(), or run `eas init` to link the app to an EAS project';
+    const pass = 'pass `projectId` to expoSimulators(), or run `eas init` to link the app to an Expo project';
     const empty = projectWith();
     await expect(expoSimulators({}).acquire(request({ projectRoot: empty }))).rejects.toThrow(`no Expo app config (app.json or app.config.*) in ${empty}; ${pass}`);
     await expect(expoSimulators({}).acquire(request({ projectRoot: projectWith({ 'app.json': JSON.stringify({ expo: { name: 'shop' } }) }) }))).rejects.toThrow(
@@ -542,7 +542,7 @@ describe('expoSimulators()', () => {
     expect(eas.calls).toEqual([]);
   });
 
-  it("refuses the target's app.appPath for an app EAS already installs, and two app sources", async () => {
+  it("refuses the target's app.appPath for an app Expo already installs, and two app sources", async () => {
     await expect(expoSimulators({ projectId: 'p1', buildId: 'b1' }).acquire(request({ appPath: '/builds/App.app' }))).rejects.toThrow("leave the target's `app.appPath` out");
     expect(eas.calls).toEqual([]);
     await expect(expoSimulators({ projectId: 'p1' }).acquire(request({ appPath: '/builds/App.app' }))).resolves.toMatchObject({ id: 's1' });
