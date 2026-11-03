@@ -155,7 +155,8 @@ The tools, one per engine action. Name the target as the screen names it
 - `navigate`: a URL or app-relative path.
 - `back`: browser history or in-app back.
 - `resize_viewport`: set the viewport size (200 to 4096 CSS px) to check a
-  layout at phone, tablet, or desktop width. Web engine only.
+  layout at phone, tablet, or desktop width. Engines with `session.resize`,
+  such as web.
 - `type_secret`: a declared secret by name; plaintext never reaches the model.
   Offered only when the step declares secrets and the engine can fill them.
 - `screenshot`: attach viewport pixels; every later result then carries one.
