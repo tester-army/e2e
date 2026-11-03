@@ -1,4 +1,5 @@
 import { createAgentDeviceClient, type LeaseAllocateOptions } from 'agent-device';
+import { leaseSession } from './session.ts';
 
 /** One lease allocation from the daemon in `stateDir`, run in its own process so the daemon gets that process's environment. */
 export interface DriverRequest {
@@ -21,6 +22,6 @@ process.once('message', (request: DriverRequest) => {
 });
 
 async function allocate({ stateDir, allocate: options }: DriverRequest): Promise<DriverGrant> {
-  const lease = await createAgentDeviceClient({ stateDir }).leases.allocate(options);
+  const lease = await createAgentDeviceClient({ stateDir, session: leaseSession(stateDir) }).leases.allocate(options);
   return { leaseId: lease.leaseId, tenantId: lease.tenantId, runId: lease.runId, retainOnClose: lease.retainOnClose === true };
 }
