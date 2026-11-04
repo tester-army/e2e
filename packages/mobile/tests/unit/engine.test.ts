@@ -2649,6 +2649,54 @@ describe('video', () => {
     expect(h.fake.lastArgs('recording.record')).toEqual({ platform: 'ios', action: 'stop' });
   });
 
+  it('shares a pending recording stop with another caller and attempt cleanup after cancellation', async () => {
+    const h = harness();
+    let releaseStop: (() => void) | undefined;
+    const finalizing = new Promise((resolve) => {
+      releaseStop = () => {
+        writeFileSync(path.join(artifactsDir, 'video', 'video.mp4'), 'mp4 bytes');
+        resolve({ recording: 'stopped', recordOnlySession: true });
+      };
+    });
+    h.fake.respond('recording.record', (args) => {
+      const { action } = args as { action: 'start' | 'stop' };
+      return action === 'start' ? { recording: 'started' } : finalizing;
+    });
+    await openAttempt(h);
+    await h.engine.artifacts!.startVideo!(operation());
+    const controller = new AbortController();
+    const first = h.engine.artifacts!.stopVideo!(operation(controller.signal));
+    await vi.waitFor(() => expect(records(h)).toHaveLength(2));
+    controller.abort();
+    await expect(first).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    const second = h.engine.artifacts!.stopVideo!(operation());
+    const ending = h.engine.endAttempt!(cleanup());
+    releaseStop!();
+    await expect(second).resolves.toEqual([{ path: path.join('video', 'video.mp4'), startedAt: expect.any(String) }]);
+    await ending;
+    expect(records(h)).toHaveLength(2);
+
+    const closes = h.fake.methods().filter((method) => method === 'sessions.close').length;
+    await h.engine.startAttempt!({ attemptId: 'a2', artifactsDir, signal: operation().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    expect(h.fake.methods().filter((method) => method === 'sessions.close')).toHaveLength(closes);
+    await h.engine.artifacts!.startVideo!(operation());
+    await h.engine.endAttempt!(cleanup());
+  });
+
+  it('does not send a new recording stop for a caller that was already cancelled', async () => {
+    const h = harness();
+    recorder(h);
+    await openAttempt(h);
+    await h.engine.artifacts!.startVideo!(operation());
+    const controller = new AbortController();
+    controller.abort();
+    await expect(h.engine.artifacts!.stopVideo!(operation(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(records(h)).toHaveLength(1);
+    await expect(h.engine.artifacts!.stopVideo!(operation())).resolves.toHaveLength(1);
+    expect(records(h)).toHaveLength(2);
+  });
+
   it('stops a start that outlived its budget, and keeps a recording whose stop failed for endAttempt', async () => {
     const h = harness();
     let releaseStart: (() => void) | undefined;

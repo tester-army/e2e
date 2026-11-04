@@ -921,6 +921,11 @@ prove a fallback screenshot safe.
 
 ## Video recording cleanup
 
+A pending agent-device screen-recording stop is shared with later callers
+and attempt cleanup. Cancelling one caller's wait does not repeat the stop
+or discard its eventual completion. If the device stop fails, cleanup can
+retry it. A cancelled caller still reports cancellation.
+
 A provider recording that fails to stop stays owned by its worker. The
 engine retries its stop at attempt end, before another attempt on that
 worker, and during worker disposal. A pending stop is shared. Each retry
