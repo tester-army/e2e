@@ -7,11 +7,8 @@
  * - should click button inside frameset: needs element handles and Frame objects.
  * - should issue clicks in parallel in page and popup: needs `waitForEvent('popup')`.
  * - should select the text by triple clicking: no `clickCount`.
- * - should waitFor visible when already visible: could be ported with the current API; not done yet.
  * - should not wait with force: e2e tap has no force option.
  * - should click the button with fixed position inside an iframe: Playwright skips it on Chromium (`it.fixme(browserName === 'chromium')`).
- * - should click the button with px border with offset: could be ported with the current API; not done yet.
- * - should click the button with em border with offset: could be ported with the current API; not done yet.
  * - should click a very large button with offset: a `position` tap scrolls the node into view, not the offset point.
  * - should click a button in scrolling container with offset: same.
  * - should wait for becoming hit target with trial run: no `trial` option.
@@ -19,23 +16,15 @@
  * - trial run should not click: same.
  * - trial run should not double click: same.
  * - should fail when obscured and not waiting for hit target: e2e tap has no force option.
- * - should wait for LABEL to be clickable when it has pointer-events:none: could be ported with the current API; not done yet.
  * - should report nice error when element is detached and force-clicked: needs element handles, and e2e tap has no force option.
  * - should fail when element detaches after animation: needs element handles.
- * - should retry when element detaches after animation: could be ported with the current API; not done yet.
- * - should retry when element is animating from outside the viewport: could be ported with the current API; not done yet.
  * - should fail when element is animating from outside the viewport with force: e2e tap has no force option.
- * - should dispatch microtasks in order: could be ported with the current API; not done yet.
  * - should not throw protocol error when navigating during the click: needs Playwright's `__testHookBeforeStable`.
  * - should retry when navigating during the click: same.
  * - should not hang when frame is detached: same, and needs Frame objects.
- * - should click in an iframe with border 2: could be ported with the current API; not done yet.
  * - should not retain removed iframe after clicking inside it: needs `page.requestGC`.
- * - should click a button that is overlaid by a permission popup: could be ported with the current API; not done yet.
  * - should click in a transformed iframe with force: e2e tap has no force option.
  * - ensure events are dispatched in the individual tasks: needs `page.on('console')`.
- * - should set PointerEvent.pressure on pointerdown: could be ported with the current API; not done yet.
- * - should set PointerEvent.pressure on pointermove: could be ported with the current API; not done yet.
  * - should click with tweened mouse movement: needs click `steps`.
  * - should abort via signal: needs `AbortSignal`.
  * - should throw an Error when aborted in-flight with a string reason: same.
@@ -174,6 +163,12 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     expect(await browser.evaluate('result')).toBe('Clicked');
   });
 
+  test('should waitFor visible when already visible', async ({ browser }) => {
+    await browser.goto('/input/button.html');
+    await browser.locator('button').tap();
+    expect(await browser.evaluate('result')).toBe('Clicked');
+  });
+
   test('should click wrapped links', async ({ browser }) => {
     await browser.goto('/wrappedlink.html');
     await browser.locator('a').tap();
@@ -238,6 +233,24 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.goto('/input/rotatedButton.html');
     await browser.locator('button').tap();
     expect(await browser.evaluate('result')).toBe('Clicked');
+  });
+
+  test('should click the button with px border with offset', { fail: 'a `position` tap is relative to the border box, where Playwright measures from the padding box' }, async ({ browser }) => {
+    await browser.goto('/input/button.html');
+    await browser.evaluate("() => { document.querySelector('button').style.borderWidth = '8px'; }");
+    await browser.locator('button').tap({ position: { x: 20, y: 10 } });
+    expect(await browser.evaluate('result')).toBe('Clicked');
+    expect(await browser.evaluate('offsetX')).toBe(20);
+    expect(await browser.evaluate('offsetY')).toBe(10);
+  });
+
+  test('should click the button with em border with offset', { fail: 'a `position` tap is relative to the border box, where Playwright measures from the padding box' }, async ({ browser }) => {
+    await browser.goto('/input/button.html');
+    await browser.evaluate("() => { const button = document.querySelector('button'); button.style.borderWidth = '2em'; button.style.fontSize = '12px'; }");
+    await browser.locator('button').tap({ position: { x: 20, y: 10 } });
+    expect(await browser.evaluate('result')).toBe('Clicked');
+    expect(await browser.evaluate('offsetX')).toBe(20);
+    expect(await browser.evaluate('offsetY')).toBe(10);
   });
 
   test('should fire contextmenu event on right click', async ({ browser }) => {
@@ -404,6 +417,15 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     expect(await browser.evaluate('__CLICKED')).toBe(true);
   });
 
+  test('should wait for LABEL to be clickable when it has pointer-events:none', async ({ browser, screen }) => {
+    await browser.goto(content('<label onclick="window.__CLICKED=true" style="pointer-events:none"><span>Click target</span></label>'));
+    const tap = screen.getByText('Click target').tap({ timeout: 10_000 });
+    for (let index = 0; index < 5; ++index) expect(await browser.evaluate('() => window.__CLICKED')).toBeUndefined();
+    await browser.evaluate("() => { document.querySelector('label').style.removeProperty('pointer-events'); }");
+    await tap;
+    expect(await browser.evaluate('__CLICKED')).toBe(true);
+  });
+
   test('should update modifiers correctly', async ({ browser }) => {
     await browser.goto('/input/button.html');
     const button = browser.locator('button');
@@ -417,6 +439,66 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.keyboard.up('Shift');
     await button.tap();
     expect(await browser.evaluate('shiftKey')).toBe(false);
+  });
+
+  test('should retry when element detaches after animation', async ({ browser }) => {
+    await browser.goto('/input/animating-button.html');
+    await browser.evaluate('addButton()');
+    let clicked = false;
+    const tap = browser.locator('button').tap({ timeout: 10_000 }).then(() => (clicked = true));
+    expect(clicked).toBe(false);
+    expect(await browser.evaluate('window.clicked')).toBeUndefined();
+    await browser.evaluate('stopButton(true)');
+    await browser.evaluate('addButton()');
+    expect(clicked).toBe(false);
+    expect(await browser.evaluate('window.clicked')).toBeUndefined();
+    await browser.evaluate('stopButton(true)');
+    await browser.evaluate('addButton()');
+    expect(clicked).toBe(false);
+    expect(await browser.evaluate('window.clicked')).toBeUndefined();
+    await browser.evaluate('stopButton(false)');
+    await tap;
+    expect(clicked).toBe(true);
+    expect(await browser.evaluate('clicked')).toBe(true);
+  });
+
+  test('should retry when element is animating from outside the viewport', async ({ browser }) => {
+    await browser.goto(content(`
+      <style>
+        @keyframes move { from { left: -300px; } to { left: 0; } }
+        button { position: absolute; left: -300px; top: 0; bottom: 0; width: 200px; }
+        button.animated { animation: 1s linear 1s move forwards; }
+      </style>
+      <div style="position: relative; width: 300px; height: 300px;">
+        <button onclick="window.clicked=true"></button>
+      </div>
+    `));
+    const tap = browser.locator('button').tap({ timeout: 10_000 });
+    await browser.evaluate("() => { document.querySelector('button').className = 'animated'; }");
+    await tap;
+    expect(await browser.evaluate('clicked')).toBe(true);
+  });
+
+  test('should dispatch microtasks in order', async ({ browser }) => {
+    await browser.goto(content(`
+      <button id=button>Click me</button>
+      <script>
+        let mutationCount = 0;
+        const observer = new MutationObserver((mutationsList) => {
+          for (const mutation of mutationsList) ++mutationCount;
+        });
+        observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+        button.addEventListener('mousedown', () => {
+          mutationCount = 0;
+          document.body.appendChild(document.createElement('div'));
+        });
+        button.addEventListener('mouseup', () => {
+          window.result = mutationCount;
+        });
+      </script>
+    `));
+    await browser.locator('button').tap();
+    expect(await browser.evaluate('() => window.result')).toBe(1);
   });
 
   test('should click an offscreen element when scroll-behavior is smooth', async ({ browser }) => {
@@ -475,6 +557,27 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.goto(content(`
       <style>
         body, html, iframe { margin: 0; padding: 0; border: none; box-sizing: border-box; }
+        iframe { border: 4px solid black; background: gray; margin-left: 33px; margin-top: 24px; width: 400px; height: 400px; }
+      </style>
+      <iframe srcdoc="
+        <style>
+          body, html { margin: 0; padding: 0; }
+          div { margin-left: 10px; margin-top: 20px; width: 2px; height: 2px; }
+        </style>
+        <div>Target</div>
+        <script>
+          document.querySelector('div').addEventListener('click', () => window.top._clicked = true);
+        </script>
+      "></iframe>
+    `));
+    await browser.frameLocator('iframe').locator('div').tap();
+    expect(await browser.evaluate('window._clicked')).toBe(true);
+  });
+
+  test('should click in an iframe with border 2', async ({ browser }) => {
+    await browser.goto(content(`
+      <style>
+        body, html, iframe { margin: 0; padding: 0; border: none; }
         iframe { border: 4px solid black; background: gray; margin-left: 33px; margin-top: 24px; width: 400px; height: 400px; }
       </style>
       <iframe srcdoc="
@@ -594,5 +697,65 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     `));
     await browser.locator('my-button').tap();
     expect(await browser.evaluate('window.__clicked')).toBe(true);
+  });
+
+  test('should click a button that is overlaid by a permission popup', async ({ browser, screen }) => {
+    await browser.setViewport({ width: 500, height: 500 });
+    await browser.goto(content(`
+      <style>body, html { padding: 0; margin: 0; }</style>
+      <script>
+        window.addEventListener('DOMContentLoaded', () => {
+          for (let i = 0; i < 100; ++i) {
+            const button = document.createElement('button');
+            button.textContent = i;
+            button.style.setProperty('width', '50px');
+            button.style.setProperty('height', '50px');
+            document.body.append(button);
+          }
+        }, false);
+      </script>
+    `));
+    await browser.evaluate('() => { navigator.geolocation.getCurrentPosition(() => {}); }');
+    for (let index = 0; index < 30; ++index) await screen.getByText(String(index), { exact: true }).tap();
+  });
+
+  test('should set PointerEvent.pressure on pointerdown', async ({ browser }) => {
+    await browser.goto(content(`
+      <button id="target">Click me</button>
+      <script>
+        window.pressures = [];
+        document.addEventListener('pointerdown', e => window.pressures.push(['pointerdown', e.pressure]));
+        document.addEventListener('pointerup', e => window.pressures.push(['pointerup', e.pressure]));
+      </script>
+    `));
+    await browser.locator('button').tap();
+    expect(await browser.evaluate('() => window.pressures')).toEqual(expect.arrayContaining([
+      ['pointerdown', 0.5],
+      ['pointerup', 0],
+    ]));
+  });
+
+  test('should set PointerEvent.pressure on pointermove', async ({ browser }) => {
+    await browser.goto(content(`
+      <body style="margin: 0; padding: 0;">
+        <div id="target" style="width: 500px; height: 500px; background-color: red;"></div>
+        <script>
+          window.pressures = [];
+          document.addEventListener('pointermove', e => window.pressures.push([e.pressure, e.clientX, e.clientY]));
+        </script>
+      </body>
+    `));
+    await browser.locator('div#target').tap();
+    await browser.mouse.move(10, 10);
+    await browser.mouse.down();
+    await browser.mouse.move(250, 250);
+    await browser.mouse.up();
+    await browser.mouse.move(50, 50);
+    expect(await browser.evaluate('() => window.pressures')).toEqual(expect.arrayContaining([
+      [0, 250, 250],
+      [0, 10, 10],
+      [0.5, 250, 250],
+      [0, 50, 50],
+    ]));
   });
 });
