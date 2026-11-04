@@ -2,6 +2,13 @@
 name: create-verification-skill
 description: Generate a project-local verify-<app> skill on top of e2e, so any coding agent can launch the app, check it is worth driving, exercise a feature the way a user does, keep evidence, and bug bash it. Writes the skill, a feature map with one explore charter per feature, and proves it once. Use for /create-verification-skill, "make a verification skill for this repo", or when a project has no scripted way to prove UI behavior.
 disable-model-invocation: true
+metadata:
+  openclaw:
+    homepage: https://e2e.com
+    requires:
+      bins:
+        - node
+        - npx
 ---
 
 # Create a verification skill
@@ -80,11 +87,14 @@ skips by watching files, network, and refs rather than trusting its name.
 
 Create `.agents/skills/verify-<app>/features/README.md` plus one file per
 user-facing feature you can identify, the top three to five first, from
-routes, navigation, commands, or docs. Follow
-[references/example/verify-playground/](references/example/verify-playground/),
-the skill this generator produced and ran for the e2e playground app. Its
-entry point is `SKILL.example.md` so clients do not discover it as another
-installable skill. The
+routes, navigation, commands, or docs. Follow the example skill this
+generator produced and ran for the e2e playground app. Its entry point is
+[SKILL.example.md](references/example/verify-playground/SKILL.example.md)
+so clients do not discover it as another installable skill, and its feature
+map is [features/README.md](references/example/verify-playground/features/README.md)
+with [todos.md](references/example/verify-playground/features/todos.md),
+[forms.md](references/example/verify-playground/features/forms.md), and
+[login.md](references/example/verify-playground/features/login.md). The
 index is a table of feature, route, test file, and status (`tested` or
 `untested`). Each feature file has these H2s, from the user's point of
 view.

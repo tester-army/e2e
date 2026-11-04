@@ -100,6 +100,26 @@ codex plugin marketplace upgrade e2e
 
 </Accordion>
 
+<Accordion title="Install in OpenClaw or Hermes Agent">
+
+The three skills are published on [ClawHub](https://clawhub.ai/) under
+`@e2e`. Hermes Agent reads the repository as a tap:
+
+<CodeGroup>
+```bash OpenClaw
+openclaw skills install @e2e/e2e
+openclaw skills install @e2e/create-verification-skill
+openclaw skills install @e2e/migrate-to-e2e
+```
+
+```bash Hermes
+hermes skills tap add tester-army/e2e
+hermes skills install tester-army/e2e/e2e
+```
+</CodeGroup>
+
+</Accordion>
+
 ## Let the agent use the app
 
 `e2e mcp` gives the agent a live session on your app. It checks its
