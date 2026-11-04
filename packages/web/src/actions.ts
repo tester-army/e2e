@@ -227,7 +227,7 @@ export async function dispatchLocatorAction(
     case 'swipe':
       // The agent's node scroll and `screen` swipes both arrive here: a wheel
       // gesture over the node, sized by its own box.
-      await performElementSwipe(target, action.direction, action.momentum ?? 'none', timeout);
+      await performElementSwipe(target, action.direction, action.momentum ?? 'none', operation);
       return;
   }
 }
@@ -241,8 +241,9 @@ export async function dispatchPointerAction(
   page: Page,
   at: ViewportPoint,
   action: PointerAction,
-  signal?: AbortSignal,
+  operation: ConnectionBudget,
 ): Promise<void> {
+  const { signal } = operation;
   const { mouse } = page;
   const point = nearestPixel(at);
   switch (action.kind) {
@@ -269,9 +270,7 @@ export async function dispatchPointerAction(
       await performPointDrag(mouse, point, action.target, action.durationMs, signal);
       return;
     case 'swipe':
-      // The pointer moves to the point first so the scrollable under it receives the wheel.
-      await mouse.move(point.x, point.y);
-      await performViewportSwipe(page, action.direction, action.momentum ?? 'none');
+      await performViewportSwipe(page, action.direction, action.momentum ?? 'none', operation, point);
       return;
   }
 }
