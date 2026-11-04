@@ -263,7 +263,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.unroute()` | `browser.unroute()` | web only |
 | `page.unrouteAll()` | `browser.unrouteAll()` | web only; clears test routes |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `json()`, `text()`. A string is the glob of `browser.route`, tested against the whole URL, query included: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `'\\?'` is a literal `?` | web only |
-| `{ timeout: 0 }` for no timeout | a positive number of ms; `0` on a `browser` call or `toHaveScreenshot` is `INVALID_ARGUMENT` | missing |
+| `{ timeout: 0 }` for no timeout | a positive number of ms. `0` on `browser.waitForResponse`, `waitForDownload`, or `toHaveScreenshot` is `INVALID_ARGUMENT`; on other calls it times out at once | missing |
 | `response.ok()`, `response.body()`, `response.request()` | `status` and `text()` | missing |
 | `page.waitForRequest()`, `request.postDataJSON()` | none yet for `waitForRequest`; `route.request.postData` is a string | missing |
 | `routeFromHAR()`, `routeWebSocket()` | not yet | missing |
@@ -290,7 +290,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `test.beforeAll`, `afterAll` | the same, with `platform` as the only fixture; no `browser`, `request`, or `workerInfo`. A failed test re-imports the file, so `beforeAll` runs again for the tests after it | renamed |
 | `{ page }` in a test | `{ screen, app, browser }`; no raw `Page` in tests, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `test.skip(title, fn)` | the same | same |
-| `test.skip(condition, reason)` | the same inside a test body or a `beforeEach`/`afterEach` hook. At file or describe level it is a `COLLECTION_ERROR`, and `test.skip(({ ... }) => condition)` is missing: use `platforms`, `{ skip }`, or `test.describe(title, { skip: true }, fn)` | renamed |
+| `test.skip(condition, reason)` | the same inside a test body or a `beforeEach` hook. At file or describe level it is a `COLLECTION_ERROR`, and `test.skip(({ ... }) => condition)` is missing: use `platforms`, `{ skip }`, or `test.describe(title, { skip: true }, fn)` | renamed |
 | `test.only` | the same; CI rejects it with `ONLY_IN_CI` | same |
 | `test.describe.only` | `test.only` on each member | missing |
 | `test.describe.skip` | `test.describe(title, { skip: true }, fn)` | renamed |
