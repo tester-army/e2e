@@ -370,6 +370,9 @@ running on the device. The next attempt waits for it to settle.
 | `location` | `<bundle id> / <screen title>`, the replay cache's anchor. The title is the navigation bar's on iOS and the toolbar's on Android. |
 | `state` | Not declared. `test.setup` and `session:` are unavailable. |
 
+Screen scrolls stay above a measured on-screen keyboard. Without keyboard
+geometry, they use agent-device's default whole-screen scroll.
+
 ### Device
 
 The `device` fixture is deterministic device management. A test calls it

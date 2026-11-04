@@ -1319,7 +1319,8 @@ describe('perform', () => {
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: ' ' }],
       ['interactions.swipe', { from: { x: 195, y: 620 }, to: { x: 195, y: 420 } }],
-      // The root swipe is the viewport swipe: agent-device's whole-screen scroll at its default amount, settled like a tap.
+      // The root swipe checks for a keyboard, then keeps the default amount when no keyboard occludes it.
+      ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.scroll', { direction: 'up', settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
@@ -1417,6 +1418,37 @@ describe('perform', () => {
 });
 
 describe('session hooks, viewport swipe, location, artifacts', () => {
+  it.each(['agent', 'test'] as const)('keeps a %s screen swipe above a keyboard that appeared since the last observation', async (origin) => {
+    const h = harness();
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      keyboard: { kind: 'visible', frame: { x: 0, y: 400, width: 390, height: 444 } },
+    }));
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...operation(), origin });
+
+    expect(h.fake.lastArgs('interactions.swipe')).toEqual({
+      from: { x: 195, y: 300 },
+      to: { x: 195, y: 100 },
+      ...(origin === 'agent' ? { settle: true, settleQuietMs: 150 } : {}),
+    });
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(0);
+  });
+
+  it('keeps a screen swipe on the default scroll path when keyboard geometry is unavailable', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'visible' } }));
+    const screen = await screenRootOf(h);
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(h.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down', settle: true, settleQuietMs: 150 });
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(0);
+  });
+
   it('locates the observation on the foreground app and the screen title, and omits what it does not know', async () => {
     const h = harness();
     await openAttempt(h);
