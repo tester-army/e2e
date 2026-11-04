@@ -64,6 +64,7 @@ export default function App() {
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               selectionColor="#f7f7f7"
+              underlineColorAndroid="transparent"
               autoCorrect={false}
               onSubmitEditing={greet}
             />

@@ -37,7 +37,6 @@ class _GreetingScreenState extends State<GreetingScreen> {
   final _focus = FocusNode();
   bool _showError = false;
   String? _greeted;
-  bool _pressed = false;
 
   @override
   void initState() {
@@ -162,29 +161,24 @@ class _GreetingScreenState extends State<GreetingScreen> {
                 ),
                 const SizedBox(height: 16),
                 // MergeSemantics folds the identifier into the button's own node.
-                // Buttons change no colour when pressed; a press scales them a little.
+                // Buttons change no colour when pressed or hovered: no overlay, no splash.
                 MergeSemantics(
                   child: Semantics(
                     identifier: 'greet',
-                    button: true,
-                    child: GestureDetector(
-                      onTapDown: (_) => setState(() => _pressed = true),
-                      onTapUp: (_) => setState(() => _pressed = false),
-                      onTapCancel: () => setState(() => _pressed = false),
-                      onTap: _greet,
-                      child: AnimatedScale(
-                        scale: _pressed ? 0.98 : 1,
-                        duration: const Duration(milliseconds: 80),
-                        child: Container(
-                          width: double.infinity,
-                          height: 48,
-                          alignment: Alignment.center,
-                          color: Brand.blue,
-                          child: Text(
-                            'greet',
-                            style: Brand.mono(15, Brand.offWhite),
-                          ),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: TextButton(
+                        onPressed: _greet,
+                        style: TextButton.styleFrom(
+                          backgroundColor: Brand.blue,
+                          foregroundColor: Brand.offWhite,
+                          overlayColor: Colors.transparent,
+                          splashFactory: NoSplash.splashFactory,
+                          shape: const RoundedRectangleBorder(),
+                          textStyle: Brand.mono(15, Brand.offWhite),
                         ),
+                        child: const Text('greet'),
                       ),
                     ),
                   ),
