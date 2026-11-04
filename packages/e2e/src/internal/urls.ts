@@ -139,16 +139,21 @@ export function resolveNavigationUrl(input: string, base: NormalizedBaseUrl | un
   try {
     url = new URL(input, base?.href);
   } catch {
-    // A relative reference has nothing to resolve against on a target whose
-    // target declares no URL; that is a missing URL, not a malformed one.
+    // If no base is supplied and the input is not a parseable URL at all,
+    // the target has no app URL to resolve against – that is a missing URL,
+    // not a malformed one.
     if (base === undefined && !URL.canParse(input)) {
       throw new ConfigurationError(
         'APP_URL_REQUIRED',
         `navigation to "${input}" needs an app URL; the target declares no app.url`,
       );
     }
+    // Otherwise the input could not be resolved into a valid URL string.
     throw new ConfigurationError('POLICY_DENIED', `malformed URL: ${input}`);
   }
+  // Permit exactly `about:blank`; any other non‑http(s) scheme is refused
+  // because browsers wrap/nest schemes (view‑source:, blob:, filesystem:)
+  // and a forbid‑list would miss those wrappers.
   if (!NAVIGABLE_PROTOCOLS.has(url.protocol) && url.href !== BLANK_PAGE) {
     throw new ConfigurationError('POLICY_DENIED', `forbidden URL scheme: ${url.protocol}`);
   }
