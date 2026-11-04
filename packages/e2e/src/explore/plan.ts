@@ -192,6 +192,12 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     request.session === undefined
       ? 'sign in with the accounts listed above (or made-up credentials when none are configured)'
       : 'work as the signed-in user rather than signing in again';
+  const lenses = [
+    'edge-case inputs',
+    'filters, sorting, and search combined',
+    'state after reload or across screens that show the same data',
+    ...(request.session === undefined && (request.accounts?.length ?? 0) > 1 ? ['another account or role'] : []),
+  ].join('; ');
   if (request.mustFinish) {
     return [
       ...header,
@@ -203,16 +209,21 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
   return [
     ...header,
     'Decide from the goal, the steps so far, and the current screen:',
-    '- "step": the next exploration charter. "title" names the area or flow in a few words. "instruction" is a concrete,',
-    '  self-contained charter for an agent that sees only the screen and that text: which flow to exercise, what inputs',
-    '  to try, what to check. One flow or screen per step, sized for five to fifteen actions; split anything bigger.',
+    '- "step": the next exploration charter. "title" names the area or flow, and the lens once one applies, in a few',
+    '  words. "instruction" is a concrete, self-contained charter for an agent that sees only the screen and that text:',
+    '  which flow to exercise, what inputs to try, what to check. One flow or screen per step, sized for five to fifteen',
+    '  actions; split anything bigger.',
     '  Ask the agent to interact, not only to look: submit forms with made-up test data, save and revisit,',
     `  ${signIn}, act on a non-first item of a list. Prefer breadth: touch the main`,
-    '  flows the goal names before drilling deeper into one. Do not re-test an area a passed step already covered, and',
+    '  flows the goal names before drilling deeper into one. Once each flow has a step, return to them with a new lens',
+    `  per step: ${lenses}. Do not repeat a lens a passed step already used on that flow, and`,
     '  never plan a step to re-confirm a finding already recorded above. When a step ended at its limit, continue where',
     '  it stopped or move on. When a step summary mentions something odd that is not among the findings, spend the next',
-    '  step confirming it.',
-    '- "finish": the goal is covered, or nothing new is reachable. "summary" is the closing assessment.',
+    '  step confirming it. When a finding names a control or behavior that other screens offer too (the same sort,',
+    '  filter, form, or count elsewhere), plan a step that checks those screens for it.',
+    '- "finish": nothing new is reachable, or every flow the goal names has been through every lens above that applies',
+    '  to it. While time is left, a flow that passed without findings is worth another lens, not a finish. "summary" is',
+    '  the closing assessment.',
     ...ASSESSMENT_RULES.map((line) => `  ${line}`),
     'Respond with every field present: {"decision": "step", "title": "...", "instruction": "...", "summary": ""} or {"decision": "finish", "title": "", "instruction": "", "summary": "..."}.',
   ].join('\n');

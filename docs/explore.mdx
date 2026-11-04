@@ -118,6 +118,11 @@ A run stops after 8 steps or 10 minutes. To reach further into the flow,
 raise `--max-steps <n>` (up to 100) or `--timeout <ms>` (up to `7200000`, 2
 hours).
 
+A run with time left after the main flows returns to them with edge-case
+inputs, combined filters, reloads, and, with more than one account configured
+and no `--session`, another account. It finishes early only when nothing new
+is reachable.
+
 ## Choose the target and agent
 
 Explore uses the targets, app command, models, and agents from
