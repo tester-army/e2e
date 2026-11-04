@@ -19,6 +19,7 @@ import {
   type RawObservedNode,
 } from './read-node.ts';
 import { CaptureScope } from './capture-scope.ts';
+import { hasReadableDocument } from './frame-document.ts';
 
 /**
  * The id of every observation's root: the main document's element under one
@@ -191,6 +192,8 @@ async function captureInto(
     // on - and a stalled ad frame must not tax the capture. They stay
     // boundary nodes by design, so leaving them out is not truncation.
     if (!isOnSiteFrame(frame.url(), deps.site)) continue;
+    // A frame whose navigation has not committed shows nothing yet.
+    if (!(await scope.read(() => hasReadableDocument(frame, elements[index]!)))) continue;
     // From here the frame's document is content the model should see: any
     // reason it is not read (depth, budget, deadline, a failed or timed-out
     // capture) leaves the tree incomplete, and the snapshot must say so.

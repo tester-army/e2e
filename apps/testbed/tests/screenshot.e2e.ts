@@ -390,7 +390,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
       expect(screenshot1.equals(screenshot2)).toBe(true);
     });
 
-    test('should work when subframe has stalled navigation', { skip: 'no screenshot comes back while a subframe navigation stalls (an engine failure, which `fail` does not cover)' }, async ({ app, browser, screen }) => {
+    test('should work when subframe has stalled navigation', async ({ app, browser, screen }) => {
       let routed!: () => void;
       const routeReady = new Promise<void>((f) => (routed = f));
       let release!: () => void;
