@@ -522,8 +522,10 @@ export class AgentDeviceSurface {
    * `device.back()` followed by a tap lands where the returning screen has
    * not yet arrived.
    */
-  async screenCommand<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal: AbortSignal): Promise<T> {
+  async screenCommand<T>(label: string, run: (client: AgentDeviceClient) => Promise<T>, signal: AbortSignal, changesViewport = false): Promise<T> {
     const before = this.latestScreen;
+    // A resize may commit even when its command fails; the old dimensions are no longer evidence.
+    if (changesViewport) this.knownViewport = undefined;
     const result = await this.command(label, run, signal);
     this.markAction(before);
     return result;
@@ -1622,7 +1624,7 @@ export class AgentDeviceSurface {
    * without a hinge comes back from agent-device as `UNSUPPORTED_OPERATION`.
    */
   async fold(pose: FoldPose, signal: AbortSignal): Promise<void> {
-    await this.screenCommand('device.fold', (client) => client.command.fold({ ...this.selection(), pose }), signal);
+    await this.screenCommand('device.fold', (client) => client.command.fold({ ...this.selection(), pose }), signal, true);
   }
 
   /**

@@ -1700,6 +1700,22 @@ describe('device fixture', () => {
     expect(h.fake.calls.filter((call) => call.method === 'command.keyboard')).toHaveLength(1);
   });
 
+  it.each(['rotation', 'fold'] as const)('forgets dimensions changed by a supported %s before dismissing the keyboard', async change => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 852, height: 393 } }));
+    await h.engine.observe!(operation());
+    const device = fixture(h);
+    if (change === 'rotation') await device.setOrientation('portrait');
+    else await device.fold('open');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      keyboard: { kind: 'visible', frame: { x: 0, y: 600, width: 393, height: 252 } },
+    }));
+    await device.dismissKeyboard();
+    expect(h.fake.calls.filter((call) => call.method === 'command.keyboard')).toHaveLength(1);
+  });
+
   it('still dismisses an unmeasurable keyboard after learning the viewport', async () => {
     const h = harness();
     await openAttempt(h);

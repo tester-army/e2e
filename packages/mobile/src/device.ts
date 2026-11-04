@@ -247,7 +247,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       );
     },
     async setOrientation(orientation) {
-      await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ ...surface.selection(), orientation }), context.signal);
+      await surface.screenCommand('device.setOrientation', (client) => client.command.orientation({ ...surface.selection(), orientation }), context.signal, true);
     },
     async fold(pose) {
       await surface.fold(pose, context.signal);
