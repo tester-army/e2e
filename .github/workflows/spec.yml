@@ -64,7 +64,7 @@ jobs:
           pnpm exec tsc -p .dev/skills/babysit/scripts
           node --test .dev/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
-        run: node packages/web/dist/bin.js install chromium --with-deps
+        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps --only-shell
       # On a pull request, Jev leaves out the tests the change can't affect;
       # the merge queue and main pass no --changed-since and run every test.
       # Without the key (a fork's pull request), every test runs.
