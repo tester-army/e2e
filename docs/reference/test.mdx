@@ -137,26 +137,31 @@ test('exports a PDF', { fail: 'PDF export is broken' }, async ({ app }) => {}); 
 ```
 
 - The body keeps running after the call. The test still runs its hooks and
-  teardown.
+  teardown. A `beforeEach` hook can mark the test too.
 - A test failure, such as a failed assertion, a failed action, an error the
   test threw, or a timeout, makes the test `passed`. The report keeps the
   reason and the original error.
 - A pass makes the test `failed` with `UNEXPECTED_PASS`. Remove the mark
   once the cause is fixed.
-- Not covered, so the test fails as usual: infrastructure, configuration,
-  and internal errors such as `ENGINE_FAILURE`, also when one lands beside
-  the test failure; interrupts; and blocked agent verdicts such as
-  `STEP_BUDGET_EXHAUSTED`.
+- Not covered, so the test fails as usual: infrastructure errors such as
+  `ENGINE_FAILURE`, configuration and internal errors, interrupts, blocked
+  agent verdicts such as `STEP_BUDGET_EXHAUSTED`, a failed `beforeAll` or
+  `afterAll` hook, and a test that misuses the API, such as
+  `INVALID_ARGUMENT` or `STEP_NOT_AWAITED`. Any of these beside the test
+  failure keeps it failed too, unless it landed in cleanup; a cleanup
+  error is still reported on its own and still sets the exit code.
 - An expected failure is not retried, and neither is an unexpected pass.
 - A skip wins over the mark, also after a failure.
+- Videos and traces follow the verdict: with `retain-on-failure`, an
+  expected failure keeps none, and an unexpected pass keeps both.
 
 In `report.json`, a marked attempt has `expectedFailure: { reason, error? }`;
 `error` is the failure the mark covered. The result has
-`expectedFailure: { reason }`.
+`expectedFailure: { reason }`. Secrets in the reason are redacted.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | Called in a setup test or a serial group member. |
+| `INVALID_ARGUMENT` | A true condition in a setup test, a serial group member, an `afterEach` hook, or a fixture teardown. |
 | `COLLECTION_ERROR` | The conditional form, outside a test body, or the `fail` option inside a serial group. |
 
 #### `test.only`

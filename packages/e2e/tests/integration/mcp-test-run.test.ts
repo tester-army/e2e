@@ -131,6 +131,17 @@ test('needs the database', async ({ app }) => {
 });
 `;
 
+const MARKED_HOOKS = `import { beforeAll, test } from 'e2e';
+
+beforeAll(() => {
+  throw new Error('database is down');
+});
+
+test('needs the database', { fail: 'the database gap' }, async ({ app }) => {
+  await app.open('/');
+});
+`;
+
 const EXPECTED = `import { expect, test } from 'e2e';
 
 test('counter gap', { fail: 'the counter starts at one' }, async ({ app, screen }) => {
@@ -205,6 +216,7 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         'tests/hooks.e2e.ts': HOOKS,
         'tests/visual.e2e.ts': VISUAL,
         'tests/expected.e2e.ts': EXPECTED,
+        'tests/marked-hooks.e2e.ts': MARKED_HOOKS,
       });
       const transport = new StdioClientTransport({
         command: process.execPath,
@@ -333,6 +345,12 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
       await invoke('close_session');
       const fixed = await invoke('open_session', { test: `tests/expected.e2e.ts:${lineOf(EXPECTED, "test('fixed gap'")}` });
       expect(fixed.text).toMatch(/^Test "fixed gap" \(tests\/expected\.e2e\.ts:\d+\) failed after \S+; 1 step ran\.\nExpected to fail: the home page is broken\nUNEXPECTED_PASS: test is marked test.fail \("the home page is broken"\) but passed/);
+      await invoke('close_session');
+    });
+
+    it('does not cover a beforeAll failure with test.fail', async () => {
+      const opened = await invoke('open_session', { test: 'tests/marked-hooks.e2e.ts' });
+      expect(opened.text).toMatch(/^Test "needs the database" \(tests\/marked-hooks\.e2e\.ts:\d+\) failed after \S+; 0 steps ran\.\nExpected to fail: the database gap\nHOOK_FAILED in beforeAll: /);
       await invoke('close_session');
     });
 

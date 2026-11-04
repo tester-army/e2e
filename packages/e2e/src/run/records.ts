@@ -181,16 +181,9 @@ export function memberRan(member: { readonly status: string; readonly skip?: { r
   return member.status !== 'skipped' || member.skip?.cause === 'explicit';
 }
 
-/**
- * Whether an attempt keeps its trace, by the rule its video follows too
- * (`keeps`). The video was kept or dropped before a `test.fail` mark settled
- * the verdict, so the trace goes by what the attempt did: a failure the mark
- * covered is a failure, and an unexpected pass a pass.
- */
-function keepsTrace(attempt: Pick<AttemptRecord, 'status' | 'trace' | 'error' | 'expectedFailure'>): boolean {
-  if (attempt.trace === undefined) return false;
-  const did = attempt.expectedFailure?.error !== undefined ? 'failed' : attempt.error?.code === 'UNEXPECTED_PASS' ? 'passed' : attempt.status;
-  return keeps(attempt.trace, did);
+/** Whether an attempt keeps its trace, by the rule its video follows too (`keeps`): a `test.fail` verdict, not what the body did. */
+function keepsTrace(attempt: Pick<AttemptRecord, 'status' | 'trace'>): boolean {
+  return attempt.trace !== undefined && keeps(attempt.trace, attempt.status);
 }
 
 /** The report ids of the results that keep a trace page: those with an attempt that kept a trace; a serial member's attempts are its group's. */

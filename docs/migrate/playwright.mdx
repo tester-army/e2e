@@ -293,7 +293,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `describe.configure({ retries, timeout })` | `{ retries, timeout }` on the group | renamed |
 | `test.setTimeout(ms)`, `test.slow()` | `test(title, { timeout }, fn)` | renamed |
 | `test.fixme()` | `{ skip: 'reason' }` | missing |
-| `test.fail()` | the same, plus a `fail` option; only test failures count, not infrastructure errors, and a pass is not retried, see [`test.fail`](/reference/test#test-fail) | same |
+| `test.fail()` | the same inside a test or `beforeEach`, plus a `fail` option; no file or group form, so mark each test; a timeout counts as the expected failure; infrastructure errors are not covered; a pass is not retried, see [`test.fail`](/reference/test#test-fail) | renamed |
 | `test.step(title, fn)` | every `screen`, `browser`, and `agent` call is already a named step in the report, with its arguments redacted | missing |
 | `test.info()`, `attach()`, `annotations` | `app.screenshot(label)` attaches a screenshot | missing |
 | `{ tag: '@smoke' }` | `{ tags: ['smoke'] }` on a test or group | renamed |

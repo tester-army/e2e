@@ -611,7 +611,16 @@
         },
         {
           "if": { "properties": { "status": { "const": "skipped" } } },
+          "then": { "properties": { "expectedFailure": false } },
           "else": { "properties": { "skip": false } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "setup" } } },
+          "then": { "properties": { "expectedFailure": false } }
+        },
+        {
+          "if": { "required": ["serialGroupId"] },
+          "then": { "properties": { "expectedFailure": false } }
         }
       ]
     },

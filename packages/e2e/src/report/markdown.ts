@@ -444,7 +444,7 @@ function testRow({ result, final }: Entry, withAgent: boolean): string {
   const note = skipped
     ? `skipped: ${cell(result.skip?.reason ?? 'skipped')}`
     : expected?.error !== undefined
-      ? `failed as expected: ${cell(expected.reason)}`
+      ? `failed as expected: ${cell(expected.reason)}, ${cell(expected.error.code)}: ${cell(expected.error.message)}`
       : result.status === 'flaky'
         ? `${plural(final.failedAttempts, 'failed attempt')} first`
         : '';

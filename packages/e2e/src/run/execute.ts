@@ -17,6 +17,7 @@ import {
   type SerializedError,
 } from '../internal/errors.ts';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
+import { lateExpectedFailureError } from '../internal/expected-failure.ts';
 import { settleExpectedFailure } from './expected-failure.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import { isModelUnreachable } from '../agent/error.ts';
@@ -1076,7 +1077,14 @@ export class TargetExecutor implements SerialHost {
           assertionTimeout: this.config.assertionTimeout,
           budget,
           soft,
-          ...(context.kind === 'ordinary' ? { expectFailure: (reason: string) => (expectedFailure ??= reason) } : {}),
+          ...(context.kind === 'ordinary'
+            ? {
+                expectFailure: (reason: string) => {
+                  if (phase === 'afterEach') throw lateExpectedFailureError();
+                  expectedFailure ??= reason;
+                },
+              }
+            : {}),
         },
         attemptEnd.signal,
       );
@@ -1274,6 +1282,11 @@ export class TargetExecutor implements SerialHost {
         // A failure that first landed in teardown has had no look yet.
         await captureEvidence();
       }
+      // The cache below still settles on what the attempt did, read off `failure`.
+      settleExpectedFailure(record, expectedFailure, {
+        serialize: (error) => serializeError(error, { phase: 'body', projectRoot: this.config.projectRoot, redact }),
+        redact,
+      });
       // A serial member's recording ends with the member, not the group.
       if (openSession !== null && shared !== undefined) {
         await this.stopRunningRecording(openSession, attemptId, record, artifacts.sink, secondaryErrors);
@@ -1319,10 +1332,6 @@ export class TargetExecutor implements SerialHost {
         if (step.cache !== undefined && write !== undefined) step.cache.write = write;
       }
     }
-    // Applied last: recordings and the cache were settled on what the attempt really did.
-    settleExpectedFailure(record, expectedFailure, (error) =>
-      serializeError(error, { phase: 'body', projectRoot: this.config.projectRoot, redact }),
-    );
     return record;
   }
 }

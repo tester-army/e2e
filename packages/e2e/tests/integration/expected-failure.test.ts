@@ -99,6 +99,44 @@ test('times out', { fail: 'too slow', timeout: 500 }, async () => {
   );
 
   it(
+    'takes a mark from a beforeEach hook and refuses one from an afterEach hook',
+    async () => {
+      const file = `import { afterEach, beforeEach, describe, expect, test } from 'e2e';
+
+describe('marked early', () => {
+  beforeEach(() => {
+    test.fail('marked in beforeEach');
+  });
+  test('fails after a beforeEach mark', async () => {
+    expect(1).toBe(2);
+  });
+});
+
+describe('marked late', () => {
+  afterEach(() => {
+    test.fail('too late');
+  });
+  test('fails before an afterEach mark', async () => {
+    expect(1).toBe(2);
+  });
+});
+`;
+      const { outcome, project } = await runProject({ 'tests/hooks.e2e.ts': file }, {});
+      assertValidReport(outcome.report);
+      const byTitle = (title: string) => outcome.report.run.results.find((result) => result.titlePath.at(-1) === title)!;
+      expect(byTitle('fails after a beforeEach mark')).toMatchObject({ status: 'passed', expectedFailure: { reason: 'marked in beforeEach' } });
+      const late = byTitle('fails before an afterEach mark');
+      expect(late.status).toBe('failed');
+      expect(late.attempts[0]?.expectedFailure).toBeUndefined();
+      expect(late.attempts[0]?.secondaryErrors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining('cannot mark a test from an afterEach hook') })]),
+      );
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
     'retries neither an expected failure nor an unexpected pass, and a failure before the mark retries as usual',
     async () => {
       const file = `import { expect, test } from 'e2e';

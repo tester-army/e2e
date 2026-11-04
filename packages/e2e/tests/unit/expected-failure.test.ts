@@ -16,8 +16,8 @@ type Attempt = {
 };
 
 const failure = (category: SerializedError['category'], code = 'ASSERTION_FAILED'): SerializedError => ({ category, code, message: 'expected 1, got 0', retryable: false });
-const settle = (attempt: Attempt, reason: string | undefined): Attempt => {
-  settleExpectedFailure(attempt, reason, (error) => serializeError(error));
+const settle = (attempt: Attempt, reason: string | undefined, redact = (text: string) => text): Attempt => {
+  settleExpectedFailure(attempt, reason, { serialize: (error) => serializeError(error, { redact }), redact });
   return attempt;
 };
 
@@ -61,6 +61,24 @@ describe('settleExpectedFailure', () => {
     expect(settle({ status: 'failed', error: failure('test'), secondaryErrors: [crash] }, 'gap').status).toBe('failed');
     const cleanup = { ...crash, phase: 'cleanup' as const };
     expect(settle({ status: 'failed', error: failure('test'), secondaryErrors: [cleanup] }, 'gap').status).toBe('passed');
+  });
+
+  it('does not cover a test that misuses the API or a failed suite hook', () => {
+    for (const code of ['INVALID_ARGUMENT', 'INVALID_LOCATOR', 'UNSUPPORTED_CAPABILITY', 'STEP_NOT_AWAITED']) {
+      expect(settle({ status: 'failed', error: failure('test', code), secondaryErrors: [] }, 'gap').status, code).toBe('failed');
+    }
+    const hook = { ...failure('test', 'HOOK_FAILED'), phase: 'beforeAll' as const };
+    expect(settle({ status: 'failed', error: hook, secondaryErrors: [] }, 'gap')).toMatchObject({ status: 'failed', error: hook, expectedFailure: { reason: 'gap' } });
+    const misuse = { ...failure('test', 'STEP_NOT_AWAITED'), phase: 'body' as const };
+    expect(settle({ status: 'failed', error: failure('test'), secondaryErrors: [misuse] }, 'gap').status).toBe('failed');
+  });
+
+  it('redacts and bounds the reason', () => {
+    const covered = settle({ status: 'failed', error: failure('test'), secondaryErrors: [] }, 'token hunter2 leaks', (text) => text.replaceAll('hunter2', '[REDACTED]'));
+    expect(covered.expectedFailure?.reason).toBe('token [REDACTED] leaks');
+    const unexpected = settle({ status: 'passed', secondaryErrors: [] }, 'hunter2', (text) => text.replaceAll('hunter2', '[REDACTED]'));
+    expect(unexpected.error?.message).not.toContain('hunter2');
+    expect(Buffer.byteLength(settle({ status: 'passed', secondaryErrors: [] }, 'x'.repeat(9000)).expectedFailure!.reason)).toBe(8192);
   });
 
   it('lets a skip win, also beside a failure', () => {
@@ -112,10 +130,10 @@ describe('markRunningTestExpectedToFail', () => {
     expect(reasons).toEqual(['known gap', 'expected to fail']);
   });
 
-  it('refuses a setup test, a serial member, and a hosted session', () => {
+  it('refuses a setup test, a serial member, and a hosted teardown', () => {
     expect(() => during({ testKind: 'setup' }, () => markRunningTestExpectedToFail(true, 'x'))).toThrow(/cannot mark a setup test/);
     expect(() => during({}, () => markRunningTestExpectedToFail(true, 'x'))).toThrow(/cannot mark a serial group member/);
-    expect(() => during({ owner: 'host' }, () => markRunningTestExpectedToFail(true, 'x'))).toThrow(/cannot mark a hosted session/);
+    expect(() => during({ owner: 'host' }, () => markRunningTestExpectedToFail(true, 'x'))).toThrow(/cannot mark a test from an afterEach hook or a fixture teardown/);
     expect(() => during({ testKind: 'setup' }, () => markRunningTestExpectedToFail(true, 'x'))).toThrow(TestError);
   });
 });

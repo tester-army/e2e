@@ -511,6 +511,17 @@ function pageHref(reportPath: string, options: TracePageOptions): string | undef
   return options.pageDir === undefined ? undefined : path.posix.relative(options.pageDir, reportPath);
 }
 
+/** One error's block on a trace page: its code and phase, its message, and the facts the message does not spell out. */
+function errorLines(error: ReportError): string[] {
+  const phase = error.phase === undefined || error.phase === 'body' ? '' : ` in ${cell(error.phase, MAX_ID_CHARS)}`;
+  const lines = [`**${cell(error.code, 128)}**${phase}`, '', '```text', error.message.replaceAll('```', "'''"), '```', ''];
+  // An assertion's message already spells out expected and observed; the facts line would repeat the block above it.
+  const { expected, observed } = error.details ?? {};
+  const spelled = expected !== undefined && observed !== undefined && error.message.includes(expected) && error.message.includes(observed);
+  if (!spelled) for (const line of detailLines(error)) lines.push(`${line}  `);
+  return lines;
+}
+
 /** Renders one traced result as its own markdown page: a failed or flaky one tells its failure, a passing one its steps. */
 export function renderTracePage(report: Report1Document, result: ReportResult, final: Outcome, options: TracePageOptions = {}): string {
   const run = report.run;
@@ -529,18 +540,12 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
   const ranOn = Object.entries(told.environment ?? {});
   if (ranOn.length > 0) lines.push(`Ran on: ${ranOn.map(([name, value]) => `${cell(name, MAX_ID_CHARS)} ${code(value, MAX_CELL_CHARS)}`).join(' · ')}`, '');
 
-  // A test that failed as `test.fail` expected tells that failure.
+  // A test that failed as `test.fail` expected tells that failure, also below an earlier attempt's.
   const mark = result.attempts.at(-1)?.expectedFailure;
   if (mark !== undefined) lines.push(`Expected to fail: ${cell(mark.reason)}`, '');
-  const error = told.error ?? mark?.error;
-  if (error !== undefined) {
-    const phase = error.phase === undefined || error.phase === 'body' ? '' : ` in ${cell(error.phase, MAX_ID_CHARS)}`;
-    lines.push(`**${cell(error.code, 128)}**${phase}`, '', '```text', error.message.replaceAll('```', "'''"), '```', '');
-    // An assertion's message already spells out expected and observed; the facts line would repeat the block above it.
-    const { expected, observed } = error.details ?? {};
-    const spelled = expected !== undefined && observed !== undefined && error.message.includes(expected) && error.message.includes(observed);
-    if (!spelled) for (const line of detailLines(error)) lines.push(`${line}  `);
-  } else if (result.status !== 'passed') {
+  const errors = [told.error, mark?.error].filter((error): error is ReportError => error !== undefined);
+  for (const error of errors) lines.push(...errorLines(error));
+  if (errors.length === 0 && result.status !== 'passed') {
     lines.push(`_${STATUS_WORD[result.status]}: no error was recorded._`);
   }
   if (result.status !== 'passed') lines.push(`Look at: ${sourceText(failureSource(result, told), options.sourceUrl)}  `);

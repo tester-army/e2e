@@ -31,8 +31,9 @@ export function expectedFailureOption(fail: boolean | string | undefined): strin
  * Marks the running test expected to fail when `condition` holds. Unlike a
  * skip it does not throw: the body runs on. Outside a body there is no
  * running test, so the call is a collection error pointing at the collection
- * forms; a setup test, a serial group member, and a hosted session publish
- * no way to mark, and the call is a test error there.
+ * forms. A setup test, a serial group member, and a test whose verdict is
+ * already reached (its afterEach hooks and fixture teardowns) publish no way
+ * to mark, and the call is a test error there.
  */
 export function markRunningTestExpectedToFail(condition: boolean, reason: string | undefined): void {
   const attempt = currentAttempt();
@@ -48,9 +49,17 @@ export function markRunningTestExpectedToFail(condition: boolean, reason: string
   attempt.expectFailure(expectedFailureReason(reason));
 }
 
+/** Why a test cannot be marked from its teardown. */
+const LATE = 'a test from an afterEach hook or a fixture teardown: its verdict is already reached';
+
 /** Why the running attempt cannot be marked. */
 function unmarkable(attempt: { readonly owner: 'suite' | 'host'; readonly testKind: 'test' | 'setup' }): string {
   if (attempt.testKind === 'setup') return 'a setup test: the sessions it declares are owed to their consumers';
-  if (attempt.owner === 'host') return 'a hosted session: its test runner owns the verdict';
+  if (attempt.owner === 'host') return LATE;
   return 'a serial group member: the group passes or fails as one unit';
+}
+
+/** The error for a mark made once the verdict is reached, from an afterEach hook or a fixture teardown. */
+export function lateExpectedFailureError(): TestError {
+  return new TestError('INVALID_ARGUMENT', `test.fail() cannot mark ${LATE}`);
 }

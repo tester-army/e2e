@@ -415,7 +415,7 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
       ...(skipped === undefined ? {} : { skip: skipped.reason }),
       secondaryErrors,
     };
-    settleExpectedFailure(verdict, expectedFailure, (error) => serialize(error, 'body'));
+    settleExpectedFailure(verdict, expectedFailure, { serialize: (error) => serialize(error, 'body'), redact: env.redact });
     const outcome: StandaloneTestOutcome = {
       status: verdict.status,
       ...(verdict.error === undefined ? {} : { error: verdict.error }),
