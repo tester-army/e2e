@@ -1082,7 +1082,7 @@ describe('observation', () => {
       });
       const keyboardUp = { ...SETTINGS_SNAPSHOT, viewport: { width: 390, height: 844 }, keyboard: { kind: 'visible', frame: { x: 0, y: 583, width: 390, height: 261 } } };
       let snapshots = 0;
-      h.fake.respond('capture.snapshot', () => (snapshots++ === 0 ? keyboardUp : new Promise(() => undefined)));
+      h.fake.respond('capture.snapshot', () => (snapshots++ < 2 ? keyboardUp : new Promise(() => undefined)));
       const dismiss = h.engine.keyboard!.dismiss!({ ...operation(), timeoutMs: 1_000 });
       const assertion = expect(dismiss).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
       await vi.advanceTimersByTimeAsync(1_000);
@@ -1650,6 +1650,26 @@ describe('device fixture', () => {
     });
   });
 
+  it.each([
+    ['an absent', { kind: 'absent' }],
+    ['a below-viewport', { kind: 'visible', frame: { x: 0, y: 869, width: 393, height: 227 } }],
+    ['a left-of-viewport', { kind: 'visible', frame: { x: -393, y: 580, width: 393, height: 272 } }],
+    ['an empty', { kind: 'visible', frame: { x: 0, y: 580, width: 0, height: 272 } }],
+  ])('does not dispatch dismissal for %s keyboard', async (_name, keyboard) => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      viewport: { width: 393, height: 852 },
+      keyboard,
+    }));
+    h.fake.respond('command.keyboard', () => {
+      throw new Error('dismissal must not send input to the form when no keyboard is on screen');
+    });
+    await fixture(h).dismissKeyboard();
+    expect(h.fake.calls.filter((call) => call.method === 'command.keyboard' || call.method === 'interactions.swipe')).toEqual([]);
+  });
+
   describe('dismissing a keyboard that has no dismiss key', () => {
     const NO_DISMISS_KEY = () => {
       throw new AppError(
@@ -1669,8 +1689,10 @@ describe('device fixture', () => {
     const KEYBOARD_GONE = { ...SETTINGS_SNAPSHOT, nodes: FORM_NODES, keyboard: { kind: 'absent' } };
     /** Answers the captures the dismissal takes, in order, then the last one forever. */
     const captures = (h: Harness, snapshots: readonly unknown[]) => {
+      // The guard reads once before the native command; fallback then takes its own fresh capture.
+      const sequence = [snapshots[0], ...snapshots];
       let taken = 0;
-      h.fake.respond('capture.snapshot', () => snapshots[Math.min(taken++, snapshots.length - 1)]);
+      h.fake.respond('capture.snapshot', () => sequence[Math.min(taken++, sequence.length - 1)]);
     };
 
     it('drags from the point nearest the centre that no control covers, and stops once the keyboard is gone', async () => {
@@ -1683,6 +1705,7 @@ describe('device fixture', () => {
       const before = h.fake.calls.length;
       await device.dismissKeyboard();
       expect(h.fake.methods().slice(before)).toEqual([
+        'capture.snapshot',
         'command.keyboard',
         'capture.snapshot',
         'interactions.swipe',
@@ -1873,6 +1896,7 @@ describe('device fixture', () => {
       await device.dismissKeyboard();
       // The sparse tree after the first drag is retried, not trusted: the keyboard it hid is still up, so the second drag follows.
       expect(h.fake.methods().slice(before)).toEqual([
+        'capture.snapshot',
         'command.keyboard',
         'capture.snapshot',
         'interactions.swipe',
@@ -1900,7 +1924,7 @@ describe('device fixture', () => {
       captures(h, [withTip, KEYBOARD_GONE]);
       const before = h.fake.calls.length;
       await device.dismissKeyboard();
-      expect(h.fake.methods().slice(before)).toEqual(['command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
       expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 195, y: 722 });
     });
 
@@ -2000,7 +2024,7 @@ describe('device fixture', () => {
     expect(free.fake.methods()).toEqual(['devices.boot']);
   });
 
-  it('issues one settings or system command per method', async () => {
+  it('issues settings or system commands and checks the keyboard before dismissal', async () => {
     const h = harness();
     await openAttempt(h);
     h.fake.respond('command.appState', () => ({ platform: 'ios', appName: 'Settings', appBundleId: 'com.apple.Preferences' }));
@@ -2044,6 +2068,7 @@ describe('device fixture', () => {
       ['command.home', { platform: 'ios' }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
       ['command.alert', { platform: 'ios', action: 'accept' }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['command.keyboard', { action: 'dismiss' }],
       ['command.clipboard', { platform: 'ios', action: 'read' }],
       ['command.clipboard', { platform: 'ios', action: 'write', text: 'x' }],
