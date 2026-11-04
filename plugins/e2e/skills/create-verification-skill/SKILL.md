@@ -2,6 +2,13 @@
 name: create-verification-skill
 description: Generate a project-local verify-<app> skill on top of e2e, so any coding agent can launch the app, check it is worth driving, exercise a feature the way a user does, keep evidence, and bug bash it. Writes the skill, a feature map with one explore charter per feature, and proves it once. Use for /create-verification-skill, "make a verification skill for this repo", or when a project has no scripted way to prove UI behavior.
 disable-model-invocation: true
+metadata:
+  openclaw:
+    homepage: https://e2e.com
+    requires:
+      bins:
+        - node
+        - npx
 ---
 
 # Create a verification skill

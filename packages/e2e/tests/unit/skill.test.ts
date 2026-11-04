@@ -11,7 +11,7 @@ describe('the bundled agent skill', () => {
   it('starts with a SKILL.md whose frontmatter names the skill after its directory', () => {
     const [skill, ...rest] = readSkillFiles();
     expect(skill?.relative).toBe('SKILL.md');
-    expect(skill?.content).toMatch(/^---\nname: e2e\ndescription: .+\n---\n/);
+    expect(skill?.content).toMatch(/^---\nname: e2e\ndescription: .+\n(?:[ a-z].*\n)*---\n/);
     expect(rest.map((file) => file.relative)).toEqual(skillTopics().map((topic) => `references/${topic}.md`));
     const description = /^description: (.+)$/m.exec(skill?.content ?? '')?.[1] ?? '';
     expect(description.length).toBeLessThanOrEqual(1024);
@@ -56,6 +56,17 @@ describe('the bundled agent skill', () => {
     for (const file of readSkillFiles()) {
       expect(file.content, file.relative).not.toMatch(/--no-install/);
       expect(file.content, file.relative).not.toMatch(/npx @e2edev\/e2e (run|guide)\b/);
+    }
+  });
+
+  it('writes every consumer skill frontmatter in block style', () => {
+    // The Agent Skills validator (skills-ref) parses frontmatter with strictyaml, which rejects `[a, b]` and `{a: b}`.
+    const skills = new URL('../../../../skills/', import.meta.url);
+    for (const entry of readdirSync(skills, { withFileTypes: true }).filter((dirent) => dirent.isDirectory())) {
+      const content = readFileSync(new URL(`${entry.name}/SKILL.md`, skills), 'utf8');
+      const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(content)?.[1] ?? '';
+      expect(frontmatter, entry.name).toMatch(new RegExp(`^name: ${entry.name}\\n`));
+      expect(frontmatter, entry.name).not.toMatch(/:\s*[[{]/);
     }
   });
 
