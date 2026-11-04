@@ -16,7 +16,7 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into the e2e config: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
-7. Install dependencies, then run \`npx agent-device doctor\` and fix what it reports.
+7. Install dependencies, then run \`npx e2e doctor\` (e2e 0.22.1 or newer) and fix what it reports.
 8. List the flows and ask me which one to move first. Suggest one whose \`optional\` steps and \`runFlow: { when }\` branches often need updating.
 9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: e2e matches the whole string and fails on several matches. Where the guide says "Not yet" or "No equivalent", use the workaround it gives, or leave that flow in Maestro and tell me why.
 10. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
@@ -200,7 +200,7 @@ purpose.
 | `runScript`, `evalScript`, `${output.x}` | TypeScript in the test |
 | `http.get`, `http.post`, `json()` | Node `fetch`, see [API](/api-testing) |
 | `onFlowStart`, `onFlowComplete` | `beforeEach`, `afterEach` |
-| `startRecording`, `stopRecording` | `test('x', { video: 'on' }, ...)` records that test's whole attempts; no start and stop inside a test |
+| `startRecording`, `stopRecording` | [`app.startRecording()`, `app.stopRecording()`](/reference/app#startrecording) |
 
 </Accordion>
 </AccordionGroup>

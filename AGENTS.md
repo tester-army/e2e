@@ -13,7 +13,8 @@ There is no separate spec. The code is the contract, pinned in three places:
   assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
   by accident; it runs under the package `typecheck`, never under vitest.
 - Wire formats live in `packages/e2e/schema/*.schema.json` (report-1,
-  session-1, agent-judgment-2, and the deprecated agent-judgment-1) with a valid and an invalid fixture
+  session-1, agent-judgment-2, the engine protocol's engine-manifest-1,
+  `e2e doctor`'s doctor-1, and the deprecated agent-judgment-1) with a valid and an invalid fixture
   each. Integration tests validate every generated report and session envelope
   against them; `tests/unit/schema-fixtures.test.ts` checks the fixtures. A
   wire change edits the schema, both fixtures, and the producer in one review.
@@ -85,6 +86,17 @@ suites that consume the built packages the way a user would.
   The `@e2e-dev/mobile/tools` subpath holds the agent-side `open_app`, `swipe`,
   and `alert` tools; focused-field typing uses the engine's keyboard grammar.
   The main entry never loads the AI SDK.
+  The `@e2e-dev/mobile/lease` subpath holds the agent-device lease plumbing
+  device-cloud providers (`testmu`, `browserstack`) share: one daemon per
+  slot, heartbeat, and a release that fails unless the session end is
+  confirmed.
+- `packages/e2e/src/engine/protocol/` - the engine protocol: the engine
+  contract as LSP-style JSON-RPC (`connectEngine` client, `serveEngine`
+  server, spawn/socket/loopback transports), so an engine can run in
+  another process, machine, or language. The harness holds only protocol
+  clients (`ResolvedTarget.engine` is an `EngineClientHandle`); a
+  `defineEngine` handle is served over `loopbackTransport`, so a contract
+  change that cannot cross the wire fails in every suite.
 - `packages/kernel` - the published `@e2e-dev/kernel` package: Kernel hosted
   browsers for the web engine. An official integration with a hosted service
   is one package per service, named after it (`@e2e-dev/<service>`), with the
@@ -102,7 +114,7 @@ suites that consume the built packages the way a user would.
 - `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
   `BrowserProvider` that starts a local `lightpanda serve` per worker slot
   and stops it with the run; no vendor SDK, the binary is the dependency.
-- `packages/eas` - the published `@e2e-dev/eas` package: EAS Simulators
+- `packages/eas` - the published `@e2e-dev/eas` package: Expo Simulators
   hosted iOS simulators and Android emulators for the mobile engine
   (`DeviceProvider`). Expo publishes no SDK for the sessions API, so it calls
   Expo's GraphQL API with `fetch`, and `@e2e-dev/mobile` is its only peer.
@@ -137,6 +149,13 @@ suites that consume the built packages the way a user would.
   call leaves its tests in and the rest are still judged; after 3 failed
   calls it stops asking. When every call fails, or git or a file read
   fails, it throws, and the run warns and runs every test.
+- `packages/acp` — the published `@e2e-dev/acp` package: a `StepExecutor`
+  (`acp()`, with `claudeCode()` and `codex()` presets) that runs
+  `agent.act` and `agent.assert` on a coding agent over the Agent Client
+  Protocol. The step tools (`createGrammarTools`, `createVerdictTool` from
+  `e2e/agent`) reach the agent as an MCP server on 127.0.0.1; permission
+  requests for anything else are rejected, and a tool of the agent's own
+  that runs without asking fails the step with `POLICY_DENIED`.
 - `packages/github` — the published `@e2e-dev/github` package: the reporter
   that posts the run as one pull request comment from GitHub Actions and
   keeps it current on reruns, writing the same text to the job summary. It
@@ -147,6 +166,11 @@ suites that consume the built packages the way a user would.
   devices for the mobile engine (`DeviceProvider`), through agent-device's
   `@agent-device/testmu` plugin, and hosted Chrome and Edge for the web
   engine (`BrowserProvider`) from `@e2e-dev/testmu/web`.
+- `packages/browserstack` — the published `@e2e-dev/browserstack` package:
+  BrowserStack App Automate real Android and iOS devices for the mobile
+  engine (`DeviceProvider`), through agent-device's built-in `browserstack`
+  provider. An `https` `app` is uploaded once per run through the App
+  Automate API, since the session's `app` capability takes only `bs://` ids.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -183,14 +207,14 @@ suites that consume the built packages the way a user would.
   one-screen greeter demo with deterministic and agent tests. They install
   the published packages from npm, sit outside the pnpm workspace, commit no
   lockfile, and gate no pull request; oxlint and fallow ignore them.
-  `.github/workflows/examples.yml` runs every one but `with-limrun` nightly
+  `.github/workflows/examples.yml` runs every one nightly
   (23:00 Europe/Warsaw) on each platform it supports, with the packages
   packed from main swapped in for the npm ones, agent tests included, and
   posts one Slack message for the run (`scripts/examples-nightly/`, the
   `SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL` secret). A new example or platform
   gets a matrix entry there. It also needs an official entry in
   `examples/examples.json` (the list e2e.tester.army/examples renders,
-  community repositories included) and a preset in
+  partner and community repositories included) and a preset in
   `packages/e2e/src/cli/init/examples.ts`; `pnpm check:examples` fails
   without either. A change still runs the example's suite by hand and updates the
   "Last checked" line in its README. A native, Flutter, or .NET MAUI example (SwiftUI, Compose, Kotlin
@@ -226,7 +250,7 @@ suites that consume the built packages the way a user would.
   it generated and ran for `apps/testbed`: regenerate it when a playground
   route, label, or test it names changes.
 - `skills/migrate-to-e2e/`: a consumer skill that ports a Playwright,
-  Cypress, Selenium, Detox, or Maestro suite one slice per session, the old
+  Cypress, Selenium, Detox, Maestro, or TesterArmy suite one slice per session, the old
   suite running beside the new one, with a `MIGRATION.md` progress file the next
   session resumes from. It routes to `docs/migrate/<runner>.mdx` for the
   API mapping, so a mapping change edits the guide, not the skill. Installed
@@ -526,26 +550,24 @@ trees, on both platforms, without a device.
 - No implicit default model. For the built-in agent, the entry's `model`
   serves `act`; the judgment calls (`assert`, `waitFor`, `extract`) use its
   `judge` when one is configured, else `model`. A judgment never sees the
-  prior-step ledger or the acting agent's summaries, only the instruction and
-  the current screen. Without a model, the first `agent` acquisition in a run
+  prior-step ledger or the acting agent's summaries; it sees the instruction, its
+  params, the agent's context, and the current screen. Without a model, the first `agent` acquisition in a run
   reports one run-level `MODEL_UNAVAILABLE` and stops the run (exit 2). A
   custom executor handles `act` and `assert` through `runStep` and needs no
   model; its `waitFor` and `extract` still use the built-in judgments. No implicit target either: `targets` is required and
   each names its engine.
 - Security invariants (fail closed when one cannot be enforced):
-  - Secrets never reach model input, digests, logs, reports, or artifacts.
-    Model input is the redacted semantic tree (as text or, on request, the
-    redacted node tree), masked pixels only when masking is proven and no
-    secret was filled, and the sanitized prior-step records. Once a secret is
-    filled the viewport stays pixel-tainted for the rest of the attempt. A
-    secret an engine resolves for an option the app sees (basic auth) is
-    protected as text only: redacted everywhere text goes, pixels untouched.
-    One exposure level per session (`SecretExposure` in `run/secrecy.ts`)
-    decides pixels and the taint a saved session carries; text downloads are
+  - Secret values never reach model input, digests, logs, reports, or
+    artifacts as text. Model input is the redacted semantic tree (as text
+    or, on request, the redacted node tree), masked pixels only when masking
+    is proven, and the sanitized prior-step records. Pixels mask secure
+    fields only, before and after a secret fill: a value the app shows
+    elsewhere is in the image, a documented limit (`docs/security.mdx`), not
+    a gap to close with taint or text-matching heuristics. Text downloads are
     rewritten whenever the session's ledger holds a value
-    (`redactsDownloads`), since a plain string reaches the app unseen. What
-    an executor keeps in `attempt.memory` is its own; the harness never
-    reports it.
+    (`redactsDownloads` in `run/secrecy.ts`), since a plain string reaches
+    the app unseen. What an executor keeps in `attempt.memory` is its own;
+    the harness never reports it.
   - An agent's secret fill is authorized by the runner, not the model.
     `typeSecret` (`action-dispatcher.ts`) takes only a handle the step's
     params declare, the target resolves on the newest observation
@@ -562,7 +584,7 @@ trees, on both platforms, without a device.
     next turn is the repair, and refusals count toward the failure-streak
     guard. A node id not on the current screen is `LOCATOR_NOT_FOUND`, an
     action failure the model reads and re-aims from. `POLICY_DENIED` is for
-    denied destinations, forbidden fills, and tainted pixels. Model text is
+    denied destinations, forbidden fills, and withheld pixels. Model text is
     never evaluated as code, selectors, shell, or config. App content, ledger
     text, and pixels are quoted as untrusted evidence with no policy authority.
   - Every navigation a test or the agent asks for (`app.open`,

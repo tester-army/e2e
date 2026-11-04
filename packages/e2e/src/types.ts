@@ -7,6 +7,8 @@ import type { expectationBrand, testCaseBrand } from './internal/brands.ts';
 import type { CredentialConfig, Secret, SecretConfig } from './config/secrets.ts';
 import type { Unique } from './params.ts';
 import type { StepExecutor } from './agent/executor.ts';
+import type { RecordedAction } from './cache/trace.ts';
+import type { PROJECT_TOOL_EVENT_PREFIX } from './agent/action-names.ts';
 import type { StepCacheInfo } from './run/steps.ts';
 import type { EngineHandle } from './engine/index.ts';
 import type { KeyModifier, Momentum, ScrollDirection, SelectOption, ViewportPoint } from './engine/contract.ts';
@@ -149,6 +151,11 @@ export interface AgentOption {
 
 /** `assert` options: one judgment plus one repair round, within `timeout`. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /**
+   * Values the assertion refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Attach a redacted screenshot to the step; on by default. */
@@ -157,6 +164,11 @@ export interface AssertOptions extends VisionOption, AgentOption {
 
 /** `waitFor` options: a judgment at most once per `interval` until `timeout`. */
 export interface WaitForOptions extends VisionOption, AgentOption {
+  /**
+   * Values the condition refers to as `{name}`, with the same rules as `act`
+   * params. A `Secret` reaches the judge by name only, never its value.
+   */
+  params?: AgentParams;
   /** Deadline in milliseconds; defaults to the agent's `judgmentTimeout`, 30000. */
   timeout?: number;
   /** Least time between two judgments, in milliseconds; 100 through 60000, default 3000. */
@@ -212,17 +224,43 @@ export type BeforeActionHook = (event: BeforeActionEvent) => void | Promise<void
 /** The `onAction` hook of an `act` call. */
 export type ActionHook = (event: ActionEvent) => void | Promise<void>;
 
-/** One completed action of an `act` step, as `onAction` receives it. */
-export interface ActionEvent {
+/** The name `onAction` reports a committed grammar action under, e.g. `tap`, `navigate`, or `dragAt`. */
+export type ActionName = Exclude<RecordedAction['name'], 'tool'>;
+
+/**
+ * The fields `onAction` adds for an action, by action name; other actions add
+ * none. Points are in the same space as `screen.tapAt` and `boundingBox()`,
+ * rounded and clamped to the viewport.
+ */
+export interface ActionDetails {
+  /** The dispatched point. */
+  readonly tapAt: { readonly point: Point };
+  /** The dispatched point. Mobile engines have no `hoverAt`. */
+  readonly hoverAt: { readonly point: Point };
+  /** The dispatched start and end. Mobile engines have no `dragAt`. */
+  readonly dragAt: { readonly from: Point; readonly to: Point };
+}
+
+/** What every `onAction` event carries. */
+interface ActionEventBase {
   /** 1-based position in the step's action budget; a failed attempt uses a number too. */
   readonly index: number;
-  /** The committed action, e.g. `tap` or `navigate`; a mutating project tool reads `tool:<name>`. */
-  readonly action: string;
   /** What the action did, secrets redacted. */
   readonly summary: string;
   /** `model` when the executor chose the action, `replay` when the cache replayed it. */
   readonly source: 'model' | 'replay';
 }
+
+/**
+ * One completed action of an `act` step, as `onAction` receives it. Narrow on
+ * `action` to read its {@link ActionDetails}; a mutating project tool reads
+ * `tool:<name>`.
+ */
+export type ActionEvent =
+  | {
+      readonly [A in ActionName]: ActionEventBase & { readonly action: A } & (A extends keyof ActionDetails ? ActionDetails[A] : unknown);
+    }[ActionName]
+  | (ActionEventBase & { readonly action: `${typeof PROJECT_TOOL_EVENT_PREFIX}${string}` });
 
 /** One action of an `act` step about to run, as `onBeforeAction` receives it. */
 export interface BeforeActionEvent {
@@ -536,7 +574,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   focus(options?: ActionOptions): Promise<void>;
   /** Hovers over exactly one matching actionable node. */
   hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input; paths resolve from the project root. */
+  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;
@@ -589,8 +627,9 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
 export interface App {
   /**
    * The resolved base URL of the target's app, with the port the run
-   * allocated when `app.url` declared port 0; undefined for a target that
-   * declares no `app.url`.
+   * allocated when `app.url` declared port 0 and no trailing slash, so
+   * `${app.baseUrl}/api/users` joins with one slash; undefined for a target
+   * that declares no `app.url`.
    */
   readonly baseUrl: string | undefined;
   /**
@@ -613,6 +652,44 @@ export interface App {
   back(): Promise<void>;
   /** Captures a redacted evidence screenshot and returns its absolute path. */
   screenshot(label?: string): Promise<string>;
+  /**
+   * Starts recording the screen, until `stopRecording`. One recording at a
+   * time, and none while the test's `video` records: set `{ video: 'off' }`
+   * on the test.
+   */
+  startRecording(options?: RecordingOptions): Promise<void>;
+  /**
+   * Stops the recording and returns its videos in play order: one, or on the
+   * web one per page when the page was replaced while it recorded.
+   */
+  stopRecording(): Promise<readonly [RecordedVideo, ...RecordedVideo[]]>;
+}
+
+/** How `app.startRecording` names its file. */
+export interface RecordingOptions {
+  /** File name stem, `recordings/001-<name>.<ext>`; defaults to `recording`. */
+  readonly name?: string;
+}
+
+/** One video `app.stopRecording` returns: a file, or a link to a recording a hosted service keeps. */
+export type RecordedVideo = RecordedVideoFile | RecordedVideoLink;
+
+/** A video file under the attempt's `recordings/` directory. */
+export interface RecordedVideoFile {
+  /** Absolute path of the file. */
+  readonly path: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
+}
+
+/** A recording a hosted browser or device service keeps, by URL. */
+export interface RecordedVideoLink {
+  /** `http(s)` URL of the recording. */
+  readonly url: string;
+  /** Media type of what the URL serves: `video/mp4`, or `text/html` for a player page. */
+  readonly mediaType: string;
+  /** When it started recording, as an ISO timestamp. */
+  readonly startedAt: string;
 }
 
 export interface SetupSession {
@@ -623,7 +700,7 @@ export interface SetupSession {
 export interface TestFixtures {
   /** Agent steps. Acquiring the built-in agent without a configured model is `MODEL_UNAVAILABLE`. */
   readonly agent: Agent;
-  /** App lifecycle: open, restart, clear state, back, screenshot. */
+  /** App lifecycle: open, restart, clear state, back, screenshot, recording. */
   readonly app: App;
   /** Semantic queries and the actions on their matches. */
   readonly screen: Screen;
@@ -1159,8 +1236,11 @@ export interface TargetApp {
    */
   launchArguments?: readonly string[] | undefined;
   /**
-   * Permissions a device app holds on every fresh launch, by name, each
-   * granted, denied, or reset before the app starts.
+   * Permissions the app holds, by name. A device app has each granted,
+   * denied, or reset before every fresh launch. A browser target takes
+   * `grant` only and holds it on every page of the attempt; what it leaves
+   * out is the browser's default, which headless Chromium refuses. The
+   * engine checks the names its platform knows.
    */
   permissions?: Readonly<Record<string, AppPermissionState>> | undefined;
   /**

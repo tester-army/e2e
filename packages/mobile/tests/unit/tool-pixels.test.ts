@@ -1,4 +1,4 @@
-/** The real tool pack and harness, driven by a fake device and a scripted model: a tainted device offers no pixel verbs. */
+/** The real tool pack and harness, driven by a fake device and a scripted model: a secret fill keeps the pixel verbs. */
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -16,12 +16,12 @@ const { run } = (await import(builtRunnerModule)) as {
   run: (options: object) => Promise<{ status: string }>;
 };
 
-it('offers no pixel verbs after a secret fill and captures no pixels', async () => {
+it('offers pixel verbs after a secret fill', async () => {
   const root = fileURLToPath(new URL('../../../e2e/tests/tmp-projects/', import.meta.url));
   mkdirSync(root, { recursive: true });
   const project = mkdtempSync(path.join(root, 'tool-pixels-'));
   writeFileSync(path.join(project, 'test.e2e.ts'), `import { test, credentials } from 'e2e';
-    test('withhold pixels', async ({ screen, agent }) => {
+    test('keep pixels', async ({ screen, agent }) => {
       await screen.getByRole('textbox', { name: 'Password' }).fill(credentials.user('audit').password);
       await agent.act('inspect the pixels');
     });`);
@@ -35,7 +35,7 @@ it('offers no pixel verbs after a secret fill and captures no pixels', async () 
       offered = (options.tools ?? []).map((tool) => tool.name);
       return {
         content: [{ type: 'tool-call', toolCallId: 'call-1', toolName: 'complete_step',
-          input: JSON.stringify({ status: 'passed', summary: 'pixels withheld' }) }],
+          input: JSON.stringify({ status: 'passed', summary: 'inspected' }) }],
         finishReason: { unified: 'tool-calls', raw: 'tool-calls' },
         usage: { inputTokens: { total: 1 }, outputTokens: { total: 1 } }, warnings: [],
       };
@@ -48,11 +48,9 @@ it('offers no pixel verbs after a secret fill and captures no pixels', async () 
       agents: { default: { tools: mobileTools(engine), model } },
     } });
     expect(outcome.status).toBe('passed');
-    // The pack's own tools are offered; the grammar's pixel verbs are not, the viewport being tainted.
     expect(offered).toContain('open_app');
-    expect(offered).not.toContain('screenshot');
-    expect(offered).not.toContain('tap_at');
-    expect(fake.methods()).not.toContain('capture.screenshot');
+    expect(offered).toContain('screenshot');
+    expect(offered).toContain('tap_at');
   } finally {
     rmSync(project, { recursive: true, force: true });
   }

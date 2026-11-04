@@ -486,7 +486,7 @@ test('reveals the output', async ({ app, agent, screen }) => {
 });
 
 describe('a secret fill the engine rejects', () => {
-  it('taints the pixels all the same, since the value may have reached the screen before the failure', async () => {
+  it('keeps the value out of the failure and the report when the engine fails after typing it', async () => {
     const fake = createFakeEngine({
       tree: {
         ref: { id: 'root', revision: '' },
@@ -494,19 +494,16 @@ describe('a secret fill the engine rejects', () => {
         children: [{ ref: { id: 'token', revision: '' }, role: 'textbox', name: 'Token' }],
       },
       perform: (_ref, action) => {
-        if (action.kind === 'fill') throw new Error('the field detached after the value was typed');
+        if (action.kind === 'fill') throw new Error(`the field detached after ${action.value} was typed`);
       },
     });
-    const tainted: boolean[] = [];
     const executor: StepExecutor = {
       name: 'rejected-fill',
       async runStep(context) {
         const observation = await context.observe();
-        tainted.push(context.pixelsTainted);
         const failure = await context.actions
           .typeSecret({ id: nodeIdFor(observation.text, /textbox "Token"/) }, 'token')
           .then(() => undefined, (cause: unknown) => cause);
-        tainted.push(context.pixelsTainted);
         return { status: 'failed', summary: String(failure) };
       },
     };
@@ -530,7 +527,8 @@ test('fills a token the engine rejects', async ({ agent }) => {
     );
     try {
       expect(resultByTitle(outcome, 'fills a token the engine rejects').status).toBe('failed');
-      expect(tainted).toEqual([false, true]);
+      expect(JSON.stringify(outcome.report)).not.toContain('tok-7Qz-rejected');
+      expect(resultByTitle(outcome, 'fills a token the engine rejects').attempts[0]?.error?.message).toContain('the field detached after <secret:token> was typed');
     } finally {
       project.cleanup();
     }

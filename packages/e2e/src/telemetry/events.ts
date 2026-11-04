@@ -18,6 +18,7 @@ import type { ResolvedConfig } from '../config/resolve.ts';
 import type { McpClient } from '../mcp/server.ts';
 import type { McpSessionSummary } from '../mcp/usage.ts';
 import type { Report1Document, ReportError, ReportExplore, ReportStep, ReportUsage } from '../report/build.ts';
+import { memberRan } from '../run/records.ts';
 import { STEP_KINDS } from '../run/steps.ts';
 import type { JsonValue } from '../types.ts';
 import { failureKind } from './failure-kind.ts';
@@ -249,7 +250,7 @@ function testSteps(report: Report1Document): ReportStep[][] {
     const members = new Map<number, ReportStep[]>();
     for (const attempt of group.attempts) {
       for (const member of attempt.members) {
-        if (member.status === 'skipped') continue;
+        if (!memberRan(member)) continue;
         members.set(member.index, [...(members.get(member.index) ?? []), ...member.steps]);
       }
     }

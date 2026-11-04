@@ -79,6 +79,12 @@ function serialGroup(id: string, memberTestId: string, status: 'passed' | 'faile
 }
 
 describe('foldLastRun', () => {
+  it('leaves the rerun as it is when the run before was an exploration', () => {
+    const explored = report({ status: 'failed', results: [result({ title: 'Explore checkout', status: 'failed', attempts: [failedAttempt] })] });
+    explored.run.explore = { goal: 'Explore checkout', budgets: { maxSteps: 8, timeoutMs: 600_000 }, ended: 'finished', steps: [], findings: [] };
+    expect(foldLastRun(rerun, explored)).toBe(rerun);
+  });
+
   it('carries the tests the rerun left out, marks a recovered test flaky with both runs\' attempts, and keeps a still-failing one failed', () => {
     const folded = foldLastRun(rerun, firstPass);
     const entries = byTitle(folded);
@@ -341,6 +347,33 @@ describe('foldLastRun', () => {
     const page = renderMarkdownReport(folded);
     expect(page).toContain('**Filter** `pages` kept all 2 tests\n');
     expect(page).not.toContain('left out by filters');
+  });
+
+  it('counts a serial member executed when its body ran in any group attempt, one that skipped itself included', () => {
+    const titles = ['one', 'two', 'three'];
+    const memberIds = titles.map((title) => `tests/example.e2e.ts::wizard::${title}`);
+    const blocked = { cause: 'serial-predecessor-failed' as const, reason: 'member 0 failed in this group attempt' };
+    const run = (statuses: readonly ('failed' | 'skipped' | 'self-skipped')[]) => {
+      const group = serialGroup('g1', memberIds[0]!, 'failed');
+      const members = statuses.map((status, index) => ({
+        ...group.attempts[0]!.members[0]!,
+        id: `g1:member:${index}`,
+        index,
+        testId: memberIds[index]!,
+        status: status === 'failed' ? ('failed' as const) : ('skipped' as const),
+        ...(status === 'failed' ? {} : { error: undefined, skip: status === 'self-skipped' ? { cause: 'explicit' as const, reason: 'not here' } : blocked }),
+      }));
+      return report({
+        status: 'failed',
+        results: statuses.map((status, index) =>
+          result({ title: ['wizard', titles[index]!], status: status === 'failed' ? 'failed' : 'skipped', serialGroupId: 'g1', ...(status === 'failed' ? {} : { skip: members[index]!.skip }) }),
+        ),
+        serialGroups: [{ ...group, memberTestIds: memberIds, attempts: [{ ...group.attempts[0]!, members }] }],
+      });
+    };
+    const folded = foldLastRun(run(['self-skipped', 'failed', 'skipped']), run(['failed', 'skipped', 'skipped']));
+    // One ran in both runs and skipped itself in the rerun, two ran in the rerun, three never started.
+    expect(folded.run.summary).toMatchObject({ selected: 3, executed: 2, failed: 1, skipped: 2 });
   });
 
   it('leaves the rerun alone when the run before is another project\'s', () => {

@@ -58,8 +58,12 @@ export type GrammarVerb =
   | 'upload'
   | 'navigate'
   | 'back'
+  /** Sets the viewport size (`session.resize`), for checking a layout at another width. */
+  | 'resize'
   | 'tapAt'
   | 'hoverAt'
+  /** A drag from one viewport point to another (`dragTo` in `pointerActions`), for a drag the tree does not list. */
+  | 'dragAt'
   /** Keyboard input to whatever holds focus: `type` and `press` without a target. */
   | 'typeText'
   | 'pressKey'
@@ -105,6 +109,8 @@ export interface SessionApp {
   open(url: string, operation: OperationContext): Promise<void>;
   /** Navigates back once. */
   back(operation: OperationContext): Promise<void>;
+  /** Sets the viewport size in CSS pixels. */
+  resize(size: ViewportSize, operation: OperationContext): Promise<void>;
   /** Recreates the app context without clearing persisted state; shows nothing until `open`. */
   restart(operation: OperationContext): Promise<void>;
   /** Clears persisted client state and recreates the context; shows nothing until `open`. */

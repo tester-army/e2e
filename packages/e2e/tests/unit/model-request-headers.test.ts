@@ -1,5 +1,3 @@
-import { createServer, type IncomingHttpHeaders, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -14,12 +12,14 @@ import { AttemptBudget } from '../../src/run/budget.ts';
 import { createFixtures } from '../../src/run/fixtures.ts';
 import { StepRecorder } from '../../src/run/steps.ts';
 import { WorkerModels } from '../../src/run/worker-models.ts';
+import { json, startServer } from '../helpers/recording-server.ts';
 import { snapshot } from '../helpers/snapshot.ts';
 
-/** Headers of every request the endpoint received, oldest first. */
-const received: IncomingHttpHeaders[] = [];
-let server: Server;
+let server: Awaited<ReturnType<typeof startServer>>;
 let baseURL: string;
+
+/** Headers of every request the endpoint received, oldest first. */
+const received = () => server.requests.map((request) => request.headers);
 
 /** Loop requests answered so far; the first calls `peek`, the rest conclude. */
 let loopTurns = 0;
@@ -45,23 +45,14 @@ function completion(body: { tools?: unknown[] }) {
 }
 
 beforeAll(async () => {
-  server = createServer((request, response) => {
-    let raw = '';
-    request.on('data', (chunk: Buffer) => (raw += chunk.toString()));
-    request.on('end', () => {
-      received.push(request.headers);
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify(completion(JSON.parse(raw) as { tools?: unknown[] })));
-    });
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  baseURL = `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`;
+  server = await startServer((request, response) => json(response, 200, completion(JSON.parse(request.body) as { tools?: unknown[] })));
+  baseURL = `${server.url}/v1`;
 });
 
-afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
+afterAll(() => server.close());
 
 beforeEach(() => {
-  received.length = 0;
+  server.requests.length = 0;
   loopTurns = 0;
 });
 
@@ -72,7 +63,7 @@ function chatModel() {
   return createOpenAICompatible({ name: 'scripted', baseURL }).chatModel('scripted');
 }
 
-function expectIdentified(headers: IncomingHttpHeaders | undefined) {
+function expectIdentified(headers: Readonly<Record<string, string>> | undefined) {
   expect(headers?.['user-agent']?.startsWith(`${USER_AGENT} `)).toBe(true);
   expect(headers?.['user-agent']).toContain(' ai/');
   expect(headers?.['http-referer']).toBe('https://tester.army/e2e');
@@ -96,8 +87,8 @@ describe('model request headers', () => {
       signal: new AbortController().signal,
     });
 
-    expect(received).toHaveLength(1);
-    expectIdentified(received[0]);
+    expect(received()).toHaveLength(1);
+    expectIdentified(received()[0]);
   });
 
   it('identifies e2e on every turn of an act loop', async () => {
@@ -127,7 +118,7 @@ describe('model request headers', () => {
     await fixtures.agent.act('look around');
 
     expect(steps.all()[0]?.status).toBe('passed');
-    expect(received).toHaveLength(2);
-    for (const headers of received) expectIdentified(headers);
+    expect(received()).toHaveLength(2);
+    for (const headers of received()) expectIdentified(headers);
   });
 });

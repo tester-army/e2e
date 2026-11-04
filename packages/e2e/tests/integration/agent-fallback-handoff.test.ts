@@ -1,4 +1,4 @@
-/** Pixel-only evidence survives the cache handoff and every default-agent screen update, and no model sees it once a secret fill taints the attempt. */
+/** Pixel-only evidence survives the cache handoff and every default-agent screen update, a secret filled or not. */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { defineEngine, EngineError, type EngineObserveOptions, type EngineSnapshot } from '../../src/engine/index.ts';
@@ -324,17 +324,13 @@ test('vision judgment receives fallback', async ({ agent }) => {
 test('tree-only judgment cannot infer absence', async ({ agent }) => {
   await agent.assert('nothing is visible', { vision: false });
 });
-test('act cannot recover pixels after a secret fill', async ({ agent, screen }) => {
+test('act reads fallback pixels after a secret fill', async ({ agent, screen }) => {
   await screen.getByRole('textbox').fill(credentials.user('member').password);
-  await agent.act('read the tainted screenshot');
+  await agent.act('read the screenshot');
 });
-test('judgment cannot recover pixels after a secret fill', async ({ agent, screen }) => {
+test('judgment reads fallback pixels after a secret fill', async ({ agent, screen }) => {
   await screen.getByRole('textbox').fill(credentials.user('member').password);
-  await agent.assert('read the tainted result', { vision: true });
-});
-test('tree-only judgment after a secret fill keeps the engine timeout', async ({ agent, screen }) => {
-  await screen.getByRole('textbox').fill(credentials.user('member').password);
-  await agent.assert('the tainted result is listed', { vision: false });
+  await agent.assert('the screenshot shows the result', { vision: true });
 });`;
 
 describe('agent semantic fallback through the engine contract', () => {
@@ -383,30 +379,27 @@ describe('agent semantic fallback through the engine contract', () => {
 
   afterAll(() => project?.cleanup());
 
-  it('judges the current screenshot with vision enabled', () => {
-    expect(resultByTitle(outcome, 'vision judgment receives fallback').status).toBe('passed');
-    expect(fakeCalls).toHaveLength(1);
-    expect(fakeCalls[0]!.images).toEqual([{ mediaType: 'image/png', bytes: 3 }]);
-    expect(fakeCalls[0]!.observation).toContain('semantic capture unavailable');
+  it('judges the current screenshot with vision enabled, a secret filled or not', () => {
+    for (const title of ['vision judgment receives fallback', 'judgment reads fallback pixels after a secret fill']) {
+      expect(resultByTitle(outcome, title).status).toBe('passed');
+    }
+    expect(fakeCalls).toHaveLength(2);
+    for (const call of fakeCalls) {
+      expect(call.images).toEqual([{ mediaType: 'image/png', bytes: 3 }]);
+      expect(call.observation).toContain('semantic capture unavailable');
+    }
   });
 
-  it('stops tree-only and tainted judgments before a model call', () => {
-    for (const title of ['tree-only judgment cannot infer absence', 'tree-only judgment after a secret fill keeps the engine timeout']) {
-      const result = resultByTitle(outcome, title);
-      expect(result.status).toBe('failed');
-      expect(result.attempts[0]!.error?.message).toContain('timed out');
-    }
-    for (const title of ['act cannot recover pixels after a secret fill', 'judgment cannot recover pixels after a secret fill']) {
-      const error = resultByTitle(outcome, title).attempts[0]!.error;
-      expect(error?.code).toBe('POLICY_DENIED');
-      expect(error?.message).toContain('a secret was filled in this attempt');
-    }
-    const act = resultByTitle(outcome, 'act cannot recover pixels after a secret fill').attempts[0]!.steps.find((step) => step.api === 'agent.act');
-    expect(act?.events?.filter((event) => event.kind === 'observation')).toEqual([expect.objectContaining({ status: 'failed', code: 'POLICY_DENIED' })]);
-    const tainted = captures.filter((capture) => capture.filled);
-    expect(tainted.length).toBeGreaterThanOrEqual(3);
-    expect(tainted.every((capture) => capture.options?.pixelFallback !== true && capture.options?.pixels !== true)).toBe(true);
-    expect(loopCalls).toEqual([]);
+  it('acts on the fallback screenshot after a secret fill', () => {
+    expect(resultByTitle(outcome, 'act reads fallback pixels after a secret fill').status).toBe('passed');
+    expect(captures.some((capture) => capture.filled && capture.options?.pixelFallback === true)).toBe(true);
+    expect(loopCalls[0]?.imageParts).toBe(1);
+  });
+
+  it('stops tree-only judgments before a model call', () => {
+    const result = resultByTitle(outcome, 'tree-only judgment cannot infer absence');
+    expect(result.status).toBe('failed');
+    expect(result.attempts[0]!.error?.message).toContain('timed out');
     assertValidReport(outcome.report);
   });
 });

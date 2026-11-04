@@ -86,13 +86,17 @@ function markerField(value: string): string {
 /**
  * The marker one job's comment carries, so two workflows or jobs each keep
  * their own. Every field is cut the same way on every run, so a rerun
- * derives the same marker and finds its comment.
+ * derives the same marker and finds its comment. An `e2e explore` run is
+ * its own kind: in a job that runs the tests and then explores, each keeps
+ * its comment. A test run adds no kind, so its comments posted before
+ * explore had one are still found.
  */
 function commentMarker(run: FinishedRun, context: ActionsContext, key: string | undefined): string {
   const fields: Record<string, string | undefined> = {
     project: run.report.run.project.id,
     workflow: context.workflow,
     job: context.job,
+    kind: run.report.run.explore === undefined ? undefined : 'explore',
     key,
   };
   const parts = Object.entries(fields).flatMap(([name, value]) =>

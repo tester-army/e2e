@@ -1,8 +1,8 @@
 /**
  * The grammar verbs beyond tap and type: hover (by id and at a point), the
- * tap variants, drag, check, upload, scroll_to, and back. Each flow is one
- * row: the instruction, the scripted model that answers it, and the check
- * that pins its outcome. The scripted model calls each tool once against the
+ * tap variants, drag, check, upload, scroll_to, back, and resize_viewport.
+ * Each flow is one row: the instruction, the scripted model that answers it,
+ * and the check that pins its outcome. The scripted model calls each tool once against the
  * gestures page; under test is the runner half: each verb reaches the engine
  * as its own action, is recorded with a readable summary, an upload is
  * authorized against the project root before anything runs, and a recorded
@@ -149,6 +149,18 @@ const FLOWS: readonly Flow[] = [
     script: (calls, call) => {
       if (calls === 0) return [{ toolName: 'tap', input: { target: nodeIdFor(call.prompt, /link "About"/) } }];
       if (calls === 1) return [{ toolName: 'back', input: {} }];
+      return undefined;
+    },
+  },
+  {
+    title: 'redeems the voucher, then resizes to a phone width',
+    instruction: 'redeem the voucher and check the page on a phone',
+    check: `await expect(screen.getByRole('status', { name: 'Gesture state' })).toHaveText('redeemed');`,
+    replays: true,
+    script: (calls, call) => {
+      if (calls === 0) return [{ toolName: 'hover', input: { target: nodeIdFor(call.prompt, /"Account"/) } }];
+      if (calls === 1) return [{ toolName: 'tap', input: { target: nodeIdFor(call.lastToolResult, /button "Redeem"/) } }];
+      if (calls === 2) return [{ toolName: 'resize_viewport', input: { width: 390, height: 844 } }];
       return undefined;
     },
   },
@@ -364,6 +376,15 @@ describe('agent.act grammar verbs', () => {
     expect(third!.lastToolResult).toMatch(/heading "Gestures"/);
   });
 
+  it('resizes the viewport through the engine session and reports the screen at the new size', () => {
+    const title = 'redeems the voucher, then resizes to a phone width';
+    expect(resultByTitle(outcome, title).status).toBe('passed');
+    const actions = engineEvents(title);
+    expect(actions.map((event) => event.name)).toEqual(['hover', 'tap', 'resize']);
+    expect(actions[2]!.detail).toBe('resize the viewport to 390x844');
+    expect(turnsOf('check the page on a phone')[3]!.lastToolResult).toMatch(/^Resized the viewport to 390x844\./);
+  });
+
   it('hovers a bare point through the engine when nothing listed is a control there', () => {
     expect(resultByTitle(outcome, 'hovers a bare point in the screenshot').status).toBe('passed');
     const actions = engineEvents('hovers a bare point in the screenshot');
@@ -416,6 +437,7 @@ describe('agent.act grammar verbs: record then zero-turn replay', () => {
     const engineNames = (title: string) => actStepOf(secondRun, title).events.filter((event) => event.kind === 'engine').map((event) => event.name);
     expect(engineNames('hovers the menu trigger and taps what it reveals')).toEqual(['hover', 'tap']);
     expect(engineNames('drags the card onto the done column')).toEqual(['dragTo']);
+    expect(engineNames('redeems the voucher, then resizes to a phone width')).toEqual(['hover', 'tap', 'resize']);
     expect(engineNames('checks a radio the pick replaces with its summary')).toEqual(['check']);
     expect(actStepOf(secondRun, 'uploads a project file').events.filter((event) => event.kind === 'policy')).toEqual([
       expect.objectContaining({ name: 'upload.path', decision: 'allowed' }),

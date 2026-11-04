@@ -27,6 +27,7 @@ import { filterDecision, formatCost, formatTokens, repeatSuffix, shortCommit, st
 import { leftOutTests } from './left-out.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatGroup } from './repeats.ts';
 import {
+  appErrorLines,
   attemptsLine,
   detailLines,
   evidenceOf,
@@ -91,6 +92,7 @@ const MAX_EVIDENCE_PATHS = 4;
 const MAX_ASSESSMENT_CHARS = 2_000;
 const MAX_GOAL_CHARS = 400;
 const MAX_LEFT_OUT_ROWS = 50;
+const SITE_URL = 'https://e2e.tester.army';
 const TRUNCATED_NOTE = '_Truncated to fit a pull request comment; the full report is in `report.json`._';
 
 /** A result with what it left behind, read once. */
@@ -316,7 +318,8 @@ function runErrorLine(error: ReportError): string {
  * under it, where the reader looks first; one lead sentence naming the
  * error and the step it happened at; what the error and the agent said,
  * quoted; the facts as a list (expected and observed, whether every attempt
- * failed alike, the last turns, the screen); and the evidence. The file is
+ * failed alike, the last turns, the screen, what the app logged as an
+ * error); and the evidence. The file is
  * named once, in the source link. The steps before the failed one are not
  * retold: the lead says where in the flow it was, and the trace page has
  * the rest. A flaky test's story is its last failed attempt, not the retry that
@@ -330,7 +333,7 @@ function failureBlock({ result, final }: Entry, manyTargets: boolean, options: M
   const name = error === undefined ? `**${cell(result.status, MAX_ID_CHARS)}**` : errorName(error);
   const lead = at === undefined ? name : `${name} ${stepClause(told.steps, at)}`;
   const alike = attemptsLine(result, final);
-  const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told)];
+  const facts = [...detailLines(error), ...(alike === undefined ? [] : [alike]), ...lastTurnLines(at?.step), ...screenLines(told), ...appErrorLines(told)];
   const where = evidence(evidenceOf(told), options);
   const page = options.traces?.get(result.id);
   const about = [sourceText(failureSource(result, told), options.sourceUrl), ...(manyTargets ? [cell(result.targetId, MAX_ID_CHARS)] : [])];
@@ -486,12 +489,12 @@ function ranTargets(run: ReportRun, selected: readonly ReportResult[]): readonly
   return targets.length === 0 ? run.targets : targets;
 }
 
-/** `<sub>e2e 0.13.0 · 2m 15s · web · run artifacts</sub>`: one line of small print. */
+/** `<sub>Tested by e2e 0.13.0 · 2m 15s · web · run artifacts</sub>`: one line of small print. */
 function footer(run: ReportRun, targets: readonly ReportTarget[], options: MarkdownReportOptions): string[] {
   const duration = formatDuration(Date.parse(run.finishedAt) - Date.parse(run.startedAt));
   const shown = targets.slice(0, MAX_FOOTER_TARGETS).map((target) => cell(target.id, MAX_ID_CHARS));
   if (targets.length > shown.length) shown.push(`and ${targets.length - shown.length} more`);
-  const parts = [`e2e ${cell(run.runner.version, MAX_ID_CHARS)}`, duration];
+  const parts = [`Tested by ${link('e2e', SITE_URL)} ${cell(run.runner.version, MAX_ID_CHARS)}`, duration];
   if (targets.length === 1) parts.push(shown[0] ?? '');
   else if (targets.length > 1) parts.push(`${plural(targets.length, 'target')} (${shown.join(', ')})`);
   if (options.artifactsUrl !== undefined) parts.push(link('run artifacts', options.artifactsUrl));

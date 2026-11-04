@@ -3,7 +3,8 @@
 `e2e mcp` serves a project's live app to a coding agent over MCP (stdio). The
 coding agent drives the app the way the testing agent does, writes a test
 as it walks the flow, and checks its locators and runs its lines before
-writing them. Running a suite stays on the CLI (topics `running` and
+writing them. `run_tests` runs a test file or the whole suite as
+`npx e2e run` does and returns what it printed (topics `running` and
 `debugging`); to fix one failing test, a session can run it and stop on the
 screen where it failed.
 
@@ -58,31 +59,33 @@ sets how many sessions may be open at once (default 4, 1 through 16).
 
 ## Tools
 
-Four tools, all on the server registered as `e2e`; everything a session can
+Five tools, all on the server registered as `e2e`; everything a session can
 do is a catalog behind `call`. Clients show them with the server name, such
 as `mcp__e2e__open_session` in Claude Code; when another MCP server offers a
 tool with the same name, use the `e2e` server's.
 
 | Tool | Does |
 | --- | --- |
-| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app (its URL, or launches a device's pinned app; it installs no build, so a local device needs `app.bundleId`), and returns the session id, the catalog, and the first observation. `target` is required when the config declares several. `headed: true` shows the browser or simulator when the user wants to watch; without it the session follows the server's `--headed`, headless by default. `test` runs one test first and leaves the session on the screen where it stopped (see Fixing a failing test). Each session has its own browser or device. |
+| `open_session` | Loads the config (`config` names another file; default the nearest `e2e.config.ts`), starts the declared app command if any, boots the engine, opens the app (its URL, or launches a device's pinned app; it installs no build, so a local device needs `app.bundleId`), and returns the session id, the catalog, and the first observation. Its summary names the app URL, a port assigned for `:0`, and the app command's readiness URL and `env` names; e2e starts nothing else, so a database the app uses runs outside it. The config reads the MCP server's environment, not your shell's. `target` is required when the config declares several. `headed: true` shows the browser or simulator when the user wants to watch; without it the session follows the server's `--headed`, headless by default. `test` runs one test first and leaves the session on the screen where it stopped (see Fixing a failing test). Each session has its own browser or device. |
 | `tools` | The catalog: one line per tool with its argument names (`?` marks optional), the first sentence of its description, and `[read-only]` where it changes nothing. `tools {tool}` shows the full description and the JSON Schema of its arguments. |
 | `call` | Runs one catalog tool: `call {tool: "tap", args: {target: "n42"}}`. Arguments are checked against the tool's schema first; a wrong one fails with `INVALID_ARGUMENT` naming the field. |
 | `close_session` | Saves a recording still running, ends the attempt, disposes the engine, stops the app processes the session started once no other session uses them. |
+| `run_tests` | Runs `e2e run` in its own process and returns its output: the command, the exit code, each test, the failure blocks, the summary. `files` takes `e2e run` positionals (`tests/checkout.e2e.ts:12`, a file, a directory, a glob); without it, every test runs. The other fields are `e2e run` flags in camelCase: `config`, `target`, `grep`, `grepInvert`, `tag`, `excludeTag`, `lastFailed`, `changedSince`, `headed`, `workers`, `retries`, `repeatEach`, `maxFailures`, `actionTimeout`, `noCache`, `updateSnapshots` (while fixing a test: `retries: 0, actionTimeout: 5000`). Needs no session. One run at a time (`RUNNER_BUSY`); cancelling the call interrupts the run. Exit 1 (a test failed) is a normal result; exit 2 and above is an error result. Output past 60,000 characters keeps its end; `.e2e/report.json` has every result. |
 
 The catalog, per session:
 
 | Catalog tool | Does |
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. On the web engine a link's `href` is its path on the app URL's origin, else origin and path (`mailto:` and `tel:` keep their scheme, `blob:` its inner origin and path); `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `resize_viewport`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent, and its test line names the credential or secret (`fill(credentials.user(name).password)`, `fill(secrets.get(name))`). Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
 | `locate` | Tries a semantic locator with exactly one of `role`, `text`, `label`, `placeholder`, `testId` (`name` only with `role`; `exact` optional; anything else is `INVALID_ARGUMENT`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `run_code` | Runs test statements (`code`, as a test body writes them) on the session's `screen` and `app` with a test's waits, exactly-one rule, and matchers. Stops at the first failure and returns each statement's pass, failure (code and message), or read value, then what changed on screen. Each statement waits at most `timeout` ms (default 5000), but `timeout` doesn't stop a regex mid-match: avoid nested quantifiers such as `(\w+\s?)*`. The code is parsed, never evaluated as JavaScript: statements start with `screen`, `app`, or `expect(locator)`; arguments are literals, regexes, arrays, objects, locators, and `credentials.user(name).username`. A secret (`credentials.user(name).password`, `secrets.get(name)`) goes only into `fill`, under `type_secret`'s checks. Engine fixtures (`browser`, `device`), `app.screenshot`, and `toHaveScreenshot` are left out. Anything else is `INVALID_ARGUMENT` quoting the refused code with its line and column, and nothing runs. Reads and matchers see `<secret:name>` where a secret value is. When the config declares a secret or credential, a locator found by part of a text (a regex, an `exact` other than `true`, `hasText`) is `POLICY_DENIED` before anything runs: find it by its exact text. A matcher that expects `<secret:name>` is `INVALID_ARGUMENT`. The statements that pass, except reads, join `test_lines` as written. |
 | `test_lines` | Every test line the session's actions printed and every statement `run_code` passed, in order, as a draft test body, starting with `await app.open();` for the session's own opening (after `open_session {test}`, the lines that continue that test, with no opening); an action without a line shows as a `//` comment. A line's locator matched the target alone on the live screen before the action (role and name first, test id last, narrowed to `{ visible: true }`, a container, or `.nth(i)` with a comment when twins share it); a fill names `credentials.user(name)` or `secrets.get(name)`, never a value; a navigation on the app's origin is written as its path. |
-| `screenshot` | The masked pixels as an image. |
+| `screenshot` | The masked pixels as an image. With `path` (a `.png` inside the project, relative to its root, not hidden or under a hidden directory), also saves a full-resolution masked capture there and returns its absolute path. |
 | `tap_at` | Taps a point (`x`, `y` in the latest screenshot's pixels) where you aim. An engine without a bare-point tap taps the listed control under it by id instead, and fails on a point on nothing listed. Listed when the engine declares `tap` or a bare-point tap. |
 | `hover_at` | Hovers a point the same way: the bare point, otherwise a listed control under it by id. Listed when the engine declares `hover` or a bare-point hover. |
+| `drag_at` | Drags from one point (`x`, `y`) to another (`to_x`, `to_y`) where you aim. An engine without a bare-point drag drags by id instead when the points land on two different listed controls, and fails otherwise. Listed when the engine declares `dragTo` or a bare-point drag. |
 | `type_at` | Types `value` into the field at a point: a listed input under it is filled by id; with a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without a keyboard a point on nothing listed fails. Listed when the engine declares `type` or a keyboard. |
 | `press_at` | Sends one `key` (`Enter`, `Escape`, `Tab`) to the control at a point: a listed control gets it by id; with a keyboard, anything else is tapped to focus it and the key goes through the keyboard. Listed when the engine declares `press` or a keyboard. |
 | `select_at` | Picks the option whose visible label is `value` in the select-like control at a point; the point must land on a listed select. Listed when the engine declares `select`. |
@@ -94,10 +97,9 @@ Project tools use their `toModelOutput` renderer for strings as well as
 structured results. Its `error-text` and `error-json` outputs set the MCP
 result's `isError: true`; treat them as failed calls.
 
-Once a secret is filled in the session, `screenshot` and the point tools
-(`tap_at`, `hover_at`, `type_at`, `press_at`, `select_at`) answer with a
-`PIXEL_TAINTED` line for the rest of it; act on listed nodes by id (topic
-`writing-tests`). Before the session's first `screenshot`, a point tool only
+`screenshot` masks secure fields only, after a secret fill too (topic
+`writing-tests`). Before the session's first `screenshot`, a point tool
+(`tap_at`, `hover_at`, `drag_at`, `type_at`, `press_at`, `select_at`) only
 says to take one.
 
 Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
@@ -178,9 +180,10 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
    call    run_code {code: "await expect(screen.getByRole('listitem')).toHaveCount(1);"}   passed
    edit    + that line
    ```
-4. Run only that test from the shell:
-   `npx e2e run tests/<feature>.e2e.ts:<line>` (SKILL.md, "Rerunning a test
-   while you fix it"). On a failure, fix from the terminal's failure block
+4. Run only that test:
+   `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`, or
+   `npx e2e run tests/<feature>.e2e.ts:<line>` from the shell (SKILL.md,
+   "Rerunning a test while you fix it"). On a failure, fix from the run's failure block
    and the trace page (topic `debugging`), then rerun it the same way. To see a screen the evidence leaves out, go
    straight to it instead of walking the flow again from the start:
    `open_session {test}` stops on the failure screen (Fixing a failing
@@ -196,8 +199,8 @@ Resources: `e2e://guide` and `e2e://guide/<topic>` hold this skill.
    `close_session` once the test passes; an idle session closes on its own
    after 30 minutes and never outlives 4 hours. When the client exits, every
    session closes and the app commands stop. To look at another project or
-   config, `open_session {config: "path/to/e2e.config.ts"}`; no restart
-   needed.
+   config, `open_session {config: "path/to/e2e.config.ts"}` (absolute, or
+   relative to the server's working directory); no restart needed.
 
 ## Fixing a failing test
 
@@ -225,7 +228,7 @@ session runs the test and stops where it failed:
    loads the config and the test files fresh, so it runs the edited test
    from the start and stops on the next failure, or on the final screen.
 5. `close_session`, then confirm once with
-   `npx e2e run tests/<feature>.e2e.ts:<line>`.
+   `run_tests {files: ["tests/<feature>.e2e.ts:<line>"]}`.
 
 - `afterEach` hooks and fixture teardown wait for `close_session`; a failure
   there shows as a `Cleanup (afterEach)` line in its result.
@@ -237,7 +240,7 @@ session runs the test and stops where it failed:
   as `file:line`; none fails with `NO_TESTS`.
 - `SESSION_TEST_UNSUPPORTED`: a test in a serial group, a test that starts
   from a setup test's `session`, and a test that runs as several agents
-  can't run alone in a session. Fix those with `npx e2e run`.
+  can't run alone in a session. Fix those with `run_tests`.
 
 ## Rules
 
@@ -251,7 +254,7 @@ session runs the test and stops where it failed:
 - Nothing a session does is recorded as a test, and only a test it runs
   (`open_session {test}`) reads or writes the replay cache. A session is for
   looking and trying; the test is the file you write as you walk.
-- On the web, a session can stay open while `e2e run` runs, unless the two
+- On the web, a session can stay open while `run_tests` or `e2e run` runs, unless the two
   collide over the app. Read the target's `app`:
   - No `command` (the app runs elsewhere): both use that app.
   - A `url` on port `0`: the session and each run start their own copy of
@@ -294,4 +297,5 @@ session runs the test and stops where it failed:
   comes from a package every session shares; create it in the config or a
   file it imports by path. `UNKNOWN_TOOL`: the name is not in this session's
   catalog; the message lists what is. `TEST_AMBIGUOUS` and
-  `SESSION_TEST_UNSUPPORTED`: see Fixing a failing test.
+  `SESSION_TEST_UNSUPPORTED`: see Fixing a failing test. `RUNNER_BUSY`:
+  `run_tests` is already running a suite; wait for its result.

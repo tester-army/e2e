@@ -130,7 +130,7 @@ export class TargetWorker {
           onAttempt: (pair, attempt) =>
             this.host.emit({ type: 'attempt', testId: pair.test.id, agent: pair.agent, repeat: pair.repeat, attempt }),
           onSerialMember: (groupId, attempt, member) => this.host.emit({ type: 'serial-member', groupId, attempt, member }),
-          onSerialAttempt: (groupId, run) => this.host.emit({ type: 'serial-attempt', groupId, run }),
+          onSerialAttempt: (groupId, attempt) => this.host.emit({ type: 'serial-attempt', groupId, attempt }),
           onPairStart: (pair) => {
             this.inFlight = { testId: pair.test.id, agent: pair.agent, repeat: pair.repeat };
             this.host.emit({

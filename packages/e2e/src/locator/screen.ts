@@ -43,7 +43,7 @@ import {
   testIdQuery,
   textQuery,
 } from './expression.ts';
-import { cutOffAtDeadline, type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollCondition } from '../internal/time.ts';
+import { type Deadline, isOperationTimeout, POLL_INTERVAL_MS, pollReads } from '../internal/time.ts';
 import { SampleHistory } from '../expect/samples.ts';
 import type { ScreenshotContext } from '../run/screenshots.ts';
 
@@ -275,14 +275,14 @@ class ScreenImpl implements Screen {
           details: locatorDetails(internals.expression, Date.now() - startedMs),
           ...(cause === undefined ? {} : { cause }),
         });
+      const reads = engine.reads(deadline);
       let sampled = false;
       for (;;) {
-        const startedWithMs = deadline.remaining();
         let node: SemanticNode | null;
         try {
-          ({ node } = await engine.tryRead(internals.expression, deadline));
+          ({ node } = await engine.tryRead(internals.expression, reads));
         } catch (cause) {
-          if (sampled && cutOffAtDeadline(cause, startedWithMs)) throw notVisible(cause);
+          if (sampled && reads.cutOff(cause)) throw notVisible(cause);
           throw cause;
         }
         sampled = true;
@@ -627,12 +627,13 @@ class LocatorImpl extends ScreenImpl implements Locator {
       const startedMs = Date.now();
       const samples = new SampleHistory('waitFor', (text) => engine.redact(text));
       await samples.record(engine, () =>
-        pollCondition({
+        pollReads({
           deadline,
+          reads: engine.reads(deadline),
           signal: engine.signal,
           negated: false,
-          evaluate: async () => {
-            const { node } = await engine.tryRead(this.expression, deadline, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
+          evaluate: async (reads) => {
+            const { node } = await engine.tryRead(this.expression, reads, ABSENCE_STATES.has(state) ? 'empty' : 'wait');
             samples.add(node === null ? 'absent' : isNodeVisible(node) ? 'visible' : 'hidden');
             return inWaitForState(node, state);
           },

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createAgentDeviceClient, type AgentDeviceClientConfig } from 'agent-device';
 
 /** A separate process gives each daemon its own credentials without changing the runner's environment. */
@@ -25,13 +26,15 @@ process.once('message', (request: DriverRequest) => {
 
 async function attach(request: DriverRequest): Promise<DriverBinding> {
   const { stateDir, runId, slot, platform, app, appPath } = request;
-  const allocator = createAgentDeviceClient({ stateDir });
+  // agent-device refuses a provider lease to a client that names no session.
+  const session = `e2e-lease-${createHash('sha256').update(stateDir).digest('hex').slice(0, 8)}`;
+  const allocator = createAgentDeviceClient({ stateDir, session });
   const lease = await allocator.leases.allocate({
     tenant: 'e2e', runId, clientId: `worker-${slot}`, leaseBackend: `${platform}-instance`, leaseProvider: 'limrun', retainOnClose: true,
   });
   if (!lease.retainOnClose) throw new Error('agent-device did not retain the Limrun lease across session close');
   const client: AgentDeviceClientConfig = {
-    stateDir, tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId,
+    stateDir, session, tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId,
     leaseBackend: lease.backend, leaseProvider: 'limrun',
     ...(lease.deviceKey === undefined ? {} : { deviceKey: lease.deviceKey }),
     ...(lease.clientId === undefined ? {} : { clientId: lease.clientId }),

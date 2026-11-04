@@ -114,7 +114,8 @@
               "integrations/eas",
               "integrations/smol",
               "integrations/limrun",
-              "integrations/testmu"
+              "integrations/testmu",
+              "integrations/browserstack"
             ]
           },
           {
@@ -123,8 +124,15 @@
               "tools",
               "fixtures",
               "executors",
-              "filters",
-              "writing-an-engine"
+              "filters"
+            ]
+          },
+          {
+            "group": "Engines",
+            "pages": [
+              "engines",
+              "writing-an-engine",
+              "engine-servers"
             ]
           },
           {
@@ -135,17 +143,20 @@
               "telemetry",
               "debugging",
               "agent-steps",
-              "page-objects"
+              "self-healing",
+              "page-object-model"
             ]
           },
           {
             "group": "Migrate",
             "pages": [
+              "migrate/index",
               "migrate/playwright",
               "migrate/cypress",
               "migrate/selenium",
               "migrate/detox",
-              "migrate/maestro"
+              "migrate/maestro",
+              "migrate/testerarmy"
             ]
           }
         ]
@@ -190,9 +201,10 @@
             ]
           },
           {
-            "group": "Engine contract",
+            "group": "Engines",
             "pages": [
-              "reference/engine"
+              "reference/engine",
+              "reference/engine-protocol"
             ]
           }
         ]
@@ -207,6 +219,14 @@
     ]
   },
   "redirects": [
+    {
+      "source": "/acp",
+      "destination": "/subscriptions#use-your-coding-agent"
+    },
+    {
+      "source": "/page-objects",
+      "destination": "/page-object-model"
+    },
     {
       "source": "/integrations/testmu-browsers",
       "destination": "/integrations/testmu#run-web-targets-in-browsers"

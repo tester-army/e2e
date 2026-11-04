@@ -26,9 +26,9 @@ export interface ExplorationOptions {
   readonly agent?: string | undefined;
   /** A session a setup test saves: that setup runs first, and the exploration starts from the state it saved. */
   readonly session?: string | undefined;
-  /** Exploration steps, from 1 through 12; default: 8. */
+  /** Exploration steps, from 1 through 100; default: 8. */
   readonly maxSteps?: number | undefined;
-  /** The exploration's time limit in milliseconds, from 180000 through 900000; default: 600000. */
+  /** The exploration's time limit in milliseconds, from 180000 through 7200000; default: 600000. */
   readonly timeoutMs?: number | undefined;
   /** Abort to interrupt the exploration; its teardown runs before the call resolves. */
   readonly interruptSignal?: AbortSignal | undefined;

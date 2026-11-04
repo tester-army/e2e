@@ -105,7 +105,7 @@ describe('example presets', () => {
   it('list every standalone app in examples/, each with its e2e project and the script the Next line names', () => {
     const folders = readdirSync(path.join(REPO_ROOT, 'examples'), { withFileTypes: true })
       // Example apps are the with-* folders; examples/icons holds the site's logos.
-      .filter((entry) => entry.isDirectory() && entry.name.startsWith('with-') && entry.name !== 'with-limrun')
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith('with-'))
       .map((entry) => entry.name)
       .toSorted();
     expect(EXAMPLES.map((example) => example.id).toSorted()).toEqual(folders);
@@ -120,7 +120,6 @@ describe('example presets', () => {
   it('accept the folder name with or without with-', () => {
     expect(findExample('expo')?.id).toBe('with-expo');
     expect(findExample('with-flutter')?.id).toBe('with-flutter');
-    expect(findExample('with-limrun')).toBeUndefined();
   });
 });
 

@@ -37,9 +37,8 @@ prove each bug. Report confirmed bugs only, each with its failing test.
   Explorers that share an account report each other's edits as bugs.
 - Start signed-in charters from a saved session: `e2e explore --session
   <name>` runs the setup test that saves it and explores signed in (topic
-  `explore`). A setup that types a password withholds screenshots from then
-  on; sign in by cookie or API call to keep them (topic `writing-tests`).
-  Each charter with its own account needs its own setup and session.
+  `explore`). Each charter with its own account needs its own setup and
+  session.
 - Put what the local app cannot do in the agent's `context`: integrations
   without keys, what is seed data, what must never be clicked (paid runs,
   real accounts). Add the explorer's own blind spots from step 5's artifact
@@ -169,9 +168,8 @@ Merge findings that describe one defect: same path, same broken behavior.
 Keep the clearest reproduction and every charter that hit it. Keep warnings
 in a separate list unless the user asked for polish.
 
-A charter that filled a password, or whose session's setup did, prints no
-`evidence` line after that point. Its video is not masked: check it for
-secrets before sharing (topic `writing-tests`).
+A charter's video is not masked: check it for secrets before sharing (topic
+`writing-tests`).
 
 ## 5. Triage
 

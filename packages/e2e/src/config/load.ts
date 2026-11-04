@@ -34,9 +34,7 @@ export interface DiscoveredConfig {
 export function discoverConfig(cwd: string, explicitPath?: string): DiscoveredConfig {
   if (explicitPath !== undefined) {
     const absolute = path.resolve(cwd, explicitPath);
-    if (!existsSync(absolute)) {
-      throw new ConfigurationError('CONFIG_NOT_FOUND', `config file not found: ${explicitPath}`);
-    }
+    if (!existsSync(absolute)) throw explicitConfigNotFound(cwd, explicitPath, absolute);
     return { configPath: absolute, projectRoot: path.dirname(absolute) };
   }
   let dir = path.resolve(cwd);
@@ -59,6 +57,20 @@ export function discoverConfig(cwd: string, explicitPath?: string): DiscoveredCo
     dir = parent;
   }
   return { configPath: undefined, projectRoot: path.resolve(cwd) };
+}
+
+/**
+ * The failure for an explicit config path with no file behind it. A relative
+ * path names the `cwd` it resolved against (the process's working directory
+ * for the CLI and MCP server), which may not be the one the caller meant.
+ */
+function explicitConfigNotFound(cwd: string, explicitPath: string, absolute: string): ConfigurationError {
+  if (path.isAbsolute(explicitPath)) return new ConfigurationError('CONFIG_NOT_FOUND', `config file not found: ${absolute}`);
+  const base = path.resolve(cwd);
+  return new ConfigurationError(
+    'CONFIG_NOT_FOUND',
+    `config file not found: ${absolute} (${explicitPath} resolved against the working directory ${base}); pass an absolute path, or a path relative to that directory`,
+  );
 }
 
 /**

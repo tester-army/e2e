@@ -7,7 +7,8 @@ import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
 import { FileCacheStore } from '../../src/cache/store.ts';
-import { buildTraceEntry, readTraceEntry } from '../../src/cache/trace.ts';
+import { buildTraceEntry } from '../../src/cache/trace.ts';
+import { readTraceEntry } from '../../src/cache/trace-read.ts';
 import { resolveConfig } from '../../src/config/resolve.ts';
 import type { ActionTrace, E2EConfig, CacheStore } from '../../src/types.ts';
 

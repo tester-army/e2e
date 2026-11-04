@@ -18,7 +18,7 @@ Only the target's `browser` or `device` in the config changes.
   <Card title="Lightpanda" icon="/images/integrations/lightpanda.svg" href="/integrations/lightpanda">
     `@e2e-dev/lightpanda`: the open-source headless browser, started per worker slot on your own machine, no Chromium.
   </Card>
-  <Card title="EAS Simulators" icon="/images/integrations/expo.svg" href="/integrations/eas">
+  <Card title="Expo Simulators" icon="/images/integrations/expo.svg" href="/integrations/eas">
     `@e2e-dev/eas`: hosted iOS simulators and Android emulators for mobile targets.
   </Card>
   <Card title="smol machines" icon="/images/integrations/smol.png" href="/integrations/smol">
@@ -30,6 +30,9 @@ Only the target's `browser` or `device` in the config changes.
   <Card title="TestMu AI" icon="/images/integrations/testmu.svg" href="/integrations/testmu">
     `@e2e-dev/testmu`: hosted Android emulators, iOS simulators, and real devices for mobile targets, and Chrome and Edge for web targets.
   </Card>
+  <Card title="BrowserStack" icon="/images/integrations/browserstack.svg" href="/integrations/browserstack">
+    `@e2e-dev/browserstack`: BrowserStack App Automate real Android and iOS devices for mobile targets.
+  </Card>
 </CardGroup>
 
 ## Use a service with no integration
@@ -38,5 +41,5 @@ For any other service, write a small provider in your project: a
 [`BrowserProvider`](/browser#hosted-browsers) for the web engine, or a
 [`DeviceProvider`](/mobile#hosted-devices) for the mobile engine.
 
-To run e2e on a CI service such as GitHub Actions or EAS Workflows, see
+To run e2e on a CI service such as GitHub Actions or Expo Workflows, see
 [Continuous integration](/ci).

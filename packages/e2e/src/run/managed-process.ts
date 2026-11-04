@@ -101,6 +101,14 @@ export function killManagedProcessGroups(): void {
   for (const child of live) signalProcessGroup(child, 'SIGKILL');
 }
 
+/** Stops in flight, each settling once its process group is gone, by exit or by the force-kill at `shutdownTimeout`. */
+const stopping = new Set<Promise<void>>();
+
+/** Resolves once every stop in flight has ended its process group. */
+export async function stopsSettled(): Promise<void> {
+  await Promise.allSettled(stopping);
+}
+
 interface ExitStatus {
   readonly code: number | null;
   readonly signal: NodeJS.Signals | null;
@@ -132,9 +140,10 @@ export interface ManagedProcessHooks {
   readonly ci?: boolean;
   readonly env?: NodeJS.ProcessEnv;
   readonly notice?: (message: string) => void;
-  readonly starting?: (label: string) => void;
+  /** `url` is the one the readiness probe polls; undefined for a command that is ready when it exits. */
+  readonly starting?: (label: string, url: string | undefined) => void;
   /** `reused` when the process attached to one already serving the URL instead of spawning. */
-  readonly ready?: (label: string, durationMs: number, reused: boolean) => void;
+  readonly ready?: (label: string, url: string | undefined, durationMs: number, reused: boolean) => void;
 }
 
 /**
@@ -184,9 +193,10 @@ export class ManagedProcess {
     const aborted = (): boolean => signal?.aborted === true;
     if (aborted()) return;
     const startedAt = Date.now();
-    this.hooks.starting?.(this.label);
+    const url = 'readyUrl' in this.readiness ? this.readiness.readyUrl : undefined;
+    this.hooks.starting?.(this.label, url);
     await this.launch(signal);
-    if (!aborted()) this.hooks.ready?.(this.label, Date.now() - startedAt, this.reusedExisting);
+    if (!aborted()) this.hooks.ready?.(this.label, url, Date.now() - startedAt, this.reusedExisting);
   }
 
   /** The preflight probe, the spawn, and the readiness wait behind `start`. */
@@ -405,6 +415,17 @@ export class ManagedProcess {
     const child = this.child;
     this.child = null;
     if (child === null) return;
+    const stopped = this.terminate(child);
+    stopping.add(stopped);
+    try {
+      await stopped;
+    } finally {
+      stopping.delete(stopped);
+    }
+  }
+
+  /** Sends SIGTERM to the process group behind `child`, then SIGKILL once `shutdownTimeout` passes. */
+  private async terminate(child: ChildProcess): Promise<void> {
     const shutdownTimeout = this.command.shutdownTimeout ?? 10_000;
     signalProcessGroup(child, 'SIGTERM');
     const exited = child.exitCode !== null || child.signalCode !== null

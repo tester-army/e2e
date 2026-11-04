@@ -67,6 +67,25 @@ reproduce it and, when possible, a screenshot. Compare each finding with
 its evidence before you act on it. For the other exit codes, the JSON
 report, and artifact paths, see the [CLI reference](/reference/cli#e2e-explore).
 
+## Check other screen sizes
+
+When the target's engine can resize the viewport (the web engine can), a
+goal can ask for layouts at other widths:
+
+<CodeGroup>
+```bash npm
+npx e2e explore 'Check the pricing page at desktop, tablet, and phone widths for broken layouts'
+```
+
+```bash pnpm
+pnpm exec e2e explore 'Check the pricing page at desktop, tablet, and phone widths for broken layouts'
+```
+
+```bash bun
+bunx e2e explore 'Check the pricing page at desktop, tablet, and phone widths for broken layouts'
+```
+</CodeGroup>
+
 ## Start signed in
 
 Add `--session <name>`, the name of a session that a
@@ -89,14 +108,15 @@ bunx e2e explore --session admin 'Explore the admin settings and find bugs'
 Explore runs only that setup test and restores the session. The explorer
 knows the app starts signed in and plans no sign-in step.
 
-If the setup fills a password, the exploration has no screenshots. See
+Screenshots mask the password field. A value the app shows anywhere else
+reaches the model. See
 [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 ## If the run stops too early
 
 A run stops after 8 steps or 10 minutes. To reach further into the flow,
-raise `--max-steps <n>` (up to 12) or `--timeout <ms>` (up to `900000`, 15
-minutes).
+raise `--max-steps <n>` (up to 100) or `--timeout <ms>` (up to `7200000`, 2
+hours).
 
 ## Choose the target and agent
 

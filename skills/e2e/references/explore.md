@@ -61,9 +61,7 @@ start signed in, so no charter is spent signing in again. A name no setup
 declares fails before any app process starts with `COLLECTION_ERROR`, naming
 the declared sessions.
 
-A setup that filled a secret taints the restored session, so every finding
-goes without a screenshot; one that signed in without a fill (a `browser.setCookies`
-session cookie, say) keeps them where the engine captures pixels, and only
+Findings keep their screenshots after a setup that filled a secret. Only
 configured secrets are redacted (topic `writing-tests`).
 
 ## Flags
@@ -74,8 +72,8 @@ configured secrets are redacted (topic `writing-tests`).
 | `--target <id>` | first configured target | The one target to explore. |
 | `--agent <name>` | `default` | Build the explorer from another configured agent (`agents.<name>`). |
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
-| `--max-steps <n>` | 8 (1 to 12) | Exploration steps at most. |
-| `--timeout <ms>` | 600000 (180000 to 900000) | Wall clock; the last minute is for the assessment. |
+| `--max-steps <n>` | 8 (1 to 100) | Exploration steps at most. |
+| `--timeout <ms>` | 600000 (180000 to 7200000) | Wall clock; the last minute is for the assessment. |
 | `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. The exploration is one attempt, so a retry mode (`on-first-retry`, `on-all-retries`) records nothing (the run's notice says to pass `--trace on`); put the goal before a bare `--trace` or `--video`. |
 
 Per-step action and model-call budgets default to 40 each;

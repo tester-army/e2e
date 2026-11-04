@@ -11,7 +11,7 @@ import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { ConfigurationError, E2EError } from '../internal/errors.ts';
 import { canonicalDigest, canonicalJson, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
-import type { SavedSecrecy } from './secrecy.ts';
+import type { SavedSecrets } from './secrecy.ts';
 
 const MAX_SESSION_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -54,8 +54,8 @@ interface SessionEnvelope {
   appIdentity: string;
   createdAt: string;
   expiresAt: string;
-  /** Authenticated, never encrypted: which secrets the payload carries values for, and whether the saving session was tainted. */
-  secrecy?: { tainted: boolean; names: string[] };
+  /** Authenticated, never encrypted: which secrets the payload carries values for. */
+  secrecy?: { names: string[] };
   state: {
     format: string;
     version: number;
@@ -69,7 +69,7 @@ interface SessionEnvelope {
 /** What one saved session holds once decrypted. */
 export interface SavedSession {
   readonly state: EngineState;
-  readonly secrecy: SavedSecrecy;
+  readonly secrets: SavedSecrets;
 }
 
 /** The encrypted payload: the engine's state data beside the secret values the envelope names. */
@@ -87,8 +87,8 @@ export class SessionStaging {
 
   constructor(private readonly declared: readonly string[]) {}
 
-  /** Stages one captured state with the secrecy of the session it came from, rejecting duplicate or undeclared names. */
-  stage(name: string, state: EngineState, secrecy: SavedSecrecy): void {
+  /** Stages one captured state with the secret values of the session it came from, rejecting duplicate or undeclared names. */
+  stage(name: string, state: EngineState, secrets: SavedSecrets): void {
     if (this.staged.has(name)) {
       throw new E2EError('test', 'SESSION_CONTRACT', `session "${name}" saved twice`);
     }
@@ -99,7 +99,7 @@ export class SessionStaging {
         `session "${name}" was not declared by this setup test`,
       );
     }
-    this.staged.set(name, { state, secrecy });
+    this.staged.set(name, { state, secrets });
   }
 
   /** Declared names the attempt finished without saving. */
@@ -165,10 +165,9 @@ export class SessionStore {
    * Encrypts and atomically persists one captured engine state. The secret
    * values the saving session learned ride inside the ciphertext, beside the
    * state they may be stored in, so the session that restores it redacts
-   * them too; the envelope names them and carries the taint in the clear,
-   * authenticated.
+   * them too; the envelope names them in the clear, authenticated.
    */
-  async save(name: string, identity: SessionIdentity, { state, secrecy }: SavedSession): Promise<void> {
+  async save(name: string, identity: SessionIdentity, { state, secrets }: SavedSession): Promise<void> {
     this.ensureDirectory();
     const createdAt = timestamp();
     let expiresAt = new Date(Date.now() + MAX_SESSION_AGE_MS).toISOString();
@@ -197,7 +196,7 @@ export class SessionStore {
       appIdentity: identity.appIdentity,
       createdAt,
       expiresAt,
-      secrecy: { tainted: secrecy.tainted, names: [...new Set(secrecy.secrets.map(([secretName]) => secretName))] },
+      secrecy: { names: [...new Set(secrets.map(([secretName]) => secretName))] },
       state: {
         format: state.format,
         version: state.version,
@@ -209,7 +208,7 @@ export class SessionStore {
     const aad = Buffer.from(canonicalJson(envelopeWithoutCipher), 'utf8');
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
     cipher.setAAD(aad);
-    const payload: SessionPayload = { data: state.data, secrets: secrecy.secrets.map(([secretName, value]) => [secretName, value]) };
+    const payload: SessionPayload = { data: state.data, secrets: secrets.map(([secretName, value]) => [secretName, value]) };
     const plaintext = Buffer.from(JSON.stringify(payload), 'utf8');
     const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     const tag = cipher.getAuthTag();
@@ -308,7 +307,7 @@ export class SessionStore {
         data: payload.data,
         expiresAt: envelope.expiresAt,
       },
-      secrecy: { secrets: payload.secrets, tainted: envelope.secrecy?.tainted === true },
+      secrets: payload.secrets,
     };
   }
 

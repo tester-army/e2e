@@ -6,7 +6,7 @@
  * what this engine owes agent-device.
  */
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -496,6 +496,11 @@ describe('lifecycle', () => {
     expect(() => harness({ transition: 0.5 })).toThrow(/non-negative integer/);
   });
 
+  it('rejects a blank device name at config time', () => {
+    expect(() => harness({ device: '' })).toThrow(/must not be blank/);
+    expect(() => harness({ device: ['iPhone 17', ' '] })).toThrow(/must not be blank/);
+  });
+
   it('rejects an empty pool at config time', () => {
     expect(() => harness({ device: [] })).toThrow(/empty pool/);
   });
@@ -975,15 +980,153 @@ describe('observation', () => {
     expect(settled).toBe(true);
   });
 
-  it('lets a locate outlive its budget: a poll keeps its last read, so a slow screen reads as missing, not as a timeout', async () => {
+  it('bounds a snapshot by the operation budget', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond('capture.snapshot', () => new Promise((resolve) => setTimeout(() => resolve(SETTINGS_SNAPSHOT), 5_000)));
+      const read = h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } }, { ...operation(), timeoutMs: 1_000 });
+      const assertion = expect(read).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('returns a sparse capture when the budget cannot fit a retry, instead of timing out', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      let snapshots = 0;
+      h.fake.respond('capture.snapshot', () => {
+        snapshots += 1;
+        return Promise.resolve({ nodes: [], snapshotQuality: { state: 'sparse' } });
+      });
+      const read = h.engine.locate!(
+        { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } },
+        { ...operation(), timeoutMs: 500 },
+      );
+      const assertion = expect(read).resolves.toEqual([]);
+      await vi.advanceTimersByTimeAsync(1_500);
+      await assertion;
+      expect(snapshots).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds screenshot by operation budget', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond('capture.screenshot', () => new Promise((resolve) => setTimeout(() => resolve({ path: '' }), 5_000)));
+      const shot = h.engine.artifacts!.screenshot('hung shot', { ...operation(), timeoutMs: 1_000 });
+      const assertion = expect(shot).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rethrows OPERATION_TIMEOUT from capturePixels during observe', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond('capture.screenshot', () => new Promise((resolve) => setTimeout(() => resolve({ path: '' }), 5_000)));
+      const obs = h.engine.observe!({ ...operation(), timeoutMs: 1_000 }, { pixels: true });
+      const assertion = expect(obs).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('shares one budget across observe steps so screenshot cannot take a fresh budget', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      // The snapshot carries its geometry, so the only screenshot is the observation's pixels.
+      h.fake.respond('capture.snapshot', () => new Promise((resolve) => setTimeout(() => resolve({ ...SETTINGS_SNAPSHOT, viewport: { width: 390, height: 844 } }), 1_500)));
+      let screenshots = 0;
+      h.fake.respond('capture.screenshot', () => {
+        screenshots += 1;
+        return new Promise(() => undefined);
+      });
+      const started = Date.now();
+      const obs = h.engine.observe!({ ...operation(), timeoutMs: 2_000 }, { pixels: true });
+      const assertion = expect(obs).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+      await vi.advanceTimersByTimeAsync(2_000);
+      await assertion;
+      expect(screenshots).toBe(1);
+      expect(Date.now() - started).toBe(2_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('bounds the snapshots of a keyboard dismissal by its budget, and reports one cut off after the drag as possibly committed', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      h.fake.respond('command.keyboard', () => {
+        throw new AppError('UNSUPPORTED_OPERATION', 'Unable to dismiss the iOS keyboard: the keyboard exposes no dismiss key');
+      });
+      const keyboardUp = { ...SETTINGS_SNAPSHOT, viewport: { width: 390, height: 844 }, keyboard: { kind: 'visible', frame: { x: 0, y: 583, width: 390, height: 261 } } };
+      let snapshots = 0;
+      h.fake.respond('capture.snapshot', () => (snapshots++ === 0 ? keyboardUp : new Promise(() => undefined)));
+      const dismiss = h.engine.keyboard!.dismiss!({ ...operation(), timeoutMs: 1_000 });
+      const assertion = expect(dismiss).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
+      await vi.advanceTimersByTimeAsync(1_000);
+      await assertion;
+      expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets a slow snapshot run for the whole timeout the locate gets', async () => {
     const h = harness();
     await openAttempt(h);
     vi.useFakeTimers();
     try {
       h.fake.respond('capture.snapshot', () => new Promise((resolve) => setTimeout(() => resolve(SETTINGS_SNAPSHOT), 3_000)));
-      const read = h.engine.locate!({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } }, { ...operation(), timeoutMs: 1_000 });
+      const about = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } } as const;
+      const read = h.engine.locate!(about, { ...operation(), timeoutMs: 3_500 });
+      const assertion = expect(read).resolves.toHaveLength(1);
       await vi.advanceTimersByTimeAsync(3_000);
-      await expect(read).resolves.toHaveLength(1);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('takes no second snapshot for a capture the budget abandoned', async () => {
+    const h = harness();
+    await openAttempt(h);
+    vi.useFakeTimers();
+    try {
+      let snapshots = 0;
+      const presentationFailure = () =>
+        new AppError('COMMAND_FAILED', 'regular iOS snapshot presentation requires a valid viewport', { reason: 'invalid-viewport' });
+      h.fake.respond('capture.snapshot', () => {
+        snapshots += 1;
+        return new Promise((_, reject) => setTimeout(() => reject(presentationFailure()), 1_500));
+      });
+      const about = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'About', exact: true } } } as const;
+      const read = h.engine.locate!(about, { ...operation(), timeoutMs: 1_000 });
+      const assertion = expect(read).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+      await vi.advanceTimersByTimeAsync(3_000);
+      await assertion;
+      expect(snapshots).toBe(1);
     } finally {
       vi.useRealTimers();
     }
@@ -1065,10 +1208,10 @@ describe('a screen agent-device cannot read yet', () => {
     await openAttempt(h);
     vi.useFakeTimers();
     try {
-      h.fake.respond('capture.snapshot', () => new Promise((_, reject) => setTimeout(() => reject(insufficientContent()), 3_000)));
+      h.fake.respond('capture.snapshot', () => new Promise((_, reject) => setTimeout(() => reject(insufficientContent()), 600)));
       const located = h.engine.locate!(ABOUT, { ...operation(), timeoutMs: 1_000 });
       const settled = expect(located).rejects.toMatchObject({ code: 'ENGINE_FAILURE', message: expect.stringContaining('insufficient foreground app content') });
-      await vi.advanceTimersByTimeAsync(3_000);
+      await vi.advanceTimersByTimeAsync(600);
       await settled;
     } finally {
       vi.useRealTimers();
@@ -1167,6 +1310,8 @@ describe('perform', () => {
       ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: '', settle: true, settleQuietMs: 150 }],
       ['interactions.press', { ref: '@e6', settle: true, settleQuietMs: 150 }],
+      // Enter reaches the field through the soft keyboard, so the unfocused field is tapped first.
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['command.keyboard', { action: 'enter' }],
       ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: 'a' }],
@@ -1178,6 +1323,19 @@ describe('perform', () => {
       ['interactions.scroll', { direction: 'up', settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4', destination: '@e3' }],
     ]);
+  });
+
+  it.each(['Enter', 'a'])('sends %s to a focused field without tapping it first', async (key) => {
+    const h = harness();
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: SETTINGS_NODES.map((node) => (node.label === 'Search' ? { ...node, focused: true } : node)),
+    }));
+    await openAttempt(h);
+    const search = await observed(h, 'Search');
+    const before = h.fake.calls.length;
+    await h.engine.perform!(search.ref, { kind: 'press', key }, operation());
+    expect(h.fake.calls.slice(before).map((call) => call.method)).toEqual([key === 'Enter' ? 'command.keyboard' : 'interactions.type']);
   });
 
   it.each(['e2', ''])('presses the innermost control even when the row ref is %j', async (rowRef) => {
@@ -1439,6 +1597,7 @@ describe('device fixture', () => {
       },
       signal: new AbortController().signal,
       headed: false,
+      timeouts: { test: 30_000, action: 5_000, assertion: 5_000 },
       locator: (expression: unknown) => {
         minted.push(expression);
         return { minted: true };
@@ -2273,6 +2432,109 @@ describe('reference lifetime and cancellation', () => {
   });
 });
 
+describe('snapshot generations', () => {
+  /**
+   * agent-device's ref admission: every capture starts a new generation, and
+   * a ref pinned with `~s<generation>` is refused unless it names the newest.
+   */
+  function generations(h: Harness, nodes: () => readonly RawNode[] = () => SETTINGS_NODES): void {
+    let generation = 6;
+    h.fake.respond('capture.snapshot', () => {
+      generation += 1;
+      return { ...SETTINGS_SNAPSHOT, nodes: nodes(), refsGeneration: generation };
+    });
+    const admit = (ref: string): void => {
+      const pinned = /~s(\d+)$/.exec(ref);
+      if (pinned !== null && Number(pinned[1]) !== generation) {
+        throw new AppError('COMMAND_FAILED', `Ref ${ref} was minted from a superseded snapshot generation`, { reason: 'ref_generation_mismatch', dispatched: 'no' });
+      }
+    };
+    h.fake.respond('interactions.press', (args) => admit((args as { ref: string }).ref));
+    h.fake.respond('interactions.drag', (args) => {
+      const { source, destination } = args as { source: string; destination: string };
+      admit(source);
+      admit(destination);
+    });
+  }
+
+  it('pins every ref action to the capture that issued its ref', async () => {
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const op = operation();
+    const { root } = await h.engine.observe!(op);
+    const [about, toggle, back] = ['About', 'Airplane Mode', 'Back'].map((name) => named(root, name));
+    const before = h.fake.calls.length;
+    await h.engine.perform!(about!.ref, { kind: 'tap' }, op);
+    await h.engine.perform!(toggle!.ref, { kind: 'check' }, op);
+    await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
+    expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
+      ['interactions.press', { ref: '@e4~s7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e6~s7', settle: true, settleQuietMs: 150 }],
+      ['interactions.drag', { source: '@e4~s7', destination: '@e3~s7' }],
+    ]);
+  });
+
+  it('refuses a ref from a superseded capture as stale instead of acting on the newer one', async () => {
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const about = await observed(h, 'About');
+    await h.engine.locate!(testIdQuery('BackButton'), operation());
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.lastArgs('interactions.press')).toMatchObject({ ref: '@e4~s7' });
+  });
+
+  it('drags between nodes located in separate captures from the newest one', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    generations(h);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const [about] = await h.engine.locate!(testIdQuery('ABOUT'), step);
+    const [back] = await h.engine.locate!(testIdQuery('BackButton'), step);
+    await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, step);
+    expect(h.fake.lastArgs('interactions.drag')).toEqual({ source: '@e4~s8', destination: '@e3~s8' });
+  });
+
+  it('pins a control found again after a transition to the capture it was found in', async () => {
+    autoAdvanceTimers();
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const about = await observed(h, 'About');
+    await h.engine.perform!(about.ref, { kind: 'tap' }, step);
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4~s8' });
+  });
+
+  it('drags from a source found again after a transition to a target located before it', async () => {
+    autoAdvanceTimers();
+    const h = harness();
+    await openAttempt(h);
+    generations(h);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const [about] = await h.engine.locate!(testIdQuery('ABOUT'), step);
+    const [back] = await h.engine.locate!(testIdQuery('BackButton'), step);
+    await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, step);
+    // The launch leaves the source in transition, so it is found again in a third capture.
+    expect(h.fake.lastArgs('interactions.drag')).toEqual({ source: '@e4~s9', destination: '@e3~s9' });
+  });
+
+  it('refuses a drag whose source a newer capture lists nowhere it was, before sending it', async () => {
+    const h = harness({ transition: 0 });
+    await openAttempt(h);
+    const twin: RawNode = { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'cell', label: 'About', identifier: 'ABOUT', rect: { x: 0, y: 600, width: 390, height: 44 } };
+    let nodes: readonly RawNode[] = [...SETTINGS_NODES, twin];
+    generations(h, () => nodes);
+    const step: OperationContext = { ...operation(), origin: 'test' };
+    const [about] = await h.engine.locate!(testIdQuery('ABOUT'), step);
+    nodes = [...SETTINGS_NODES.filter((node) => node.label !== 'About'), twin];
+    const [back] = await h.engine.locate!(testIdQuery('BackButton'), step);
+    await expect(h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, step)).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods()).not.toContain('interactions.drag');
+  });
+});
+
 describe('video', () => {
   const recorder = (h: Harness, finalizeAt?: string) => {
     let requested: string | undefined;
@@ -2311,6 +2573,22 @@ describe('video', () => {
     expect(existsSync(path.join(artifactsDir, 'video', 'video.mp4'))).toBe(true);
     await h.engine.endAttempt!(cleanup());
     expect(records(h)).toHaveLength(2);
+  });
+
+  it('records again in the same attempt once the runner moved the previous file away', async () => {
+    const h = harness();
+    recorder(h);
+    await openAttempt(h);
+    const file = path.join(artifactsDir, 'video', 'video.mp4');
+    for (const moved of ['first.mp4', 'second.mp4']) {
+      await h.engine.artifacts!.startVideo!(operation());
+      expect(await h.engine.artifacts!.stopVideo!(operation())).toEqual([{ path: path.join('video', 'video.mp4'), startedAt: expect.any(String) }]);
+      renameSync(file, path.join(artifactsDir, moved));
+    }
+    expect(records(h)).toHaveLength(4);
+    // Nothing is left recording for the attempt's end to stop.
+    await h.engine.endAttempt!(cleanup());
+    expect(records(h)).toHaveLength(4);
   });
 
   it.each([
@@ -2477,6 +2755,52 @@ describe('input freshness', () => {
         await expect(h.engine.perform!(button.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
         expect(Date.now()).toBe(startedAt);
         expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(captures);
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+
+      // agent-device 0.21.33's simulator AX tree reads a Compose Multiplatform field as an unclassified `Other`:
+      // an empty one over the placeholder it draws, a filled one with its text as the value.
+      const unclassified = (field: Partial<RawNode>, inside?: RawNode) => {
+        const snapshot = form(237, { type: 'Other', ...field });
+        return inside === undefined ? snapshot : { ...snapshot, nodes: [...snapshot.nodes, inside] };
+      };
+      const child = (type: string, label: string): RawNode =>
+        ({ ref: '@e22', index: 3, parentIndex: 1, depth: 2, type, label, rect: { x: 52, y: 252, width: 101, height: 18 } });
+
+      it.each([
+        ['empty, over its placeholder', () => unclassified({}, child('StaticText', 'Ada Lovelace'))],
+        ['filled', () => unclassified({ value: 'Grace' })],
+      ])(`acts on an unclassified iOS field, %s, for ${origin} ${kind}`, async (_name, snapshot) => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', snapshot);
+        const field = await observed(h, 'Account');
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await h.engine.perform!(field.ref, action, { ...operation(), origin });
+        expect(h.fake.lastArgs('interactions.fill')).toMatchObject({ ref: '@e20', text: kind === 'fill' ? 'example' : '' });
+      });
+
+      it.each([
+        ['childless and valueless, like a React Native Pressable', () => unclassified({})],
+        ['holding a control', () => unclassified({}, child('Button', 'Clear'))],
+      ])(`rejects an unclassified iOS element %s for ${origin} ${kind}`, async (_name, snapshot) => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', snapshot);
+        const element = await observed(h, 'Account');
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(element.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
+        expect(h.fake.methods()).not.toContain('interactions.fill');
+      });
+
+      it(`rejects an unclassified iOS element that gained a control before typing for ${origin} ${kind}`, async () => {
+        const h = harness();
+        await openAttempt(h);
+        h.fake.respond('capture.snapshot', () => unclassified({}, child('StaticText', 'Loading')));
+        const element = await observed(h, 'Account');
+        h.fake.respond('capture.snapshot', () => unclassified({}, child('Button', 'Loading')));
+        const action = kind === 'fill' ? { kind, value: 'example', sensitive: false } : { kind };
+        await expect(h.engine.perform!(element.ref, action, { ...operation(), origin })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY', retryable: false });
         expect(h.fake.methods()).not.toContain('interactions.fill');
       });
     }
@@ -2689,13 +3013,42 @@ describe('deterministic actions', () => {
     await h.engine.perform!(inFlight.ref, { kind: 'tap' }, test());
     expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
 
-    // A control the fresh snapshot no longer lists is acted on as it was.
+    // A missing control must be resolved again before any input is dispatched.
+    h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
     await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
     h.fake.respond('capture.snapshot', () => submit(600, '@e42'));
     const landed = await observed(h, 'Submit');
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
-    await h.engine.perform!(landed.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
+    const presses = h.fake.methods().filter((method) => method === 'interactions.press').length;
+    await expect(h.engine.perform!(landed.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
+  });
+
+  it('does not tap a recycled ref when a native button becomes a tab during relocation', async () => {
+    autoAdvanceTimers();
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await h.engine.perform!((await observed(h, 'Back')).ref, { kind: 'tap' }, test());
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [...SETTINGS_NODES, { ref: '@e11', index: 10, parentIndex: 0, depth: 1, type: 'button', label: 'Chat' }],
+    }));
+    const chat = await observed(h, 'Chat');
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      nodes: [
+        ...SETTINGS_NODES,
+        { ref: '@e10', index: 10, parentIndex: 0, depth: 1, type: 'tab-bar' },
+        { ref: '@e12', index: 11, parentIndex: 10, depth: 2, type: 'button', label: 'Chat' },
+        { ref: '@e11', index: 12, parentIndex: 10, depth: 2, type: 'button', label: 'Orders' },
+      ],
+    }));
+    const presses = h.fake.methods().filter((method) => method === 'interactions.press').length;
+    await expect(h.engine.perform!(chat.ref, { kind: 'tap' }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
+
+    await h.engine.perform!((await observed(h, 'Chat')).ref, { kind: 'tap' }, test());
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e12' });
   });
 
   it.each(
@@ -2735,7 +3088,7 @@ describe('deterministic actions', () => {
     const search = await observed(h, 'Search');
     if (action === 'Enter') await h.engine.perform!(search.ref, { kind: 'press', key: 'Enter' }, test());
     else if (action === 'focused Enter') await h.engine.keyboard!.press('Enter', test());
-    else await h.surface.dismissKeyboard(test().signal);
+    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test().timeoutMs));
     h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } }));
     const stale = await observed(h, 'About');
     h.fake.respond('capture.snapshot', () => ({

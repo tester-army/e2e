@@ -440,17 +440,20 @@ test('threshold', async ({ app, screen }) => {
   );
 
   it(
-    'reports the mismatch it saw when a later capture runs past the deadline and times out',
+    'reports the mismatch it saw when the deadline cuts off a later capture, and a capture that hung as a timeout',
     async () => {
       let armed = false;
       let observations = 0;
+      let hangsAt = 3;
       let screen = screenPng(WHITE, BLUE);
       const { fake } = screenEngine(() => screen, {
         observe: async () => {
           if (!armed) return;
           observations += 1;
-          if (observations !== 2) return;
-          // The second capture starts inside the 1 s budget and ends past it, as a slow engine's does.
+          if (observations !== hangsAt) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+            return;
+          }
           await new Promise((resolve) => setTimeout(resolve, 1_200));
           throw engineFailure('OPERATION_TIMEOUT', 'the screenshot outlived its budget');
         },
@@ -463,6 +466,53 @@ test('threshold', async ({ app, screen }) => {
         const attempt = attemptOf(await runExisting(project, options), 'home');
         expect(attempt.error).toMatchObject({ code: 'ASSERTION_FAILED', message: expect.stringContaining(`${BUTTON.width * BUTTON.height} pixels`) });
         expect(attempt.artifacts.map((artifact) => path.posix.basename(artifact.path ?? ''))).toContain('home-diff.png');
+
+        // The second capture starts with most of the budget left and never answers: that is a hang, not the deadline.
+        observations = 0;
+        hangsAt = 2;
+        const hung = attemptOf(await runExisting(project, options), 'home');
+        expect(hung.error).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('timed out') });
+      } finally {
+        project.cleanup();
+      }
+    },
+    30_000,
+  );
+
+  it(
+    'passes a .not whose screen differed long enough when its last capture runs past the deadline',
+    async () => {
+      let armed = false;
+      let observations = 0;
+      let screen = screenPng(WHITE, BLUE);
+      const { fake } = screenEngine(() => screen, {
+        observe: async () => {
+          if (!armed) return;
+          observations += 1;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          if (observations < 3) return;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          throw engineFailure('OPERATION_TIMEOUT', 'the screenshot outlived its budget');
+        },
+      });
+      const options = { appUrl: FAKE_APP_URL, config: fakeConfig(fake) };
+      const { project } = await runProject({ 'tests/home.e2e.ts': SCREEN_TEST }, options);
+      try {
+        writeFileSync(
+          path.join(project.dir, 'tests', 'home.e2e.ts'),
+          `import { test, expect } from 'e2e';
+
+test('home', async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen).not.toHaveScreenshot('home.png', { timeout: 1000 });
+});
+`,
+        );
+        armed = true;
+        screen = screenPng(WHITE, RED);
+        const attempt = attemptOf(await runExisting(project, options), 'home');
+        expect(attempt.error).toBeUndefined();
+        expect(observations).toBe(3);
       } finally {
         project.cleanup();
       }

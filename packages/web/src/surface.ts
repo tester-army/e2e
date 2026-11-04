@@ -19,6 +19,8 @@ import {
   type EngineAppInfo,
   type EngineAttemptContext,
   type EngineCleanupContext,
+  type EngineDoctorCheck,
+  type EngineDoctorInfo,
   type EngineInitInfo,
   type EngineObserveOptions,
   type EnginePrepareInfo,
@@ -46,7 +48,7 @@ import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './pro
 import { installAppLog } from './app-log.ts';
 import { TraceFeed } from './trace-feed.ts';
 import { DialogRouter } from './dialogs.ts';
-import { ensureBrowsersInstalled } from './install.ts';
+import { browserCheck, ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
 import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
@@ -340,6 +342,17 @@ export class PlaywrightSurface {
     await ensureBrowsersInstalled([this.browserName], { env: info.env, signal: info.signal, log: info.log, headed: info.headed });
   }
 
+  /**
+   * The checks of `e2e doctor`: the init scripts `prepare` reads, and the
+   * browser, which only a local launch needs on this machine.
+   */
+  async doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
+    const scripts = await this.configuredInitScripts.doctor(info.projectRoot);
+    if (this.leases !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: `browsers come from the "${this.leases.name}" provider` }];
+    if (this.connect !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: 'the browser is attached over CDP' }];
+    return [...scripts, ...browserCheck(this.browserName, info.env, info.headed)];
+  }
+
   /** Releases the browsers `prepare` leased; a local launch or a `connect` has nothing to release. */
   async finish(info: EngineFinishInfo): Promise<void> {
     await this.leases?.finish(info);
@@ -470,6 +483,8 @@ export class PlaywrightSurface {
     this.trace = new TraceFeed(context, () => this.openPage(), () => this.session?.refs, { testIdAttribute: this.testIdAttribute, site: this.app.site });
     const routes: StoredRoute[] = [];
     const initScripts = this.configuredInitScripts.forAttempt();
+    // `validateApp` admitted only grants.
+    const granted = Object.keys(this.app.permissions ?? {});
     this.latch = new ErrorLatch();
     const dialogs = new DialogRouter(this.latch);
     this.routes = routes;
@@ -503,6 +518,7 @@ export class PlaywrightSurface {
           testPage: () => this.openPage(),
         });
         await installSiteHeaders(target, this.app.site, this.headers);
+        if (granted.length > 0) await target.grantPermissions(granted);
         for (const stored of routes) await target.route(stored.predicate, stored.handler);
       },
       ...(persistent === undefined ? {} : { persistent }),
@@ -706,6 +722,11 @@ export class PlaywrightSurface {
         await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
       }),
     ));
+  }
+
+  /** Sets the viewport for the agent's `resize` verb, as `browser.setViewport` does, and shows the screen after it. */
+  resize(size: ViewportSize, operation: OperationContext): Promise<void> {
+    return this.acted(operation, this.guard(operation, 'resize', () => this.setViewport(size)));
   }
 
   /** Runs one navigation the engine itself makes, so the app log leaves it to the step that asked for it. */
@@ -932,10 +953,10 @@ export class PlaywrightSurface {
       page.frames().map((frame) =>
         frame
           .evaluate((key) => {
-            const recorded: unknown = Reflect.get(globalThis, Symbol.for(key));
+            const recorded: WeakMap<Element, ShadowRoot> | undefined = Reflect.get(globalThis, Symbol.for(key));
             let active = document.activeElement;
             while (active !== null) {
-              const root: ShadowRoot | undefined | null = active.shadowRoot ?? (recorded instanceof WeakMap ? recorded.get(active) : undefined);
+              const root = active.shadowRoot ?? recorded?.get(active);
               const leaf = root?.activeElement;
               if (leaf === undefined || leaf === null) break;
               active = leaf;

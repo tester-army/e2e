@@ -31,7 +31,7 @@ import { captureFailureEvidence } from './failure-evidence.ts';
 import type { ArtifactSink, AttemptFixtures } from './fixtures.ts';
 import { findRegistered, runHook, type Realm } from './realm.ts';
 import type { FailureEvidence } from './records.ts';
-import { sessionSecrecy } from './secrecy.ts';
+import { sessionLedger } from './secrecy.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 /** A queue: each piece of work starts once every piece queued before it has settled. */
@@ -371,7 +371,7 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
       evidence = await captureFailureEvidence({
         session: env.session,
         error: failure,
-        secrecy: sessionSecrecy(env.session, config.allSecrets),
+        ledger: sessionLedger(env.session, config.allSecrets),
         config,
         appOrigin: env.target.app.base?.origin,
         artifacts: env.artifacts,

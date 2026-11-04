@@ -24,6 +24,8 @@ const DERIVED_TITLE_CHARS = 80;
  * falls back to its built-in charter.
  */
 const MAX_FIELD_CHARS = 8_000;
+/** The latest steps the planner reads with their summaries; earlier ones list only their title and outcome, so a long run's prompt stays bounded. */
+const SUMMARIZED_STEPS = 8;
 
 /**
  * A flat object with every field required rather than a union: OpenAI's
@@ -154,7 +156,10 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     used === 0
       ? '(none yet: this is the first step)'
       : state.steps
-          .map((step) => `${step.index}. [${STATUS_MARKS[step.status]}] ${step.title}${step.summary === undefined ? '' : ` — ${step.summary}`}`)
+          .map((step, position) => {
+            const line = `${step.index}. [${STATUS_MARKS[step.status]}] ${step.title}`;
+            return step.summary === undefined || position < used - SUMMARIZED_STEPS ? line : `${line} — ${step.summary}`;
+          })
           .join('\n');
   const findings =
     state.findings.length === 0

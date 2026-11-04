@@ -18,7 +18,10 @@ export type OutputStream = 'stdout' | 'stderr';
 /** Writes text to one stream of the terminal; the callback fires once the stream took it. Answers false while the stream is backed up, like `Writable.write`. */
 export type TerminalWrite = (text: string, callback?: () => void) => boolean;
 
-const BYTE_ENCODINGS: ReadonlySet<BufferEncoding> = new Set(['hex', 'base64', 'base64url']);
+/** What a stream `write` was handed: a string with an encoding as the bytes Node writes for it; any other chunk as is. */
+export function writtenChunk(chunk: string | Uint8Array, encoding: unknown): string | Uint8Array {
+  return typeof chunk === 'string' && typeof encoding === 'string' && Buffer.isEncoding(encoding) ? Buffer.from(chunk, encoding) : chunk;
+}
 
 interface OutputRouting {
   readonly scope: AsyncLocalStorage<RunnerOutput | null>;
@@ -57,8 +60,7 @@ function routing(): OutputRouting {
       const output = context === null ? undefined : context ?? state.process;
       if (output === undefined) return forward(chunk, encoding, callback);
       const done = typeof encoding === 'function' ? encoding : callback;
-      const bytes = typeof chunk === 'string' && typeof encoding === 'string' && BYTE_ENCODINGS.has(encoding);
-      return output.write(name, bytes ? Buffer.from(chunk, encoding) : chunk, done);
+      return output.write(name, writtenChunk(chunk, encoding), done);
     }) as typeof process.stdout.write;
     state.dispatchers[name] = dispatch;
     streams[name].write = dispatch;

@@ -1,5 +1,27 @@
 # @e2e-dev/web
 
+## 0.15.4
+
+### Patch Changes
+
+- [#1334](https://github.com/tester-army/e2e/pull/1334) [`6c8e71f`](https://github.com/tester-army/e2e/commit/6c8e71f1ddab036d5cd82ca671163de6e9e82ca0) Thanks [@21prnv](https://github.com/21prnv)! - `locator.filter()` takes `hasNot`, which drops matches whose subtree resolves a locator, as in Playwright. Third-party engines must handle the new `hasNot` field of a `filter` expression.
+
+- [#1048](https://github.com/tester-army/e2e/pull/1048) [`7f4475c`](https://github.com/tester-army/e2e/commit/7f4475cef9a6eed5b187e0ba898769d7aab15fe3) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Add `browser.waitForDownloads(trigger, { count })` to collect several files from one trigger. `waitForDownload` now also bounds completion and saving by its timeout.
+
+- [#1037](https://github.com/tester-army/e2e/pull/1037) [`a481fd3`](https://github.com/tester-army/e2e/commit/a481fd39c69e3e0f88a94c1fe3f4acada164cbf6) Thanks [@rudycelekli](https://github.com/rudycelekli)! - `locator.filter()` takes `hasNotText`, which drops matches whose text contains a string or matches a RegExp, as in Playwright. Third-party engines must handle the new `hasNotText` field of a `filter` expression.
+
+- [#1044](https://github.com/tester-army/e2e/pull/1044) [`555e226`](https://github.com/tester-army/e2e/commit/555e226dc5e44132a9e34ab3043c777f828d45f6) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Add `route.fetch()` to read the upstream response inside a route handler before deciding it.
+
+- [#1288](https://github.com/tester-army/e2e/pull/1288) [`8ce2c65`](https://github.com/tester-army/e2e/commit/8ce2c6533caf0596b16d31d3588cb6720c863176) Thanks [@DeryFerd](https://github.com/DeryFerd)! - Screenshots no longer change the inline style of editable elements to hide the text caret, so a server-rendered app hydrating while a capture runs no longer reports a React attribute mismatch on its inputs and textareas. A capture runs with the caret hidden in the frames it can reach, and the stylesheet is taken back from every frame afterwards.
+
+- [#1046](https://github.com/tester-army/e2e/pull/1046) [`5879bfc`](https://github.com/tester-army/e2e/commit/5879bfc6ba9a76c6d5fc77f1454ff3fde9b2e5a3) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Add selective cookie clearing with validated name, domain and path filters, preserving other browser storage.
+
+- [#958](https://github.com/tester-army/e2e/pull/958) [`85e92f9`](https://github.com/tester-army/e2e/commit/85e92f91f1c5415850ca4456ee5f4e2a81a6b648) Thanks [@kuishou68](https://github.com/kuishou68)! - `upload` and `setInputFiles` accept a button that opens a file chooser, such as one over a hidden file input. The agent's `upload` tool says so, so the model can pick the button it sees.
+
+- [#1429](https://github.com/tester-army/e2e/pull/1429) [`3a841bb`](https://github.com/tester-army/e2e/commit/3a841bb99e5ecc050154c9e6d7f696a6226c3980) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - A `web()` target takes `app.permissions` with `'grant'` states, granted to every page of the attempt: `permissions: { 'clipboard-read': 'grant', 'clipboard-write': 'grant' }` lets the app use the clipboard in headless Chromium. Names are checked against the browser's at config load; `'deny'` and `'reset'` are refused on web.
+
+- [#1448](https://github.com/tester-army/e2e/pull/1448) [`cdf910a`](https://github.com/tester-army/e2e/commit/cdf910a9ae34569d8fddd4e720e0cabd1e95c0f3) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - Screenshots no longer fail with `ENGINE_FAILURE` ("closed-shadow root tracking is unavailable") on a page that replaces the global `WeakMap`, as some polyfills do. On such pages, locators find elements inside closed shadow roots again, and CDP reconnects no longer fail.
+
 ## 0.15.3
 
 ### Patch Changes

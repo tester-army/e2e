@@ -135,7 +135,7 @@ interface Probe {
 /** The grammar tools that print a line or say why they print none; the point tools print nothing. */
 const LINE_TOOLS: ReadonlySet<string> = new Set([
   'tap', 'double_tap', 'long_press', 'right_click', 'hover', 'type', 'type_secret', 'press', 'select', 'check',
-  'drag', 'upload', 'scroll', 'scroll_to', 'navigate', 'back', 'dismiss_keyboard',
+  'drag', 'upload', 'scroll', 'scroll_to', 'navigate', 'back', 'resize_viewport', 'dismiss_keyboard',
 ]);
 
 /** The locator method each node verb's tool repeats as. */
@@ -170,7 +170,7 @@ export class SessionTestLines {
       const { tree: _tree, ...rest } = observation;
       return rest;
     };
-    // A proxy, not a copy: the context's getters (`pixelsTainted`) must stay live.
+    // A proxy, not a copy: the context's getters (`model` among them) must stay live.
     return new Proxy(context, {
       get: (target, key) => (key === 'observe' ? observe : Reflect.get(target, key, target)),
     });
@@ -322,6 +322,8 @@ export class SessionTestLines {
         return { line: navigationLine(stringField(input, 'url') ?? '', this.options.appBase) };
       case 'back':
         return { line: 'await app.back();' };
+      case 'resize_viewport':
+        return { reason: `set ${String(input['width'])}x${String(input['height'])} with the engine fixture's viewport call` };
       default:
         return { reason: `${name} has no test line` };
     }

@@ -19,8 +19,8 @@ npm install --save-dev e2e @e2e-dev/mobile
 
 `agent-device` needs Xcode with an iOS simulator runtime, or the Android SDK
 with an emulator. A phone needs Developer Mode and runner signing on iOS, or
-USB debugging authorized on Android (see [Physical devices](https://e2e.tester.army/docs/mobile#physical-devices)). Run `npx agent-device doctor` once before handing the target
-to the runner.
+USB debugging authorized on Android (see [Physical devices](https://e2e.tester.army/docs/mobile#physical-devices)). Run `npx e2e doctor` to check the setup before
+a run.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';

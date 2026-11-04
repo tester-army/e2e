@@ -813,7 +813,7 @@ class Scheduler {
         break;
       }
       case 'serial-attempt': {
-        worker.serialGroup(message.groupId).attemptFinished(message.run);
+        worker.serialGroup(message.groupId).attemptFinished(message.attempt);
         break;
       }
       case 'unit-done': {

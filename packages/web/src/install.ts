@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
-import { EngineError, InfrastructureError } from 'e2e/engine';
+import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e/engine';
 import { browserType, type BrowserName } from './browser-connection.ts';
 
 /** Whether `chromium_headless_shell-<revision>` under `browsersPath` finished installing and holds its executable. */
@@ -76,6 +76,29 @@ export function runPlaywrightCli(args: readonly string[]): Promise<number> {
       resolve(code ?? (signal === null ? 1 : 128 + os.constants.signals[signal]));
     });
   });
+}
+
+/**
+ * The `browser` check of `e2e doctor`: whether the build a run launches is on
+ * disk, a `warn` when the first run will download it, or none when `env`
+ * points at another browser cache than this process loaded.
+ */
+export function browserCheck(
+  name: BrowserName,
+  env: NodeJS.ProcessEnv,
+  headed: boolean,
+  isInstalled: (name: BrowserName) => boolean | undefined = (browser) => isBrowserInstalled(browser, env, headed),
+): EngineDoctorCheck[] {
+  const installed = isInstalled(name);
+  if (installed === undefined) return [];
+  if (installed) return [{ id: 'browser', status: 'pass', message: `${name} is installed` }];
+  return [
+    {
+      id: 'browser',
+      status: 'warn',
+      message: `${name} is not installed; the first run downloads it, or run "npx @e2e-dev/web install ${name}" now`,
+    },
+  ];
 }
 
 /** What an installer receives besides the browser names. */

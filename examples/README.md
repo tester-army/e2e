@@ -23,15 +23,9 @@ repository. See its README for run commands. Agent tests need
 Start a new project from one with `npx e2e init my-app --example with-expo`.
 `init` downloads the folder from the tag of the CLI's version.
 
-## Hosted mobile devices
-
-[with-limrun](with-limrun) runs the same five app-flow tests on hosted iOS
-and Android devices. It reuses the SwiftUI and Compose apps above to check
-forms, validation, updated results, and restart. No AI key is needed.
-
 ## Contributing
 
 [e2e.tester.army/examples](https://e2e.tester.army/examples) lists these
-examples and community ones from other repositories, from
+examples and partner and community ones from other repositories, from
 [`examples.json`](examples.json). To add yours, or to change an example
 here, see [CONTRIBUTING.md](CONTRIBUTING.md).

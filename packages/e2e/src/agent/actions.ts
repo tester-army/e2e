@@ -24,7 +24,7 @@ import {
 import { sanitizeText } from '../internal/errors.ts';
 import type { KeyModifier } from '../engine/contract.ts';
 import { bound, collapseText } from '../internal/text.ts';
-import type { ScrollDirection } from '../types.ts';
+import type { ActionDetails, ActionEvent, ScrollDirection } from '../types.ts';
 
 /** One committed grammar action, addressed by the node it actually ran against. */
 export type RecordableAction =
@@ -61,6 +61,8 @@ export type RecordableAction =
     } & Placement)
   | { readonly name: 'navigate'; readonly url: string }
   | { readonly name: 'back' }
+  /** The viewport set to a size, in CSS pixels. */
+  | { readonly name: 'resize'; readonly size: ViewportSize }
   /** Keyboard input to whatever held focus, with no node resolved. */
   | { readonly name: 'typeText'; readonly value: string; readonly replace: boolean }
   | { readonly name: 'pressKey'; readonly key: string }
@@ -71,17 +73,24 @@ export type RecordableAction =
    * that node sat: the trace records the point's place inside that box so
    * replay can follow the node when the layout shifts.
    */
-  | ({
-      readonly name: PointActionName;
-      readonly point: ViewportPoint;
-      readonly viewport: ViewportSize;
-      readonly under?: RedactedNode;
-    } & Placement);
+  | ({ readonly name: PointActionName; readonly viewport: ViewportSize } & PlacedPoint)
+  /**
+   * A drag from one bare viewport point to another, with the viewport it was
+   * placed in; each end is placed the way a point action's one point is, so
+   * the trace can follow both nodes when the layout shifts.
+   */
+  | { readonly name: 'dragAt'; readonly from: PlacedPoint; readonly to: PlacedPoint; readonly viewport: ViewportSize };
 
 /** Where the node sat when it was acted on: its container's key and its place among identical twins. */
 export interface Placement {
   readonly within?: string;
   readonly position?: TracePosition;
+}
+
+/** A bare viewport point and, when one is listed, the node whose box contained it and where that node sat. */
+export interface PlacedPoint extends Placement {
+  readonly point: ViewportPoint;
+  readonly under?: RedactedNode;
 }
 
 
@@ -202,6 +211,43 @@ const NODE_ACTION_PROSE: Readonly<Record<NodeActionName, (where: string) => stri
 /** How each point verb reads: `tap the point (x, y)`, `hover over the point (x, y)`. */
 const POINT_ACTION_PROSE: Readonly<Record<PointActionName, string>> = { tapAt: 'tap', hoverAt: 'hover over' };
 
+/** What every `onAction` event carries, whatever its action. */
+type ActionEventFields = Pick<ActionEvent, 'index' | 'summary' | 'source'>;
+
+/**
+ * The `onAction` event of each action that has `ActionDetails`. Points are
+ * copied, so a hook that mutates them cannot move what the trace cache records.
+ */
+const DETAILED_EVENTS: {
+  readonly [A in keyof ActionDetails]: (
+    action: RecordableAction & { readonly name: A },
+    fields: ActionEventFields,
+  ) => Extract<ActionEvent, { readonly action: A }>;
+} = {
+  tapAt: (action, fields) => ({ ...fields, action: action.name, point: { ...action.point } }),
+  hoverAt: (action, fields) => ({ ...fields, action: action.name, point: { ...action.point } }),
+  dragAt: (action, fields) => ({ ...fields, action: action.name, from: { ...action.from.point }, to: { ...action.to.point } }),
+};
+
+/** Whether `onAction` reports `ActionDetails` for the action. */
+function isDetailed(action: RecordableAction): action is RecordableAction & { readonly name: keyof ActionDetails } {
+  return Object.hasOwn(DETAILED_EVENTS, action.name);
+}
+
+/** The event of one action whose name has details. */
+function detailedEvent<A extends keyof ActionDetails>(
+  name: A,
+  action: RecordableAction & { readonly name: A },
+  fields: ActionEventFields,
+): ActionEvent {
+  return DETAILED_EVENTS[name](action, fields);
+}
+
+/** The `onAction` event for one committed action. */
+export function actionEvent(action: RecordableAction, fields: ActionEventFields): ActionEvent {
+  return isDetailed(action) ? detailedEvent(action.name, action, fields) : { ...fields, action: action.name };
+}
+
 /**
  * Describes one committed action for recording and for the live event. Its
  * nodes pass the ledger again as it is now: a secret resolved after the
@@ -213,9 +259,15 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
       ? describePlaced(action.node, action, redaction)
       : 'point' in action
         ? describePlaced(action.under, action, redaction)
-        : undefined;
+        : action.name === 'dragAt'
+          ? describePlaced(action.from.under, action.from, redaction)
+          : undefined;
   const destination =
-    action.name === 'drag' ? describePlaced(action.destination.node, action.destination, redaction) : undefined;
+    action.name === 'drag'
+      ? describePlaced(action.destination.node, action.destination, redaction)
+      : action.name === 'dragAt'
+        ? describePlaced(action.to.under, action.to, redaction)
+        : undefined;
   const where = describeForSummary(target);
   const safe = (value: string) => quote(redaction.redact(sanitizeText(value)));
   const prose = (() => {
@@ -251,6 +303,8 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
         return `navigate to ${safe(action.url)}`;
       case 'back':
         return 'navigate back';
+      case 'resize':
+        return `resize the viewport to ${String(action.size.width)}x${String(action.size.height)}`;
       case 'typeText':
         return `type ${safe(action.value)} into the focused field${action.replace ? ', replacing its value' : ''}`;
       case 'pressKey':
@@ -261,6 +315,13 @@ export function describeAction(action: RecordableAction, redaction: NodeRedactio
       case 'hoverAt': {
         const at = `${POINT_ACTION_PROSE[action.name]} the point (${String(action.point.x)}, ${String(action.point.y)})`;
         return target === undefined ? at : `${at} on ${where}`;
+      }
+      case 'dragAt': {
+        const { point: start } = action.from;
+        const { point: end } = action.to;
+        const from = `drag from the point (${String(start.x)}, ${String(start.y)})${target === undefined ? '' : ` on ${where}`}`;
+        const to = `the point (${String(end.x)}, ${String(end.y)})${destination === undefined ? '' : ` on ${describeForSummary(destination)}`}`;
+        return `${from} to ${to}`;
       }
     }
   })();

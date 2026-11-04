@@ -1,5 +1,11 @@
 # @e2e-dev/github
 
+## 0.4.4
+
+### Patch Changes
+
+- [#1438](https://github.com/tester-army/e2e/pull/1438) [`d181e26`](https://github.com/tester-army/e2e/commit/d181e2645f24f9f433cd03bb5f7a2cd0cf722511) Thanks [@okwasniewski](https://github.com/okwasniewski)! - An `e2e explore` run posts its own pull request comment. Before, a job that ran `e2e run` and then `e2e explore` replaced the test results comment with the exploration's. Test run comments keep their marker, so the comments already on open pull requests are still updated. An exploration comment an earlier version posted keeps the test run's marker: the next `e2e explore` posts a new comment beside it, and a test run in the same job takes it back. A `--last-failed` rerun no longer folds in an exploration's report that shares its output directory.
+
 ## 0.4.3
 
 ### Patch Changes

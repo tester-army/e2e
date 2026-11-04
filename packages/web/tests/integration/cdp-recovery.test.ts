@@ -541,6 +541,8 @@ describe('CDP session recovery', () => {
     const remote = await host();
     const engine = await start({ cdpEndpoint: () => remote.endpoint, reconnectEndpoint: () => remote.endpoint });
     await surfaceOf(engine)!.page().evaluate(() => {
+      // A polyfill that replaces the global must not hide the record the init script made.
+      Reflect.set(globalThis, 'WeakMap', Map);
       document.body.innerHTML = '';
       document.body.style.background = 'blue';
       const field = document.createElement('input');

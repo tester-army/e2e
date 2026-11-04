@@ -14,28 +14,33 @@ same `agent`, `screen`, and `expect` APIs as browser tests.
 ## Set up
 
 Install Xcode with an iOS simulator runtime, or the Android SDK with an
-emulator. Then check your setup:
+emulator. Then follow the [Quickstart](/quickstart) and choose **Mobile
+(iOS/Android)**. The wizard selects iOS on macOS and Android elsewhere, and
+targets the Settings app with one worker, so a test runs before you point it
+at your app. Device boot happens before test timing starts and doesn't count
+toward `launchTimeout`. See the [example projects](/example-projects) for
+finished setups.
+
+Check your setup:
 
 <CodeGroup>
 ```bash npm
-npx agent-device doctor
+npx e2e doctor
 ```
 
 ```bash pnpm
-pnpm exec agent-device doctor
+pnpm exec e2e doctor
 ```
 
 ```bash bun
-bunx agent-device doctor
+bunx e2e doctor
 ```
 </CodeGroup>
 
-Follow the [Quickstart](/quickstart) and choose **Mobile (iOS/Android)**.
-The wizard selects iOS on macOS and Android elsewhere, and targets the
-Settings app with one worker, so a test runs before you point it at your
-app. Device boot happens before test timing starts and doesn't count toward
-`launchTimeout`. See the [example projects](/example-projects) for finished
-setups.
+It checks agent-device, Xcode or the Android SDK, each device the target
+names, and the `appPath` build. Without `appPath`, it checks that the
+`bundleId` is installed when one device is booted. See
+[`e2e doctor`](/reference/cli#e2e-doctor).
 
 ## Point at your app
 
@@ -283,6 +288,26 @@ test('the list and the detail split across the fold', async ({ agent, app, devic
 ```
 </Accordion>
 
+### Record a transition
+
+[`app.startRecording()` and `app.stopRecording()`](/reference/app#startrecording)
+record one span of the screen as an `.mp4`. A locator's `boundingBox()`
+gives an element's frame in points (physical pixels on Android).
+
+```ts
+test('the sheet slides up', { video: 'off' }, async ({ app, screen }) => {
+  await app.open();
+  await app.startRecording({ name: 'sheet' });
+  await screen.getByRole('button', 'Open sheet').tap();
+  await expect(screen.getByText('Sheet title')).toBeVisible();
+  const [video] = await app.stopRecording();
+});
+```
+
+Start it after `app.open()`. A recording started after `device.closeApp()`
+ends the device session when it stops, so open the app again after it.
+Taps show unless [`videoTouches`](/reference/mobile#videotouches) is `false`.
+
 ## Several devices
 
 Add a target for each platform:
@@ -439,9 +464,10 @@ service that runs an agent-device daemon next to a simulator, an emulator,
 or a phone works. The provider leases one device per worker slot when the
 run starts, and releases it when the run ends.
 
-For [EAS Simulators](/integrations/eas), use `easSimulators()` from
+For [Expo Simulators](/integrations/eas), use `expoSimulators()` from
 `@e2e-dev/eas`. For [TestMu AI](/integrations/testmu), use `testmu()` from
-`@e2e-dev/testmu`. For another service, write a provider of a few dozen lines,
+`@e2e-dev/testmu`. For [BrowserStack](/integrations/browserstack), use
+`browserstack()` from `@e2e-dev/browserstack`. For another service, write a provider of a few dozen lines,
 such as `hostedDevices` in the example below:
 
 ```ts
@@ -581,56 +607,39 @@ export function hostedDevices(options: { serviceUrl: string; image: string }): D
 
 <Accordion title="Example: a device cloud that agent-device supports">
 A device cloud that agent-device itself speaks to needs no session API of
-your own. The provider allocates a lease through a daemon it starts for the
-run, and gives the worker the lease scope as `client`. `testmu()` from
-`@e2e-dev/testmu` works this way for [TestMu AI](/integrations/testmu).
+your own. `agentDeviceLeases()` from `@e2e-dev/mobile/lease` starts an
+agent-device daemon per worker slot with the credentials in `env`, allocates
+a lease with the `selectors`, keeps it alive while the run holds it, and on
+release fails unless agent-device confirms the session ended. `testmu()`
+from `@e2e-dev/testmu` works this way for [TestMu AI](/integrations/testmu),
+and `browserstack()` from `@e2e-dev/browserstack` for
+[BrowserStack](/integrations/browserstack).
 
 ```ts title="device-cloud-provider.ts" expandable
-import { createAgentDeviceClient } from 'agent-device';
 import type { DeviceProvider } from '@e2e-dev/mobile';
+import { agentDeviceLeases } from '@e2e-dev/mobile/lease';
 
 /**
- * Leases devices from a device cloud agent-device itself speaks to, through
- * a daemon started for the run. The daemon's runtime for the cloud creates
- * the instance when the lease is allocated and deletes it when the lease is
- * released; the worker's client carries the lease, so every command lands on
- * that instance. `provider` is agent-device's name for the cloud; its runtime
- * reads the credentials from the environment the daemon starts with.
+ * Leases devices from a device cloud agent-device itself speaks to. Each
+ * worker slot gets its own agent-device daemon, whose runtime for the cloud
+ * starts the session when the lease is allocated and ends it on release.
+ * `provider` is agent-device's name for the cloud.
  */
-export function cloudDevices(options: { provider: string; stateDir: string }): DeviceProvider {
-  const scopes = new Map<string, { tenant: string; runId: string; leaseId: string; leaseBackend: 'ios-instance' | 'android-instance'; leaseProvider: string }>();
+export function cloudDevices(options: { provider: string; device: string; osVersion: string; app: string }): DeviceProvider {
+  const leases = agentDeviceLeases({ provider: options.provider, label: options.provider });
   return {
     name: options.provider,
     async acquire(request) {
-      // One daemon per run, under a directory of its own.
-      const stateDir = `${options.stateDir}/${request.runId}`;
-      const client = createAgentDeviceClient({ stateDir, session: `lease-${request.slot}` });
-      const leaseBackend = request.platform === 'ios' ? ('ios-instance' as const) : ('android-instance' as const);
-      const lease = await client.leases.allocate({
-        tenant: options.provider,
-        runId: request.runId,
-        leaseBackend,
-        leaseProvider: options.provider,
-        retainOnClose: true,
-        platform: request.platform,
-        target: 'mobile',
+      const token = request.env['CLOUD_TOKEN'];
+      if (token === undefined || token === '') throw new Error('CLOUD_TOKEN is not set');
+      return leases.acquire(request, {
+        // The daemon's runtime reads the credentials from its environment.
+        env: { CLOUD_TOKEN: token },
+        selectors: { device: options.device, providerOsVersion: options.osVersion, providerApp: options.app },
+        summary: `${options.device}, ${request.platform} ${options.osVersion}`,
       });
-      const scope = { tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId, leaseBackend, leaseProvider: options.provider };
-      if (lease.retainOnClose !== true) {
-        await client.leases.release(scope);
-        throw new Error(`Device cloud did not grant retainOnClose for lease ${lease.leaseId}`);
-      }
-      request.log(`leased ${lease.leaseId}`);
-      scopes.set(lease.leaseId, scope);
-      // The worker's client is created with these fields; the daemon resolves the device from them.
-      return { id: lease.leaseId, client: { stateDir, ...scope } };
     },
-    async release(lease) {
-      const scope = scopes.get(lease.id);
-      if (scope === undefined) return;
-      const client = createAgentDeviceClient({ stateDir: `${options.stateDir}/${scope.runId}`, session: 'release' });
-      await client.leases.release(scope);
-    },
+    release: (lease, context) => leases.release(lease, context),
   };
 }
 ```
@@ -712,24 +721,30 @@ message and hint, never `LAUNCH_TIMEOUT`, `ACTION_FAILED`, or
 `back` gets its `timeout` (default `actionTimeout`). If the device doesn't
 answer in time, the step fails with `ACTION_FAILED` and isn't retried: the
 input may have landed. A `longPress` that holds at least as long as the
-time left is refused before it's sent; raise its `timeout`. Finding the
-element isn't cut off, so a missing one still fails as `LOCATOR_NOT_FOUND`.
+time left is refused before it's sent; raise its `timeout`. Snapshots and
+screenshots run within the timeout of the call that takes them, so a device
+that stops answering fails the step with `ACTION_FAILED` instead of holding
+it until the test timeout. `locator.waitFor`, `expect`, and
+`toHaveScreenshot` give their last snapshot extra time, up to their slowest
+one so far and within the test timeout, so a screen that shows up during it
+still passes. An element that never shows up fails as
+`LOCATOR_NOT_FOUND`, or `ASSERTION_FAILED` for `expect`.
 
 <CodeGroup>
 ```bash npm
-npx agent-device doctor          # the toolchain, the daemon, the booted devices
+npx e2e doctor                   # agent-device, the toolchain, the devices, the app
 npx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```
 
 ```bash pnpm
-pnpm exec agent-device doctor          # the toolchain, the daemon, the booted devices
+pnpm exec e2e doctor                   # agent-device, the toolchain, the devices, the app
 pnpm exec agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```
 
 ```bash bun
-bunx agent-device doctor          # the toolchain, the daemon, the booted devices
+bunx e2e doctor                   # agent-device, the toolchain, the devices, the app
 bunx agent-device daemon stop     # after a wedge: drops every session, the next run starts the daemon
 xcrun simctl shutdown <udid> && xcrun simctl boot <udid>
 ```

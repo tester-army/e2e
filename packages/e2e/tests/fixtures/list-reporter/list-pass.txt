@@ -5,7 +5,10 @@
 
  ✓ service "compose" ready 43.00s
    ✓ checkout > pays > agent.act "pay for the cart" 4.20s · 3 model calls
+   ✓ |chromium| tests/checkout.e2e.ts > checkout > pays 4.30s ai 12.4k tokens · $0.0123
+   ✓ |chromium| tests/checkout.e2e.ts > checkout > refunds 120ms
  ✓ |chromium| tests/checkout.e2e.ts (2 tests) 4.42s ai 12.4k tokens · $0.0123
+   ✓ |chromium| tests/home.e2e.ts > renders 120ms
  ✓ |chromium| tests/home.e2e.ts (1 test) 120ms
 
  Test Files  2 passed (2)

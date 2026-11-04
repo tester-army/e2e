@@ -49,8 +49,13 @@ reporters: ['list'], // default
 ```
 
 - It renders the same events [`onEvent`](#onevent) receives.
+- On a TTY a live view shows the running tests. When stdout is not a
+  terminal (piped, redirected, most CI), each test prints as it finishes.
 - The [summary rows](#onrunfinished) reporters return print under its
   summary.
+- The output ends with a `Failed` row per failed test: its file and line,
+  its error's first line, and its trace page when one was written, so `e2e run | tail` still
+  names what broke.
 
 #### `json`
 
@@ -340,8 +345,10 @@ type RunEventFact =
   judgments use a model other than `model`.
 - `setup` brackets the work before the tests start. Its `step.kind` is
   `collect`, `filter` (one [test filter](/filters), by its `name`),
-  `prepare`, `service`, or `app`. `outcome` is `reused` when a service or
-  app command attached to a process already serving its URL, `failed` when
+  `prepare`, `service`, or `app`. An `app` step's `url` is the URL its
+  readiness probe polls, with a free port filled in and no userinfo or query. `outcome` is `reused`
+  when a service or app command attached to a process already serving its
+  URL, `failed` when
   a filter threw or returned an invalid result, and `timed-out` when a
   filter ran past 5 minutes.
 - A `notice` names what its line is about in `target`: a target, `app`,
@@ -441,6 +448,7 @@ bunx e2e run --reporter list,junit
 </CodeGroup>
 
 - A config with only reporter objects has no built-in terminal output.
+  Run errors still print on stderr, each as `CODE: message`.
 
 ## Where a reporter runs
 

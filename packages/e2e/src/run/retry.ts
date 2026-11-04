@@ -1,7 +1,16 @@
 /** Shared retry policy for ordinary tests, setup tests, and serial groups. */
 
 import type { SerializedError } from '../internal/errors.ts';
-import type { AttemptStatus, ResultStatus } from './records.ts';
+import type { AttemptStatus, ResultStatus, SerialAttemptRecord } from './records.ts';
+
+/**
+ * Whether a retry's member records are not the verdict. True when the retry
+ * was interrupted, including after members ran (`reachedMembers` true), or
+ * when it never reached its members.
+ */
+export function isCutSerialRetry(status: SerialAttemptRecord['status'], index: number, reachedMembers: boolean): boolean {
+  return index > 0 && (status === 'interrupted' || !reachedMembers);
+}
 
 /** The status-and-error slice of an attempt the retry policy inspects. */
 export interface RetryAttempt {

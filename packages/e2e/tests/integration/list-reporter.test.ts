@@ -85,7 +85,7 @@ describe('list reporter output', () => {
       stdoutWrite.mockRestore();
       const output = stripVTControlCharacters(written.join(''));
       expect(run.outcome.exitCode).toBe(3);
-      expect(output).toMatch(/✓ taps a node/);
+      expect(output).toMatch(/✓ .+ tests\/close-fail\.e2e\.ts > taps a node/);
       expect(output).toMatch(/cleanup failed: ENGINE_FAILURE: attempt end failed: close exploded/);
       expect(output).toMatch(/Cleanup +1 cleanup failure: ENGINE_FAILURE: attempt end failed: close exploded/);
     } finally {

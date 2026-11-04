@@ -57,7 +57,8 @@ export function deviceSelection(
 /** The agent-device session slot `slot` of a target drives: the `session` option or `e2e-<target>`, then `-<slot>`. */
 type SessionNamer = (targetName: string, slot: number) => string;
 
-function isDeviceList(device: unknown): device is readonly string[] {
+/** Whether the `device` option names a pool of devices rather than one device or a provider. */
+export function isDeviceList(device: unknown): device is readonly string[] {
   return Array.isArray(device);
 }
 
@@ -65,7 +66,7 @@ function isDeviceList(device: unknown): device is readonly string[] {
 function sourceFor(options: MobileOptions, createClient: ClientFactory, session: SessionNamer): DeviceSource {
   const { device } = options;
   if (device === undefined) return new BootedDevices(options.platform, createClient, session);
-  if (typeof device === 'string') return new ConfiguredDevices([device]);
+  if (typeof device === 'string') return new ConfiguredDevices([namedDevice(device)]);
   if (isDeviceList(device)) {
     if (device.length === 0) {
       throw new ConfigurationError(
@@ -73,9 +74,17 @@ function sourceFor(options: MobileOptions, createClient: ClientFactory, session:
         'mobile: `device` is an empty pool; name at least one simulator or emulator, or omit it to use every booted one',
       );
     }
-    return new ConfiguredDevices(device);
+    return new ConfiguredDevices(device.map(namedDevice));
   }
   return new LeasedDevices(asDeviceProvider(device), options);
+}
+
+/** A device name from the `device` option; a blank one would select no device, and the daemon would refuse several booted ones as ambiguous. */
+function namedDevice(device: unknown): string {
+  if (typeof device !== 'string' || device.trim() === '') {
+    throw new ConfigurationError('INVALID_CONFIG', 'mobile: `device` names a simulator, emulator, or phone by name, UDID, or serial, and must not be blank; omit it to use every booted one');
+  }
+  return device;
 }
 
 /** The devices named in the config, bound in order, as many as the run has slots. */

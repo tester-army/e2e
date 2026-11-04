@@ -96,6 +96,19 @@ describe('VideoRecorder', () => {
     expect([first.stopped.count, second.stopped.count]).toEqual([1, 1]);
   });
 
+  it('starts again after a stop on the same page, and the second stop hands over only the new segment', async () => {
+    const video = recorder();
+    const page = fakePage();
+    await video.arm(page.page);
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video.webm']);
+    // Disarmed between recordings: a page opened now starts nothing.
+    await video.pageOpened(fakePage().page);
+    await video.arm(page.page);
+    expect((await video.stop()).map((segment) => segment.path)).toEqual(['video/video-part2.webm']);
+    expect(page.started).toEqual([path.join(dir, 'video', 'video.webm'), path.join(dir, 'video', 'video-part2.webm')]);
+    expect(page.stopped.count).toBe(2);
+  });
+
   it('records at the viewport size by default, and at the configured size and quality when given', async () => {
     const plain = fakePage();
     await recorder().arm(plain.page);

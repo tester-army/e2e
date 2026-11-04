@@ -7,11 +7,11 @@ import {
   MAX_TRACE_ACTIONS,
   MAX_TRACE_ANCHORS,
   MAX_TRACE_INPUT_CHARS,
-  readTraceEntry,
   type ActionTrace,
   type RecordedAction,
   type TraceEntry,
 } from '../../src/cache/trace.ts';
+import { readTraceEntry } from '../../src/cache/trace-read.ts';
 
 const tap: RecordedAction = {
   name: 'tap',
@@ -138,6 +138,8 @@ describe('trace-1 entry', () => {
         actions: [{ name: 'type', summary: 'type', target: { role: 'x' }, value: 'v'.repeat(MAX_TRACE_INPUT_CHARS + 1) }],
       }),
     ],
+    ['resize below the viewport limits', withPayload({ actions: [{ name: 'resize', summary: 'r', size: { width: 100, height: 844 } }] })],
+    ['resize above the viewport limits', withPayload({ actions: [{ name: 'resize', summary: 'r', size: { width: 390, height: 5000 } }] })],
     ['bad scroll direction', withPayload({ actions: [{ name: 'scroll', summary: 's', direction: 'diagonal' }] })],
     ['empty summary', withPayload({ summary: '  ' })],
     ['oversized summary', withPayload({ summary: 'x'.repeat(400) })],
@@ -199,6 +201,12 @@ describe('decideTraceReplay', () => {
   it('skips leading gaps when checking for the navigate opener', () => {
     const entry = entryOf(trace({ actions: [gap, navigate] }));
     expect(decideTraceReplay(entry, '/elsewhere').action).toBe('replay');
+  });
+
+  it('skips a leading resize when checking for the navigate opener', () => {
+    const resize: RecordedAction = { name: 'resize', summary: 'resize the viewport to 390x844', size: { width: 390, height: 844 } };
+    expect(decideTraceReplay(entryOf(trace({ actions: [resize, navigate] })), '/elsewhere').action).toBe('replay');
+    expect(decideTraceReplay(entryOf(trace({ actions: [resize, tap] })), '/elsewhere')).toEqual({ action: 'miss', reason: 'wrong-context' });
   });
 
   it('requires a recorded start path for a non-navigating trace', () => {

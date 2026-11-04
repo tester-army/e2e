@@ -8,7 +8,7 @@
 
 import { bounded, F_POINTER, formatTime, terminalColumns, terminalRows, type Colors } from './format.ts';
 import type { CurrentStep, FileGroup, RunningTest, SetupInFlight } from './list-model.ts';
-import { eventLine, stepLabel, stepLine } from './list-steps.ts';
+import { eventLine, quotedLabel, stepLine } from './list-steps.ts';
 import { REPAINT_INTERVAL_MS, WIDTH_MARGIN } from './live-window.ts';
 
 const F_DOWN_RIGHT = '↳';
@@ -189,7 +189,7 @@ export class RunningTree {
     const { pc } = this;
     const { current } = test;
     if (current === undefined) return [];
-    const rows = [pc.dim(`${F_DOWN_RIGHT} ${current.api} ${stepLabel(current.label)}`)];
+    const rows = [pc.dim(`${F_DOWN_RIGHT} ${current.api} ${quotedLabel(current.label)}`)];
     if (current.kind !== 'agent') return rows.slice(0, budget);
     const overflow = current.events.length - maxEvents;
     if (overflow > 0) rows.push(`  ${foldMarker(pc, overflow, 'call')}`);

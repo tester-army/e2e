@@ -162,34 +162,17 @@ function timedOutAtDeadline(cause: unknown, deadline: Deadline): boolean {
  * re-read rather than surfaced as a failed call. `guard` is the caller's
  * clock check, so a capture that outlives the deadline reports the step's own
  * timeout rather than whichever transport error the truncated budget produced.
- * `fallback` asks the engine for fallback pixels, which a secret fill
- * (`tainted`, read per capture) withholds; a capture that then times out
- * before the step clock does is the policy denial it is, not an engine
- * timeout, since only those pixels could have answered.
  */
 export async function retryingObserve(options: {
-  readonly observe: (operation: OperationContext, pixelFallback: boolean) => Promise<Observation>;
-  readonly operation: () => OperationContext;
+  readonly capture: () => Promise<Observation>;
   readonly guard: (cause?: unknown) => void;
   readonly signal: AbortSignal;
-  readonly api: string;
-  readonly fallback: boolean;
-  readonly tainted: () => boolean;
 }): Promise<Observation> {
   for (;;) {
-    const withheld = options.fallback && options.tainted();
     try {
-      return await options.observe(options.operation(), options.fallback && !withheld);
+      return await options.capture();
     } catch (cause) {
       options.guard(cause);
-      if (withheld && asEngineError(cause)?.code === 'OPERATION_TIMEOUT') {
-        throw new AgentError(
-          'POLICY_DENIED',
-          `${options.api} could not read the semantic tree, and its screenshot fallback is denied: ` +
-            'a secret was filled in this attempt, so no pixels leave the runner until it ends (PIXEL_TAINTED)',
-          { cause },
-        );
-      }
       // Structural, not instanceof: an engine a config file imported lives in
       // another module registry, and its retryable race would otherwise fail
       // the observation the moment a page navigates under it.

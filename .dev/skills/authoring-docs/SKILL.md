@@ -205,6 +205,10 @@ file must be a silhouette too:
 - **Weight**: the icon shows at 16 px. Hairline strokes look faint at that
   size. Thicken them until the mark is as heavy as the icons beside it.
 
+The one exception is our own mark, `icons/testerarmy.png`: the TesterArmy
+favicon in grey shades, since its dithered pixel art turns to mush as a
+silhouette. The docs site skips the silhouette filter for it.
+
 Card logos in `docs/images/integrations/` are a different set. They keep
 their brand colors, and some sit on a filled tile. Don't use one as a page
 icon. Make a silhouette copy in `docs/images/icons/`.
@@ -271,6 +275,11 @@ Rules:
   `ShowMore`.
 - Don't nest tabs in tabs. An `Accordion` inside a `Tab` is fine.
 - Give a `ShowMore` a unique `id`.
+- Indent a bullet list inside an indented component at least as far as
+  the component's tags, as the `<Tab>` blocks in `docs/mobile.mdx` do. A
+  closing tag indented as far as the text after a `- ` marker joins the
+  last list item, even across a blank line, so the component never closes
+  and the page doesn't compile as MDX. `pnpm docs:check` fails on it.
 - About one screen of visible content between two headings. If more,
   fold it, cut it, or split the section.
 
@@ -480,6 +489,9 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
 - [ ] No section shows much more than one screen without folding.
 - [ ] Every shell block that runs `npx` or `npm install`/`ci` is a
       `CodeGroup` of npm, pnpm, bun.
+- [ ] A bullet list inside an indented component is indented at least as
+      far as its tags ([Showing less at one time](#showing-less-at-one-time)),
+      and `pnpm docs:check` passes: it compiles every page as standard MDX.
 - [ ] Code blocks are real or clearly fragments. A full example lives in
       `docs/examples/`, has an entry in `EXAMPLES` in
       `scripts/check-docs-examples.ts`, and typechecks with
@@ -490,7 +502,7 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
       links to it ([Page icons](#page-icons)). A new integration or CI page
       has a card on its overview.
 - [ ] A page icon from a file is a black silhouette under
-      `docs/images/icons/` and matches its sidebar neighbors in light and
-      dark mode.
+      `docs/images/icons/` (except `testerarmy.png`, see "Page icons") and
+      matches its sidebar neighbors in light and dark mode.
 - [ ] Links and anchors resolve. Moved pages have redirects.
 - [ ] `pnpm docs:check` passes.

@@ -81,7 +81,7 @@ async function harness(options: {
     ...base.actions,
     tap: ok, doubleTap: ok, longPress: ok, secondaryTap: ok, hover: ok, type: ok, typeSecret: ok, press: ok, select: ok,
     check: ok, drag: ok, scrollTo: ok, scrollUntil: ok, upload: ok, scroll: ok, navigate: ok, back: ok, typeText: ok, pressKey: ok,
-    dismissKeyboard: ok,
+    dismissKeyboard: ok, resize: ok,
     ...options.actions,
   };
   const observe = async (asked: ExecutorObserveOptions = {}): Promise<ExecutorObservation> => ({
@@ -166,7 +166,7 @@ describe('SessionTestLines', () => {
     const tools = createGrammarTools(context);
     expect(new Set(Object.keys(tools))).toEqual(GRAMMAR_TOOL_NAMES);
     const wrapped = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).wrap(tools);
-    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
+    expect(Object.keys(tools).filter((name) => wrapped[name] === tools[name]).toSorted()).toEqual(['drag_at', 'hover_at', 'observe', 'press_at', 'screenshot', 'select_at', 'tap_at', 'type_at']);
   });
 
   const save: Fake = { id: 'n2', role: 'button', name: 'Save', y: 40 };
@@ -419,6 +419,12 @@ describe('SessionTestLines', () => {
     );
   });
 
+  it('prints no line for a resize, naming the size to set with the engine fixture', async () => {
+    const session = await harness({ screen: [save], matches: {} });
+    await session.run('resize_viewport', { width: 390, height: 844 });
+    expect(session.lines.draft()).toContain("// resize_viewport: no test line: set 390x844 with the engine fixture's viewport call");
+  });
+
   it('drafts the lines after a test the session ran as the ones that continue it', async () => {
     const session = await harness({ screen: [save], matches: { 'getByRole("button", name: "Save")': [save] }, testRan: 'tests/profile.e2e.ts:4' });
     await session.run('tap', { target: 'n2' });
@@ -451,18 +457,18 @@ describe('SessionTestLines', () => {
   });
 
   it('hands the caller the observation it asked for, tree or not, and keeps the context live', async () => {
-    let tainted = false;
+    let resolutions = 0;
     const base = fakeExecutorContext().context;
     const context = Object.defineProperty(
       { ...base, observe: async (asked?: ExecutorObserveOptions) => ({ revision: 'r', text: '', truncated: false, viewport: { width: 1, height: 1 }, ...(asked?.tree === true ? { tree: { id: 'root' } } : {}) }) },
-      'pixelsTainted',
-      { get: () => tainted },
+      'model',
+      { get: () => { resolutions += 1; return undefined; } },
     ) as StepExecutorContext;
     const watched = new SessionTestLines({ query: locateQuery, resolve: async () => [], read: async () => ({ ref: { id: 'x', revision: 'x' } }), redact: (text) => text }).watch(context);
     expect(await watched.observe()).not.toHaveProperty('tree');
     expect(await watched.observe({ tree: true })).toHaveProperty('tree', { id: 'root' });
-    expect(watched.pixelsTainted).toBe(false);
-    tainted = true;
-    expect(watched.pixelsTainted).toBe(true);
+    expect(resolutions).toBe(0);
+    void watched.model;
+    expect(resolutions).toBe(1);
   });
 });

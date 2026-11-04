@@ -51,13 +51,15 @@ export interface RunEventResult extends WireResultRecord {
  * `prepare` is one target's engine provisioning (a first-run browser
  * download); `service` and `app` are the processes the run owns, labelled the
  * way the runner names them (`service "postgres"`, `target "web" command`).
+ * An `app` step's `url` is the one its readiness probe polls, with a free
+ * port already assigned and without userinfo or query.
  */
 export type SetupStep =
   | { readonly kind: 'collect' }
   | { readonly kind: 'filter'; readonly name: string }
   | { readonly kind: 'prepare'; readonly target: string; readonly engine: string }
   | { readonly kind: 'service'; readonly label: string }
-  | { readonly kind: 'app'; readonly label: string };
+  | { readonly kind: 'app'; readonly label: string; readonly url?: string };
 
 /**
  * How a setup step ended other than plainly done: `reused` when a service

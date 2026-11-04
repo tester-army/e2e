@@ -1,5 +1,96 @@
 # e2e
 
+## 0.22.0
+
+### Minor Changes
+
+- [#1437](https://github.com/tester-army/e2e/pull/1437) [`94e6e76`](https://github.com/tester-army/e2e/commit/94e6e7654856b6e3946424534386cb6323a47eb6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Breaking:** a secret fill no longer turns off screenshots for the model. `agent.assert(..., { vision: 'only' })`, `vision: true`, the `screenshot` and point tools, `e2e mcp`, and `e2e explore` findings keep working after a sign-in, in serial groups, and in tests that restore a saved session. Screenshots still mask secure fields, and secret values are still redacted from all text. A generic secret filled into a plain input, or a value the app shows outside a secure field, such as behind a show-password toggle, is in the screenshot and reaches your model provider, so use test credentials. `StepExecutorContext.pixelsTainted` is removed, and a new step's `visionDegraded` is never `PIXEL_TAINTED`.
+
+### Patch Changes
+
+- [#1282](https://github.com/tester-army/e2e/pull/1282) [`7518ae5`](https://github.com/tester-army/e2e/commit/7518ae5b2d1879169185455777022e8ac28f77f8) Thanks [@MarcosCamara01](https://github.com/MarcosCamara01)! - Add `drag_at` to the agent's pixel tools, in `agent.act` and `e2e mcp`, and `dragAt(from, to)` to `ExecutorActions`: a drag from one screenshot point to another, for a shape on a canvas or a pin on a map. Like `tap_at`, the bare points go to the engine's `dragTo` pointer kind, where the model aimed; an engine without it drags by id when the points land on two different listed controls, like `drag`. The replay cache records both points and replays each the way it replays a `tap_at` point.
+
+- [#1447](https://github.com/tester-army/e2e/pull/1447) [`82d5095`](https://github.com/tester-army/e2e/commit/82d5095a1f29ee2660b41db5235703d81f329436) Thanks [@21prnv](https://github.com/21prnv)! - A replay no longer fails its end check on an alert that shows an ISO 8601 timestamp, such as `Saved at 2026-10-24T15:41:27.955Z`, when the time differs from the recording.
+
+- [#1381](https://github.com/tester-army/e2e/pull/1381) [`d2ffb31`](https://github.com/tester-army/e2e/commit/d2ffb319cfd81e267a5661c9d9229f874c38bb0d) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `app.startRecording()` and `app.stopRecording()` record one span of the screen, such as a single transition, on the web and on devices. `stopRecording` returns the videos: a file `path`, or a `url` when a hosted browser or device keeps the recording. A start fails while the test's `video` records, so set `{ video: 'off' }` on the test.
+  
+  ```ts
+  test('the dialog opens', { video: 'off' }, async ({ app, screen }) => {
+    await app.open();
+    await app.startRecording({ name: 'dialog' });
+    await screen.getByRole('button', 'Open').tap();
+    const [video] = await app.stopRecording();
+  });
+  ```
+  
+  An engine's `startVideo` and `stopVideo` may now be called more than once per attempt, never overlapping.
+
+- [#1387](https://github.com/tester-army/e2e/pull/1387) [`4461e9d`](https://github.com/tester-army/e2e/commit/4461e9d10458919205198c31307d9b06a59f1722) Thanks [@bheemreddy-samsara](https://github.com/bheemreddy-samsara)! - Add `onBeforeAction` to `agent.act`, a hook that runs before each action, so a test can capture the screen an action started on.
+
+- [#1379](https://github.com/tester-army/e2e/pull/1379) [`9e53c40`](https://github.com/tester-army/e2e/commit/9e53c40a94fed6585d4e57cf14b8e91c405cb5d8) Thanks [@okwasniewski](https://github.com/okwasniewski)! - A mobile target without `device` skips a booted simulator or emulator that another agent-device session holds, such as one another tool is driving, and drives the free ones. When every booted device is held, the run fails at `prepare` naming the holding sessions instead of failing on the first one.
+
+- [#1382](https://github.com/tester-army/e2e/pull/1382) [`3a8d6f1`](https://github.com/tester-army/e2e/commit/3a8d6f1b6cdaa4c7975c55bf25f67d2e76143b21) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.31, zod to 4.6.7, @modelcontextprotocol/server to 2.4.0, and oxc to 0.155.0.
+
+- [#1233](https://github.com/tester-army/e2e/pull/1233) [`34287cf`](https://github.com/tester-army/e2e/commit/34287cfe78224d1d6b7050ee218a25f9606e4236) Thanks [@Varshith-Kali](https://github.com/Varshith-Kali)! - A run now exits with the cleanup error's code, usually 3, when a test's cleanup failed. The list reporter shows the cleanup failure in the summary and under the test for passed and flaky tests, so a CI job that goes red names the cleanup failure instead of reporting a green summary.
+
+- [#1351](https://github.com/tester-army/e2e/pull/1351) [`bfae325`](https://github.com/tester-army/e2e/commit/bfae3257074b19a4deaa04b13c17a65d5cd95c5a) Thanks [@samanyudas](https://github.com/samanyudas)! - `e2e run` and `e2e explore` refuse an empty `--reporter` (`--reporter ''`, `--reporter ','`, or `--reporter "$REPORTERS"` with the variable unset) as a usage error, exit 2, instead of running with no reporters and printing nothing.
+
+- [#1287](https://github.com/tester-army/e2e/pull/1287) [`5aec484`](https://github.com/tester-army/e2e/commit/5aec48417e495c526ae5f81dde7caf452999ca6c) Thanks [@TheTuso](https://github.com/TheTuso)! - An `e2e` command whose config or test file leaves a timer or socket open exits two seconds after it finishes, instead of staying open.
+
+- [#1354](https://github.com/tester-army/e2e/pull/1354) [`6901a01`](https://github.com/tester-army/e2e/commit/6901a01e0e65c4d1d24e628dac9a837bce594607) Thanks [@samanyudas](https://github.com/samanyudas)! - `toHaveCount` and the list forms of `toHaveText` and `toContainText` read a locator under a missing frame as zero matches, so `toHaveCount(0)` passes after an iframe closes instead of failing with `LOCATOR_NOT_FOUND`.
+
+- [#1401](https://github.com/tester-army/e2e/pull/1401) [`ce249b6`](https://github.com/tester-army/e2e/commit/ce249b62b0d6a510a198506c2f093eeac2c439d0) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `e2e explore` in a project with no config runs the `e2e init` wizard first instead of failing with `CONFIG_NOT_FOUND`. The exploration starts right after when nothing is left to do by hand: dependencies installed, a model with its key set or its sign-in done, and a web target, whose URL init names. Otherwise init lists the steps left, ending with the `e2e explore` command as typed. Without a terminal, as in CI or under a coding agent, nothing changes: no files are written and the error stays.
+
+- [#1334](https://github.com/tester-army/e2e/pull/1334) [`6c8e71f`](https://github.com/tester-army/e2e/commit/6c8e71f1ddab036d5cd82ca671163de6e9e82ca0) Thanks [@21prnv](https://github.com/21prnv)! - `locator.filter()` takes `hasNot`, which drops matches whose subtree resolves a locator, as in Playwright. Third-party engines must handle the new `hasNot` field of a `filter` expression.
+
+- [#960](https://github.com/tester-army/e2e/pull/960) [`ffed34e`](https://github.com/tester-army/e2e/commit/ffed34e94b9b75867d4526f2b1b92e7a66764c3f) Thanks [@enekesabel](https://github.com/enekesabel)! - Export the built-in agent's action tools, verdict tool, and rules from `e2e/agent`: `createGrammarTools`, `createVerdictTool`, `BASE_RULES`, and `VERDICT_RULES`, plus `isRuntimeHardStop` and the `ScreenOutput` type, for a custom tool loop or executor that keeps the built-in actions and verdicts.
+
+- [#1389](https://github.com/tester-army/e2e/pull/1389) [`6b04d18`](https://github.com/tester-army/e2e/commit/6b04d18a6271ec37c77f99c93293ab8816c08f59) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `e2e init --example with-angular` starts a new project from the new Angular example: a standalone component greeting app with three locator tests and two agent tests, run against the Angular dev server.
+
+- [#1398](https://github.com/tester-army/e2e/pull/1398) [`e087ed2`](https://github.com/tester-army/e2e/commit/e087ed2c47f12e0994d279a2c84170cbdd86e250) Thanks [@samanyudas](https://github.com/samanyudas)! - `e2e init --help` no longer says it leaves existing files untouched. It says an existing config and test files stay as they are, while `package.json` and `.gitignore` get only what they are missing.
+
+- [#1338](https://github.com/tester-army/e2e/pull/1338) [`0d3e403`](https://github.com/tester-army/e2e/commit/0d3e403c2e7caccd6ae4ebb474025c1a227920fd) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `e2e init` lets you select both the web and mobile engines. The engine question is now a multiselect, and `--engine` takes a comma-separated list (`--engine web,mobile`). With both, the config gets a target for each, and the examples go in `tests/web.e2e.ts` and `tests/mobile.e2e.ts`, each test with `requires` so the other target skips it. Selecting no engine replaces the **None** option.
+
+- [#1463](https://github.com/tester-army/e2e/pull/1463) [`7372b0a`](https://github.com/tester-army/e2e/commit/7372b0a83987242eae08a02512d833d316f6362e) Thanks [@okwasniewski](https://github.com/okwasniewski)! - `agent.assert` and `agent.waitFor` take `params`, like `agent.act`. The judge reads `{name}` with its value, a `unique()` value included. A `Secret` reaches the judge by name only, so check a secret's value on screen with a locator assertion.
+  
+  ```ts
+  const name = unique(`acme-${Date.now()}`);
+  await agent.act('create a company named {name}', { params: { name } });
+  await agent.assert('the table shows company {name}', { params: { name } });
+  ```
+
+- [#1316](https://github.com/tester-army/e2e/pull/1316) [`6b41857`](https://github.com/tester-army/e2e/commit/6b418575302608f3adff4224de65b5adc580f8bd) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `e2e mcp` sessions have a `run_code` tool. Pass it test statements as a test body writes them, such as `await screen.getByLabel('Email').fill('ada@example.com')`, and the session runs them on its `screen` and `app` with a test's waits and matchers. It stops at the first failure and returns each statement's result, then what changed on screen. The statements that pass, except reads, join the `test_lines` draft. A project tool named `run_code` now fails the config load with `INVALID_CONFIG`. The bundled skill tells the coding agent to run the lines no action printed, such as assertions, with `run_code` before it writes them into the test.
+
+- [#1315](https://github.com/tester-army/e2e/pull/1315) [`3d2c362`](https://github.com/tester-army/e2e/commit/3d2c3627ecdcb21bc34c05ca03bc960d7aa3601e) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `e2e mcp`'s `open_session` takes a `test`, named like an `e2e run` positional (`tests/checkout.e2e.ts:12`), and runs that one test in the session before handing it over: its hooks, `test.extend` fixtures, and body, as `e2e run` runs them. The session then stays on the screen where the test passed or failed, and the opening text leads with the outcome: the error code and message, the failing line with the code around it, the URL, the nodes nearest a locator that matched nothing, and the steps that ran. `afterEach` hooks and fixture teardown run at `close_session`. The test's own steps print no test line; the session's lines start with the agent's first action, and `test_lines` returns them as the lines that continue the test. Agent steps replay and record in the replay cache as on a run's first attempt. A name that selects several tests fails with `TEST_AMBIGUOUS`, and a serial group member, a test that starts from a setup test's session, or a test that runs as several agents fails with `SESSION_TEST_UNSUPPORTED`. The bundled skill tells the coding agent to fix a failing test this way instead of clicking through the flow again.
+
+- [#1191](https://github.com/tester-army/e2e/pull/1191) [`9bc7c32`](https://github.com/tester-army/e2e/commit/9bc7c329ddba5d0e52fe1885caf5b401aaf4a598) Thanks [@TheTuso](https://github.com/TheTuso)! - Agent `navigate` to a full URL on the app now records it without the origin, so cached steps replay when the app runs on another port or host with the same `app.identity`. Re-record older entries to pick this up.
+
+- [#1037](https://github.com/tester-army/e2e/pull/1037) [`a481fd3`](https://github.com/tester-army/e2e/commit/a481fd39c69e3e0f88a94c1fe3f4acada164cbf6) Thanks [@rudycelekli](https://github.com/rudycelekli)! - `locator.filter()` takes `hasNotText`, which drops matches whose text contains a string or matches a RegExp, as in Playwright. Third-party engines must handle the new `hasNotText` field of a `filter` expression.
+
+- [#1215](https://github.com/tester-army/e2e/pull/1215) [`d8c597b`](https://github.com/tester-army/e2e/commit/d8c597b64e52387cf50db6f60c4d39607db17f17) Thanks [@Varshith-Kali](https://github.com/Varshith-Kali)! - A structured model call that returns no parseable output (for example an empty `length` finish) now fails as `MODEL_OUTPUT_INVALID` instead of `MODEL_PROVIDER_FAILED`.
+
+- [#1328](https://github.com/tester-army/e2e/pull/1328) [`1c4e906`](https://github.com/tester-army/e2e/commit/1c4e906766379ae8749c3b8ae7918c407e145c09) Thanks [@DeryFerd](https://github.com/DeryFerd)! - `e2e login` on Windows no longer opens the sign-in URL through a command interpreter. The URL comes from the provider's own response in the device flow, and `cmd /c start` read a `|`, `&`, or `^` in it as command syntax, so a URL that carried one ran a command of its own. The URL is now handed to the default handler for its scheme as a single argument, and only an `http:` or `https:` URL is opened; any other scheme is printed for you to open yourself.
+
+- [#1399](https://github.com/tester-army/e2e/pull/1399) [`92409e5`](https://github.com/tester-army/e2e/commit/92409e5b43a19b4f0d7d2c99a2da6a3a76c5c880) Thanks [@samanyudas](https://github.com/samanyudas)! - The built-in agent's instructions now say that `tap_at`, `hover_at`, and `drag_at` act on the bare points when the engine supports it, and fall back to the listed controls by id only when it does not. They previously said every point tool acts on a listed control by its id.
+
+- [#1357](https://github.com/tester-army/e2e/pull/1357) [`9837386`](https://github.com/tester-army/e2e/commit/9837386ebdf46bea3acda15ee2ff163ed1b695d3) Thanks [@amoscicki](https://github.com/amoscicki)! - A replayed step whose last action starts a navigation now waits up to 15 seconds for the recorded destination, instead of handing off to the agent after about 5 seconds.
+
+- [#1056](https://github.com/tester-army/e2e/pull/1056) [`dc8f56d`](https://github.com/tester-army/e2e/commit/dc8f56d20533638098045cbb94ca069ccfef64d3) Thanks [@rudycelekli](https://github.com/rudycelekli)! - Report a test's duration from the attempt that decided it when a retry is interrupted or cannot start.
+
+- [#1256](https://github.com/tester-army/e2e/pull/1256) [`2bc00e9`](https://github.com/tester-army/e2e/commit/2bc00e91cea64eb44bf4897f25e2495a5beb53b3) Thanks [@arun2728](https://github.com/arun2728)! - `e2e/runner` exports `explore()`, the counterpart of `e2e explore` that `run()` is to `e2e run`. It takes the project (`cwd`, and `config` as a file path or an `E2EConfig` value), the goal and its budgets (`goal`, `target`, `agent`, `session`, `maxSteps`, `timeoutMs`), `interruptSignal`, and `onEvent`, and resolves with the run's result plus the exploration record (`explore.ended`, `explore.steps`, `explore.findings`) without exiting the caller. Cancellation awaits teardown. The notices `e2e explore` prints before the run starts, such as the target it chose, arrive through `onEvent` as `run` notices. It shares `run()`'s reservation, so overlapping calls reject with `RUNNER_BUSY`, and each exploration that returns a report sends one `e2e_run_completed` event with `command: "runner.explore"`.
+
+- [#1312](https://github.com/tester-army/e2e/pull/1312) [`9d884f5`](https://github.com/tester-army/e2e/commit/9d884f5b981a8959a5e030897709cb5be2a6f4ac) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - The bundled agent skill now has the coding agent write a test while it walks the flow over `e2e mcp`, instead of exploring first and writing the test from memory. It creates the test file before it opens the session and adds each step as it takes it. A step is an `agent.act` goal, written in the words on screen before the agent walks its path, or, for an exact value, the `Test line:` the action printed. When the outcome shows, the agent locates it and adds the `expect`. The `e2e mcp` server's instructions, `e2e mcp --help`, and the MCP server and coding agents docs say the same.
+
+- [#1372](https://github.com/tester-army/e2e/pull/1372) [`0cc79f1`](https://github.com/tester-army/e2e/commit/0cc79f1a728a1698de1e4b9da76c8384513eb241) Thanks [@BiBoyang](https://github.com/BiBoyang)! - Report rejected recording writes as not-written.
+
+- [#1452](https://github.com/tester-army/e2e/pull/1452) [`5b6fd01`](https://github.com/tester-army/e2e/commit/5b6fd01042c96e5d79e662325cfaae2157d6eac9) Thanks [@samanyudas](https://github.com/samanyudas)! - A multi-line `unique()` value now replays from the cache. The screen shows it on one line, so the end check now looks for it on one line too. Before, the replay missed: `REPLAY_STALE (end-mismatch)` with `--strict-cache`, a hand-off to the agent without it. An older runner reads an entry recorded with this fix as `invalid-entry`.
+
+- [#1394](https://github.com/tester-army/e2e/pull/1394) [`e9e8c50`](https://github.com/tester-army/e2e/commit/e9e8c5005aaf94f22551f4cc7c5a85f6d4a6d17f) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `e2e upgrade` updates the project's copies of the agent skill in `.agents/skills/e2e` and `.claude/skills/e2e` to the newly installed version, instead of telling you to run `e2e init`. It also updates a stale copy when the packages are already up to date, and `--dry-run` names the copies it would update.
+
+- [#958](https://github.com/tester-army/e2e/pull/958) [`85e92f9`](https://github.com/tester-army/e2e/commit/85e92f91f1c5415850ca4456ee5f4e2a81a6b648) Thanks [@kuishou68](https://github.com/kuishou68)! - `upload` and `setInputFiles` accept a button that opens a file chooser, such as one over a hidden file input. The agent's `upload` tool says so, so the model can pick the button it sees.
+
+- [#1429](https://github.com/tester-army/e2e/pull/1429) [`3a841bb`](https://github.com/tester-army/e2e/commit/3a841bb99e5ecc050154c9e6d7f696a6226c3980) Thanks [@KrzysztofMoch](https://github.com/KrzysztofMoch)! - A `web()` target takes `app.permissions` with `'grant'` states, granted to every page of the attempt: `permissions: { 'clipboard-read': 'grant', 'clipboard-write': 'grant' }` lets the app use the clipboard in headless Chromium. Names are checked against the browser's at config load; `'deny'` and `'reset'` are refused on web.
+
 ## 0.21.3
 
 ### Patch Changes

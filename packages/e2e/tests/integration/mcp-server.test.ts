@@ -1,6 +1,6 @@
 /**
  * `e2e mcp` end to end: the built CLI serving a fixture project over stdio to
- * a real MCP client. The server's tool list is four tools; everything the
+ * a real MCP client. The server's tool list is five tools; everything the
  * session can do is a catalog behind `call`. Covers the catalog, a live
  * session driven through `call`, argument validation, the secret and pixel
  * invariants, a second session open beside the first, a second session after
@@ -10,6 +10,7 @@
  * corrupt the protocol.
  */
 
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/client';
@@ -174,9 +175,9 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     await app?.close();
   });
 
-  it('serves four fixed tools and the guide resources', async () => {
+  it('serves five fixed tools and the guide resources', async () => {
     const { tools } = await client.listTools();
-    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session']);
+    expect(tools.map((tool) => tool.name)).toEqual(['open_session', 'tools', 'call', 'close_session', 'run_tests']);
     const callTool = tools.find((tool) => tool.name === 'call')!;
     expect(callTool.description).toContain('call {tool: "tap", args: {target: "n42"}, session: "<id>"}');
     expect(callTool.inputSchema).toMatchObject({ type: 'object', required: ['tool'] });
@@ -220,10 +221,10 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(listed.text).toContain('NO_SESSION');
   });
 
-  it('opens a session with its catalog, then locates, acts, fills a secret, and withholds pixels afterwards', async () => {
+  it('opens a session with its catalog, then locates, acts, fills a secret, and keeps the screenshot afterwards', async () => {
     const opened = await invoke('open_session');
     expect(opened.isError, opened.text).toBe(false);
-    expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts\./);
+    expect(opened.text).toMatch(/^Session \S+ open on target "web" \(platform web, engine web [^)]+\), headless; config .*e2e\.config\.ts, read with the e2e mcp server's environment, not your shell's\./);
     expect(opened.text).toContain(`App: ${app.url}/`);
     expect(opened.text).toContain('Credentials: "admin" (username "admin", password secret "admin.password")');
     expect(opened.text).toContain('Tools (run one with call {tool, args}; tools {tool} shows a tool\'s arguments):');
@@ -244,9 +245,11 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
       'scroll',
       'navigate',
       'back',
+      'resize_viewport',
       'screenshot',
       'tap_at',
       'hover_at',
+      'drag_at',
       'type_at',
       'press_at',
       'select_at',
@@ -265,7 +268,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
 
     const listed = await invoke('tools');
     expect(listed.isError, listed.text).toBe(false);
-    expect(listed.text).toContain(`Session ${sessionId} on target "web": 28 tools.`);
+    expect(listed.text).toContain(`Session ${sessionId} on target "web": 30 tools.`);
     expect(catalogLines(listed.text)).toEqual(catalogLines(opened.text));
     const detail = await invoke('tools', { tool: 'type_secret' });
     expect(detail.text).toContain('"admin.password" (password)');
@@ -330,17 +333,27 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(filled.text).toContain('Filled secret "admin.password"');
     expect(filled.text).not.toContain('admin-pass');
 
-    const tainted = await call('screenshot');
-    expect(tainted.images).toBe(0);
-    expect(tainted.text).toContain('No screenshot: a secret was filled in this attempt');
-    expect(tainted.text).toContain('PIXEL_TAINTED');
+    const afterFill = await call('screenshot');
+    expect(afterFill.isError, afterFill.text).toBe(false);
+    expect(afterFill.images).toBe(1);
+    expect(afterFill.text).not.toContain('admin-pass');
 
-    // The point tools stay in the catalog but refuse too: the screenshot the
-    // model holds predates the fill and may no longer match the screen.
-    const pointed = await call('tap_at', { x: 10, y: 10 });
-    expect(pointed.isError, pointed.text).toBe(false);
-    expect(pointed.text).toContain('PIXEL_TAINTED');
-    expect(pointed.text).not.toContain('Tapped');
+    // With a path, the masked capture app.screenshot keeps is saved there, relative to the project root, beside the attached image.
+    const saved = await call('screenshot', { path: 'shots/after-fill.png' });
+    expect(saved.isError, saved.text).toBe(false);
+    expect(saved.images).toBe(1);
+    const file = /^Saved to (.+)$/m.exec(saved.text)?.[1];
+    expect(file).toMatch(/[\\/]shots[\\/]after-fill\.png$/);
+    expect(readFileSync(file!).subarray(1, 4).toString()).toBe('PNG');
+    const notPng = await call('screenshot', { path: 'shots/after-fill.jpg' });
+    expect(notPng.isError).toBe(true);
+    expect(notPng.text).toContain('a .png file');
+    for (const outside of ['../outside.png', '/tmp/outside.png', '.e2e/shot.png']) {
+      const refused = await call('screenshot', { path: outside });
+      expect(refused.isError, outside).toBe(true);
+      expect(refused.text, outside).toContain('POLICY_DENIED');
+    }
+    expect(existsSync(path.join(project.dir, '..', 'outside.png'))).toBe(false);
 
     for (const url of ['javascript:alert(1)', 'file:///etc/passwd', 'view-source:file:///etc/passwd', 'VIEW-SOURCE:http://example.test/', 'about:srcdoc']) {
       const denied = await call('navigate', { url });
@@ -389,6 +402,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     const absent = await invoke('open_session', { config: 'missing.config.ts' });
     expect(absent.isError).toBe(true);
     expect(absent.text).toContain('CONFIG_NOT_FOUND');
+    expect(absent.text).toContain(`missing.config.ts resolved against the working directory ${project.dir}`);
 
     const reopened = await invoke('open_session', { target: 'web', config: 'e2e.config.ts' });
     expect(reopened.isError, reopened.text).toBe(false);

@@ -284,6 +284,30 @@ describe('deltaMismatch', () => {
     expect(holds([{ role: 'alert', text: 'Session expires at 17:42' }], [node('x', { role: 'alert', text: 'Session expired' })])).toBe(false);
   });
 
+  it('reads an ISO 8601 instant in an alert as one placeholder, whatever precision or offset it has', () => {
+    const saved = (id: string, at: string) => node(id, { role: 'alert', text: `Saved at ${at}` });
+    const recorded = [{ role: 'alert', text: 'Saved at 2026-10-24T15:41:27.955Z' }];
+    expect(holds(recorded, [saved('a', '2026-10-24T15:45:03.120Z')])).toBe(true);
+    expect(holds(recorded, [saved('a', '2026-10-24T15:30:00Z')])).toBe(true);
+    expect(holds(recorded, [saved('a', '2026-10-24T15:30+02:00')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Saved at 2026-10-24T15:30:00Z' }], [saved('a', '2026-10-24T15:30:00.250Z')])).toBe(true);
+    expect(holds(recorded, [node('x', { role: 'alert', text: 'Save failed' })])).toBe(false);
+  });
+
+  it('reads a date with an ordinal suffix in an alert as a placeholder, in either order', () => {
+    const due = (id: string, text: string) => node(id, { role: 'alert', text });
+    expect(holds([{ role: 'alert', text: 'Due October 26th' }], [due('a', 'Due October 3rd')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Due October 3rd, 2026' }], [due('a', 'Due October 4th, 2027')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Due 3rd October' }], [due('a', 'Due 22nd October')])).toBe(true);
+    expect(holds([{ role: 'alert', text: 'Due October 26th' }], [due('a', 'Overdue')])).toBe(false);
+  });
+
+  it('skips a date with an ordinal suffix as volatile when the step has a stable result', () => {
+    const before = nodes([heading]);
+    const after = nodes([heading, node('s', { role: 'status', text: 'Task created' }), node('d', { text: 'Due October 26th' })]);
+    expect(describeDelta(before, after, false)).toEqual({ appeared: [{ role: 'status', text: 'Task created' }], gone: [] });
+  });
+
   it('forgives a churned test id when the other fields still identify the node', () => {
     const anchor = { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-1a2b' };
     const rerendered = node('r2', { role: 'link', name: 'PB-Twin-Alpha', testId: 'row-9f8e' });

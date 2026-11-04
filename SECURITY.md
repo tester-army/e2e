@@ -9,7 +9,7 @@ rule and limit, as the code enforces it, is in
 
 Report privately through
 [GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
-or by mail to security@tester.army. Do not open a public issue for anything
+or by mail to security@e2e.com. Do not open a public issue for anything
 that lets a page, a model, or a committed file act with more authority than
 this document grants it.
 
@@ -40,16 +40,20 @@ will not protect you from your own dependencies.
 Text, accessibility trees, and pixels from the app under test are quoted to
 the model as untrusted; the runner, not the model, decides what a tool call
 may do. Every model tool call is parsed into a closed schema and authorized
-right before dispatch. Unknown tools or fields, stale observation references,
-and denied destinations fail with `POLICY_DENIED`. Model text is never
+right before dispatch. Unknown tools or undeclared fields never run; the
+model reads the refusal as the call's result and can try again. A node id
+that cannot be resolved on the current screen fails with
+`LOCATOR_NOT_FOUND`. Policy refusals, such as a denied destination or a
+forbidden secret fill, fail with `POLICY_DENIED`. Model text is never
 evaluated as code, selectors, shell, or config.
 
-Secrets follow from that split. A `Secret` never reaches model input, digests,
-logs, reports, or artifacts. A secret fill is authorized by the runner from
+Secrets follow from that split. A `Secret` value never reaches model input,
+digests, logs, reports, or artifacts as text. A secret fill is authorized by the runner from
 its own observation (an unresolved handle, a secure sink, an editable node
 with a compatible purpose, no control transfer since); the
-model never sees or picks the value. Once a secret is filled, the viewport
-stays pixel-tainted for the rest of the attempt, and a text download (`.txt`,
+model never sees or picks the value. Screenshots mask secure fields only, so
+a value the app shows anywhere else, a secret filled into a plain input
+included, is in the pixels the model gets. A text download (`.txt`,
 `.csv`, `.json`, `.html`) is rewritten before it is registered or stored, every secret value becoming
 `<secret:name>`; any other download is kept as served and marked
 `incomplete`. Sessions are per-run, target-bound, encrypted

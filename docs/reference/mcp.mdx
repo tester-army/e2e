@@ -19,8 +19,9 @@ the agent, see the [MCP server guide](/mcp-server).
 }
 ```
 
-Four MCP tools manage the session and call its available app tools. The app
-tool catalog reloads from the config whenever a session opens.
+Four MCP tools manage the session and call its available app tools, and
+`run_tests` runs the suite as `e2e run` does. The app tool catalog reloads
+from the config whenever a session opens.
 
 ## Reference
 
@@ -50,7 +51,9 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 #### `--config`
 
 The config every session loads unless `open_session` names one. Each
-session loads it afresh ([Several sessions](#several-sessions)).
+session loads it afresh ([Several sessions](#several-sessions)) with the
+server's environment: `process.env` in the config reads the variables the
+MCP client started `e2e mcp` with, not the agent's shell.
 
 #### `--target`
 
@@ -83,6 +86,7 @@ e2e mcp --max-sessions 8 # default: 4
 | [`tools`](#tools-2) | Lists the catalog or one tool |
 | [`call`](#call) | Runs one catalog tool |
 | [`close_session`](#close_session) | Ends the session and its engine |
+| [`run_tests`](#run_tests) | Runs tests as `e2e run` does |
 
 `session` may be left out while exactly one session is open. See
 [Several sessions](#several-sessions).
@@ -95,6 +99,17 @@ device the [pinned app](/mobile#point-at-your-app), launched fresh. It installs
 no build, so a local device target needs `app.bundleId`. Returns the session
 id, the catalog, and the first observation.
 
+The summary names the app's URL, with the port a free-port `url` was
+assigned, and the app command: its executable, readiness URL, `env` and
+`inheritEnv` names, and log file. It prints no `args`, no `env` values, and
+no URL userinfo or query. e2e starts no other app process, so a database the
+app uses runs outside it.
+
+```text wrap
+App: http://127.0.0.1:57162/ (port 57162, assigned for the declared port 0).
+Process: app.command "node" (ready at http://127.0.0.1:57162/; env PORT, DATABASE_URL; log .e2e/app.log). e2e starts no other app process for this session; a database or other service the app uses runs outside e2e.
+```
+
 ```txt
 open_session {target: "web", headed: true}
 ```
@@ -102,7 +117,7 @@ open_session {target: "web", headed: true}
 | Input | Type | Required | Does |
 | --- | --- | --- | --- |
 | `target` | string | no | The target to open. Otherwise `--target`, else the only target. |
-| `config` | string (path) | no | The config for this session. Otherwise `--config`, else discovered like `e2e run`. |
+| `config` | string (path) | no | The config for this session, absolute or relative to the server's working directory (`cwd` in the client's MCP config). Otherwise `--config`, else discovered like `e2e run`. |
 | `headed` | boolean | no | `true` shows this session's browser or simulator, `false` hides it. Without it the session follows `--headed`. |
 | `test` | string | no | One test to run first, named like an `e2e run` positional. The session stops where the test stopped. See [Running a test](#running-a-test). |
 
@@ -158,6 +173,58 @@ close_session {session: "<id>"}
 | --- | --- | --- | --- |
 | `session` | string | while several are open | The session id. |
 
+#### `run_tests`
+
+Runs `e2e run` in its own process and returns the command, the exit code and
+its meaning, and what the run printed: with the default `list` reporter, each
+test, the failure blocks, and the summary. It needs no session and leaves open sessions alone. See
+[Run tests next to a session](/mcp-server#run-tests-next-to-a-session) for a
+run beside one.
+
+```txt
+run_tests {files: ["tests/checkout.e2e.ts:12"]}
+```
+
+```text wrap
+e2e run tests/checkout.e2e.ts:12
+exit 1: a test failed or timed out
+
+ RUN  e2e v0.22.0 /work/shop
+ ...
+```
+
+| Input | Type | Required | Does |
+| --- | --- | --- | --- |
+| `files` | string[] | no | `e2e run` positionals: files, directories, globs, or `file:line`. Without it, every test the config discovers. A file can't start with `-`. |
+| `config` | string (path) | no | `--config`. Otherwise the server's `--config`. |
+| `target` | string[] | no | `--target`, at least one. Otherwise the server's `--target`, else every target. |
+| `grep`, `grepInvert` | string | no | `--grep`, `--grep-invert`. |
+| `tag`, `excludeTag` | string[] | no | `--tag`, `--exclude-tag`. |
+| `lastFailed` | boolean | no | `--last-failed`. |
+| `changedSince` | string | no | `--changed-since`. |
+| `headed` | boolean | no | `--headed`. Otherwise the server's `--headed`. |
+| `workers`, `retries`, `repeatEach`, `maxFailures`, `actionTimeout` | integer | no | `--workers`, `--retries`, `--repeat-each`, `--max-failures`, `--action-timeout`. |
+| `noCache` | boolean | no | `--no-cache`. |
+| `updateSnapshots` | boolean | no | `--update-snapshots`. |
+
+- Exit 0 and 1 are results. Any other exit code is an error result
+  (`isError: true`).
+- Output past 60,000 characters keeps its end, where the failures and the
+  summary are. Every result is in `<output>/report.json` (default `.e2e`)
+  once the run reaches its tests; see [Output](/reference/cli#output).
+- With a progress token, each non-empty stdout line is a progress
+  notification, cut at 1,000 characters.
+- Cancelling the call interrupts the run as Ctrl-C would, pressed again every
+  15 seconds, and kills it 15 seconds after the third. The next `run_tests`
+  waits for it to exit.
+- When the server shuts down it refuses new runs and interrupts the one in
+  flight. A run whose server dies interrupts itself the same way.
+
+| Throws | When |
+| --- | --- |
+| `RUNNER_BUSY` | A run is already in progress. |
+| `CANCELLED` | The call was cancelled before the run started, or the server is shutting down. |
+
 ### The catalog
 
 What `call` can run depends on the session's target.
@@ -170,7 +237,7 @@ What `call` can run depends on the session's target.
 | [`locate`](#locate) | Tries a semantic locator |
 | [`run_code`](#run_code) | Runs test statements |
 | [`test_lines`](#test_lines) | Returns the session's test lines |
-| [`screenshot`](#screenshot) | Returns the masked viewport |
+| [`screenshot`](#screenshot) | Returns the masked viewport, optionally saved to a file |
 | [Point tools](#point-tools) | Act at a screenshot point |
 | [`start_recording`, `stop_recording`](#recording) | Records a video of the app |
 | [Project tools](#project-tools) | Your `defineTool` tools |
@@ -191,20 +258,23 @@ current path and revision. Takes no arguments.
 
 `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`,
 `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`,
-`back`, `type_secret`. Each returns the action's summary, the
-[test line](#test_lines) that repeats it, and what changed on screen.
+`back`, `resize_viewport`, `type_secret`. Each returns the action's summary, the
+[test line](#test_lines) that repeats it or why there is none, and what
+changed on screen.
 
 | Input | Does |
 | --- | --- |
 | A node id | From the newest observation. |
-| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, or secret name | What the verb needs. |
+| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, `width` and `height`, or secret name | What the verb needs. |
 | `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
 
 - A verb the engine does not declare is not in the catalog.
 - `upload` refuses a path outside the project, a hidden file, or a file
   under a hidden directory with `POLICY_DENIED`.
 - `type_secret` is listed when the config declares `credentials` or
-  `secrets` and the engine declares the `fill` action. The plaintext never reaches the agent.
+  `secrets` and the engine declares the `fill` action. The plaintext never
+  reaches the agent as text; see
+  [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
 
 #### `dismiss_keyboard`
 
@@ -262,8 +332,7 @@ call {tool: "run_code", args: {code: "await screen.getByLabel('Email').fill('ada
 - Reads and matchers see `<secret:name>` where a secret value is.
 - A secret `fill` passes the checks `type_secret` runs, on the field it lands
   on: a configured secret, an enabled editable field, and a password field
-  for a password. A filled secret withholds screenshots as `type_secret`
-  does.
+  for a password.
 
 The code is parsed, never run as JavaScript. The grammar takes:
 
@@ -329,32 +398,44 @@ Test line: await screen.getByRole("button", "Sign in").tap();
 | `navigate`, `back` | `app.open(url)`, with a URL on the app's origin as its path; `app.back()` |
 
 No line: `type` or `press` with no target, `press` with `times` over 1,
-`scroll`, `scroll_to` a text, `dismiss_keyboard`, and a `type` the node took
-through the keyboard. The [point tools](#point-tools) print nothing.
+`scroll`, `scroll_to` a text, `dismiss_keyboard`, `resize_viewport` (set the
+size with the engine fixture, `browser.setViewport` on web), and a `type` the
+node took through the keyboard. The [point tools](#point-tools) print nothing.
 
 #### `screenshot`
 
-The masked viewport as an image. Takes no arguments.
+The masked viewport as an image.
+
+| Argument | Type | Description |
+| --- | --- | --- |
+| `path` | `string` | Optional. Also saves the screenshot as a PNG file, resolved against the project root, and returns its absolute path. A path outside the project, a hidden file, or one under a hidden directory is `POLICY_DENIED`. |
+
+```json
+{ "tool": "screenshot", "args": { "path": "screenshots/checkout.png" } }
+```
 
 - From then on every action result carries a fresh screenshot.
-- After a secret fill it answers `PIXEL_TAINTED`. See [Sessions](#sessions).
+- It masks secure fields only, after a secret fill too.
+- The file is a second, full-resolution capture, masked as `app.screenshot`
+  masks it. The attached image may be scaled down.
 
 #### Point tools
 
-Each takes `x` and `y` in the latest screenshot's pixels.
+Each takes `x` and `y` in the latest screenshot's pixels. `drag_at` takes its
+drop point as `to_x` and `to_y`.
 
 | Tool | Inputs | Does | Listed when the engine declares |
 | --- | --- | --- | --- |
 | `tap_at` | `x`, `y` | Taps the bare point through the engine's `performAt`. Without `performAt` the point must land on a listed control, which is tapped by id. | `tap` or `performAt` |
 | `hover_at` | `x`, `y` | Hovers the same way: the bare point through `performAt`'s `hover` kind, otherwise a listed control under it by id. | the `hover` action or pointer kind |
+| `drag_at` | `x`, `y`, `to_x`, `to_y` | Drags from the first point to the second through `performAt`'s `dragTo` kind. Without that kind the points must land on two different listed controls, which are dragged by id, or the call fails with `UNSUPPORTED_CAPABILITY`. | the `dragTo` action or pointer kind |
 | `type_at` | `x`, `y`, `value`; `replace` on an engine with a keyboard | Fills a listed input under the point by id. With a keyboard, anything else is tapped to focus it and typed into, at the caret unless `replace` is set. Without one, a point on nothing listed fails. | `type` or a keyboard |
 | `press_at` | `x`, `y`, `key` | Sends the key to a listed control under the point by id. With a keyboard, anything else is tapped to focus it and the key goes through the keyboard. | `press` or a keyboard |
 | `select_at` | `x`, `y`, `value` (the option's visible label) | Picks the option in the listed select-like control under the point. Nothing listed there fails. | `select` |
 
 <Note>
 Before the session's first `screenshot`, each point tool answers with the
-line that says to take one, at no cost. Like `screenshot`, they answer
-`PIXEL_TAINTED` after a secret fill.
+line that says to take one, at no cost.
 </Note>
 
 #### Recording
@@ -389,10 +470,9 @@ call {tool: "stop_recording"}
   still running, and the close result lists its files.
 
 <Warning>
-Recordings are not masked and are not withheld after a secret was filled:
-they are files for a person to watch, and no tool returns their pixels. A
-secret typed into a plain input while recording is readable in the video,
-and a recording stopped after a secret was filled says so.
+Recordings are not masked: they are files for a person to watch, and no
+tool returns their pixels. A secret typed into a plain input while
+recording is readable in the video.
 </Warning>
 
 #### Project tools
@@ -485,16 +565,14 @@ A session closes:
 - on SIGINT or SIGTERM.
 
 The client disconnects when it closes the server's stdin or dies. Then every
-session closes, the app commands the sessions started stop, and the server
-exits.
+session closes, the app commands the sessions started stop, a `run_tests`
+run is interrupted, and the server exits.
 
 Sessions enforce what tests enforce:
 
 - Node ids are valid only against the newest observation.
 - A secret fills only through `type_secret` or a [`run_code`](#run_code)
-  `fill`, under the same checks. Once one has been filled,
-  [`screenshot`](#screenshot) and the [point tools](#point-tools) stay in the
-  catalog but answer `PIXEL_TAINTED` for the rest of the session.
+  `fill`, under the same checks.
 - Once the config has loaded, its secret values are redacted from every text
   a tool returns, a node `locate` found, an action's result, an
   `open_session` or `close_session` failure, a cleanup line, and the server's

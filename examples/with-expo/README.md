@@ -37,5 +37,5 @@ model calls. Results are in `.e2e/report.json`.
 See [e2e.config.ts](e2e.config.ts) and [tests/](tests/) for the setup.
 For your own app, follow the [Quickstart](https://e2e.tester.army/docs/quickstart).
 
-Last checked on 2026-10-19 with Expo SDK 57, e2e 0.21.2,
-@e2e-dev/web 0.15.2 and @e2e-dev/mobile 0.12.3.
+Last checked on 2026-10-29 with Expo SDK 57, e2e 0.21.3,
+@e2e-dev/web 0.15.3 and @e2e-dev/mobile 0.12.4.

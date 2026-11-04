@@ -11,6 +11,9 @@ the `e2e/engine` contract. Write one to test a desktop app, a TV, or another
 platform. `@e2e-dev/web` and `@e2e-dev/mobile` use the same public
 `defineEngine` API and are complete examples.
 
+This page builds one in TypeScript, served in the runner's process. To run
+one in another process or language, see [Engine servers](/engine-servers).
+
 Engines drive user interfaces only. For an inbox, a database, or a test API,
 write a fixture with [`test.extend`](/reference/test#your-own-fixtures).
 
@@ -113,7 +116,7 @@ a missing one fail with `UNSUPPORTED_CAPABILITY`. Start with these:
 | `perform(ref, action, context)` + `actions` | Node actions of the declared kinds, including viewport scrolling through `swipe` |
 | `locate(expression, context)` | `screen`, `Locator`, and `expect(locator)` |
 | `validateApp(app, info)` | A config-load check of the target's `app`. Throw `INVALID_CONFIG` naming `info.targetName` for a field the platform needs or can't drive. [Reference](/reference/engine#app) |
-| `session.{open?,back?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate` and `back` verbs |
+| `session.{open?,back?,resize?,restart?,reset?}` | `app.open()`, `app.back()`, `app.restart()`, `app.clearState()`, and the agent's `navigate`, `back`, and `resize_viewport` verbs |
 
 Pointer actions, the keyboard, saved state, artifacts, and contributed
 fixtures are optional capabilities too. `actions`, `location`, `pointer`,
@@ -206,8 +209,8 @@ A secret fill reaches the engine as a `fill` action with
 observation, and the field. A test's `fill(secret)` skips these
 [checks](/reference/security#secret-fills). Handle the fill
 securely, or throw
-`UNSUPPORTED_CAPABILITY`. After it, the runner sends the model
-[no more screenshots](/reference/security#screenshots-after-a-secret-fill).
+`UNSUPPORTED_CAPABILITY`. Screenshots after it still go to the model, with
+[secure fields masked](/reference/security#screenshots-after-a-secret-fill).
 
 An engine option can take a secret too, such as a password the engine sends
 to the app:
@@ -248,7 +251,9 @@ Throw `EngineError` with a code from the
 
 An engine can contribute fixtures such as `browser` or `device`. Wrap their
 methods with `context.fixture` to record each call as a `<fixture>.<method>`
-step, with its own artifacts and failures.
+step, with its own artifacts and failures. Fixtures run in the runner's
+process, beside the test. An engine server gets them from `connectEngine`; see
+[Keep host work on the client](/engine-servers#keep-host-work-on-the-client).
 
 ```ts
 fixtures: {
@@ -295,5 +300,8 @@ has examples of these checks.
   </Card>
   <Card title="Mobile engine reference" icon="mobile-screen" href="/reference/mobile">
     A complete device engine to read alongside.
+  </Card>
+  <Card title="Engine servers" icon="network-wired" href="/engine-servers">
+    Run the engine in another process, machine, or language.
   </Card>
 </CardGroup>

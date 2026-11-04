@@ -21,7 +21,8 @@ export default {
 
 The job needs `permissions: pull-requests: write` and the step that runs
 `e2e` needs `GITHUB_TOKEN: ${{ github.token }}` in its `env`. Matrix replicas
-of one job pass a `key` so their comments stay apart. When the reporter cannot
+of one job pass a `key` so their comments stay apart, and an `e2e explore` run
+keeps a comment of its own. When the reporter cannot
 post (another CI, a push, a fork's read-only token) it says why in one summary
 row and never changes the run's exit code.
 

@@ -18,10 +18,12 @@ import {
   createProject,
   resultByTitle,
   runExisting,
+  webTarget,
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
 import { readEntries } from '../helpers/trace-cache.ts';
+import { findNode } from '../helpers/executor-tree.ts';
 import type {
   ExecutorNode,
   PointTapResult,
@@ -976,5 +978,77 @@ describe('trace cache: a composed word that appears on screen is not a run-time 
     expect(records.at(-1)!.calls).toBe(0);
     const step = resultByTitle(second, 'fills both row fields').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
     expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 2, totalActions: 2 });
+  }, 240_000);
+});
+
+const ABOUT_SUITE = `import { test, expect } from 'e2e';
+
+test('opens the about page', async ({ app, agent, screen }) => {
+  await app.open();
+  await agent.act('open the About page');
+  await expect(screen.getByRole('heading', 'About')).toBeVisible();
+});
+`;
+
+/** Navigates to the About link's href from the node tree, an absolute URL on the app. */
+function aboutLinkExecutor(record: ExecutorRecord): StepExecutor {
+  return {
+    name: 'about-link-executor',
+    version: 'test',
+    async runStep(context: StepExecutorContext) {
+      record.calls += 1;
+      const { tree } = await context.observe({ tree: true });
+      const href = findNode(tree, (node) => node.role === 'link' && node.name === 'About')?.attributes?.['href'];
+      if (href === undefined) return { status: 'failed' as const, summary: 'no About link' };
+      await context.actions.navigate(href);
+      return { status: 'passed' as const, summary: `opened ${href}` };
+    },
+  };
+}
+
+describe('trace cache: a navigate on the app replays where the app runs now', () => {
+  let recordedOn: FixtureApp | undefined;
+  let replayedOn: FixtureApp;
+  let project: FixtureProject;
+
+  const options = (app: FixtureApp, record: ExecutorRecord, strictCache: boolean) => ({
+    config: {
+      tests: 'tests/**/*.e2e.ts',
+      targets: [{ ...webTarget('web', app.url), app: { url: app.url, identity: 'fixture-app' } }],
+      agents: { default: { executor: aboutLinkExecutor(record) } },
+      cache: 'read-write' as const,
+    },
+    runOptions: { strictCache },
+  });
+
+  beforeAll(async () => {
+    recordedOn = await startFixtureApp();
+    replayedOn = await startFixtureApp();
+    project = createProject({ 'tests/about.e2e.ts': ABOUT_SUITE });
+  }, 60_000);
+
+  afterAll(async () => {
+    project?.cleanup();
+    await recordedOn?.close();
+    await replayedOn?.close();
+  });
+
+  it('records an absolute URL on the app as its path and replays it on another origin of the app', async () => {
+    const recording: ExecutorRecord = { calls: 0, prefixes: [] };
+    const first = await runExisting(project, options(recordedOn!, recording, false));
+    expect(first.exitCode).toBe(0);
+    expect(recording.calls).toBe(1);
+    const { entry } = readOnlyEntry(project);
+    expect(entry.payload.actions).toEqual([{ name: 'navigate', summary: 'navigate to "/about"', url: '/about' }]);
+    expect(entry.payload).toMatchObject({ startPath: '/', endPath: '/about' });
+
+    await recordedOn!.close();
+    recordedOn = undefined;
+    const replay: ExecutorRecord = { calls: 0, prefixes: [] };
+    const second = await runExisting(project, options(replayedOn, replay, true));
+    expect(second.exitCode).toBe(0);
+    expect(replay.calls).toBe(0);
+    const step = resultByTitle(second, 'opens the about page').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
+    expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
   }, 240_000);
 });

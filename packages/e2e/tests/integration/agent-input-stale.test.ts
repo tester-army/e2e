@@ -26,7 +26,6 @@ describe('secret fill stale retry', () => {
       let stale = false;
       let dispatched = 0;
       const origins: string[] = [];
-      const pixels: boolean[] = [];
       const fake = createFakeEngine({
         tree,
         onStartAttempt: () => { tree.children = [field]; },
@@ -42,20 +41,12 @@ describe('secret fill stale retry', () => {
           dispatched += 1;
           tree.children.push({ ref: { id: 'saved', revision: '' }, role: 'status', name: 'Saved' });
         },
-        // No pixel payload is needed: this records any request after authorization.
-        pixels: () => { pixels.push(true); return undefined; },
       });
-      const taint: boolean[] = [];
       const executor: StepExecutor = {
         name: 'stale-secret',
         async runStep(context) {
           const observation = await context.observe();
-          try {
-            await context.actions.typeSecret({ id: nodeIdFor(observation.text, /textbox "Password"/) }, 'member.password');
-          } finally {
-            taint.push(context.pixelsTainted);
-            expect((await context.observe({ pixels: true })).pixels).toBeUndefined();
-          }
+          await context.actions.typeSecret({ id: nodeIdFor(observation.text, /textbox "Password"/) }, 'member.password');
           return { status: 'passed', summary: 'filled' };
         },
       };
@@ -76,8 +67,6 @@ describe('secret fill stale retry', () => {
           expect(recording.attempts[0]?.steps.find((entry) => entry.api === 'agent.act')?.cache).toMatchObject({ write: 'saved' });
           dispatched = 0;
           origins.length = 0;
-          pixels.length = 0;
-          taint.length = 0;
         }
         stale = true;
         const outcome = await runExisting(project, options);
@@ -91,9 +80,7 @@ describe('secret fill stale retry', () => {
         expect(step.events.filter((event) => event.kind === 'observation' && event.name === 'relocate')).toHaveLength(1);
         expect(step.events.filter((event) => event.kind === 'policy' && event.name === 'secret.fill' && event.status === 'passed')).toHaveLength(disabled ? 1 : 2);
         if (disabled) expect(JSON.stringify(step)).toContain('POLICY_DENIED');
-        if (!replay || disabled) expect(taint).toEqual([true]);
-        else expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1 });
-        expect(pixels).toEqual([]);
+        if (replay && !disabled) expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1 });
         expect(JSON.stringify(outcome)).not.toContain('private-fixture-value');
       } finally {
         project.cleanup();

@@ -1,5 +1,13 @@
 # @e2e-dev/decision
 
+## 0.3.1
+
+### Patch Changes
+
+- [#1382](https://github.com/tester-army/e2e/pull/1382) [`3a8d6f1`](https://github.com/tester-army/e2e/commit/3a8d6f1b6cdaa4c7975c55bf25f67d2e76143b21) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.31, zod to 4.6.7, @modelcontextprotocol/server to 2.4.0, and oxc to 0.155.0.
+
+- [#1437](https://github.com/tester-army/e2e/pull/1437) [`94e6e76`](https://github.com/tester-army/e2e/commit/94e6e7654856b6e3946424534386cb6323a47eb6) Thanks [@okwasniewski](https://github.com/okwasniewski)! - **Breaking:** a secret fill no longer turns off screenshots for the model. `agent.assert(..., { vision: 'only' })`, `vision: true`, the `screenshot` and point tools, `e2e mcp`, and `e2e explore` findings keep working after a sign-in, in serial groups, and in tests that restore a saved session. Screenshots still mask secure fields, and secret values are still redacted from all text. A generic secret filled into a plain input, or a value the app shows outside a secure field, such as behind a show-password toggle, is in the screenshot and reaches your model provider, so use test credentials. `StepExecutorContext.pixelsTainted` is removed, and a new step's `visionDegraded` is never `PIXEL_TAINTED`.
+
 ## 0.3.0
 
 ### Minor Changes

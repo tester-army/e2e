@@ -53,11 +53,31 @@ function foldGroup(current: ReportSerialGroup, before: ReportSerialGroup | undef
   return { ...current, attempts };
 }
 
-/** The counts the way the runner tallies them, over the folded results: the status counts are over the selected ones. */
-function summarize(results: readonly ReportResult[], base: ReportSummary): ReportSummary {
+/**
+ * Whether a serial member's record is a run of its body, a body that skipped
+ * itself included. Mirrors `memberRan` in e2e's `run/records.ts`, which the
+ * peer range keeps this package from importing.
+ */
+function memberRan(member: ReportSerialGroup['attempts'][number]['members'][number]): boolean {
+  return member.status !== 'skipped' || member.skip?.cause === 'explicit';
+}
+
+/**
+ * The counts the way the runner tallies them, over the folded results: the
+ * status counts are over the selected ones, and a serial member executed when
+ * one of its group's attempts ran its body, a body that skipped itself included.
+ */
+function summarize(results: readonly ReportResult[], serialGroups: readonly ReportSerialGroup[], base: ReportSummary): ReportSummary {
   const summary: ReportSummary = { ...base, discovered: results.length, selected: 0, executed: 0, passed: 0, failed: 0, interrupted: 0, flaky: 0, skipped: 0 };
+  const ranMembers = new Set(
+    serialGroups.flatMap((group) =>
+      group.attempts.flatMap((attempt) =>
+        attempt.members.filter(memberRan).map((member) => `${group.id}\u0000${member.testId}`),
+      ),
+    ),
+  );
   for (const result of results) {
-    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && result.status !== 'skipped')) summary.executed += 1;
+    if (result.attempts.length > 0 || (result.serialGroupId !== undefined && ranMembers.has(`${result.serialGroupId}\u0000${result.testId}`))) summary.executed += 1;
     if (!result.selected) continue;
     summary.selected += 1;
     if (result.status === 'passed') summary.passed += 1;
@@ -87,10 +107,12 @@ function summarize(results: readonly ReportResult[], base: ReportSummary): Repor
  * the page reads interrupted, not green. The start is the run before's, so
  * the footer's duration spans both. The rerun takes the run before's filter
  * records and the change they judged, since the rows those filters left out
- * are the run before's too.
+ * are the run before's too. An `e2e explore` run before leaves the rerun as
+ * it is.
  */
 export function foldLastRun(current: Report, lastRun: Report): Report {
-  if (lastRun.run.project.id !== current.run.project.id) return current;
+  // An exploration that wrote to the same output is not a pass of the suite.
+  if (lastRun.run.project.id !== current.run.project.id || lastRun.run.explore !== undefined) return current;
   const carried = current.run.carried;
   const carriedById = new Map((carried?.results ?? []).map((result) => [result.id, result]));
   const currentIds = new Set(current.run.results.map((result) => result.id));
@@ -146,7 +168,7 @@ export function foldLastRun(current: Report, lastRun: Report): Report {
       serialGroups,
       results,
       errors: [...current.run.errors, ...carriedErrors],
-      summary: summarize(results, current.run.summary),
+      summary: summarize(results, serialGroups, current.run.summary),
       filters: lastRun.run.filters,
       changes: lastRun.run.changes,
     },

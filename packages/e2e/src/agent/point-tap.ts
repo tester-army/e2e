@@ -144,6 +144,36 @@ export function describePointAction(
   return `${did} the point ${at}; no listed control is there${under}.`;
 }
 
+/**
+ * What one point drag did, for the model that named the points: the two
+ * controls it joined by id, or the bare points with what each sits on.
+ */
+export function describePointDrag(
+  input: PointProse & {
+    readonly from: ViewportPoint;
+    readonly to: ViewportPoint;
+    /** The listed control holding the start, if any. */
+    readonly source: RedactedNode | undefined;
+    /** The listed control holding the end, if any. */
+    readonly destination: RedactedNode | undefined;
+    readonly fromUnder: RedactedNode | undefined;
+    readonly toUnder: RedactedNode | undefined;
+    /** Whether the two controls were joined by id rather than dragged between the bare points. */
+    readonly byId: boolean;
+  },
+): string {
+  const at = (point: ViewportPoint) => `(${String(point.x)}, ${String(point.y)})`;
+  if (input.byId && input.source !== undefined && input.destination !== undefined) {
+    return `Dragged ${describeNode(input, input.source)}, the control at ${at(input.from)}, onto ${describeNode(input, input.destination)}, the control at ${at(input.to)}.`;
+  }
+  const end = (point: ViewportPoint, control: RedactedNode | undefined, under: RedactedNode | undefined) => {
+    if (control !== undefined) return `the point ${at(point)} inside ${describeNode(input, control)}`;
+    return `the point ${at(point)}${under === undefined ? '' : ` (under it: ${describeNode(input, under)})`}`;
+  };
+  const neither = input.source === undefined && input.destination === undefined ? '; no listed control is at either end' : '';
+  return `Dragged from ${end(input.from, input.source, input.fromUnder)} to ${end(input.to, input.destination, input.toUnder)}${neither}.`;
+}
+
 /** What one hit test found, for the model that named the point. */
 export function describePointHit(
   input: PointProse & {

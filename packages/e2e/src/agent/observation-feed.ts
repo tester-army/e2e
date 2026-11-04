@@ -3,8 +3,8 @@
  *
  * The feed owns every capture of a step: the settle that reads an action's
  * result after its effect, the ring of recent observations an id is resolved
- * against, the pixel decision (masking proven, viewport untainted), and the
- * executor's redacted view of a capture. Nothing else in the step observes
+ * against, the pixel decision (masking proven), and the executor's redacted
+ * view of a capture. Nothing else in the step observes
  * the engine; the dispatcher and the pixel tier ask the feed.
  */
 
@@ -308,13 +308,10 @@ export class ObservationFeed {
   private async observeNow(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     this.accounting.checkpoint();
-    // A tainted viewport never captures pixels: the engine would mask what it
-    // knows about, and the secret may be anywhere on screen by now.
-    const capturePixels = pixels && !this.runtime.exposure.withholdsModelPixels;
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe' },
-      () => this.captureSettled(mode, capturePixels),
+      () => this.captureSettled(mode, pixels),
       observationDetail,
     );
     this.publish(observation);
@@ -389,13 +386,9 @@ export class ObservationFeed {
   private async capture(pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     const raw = await retryingObserve({
-      observe: (operation, pixelFallback) => this.runtime.engine.session.observe(operation, { pixels, pixelFallback }),
-      operation: () => this.accounting.operation(),
+      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: true }),
       guard: (cause) => this.accounting.checkpoint(cause),
       signal: this.runtime.engine.signal,
-      api: this.accounting.api,
-      fallback: true,
-      tainted: () => this.runtime.exposure.withholdsModelPixels,
     });
     if (raw.kind === 'pixels') {
       this.semanticHistory = false;
@@ -406,7 +399,7 @@ export class ObservationFeed {
       redact: this.runtime.redact,
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
-      pixelsAllowed: !this.runtime.exposure.withholdsModelPixels,
+      pixelsAllowed: true,
       appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;
@@ -435,13 +428,10 @@ export class ObservationFeed {
    * whenever it changes within the step.
    */
   private pixelsFor(observation: AgentObservation): Pick<ExecutorObservation, 'pixels' | 'pixelsWithheld'> {
-    const outcome = pixelsForModel(observation, this.runtime.exposure.withholdsModelPixels);
+    const outcome = pixelsForModel(observation);
     if ('withheld' in outcome) {
       this.recordPixelDecision('denied', outcome.withheld);
       this.visionDegraded = outcome.withheld;
-      if (observation.kind === 'pixels') {
-        throw new TestError('UNSUPPORTED_CAPABILITY', 'semantic capture is unavailable and its screenshot is no longer permitted');
-      }
       return { pixelsWithheld: outcome.withheld };
     }
     this.recordPixelDecision('allowed');

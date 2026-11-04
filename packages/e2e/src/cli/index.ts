@@ -14,7 +14,7 @@ import { claimRunnerOutput } from './run-output.ts';
 import { writeTerminal } from '../run/process-output.ts';
 import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
-import { bounded } from '../report/format.ts';
+import { bounded, failureLine } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
 import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../internal/recording-modes.ts';
 import { discoverConfig } from '../config/load.ts';
@@ -24,6 +24,8 @@ import { initCompletedEvent, runCompletedEvent, upgradeCompletedEvent, USAGE_ERR
 import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
+import { EXIT_CODES } from './exit-codes.ts';
+import { doctor, formatDoctorReport, type DoctorReport } from './doctor.ts';
 import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
 import { init } from './init.ts';
@@ -258,16 +260,6 @@ function formatListedPair(pair: ListedPair): string {
   return pair.disposition === 'skip' ? `${line} (skipped: ${pair.reason ?? 'skipped'})` : line;
 }
 
-/** The exit-code table of the CLI reference; the runner decides which one applies. */
-const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] = [
-  ['0', 'every selected test passed, was flaky, or was skipped'],
-  ['1', 'a test failed or timed out'],
-  ['2', 'CLI, config, or agent policy error'],
-  ['3', 'engine, app process, model provider, or artifact failure'],
-  ['4', 'internal runner error'],
-  ['130', 'interrupted by Ctrl-C or a CI signal'],
-];
-
 /** `explore` exits as `run` does; only what a pass and a failure mean differs. */
 const EXPLORE_EXIT_MEANINGS: Readonly<Record<string, string>> = {
   '0': 'the exploration ran and reported no issue (warnings do not count)',
@@ -381,7 +373,7 @@ function recordOutcome(telemetry: Telemetry, command: Command, outcome: RunOutco
 /** Prints a failure that stopped a command before it could run, sets the exit code, and names it in the session. */
 function reportFailure(telemetry: Telemetry, cause: unknown): void {
   const error = classifyError(cause);
-  process.stderr.write(`${error.code}: ${error.message}\n`);
+  process.stderr.write(failureLine(error));
   process.exitCode = exitCodeForCategory(error.category);
   telemetry.failSession(error.code);
 }
@@ -455,6 +447,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e run --tag smoke --reporter list,junit',
           "e2e explore 'Explore checkout like a first-time buyer and find bugs'",
           'e2e list --tag smoke',
+          'e2e doctor',
           'e2e cache ls',
           'e2e guide',
           'e2e upgrade',
@@ -486,7 +479,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .command('init')
     .summary('scaffold an ESM package, e2e.config.ts, an example test, .gitignore entries, and the agent skill')
     .description(
-      'Scaffold a project without touching existing files: an ESM package.json, e2e.config.ts, an example test per engine, .gitignore entries, and the e2e skill for coding agents. Prompts for the engines, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills linked to it.',
+      'Scaffold a project: an ESM package.json, e2e.config.ts, an example test per engine, .gitignore entries, and the e2e skill for coding agents. An existing config and test files stay as they are; an existing package.json gets only the missing dependencies and scripts, and .gitignore only the missing entries. Prompts for the engines, for AI support, and for the skill directories, then offers to install the dependencies; --yes takes the defaults, with the skill in .agents/skills and .claude/skills linked to it.',
     )
     .argument('[directory]', 'project directory, created when missing (default: the current directory)')
     .option('-y, --yes', 'skip the prompts; each answer not given as a flag takes its default: web, vercel, every skill and MCP location, no installation');
@@ -931,6 +924,51 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         process.exitCode = 0;
       },
     );
+
+  program
+    .command('doctor')
+    .summary('check that e2e run can start here, without starting anything')
+    .description(
+      'Check the runtime, load and resolve the config, ask each target\'s engine what it needs on this machine, and name the model each agent resolved to. Starts no app and no worker, only the server of an engine that runs in its own process, and calls no model unless --check-model is given. Ctrl-C stops the checks and reports what ran. A model on an e2e login passes when the login is stored; any other model reads its own credential, which doctor reports as unknown. Exits 0 when no check failed, 2 otherwise, and 130 when interrupted.',
+    )
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
+    .option('--target <ids>', 'target names, comma-separated or repeated (default: all targets)', parseNames('target'))
+    .option('--headed', 'check for what a headed run needs, when the engine tells the two apart')
+    .option('--check-model', "call each agent's model once to prove it answers; costs one small request per model")
+    .option('--json', 'print the doctor-1 report as JSON instead of one line per check')
+    .addHelpText(
+      'after',
+      ['', examples(['e2e doctor', 'e2e doctor --json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
+    )
+    .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; json?: boolean }) => {
+      const output = claimRunnerOutput();
+      if (options.json === true) output.keepStdoutForReport();
+      // Ctrl-C stops the checks, which then report: an engine server is
+      // shut down before the process exits instead of left running.
+      const signals = new SignalLadder();
+      const disarm = signals.arm();
+      let report: DoctorReport;
+      try {
+        report = await doctor({
+          version,
+          cwd: process.cwd(),
+          env: process.env,
+          config: options.config,
+          targets: options.target,
+          headed: options.headed === true,
+          checkModel: options.checkModel === true,
+          signal: signals.interruptSignal,
+          output,
+          notice: (targetName, line) => process.stderr.write(`${bounded(`[${targetName}] ${line}`)}\n`),
+        });
+      } finally {
+        disarm();
+      }
+      output.end();
+      if (options.json === true) writeTerminal('stdout', `${JSON.stringify(report, null, 2)}\n`);
+      else process.stdout.write(formatDoctorReport(report));
+      process.exitCode = signals.interruptSignal.aborted ? 130 : report.ok ? 0 : 2;
+    });
 
   registerCacheCommand(program);
 

@@ -114,6 +114,11 @@ export interface SerialMemberRecord {
 
 export interface SerialAttemptRecord {
   id: string;
+  /**
+   * The retry was interrupted, or it never reached its members, so this
+   * attempt's member records are not the verdict.
+   */
+  cutRetry: boolean;
   index: number;
   status: 'passed' | 'failed' | 'timed-out' | 'interrupted';
   startedAt: string;
@@ -162,6 +167,15 @@ export type FailedStatus = Exclude<AttemptStatus, 'passed' | 'skipped'>;
  */
 export function isFailedStatus(status: AttemptStatus | ResultStatus): status is FailedStatus {
   return status !== 'passed' && status !== 'skipped' && status !== 'flaky';
+}
+
+/**
+ * Whether a serial member's record is a run of its body: every record but a
+ * skip the runner wrote for a member it never started. A member that skipped
+ * itself started its body.
+ */
+export function memberRan(member: { readonly status: string; readonly skip?: { readonly cause: string } | undefined }): boolean {
+  return member.status !== 'skipped' || member.skip?.cause === 'explicit';
 }
 
 /** Whether an attempt keeps its trace, by the rule its video follows too (`keeps`). */

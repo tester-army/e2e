@@ -407,6 +407,14 @@ describe('disambiguating attributes', () => {
     expect(hrefs).toEqual([`https://app.test${path}`, `https://app.test${long.slice(0, 256)}…`]);
   });
 
+  it('keeps an app link whose path opens with a doubled slash whole, so the model never reads it as another host', () => {
+    const href = 'https://app.test//settings';
+    const tree = node('n1', { role: 'link', name: 'Settings', attributes: { href } });
+    const text = prepareObservation(observation(tree), { redact: NO_REDACT, redactCut: NO_REDACT, maxBytes: 4_096, appOrigin: 'https://app.test' }).text;
+    expect(text).toBe(`#n1 link "Settings" href="${href}"`);
+    expect(projectTree(redactNode(tree, { redact: NO_REDACT, redactCut: NO_REDACT }), 'https://app.test').attributes).toEqual({ href });
+  });
+
   it('redacts a secret in a link target before cutting it, so no part of it survives the cut', () => {
     const ledger = new SecretLedger([['token', 'tok-0123456789']]);
     const path = `/${'p'.repeat(250)}/tok-0123456789`;

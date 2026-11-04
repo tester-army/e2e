@@ -1,12 +1,12 @@
 /**
  * The catalog of a live session: every tool `call` can run, as AI SDK tools.
  * `observe` shows the whole screen, the grammar is what the target's engine
- * honors, `screenshot` and the point tools (`tap_at`, `hover_at`, `type_at`,
- * `press_at`, `select_at`) among it, answering `PIXEL_TAINTED` once a secret
- * has been filled, `locate` tries a semantic locator the way a test would,
- * `run_code` runs whole test statements on the session's fixtures,
- * `test_lines` returns the test line every action printed (`test-lines.ts`)
- * and the statements `run_code` passed,
+ * honors, `screenshot` (which also saves a file when given a path) and the
+ * point tools (`tap_at`, `hover_at`, `drag_at`, `type_at`, `press_at`,
+ * `select_at`) among it, `locate` tries a semantic
+ * locator the way a test would, `run_code` runs whole test statements on
+ * the session's fixtures, `test_lines` returns the test line every action
+ * printed (`test-lines.ts`) and the statements `run_code` passed,
  * `start_recording` and `stop_recording` follow when the engine records video,
  * and the project's own tools come last. The config load refuses a project
  * tool named like a built-in; should one reach here anyway, the built-in
@@ -14,16 +14,19 @@
  * the testing agent's toolset applies.
  */
 
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
+import path from 'node:path';
 import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { projectTools } from '../agent/default-agent.ts';
 import type { ExecutorNode, StepExecutorContext } from '../agent/executor.ts';
 import { projectTree, redactNode, type NodeRedaction } from '../agent/observation.ts';
 import { GRAMMAR_TOOL_NAMES } from '../agent/action-names.ts';
-import { createGrammarTools } from '../agent/primitives.ts';
+import { grammarTools } from '../agent/primitives.ts';
 import type { ScreenPresenter } from '../agent/screen-update.ts';
 import type { LocatorExpression, SemanticNode, TargetSession } from '../engine/surface.ts';
 import { ConfigurationError } from '../internal/errors.ts';
+import { relativeToProjectRoot } from '../internal/paths.ts';
 import { describeExpression, roleQuery, testIdQuery, textQuery } from '../locator/expression.ts';
 import type { LocatorEngine } from '../locator/engine.ts';
 import type { AgentTool, Role } from '../types.ts';
@@ -60,6 +63,10 @@ export interface CatalogOptions {
   readonly tools: Readonly<Record<string, AgentTool>>;
   /** The attempt's secret ledger: what `locate` shows of a node passes through it, as `observe` does. */
   readonly redaction: NodeRedaction;
+  /** Where a relative `screenshot` path resolves. */
+  readonly projectRoot: string;
+  /** The attempt's artifact directory, where the engine writes a screenshot before `screenshot` copies it out. */
+  readonly attemptDir: string;
   /** The session's recorder, when the engine records video. */
   readonly recorder: SessionRecorder | undefined;
   /** The target's app URL, which a navigation's test line is made relative to. */
@@ -90,7 +97,11 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
   const context = lines.watch(options.context);
   // The grammar's own observe reports a diff for the model loop; the
   // session's shows the whole screen, so it replaces the grammar's.
-  const { observe: _diffObserve, ...verbs } = createGrammarTools(context, { screen, onActionFailed: options.onActionFailed });
+  const { observe: _diffObserve, ...verbs } = grammarTools(context, {
+    screen,
+    onActionFailed: options.onActionFailed,
+    saveScreenshot: (file) => saveScreenshot(options, file),
+  });
   const recording = options.recorder === undefined ? {} : recordingTools(options.recorder);
   const builtIn: ToolSet = {
     observe: fullObserveTool(context, screen),
@@ -112,6 +123,26 @@ export function createSessionCatalog(options: CatalogOptions): SessionCatalog {
     if (defined[name]?.annotations.mutates === false) readOnly.add(name);
   }
   return { tools: { ...builtIn, ...project }, readOnly, project: new Set(Object.keys(project)), context, lines };
+}
+
+/**
+ * Saves the engine's masked screenshot, the one `app.screenshot` keeps, to
+ * `file` resolved against the project root, and returns the absolute path.
+ * As with `upload`, a path outside the project or under a hidden directory
+ * is refused.
+ */
+async function saveScreenshot(options: CatalogOptions, file: string): Promise<string> {
+  const destination = path.resolve(options.projectRoot, file);
+  const relative = relativeToProjectRoot(options.projectRoot, destination);
+  if (relative === undefined) throw new ConfigurationError('POLICY_DENIED', `${JSON.stringify(file)} is outside the project root; screenshots are saved inside the project`);
+  if (relative.split(path.sep).some((segment) => segment.startsWith('.'))) {
+    throw new ConfigurationError('POLICY_DENIED', `${JSON.stringify(file)} is a hidden file or sits under a hidden directory; screenshots are never saved there`);
+  }
+  const source = path.join(options.attemptDir, await options.session.artifacts.screenshot(path.basename(destination, path.extname(destination)), options.locator.operation()));
+  mkdirSync(path.dirname(destination), { recursive: true });
+  copyFileSync(source, destination);
+  rmSync(source, { force: true });
+  return destination;
 }
 
 /**

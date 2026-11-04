@@ -1,0 +1,143 @@
+---
+title: Self-healing tests
+description: How a replayed agent step recovers when the UI changed, and how the recording repairs itself.
+icon: "bandage"
+---
+
+A self-healing test keeps passing when the UI changes under a recorded
+`agent.act()` step. The runner replays the recording until it no longer
+matches the screen. Then it hands the rest of the step to the agent, which
+finishes the goal from the current screen. In `read-write` mode, the same
+run can save the new flow once a later check passes.
+
+The run summary counts each step that healed this way as `handed off`:
+
+```text
+        Cache  4 replayed · 1 handed off · 1 missed
+```
+
+## What happens when the UI changes
+
+Take a step recorded with two actions, and a button that was renamed
+since:
+
+```ts title="tests/checkout.e2e.ts"
+import { expect, test } from 'e2e';
+
+test('applies a discount code', async ({ app, agent, screen }) => {
+  await app.open('/checkout');
+  await agent.act('apply the discount code SUMMER');
+  await expect(screen.getByRole('status')).toHaveText('10% off');
+});
+```
+
+1. Replay types `SUMMER` into the `Discount code` field without a model call.
+2. Replay looks for the recorded button `Apply`. The button is now
+   `Redeem`, so no control matches within 15 seconds. Replay stops with
+   `target-not-found`.
+3. The agent gets the step with a record of what replay did. It reads the
+   screen, sees `Redeem`, and taps it.
+4. The `expect` passes. At the end of the attempt, the runner saves the new
+   recording, with `Redeem` in place of `Apply`.
+5. The next run replays the whole step without a model call.
+
+Replay never guesses. A recorded control that no longer matches is a
+hand-off, never a tap on the closest control. See
+[How a replay works](/cache#how-a-replay-works) for how controls are
+matched.
+
+## What the agent is told
+
+The agent's first prompt lists the actions replay already performed and
+why replay stopped. For the step above, it reads:
+
+```text
+Cached replay already performed these recorded actions for this step:
+1. type "SUMMER" into textbox "Discount code"
+Replay stopped (target-not-found) after 1 of 2 recorded actions.
+Continue the step from the CURRENT screen state shown below — do NOT redo the actions above.
+```
+
+The prompt tells the agent not to repeat those actions, such as a submit
+that already went through. Two stop reasons add a warning:
+
+- `end-mismatch`: every action ran, but replay can't show it produced the
+  recorded result. The result didn't show, or it was already on screen
+  before replay acted. The agent is told to check whether the step took
+  effect before it acts.
+- `action-uncertain`: an action failed, and it may have reached the app.
+  The agent is told to check the current state before it tries anything
+  like it again.
+
+The replayed actions and the wait count toward the step's
+[budgets](/reference/agent#budgets) and deadline. The
+[cache page](/cache#why-a-step-was-not-replayed) lists every stop reason.
+When replay stops before its first action, the step is a miss, not a
+hand-off: the agent runs it from the beginning with no notice.
+
+## How the recording repairs itself
+
+A healed step records again like a new step: in `read-write` mode, and only
+when a check after it passes, such as a locator assertion or
+`agent.assert`. Then the recording is saved with the new controls and end
+state, unless the store rejected the write (`not-written`). Otherwise the
+old entry goes away:
+
+- The step failed. The next run doesn't replay a flow that broke.
+- No check passed after the step.
+- The step changed nothing replay could check, so there is no new flow to
+  save.
+- The agent had to act to fix an `end-mismatch`. The next verified run
+  records a clean flow, not the failed flow plus the fix.
+
+When no model answered or the run was cancelled, the entry stays as it is.
+`step.cache.write` in the report says what happened. See
+[When a recording is written](/cache#when-a-recording-is-written) for every
+value and for what counts as a check.
+
+## Catch regressions, not only UI changes
+
+The agent heals toward the goal in the instruction, not toward the recorded
+clicks. If the discount button moved, the agent finds it. If discounts stop
+working, the step or the check after it fails.
+
+A goal can still pass in a way you didn't intend, for example with a
+different discount. Follow each `act` with a deterministic check of the
+result, such as the `toHaveText('10% off')` above. That check runs on every
+run, replayed or healed.
+
+## See which steps healed
+
+Each healed step reports `step.cache.mode: 'agent-concluded'` with the stop
+reason, and `step.cache.detail` says where and why replay stopped. The
+[trace page](/debugging#traces) shows it under the step:
+
+```text
+cache: replayed 1 of 2 recorded actions, then the agent took over: a recorded target is not on the screen; recorded with `openai/gpt-6-luna-fast`; at action 2 of 2, tap button "Apply"; recording saved (`.e2e/cache/<entry>.json`)
+```
+
+`agent.act()` returns the same record, without `write`, as `result.cache`.
+A [custom executor](/executors#replay-cache) gets the hand-off in
+`ctx.replayedPrefix` and must continue from the current screen too.
+
+## Keep healing from costing model calls in CI
+
+With `CI` set and `cache` unset, the cache is `read-only`, so a healed step
+isn't saved. It hands off again on every CI run and pays for model calls
+each time. Record it again in a local `read-write` run, then
+[commit the replay cache](/cache#commit-the-replay-cache).
+
+To fail instead of heal, run CI with `--strict-cache`. A step whose
+recording no longer replays fails with `REPLAY_STALE` and makes no model
+call. See [Fail on a stale recording](/cache#fail-on-a-stale-recording).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Caching" icon="box-archive" href="/cache">
+    Modes, stop reasons, and what a recording holds.
+  </Card>
+  <Card title="How agent steps work" icon="list-check" href="/agent-steps">
+    What the agent sees and how a step ends.
+  </Card>
+</CardGroup>

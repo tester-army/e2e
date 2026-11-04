@@ -1,47 +1,26 @@
-import { createAgentDeviceClient } from 'agent-device';
 import type { DeviceProvider } from '@e2e-dev/mobile';
+import { agentDeviceLeases } from '@e2e-dev/mobile/lease';
 
 /**
- * Leases devices from a device cloud agent-device itself speaks to, through
- * a daemon started for the run. The daemon's runtime for the cloud creates
- * the instance when the lease is allocated and deletes it when the lease is
- * released; the worker's client carries the lease, so every command lands on
- * that instance. `provider` is agent-device's name for the cloud; its runtime
- * reads the credentials from the environment the daemon starts with.
+ * Leases devices from a device cloud agent-device itself speaks to. Each
+ * worker slot gets its own agent-device daemon, whose runtime for the cloud
+ * starts the session when the lease is allocated and ends it on release.
+ * `provider` is agent-device's name for the cloud.
  */
-export function cloudDevices(options: { provider: string; stateDir: string }): DeviceProvider {
-  const scopes = new Map<string, { tenant: string; runId: string; leaseId: string; leaseBackend: 'ios-instance' | 'android-instance'; leaseProvider: string }>();
+export function cloudDevices(options: { provider: string; device: string; osVersion: string; app: string }): DeviceProvider {
+  const leases = agentDeviceLeases({ provider: options.provider, label: options.provider });
   return {
     name: options.provider,
     async acquire(request) {
-      // One daemon per run, under a directory of its own.
-      const stateDir = `${options.stateDir}/${request.runId}`;
-      const client = createAgentDeviceClient({ stateDir, session: `lease-${request.slot}` });
-      const leaseBackend = request.platform === 'ios' ? ('ios-instance' as const) : ('android-instance' as const);
-      const lease = await client.leases.allocate({
-        tenant: options.provider,
-        runId: request.runId,
-        leaseBackend,
-        leaseProvider: options.provider,
-        retainOnClose: true,
-        platform: request.platform,
-        target: 'mobile',
+      const token = request.env['CLOUD_TOKEN'];
+      if (token === undefined || token === '') throw new Error('CLOUD_TOKEN is not set');
+      return leases.acquire(request, {
+        // The daemon's runtime reads the credentials from its environment.
+        env: { CLOUD_TOKEN: token },
+        selectors: { device: options.device, providerOsVersion: options.osVersion, providerApp: options.app },
+        summary: `${options.device}, ${request.platform} ${options.osVersion}`,
       });
-      const scope = { tenant: lease.tenantId, runId: lease.runId, leaseId: lease.leaseId, leaseBackend, leaseProvider: options.provider };
-      if (lease.retainOnClose !== true) {
-        await client.leases.release(scope);
-        throw new Error(`Device cloud did not grant retainOnClose for lease ${lease.leaseId}`);
-      }
-      request.log(`leased ${lease.leaseId}`);
-      scopes.set(lease.leaseId, scope);
-      // The worker's client is created with these fields; the daemon resolves the device from them.
-      return { id: lease.leaseId, client: { stateDir, ...scope } };
     },
-    async release(lease) {
-      const scope = scopes.get(lease.id);
-      if (scope === undefined) return;
-      const client = createAgentDeviceClient({ stateDir: `${options.stateDir}/${scope.runId}`, session: 'release' });
-      await client.leases.release(scope);
-    },
+    release: (lease, context) => leases.release(lease, context),
   };
 }

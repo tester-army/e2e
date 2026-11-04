@@ -525,6 +525,53 @@ describe('agent.act engine operations are bounded by actionTimeout', () => {
   }, 120_000);
 });
 
+const RESIZE_SUITE = `import { test } from 'e2e';
+
+test('executor resizes the viewport', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('check the layout on a phone');
+});
+`;
+
+describe('agent.act resize', () => {
+  it('resizes the page through the engine, refuses a size out of bounds, and records the action', async () => {
+    const app = await startFixtureApp();
+    const executor: StepExecutor = {
+      name: 'resizer',
+      version: 'test',
+      async runStep(context: StepExecutorContext) {
+        if (!context.target.verbs.has('resize')) return { status: 'failed' as const, summary: 'the web target offers no resize verb' };
+        const refused = await context.actions.resize({ width: 50, height: 844 }).then(
+          () => 'accepted',
+          (cause: unknown) => (cause as { code?: string }).code,
+        );
+        await context.actions.resize({ width: 390, height: 844 });
+        const { viewport } = await context.observe();
+        return {
+          status: 'passed' as const,
+          summary: `out of bounds: ${String(refused)}; viewport: ${String(viewport.width)}x${String(viewport.height)}`,
+        };
+      },
+    };
+    const { outcome, project } = await runProject(
+      { 'tests/resize.e2e.ts': RESIZE_SUITE },
+      { appUrl: app.url, config: { tests: 'tests/**/*.e2e.ts', agents: { default: { executor } } } },
+    );
+    try {
+      const result = resultByTitle(outcome, 'executor resizes the viewport');
+      expect(result.status).toBe('passed');
+      const step = result.attempts.at(-1)!.steps.find((candidate) => candidate.api === 'agent.act')!;
+      expect(step.explanation).toContain('out of bounds: INVALID_ARGUMENT; viewport: 390x844');
+      expect(step.metrics!.actionSteps).toBe(1);
+      expect(step.events.filter((event) => event.kind === 'engine').map((event) => event.name)).toEqual(['resize']);
+      expect(step.viewport).toEqual({ width: 390, height: 844, scale: 1 });
+    } finally {
+      project.cleanup();
+      await app.close();
+    }
+  }, 120_000);
+});
+
 const SECRET_SUITE = `import { test, credentials, expect } from 'e2e';
 
 test('executor fills a declared secret', async ({ app, agent, screen }) => {
@@ -677,6 +724,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'complete_step',
       'double_tap',
       'drag',
+      'drag_at',
       'hover',
       'hover_at',
       'long_press',
@@ -684,6 +732,7 @@ describe('agent.act with the default ToolLoopAgent executor', () => {
       'observe',
       'press',
       'press_at',
+      'resize_viewport',
       'right_click',
       'screenshot',
       'scroll',

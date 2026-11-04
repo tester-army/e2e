@@ -94,6 +94,10 @@ const pages = {
        <input id="attachments" type="file" multiple />
        <output aria-label="Attachments state">none</output>
 
+       <button id="avatar-button" type="button">Choose avatar</button>
+       <input id="avatar" type="file" hidden />
+       <output aria-label="Avatar state">none</output>
+
        <div style="height: 3000px"></div>
        <p id="footnote">Footnote</p>
        <output aria-label="Footnote state">out of view</output>
@@ -175,6 +179,12 @@ const pages = {
          document.getElementById('attachments').addEventListener('change', (event) => {
            document.querySelector('output[aria-label="Attachments state"]').textContent =
              Array.from(event.target.files, (file) => file.name).join(', ') || 'none';
+         });
+
+         const avatar = document.getElementById('avatar');
+         document.getElementById('avatar-button').addEventListener('click', () => avatar.click());
+         avatar.addEventListener('change', () => {
+           document.querySelector('output[aria-label="Avatar state"]').textContent = avatar.files[0]?.name ?? 'none';
          });
 
          const footnoteState = document.querySelector('output[aria-label="Footnote state"]');

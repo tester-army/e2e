@@ -172,8 +172,7 @@ set a threshold.
 `vision: true` adds a masked screenshot to every observation. Assertions and
 completion checks see it, so the model can judge drawn content the tree
 doesn't show. The operation and target questions read the tree only.
-`agent.assert(..., { vision: true })` and `vision: 'only'` work too. After a
-secret fill in the attempt, the executor gets no pixels.
+`agent.assert(..., { vision: true })` and `vision: 'only'` work too.
 
 The model must accept images and answer `score` questions. TypeSafe Jev
 does with `@ai-sdk/typesafe-ai` 3.0.19 or later and a TypeSafe API key in

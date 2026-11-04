@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/tester-army/e2e/blob/main/examples/examples.schema.json",
   "title": "e2e examples registry",
-  "description": "Every example listed on https://e2e.tester.army/examples: the official ones (folders under examples/ and repositories in the tester-army organization) and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
+  "description": "Every example listed on https://e2e.tester.army/examples: the official ones (folders under examples/ and repositories in the tester-army organization), partners' and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -133,16 +133,29 @@
           "type": "boolean"
         },
         "source": {
-          "description": "`official` for the examples the e2e team maintains, in the tester-army organization; `community` for everyone else's, outside it.",
+          "description": "`official` for the examples the e2e team maintains, in the tester-army organization; `partner` for the ones a partner company verifies and maintains in its own repository, outside it, shown with a partner seal on the site; `community` for everyone else's, outside it.",
           "enum": [
             "official",
+            "partner",
             "community"
           ]
         },
         "repository": {
-          "description": "The example's folder on GitHub, whose README the page renders: https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder.",
+          "description": "The example's folder on GitHub, whose README the page renders (see `readme`): https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder. A community example pins `<ref>` to a commit.",
           "type": "string",
           "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:/tree/[^/\\s]+(?:/[^\\s]+)?)?$"
+        },
+        "readme": {
+          "description": "Only for an example whose folder has no README.md of its own. A Markdown file in the same repository (for a community example, at the same commit), https://github.com/<owner>/<repo>/blob/<ref>/<path>.md, to render instead; or `false` for no README, and the page links to the code in `repository`. Leave it out when `repository` has a README.md.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/blob/[^/\\s]+/[^\\s]+\\.md$"
+            },
+            {
+              "const": false
+            }
+          ]
         },
         "author": {
           "type": "object",
@@ -161,6 +174,11 @@
               "description": "The GitHub user or organization: the avatar and the profile link.",
               "type": "string",
               "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
+            },
+            "website": {
+              "description": "A partner's landing page, linked from the partner's name on the site. Required on a partner example, and only there.",
+              "type": "string",
+              "pattern": "^https://"
             }
           }
         },

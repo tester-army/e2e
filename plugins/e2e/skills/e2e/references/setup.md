@@ -188,7 +188,8 @@ target's `app`:
 | `url` | Base URL for `app.open()` and relative navigation; required on a `web()` target, not supported on a mobile target yet. Missing scheme: `https://`, `http://` for loopback; port `0` on `127.0.0.1` or `[::1]` takes a free port. |
 | `bundleId` | Device targets: the bundle id, package name, or display name (`Settings`) `app.open()` launches. |
 | `appPath` | Device targets: the `.app` or `.apk` under test. A device target needs `bundleId` or `appPath`. |
-| `launchArguments`, `permissions` | Device targets: arguments and permission states (`grant`, `deny`, `reset`) every fresh launch gets. |
+| `launchArguments` | Device targets: arguments every fresh launch gets. |
+| `permissions` | Device targets: states (`grant`, `deny`, `reset`) every fresh launch gets. Web targets: `grant` only, held by every page (`{ 'clipboard-write': 'grant' }` lets headless Chromium write the clipboard). |
 | `command` | The process serving `url`: `{ executable, args, cwd, env, inheritEnv, startupTimeout, shutdownTimeout, log, reuseExisting }`; `{port}` in `args` and `env` expands to `url`'s port. Targets declaring the same command share one process. |
 | `readyUrl` | Readiness probe when it differs from `url`; `{port}` expands too. |
 | `environment` | `'test'`, `'staging'`, `'production'`; inferred from the host, labels the report and cache key. |
@@ -310,7 +311,7 @@ For an app started elsewhere, point `app.url` at it, literally or via
 phones through [agent-device](https://github.com/callstack/agent-device);
 needs Xcode with a simulator runtime or the Android SDK with an emulator (a
 phone needs Xcode with Developer Mode and runner signing, or adb with USB
-debugging authorized); run `npx agent-device doctor` once. Name a phone in `device` by the name
+debugging authorized); run `npx e2e doctor` to check it. Name a phone in `device` by the name
 `npx agent-device devices` lists, not its UDID or serial. On an iPhone, device
 settings (permissions, `clearState`, network, location, appearance,
 biometrics, keychain) and the clipboard are simulator-only.
@@ -358,9 +359,9 @@ export default {
   it: for parallel MCP sessions or bug-bash explorers, declare one target per
   device, each naming its `device`.
 - `device` can be a `DeviceProvider` leasing hosted devices, one per worker
-  slot: `easSimulators({ buildId })` from `@e2e-dev/eas` takes the project
+  slot: `expoSimulators({ buildId })` from `@e2e-dev/eas` takes the project
   from the app config's `extra.eas.projectId` (`projectId` overrides), reads
-  `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` EAS installs
+  `EXPO_TOKEN`, else the `eas login` session, needs no Xcode or Android SDK, and with `buildId` Expo installs
   the app (omit `app.appPath`). A run must fit one session: `maxDurationMinutes`,
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
@@ -369,13 +370,22 @@ export default {
   matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
   iOS keyboard actions such as `locator.press('Enter')` return
   `UNSUPPORTED_CAPABILITY`; tap an app button when available.
-  See `examples/with-limrun` for the same form and restart tests on both platforms.
+  Limrun's `limrun-inc/testerarmy-e2e-limrun` repository runs the same form
+  and restart tests on both platforms.
 - `testmu({ device, osVersion, app })` from `@e2e-dev/testmu` leases TestMu
   AI (formerly LambdaTest) emulators, simulators, or real devices
   (`deviceType: 'real'`); `device` and `osVersion` match its catalog
   exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
   `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
   recording of the whole session.
+- `browserstack({ device, osVersion, app })` from `@e2e-dev/browserstack`
+  leases BrowserStack App Automate real devices; `device` and `osVersion`
+  match its catalog exactly, BrowserStack installs `app` (a `bs://` id, an
+  `https` URL uploaded once per run, or a local path; omit `app.appPath`),
+  and it reads `BROWSERSTACK_USERNAME` and `BROWSERSTACK_ACCESS_KEY`. Set
+  `appiumVersion` (such as `'3.2.0'`): BrowserStack's default Appium 1.x
+  lacks `mobile:` commands. An attempt that records video links
+  BrowserStack's recording of the whole session.
 - A control that appeared or moved with the previous action waits out
   `transition` (default 500 ms). Opening or closing the keyboard also uses
   the remaining budget. Agent actions settle `settle` ms (default
@@ -383,7 +393,9 @@ export default {
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.
-  Non-input targets return `UNSUPPORTED_CAPABILITY`.
+  Non-input targets return `UNSUPPORTED_CAPABILITY`; an iOS `other` that holds
+  a value or only text is typed into, since a custom-drawn field (Compose
+  Multiplatform, Flutter) can read that way.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
   `@e2e-dev/mobile` types the `device` fixture (`installApp`, `openLink`,
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`

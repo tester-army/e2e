@@ -118,7 +118,8 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
 ### app
 
 - `baseUrl` (`string | undefined`): the target's app URL with the run's
-  port; `undefined` when the target declares no `app.url`.
+  port and no trailing slash (`${app.baseUrl}/api/users`); `undefined` when
+  the target declares no `app.url`. `string` with `test` from `@e2e-dev/web`.
 - `open(path?)`: opens the target's `app.url`, a relative path, or an absolute
   http(s) URL. On a device it takes no path and relaunches the pinned app.
 - `back()`: one history step back.
@@ -127,7 +128,11 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
 - `clearState()`: clears cookies and storage, recreates the context, reopens
   the base URL.
 - `screenshot(label?)`: saves a redacted screenshot artifact and returns its
-  absolute path. It masks secure fields only (see Sign-in sessions).
+  absolute path; the `list` summary names the first 10 under `Screenshots`. It masks
+  secure fields only (see Sign-in sessions).
+- `startRecording({ name? })`, then `stopRecording()`: records one span and
+  returns its videos (`path` or hosted `url`). Fails while the test's
+  `video` records: set `{ video: 'off' }` on the test.
 
 `clearState()` is `UNSUPPORTED_CAPABILITY` with `connect.reconnectEndpoint`
 or an attempt-scoped browser provider; on a device with no pinned `app`, both
@@ -351,11 +356,10 @@ test('the dashboard opens directly', { session: 'admin' }, async ({ app, screen 
   match `[A-Za-z0-9_.-]{1,128}`.
 - A session holds cookies, local storage, and IndexedDB for one run,
   encrypted and deleted at cleanup; server state is not part of it.
-- Once a secret is filled, model pixels are withheld for the rest of that
-  session (later serial members included). Artifact screenshots
-  (`app.screenshot()`, assertion, failure) stay on and mask secure fields
-  only. A restored session keeps its setup's taint; a setup that signs in
-  without a fill (`browser.setCookies`, say) leaves model pixels available.
+- Screenshots, the model's and the artifacts', mask secure fields only,
+  after a secret fill too. A generic secret in a plain input, or a value the
+  app shows anywhere else (a show-password toggle, a toast), is in the image
+  and reaches the model provider: use test credentials.
 - Credentials live in the config, values in the environment:
 
 ```ts
@@ -421,7 +425,7 @@ const projectTest = test.extend<{ project: { id: string } }>({
   project: async ({ app, browser }, use) => {
     const cookie = (await browser.cookies()).map((c) => `${c.name}=${c.value}`).join('; ');
     const api = (path: string, init: RequestInit = {}) =>
-      fetch(new URL(path, app.baseUrl), { ...init, headers: { cookie, 'content-type': 'application/json' } });
+      fetch(`${app.baseUrl}${path}`, { ...init, headers: { cookie, 'content-type': 'application/json' } });
     const created = await api('/api/projects', { method: 'POST', body: JSON.stringify({ name: `Project ${Date.now()}` }) });
     const project = expect(await created.json()).toMatchSchema(z.object({ id: z.string() }));
     await use(project);
@@ -480,6 +484,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   before the page's own scripts; call it before `app.open`. `arg` is JSON.
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
+  `route.fetch()` reads upstream without deciding the route and returns
+  `{ url, status, headers, text(), json() }`; redirects are not followed.
   The handler calls exactly one of
   `fulfill({ status?, headers?, contentType?, json | body | path })`,
   `continue({ url?, method?, headers?, postData? })` (straight to the
@@ -493,6 +499,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `ACTION_FAILED` when it could not be read. Start the wait before the
   request, including the first `browser.goto` or `app.open`.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.
+- `clearCookies({ name?, domain?, path? })`: remove cookies matching every
+  string or RegExp filter; no options removes all cookies, other storage stays.
 - `setViewport({ width, height })`: resize.
 - `emulateMedia({ colorScheme?, reducedMotion? })`: what the page's `@media`
   rules and `matchMedia` read, for the rest of the test. Call it before
@@ -507,6 +515,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `waitForDownload(() => trigger, { timeout? })`: returns
   `{ path, absolutePath, suggestedFilename }`; `absolutePath` names the saved
   runner-side file for reading its contents, including with a hosted browser.
+- `waitForDownloads(() => trigger, { count, timeout? })`: calls the trigger
+  once and returns `count` of those results in start order.
 - `keyboard.press(key)`, `keyboard.type(text)`, `keyboard.down(key)`,
   `keyboard.up(key)`, `mouse.*`: unfocused input. Only `down(key)` holds a
   key or modifier until `up(key)`. `press(key)` presses and releases within
@@ -524,7 +534,7 @@ A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
   `browser.locator('.btn-primary')`.
 - Test data gets a run-unique name (`Invoice ${Date.now()}`) and `afterEach`
   cleanup, so replays and retries never trip over leftovers.
-- APIs live in the same suite: `fetch(new URL('/api/users', app.baseUrl))`
+- APIs live in the same suite: ``fetch(`${app.baseUrl}/api/users`)``
   plus value matchers, in a `test.extend` fixture that reads `browser.cookies()`
   when the API needs the session.
 - No sleeps, fixed delays, or polling loops. Wait for the state, not a

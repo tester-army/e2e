@@ -1,9 +1,10 @@
 /**
  * The `e2e mcp` server: a live session on the app for a coding agent, with
  * the skill as resources, served over one stdio transport. The tool list is
- * four tools and never changes: the session's own vocabulary is a catalog
- * behind `call`, so it follows the config the agent opens rather than the
- * config the server started next to. Streams are injected, so the CLI hands
+ * five tools and never changes: four drive sessions, and `run_tests` runs the
+ * suite as `e2e run` does. The session's own vocabulary is a catalog behind
+ * `call`, so it follows the config the agent opens rather than the config the
+ * server started next to. Streams are injected, so the CLI hands
  * it the process's and a test hands it pipes.
  */
 
@@ -15,6 +16,7 @@ import { ConfigurationError, errorMessage } from '../internal/errors.ts';
 import { processSecrets } from '../run/secrecy.ts';
 import { loadProjectConfig, locateProjectConfig } from './config.ts';
 import type { McpOutput } from './output.ts';
+import { TestRuns } from './run-tests.ts';
 import { SessionHost } from './session.ts';
 import type { McpSessionSummary } from './usage.ts';
 
@@ -52,7 +54,7 @@ export interface ServeOptions {
 const INSTRUCTIONS = `e2e is a local-first end-to-end test runner; this server drives an e2e project's app (its e2e.config.ts) live.
 Call open_session (optionally with a target, a config path, and headed: true when the user wants to watch) to get a session, its tool catalog, and the first observation. Then call {tool, args} runs any catalog tool: observe, the grammar its engine honors (each action answers with the test line that repeats it), type_secret, locate, run_code (runs the test statements you are about to write), test_lines (those lines and the statements run_code passed, in order, as a draft test body), screenshot, start_recording and stop_recording when the engine records video (a video of the app for a pull request), and the project's own tools; tools lists them, tools {tool} shows one tool's arguments. close_session when done.
 Several sessions can be open at once, each with its own browser or device, so parallel agents (subagents) each open their own: pass the session id from open_session to every tools, call, and close_session.
-Write the test (tests/*.e2e.ts) while you walk the flow, adding each step to the file as you take it, and run it with the CLI: npx e2e run <file>. To fix a failing test, open_session {test: "tests/x.e2e.ts:12"} runs it in a session and stops on the screen where it failed. Resources e2e://guide and e2e://guide/{topic} hold the writing guide.`;
+Write the test (tests/*.e2e.ts) while you walk the flow, adding each step to the file as you take it, and run it with run_tests {files: ["tests/x.e2e.ts"]} (the same run as npx e2e run <file>); run_tests without files runs the whole suite. To fix a failing test, open_session {test: "tests/x.e2e.ts:12"} runs it in a session and stops on the screen where it failed. Resources e2e://guide and e2e://guide/{topic} hold the writing guide.`;
 
 type LogLevel = 'info' | 'warning' | 'error';
 
@@ -84,7 +86,9 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
     },
   });
 
-  for (const spec of host.toolSpecs()) {
+  const runs = new TestRuns({ cwd: options.cwd, configPath: options.configPath, target: options.target, headed: options.headed, env: options.env });
+
+  for (const spec of [...host.toolSpecs(), runs.toolSpec()]) {
     server.registerTool(
       spec.name,
       {
@@ -93,7 +97,7 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
         annotations: { readOnlyHint: spec.readOnly, openWorldHint: false },
       },
       (args, ctx) => {
-        const call = () => spec.call(args, { signal: ctx.mcpReq.signal });
+        const call = () => spec.call(args, { signal: ctx.mcpReq.signal, progress: progressOf(ctx.mcpReq) });
         return output === undefined ? call() : output.duringCall(call);
       },
     );
@@ -122,14 +126,36 @@ export async function serveMcp(options: ServeOptions): Promise<number> {
   log('info', `e2e mcp ${options.version} serving ${options.cwd}`);
   const reason = await closed;
   if (disconnected) options.log('[info] client disconnected; closing every session');
+  // A run in flight is interrupted beside the sessions, and both are waited for: neither may leave an app process behind.
+  const runStopped = runs.stop();
   try {
     const summary = await host.closeAll(reason);
     if (summary !== undefined) options.log(summary);
   } catch (cause) {
     options.log(`session teardown failed: ${processSecrets.redact(errorMessage(cause))}`);
   }
+  await runStopped;
   await server.close().catch((cause: unknown) => options.log(`server close failed: ${processSecrets.redact(errorMessage(cause))}`));
   return 0;
+}
+
+/** What a tool call's request carries for progress: the client's token, and the notification channel. */
+interface ProgressRequest {
+  readonly _meta?: { readonly progressToken?: string | number | undefined } | undefined;
+  notify(notification: { method: 'notifications/progress'; params: { progressToken: string | number; progress: number; message: string } }): Promise<void>;
+}
+
+/** Sends each message as a progress notification when the client asked for progress with a token; otherwise undefined. */
+function progressOf(request: ProgressRequest): ((message: string) => void) | undefined {
+  // The MCP spec names the field `_meta`.
+  // oxlint-disable-next-line no-underscore-dangle
+  const token = request._meta?.progressToken;
+  if (token === undefined) return undefined;
+  let progress = 0;
+  return (message) => {
+    progress += 1;
+    void request.notify({ method: 'notifications/progress', params: { progressToken: token, progress, message: processSecrets.redact(message) } }).catch(() => undefined);
+  };
 }
 
 /** The skill as resources, for clients that read context without a tool call. */

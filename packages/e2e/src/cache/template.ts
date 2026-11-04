@@ -22,6 +22,7 @@
  * as a miss.
  */
 
+import { normalizeText } from '../internal/text.ts';
 import type { JsonValue } from '../types.ts';
 import { mapTraceText, type ActionTrace } from './trace.ts';
 
@@ -38,7 +39,7 @@ export function paramPointer(parent: string, key: string | number): string {
 
 /**
  * Placeholder grammar: `{{param:<pointer>}}` for the value as given and
- * `{{param:<pointer>|<encoding>}}` for the value as a URL spells it, closed
+ * `{{param:<pointer>|<encoding>}}` for one of its other spellings, closed
  * by the first `}}`. One codec owns both directions.
  *
  * A value typed into a search box comes back in the address bar as
@@ -52,10 +53,11 @@ const PLACEHOLDER = /\{\{param:(.*?)\}\}/gu;
 
 /**
  * How a value may be spelled in recorded text: as given, percent-encoded,
- * form-encoded with `+` for spaces, or as the slug an app derives for a
- * record's path (`/companies/e2e-abc-company`).
+ * form-encoded with `+` for spaces, as the slug an app derives for a
+ * record's path (`/companies/e2e-abc-company`), or on one line, the way the
+ * screen and the end anchors show a multi-line value.
  */
-type Encoding = 'uri' | 'form' | 'slug';
+type Encoding = 'uri' | 'form' | 'slug' | 'flat';
 
 const ENCODERS: Readonly<Record<Encoding, (value: string) => string>> = {
   uri: (value) => encodeURIComponent(value),
@@ -68,6 +70,7 @@ const ENCODERS: Readonly<Record<Encoding, (value: string) => string>> = {
       .toLowerCase()
       .replaceAll(/[^\p{L}\p{N}]+/gu, '-')
       .replaceAll(/^-+|-+$/g, ''),
+  flat: normalizeText,
 };
 
 /** A value's encoded spelling, or undefined when it has none (an unpaired surrogate cannot be encoded). */

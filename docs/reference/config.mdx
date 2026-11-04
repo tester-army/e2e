@@ -353,8 +353,8 @@ targets: [
 Each engine checks the keys at config load, with `INVALID_CONFIG` naming the
 target. A target with `app` needs an [engine](#engine).
 
-- A `web()` target needs `app.url` and refuses `bundleId`, `appPath`,
-  `launchArguments`, and `permissions`.
+- A `web()` target needs `app.url` and refuses `bundleId`, `appPath`, and
+  `launchArguments`.
 - A `mobile()` target needs `app.bundleId` or `app.appPath`. `app.url` on a
   mobile target is not supported yet.
 - An unknown key in `app` or `app.command` fails with a did-you-mean.
@@ -453,14 +453,28 @@ own `identity`.
 
 #### `permissions`
 
-Permissions the app holds on every fresh launch, by name.
+Permissions the app holds, by name.
 
 ```ts
 permissions: { camera: 'grant' },
 ```
 
-Each is `'grant'`, `'deny'`, or `'reset'`. See
-[permissions](/reference/mobile#engine).
+Each is `'grant'`, `'deny'`, or `'reset'`.
+
+- A `mobile()` target sets each one before every fresh launch. See
+  [permissions](/reference/mobile#engine).
+- A `web()` target takes `'grant'` only and grants it to every page of the
+  attempt, on any origin. Headless Chromium refuses a permission left out. See
+  [Granting browser permissions](/web#granting-browser-permissions).
+
+| Browser | Names |
+| --- | --- |
+| `chromium` | `accelerometer`, `ambient-light-sensor`, `background-sync`, `camera`, `clipboard-read`, `clipboard-write`, `geolocation`, `gyroscope`, `local-fonts`, `local-network-access`, `magnetometer`, `microphone`, `midi`, `midi-sysex`, `notifications`, `payment-handler`, `screen-wake-lock`, `storage-access` |
+| `firefox` | `geolocation`, `local-network-access`, `notifications`, `persistent-storage`, `push`, `screen-wake-lock` |
+| `webkit` | `camera`, `clipboard-read`, `geolocation`, `microphone`, `notifications`, `screen-wake-lock` |
+
+A browser provider or `connect` takes the `chromium` names: the engine drives
+it over CDP, Lightpanda included.
 
 #### `command`
 

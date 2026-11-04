@@ -53,22 +53,57 @@ function canvasMap(options: { readonly reset: boolean }): string {
 ${button}  <script>
     const canvas = document.getElementById('map');
     const context = canvas.getContext('2d');
-    context.fillStyle = '#dddddd';
-    context.fillRect(0, 0, 400, 200);
     const pins = [
       { name: 'red', x: 300, y: 60, color: '#ff0000' },
       { name: 'blue', x: 80, y: 140, color: '#0000ff' },
     ];
-    for (const pin of pins) {
-      context.fillStyle = pin.color;
-      context.beginPath();
-      context.arc(pin.x, pin.y, 14, 0, Math.PI * 2);
-      context.fill();
-    }
     // A tap count drawn on the map: every click repaints it, and nothing in
     // the tree lists it, the way a canvas-rendered widget shows its own state.
     let taps = 0;
+    const paint = () => {
+      context.fillStyle = '#dddddd';
+      context.fillRect(0, 0, 400, 200);
+      for (const pin of pins) {
+        context.fillStyle = pin.color;
+        context.beginPath();
+        context.arc(pin.x, pin.y, 14, 0, Math.PI * 2);
+        context.fill();
+      }
+      if (taps > 0) {
+        context.fillStyle = '#000000';
+        context.fillText('taps: ' + taps, 4, 194);
+      }
+    };
+    paint();
+    // A drawn drag: a pin pressed and released away from itself moves there,
+    // the way a whiteboard moves a shape. The release's own click is the
+    // drag's, not a tap.
+    let held;
+    let dragged = false;
+    const at = (event) => {
+      const box = canvas.getBoundingClientRect();
+      return { x: Math.round(event.clientX - box.left), y: Math.round(event.clientY - box.top) };
+    };
+    canvas.addEventListener('pointerdown', (event) => {
+      const point = at(event);
+      held = pins.find((candidate) => Math.hypot(candidate.x - point.x, candidate.y - point.y) <= 18);
+    });
+    canvas.addEventListener('pointerup', (event) => {
+      const point = at(event);
+      if (held !== undefined && Math.hypot(held.x - point.x, held.y - point.y) > 18) {
+        held.x = point.x;
+        held.y = point.y;
+        paint();
+        document.getElementById('hit').textContent = 'moved ' + held.name + ' to ' + point.x + ',' + point.y;
+        dragged = true;
+      }
+      held = undefined;
+    });
     canvas.addEventListener('click', (event) => {
+      if (dragged) {
+        dragged = false;
+        return;
+      }
       const box = canvas.getBoundingClientRect();
       const x = event.clientX - box.left;
       const y = event.clientY - box.top;
@@ -76,10 +111,7 @@ ${button}  <script>
       document.getElementById('hit').textContent =
         pin ? pin.name : 'miss at ' + Math.round(x) + ',' + Math.round(y);
       taps += 1;
-      context.fillStyle = '#dddddd';
-      context.fillRect(0, 176, 120, 24);
-      context.fillStyle = '#000000';
-      context.fillText('taps: ' + taps, 4, 194);
+      paint();
     });
   </script>
 </body>

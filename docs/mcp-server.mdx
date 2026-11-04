@@ -18,6 +18,7 @@ acts on it, and checks its work.
 | Change the UI | Done when it compiles | Opens the page and checks the result |
 | Reproduce a bug | Guesses from the code | Follows the steps in the app |
 | Fix a failing test | Clicks through the flow again | Runs the test and stops on the failure |
+| Run the suite | Needs a shell for `e2e run` | Runs it with `run_tests` |
 | Show a change in a PR | Describes it | Records a video |
 
 The server needs no model. A test it runs needs one only for an agent
@@ -68,7 +69,9 @@ step with no recording.
   </Tab>
 </Tabs>
 
-A session starts the target's app command, if it has one.
+A session starts the target's app command, if it has one, and names it
+with its URL and port. The config reads the server's environment, not the
+agent's shell.
 
 ## Ask the agent
 
@@ -149,8 +152,8 @@ limits.
 
 A session writes no test results, and only a test it runs with
 `open_session {test}` uses the replay cache. The agent runs suites with
-`e2e run` and, when a run can go beside the session, keeps the session
-open between runs. After a failed run, it goes to the failing screen in
+[`run_tests`](/reference/mcp#run_tests), the same run as `e2e run`, and,
+when a run can go beside the session, keeps the session open between runs. After a failed run, it goes to the failing screen in
 that session instead of opening a new one.
 
 On web, a run next to a session depends on the target's `app`:
@@ -175,8 +178,8 @@ target.
 ## Secrets
 
 `type_secret`, or a `fill` in `run_code`, fills a secret without showing it
-to the agent. After a secret is filled, the session stops returning
-screenshots.
+to the agent. Screenshots mask secure fields only, so a secret the app
+shows anywhere else is in them.
 
 <Warning>
 Videos from `start_recording` are not masked.

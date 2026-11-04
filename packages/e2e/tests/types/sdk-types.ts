@@ -11,6 +11,9 @@ import {
   secrets,
   unique,
   test,
+  type ActionDetails,
+  type ActionEvent,
+  type ActionName,
   type Agent,
   type App,
   type ArtifactStore,
@@ -21,6 +24,7 @@ import {
   type KeyModifier,
   type Locator,
   type ModelInstance,
+  type PointDragResult,
   type PointHit,
   type PointTapResult,
   type PollExpectation,
@@ -35,6 +39,7 @@ import {
   type Secret,
   type StepExecutor,
   type StepExecutorContext,
+  type StepVerdict,
   type StepTurn,
   type StoredArtifactLink,
   type Target,
@@ -53,8 +58,19 @@ import {
   describe,
 } from '../../src/index.ts';
 import type { Engine, EngineAttemptContext, EngineCleanupContext, EngineDisposeContext, EngineHandle, EngineObserveOptions, EngineSnapshot } from '../../src/engine/index.ts';
-import { createToolLoopExecutor, defineTool } from '../../src/agent/public.ts';
+import {
+  BASE_RULES,
+  createGrammarTools,
+  createToolLoopExecutor,
+  createVerdictTool,
+  defineTool,
+  isRuntimeHardStop,
+  VERDICT_RULES,
+  type ScreenOutput,
+} from '../../src/agent/public.ts';
+import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import type { Report } from '../../src/index.ts';
+import type { ToolSet } from 'ai';
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 import { chatgpt } from '../../src/oauth/chatgpt.ts';
 import { copilot } from '../../src/oauth/copilot.ts';
@@ -123,6 +139,16 @@ declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;
 declare const targets: readonly Target[];
+
+void (async () => {
+  await appFixture.startRecording({ name: 'dialog' });
+  const [video] = await appFixture.stopRecording();
+  // A recording returns at least one video, so the first needs no undefined check.
+  if ('path' in video) video.path satisfies string;
+  else video.url satisfies string;
+  // @ts-expect-error a video is a file or a link; narrow before reading the path
+  void video.path;
+})();
 
 void (screen.tree() satisfies Promise<string>);
 void (screen.debug({ timeout: 1000 }) satisfies Promise<void>);
@@ -370,6 +396,7 @@ executorContext.attempt.titlePath satisfies readonly string[];
 'tapAt' satisfies ExecutorVerb;
 'hover' satisfies ExecutorVerb;
 'drag' satisfies ExecutorVerb;
+'dragAt' satisfies ExecutorVerb;
 'upload' satisfies ExecutorVerb;
 'back' satisfies ExecutorVerb;
 // @ts-expect-error a verb is one of the action grammar's names
@@ -515,6 +542,9 @@ screen.getByRole('button', { hidden: true });
 declare const point: import('../../src/types.ts').Point;
 void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
 void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
+void (executorContext.actions.dragAt(point, point) satisfies Promise<PointDragResult>);
+// @ts-expect-error a point drag names both ends
+void executorContext.actions.dragAt(point);
 void screen.tapAt(point, { timeout: 1_000 });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });
@@ -552,6 +582,27 @@ await agent.act('open billing', { onBeforeAction: async event => {
   // @ts-expect-error no engine target or geometry is exposed
   event.target;
 } });
+await agent.act('tap and drag the pin', { onAction: event => {
+  // @ts-expect-error details exist only once `action` is narrowed
+  event.point;
+  if (event.action === 'tapAt' || event.action === 'hoverAt') event.point satisfies { readonly x: number; readonly y: number };
+  if (event.action === 'dragAt') {
+    event.from satisfies { readonly x: number; readonly y: number };
+    event.to satisfies { readonly x: number; readonly y: number };
+    // @ts-expect-error hook coordinates are read-only
+    event.from.x = 1;
+  }
+  if (event.action === 'tap') {
+    // @ts-expect-error node-ID actions carry no coordinates
+    event.point;
+  }
+  if (event.action.startsWith('tool:')) event.summary satisfies string;
+  // @ts-expect-error action names are the committed actions'
+  if (event.action === 'tap_at') return;
+} });
+({ point: { x: 1, y: 2 } }) satisfies ActionDetails['tapAt'];
+'tapAt' satisfies ActionName;
+'tool:seed' satisfies ActionEvent['action'];
 // @ts-expect-error the observer is a function
 await agent.act('open billing', { onBeforeAction: true });
 // @ts-expect-error assertions have no before-action observer
@@ -573,6 +624,8 @@ await agent.assert('the form is not covered', { vision: 'only' });
 // @ts-expect-error a judgment's vision is a closed set: true, false, or 'only'
 await agent.assert('the chart trends upward', { vision: 'always' });
 await agent.waitFor('the page settles', { interval: 500, maxModelCalls: 3 });
+await agent.assert('the table lists {name}', { params: { name: unique('acme'), owner: credentials.user('admin').password } });
+await agent.waitFor('the table lists {name}', { params: { name: unique('acme') } });
 // @ts-expect-error the wait interval is `interval`, in milliseconds
 await agent.waitFor('the page settles', { intervalMs: 500 });
 // @ts-expect-error extract has a fixed budget: one extraction plus one repair round
@@ -664,6 +717,23 @@ declare const brain: StepExecutor;
 ({ targets, agents: { default: brain } }) satisfies E2EConfig;
 // @ts-expect-error maxTurns left createToolLoopExecutor: the agent's maxModelCalls bounds its turns
 createToolLoopExecutor({ name: 'brain', tools: () => ({}), buildPrompt: () => 'go', maxTurns: 3 });
+// A custom loop keeps the built-in actions: the grammar tools take the loop's guard, and their rules are text.
+createToolLoopExecutor({ name: 'brain', system: BASE_RULES, buildPrompt: () => 'go', tools: (ctx, { guard }) => createGrammarTools(ctx, { guard }) });
+// @ts-expect-error the screen presenter stays internal: a caller's first observe shows the whole screen
+createGrammarTools(executorContext, { screen: undefined });
+// @ts-expect-error failure causes stay internal: e2e mcp counts them, a caller reads the result text
+createGrammarTools(executorContext, { onActionFailed: () => undefined });
+// An executor outside the AI SDK loop keeps the built-in verdict: complete_step as a tool, its rules as text, and the verdict it collected.
+const conclusion = createVerdictTool();
+({ complete_step: conclusion.tool }) satisfies ToolSet;
+conclusion.verdict() satisfies StepVerdict | undefined;
+VERDICT_RULES satisfies string;
+// A runtime hard stop narrows to the AgentError the step rethrows untouched.
+declare const thrown: unknown;
+if (isRuntimeHardStop(thrown)) thrown.code satisfies string;
+// A grammar tool's result is a rendered screen: text, or text with its screenshot.
+declare const rendered: ScreenOutput;
+if (typeof rendered !== 'string') rendered.pixels.mediaType satisfies string;
 // @ts-expect-error limits left the config: maxInputTokens is per agent, the rest are fixed by the runner
 ({ targets, limits: { maxModelTokensPerCall: 1_000 } }) satisfies E2EConfig;
 
@@ -927,6 +997,21 @@ session.tracePath = '/tmp/trace.md';
 // @ts-expect-error closing returns a read-only list of failures
 (await session.close()).push({} as SerializedError);
 
+/** Serial verdict provenance is optional on reports written by older runners. */
+type SerialReportAttempt = Report['run']['serialGroups'][number]['attempts'][number];
+declare const serialReportAttempt: SerialReportAttempt;
+const cutSerialRetry: boolean | undefined = serialReportAttempt.cutRetry;
+void cutSerialRetry;
+// @ts-expect-error the runner's cut-retry decision is a boolean, never a status string
+serialReportAttempt.cutRetry = 'interrupted';
+
 void (screen.getByRole('tab').or(screen.getByText('Discover')) satisfies Locator);
 // @ts-expect-error an alternative must be a Locator
 void screen.getByRole('tab').or('tab');
+// The engine protocol: a connected server is an engine handle like any other.
+const protocolManifest = { name: 'kiosk', version: '1.0.0', spiVersion: 1, methods: ['engine/observe'] } satisfies EngineManifest;
+void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }) }) satisfies EngineHandle);
+// @ts-expect-error a manifest names only protocol methods
+void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
+// @ts-expect-error initialization options cross the wire, so they are JSON
+void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });

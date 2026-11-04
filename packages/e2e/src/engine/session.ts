@@ -211,7 +211,9 @@ function declaredVerbs(engine: EngineHandle | undefined): ReadonlySet<GrammarVer
   }
   if (engine?.pointerActions?.includes('tap') === true) verbs.add('tapAt');
   if (engine?.pointerActions?.includes('hover') === true) verbs.add('hoverAt');
+  if (engine?.pointerActions?.includes('dragTo') === true) verbs.add('dragAt');
   if (engine?.session?.back !== undefined) verbs.add('back');
+  if (engine?.session?.resize !== undefined) verbs.add('resize');
   if (engine?.keyboard !== undefined) {
     verbs.add('typeText');
     verbs.add('pressKey');
@@ -290,6 +292,7 @@ export function createEngineSession(options: EngineSessionOptions): TargetSessio
   const app: SessionApp = {
     open: guard('navigation', engine?.session?.open),
     back: guard('back navigation', engine?.session?.back),
+    resize: guard('viewport resizing', engine?.session?.resize),
     restart: guard('app restart', engine?.session?.restart),
     reset: guard('app state reset', engine?.session?.reset),
   };
