@@ -823,12 +823,13 @@ await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
 await screen.getByLabel('Receipt').setInputFiles([]);
 ```
 
-An empty array clears the input and fires `input` and `change`. On the web it also takes a button that opens a file chooser.
+Web only. An empty array clears the input and fires `input` and `change`. It also takes a button that opens a file chooser.
 
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | A blank path. |
-| `ACTION_FAILED` | On the web, a button that opens no file chooser. |
+| `UNSUPPORTED_CAPABILITY` | On a device, which has no file input. |
+| `ACTION_FAILED` | A button that opens no file chooser. |
 
 #### `dragTo`
 
