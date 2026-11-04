@@ -299,15 +299,17 @@ describe('explicit fixture operations', () => {
         gadget: (context) => context.fixture('gadget', {
           async lost(): Promise<void> { throw new EngineError('INVALID_STATE', 'appstate requires an active session', { retryable: false }); },
           async slow(): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'appstate timed out', { retryable: false }); },
+          async wait(_pattern: string): Promise<void> { throw new EngineError('OPERATION_TIMEOUT', 'wait timed out', { retryable: false }); },
           async denied(): Promise<void> { throw new TestError('POLICY_DENIED', 'no'); },
           async plain(): Promise<void> { throw new Error('plain failure'); },
-        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
+        }, { lost: { kind: 'resource' }, slow: { kind: 'resource' }, wait: { kind: 'resource', label: (pattern) => JSON.stringify(pattern) }, denied: { kind: 'resource' }, plain: { kind: 'resource' } }),
       },
     });
     const { fixtures } = runtime(engine);
-    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> }).gadget;
+    const gadget = (fixtures as unknown as { gadget: Record<'lost' | 'slow' | 'denied' | 'plain', () => Promise<void>> & { wait(pattern: string): Promise<void> } }).gadget;
     await expect(gadget.lost()).rejects.toMatchObject({ code: 'APP_NOT_OPEN', category: 'test', message: 'appstate requires an active session' });
     await expect(gadget.slow()).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.slow' });
+    await expect(gadget.wait('foo.css')).rejects.toMatchObject({ code: 'ACTION_FAILED', message: 'operation timed out in gadget.wait "foo.css"' });
     await expect(gadget.denied()).rejects.toMatchObject({ code: 'POLICY_DENIED' });
     await expect(gadget.plain()).rejects.toThrow('plain failure');
   });

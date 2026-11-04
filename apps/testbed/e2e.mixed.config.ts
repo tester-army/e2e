@@ -4,7 +4,9 @@ import agentConfig from './e2e.agent.config.ts';
 /**
  * The agent config plus the deterministic suite, for watching the list
  * reporter interleave agent steps with plain tests. Needs the same
- * `AI_GATEWAY_API_KEY` as `test:agent`; never part of CI.
+ * `AI_GATEWAY_API_KEY` as `test:agent`; never part of CI. Pass
+ * `--exclude-tag playwright`: the tests ported from Playwright address the
+ * playground on its own port, 4271.
  */
 export default {
   ...agentConfig,

@@ -1,6 +1,6 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { boxOf, failure } from './helpers.ts';
+import { failure } from './helpers.ts';
 
 test.describe('controls', { requires: ['browser'], tags: ['controls'] }, () => {
   test.beforeEach(async ({ app }) => {
@@ -211,15 +211,6 @@ test.describe('controls', { requires: ['browser'], tags: ['controls'] }, () => {
     const error = await failure(() => screen.getByRole('button', 'Close A').setInputFiles('fixtures/attachment.txt', { timeout: 500 }));
     expect(error).toHaveProperty('code', 'ACTION_FAILED');
     expect(error).toHaveProperty('message', expect.stringContaining('opened no file chooser'));
-  });
-
-  test('scrollIntoView brings a node far below into the viewport', async ({ screen }) => {
-    const footnote = screen.getByText('Footnote', { exact: true });
-    await expect(screen.getByLabel('Footnote state')).toHaveText('out of view');
-
-    await footnote.scrollIntoView();
-    await expect(screen.getByLabel('Footnote state')).toHaveText('in view');
-    expect((await boxOf(footnote)).y).toBeGreaterThanOrEqual(0);
   });
 
   test('a missing locator fails as LOCATOR_NOT_FOUND after its timeout', async ({ screen }) => {

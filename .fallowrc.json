@@ -35,6 +35,7 @@
     "examples/**",
     "**/next-env.d.ts",
     "**/.e2e/**",
+    "apps/testbed/app/playwright/assets/**",
     "packages/e2e/tests/tmp-projects/**"
   ],
   "ignoreDependencies": [
