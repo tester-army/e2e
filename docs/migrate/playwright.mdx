@@ -169,7 +169,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | same |
 | `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | same |
 | `clear()`, `focus()`, `hover()`, `setInputFiles()`, `dragTo()` | the same verbs, each with `timeout` as the only option: no `force`, `trial`, `position`, `modifiers`, or `sourcePosition`. Another key is `INVALID_ARGUMENT`. `setInputFiles` is web only | renamed |
-| `check()`, `uncheck()` | the same, except when the state updates late or the click removes the control, see [What differs on purpose](#what-differs-on-purpose). `uncheck()` refuses any radio, `role=radio` included, with `NOT_ACTIONABLE` | by design |
+| `check()`, `uncheck()` | the same, except when the state updates late or the click removes the control, see [What differs on purpose](#what-differs-on-purpose). `uncheck()` on a checked radio, `role=radio` included, is `NOT_ACTIONABLE` | by design |
 | `selectOption('pro')` | `selectOption('Pro')`: a string matches the option's label only, where Playwright matches its value or its label; `selectOption({ value: 'pro' })` for the value | by design |
 | `selectOption(['a', 'b'])` | one option per call. An array is `INVALID_ARGUMENT` | missing |
 | `setInputFiles({ name, buffer })`, `setInputFiles([])` | paths only, resolved from the project root; an empty list is `INVALID_ARGUMENT`, so there is no clear | missing |
@@ -207,7 +207,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `{ ignoreCase }` on `toHaveText()`, `toContainText()`, `toHaveAccessibleName()`, `toHaveAttribute(name, value)` | the same | same |
 | `toBeChecked({ indeterminate })`, `{ useInnerText }` | `INVALID_ARGUMENT`, so the matcher never passes on its default | missing |
 | `toHaveAttribute('aria-selected', 'true')`, `'aria-expanded'` | `toBeSelected()`, `toBeExpanded()` | renamed |
-| `.not.toBeVisible()`, `.not.toBeChecked()`, `.not.toBeEnabled()` | `toBeHidden()`, `toBeChecked({ checked: false })`, `toBeDisabled()`. A `.not` locator matcher holds for 1 s before it passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
+| `.not.toBeVisible()`, `.not.toBeChecked()`, `.not.toBeEnabled()` | `toBeHidden()`, `toBeChecked({ checked: false })`, `toBeDisabled()`. A `.not` locator matcher holds for up to 1 s before it passes, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | a positive matcher on several matches | `LOCATOR_AMBIGUOUS` at once, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `toBeAttached()` | the same; passes on a hidden match too | same |
 | `toBeEmpty()`, `toBeInViewport()`, `toBeEditable()`, `toHaveRole()`, `toHaveAccessibleDescription()` | not yet | missing |
@@ -423,7 +423,7 @@ context.
   await expect(screen.getByRole('checkbox', 'Subscribe')).not.toBeChecked();
   ```
 - A negated locator matcher passes only after its condition holds for 1 s,
-  so `.not.toBeVisible()` waits at least that long. The positive inverse,
+  or for its whole timeout when that is shorter. The positive inverse,
   such as `toBeHidden()`, passes on the first read that holds.
 - `check()` and `uncheck()` read the state back until the action timeout,
   so a controlled checkbox that updates late passes. A click that removes the
