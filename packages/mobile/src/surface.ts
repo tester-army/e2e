@@ -1249,15 +1249,18 @@ export class AgentDeviceSurface {
    * Waits for a control that arrived or moved with the last action, returning
    * whether it waited. Controls already present at the same place need no wait,
    * unless keyboard state changed: a keyboard change can precede the app's relayout.
-   * A screen swipe has no target control from which to infer that it is already in place.
+   * A screen swipe has no target control from which to infer that it is already
+   * in place; its remaining action budget also bounds the wait.
    */
-  private async waitForTransition(entry: NodeBinding | undefined, operation: OperationContext): Promise<boolean> {
+  private async waitForTransition(entry: NodeBinding | undefined, operation: OperationContext, budget?: InputBudget): Promise<boolean> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
     if (remaining <= 0) return false;
     const before = this.screenBeforeAction;
     if (entry !== undefined && before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
-    await sleep(remaining, operation.signal);
+    const waitMs = Math.min(remaining, budget?.remainingMs() ?? remaining);
+    if (waitMs <= 0) return false;
+    await sleep(waitMs, operation.signal);
     // The sleep resolves on abort; the action behind it must not go out once
     // the caller has already been told the operation was cancelled.
     if (operation.signal.aborted) {
@@ -1321,7 +1324,7 @@ export class AgentDeviceSurface {
     // chrome flow that way.
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
-      if (deterministic) await raceAbort(() => this.waitForTransition(undefined, operation), operation.signal, 'swipe transition');
+      if (deterministic) await raceAbort(() => this.waitForTransition(undefined, operation, input), operation.signal, 'swipe transition');
       const before = this.latestScreen;
       await this.command('swipe', (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle })), operation.signal);
       this.markAction(before);

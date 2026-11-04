@@ -3068,6 +3068,19 @@ describe('deterministic actions', () => {
     expect(h.fake.methods()).not.toContain('interactions.scroll');
   });
 
+  it('ends a screen-swipe transition at its action budget without sending a gesture', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const startedAt = Date.now();
+
+    await expect(h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), timeoutMs: 20 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    expect(Date.now() - startedAt).toBe(20);
+    await sleep(200);
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
   /**
    * Taps under a stopped clock. The fake client records a dispatch the moment
    * it is called, so a press recorded before any timer could fire, with no
