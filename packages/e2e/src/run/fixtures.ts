@@ -454,7 +454,7 @@ function unreachableApp(cause: unknown, url: string, hasCommand: boolean): Infra
   const match = NOTHING_LISTENING.exec(errorMessage(cause));
   if (match === null) return undefined;
   const hint = hasCommand
-    ? "check the target's app.command log and app.url"
+    ? "check the target's app.command output and app.url. Set app.command.log if output is not captured"
     : "start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it";
   return new InfrastructureError(
     'APP_UNREACHABLE',

@@ -488,7 +488,8 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
     try {
       const error = resultByTitle(outcome, 'taps a node').attempts[0]?.error;
       expect(error?.code).toBe('APP_UNREACHABLE');
-      expect(error?.message).toContain("check the target's app.command log and app.url");
+      expect(error?.message).toContain("check the target's app.command output and app.url");
+      expect(error?.message).toContain('Set app.command.log if output is not captured');
       expect(error?.message).not.toContain('give the target an app.command');
     } finally {
       project.cleanup();
