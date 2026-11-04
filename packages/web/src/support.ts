@@ -365,8 +365,9 @@ export function isNavigationRace(cause: unknown): boolean {
  * deletes or replaces a JavaScript built-in (`Map`, `Object`) breaks every
  * script Playwright runs in its main world, e2e's locate reads included. Told
  * apart by asking the frame in both worlds: Playwright's utility world still
- * reads the document, so the frame lives, while a main-world query that runs
- * no e2e code fails too, so e2e's own code is not the cause.
+ * reads the document before and after a main-world query that runs no e2e
+ * code fails, so the frame lives throughout and e2e's own code is not the
+ * cause.
  */
 export async function pageScriptFailure(
   scope: Page | FrameLocator,
@@ -376,17 +377,17 @@ export async function pageScriptFailure(
 ): Promise<TestError | undefined> {
   if (isClassified(cause) || isPwTimeout(cause) || isNavigationRace(cause)) return undefined;
   const root = scope.locator(':root');
-  try {
-    await root.count();
-  } catch {
-    return undefined;
-  }
+  /** Whether Playwright's utility world still reads the frame's document. */
+  const alive = (): Promise<boolean> => root.count().then(() => true, () => false);
+  if (!(await alive())) return undefined;
   try {
     await root.evaluate(() => 0, undefined, { timeout: Math.max(timeoutMs, 1) });
     return undefined;
   } catch (probe) {
     if (isPwTimeout(probe) || isNavigationRace(probe)) return undefined;
   }
+  // A crash or a closed target between the two probes fails this read too.
+  if (!(await alive())) return undefined;
   return new TestError(
     'EVALUATE_FAILED',
     `${operation} failed: the page deleted or replaced a JavaScript built-in that in-page automation code needs: ${message(cause)}`,

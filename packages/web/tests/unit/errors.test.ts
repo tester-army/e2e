@@ -7,7 +7,8 @@
 import { describe, expect, it } from 'vitest';
 import { EngineError } from 'e2e/engine';
 import { ConfigurationError, TestError } from 'e2e/engine';
-import { isTestErrorCode, navigationStaleOr, staleOr, translatePwError } from '../../src/support.ts';
+import type { Page } from 'playwright-core';
+import { isTestErrorCode, navigationStaleOr, pageScriptFailure, staleOr, translatePwError } from '../../src/support.ts';
 
 function pwTimeout(text: string): Error {
   const error = new Error(text);
@@ -149,4 +150,36 @@ describe('staleOr', () => {
       expect(staleOr(timeout, 'read')).toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
     },
   );
+});
+
+describe('pageScriptFailure', () => {
+  const pageError = new Error('locator.evaluateAll: TypeError: Map is not a constructor');
+
+  /** A page whose `:root` answers the utility-world count with `counts` in turn and fails the main-world evaluate. */
+  function probedPage(counts: readonly boolean[]): Page {
+    let call = 0;
+    const root = {
+      count: async () => {
+        if (!counts[call++]) throw new Error('Target page, context or browser has been closed');
+        return 1;
+      },
+      evaluate: async () => {
+        throw new Error('locator.evaluate: TypeError: Map is not a constructor');
+      },
+    };
+    return { locator: () => root } as unknown as Page;
+  }
+
+  it('classifies a failure the page caused while both worlds answer around it', async () => {
+    await expect(pageScriptFailure(probedPage([true, true]), pageError, 'locate', 1_000))
+      .resolves.toMatchObject({ code: 'EVALUATE_FAILED', category: 'test' });
+  });
+
+  it('leaves a frame that stops answering after the main-world probe to infrastructure', async () => {
+    await expect(pageScriptFailure(probedPage([true, false]), pageError, 'locate', 1_000)).resolves.toBeUndefined();
+  });
+
+  it('leaves a frame the utility world cannot read to infrastructure', async () => {
+    await expect(pageScriptFailure(probedPage([false]), pageError, 'locate', 1_000)).resolves.toBeUndefined();
+  });
 });
