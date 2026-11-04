@@ -56,14 +56,14 @@ describe('browser.evaluate error boundaries', () => {
     'page.evaluate: Target page, context or browser has been closed',
     'page.evaluate: Execution context was destroyed, most likely because of a navigation.',
   ])('keeps a Playwright rejection as infrastructure: %s', async (message) => {
-    vi.spyOn(page, 'evaluate').mockRejectedValueOnce(new Error(message));
+    vi.spyOn(page, 'evaluateHandle').mockRejectedValueOnce(new Error(message));
     await expect(browser.evaluate('() => 1')).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
   });
 
   it('keeps a Playwright timeout as OPERATION_TIMEOUT', async () => {
     const error = new Error('page.evaluate: Timeout 1000ms exceeded.');
     error.name = 'TimeoutError';
-    vi.spyOn(page, 'evaluate').mockRejectedValueOnce(error);
+    vi.spyOn(page, 'evaluateHandle').mockRejectedValueOnce(error);
     await expect(browser.evaluate('() => 1')).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
   });
 
@@ -100,5 +100,36 @@ describe('browser.evaluate error boundaries', () => {
     await expect(browser.evaluate('() => Infinity')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     await expect(browser.evaluate('() => {')).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
     await expect(browser.evaluate('() => {', null)).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
+    await expect(browser.evaluate('() => new Date()')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: 'evaluate result must be JSON-safe' });
+    await expect(browser.evaluate('() => { try { document.querySelector("!!"); } catch (error) { return error; } }'))
+      .rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: 'evaluate result must be JSON-safe' });
+    await expect(browser.evaluate('() => ({ missing: undefined })')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(browser.evaluate('() => { const cart = {}; cart.self = cart; return cart; }')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: 'evaluate result contains a cycle' });
+  });
+
+  it('converts page objects the way it always has', async () => {
+    await page.setContent('<div style="width: 10px; height: 20px"></div>');
+    await expect(browser.evaluate('() => document.querySelector("div").getBoundingClientRect()'))
+      .resolves.toMatchObject({ width: 10, height: 20 });
+    await expect(browser.evaluate('() => [document.body, document, window]'))
+      .resolves.toEqual(['ref: <Node>', 'ref: <Document>', 'ref: <Window>']);
+    await expect(browser.evaluate('() => { const item = { sku: "a" }; return [item, item]; }'))
+      .resolves.toEqual([{ sku: 'a' }, { sku: 'a' }]);
+    await expect(browser.evaluate('() => "quote \\" line\\n\\u2028 \\ud83d\\ude00 lone \\ud800"'))
+      .resolves.toBe('quote " line\n\u2028 \ud83d\ude00 lone \ud800');
+    expect(Object.is(await browser.evaluate('() => -0'), -0)).toBe(true);
+    await expect(browser.evaluate('() => function () {}')).resolves.toBeUndefined();
+  });
+
+  it('returns a result after the page deletes or replaces the globals the transport could use', async () => {
+    await expect(browser.evaluate(
+      '() => { delete window.Array; window.Map = 1; window.JSON = 1; window.Object = 1; window.String = 1; return { items: [1, "two"], ok: true }; }',
+    )).resolves.toEqual({ items: [1, 'two'], ok: true });
+  });
+
+  it('keeps returning results on a page that deleted Array and JSON and hid __proto__', async () => {
+    await page.setContent('<script>delete window.Array; delete window.JSON; delete Object.prototype.__proto__;</script>');
+    await expect(browser.evaluate((n: number) => ({ items: [n, 'two'] }), 1)).resolves.toEqual({ items: [1, 'two'] });
+    await expect(browser.evaluate('() => [1, 2]')).resolves.toEqual([1, 2]);
   });
 });
