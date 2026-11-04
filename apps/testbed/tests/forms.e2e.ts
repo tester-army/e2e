@@ -61,11 +61,4 @@ test.describe('forms', { tags: ['forms'] }, () => {
     await expect(suggestions).toHaveCount(1);
     await expect(suggestions.first()).toHaveText('Warsaw');
   });
-
-  test('drives the page with raw keyboard input', async ({ screen, browser }) => {
-    await screen.getByLabel('Full name').focus();
-    await browser.keyboard.type('Margaret');
-    await browser.keyboard.press('Backspace');
-    await expect(screen.getByLabel('Full name')).toHaveValue('Margare');
-  });
 });

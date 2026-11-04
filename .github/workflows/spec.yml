@@ -22,7 +22,7 @@ concurrency:
 jobs:
   check:
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -72,24 +72,6 @@ jobs:
         run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0}', github.base_ref) || '' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
-      # Playwright's own page tests on chromium and firefox: a failure not listed
-      # in apps/testbed/tests-parity/expected-gaps.txt fails, and so does a
-      # listed gap that passes.
-      - name: Playwright parity
-        run: |
-          node --test apps/testbed/scripts/parity-gaps.test.ts
-          pnpm --filter @e2e-dev/testbed test:parity
-      - name: Upload parity report
-        if: ${{ failure() }}
-        continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: parity-report
-          path: |
-            apps/testbed/.e2e-parity/report.json
-            apps/testbed/.e2e-parity/results
-          if-no-files-found: warn
-          retention-days: 7
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404

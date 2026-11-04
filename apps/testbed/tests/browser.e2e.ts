@@ -21,12 +21,6 @@ test.describe('browser fixture', { requires: ['browser'], tags: ['browser'] }, (
     await expect(browser).toHaveURL(/about$/);
   });
 
-  test('waitForURL waits out a delayed navigation', async ({ screen, browser }) => {
-    await screen.getByRole('button', 'Go to about, soon').tap();
-    await browser.waitForURL('/about');
-    await expect(screen.getByRole('heading', 'About')).toBeVisible();
-  });
-
   test('reload runs the page again', async ({ screen, browser }) => {
     await expect(screen.getByLabel('Loads')).toHaveText('loads: 1');
     await browser.reload();

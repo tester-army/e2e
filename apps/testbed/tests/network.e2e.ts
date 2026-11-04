@@ -39,25 +39,6 @@ test.describe('network', { requires: ['browser'], tags: ['network'] }, () => {
     await expect(screen.getByText('Grace')).toBeVisible();
   });
 
-  test('stubs the API with route fulfillment', async ({ screen, browser }) => {
-    await browser.route('**/api/users', (route) =>
-      route.fulfill({ json: [{ name: 'Stubbed' }] }),
-    );
-    await screen.getByRole('button', 'Load users').tap();
-    await expect(screen.getByRole('status', 'Network state')).toHaveText('loaded 1');
-    await expect(screen.getByText('Stubbed')).toBeVisible();
-
-    await browser.unroute('**/api/users');
-    await screen.getByRole('button', 'Load users').tap();
-    await expect(screen.getByRole('status', 'Network state')).toHaveText('loaded 3');
-  });
-
-  test('surfaces aborted requests as failures', async ({ screen, browser }) => {
-    await browser.route('**/api/users', (route) => route.abort());
-    await screen.getByRole('button', 'Load users').tap();
-    await expect(screen.getByRole('status', 'Network state')).toHaveText('failed');
-  });
-
   test('evaluate inspects live page state', async ({ screen, browser }) => {
     await screen.getByRole('button', 'Load users').tap();
     await expect(screen.getByRole('status', 'Network state')).toHaveText('loaded 3');

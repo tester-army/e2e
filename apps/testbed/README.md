@@ -17,6 +17,9 @@ here.
   `controls` (control states, scrolling, the browser fixture's page, the
   speed counter, about). `app/pages/index.mjs` merges them and
   `app/layout.mjs` renders the nav from that registry.
+- `app/playwright/` — Playwright's test assets (v1.64.1, Apache-2.0, with its
+  `LICENSE` and `NOTICE`) and the dynamic routes its test server sets, served
+  by the playground for any path it has no page for.
 - `app/bug-garden.mjs` — a bookshop with planted defects, for `e2e explore`.
 - `dogfood/server.mjs` — an expense-claims app with a test API, for the
   executor dogfoods.
@@ -27,7 +30,12 @@ here.
   states and the failure codes (`controls`), pointer coordinates and path
   swipes (`pointer`), viewport and node scrolling (`scroll`), the `browser`
   fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
-  `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`.
+  The files tagged `playwright` are Playwright's own `tests/page` specs at
+  v1.64.1, ported to the public API: each header names its source and the
+  tests left out, and `fail: 'reason'` marks a test e2e fails on purpose or
+  by a known gap (`--tag playwright` runs only them).
+  `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`,
+  and the ported tests' `content`, `asset`, `PREFIX`, and `CROSS`.
 - `e2e.lightpanda.config.ts` and `e2e.lightpanda-agent.config.ts`: the
   local suite and the agent suite on `@e2e-dev/lightpanda`, which starts
   [Lightpanda](https://lightpanda.io) from `LIGHTPANDA_PATH` (or `PATH`),
@@ -44,10 +52,6 @@ here.
   `StepExecutor` with its own tools and transport; the engine is never touched.
 - `e2e.dogfood-edge.config.ts` + `tests-dogfood-edge/` — steps expected to
   conclude blocked or failed; the report, not the exit code, is the output.
-- `e2e.parity.config.ts` + `tests-parity/` + `parity/`: Playwright's own
-  page tests at v1.64.1, ported to the public API, on chromium and firefox.
-  `scripts/parity.ts` runs them and fails on any failure
-  `tests-parity/expected-gaps.txt` does not list; see `parity/README.md`.
 - `e2e.stress.config.ts` + `tests-stress/` — failures, timeouts, skips,
   flakes, and hostile titles for the reporters.
 - `e2e.explore.config.ts` + `scripts/explore-bench.mjs` — `e2e explore`
@@ -66,7 +70,6 @@ AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:agent     # real mode
 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed test:dogfood
 AI_GATEWAY_API_KEY=... pnpm --filter @e2e-dev/testbed explore:garden
 pnpm --filter @e2e-dev/testbed test:stress                            # reporters only
-pnpm --filter @e2e-dev/testbed test:parity                            # Playwright parity, both browsers
 ```
 
 The local suite runs in CI on every push. Reports land in `.e2e/report.json`;

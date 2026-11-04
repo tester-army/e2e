@@ -10,10 +10,7 @@
   },
   "include": [
     "e2e.config.ts",
-    "e2e.parity.config.ts",
     "fixtures/**/*.ts",
-    "scripts/parity*.ts",
-    "tests/**/*.ts",
-    "tests-parity/**/*.ts"
+    "tests/**/*.ts"
   ]
 }

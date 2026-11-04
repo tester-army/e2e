@@ -14,7 +14,6 @@
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:dogfood": "node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts",
     "test:stress": "node node_modules/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
-    "test:parity": "node scripts/parity.ts",
     "explore": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.agent.config.ts",
     "explore:garden": "node node_modules/e2e/dist/cli/bin.js explore --config e2e.explore.config.ts",
     "explore:bench": "node scripts/explore-bench.mjs"
