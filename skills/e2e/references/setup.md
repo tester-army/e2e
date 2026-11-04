@@ -272,7 +272,11 @@ app: {
 - In `e2e run`, a command that exits after readiness and before shutdown fails the run with `APP_UNREACHABLE`.
   This includes exit code 0 and termination by a signal.
   The runner interrupts active tests and stops queued tests.
-  The error names the command and its exit code or signal, with a redacted log tail when `log` is set.
+  The error identifies the target and reports the command's exit code or signal.
+  With `log`, it includes a bounded tail of up to 20 lines appended since the command started, or says `no output`.
+  A shared log can include lines from other processes.
+  The tail replaces `command.env` and `inheritEnv` values of at least 4 characters with `<secret:NAME>` markers.
+  Without `log`, the message asks you to set one.
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest
   through `env`, or name host variables in `inheritEnv` (`['DATABASE_URL',

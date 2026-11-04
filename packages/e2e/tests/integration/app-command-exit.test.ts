@@ -81,7 +81,8 @@ export default {
         expect.soft(message).not.toContain('app output 0\n');
         expect.soft(JSON.stringify(outcome.report)).not.toContain(SECRET);
         expect.soft(existsSync(path.join(project.dir, 'queued-ran'))).toBe(false);
-        expect.soft(outcome.results.find((result) => result.test.title === 'queued test')?.status).not.toBe('passed');
+        expect.soft(outcome.results.find((result) => result.test.title === 'waits while the app exits')?.status).toBe('interrupted');
+        expect.soft(outcome.results.find((result) => result.test.title === 'queued test')?.status).toBe('skipped');
         assertValidReport(outcome.report);
       } finally {
         project.cleanup();

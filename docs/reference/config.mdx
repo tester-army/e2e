@@ -523,8 +523,12 @@ command: {
   The runner interrupts active tests and stops queued tests.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
-- Startup failures and unexpected exits quote the last 20 log lines appended since the command started.
-  The quote replaces `command.env` and `inheritEnv` values with `<secret:NAME>` markers.
+- Startup timeouts and command exits quote a bounded tail of up to 20 lines appended since the command started when `log` is set.
+  An empty or unreadable log produces `no output in <log>`.
+  A shared log can include lines from other processes.
+  The quote replaces `command.env` and `inheritEnv` values of at least 4 characters with `<secret:NAME>` markers.
+  Without `log`, these errors ask you to set one.
+  A command that fails to spawn reports the spawn error instead.
 - `reuseExisting`: when the readiness URL already answers before the command
   starts, the runner uses that process. It starts nothing and stops nothing.
   CI ignores it, with a notice, and always starts the command.
