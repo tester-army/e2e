@@ -81,6 +81,7 @@ describe('ChildProcessRunner', () => {
         sessionKeyBase64: '',
         debug: false,
         aiTrace: false,
+        step: false,
         envFor: () => ({ ...process.env, NODE_OPTIONS: `--import ${pathToFileURL(preload).href}` }),
       });
       let exit: string | undefined;

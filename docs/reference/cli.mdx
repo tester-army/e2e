@@ -566,6 +566,7 @@ Test files, directories, or globs relative to the project root:
 | `--strict-cache` | Turns on `cache.strict` for this run. A step whose recording exists but no longer replays fails with `REPLAY_STALE` instead of handing off to the agent. Retries replay too, and the run never writes the cache. See [Fail on a stale recording](/cache#fail-on-a-stale-recording). |
 | `-u`, `--update-snapshots` | Writes each stored screenshot [`toHaveScreenshot`](/reference/expect#screenshot-matchers) finds missing or different, and passes the matcher. Without it, a missing one is written and fails; in CI it is only attached to the results. |
 | `-w`, `--watch` | Runs, then reruns when a test file or the config changes, or on a key. See [Watch mode](#watch-mode). |
+| `--step` | Runs the first step, then holds each later step until a key at its prompt: Enter runs it, `n` runs the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops with exit 130. Held time counts toward no timeout. Runs one worker; needs a terminal; refused in CI, with `--watch`, `--workers` above 1, and the json reporter (exit 2). See [Step through a test](/debugging#step-through-a-test). |
 
 **Output**
 
@@ -1313,7 +1314,7 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
 | 2 | CLI, config, collection, dependency, credential, model-config, or policy error |
 | 3 | Engine, app process, model provider, artifact, or cleanup infrastructure failure; `e2e feedback` that could not be delivered; `e2e upgrade` that could not reach the registry |
 | 4 | Internal runner invariant or unhandled runner error |
-| 130 | Interrupted by a user or CI signal |
+| 130 | Interrupted by a user or CI signal, or by `q` at the `--step` prompt |
 
 - Precedence for a mixed run is `130 > 4 > 3 > 2 > 1 > 0`. The report keeps
   every individual result; precedence affects only the process exit code.

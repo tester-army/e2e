@@ -14,6 +14,7 @@ import type { SerializedError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
+import type { StepPrompt } from '../run/step-hold.ts';
 import type { AppLogRecord, StepRecord } from '../run/steps.ts';
 import { cleanupErrorsOf, expectedFailureOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
@@ -61,8 +62,8 @@ import {
 } from './format.ts';
 import { leftOutTests } from './left-out.ts';
 import { ExploreView } from './list-explore.ts';
-import { isShownEvent, type ConfiguredModel, type FileGroup, type ReplayNotice, type RunningTest, type TestLine } from './list-model.ts';
-import { replayLine, replayNotices, stepLine } from './list-steps.ts';
+import { isShownEvent, type ConfiguredModel, type FileGroup, type PausedTest, type ReplayNotice, type RunningTest, type TestLine } from './list-model.ts';
+import { replayLine, replayNotices, stepLine, stepPromptLine } from './list-steps.ts';
 import { LiveWindow } from './live-window.ts';
 import { repeatGroups, repeatLine, repeatSummary, type RepeatRun } from './repeats.ts';
 import { RunningTree } from './running-tree.ts';
@@ -98,6 +99,8 @@ export interface ListReporterOptions {
   live?: boolean;
   /** Emit ANSI colors; defaults to picocolors' detection (TTY, CI, FORCE_COLOR). */
   colors?: boolean;
+  /** The run holds its steps (`e2e run --step`): the live window lists every finished step, not only agent ones. */
+  stepping?: boolean;
 }
 
 /**
@@ -312,6 +315,11 @@ export class ListReporter implements Reporter {
   private readonly pairs = new Map<string, RunningTest>();
   /** Whether a live window paints; without one, finished steps stream permanently. */
   private readonly live: boolean;
+  private readonly stepping: boolean;
+  /** The `e2e run --step` prompt up now, shown under its test. */
+  private prompt: StepPrompt | undefined;
+  /** The prompt line printed last without a live window, so `h`, which changes nothing there, prints nothing. */
+  private promptLine: string | undefined;
   private readonly failures: Failure[] = [];
   private readonly skippedFailures: Failure[] = [];
   /** Every result a test filter left out, in the order they arrived, for the `Left out` row. */
@@ -384,6 +392,7 @@ export class ListReporter implements Reporter {
   ) {
     const live = (options.live ?? process.stdout.isTTY === true) && output.raw !== undefined;
     this.live = live;
+    this.stepping = options.stepping ?? false;
     this.pc = picocolors.createColors(options.colors ?? (live || picocolors.isColorSupported));
     this.separator = this.pc.dim(' > ');
     this.tree = new RunningTree(this.pc, (target) => this.badge(target));
@@ -449,6 +458,21 @@ export class ListReporter implements Reporter {
         break;
     }
   };
+
+  /**
+   * Shows the `e2e run --step` prompt under its test in the live window, or
+   * takes it down. Without a window it prints once, as a permanent line.
+   */
+  showStepPrompt(prompt: StepPrompt | undefined): void {
+    this.prompt = prompt;
+    if (!this.live) {
+      const line = prompt === undefined ? undefined : stepPromptLine(prompt);
+      if (line !== undefined && line !== this.promptLine) this.print(line);
+      this.promptLine = line;
+      return;
+    }
+    this.window.redraw();
+  }
 
   /** Writes one permanent line without disturbing the live window. */
   private print(line: string): void {
@@ -675,6 +699,7 @@ export class ListReporter implements Reporter {
       executing: true,
       current: undefined,
       steps: this.pairs.get(key)?.steps ?? [],
+      ran: this.stepping ? (this.pairs.get(key)?.ran ?? []) : undefined,
     });
     this.window.redraw();
   }
@@ -727,6 +752,7 @@ export class ListReporter implements Reporter {
       }
       case 'end': {
         running.current = undefined;
+        running.ran?.push({ api: progress.api, label: progress.label, status: progress.status, durationMs: progress.durationMs, modelCalls: progress.modelCalls });
         if (progress.kind !== 'agent') {
           this.window.redraw();
           break;
@@ -1075,7 +1101,16 @@ export class ListReporter implements Reporter {
     if (this.explore !== undefined) {
       return this.explore.liveRows(this.exploreBadge(), running[0]?.current?.events, this.summaryRows(false), Date.now(), room);
     }
-    return this.tree.render(running, this.summaryRows(false), Date.now(), room, this.inFlight);
+    return this.tree.render(running, this.summaryRows(false), Date.now(), room, { setup: this.inFlight, paused: this.paused() });
+  }
+
+  /** The running test the `--step` prompt holds, with the prompt. */
+  private paused(): PausedTest | undefined {
+    const { prompt } = this;
+    if (prompt === undefined) return undefined;
+    const { testId, agent, target, repeat } = prompt.steps[0].step;
+    const test = this.pairs.get(pairKey(testId, agent, target, repeat));
+    return test === undefined ? undefined : { test, prompt };
   }
 
   /**

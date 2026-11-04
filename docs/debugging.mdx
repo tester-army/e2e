@@ -234,6 +234,64 @@ before any test starts.
 
 [Recording](/reference/config#recording) has every mode and file.
 
+## Step through a test
+
+`--step` runs the first step, then holds each later step until you press a
+key. Add `--headed` to watch the browser between steps.
+
+<CodeGroup>
+```bash npm
+npx e2e run tests/checkout.e2e.ts --step --headed
+```
+
+```bash pnpm
+pnpm exec e2e run tests/checkout.e2e.ts --step --headed
+```
+
+```bash bun
+bunx e2e run tests/checkout.e2e.ts --step --headed
+```
+</CodeGroup>
+
+The held step shows under its test, below the steps that already ran:
+
+```text
+ ❯ |web| tests/checkout.e2e.ts 0/1
+   └── pays with a card paused
+       ✓ app.open "/checkout" 412ms
+       ▶ step 2  locator.fill "getByLabel("Email")"  tests/checkout.e2e.ts:9
+         press enter to run this step, press h to show help, press q to quit
+```
+
+The keys follow [`--watch`](/reference/cli#watch-mode). These work at a prompt:
+
+| Key | Does |
+| --- | --- |
+| Enter | runs the held step and holds the next one |
+| `n` | runs the rest of this test, retries included, and holds at the next test |
+| `a` | runs the rest of the run without stopping |
+| `h` | shows every key under the prompt, or hides them |
+| `q`, Esc | stops the run as Ctrl-C does: the test ends `interrupted`, the rest are skipped, exit 130 |
+
+- A key pressed within 150 ms of a prompt is ignored, so a key meant for the
+  last step never runs this one. Ctrl-C works at any time, also while a step
+  runs.
+- The time a step is held counts toward nothing: not its duration, not the
+  test's `timeout`, not `maxDuration`. A test that hangs after a step still
+  times out on the time it had left. The test's own duration in the report
+  includes the holds.
+- Setup tests, retries, `afterEach` hooks, fixture teardowns, and steps inside
+  an `expect.poll` read run without stopping. An `agent.act` is one step.
+- Steps started together, as in `Promise.all`, share one prompt and run on one
+  Enter, so a `waitForResponse` beside the click that triggers it never waits
+  for a key. A step already running when another is held keeps running on its
+  own timeout.
+- A hosted browser or device can end a session that sits idle too long while
+  a step is held.
+
+`--step` runs one test at a time. It needs a terminal, and it is refused in
+CI, with `--watch`, with `--workers` above 1, and with the json reporter.
+
 ## Console output
 
 `console.log` and `console.error` in a test print while it runs, under a

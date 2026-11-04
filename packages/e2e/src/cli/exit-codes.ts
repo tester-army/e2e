@@ -5,5 +5,5 @@ export const EXIT_CODES: readonly (readonly [code: string, meaning: string])[] =
   ['2', 'CLI, config, or agent policy error'],
   ['3', 'engine, app process, model provider, artifact, or cleanup infrastructure failure'],
   ['4', 'internal runner error'],
-  ['130', 'interrupted by Ctrl-C or a CI signal'],
+  ['130', 'interrupted by Ctrl-C, a CI signal, or q at the --step prompt'],
 ];
