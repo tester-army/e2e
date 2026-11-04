@@ -69,8 +69,17 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Build
-        run: pnpm run build
+      # Versions the pending changesets the way the nightly release does: an
+      # engine whose peer names the next runner release (`>=0.22.1`) would
+      # reject the runner main still calls 0.22.0. Building after versioning
+      # stamps the snapshot version into `dist/.build.json`.
+      - name: Version and build the snapshot
+        run: |
+          node scripts/canary-changeset.ts
+          pnpm exec changeset version --snapshot examples
+          pnpm run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Pack
         run: |
           pnpm --filter e2e pack --out "$RUNNER_TEMP/packed/e2e.tgz"
