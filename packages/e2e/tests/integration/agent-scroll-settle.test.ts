@@ -64,7 +64,7 @@ describe('the look after scrolling to text', () => {
       const replay = resultByTitle(replayed, 'reaches and taps the row').attempts[0]!.steps.find((step) => step.api === 'agent.act');
       expect(replay?.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 2 });
       expect(afterScroll).toBe(2);
-      if (pages > 0) expect(beforeTap).toEqual([4, 4]);
+      if (pages > 0) expect(beforeTap).toEqual([3, 3]);
     } finally {
       project.cleanup();
     }

@@ -597,6 +597,13 @@ export interface SettleOptions<T> {
    * past the change wait as it is.
    */
   readonly stableWaitMs: number;
+  /**
+   * Whether a capture is already the settled screen, so the stability proof
+   * is not spent on it: asked once, of the capture past the change wait. The
+   * caller owns the evidence (a scroll to a text compares the page with the
+   * one before it); a capture it declines gets the stability check.
+   */
+  readonly settledWhen?: ((value: T) => boolean) | undefined;
   readonly pollMs?: number | undefined;
 }
 
@@ -642,6 +649,7 @@ export async function settleObservation<T>(
       if (shape === undefined) return value;
     }
   }
+  if (options.settledWhen?.(value) === true) return value;
   const deadlineMs = Date.now() + options.stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);

@@ -72,18 +72,36 @@ export function nodeReading(
   return best?.node;
 }
 
+/** What a screen reads (`shape`) and how many nodes read anything (`size`). */
+export interface PageReading {
+  readonly shape: string;
+  readonly size: number;
+}
+
 /**
  * What a screen reads and where, for telling a page that moved from one that
  * did not. Name and text both count: a windowed list's rows keep one name
  * and one slot on the screen while the text in them changes, and that is the
- * list moving.
+ * list moving. The size is how many nodes carry a reading.
  */
-export function readingShape(observation: Pick<SemanticAgentObservation, 'nodes'>): string {
+export function readPage(observation: Pick<SemanticAgentObservation, 'nodes'>): PageReading {
   const lines: string[] = [];
   for (const node of observation.nodes.values()) {
     if (node.name === undefined && node.text === undefined) continue;
     const at = node.rect === undefined ? '' : `${String(Math.round(node.rect.x))},${String(Math.round(node.rect.y))}`;
     lines.push(`${node.name ?? ''}|${node.text ?? ''}@${at}`);
   }
-  return lines.join('\n');
+  return { shape: lines.join('\n'), size: lines.length };
+}
+
+/**
+ * Whether a capture taken after paging is the page the swipe landed on,
+ * without a second read to confirm it: it reads differently from the page
+ * before and is not sparser. A capture that reads the same may be the
+ * screen before the scroll rendered, or the end of the list; a sparser one
+ * may be a windowed list between the scroll and the rows it draws for it.
+ * Only those need another look.
+ */
+export function pageLanded(before: PageReading, after: PageReading): boolean {
+  return after.shape !== before.shape && after.size >= before.size;
 }

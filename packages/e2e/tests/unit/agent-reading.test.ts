@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
-import { nodeReading, normalizeReading, readingShape } from '../../src/agent/reading.ts';
+import { nodeReading, normalizeReading, pageLanded, readPage } from '../../src/agent/reading.ts';
 import { redacted } from '../helpers/redacted.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -51,14 +51,32 @@ describe('nodeReading', () => {
   });
 });
 
-describe('readingShape', () => {
+describe('readPage', () => {
   it('changes when a row keeps its name and its place but its text moves on', () => {
     const rect = { x: 0, y: 100, width: 300, height: 40 };
     const before = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 1', rect }));
     const after = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 2', rect }));
     const same = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 1', rect }));
-    expect(readingShape(before)).not.toBe(readingShape(after));
-    expect(readingShape(before)).toBe(readingShape(same));
-    expect(readingShape(indexOf(node('box', { role: 'group', rect })))).toBe('');
+    expect(readPage(before).shape).not.toBe(readPage(after).shape);
+    expect(readPage(before).shape).toBe(readPage(same).shape);
+    expect(readPage(indexOf(node('box', { role: 'group', rect })))).toEqual({ shape: '', size: 0 });
+  });
+});
+
+describe('pageLanded', () => {
+  const rows = (...texts: string[]) => readPage(indexOf(...texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: at * 40, width: 300, height: 40 } }))));
+
+  it('accepts a page that reads differently and is no sparser', () => {
+    expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows('Row 4', 'Row 5', 'Row 6'))).toBe(true);
+    expect(pageLanded(rows('Row 1', 'Row 2'), rows('Row 3', 'Row 4', 'Row 5'))).toBe(true);
+  });
+
+  it('declines a page that reads the same, as the scroll not rendered yet or the end of the list', () => {
+    expect(pageLanded(rows('Row 1', 'Row 2'), rows('Row 1', 'Row 2'))).toBe(false);
+  });
+
+  it('declines a thinner page, a windowed list between the scroll and the rows it draws', () => {
+    expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows('Row 4'))).toBe(false);
+    expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows())).toBe(false);
   });
 });
