@@ -93,6 +93,8 @@ export interface TestLine {
   readonly usage: AiUsage;
   readonly firstErrorLine: string | undefined;
   readonly skipReason: string | undefined;
+  /** Set when a test marked `test.fail` passed by failing: the reason and the first line of the failure it covered. */
+  readonly expectedFailure?: { readonly reason: string; readonly errorLine: string } | undefined;
   /** Cleanup-phase secondary errors of attempts whose cleanup failed. */
   readonly cleanupErrors: readonly SerializedError[];
   readonly steps: readonly FinishedStep[];

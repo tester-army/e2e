@@ -141,6 +141,7 @@ describe('telemetry events', () => {
       tests_interrupted: 0,
       tests_flaky: 0,
       tests_skipped: 0,
+      tests_failed_as_expected: 0,
       filters_run: 0,
       filters_timed_out: 0,
       filters_failed: 0,

@@ -14,7 +14,7 @@ import { packageVersion } from '../internal/package-version.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
-import { memberRan, someSkippedAfterFailure } from '../run/records.ts';
+import { expectedFailureOf, memberRan, someSkippedAfterFailure } from '../run/records.ts';
 import type {
   ArtifactRecord,
   AttemptRecord,
@@ -265,6 +265,13 @@ export interface ReportAttempt extends ReportAttemptBase {
   failure?: FailureEvidence | undefined;
   /** Why the body skipped itself; present when `status` is `skipped`, and on an attempt that failed after skipping. */
   skip?: SkipInfo | undefined;
+  /**
+   * Present when the attempt was marked `test.fail`: the reason, and the
+   * failure that made a `passed` attempt pass. A marked attempt that passed
+   * is `failed` with `UNEXPECTED_PASS`; one that failed with an error the
+   * mark does not cover keeps that error and has no `error` here.
+   */
+  expectedFailure?: { reason: string; error?: ReportError } | undefined;
 }
 
 export interface ReportSerialMember {
@@ -350,6 +357,8 @@ export interface ReportResult {
   serialGroupId?: string | undefined;
   status: ResultRecord['status'];
   skip?: SkipInfo | undefined;
+  /** Why the test was expected to fail, when its last attempt was marked `test.fail`; the attempt holds the failure. */
+  expectedFailure?: { reason: string } | undefined;
   attempts: readonly ReportAttempt[];
 }
 
@@ -532,6 +541,14 @@ function serializeAttempt(attempt: AttemptRecord): ReportAttempt {
     ...serializeAttemptBase(attempt),
     ...(attempt.failure === undefined ? {} : { failure: attempt.failure }),
     ...(attempt.skip === undefined ? {} : { skip: attempt.skip }),
+    ...(attempt.expectedFailure === undefined
+      ? {}
+      : {
+          expectedFailure: {
+            reason: attempt.expectedFailure.reason,
+            ...(attempt.expectedFailure.error === undefined ? {} : { error: serializeErrorRecord(attempt.expectedFailure.error) }),
+          },
+        }),
     steps: attempt.steps.map(serializeStep),
     ...(attempt.appLog === undefined ? {} : { appLog: attempt.appLog }),
   };
@@ -601,8 +618,15 @@ function serializeResult(config: ResolvedConfig | undefined, result: ResultRecor
     serialGroupId: result.serialGroupId,
     status: result.status,
     skip: result.status === 'skipped' ? result.skip : undefined,
+    ...expectedFailureField(result),
     attempts: result.serialGroupId !== undefined ? [] : result.attempts.map(serializeAttempt),
   };
+}
+
+/** The result's `expectedFailure` field, from its last attempt's mark. */
+function expectedFailureField(result: ResultRecord): Pick<ReportResult, 'expectedFailure'> {
+  const mark = expectedFailureOf(result);
+  return mark === undefined ? {} : { expectedFailure: { reason: mark.reason } };
 }
 
 function serializeTarget(

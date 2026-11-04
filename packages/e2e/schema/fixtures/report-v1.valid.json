@@ -143,11 +143,24 @@
         "repeat": 0,
         "selected": true,
         "status": "passed",
+        "expectedFailure": {
+          "reason": "known gap: the cart badge does not update"
+        },
         "attempts": [
           {
             "id": "018f0f5c-7b2a-7abc-8abc-1123456789ab",
             "index": 0,
             "status": "passed",
+            "expectedFailure": {
+              "reason": "known gap: the cart badge does not update",
+              "error": {
+                "category": "test",
+                "code": "ASSERTION_FAILED",
+                "message": "expected text \"1\", got \"0\"",
+                "retryable": false,
+                "phase": "body"
+              }
+            },
             "startedAt": "2026-07-24T12:00:00.000Z",
             "durationMs": 1000,
             "steps": [

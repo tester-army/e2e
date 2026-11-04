@@ -529,7 +529,10 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
   const ranOn = Object.entries(told.environment ?? {});
   if (ranOn.length > 0) lines.push(`Ran on: ${ranOn.map(([name, value]) => `${cell(name, MAX_ID_CHARS)} ${code(value, MAX_CELL_CHARS)}`).join(' · ')}`, '');
 
-  const error = told.error;
+  // A test that failed as `test.fail` expected tells that failure.
+  const mark = result.attempts.at(-1)?.expectedFailure;
+  if (mark !== undefined) lines.push(`Expected to fail: ${cell(mark.reason)}`, '');
+  const error = told.error ?? mark?.error;
   if (error !== undefined) {
     const phase = error.phase === undefined || error.phase === 'body' ? '' : ` in ${cell(error.phase, MAX_ID_CHARS)}`;
     lines.push(`**${cell(error.code, 128)}**${phase}`, '', '```text', error.message.replaceAll('```', "'''"), '```', '');

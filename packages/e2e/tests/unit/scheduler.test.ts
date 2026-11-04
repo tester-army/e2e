@@ -32,6 +32,7 @@ const defaultOptions: ResolvedTestOptions = {
   agents: ['default'],
   agentContext: undefined,
   skipReason: undefined,
+  expectedFailure: undefined,
   serial: false,
   trace: undefined,
   video: undefined,

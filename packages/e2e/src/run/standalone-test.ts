@@ -21,7 +21,9 @@ import { SoftFailures } from '../expect/soft.ts';
 import {
   classifyError, ConfigurationError, E2EError, InfrastructureError, serializeError, TestError, TestTimeoutError, type ErrorPhase, type SerializedError,
 } from '../internal/errors.ts';
+import type { ExpectedFailureInfo } from '../internal/expected-failure.ts';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
+import { settleExpectedFailure } from './expected-failure.ts';
 import { withAbort, withTimeout } from '../internal/time.ts';
 import type { SetupFn } from '../types.ts';
 import type { AttemptBudget } from './budget.ts';
@@ -146,6 +148,8 @@ export interface StandaloneTestOutcome {
   /** Failures that landed after the first: a step the body did not await, soft assertions beside a thrown one. */
   readonly secondaryErrors: readonly SerializedError[];
   readonly skipReason?: string | undefined;
+  /** Set when the test was marked expected to fail; see `settleExpectedFailure`. */
+  readonly expectedFailure?: ExpectedFailureInfo | undefined;
   /** What the screen held when the failure landed: the URL, and the nodes nearest a locator that matched nothing. */
   readonly failure?: FailureEvidence | undefined;
   readonly durationMs: number;
@@ -237,6 +241,7 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
     let failure: E2EError | undefined;
     let failurePhase: RunPhase = 'beforeAll';
     let skipped: RuntimeSkip | undefined;
+    let expectedFailure = pair.options.expectedFailure;
     let timedOut = false;
     // As in a run's attempt: confirmation stops at what was verified when the
     // failure landed, and a failure only a missing model explains implicates nothing.
@@ -271,7 +276,19 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
       const soft = new SoftFailures();
       const polls = new PollScope('the test body');
       const publication = new AbortController();
-      publishAttempt({ attemptId, owner: 'host', testKind: 'test', assertionTimeout: config.assertionTimeout, budget, soft, polls }, publication.signal);
+      publishAttempt(
+        {
+          attemptId,
+          owner: 'host',
+          testKind: 'test',
+          assertionTimeout: config.assertionTimeout,
+          budget,
+          soft,
+          polls,
+          expectFailure: (reason) => (expectedFailure ??= reason),
+        },
+        publication.signal,
+      );
       // Whatever happens below, the slot is free for the next test once the body is done.
       try {
         extended = createExtendedFixtures(registered.fixtures, env.fixtures, env.target.engine?.name ?? 'none', budget.signal);
@@ -392,9 +409,17 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
     }
     // Parked until teardown: a body that outlived its turn finds every harness call refused.
     budget.enter(env.signal, 1).abort();
-    const outcome: StandaloneTestOutcome = {
+    const verdict: { status: StandaloneTestOutcome['status']; error?: SerializedError; skip?: string; secondaryErrors: SerializedError[]; expectedFailure?: ExpectedFailureInfo } = {
       status,
       ...(failure === undefined ? {} : { error: serialize(failure, failurePhase) }),
+      ...(skipped === undefined ? {} : { skip: skipped.reason }),
+      secondaryErrors,
+    };
+    settleExpectedFailure(verdict, expectedFailure, (error) => serialize(error, 'body'));
+    const outcome: StandaloneTestOutcome = {
+      status: verdict.status,
+      ...(verdict.error === undefined ? {} : { error: verdict.error }),
+      ...(verdict.expectedFailure === undefined ? {} : { expectedFailure: verdict.expectedFailure }),
       secondaryErrors,
       ...(skipped === undefined ? {} : { skipReason: skipped.reason }),
       ...(evidence === undefined ? {} : { failure: evidence }),

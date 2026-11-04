@@ -100,6 +100,13 @@ function skippedMessage(result: ReportResult): string {
   return result.skip?.filter === undefined ? reason : `left out by filter ${result.skip.filter}: ${reason}`;
 }
 
+/** `failed as expected: <reason>` and the covered error, for a passing case whose `test.fail` mark covered its failure. */
+function expectedNote(result: ReportResult): string | undefined {
+  const mark = result.attempts.at(-1)?.expectedFailure;
+  if (mark?.error === undefined) return undefined;
+  return `failed as expected: ${mark.reason}\n${mark.error.code}: ${mark.error.message}`;
+}
+
 function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSerialGroup>): RenderedCase {
   const final = outcome(result, groups);
   // The agent joins the name only when it is not `default`, so a suite that
@@ -110,12 +117,18 @@ function renderResult(result: ReportResult, groups: ReadonlyMap<string, ReportSe
     classname: result.file,
     time: seconds(final.durationMs),
   })}`;
+  const expected = expectedNote(result);
   switch (result.status) {
     case 'passed':
-      return { lines: [`${open}/>`], outcome: 'passed', durationMs: final.durationMs };
+      if (expected === undefined) return { lines: [`${open}/>`], outcome: 'passed', durationMs: final.durationMs };
+      return {
+        lines: [`${open}>`, `  <system-out>${text(expected)}</system-out>`, '</testcase>'],
+        outcome: 'passed',
+        durationMs: final.durationMs,
+      };
     case 'flaky': {
       const count = final.failedAttempts;
-      const note = `flaky: ${count} failed attempt${count === 1 ? '' : 's'} before passing`;
+      const note = [`flaky: ${count} failed attempt${count === 1 ? '' : 's'} before passing`, ...(expected === undefined ? [] : [expected])].join('\n');
       return {
         lines: [`${open}>`, `  <system-out>${text(note)}</system-out>`, '</testcase>'],
         outcome: 'passed',

@@ -31,17 +31,18 @@ export function isRuntimeSkip(value: unknown): value is RuntimeSkip {
   );
 }
 
-/** The three shapes `test.skip` accepts, told apart before anything runs. */
-export type SkipCall =
+/** The three shapes `test.skip` and `test.fail` accept, told apart before anything runs. */
+export type ModifierCall =
   | { readonly kind: 'register'; readonly title: string; readonly fn: unknown }
   | { readonly kind: 'runtime'; readonly condition: boolean; readonly reason: string | undefined };
 
 /**
  * `skip(title, fn)` registers a skipped test; `skip(condition, reason?)` and
- * `skip(reason?)` skip the running one. A string alone is a reason, never a
- * title: a registration always carries its body.
+ * `skip(reason?)` skip the running one, and `fail` takes the same shapes. A
+ * string alone is a reason, never a title: a registration always carries its
+ * body.
  */
-export function parseSkipCall(first: unknown, second: unknown): SkipCall {
+export function parseModifierCall(first: unknown, second: unknown): ModifierCall {
   if (typeof first === 'string' && typeof second === 'function') return { kind: 'register', title: first, fn: second };
   return {
     kind: 'runtime',
