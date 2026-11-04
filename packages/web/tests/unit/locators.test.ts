@@ -55,7 +55,12 @@ function chainOf(locator: PwLocator): readonly string[] {
 const page = fakeLocator([]) as unknown as Page;
 
 /** Projects with the default test-id attribute; the attribute itself is exercised in its own case. */
-const projectExpression = (target: Page, expression: LocatorExpression) => projectWith(target, expression, 'data-testid');
+const projectExpression = (target: Page, expression: LocatorExpression) =>
+  projectWith(target, expression, { testIdAttribute: 'data-testid', frameHidden: false });
+
+/** Projects with a test-id attribute of the case's own. */
+const projectWithTestId = (target: Page, expression: LocatorExpression, testIdAttribute: string) =>
+  projectWith(target, expression, { testIdAttribute, frameHidden: false });
 
 /** The step every semantic query part starts from: its scope plus the closed shadow roots under it. */
 const ROOTS = 'locator(e2e-roots=)';
@@ -143,20 +148,38 @@ describe('projectExpression', () => {
     ]);
   });
 
+  it('narrows a visible or role query inside a hidden frame to nothing, wherever it sits, and leaves other queries alone', () => {
+    const button = (visible?: true): LocatorExpression => ({
+      kind: 'query',
+      query: { kind: 'role', value: { kind: 'string', value: 'button', exact: true }, ...(visible ? { visible } : {}) },
+    });
+    const inHiddenFrame = (expression: LocatorExpression) =>
+      chainOf(projectWith(page, expression, { testIdAttribute: 'data-testid', frameHidden: true }).locator);
+    expect(inHiddenFrame(button(true))).toEqual([ROOTS, 'role(button)', 'locator(css=:not(*))']);
+    expect(inHiddenFrame({ kind: 'index', source: button(true), index: 'first' })).toEqual([
+      ROOTS, 'role(button)', 'locator(css=:not(*))', 'first',
+    ]);
+    expect(inHiddenFrame(button())).toEqual([ROOTS, 'role(button)', 'locator(css=:not(*))']);
+    const text: LocatorExpression = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } };
+    expect(inHiddenFrame(text)).toEqual([ROOTS, 'text(Save,exact)']);
+    const visibleText: LocatorExpression = { kind: 'query', query: { ...text.query, visible: true } };
+    expect(inHiddenFrame(visibleText)).toEqual([ROOTS, 'text(Save,exact)', 'locator(css=:not(*))']);
+  });
+
   it('projects a testId query onto the configured attribute, encoded as getByTestId encodes it', () => {
     const testId = (value: TextPattern): LocatorExpression => ({
       kind: 'query',
       query: { kind: 'testId', value },
     });
-    const exact = projectWith(page, testId({ kind: 'string', value: 'save "draft"', exact: true }), 'data-qa');
+    const exact = projectWithTestId(page, testId({ kind: 'string', value: 'save "draft"', exact: true }), 'data-qa');
     expect(chainOf(exact.locator)).toEqual([ROOTS, 'locator(internal:testid=[data-qa="save \\"draft\\""s])']);
     // A string is always an exact match, whatever `exact` says: getByTestId has no substring mode.
-    const loose = projectWith(page, testId({ kind: 'string', value: 'save', exact: false }), 'data-qa');
+    const loose = projectWithTestId(page, testId({ kind: 'string', value: 'save', exact: false }), 'data-qa');
     expect(chainOf(loose.locator)).toEqual([ROOTS, 'locator(internal:testid=[data-qa="save"s])']);
-    const pattern = projectWith(page, testId({ kind: 'regexp', source: '^row-\\d+$', flags: 'i' }), 'data-test-id');
+    const pattern = projectWithTestId(page, testId({ kind: 'regexp', source: '^row-\\d+$', flags: 'i' }), 'data-test-id');
     expect(chainOf(pattern.locator)).toEqual([ROOTS, 'locator(internal:testid=[data-test-id=/^row-\\d+$/i])']);
     // An attribute with a comma is quoted, as Playwright quotes it.
-    const quoted = projectWith(page, testId({ kind: 'string', value: 'x', exact: true }), 'a,b');
+    const quoted = projectWithTestId(page, testId({ kind: 'string', value: 'x', exact: true }), 'a,b');
     expect(chainOf(quoted.locator)).toEqual([ROOTS, 'locator(internal:testid=["a,b"="x"s])']);
   });
 

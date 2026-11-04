@@ -271,6 +271,8 @@ and `waitFor()`: what renders, as Playwright reads it.
 - A child that sets `visibility: visible` under a hidden parent is visible.
 - On the web, text directly under a `display: contents` element with
   `visibility: hidden` is hidden, where Playwright calls it visible.
+- On the web, everything inside a hidden `<iframe>` is hidden, cross-origin
+  frames included.
 - It works with scopes, `filter`, `first`, `last`, and `nth`:
   `getByText('Save', { visible: true }).first()` is the first visible match.
 
