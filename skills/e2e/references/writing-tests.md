@@ -497,7 +497,8 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `fulfill({ status?, headers?, contentType?, json | body | path })` (`body`
   a string or bytes; several cookies as one `\n`-joined `set-cookie`),
   `continue({ url?, method?, headers?, postData? })` (straight to the
-  network; a header set to `undefined` is dropped), `fallback()` (the route registered before it), or `abort()`;
+  network; a header set to `undefined` is dropped, configured site headers
+  still added), `fallback()` (the route registered before it), or `abort()`;
   none or two fails the next step with `ACTION_FAILED`, an unsupported
   option with `INVALID_ARGUMENT`.
 - `unrouteAll()` removes every route; configured site headers stay.

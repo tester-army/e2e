@@ -150,7 +150,7 @@ function requireHeaders(api: string, value: unknown, kind: 'request' | 'response
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TestError('INVALID_ARGUMENT', `${api} headers must map names to string values`);
   }
-  const headers: Record<string, string> = {};
+  const headers: [string, string][] = [];
   for (const [name, entry] of Object.entries(value)) {
     if (entry === undefined && kind === 'request') continue;
     if (typeof entry !== 'string') throw new TestError('INVALID_ARGUMENT', `${api} ${headerProblem(name, entry)}`);
@@ -159,9 +159,9 @@ function requireHeaders(api: string, value: unknown, kind: 'request' | 'response
       const problem = headerProblem(name, line);
       if (problem !== undefined) throw new TestError('INVALID_ARGUMENT', `${api} ${problem}`);
     }
-    headers[name] = entry;
+    headers.push([name, entry]);
   }
-  return headers;
+  return Object.fromEntries(headers);
 }
 
 /** A fulfill body: a string as is, or bytes as a `Buffer` over the same memory so Playwright sends them unchanged. */

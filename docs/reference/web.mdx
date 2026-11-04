@@ -734,7 +734,8 @@ expect(response.status).toBe(201);
 - `body()`, `text()`, and `json()` wait for the body on a budget of their own,
   `config.actionTimeout` capped by the test deadline.
 - `url`, `status`, and `headers` are always readable.
-- A genuinely empty body reads as `''`.
+- A genuinely empty body reads as an empty `Buffer` from `body()` and `''`
+  from `text()`; `json()` rejects it.
 
 | Throws | When |
 | --- | --- |
