@@ -169,8 +169,19 @@ body {
     font-size: 71px;
   }
 
+  /* The field and the button share a row; the error and the greeting span it. */
+  .form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .error,
+  .status {
+    grid-column: 1 / -1;
+  }
+
   .button {
-    align-self: flex-start;
+    height: 56px;
   }
 }
 
