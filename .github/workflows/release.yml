@@ -85,6 +85,18 @@ jobs:
     with:
       version: ${{ needs.release.outputs.e2e-version }}
 
+  # Publishes the skills of the e2e release that just published to ClawHub.
+  clawhub:
+    needs: release
+    if: ${{ needs.release.outputs.e2e-version != '' }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/clawhub.yml
+    with:
+      version: ${{ needs.release.outputs.e2e-version }}
+    secrets:
+      CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
   # A changesets snapshot of every public package, published to the `nightly`
   # dist-tag as `<next version>-nightly-<datetime>`. Same filename as the
   # versioned release on purpose: npm Trusted Publishing is granted per

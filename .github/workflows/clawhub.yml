@@ -1,0 +1,70 @@
+name: clawhub
+
+# Publishes the consumer skills under skills/ to ClawHub as @e2e/<skill>, from
+# that e2e release's tag. `release.yml` calls it after each release that
+# published e2e; dispatch it by hand with the newest version to retry a
+# failed publish (an older tag would publish older skills). A skill whose
+# files did not change since its last ClawHub version is skipped; a changed
+# one gets the next patch version there.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: e2e version to publish from, e.g. 0.22.0
+        required: true
+        type: string
+    secrets:
+      CLAWHUB_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: e2e version to publish from, e.g. 0.22.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clawhub
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  CLAWHUB_VERSION: 0.25.1
+
+jobs:
+  publish:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must be a release version like 0.22.0, got: $VERSION"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e2e@${{ inputs.version }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      - name: Log in
+        run: npx --yes "clawhub@$CLAWHUB_VERSION" login --token "$CLAWHUB_TOKEN" --no-browser
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+      - name: Publish
+        run: |
+          commit="$(git rev-parse HEAD)"
+          for dir in skills/*/; do
+            skill="$(basename "$dir")"
+            npx --yes "clawhub@$CLAWHUB_VERSION" --no-input skill publish "$dir" \
+              --owner e2e --slug "$skill" --name "$skill" \
+              --changelog "From e2e $VERSION." \
+              --source-repo "$GITHUB_REPOSITORY" --source-commit "$commit" \
+              --source-ref "e2e@$VERSION" --source-path "skills/$skill"
+          done
