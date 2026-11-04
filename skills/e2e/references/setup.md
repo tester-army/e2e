@@ -269,14 +269,12 @@ app: {
   ready is `APP_UNREACHABLE`; the run stops before its tests and leaves the
   last run's report and results as they were (`command.log` still gets this
   boot's output).
-- In `e2e run`, a command that exits after readiness and before shutdown fails the run with `APP_UNREACHABLE`.
+- In `e2e run`, a command that exits after readiness fails the run with `APP_UNREACHABLE` if a dependent target has unfinished work.
   This includes exit code 0 and termination by a signal.
-  The runner interrupts active tests and stops queued tests.
+  The runner interrupts active tests and skips queued tests only for those targets.
+  Targets that have finished their work ignore the exit.
   The error identifies the target and reports the command's exit code or signal.
-  With `log`, it includes a bounded tail of up to 20 lines appended since the command started, or says `no output`.
-  A shared log can include lines from other processes.
-  The tail replaces `command.env` and `inheritEnv` values of at least 4 characters with `<secret:NAME>` markers.
-  Without `log`, the message asks you to set one.
+  See the [command reference](https://e2e.tester.army/reference/config#command) for log excerpts and redaction limits.
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest
   through `env`, or name host variables in `inheritEnv` (`['DATABASE_URL',

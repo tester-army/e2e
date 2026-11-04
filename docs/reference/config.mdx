@@ -518,9 +518,10 @@ command: {
   is dropped.
 - `startupTimeout` is the budget of the [`readyUrl`](#readyurl) probe.
 - `shutdownTimeout` is the grace period before force-kill.
-- In `e2e run`, a command that exits after readiness and before shutdown fails the run with `APP_UNREACHABLE`.
+- In `e2e run`, a command that exits after readiness fails the run with `APP_UNREACHABLE` if a dependent target has unfinished work.
   This includes exit code 0 and termination by a signal.
-  The runner interrupts active tests and stops queued tests.
+  The runner interrupts active tests and skips queued tests only for those targets.
+  Targets that have finished their work ignore the exit.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
 - Startup timeouts and command exits quote a bounded tail of up to 20 lines appended since the command started when `log` is set.

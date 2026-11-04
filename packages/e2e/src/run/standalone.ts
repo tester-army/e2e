@@ -149,7 +149,7 @@ async function openWorker(options: StandaloneHostOptions, kind: AttemptKind): Pr
       runId, projectRoot: config.projectRoot, env: options.env, signal, headed: options.headed, notice,
     });
     const hooks = { ci: config.ci, env: options.env, notice: (message: string) => notice('app', message) };
-    processes = await startDeclaredProcesses([target], config.projectRoot, () => hooks, signal, debug, options.processes);
+    processes = await startDeclaredProcesses([target], config.projectRoot, hooks, signal, debug, options.processes);
     if (signal.aborted) throw new InfrastructureError('CANCELLED', `opening a host on target "${target.name}" was cancelled`);
     executor = new TargetExecutor({
       config, target, runId, artifactsRoot: layout.results, sessionStore,

@@ -97,6 +97,19 @@ export interface RunUnitsOptions {
   readonly forceGraceMs: number;
   readonly spawn: SpawnUnitRunner;
   readonly events: SchedulerEvents;
+  /** App failures buffered during startup, then delivered while target work remains. */
+  readonly subscribeTargetFailures?: (receive: (failure: TargetFailure) => void) => () => void;
+}
+
+/** One failed app command and all targets that declared it. */
+export interface TargetFailure {
+  readonly targetNames: readonly string[];
+  readonly error: SerializedError;
+}
+
+/** Targets whose interrupted verdicts came from an app failure rather than a user interrupt. */
+export interface RunUnitsOutcome {
+  readonly appExitTargets: ReadonlySet<string>;
 }
 
 /** Consecutive worker-boot failures per target before its units are failed. */
@@ -117,8 +130,13 @@ function isInterruptSignal(signal: NodeJS.Signals | null): boolean {
 }
 
 /** Runs every planned unit and streams records. */
-export async function runUnits(options: RunUnitsOptions): Promise<void> {
-  await new Scheduler(options).run();
+export async function runUnits(options: RunUnitsOptions): Promise<RunUnitsOutcome> {
+  return new Scheduler(options).run();
+}
+
+interface TargetUnavailable {
+  readonly kind: 'worker-start' | 'app-exit';
+  readonly skip: SkipInfo;
 }
 
 interface TargetState {
@@ -130,7 +148,7 @@ interface TargetState {
   /** session name -> id of the setup test that failed to produce it */
   readonly failedSessions: Map<string, string>;
   initFailures: number;
-  failed: boolean;
+  unavailable: TargetUnavailable | undefined;
 }
 
 /** The attempts of one pair heard ahead of its result. */
@@ -197,14 +215,15 @@ class SchedulerWorker {
     readonly workerSlot: number,
     spawn: SpawnUnitRunner,
     onMessage: (worker: SchedulerWorker, message: WorkerToMain) => void,
-    onExit: (worker: SchedulerWorker, detail: string, signal: NodeJS.Signals | null) => void,
+    onExit: (worker: SchedulerWorker, detail: string, signal: NodeJS.Signals | null, active: WatchedAttempt | undefined) => void,
   ) {
     this.runner = spawn(targetName, workerSlot, {
       onMessage: (message) => onMessage(this, message),
       onExit: (detail, signal) => {
         this.clearKillTimer();
+        const active = this.watched;
         this.unwatch();
-        onExit(this, detail, signal ?? null);
+        onExit(this, detail, signal ?? null, active);
       },
     });
   }
@@ -419,7 +438,7 @@ class Scheduler {
     }
   }
 
-  async run(): Promise<void> {
+  async run(): Promise<RunUnitsOutcome> {
     for (const plan of this.options.plans) {
       this.targets.set(plan.target.name, {
         target: plan.target,
@@ -428,7 +447,7 @@ class Scheduler {
         fileQueue: [...plan.fileUnits],
         failedSessions: new Map(),
         initFailures: 0,
-        failed: false,
+        unavailable: undefined,
       });
       // Every pair a plan holds leaves through `report` exactly once, an
       // interrupt included: the non-run ones now, the queued ones when they
@@ -441,7 +460,9 @@ class Scheduler {
     this.options.forceSignal.addEventListener('abort', onInterrupt, { once: true });
     const limit = this.options.timeLimit;
     const timeLimit = limit === undefined ? undefined : setTimeout(() => this.timeUp(limit), limit.ms);
+    let unsubscribe: (() => void) | undefined;
     try {
+      unsubscribe = this.options.subscribeTargetFailures?.((failure) => this.appExited(failure));
       for (;;) {
         this.broadcastInterrupt();
         this.broadcastForce();
@@ -452,11 +473,36 @@ class Scheduler {
         });
       }
     } finally {
+      unsubscribe?.();
       clearTimeout(timeLimit);
       this.options.interruptSignal.removeEventListener('abort', onInterrupt);
       this.options.forceSignal.removeEventListener('abort', onInterrupt);
       await this.drain();
     }
+    return {
+      appExitTargets: new Set([...this.targets.values()].filter((state) => state.unavailable?.kind === 'app-exit').map((state) => state.target.name)),
+    };
+  }
+
+  /** Stops only owners that still have test work, reporting one error for the shared command. */
+  private appExited(failure: TargetFailure): void {
+    if (this.interrupting) return;
+    const affected: TargetState[] = [];
+    for (const name of failure.targetNames) {
+      const state = this.targets.get(name);
+      if (state === undefined || state.unavailable?.kind === 'app-exit') continue;
+      const pending = state.setupQueue.length > 0 || state.fileQueue.length > 0 || this.workers.some((worker) =>
+        worker.targetName === name && (worker.queued !== undefined || worker.unit?.pairs.some((pair) => !worker.reported.has(pairKey(pair.test.id, pair.agent, pair.repeat))) === true),
+      );
+      if (pending) affected.push(state);
+    }
+    if (affected.length === 0) return;
+    this.options.events.onRunError({ error: failure.error });
+    const reason = failure.error.message.split('\n')[0] ?? failure.error.message;
+    for (const state of affected) {
+      this.failTarget(state, { kind: 'app-exit', skip: { cause: 'infrastructure-unavailable', reason } });
+    }
+    this.wakeUp();
   }
 
   private wakeUp(): void {
@@ -556,7 +602,7 @@ class Scheduler {
   }
 
   private peekUnit(state: TargetState): WorkUnit | undefined {
-    if (state.failed) return undefined;
+    if (state.unavailable !== undefined) return undefined;
     if (state.setupQueue.length > 0) return state.setupQueue[0];
     // Ordinary units wait until every setup for this target has finished.
     if (this.hasPendingSetup(state)) return undefined;
@@ -601,8 +647,8 @@ class Scheduler {
    * again, so its unit skips instead.
    */
   private returnUnit(state: TargetState, unit: WorkUnit): void {
-    if (state.failed) {
-      for (const pair of unit.pairs) this.report(unstartedResult(pair, WORKER_START_FAILED));
+    if (state.unavailable !== undefined) {
+      for (const pair of unit.pairs) this.report(unstartedResult(pair, state.unavailable.skip));
       return;
     }
     if (unit.kind === 'setup') state.setupQueue.unshift(unit);
@@ -692,7 +738,7 @@ class Scheduler {
       workerSlot,
       this.options.spawn,
       (target, message) => this.onMessage(target, message),
-      (target, detail, signal) => this.onExit(target, detail, signal),
+      (target, detail, signal, active) => this.onExit(target, detail, signal, active),
     );
     this.workers.push(worker);
     return worker;
@@ -731,6 +777,7 @@ class Scheduler {
   private onMessage(worker: SchedulerWorker, message: WorkerToMain): void {
     switch (message.type) {
       case 'ready': {
+        if (worker.state === 'retired') break;
         worker.becameReady = true;
         this.targetState(worker).initFailures = 0;
         worker.state = 'idle';
@@ -835,7 +882,8 @@ class Scheduler {
         }
         if (worker.state !== 'retired') {
           // Discard the worker after a failing unit.
-          if (worker.sawFailure) this.retire(worker, !this.interrupting);
+          if (this.targetState(worker).unavailable !== undefined) this.retire(worker, false);
+          else if (worker.sawFailure) this.retire(worker, !this.interrupting);
           else worker.state = 'idle';
         }
         this.wakeUp();
@@ -867,7 +915,7 @@ class Scheduler {
     }
   }
 
-  private onExit(worker: SchedulerWorker, detail: string, signal: NodeJS.Signals | null): void {
+  private onExit(worker: SchedulerWorker, detail: string, signal: NodeJS.Signals | null, active: WatchedAttempt | undefined): void {
     const tracked = this.workers.includes(worker);
     this.forget(worker);
     const state = this.targetState(worker);
@@ -884,7 +932,7 @@ class Scheduler {
     if (unit !== undefined) {
       // A worker the scheduler told to stop and then killed when its grace
       // ran out exited as asked; only an exit nobody asked for is an error.
-      if (!worker.terminated && !worker.killed) {
+      if (!worker.terminated && !worker.killed && state.unavailable?.kind !== 'app-exit') {
         this.options.events.onRunError({
           error: serializeError(
             new InfrastructureError(
@@ -894,12 +942,12 @@ class Scheduler {
           ),
         });
       }
-      this.synthesizeCrashResults(state, worker, unit);
-    } else if (tracked && !worker.becameReady && !this.interrupting && !this.excusedSignal(worker, signal)) {
+      this.synthesizeCrashResults(state, worker, unit, active);
+    } else if (tracked && !worker.becameReady && state.unavailable === undefined && !this.interrupting && !this.excusedSignal(worker, signal)) {
       // The interrupt retires every worker still starting; those exits were
       // asked for and say nothing about whether the target can boot.
       state.initFailures += 1;
-      if (state.initFailures >= MAX_INIT_FAILURES) this.failTarget(state);
+      if (state.initFailures >= MAX_INIT_FAILURES) this.failTarget(state, { kind: 'worker-start', skip: WORKER_START_FAILED });
     }
     this.wakeUp();
   }
@@ -940,10 +988,13 @@ class Scheduler {
     state: TargetState,
     worker: SchedulerWorker,
     unit: WorkUnit,
+    active: WatchedAttempt | undefined,
   ): void {
-    const interrupted = this.interrupting && (worker.terminated || worker.killed);
+    const appExited = state.unavailable?.kind === 'app-exit';
+    const interrupted = appExited || (this.interrupting && (worker.terminated || worker.killed));
+    const skip = state.unavailable?.skip ?? this.stopSkip ?? INTERRUPTED_BEFORE_START;
     const crash = serializeError(new InfrastructureError('WORKER_CRASH', 'worker process exited during this test'));
-    const hung = worker.hung;
+    const hung = appExited ? undefined : worker.hung;
     const hungPair = hung === undefined ? undefined : unit.pairs.find((pair) => pairKey(pair.test.id, pair.agent, pair.repeat) === hung.pair);
     const hungGroupId =
       hungPair?.test.serialId === undefined
@@ -964,7 +1015,7 @@ class Scheduler {
         const progress = worker.serialGroups.get(groupId);
         let settled: ReturnType<SerialGroupProgress['crashed']>;
         if (hung !== undefined && groupId === hungGroupId) settled = progress?.crashed(members, state.target, hangError(hung), 'timed-out');
-        else if (interrupted) settled = progress?.interrupted(members, state.target, this.stopSkip ?? INTERRUPTED_BEFORE_START);
+        else if (interrupted) settled = progress?.interrupted(members, state.target, skip);
         else settled = progress?.crashed(members, state.target, crash, 'failed');
         if (settled !== undefined) {
           settledGroups.add(groupId);
@@ -980,9 +1031,24 @@ class Scheduler {
         continue;
       }
       if (interrupted) {
+        if (appExited && running !== undefined) {
+          const attempt = active?.pair === key ? active : undefined;
+          this.report(finishedResult(pair, [...finished, {
+            id: attempt?.id ?? uuidv7(),
+            index: running,
+            status: 'interrupted',
+            startedAt: attempt?.startedAt ?? timestamp(),
+            durationMs: attempt === undefined ? 0 : Date.now() - Date.parse(attempt.startedAt),
+            steps: [],
+            artifacts: [],
+            secondaryErrors: [],
+            cleanup: 'forced',
+          }]));
+          continue;
+        }
         this.report(
           finished.length === 0
-            ? unstartedResult(pair, this.stopSkip ?? INTERRUPTED_BEFORE_START)
+            ? unstartedResult(pair, skip)
             : finishedResult(pair, finished),
         );
         continue;
@@ -1045,13 +1111,11 @@ class Scheduler {
   }
 
   /**
-   * Fails a target whose workers cannot boot; drains its queues with skips.
-   * The error is recorded once: every worker still starting when the target
-   * failed exits after it and requeues its unit, which lands here again.
+   * Drains an unavailable target's queues. An app exit also interrupts its
+   * workers; a boot failure is recorded once before returned units skip.
    */
-  private failTarget(state: TargetState): void {
-    if (!state.failed) {
-      state.failed = true;
+  private failTarget(state: TargetState, unavailable: TargetUnavailable): void {
+    if (state.unavailable === undefined && unavailable.kind === 'worker-start') {
       this.options.events.onRunError({
         error: serializeError(
           new InfrastructureError(
@@ -1061,7 +1125,24 @@ class Scheduler {
         ),
       });
     }
-    this.skipQueues(state, WORKER_START_FAILED);
+    state.unavailable = unavailable;
+    this.skipQueues(state, unavailable.skip);
+    if (unavailable.kind !== 'app-exit') return;
+    for (const worker of this.workers) {
+      if (worker.targetName !== state.target.name) continue;
+      worker.runner.send({ type: 'interrupt', skip: unavailable.skip });
+      if (worker.state === 'busy') {
+        worker.killAfter(this.options.interruptGraceMs);
+        continue;
+      }
+      const queued = worker.queued;
+      worker.queued = undefined;
+      if (queued !== undefined) {
+        for (const pair of queued.pairs) this.report(unstartedResult(pair, unavailable.skip));
+      }
+      if (worker.state === 'retired') this.revokeReuse(worker);
+      else this.retire(worker, false);
+    }
   }
 
   /** Shuts every remaining worker down, force-killing stragglers. */

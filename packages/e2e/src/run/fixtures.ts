@@ -449,18 +449,16 @@ function requireAppUrl(target: ResolvedTarget): asserts target is ResolvedTarget
 const NOTHING_LISTENING =
   /ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ERR_ADDRESS_UNREACHABLE|EHOSTUNREACH|ERR_CONNECTION_TIMED_OUT|ETIMEDOUT/;
 
-/**
- * A navigation the network refused means the app is down, which is the
- * first thing a new project runs into and the last thing an engine failure
- * message suggests. Named by its own code, with the URL and the three ways
- * to fix it.
- */
-function unreachableApp(cause: unknown, url: string): InfrastructureError | undefined {
+/** Adds a recovery hint to navigation connection errors using the target's command configuration. */
+function unreachableApp(cause: unknown, url: string, hasCommand: boolean): InfrastructureError | undefined {
   const match = NOTHING_LISTENING.exec(errorMessage(cause));
   if (match === null) return undefined;
+  const hint = hasCommand
+    ? "check the target's app.command log and app.url"
+    : "start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it";
   return new InfrastructureError(
     'APP_UNREACHABLE',
-    `nothing answered at ${url} (${match[0]}); start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it`,
+    `nothing answered at ${url} (${match[0]}); ${hint}`,
     { cause },
   );
 }
@@ -475,7 +473,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
     try {
       await engine.session.app.open(resolved, engine.operation(timeoutMs));
     } catch (cause) {
-      throw unreachableApp(cause, resolved) ?? cause;
+      throw unreachableApp(cause, resolved, target.app.command !== undefined) ?? cause;
     }
   };
 
