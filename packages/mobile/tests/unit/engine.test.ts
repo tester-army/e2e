@@ -1670,6 +1670,46 @@ describe('device fixture', () => {
     expect(h.fake.calls.filter((call) => call.method === 'command.keyboard' || call.method === 'interactions.swipe')).toEqual([]);
   });
 
+  it('uses the remembered viewport when a keyboard capture omits its dimensions', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 393, height: 852 } }));
+    await h.engine.observe!(operation());
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      keyboard: { kind: 'visible', frame: { x: 0, y: 869, width: 393, height: 227 } },
+    }));
+    h.fake.respond('command.keyboard', () => {
+      throw new Error('the remembered viewport proves the keyboard is below the screen');
+    });
+    await fixture(h).dismissKeyboard();
+    expect(h.fake.methods()).not.toContain('command.keyboard');
+    expect(h.fake.methods()).not.toContain('interactions.swipe');
+  });
+
+  it.each([
+    [{ width: 393, height: 852 }, { width: 852, height: 393 }, { x: 600, y: 200, width: 252, height: 193 }],
+    [{ width: 852, height: 393 }, { width: 393, height: 852 }, { x: 0, y: 600, width: 393, height: 252 }],
+  ])('uses the fresh viewport after rotation from %j to %j', async (before, viewport, frame) => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: before }));
+    await h.engine.observe!(operation());
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport, keyboard: { kind: 'visible', frame } }));
+    await fixture(h).dismissKeyboard();
+    expect(h.fake.calls.filter((call) => call.method === 'command.keyboard')).toHaveLength(1);
+  });
+
+  it('still dismisses an unmeasurable keyboard after learning the viewport', async () => {
+    const h = harness();
+    await openAttempt(h);
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: { width: 393, height: 852 } }));
+    await h.engine.observe!(operation());
+    h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'unmeasurable', reason: 'keyboard-frame-query-timeout' } }));
+    await fixture(h).dismissKeyboard();
+    expect(h.fake.calls.filter((call) => call.method === 'command.keyboard')).toHaveLength(1);
+  });
+
   describe('dismissing a keyboard that has no dismiss key', () => {
     const NO_DISMISS_KEY = () => {
       throw new AppError(

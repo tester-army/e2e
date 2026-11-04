@@ -833,8 +833,9 @@ await device.alert('accept');
 #### `dismissKeyboard`
 
 An explicitly absent keyboard, or a measured keyboard frame entirely outside the
-viewport, returns without sending input. Captures without a keyboard measurement
-still use native dismissal.
+viewport, returns without sending input. A capture that omits its viewport uses
+the last known screen size; fresh dimensions take precedence after rotation.
+Captures without a keyboard measurement still use native dismissal.
 
 ```ts
 /**

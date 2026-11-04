@@ -171,10 +171,10 @@ type ProjectedScreen = ProjectedSnapshot & { readonly keyboardVisible: boolean }
  * Whether the capture's producer measured the soft keyboard on screen:
  * undefined when it did not look or could not.
  */
-function measuredKeyboard(raw: RawSnapshot): boolean | undefined {
+function measuredKeyboard(raw: RawSnapshot, fallbackViewport?: ViewportSize): boolean | undefined {
   if (raw.keyboard?.kind === 'visible') {
     const frame = raw.keyboard.frame;
-    const viewport = raw.viewport;
+    const viewport = raw.viewport ?? fallbackViewport;
     return frame === undefined || viewport === undefined || (frame.width > 0 && frame.height > 0
       && frame.x < viewport.width && frame.y < viewport.height
       && frame.x + frame.width > 0 && frame.y + frame.height > 0);
@@ -1511,7 +1511,7 @@ export class AgentDeviceSurface {
    */
   async dismissKeyboard(signal: AbortSignal, input: InputBudget): Promise<void> {
     // Sending a dismiss key for a known-absent keyboard can reach the form underneath.
-    if (measuredKeyboard(await this.snapshot(signal, false, input)) === false) return;
+    if (measuredKeyboard(await this.snapshot(signal, false, input), this.knownViewport) === false) return;
     const before = this.latestScreen;
     try {
       await this.command('keyboard.dismiss', (client) => input.send(() => client.command.keyboard({ action: 'dismiss' })), signal);
