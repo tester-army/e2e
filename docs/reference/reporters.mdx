@@ -32,6 +32,7 @@ export default {
 | [`junit`](#junit) | Writes `<output>/junit.xml` |
 | [`markdown`](#markdown) | Writes `<output>/summary.md` |
 | [`github()`](#github) | Pull request comment and job summary |
+| [`insights()`](#insights) | Run history across runs |
 
 | Throws | When |
 | --- | --- |
@@ -134,6 +135,22 @@ const reporter = github({ key: 'chromium' });
 - With `--last-failed`, it folds the rerun into [`lastRun`](#onrunfinished)
   to show both runs as one comment.
 - Setup and permissions are on [Pull request comments](/github).
+
+#### `insights()`
+
+`@e2e-dev/insights` appends each run to a history file and reports the
+flaky and broken tests across runs.
+
+```ts
+import { insights } from '@e2e-dev/insights';
+
+const reporter = insights({ dir: '.e2e/history' }); // default dir
+```
+
+- It keeps ids, titles, statuses, timings, model counters, and error codes,
+  never a step label or an error message.
+- The `e2e-insights` bin renders the history, and `quarantineFilter()`
+  leaves flaky tests out. See [Run history](/insights).
 
 ### Custom reporters
 

@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/history-v1.schema.json",
+  "title": "e2e insights history-1",
+  "description": "One line of runs.jsonl: one e2e run reduced to ids, titles, statuses, timings, model counters, and error codes. It never holds a step label, an error message, or app text.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "startedAt",
+    "durationMs",
+    "status",
+    "projectId",
+    "runnerVersion",
+    "ci",
+    "summary",
+    "modelTokens",
+    "tests"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "history-1"
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "startedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "durationMs": {
+      "type": "number",
+      "minimum": 0
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "failed",
+        "blocked",
+        "error",
+        "interrupted"
+      ]
+    },
+    "projectId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "runnerVersion": {
+      "type": "string",
+      "minLength": 1
+    },
+    "ci": {
+      "type": "boolean"
+    },
+    "vcs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{40,64}$"
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "dirty": {
+          "type": "boolean"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "discovered",
+        "selected",
+        "executed",
+        "passed",
+        "failed",
+        "interrupted",
+        "flaky",
+        "skipped"
+      ],
+      "properties": {
+        "discovered": {
+          "$ref": "#/$defs/count"
+        },
+        "selected": {
+          "$ref": "#/$defs/count"
+        },
+        "executed": {
+          "$ref": "#/$defs/count"
+        },
+        "passed": {
+          "$ref": "#/$defs/count"
+        },
+        "failed": {
+          "$ref": "#/$defs/count"
+        },
+        "interrupted": {
+          "$ref": "#/$defs/count"
+        },
+        "flaky": {
+          "$ref": "#/$defs/count"
+        },
+        "skipped": {
+          "$ref": "#/$defs/count"
+        }
+      }
+    },
+    "modelTokens": {
+      "$ref": "#/$defs/count"
+    },
+    "costUsd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/test"
+      }
+    }
+  },
+  "$defs": {
+    "count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "test": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "testId",
+        "targetId",
+        "agent",
+        "repeat",
+        "titlePath",
+        "file",
+        "status",
+        "attempts",
+        "attemptErrors",
+        "durationMs",
+        "modelCalls",
+        "tokens",
+        "cache"
+      ],
+      "properties": {
+        "testId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "targetId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repeat": {
+          "$ref": "#/$defs/count"
+        },
+        "titlePath": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "flaky",
+            "failed",
+            "timed-out"
+          ]
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "passed",
+              "failed",
+              "timed-out",
+              "interrupted",
+              "skipped"
+            ]
+          }
+        },
+        "attemptErrors": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "test",
+              "configuration",
+              "infrastructure",
+              "internal",
+              "interrupted",
+              null
+            ]
+          }
+        },
+        "durationMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "errorCode": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "errorCategory": {
+          "enum": [
+            "test",
+            "configuration",
+            "infrastructure",
+            "internal",
+            "interrupted"
+          ]
+        },
+        "modelCalls": {
+          "$ref": "#/$defs/count"
+        },
+        "tokens": {
+          "$ref": "#/$defs/count"
+        },
+        "costUsd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cache": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "steps",
+            "replayed",
+            "handedOff",
+            "missed",
+            "reasons"
+          ],
+          "properties": {
+            "steps": {
+              "$ref": "#/$defs/count"
+            },
+            "replayed": {
+              "$ref": "#/$defs/count"
+            },
+            "handedOff": {
+              "$ref": "#/$defs/count"
+            },
+            "missed": {
+              "$ref": "#/$defs/count"
+            },
+            "reasons": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/$defs/count"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

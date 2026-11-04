@@ -1,0 +1,209 @@
+---
+title: Run history and flaky tests
+sidebarTitle: Run history
+description: Keep a history of runs with @e2e-dev/insights, find flaky and broken tests, and quarantine flaky ones on pull requests.
+icon: "chart-line"
+---
+
+`@e2e-dev/insights` keeps a history of your runs and scores each test
+across them. It finds the test that fails one run in ten, the test that
+keeps missing the replay cache, and the test that costs the most model
+tokens. One run can't show these.
+
+## Record the history
+
+Install the package:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/insights
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/insights
+```
+
+```bash bun
+bun add -d @e2e-dev/insights
+```
+</CodeGroup>
+
+Add the reporter:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { insights } from '@e2e-dev/insights';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  reporters: ['list', insights()],
+} satisfies E2EConfig;
+```
+
+Each run adds one line to `.e2e/history/runs.jsonl`, and the summary shows
+one row:
+
+```text
+   Insights  1 broken · 1 flaky over 10 runs (.e2e/history/runs.jsonl)
+```
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `dir` | `string` | `'.e2e/history'` |
+| `keep` | `number` | `200` |
+
+- `dir` is relative to the project root. `keep` is how many of the newest
+  runs the file keeps.
+- A line holds test ids, titles, statuses, durations, model counters, and
+  error codes. It never holds a step label, an error message, or app text.
+- An `e2e explore` run and a run that executed no test add no line.
+- Add `.e2e/history/` to `.gitignore`, or commit it to share the history.
+
+## Read the report
+
+Run `e2e-insights` in the project directory:
+
+<CodeGroup>
+```bash npm
+npx e2e-insights
+```
+
+```bash pnpm
+pnpm exec e2e-insights
+```
+
+```bash bun
+bunx e2e-insights
+```
+</CodeGroup>
+
+```text
+e2e insights: 10 runs, 5 passed (50%)
+  2026-11-04 11:59 UTC → 2026-11-04 12:00 UTC
+  1 broken · 0 failing · 1 flaky · 0 new · 3 stable
+
+Broken, failing, and flaky
+  Verdict  Test                                Flake rate  Results          Same-commit flips  Top error
+  broken   search breaks after a deploy [web]  4 in a row  6 pass · 4 fail  0                  ASSERTION_FAILED
+  flaky    checkout is sometimes flaky [web]   20%         8 pass · 2 fail  0                  ASSERTION_FAILED
+```
+
+Then come tables for replay cache misses, model cost, and the slowest
+tests. Each table shows only when it has rows.
+
+Each test gets one verdict per target and agent over the newest 30 runs:
+
+| Verdict | When |
+| --- | --- |
+| `broken` | Its last 3 results failed. |
+| `failing` | Its latest result failed, fewer than 3 times in a row. |
+| `flaky` | It passed on a retry, or failed between two passes, or failed on a commit it also passed on. |
+| `new` | It has fewer than 5 results. |
+| `stable` | None of the above. |
+
+- A failure counts as a flake only when passes surround it and fewer than 3
+  failures run together. A longer failure run is a regression that was
+  fixed, not a flake.
+- A failure or a retry with an `infrastructure` or `configuration` error is
+  not counted.
+- A same-commit flip is a clean commit on which the test both passed and
+  failed. The app didn't change, so the test did.
+
+| Flag | Default |
+| --- | --- |
+| `--format <text\|markdown\|html\|json>` | `text` |
+| `--out <file>` | stdout |
+| `--window <n>` | `30` |
+| `--min-runs <n>` | `5` |
+| `--broken-after <n>` | `3` |
+| `--fail-on <flaky\|broken>` | never fails |
+
+Pass history files as arguments to read them instead of the default. The
+command merges them by run id, so files from several CI jobs combine.
+`--format html` writes one page with no scripts and no network requests,
+with a strip per test of its last runs. `--fail-on broken` exits 1 when a test
+is broken. `--fail-on flaky` exits 1 when a test is broken, failing, or
+flaky.
+
+## Keep the history in CI
+
+A CI machine starts empty, so restore the history before the run and save
+it after. Save it on failure too: failed runs are the ones you need.
+
+```yaml title=".github/workflows/e2e.yml"
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .e2e/history
+          key: e2e-history-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: e2e-history-
+      - run: npx e2e run
+      - if: ${{ !cancelled() }}
+        run: npx e2e-insights --format markdown >> "$GITHUB_STEP_SUMMARY"
+      - if: ${{ !cancelled() }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .e2e/history
+          key: e2e-history-${{ github.run_id }}-${{ github.run_attempt }}
+```
+
+A pull request restores the newest history of its own branch, then of the
+default branch. Use a separate key prefix for each matrix job.
+
+## Quarantine flaky tests
+
+`quarantineFilter()` is a [test filter](/filters) that leaves out tests the
+history shows are flaky:
+
+```ts title="e2e.config.ts"
+import { insights, quarantineFilter } from '@e2e-dev/insights';
+
+export default {
+  targets,
+  reporters: ['list', insights()],
+  filters: [quarantineFilter({ mode: 'skip' })],
+} satisfies E2EConfig;
+```
+
+```text
+ℹ quarantine kept 5 of 6 tests, left out 1 (quarantined 1 flaky test from 10 runs)
+```
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `mode` | `'report' \| 'skip'` | `'report'` |
+| `maxFlakeRate` | `number` | `0.1` |
+| `history` | `string \| string[]` | `'.e2e/history/runs.jsonl'` |
+| `window`, `minRuns`, `brokenAfter` | `number` | `30`, `5`, `3` |
+
+- In `report` mode, every test runs, and the note names how many it would
+  leave out. Start in this mode.
+- A test is left out when its verdict is `flaky` and its flake rate is above
+  `maxFlakeRate` on any target or agent.
+- A test whose latest result failed is `failing` or `broken`, so it always
+  runs. When a pull request breaks a quarantined test, the run that sees
+  the failure keeps it in from then on.
+- With no history, every test runs.
+
+<Note>
+Test filters run only with `--changed-since`. Runs without it, such as on
+`main` and in the merge queue, run every test, so a quarantined test keeps
+getting new results there.
+</Note>
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Test filters" icon="filter" href="/filters">
+    How filters choose tests, and what always runs.
+  </Card>
+  <Card title="Replay cache" icon="database" href="/cache">
+    What the cache miss reasons mean, and how to re-record.
+  </Card>
+  <Card title="Pull request comments" icon="github" href="/github">
+    Post each run's results on the pull request.
+  </Card>
+  <Card title="Reporters" icon="file-lines" href="/reference/reporters">
+    Write your own reporter from the same report.
+  </Card>
+</CardGroup>

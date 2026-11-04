@@ -1,0 +1,71 @@
+{
+  "name": "@e2e-dev/insights",
+  "version": "0.1.0",
+  "description": "Run history for e2e: flaky tests, replay cache health, and model cost across runs",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "test-reporter",
+    "flaky-tests",
+    "test-analytics",
+    "ci"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Szymon Rybczak <szymon@tester.army>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tester-army/e2e.git",
+    "directory": "packages/insights"
+  },
+  "bugs": {
+    "url": "https://github.com/tester-army/e2e/issues"
+  },
+  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/insights#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./schema/history-v1.schema.json": "./schema/history-v1.schema.json"
+  },
+  "bin": {
+    "e2e-insights": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "schema/*.schema.json",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "peerDependencies": {
+    "e2e": ">=0.22.0 <1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  }
+}

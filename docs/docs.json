@@ -102,7 +102,8 @@
               "ci/eas-workflows",
               "ci/bitrise",
               "ci/codemagic",
-              "github"
+              "github",
+              "insights"
             ]
           },
           {

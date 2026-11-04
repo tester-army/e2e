@@ -1,0 +1,94 @@
+{
+  "schemaVersion": "history-1",
+  "startedAt": "2026-11-01T12:00:00.000Z",
+  "durationMs": 41250,
+  "status": "failed",
+  "projectId": "dev.testerarmy.example",
+  "runnerVersion": "0.22.0",
+  "ci": true,
+  "vcs": {
+    "commit": "50fa7afc0000000000000000000000000000beef",
+    "branch": "main",
+    "dirty": false
+  },
+  "summary": {
+    "discovered": 3,
+    "selected": 3,
+    "executed": 3,
+    "passed": 1,
+    "failed": 1,
+    "interrupted": 0,
+    "flaky": 1,
+    "skipped": 0
+  },
+  "modelTokens": 18342,
+  "costUsd": 0.0421,
+  "tests": [
+    {
+      "testId": "tests/checkout.e2e.ts::checkout::applies%20a%20coupon",
+      "targetId": "web",
+      "agent": "default",
+      "repeat": 0,
+      "titlePath": [
+        "checkout",
+        "applies a coupon"
+      ],
+      "file": "tests/checkout.e2e.ts",
+      "status": "skipped",
+      "attempts": [
+        "failed",
+        "passed"
+      ],
+      "attemptErrors": [
+        "infrastructure",
+        null
+      ],
+      "durationMs": 9120,
+      "modelCalls": 3,
+      "tokens": 18342,
+      "costUsd": 0.0421,
+      "cache": {
+        "steps": 2,
+        "replayed": 1,
+        "handedOff": 0,
+        "missed": 1,
+        "reasons": {
+          "end-mismatch": 1
+        }
+      },
+      "message": "an error message must never be stored"
+    },
+    {
+      "testId": "tests/login.e2e.ts::login::rejects%20a%20bad%20password",
+      "targetId": "web",
+      "agent": "default",
+      "repeat": 0,
+      "titlePath": [
+        "login",
+        "rejects a bad password"
+      ],
+      "file": "tests/login.e2e.ts",
+      "status": "failed",
+      "attempts": [
+        "failed",
+        "failed"
+      ],
+      "attemptErrors": [
+        "test",
+        "test"
+      ],
+      "durationMs": 30010,
+      "errorCode": "ASSERTION_FAILED",
+      "errorCategory": "test",
+      "modelCalls": 0,
+      "tokens": 0,
+      "cache": {
+        "steps": 0,
+        "replayed": 0,
+        "handedOff": 0,
+        "missed": 0,
+        "reasons": {}
+      }
+    }
+  ]
+}
