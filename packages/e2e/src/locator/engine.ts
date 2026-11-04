@@ -465,10 +465,10 @@ const ref = await this.singleOf(await this.resolveOnce(expression, reads, missin
   }
 
   /**
-   * Performs one pointer action at an offset from the top-left corner of
-   * exactly one match: the node is scrolled into view when the engine can,
-   * then its box is read and the pointer dispatched at the point, with no
-   * node behind the gesture. The node has to be visible with a box within
+   * Performs one pointer action at an offset from the origin of exactly one
+   * match (`SemanticNode.origin`, else its box's top-left corner): the node
+   * is scrolled into view when the engine can, then its box is read and the
+   * pointer dispatched at the point, with no node behind the gesture. The node has to be visible with a box within
    * the deadline; one that never is fails as LOCATOR_NOT_FOUND, as `waitFor`
    * does.
    */
@@ -500,9 +500,9 @@ const ref = await this.singleOf(await this.resolveOnce(expression, reads, missin
         throw cause;
       }
       sampled = true;
-      const rect = isNodeVisible(node) ? node.rect : undefined;
-      if (rect !== undefined) {
-        await this.dispatchAt({ x: rect.x + offset.x, y: rect.y + offset.y }, action, deadline);
+      if (isNodeVisible(node) && node.rect !== undefined) {
+        const origin = node.origin ?? node.rect;
+        await this.dispatchAt({ x: origin.x + offset.x, y: origin.y + offset.y }, action, deadline);
         return;
       }
       if (deadline.expired()) throw notVisible();

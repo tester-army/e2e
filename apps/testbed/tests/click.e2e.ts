@@ -235,7 +235,7 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     expect(await browser.evaluate('result')).toBe('Clicked');
   });
 
-  test('should click the button with px border with offset', { fail: 'a `position` tap is relative to the border box, where Playwright measures from the padding box' }, async ({ browser }) => {
+  test('should click the button with px border with offset', async ({ browser }) => {
     await browser.goto('/input/button.html');
     await browser.evaluate("() => { document.querySelector('button').style.borderWidth = '8px'; }");
     await browser.locator('button').tap({ position: { x: 20, y: 10 } });
@@ -244,7 +244,7 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     expect(await browser.evaluate('offsetY')).toBe(10);
   });
 
-  test('should click the button with em border with offset', { fail: 'a `position` tap is relative to the border box, where Playwright measures from the padding box' }, async ({ browser }) => {
+  test('should click the button with em border with offset', async ({ browser }) => {
     await browser.goto('/input/button.html');
     await browser.evaluate("() => { const button = document.querySelector('button'); button.style.borderWidth = '2em'; button.style.fontSize = '12px'; }");
     await browser.locator('button').tap({ position: { x: 20, y: 10 } });

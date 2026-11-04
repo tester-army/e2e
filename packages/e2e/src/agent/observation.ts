@@ -209,6 +209,7 @@ const NODE_FIELDS: { readonly [Field in NodeField]-?: FieldRedaction<Field> } = 
   attributes: (attributes, _node, redaction) =>
     Object.fromEntries(Object.entries(attributes).map(([key, value]) => [redactText(key, redaction), redactText(value, redaction)])),
   rect: keep,
+  origin: keep,
   selector: (selector, _node, redaction) => redactText(selector, redaction),
   framePath: (framePath, _node, redaction) => framePath.map((selector) => redactText(selector, redaction)),
 };

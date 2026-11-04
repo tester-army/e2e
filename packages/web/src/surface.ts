@@ -50,7 +50,7 @@ import { TraceFeed } from './trace-feed.ts';
 import { DialogRouter } from './dialogs.ts';
 import { browserCheck, ensureBrowsersInstalled } from './install.ts';
 import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts';
-import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
+import { contentBox, frameContentInset, placeBoxInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
 import { withHiddenCaret } from './screenshot-caret.ts';
@@ -1159,7 +1159,6 @@ type Rect = NonNullable<SemanticNode['rect']>;
  */
 function inFrame(node: SemanticNode, frame: Rect | null | undefined): SemanticNode {
   if (frame === undefined || node.rect === undefined) return node;
-  const { rect, ...rest } = node;
-  const placed = frame === null ? undefined : placeRectInFrame(rect, frame);
-  return placed === undefined ? rest : { ...rest, rect: placed };
+  const { rect, origin, ...rest } = node;
+  return frame === null ? rest : { ...rest, ...placeBoxInFrame(rect, origin, frame) };
 }

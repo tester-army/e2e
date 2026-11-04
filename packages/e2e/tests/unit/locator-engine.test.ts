@@ -324,6 +324,18 @@ describe('LocatorEngine perform contract', () => {
     expect(performed).toEqual([{ kind: 'scrollIntoView' }]);
   });
 
+  it('offsets a positioned tap from the node origin when it reports one, else its box corner', async () => {
+    const boxed: SemanticNode = { ...NODE, rect: { x: 10, y: 20, width: 100, height: 40 } };
+    const bordered: SemanticNode = { ...boxed, origin: { x: 18, y: 28 } };
+    const { engine, performed } = makeEngine({ read: [() => boxed, () => bordered] });
+    await engine.performWithin(EXPRESSION, { x: 5, y: 6 }, { kind: 'tap' });
+    await engine.performWithin(EXPRESSION, { x: 5, y: 6 }, { kind: 'tap' });
+    expect(performed.filter((entry) => typeof entry === 'object' && entry !== null && 'point' in entry)).toEqual([
+      { point: { x: 15, y: 26 }, action: { kind: 'tap' } },
+      { point: { x: 23, y: 34 }, action: { kind: 'tap' } },
+    ]);
+  });
+
   it('marks every action it performs with the test origin, so an engine can act without settling', async () => {
     const { engine, origins } = makeEngine({});
     await engine.perform(EXPRESSION, { kind: 'tap' });

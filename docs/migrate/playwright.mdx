@@ -160,7 +160,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `locator.click()` | `locator.tap()`; `click()` is an alias | same |
 | `click({ button: 'right' })` | `secondaryTap()` | renamed |
 | `dblclick()` | `doubleTap()`; `dblclick()` is an alias | same |
-| `click({ position })` | `tap({ position })`, an offset from the node's top-left corner | renamed |
+| `click({ position })` | `tap({ position })`, an offset from the node's top-left corner inside its border | renamed |
 | `click({ force })` | `tap({ position })` skips every actionability check but the scroll into view | missing |
 | `click({ modifiers })`, `dblclick({ modifiers })` | `tap({ modifiers })`, `doubleTap({ modifiers })` or `dblclick({ modifiers })`, `secondaryTap({ modifiers })`; not beside `position` yet | same |
 | `click({ clickCount, delay, trial })` | not yet | missing |

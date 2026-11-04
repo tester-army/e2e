@@ -439,7 +439,8 @@ export interface ActionOptions {
 /**
  * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
- * `tap({ position })` it is the node's own top-left corner.
+ * `tap({ position })` it is the node's own top-left corner, inside its
+ * border on a document platform.
  */
 export type Point = ViewportPoint;
 
@@ -457,11 +458,11 @@ export interface ClickOptions extends ActionOptions {
 /** `tap` and `click` options. */
 export interface TapOptions extends ClickOptions {
   /**
-   * Where to tap, relative to the node's top-left corner. Without it the
-   * platform picks a point of the node, usually its center, behind its own
-   * actionability checks; with it the pointer is dispatched at that point
-   * once the node is in view and has a box, which needs the engine's `tap`
-   * pointer action.
+   * Where to tap, relative to the node's top-left corner, inside its border
+   * on a document platform. Without it the platform picks a point of the
+   * node, usually its center, behind its own actionability checks; with it
+   * the pointer is dispatched at that point once the node is in view and has
+   * a box, which needs the engine's `tap` pointer action.
    */
   position?: Point;
 }
