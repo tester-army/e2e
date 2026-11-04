@@ -39,7 +39,7 @@ import {
 import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
-import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
+import { isTestErrorCode, message as causeMessage, pageScriptFailure, translatePwError } from './support.ts';
 import { compileEvaluation, decodeEvaluation, pageFunctionSource } from './evaluation.ts';
 import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaLabel, mediaProblem, type WebMedia } from './media.ts';
@@ -520,9 +520,14 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const input: unknown = arg;
       // A handle, not a value: the boundary resolves to a string, which Playwright
       // keeps out of its in-page serializer when it is taken back from a handle.
-      const report = await surface.guard(context.operation(), 'evaluate', async () => {
-        const handle = await surface.requirePage().evaluateHandle(evaluate, input);
-        return await handle.jsonValue();
+      const report = await surface.guard(context.operation(), 'evaluate', async (operation) => {
+        const page = surface.requirePage();
+        try {
+          const handle = await page.evaluateHandle(evaluate, input);
+          return await handle.jsonValue();
+        } catch (cause) {
+          throw (await pageScriptFailure(page, cause, 'evaluate', operation.timeoutMs)) ?? cause;
+        }
       });
       return decodeEvaluation(report) as T;
     },

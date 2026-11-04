@@ -127,6 +127,18 @@ describe('browser.evaluate error boundaries', () => {
     )).resolves.toEqual({ items: [1, 'two'], ok: true });
   });
 
+  it('fails a later evaluate and a locate as EVALUATE_FAILED once the page replaced Map', async () => {
+    await page.setContent('<div>cart</div><script>window.Map = 1;</script>');
+    await expect(browser.evaluate('() => 1')).rejects.toMatchObject({ code: 'EVALUATE_FAILED' });
+    const operation = { signal, timeoutMs: 5_000, runId: 'evaluate', attemptId: 'evaluate', origin: 'test' as const };
+    await expect(surface.locate({ kind: 'selector', selector: 'div' }, operation))
+      .rejects.toMatchObject({ code: 'EVALUATE_FAILED', category: 'test' });
+  });
+
+  it('runs keepNames output after the code deleted Object', async () => {
+    await expect(browser.evaluate('() => { delete window.Object; return __name(() => 1, "pick").name; }')).resolves.toBe('pick');
+  });
+
   it('keeps returning results on a page that deleted Array and JSON and hid __proto__', async () => {
     await page.setContent('<script>delete window.Array; delete window.JSON; delete Object.prototype.__proto__;</script>');
     await expect(browser.evaluate((n: number) => ({ items: [n, 'two'] }), 1)).resolves.toEqual({ items: [1, 'two'] });

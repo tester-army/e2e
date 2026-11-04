@@ -3,8 +3,8 @@ import type { JsonValue } from 'e2e';
 import { TestError } from 'e2e/engine';
 import { message } from './support.ts';
 
-/** The `__name` helper tsx's `keepNames` output calls, declared beside test code serialized into the page. */
-export const KEEP_NAMES_HELPER = "const __name = (target, value) => Object.defineProperty(target, 'name', { value, configurable: true });";
+/** The `__name` helper tsx's `keepNames` output calls, declared beside test code serialized into the page; it takes `defineProperty` before that code runs. */
+export const KEEP_NAMES_HELPER = "const __name = ((define) => (target, value) => define(target, 'name', { value, configurable: true }))(({}).constructor.defineProperty);";
 
 /** A function expression for page code, including ordinary and async method shorthand. Never runs it here. */
 export function pageFunctionSource(fn: (...args: never[]) => unknown): string {
