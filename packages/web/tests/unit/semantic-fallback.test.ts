@@ -31,6 +31,8 @@ async function setup() {
     viewportSize: () => ({ width: 100, height: 80 }),
     url: () => 'https://app.test/current',
     frames: () => [{
+      url: () => 'https://app.test/current',
+      parentFrame: () => null,
       locator: (selector: string) => selector.startsWith('e2e-closed') ? masks[1] : masks[0],
       evaluateHandle: () => ({ evaluate: async () => undefined, dispose: async () => undefined }),
     }],

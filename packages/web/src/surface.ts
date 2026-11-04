@@ -1047,11 +1047,12 @@ export class PlaywrightSurface {
     return this.guard(operation, 'screenshot', async (currentOperation) => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
+      const masks = await secureFieldMasks(page);
       await withHiddenCaret(page, () => page.screenshot({
         path: absolute,
         timeout: currentOperation.timeoutMs,
         caret: 'initial',
-        ...maskOptions(secureFieldMasks(page)),
+        ...maskOptions(masks),
       }));
       return relative;
     });
