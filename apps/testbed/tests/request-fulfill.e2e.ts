@@ -6,8 +6,7 @@
 
 /*
  * Not ported:
- * - should work with buffer as body: `route.fulfill` takes a string body.
- * - should allow mocking binary responses: needs a Buffer body and `toMatchSnapshot`.
+ * - should allow mocking binary responses: needs `toMatchSnapshot`.
  * - should fulfill with global fetch result: needs `playwright.request` and `fulfill({ response })`.
  * - should fulfill with fetch result: needs `page.request` and `fulfill({ response })`.
  * - should fulfill with fetch result and overrides: needs `page.request` and `fulfill({ response })`.
@@ -39,6 +38,13 @@ test.describe('page request fulfill', { requires: ['browser'], tags: ['playwrigh
     const [response] = await Promise.all([browser.waitForResponse('**/empty.html'), browser.goto(EMPTY_PAGE)]);
     expect(response.status).toBe(201);
     expect(response.headers['foo']).toBe('bar');
+    expect(await browser.evaluate('() => document.body.textContent')).toBe('Yo, page!');
+  });
+
+  test('should work with buffer as body', async ({ browser }) => {
+    await browser.route('**/*', (route) => route.fulfill({ status: 200, contentType: 'text/plain', body: Buffer.from('Yo, page!') }));
+    const [response] = await Promise.all([browser.waitForResponse('**/empty.html'), browser.goto(EMPTY_PAGE)]);
+    expect(response.status).toBe(200);
     expect(await browser.evaluate('() => document.body.textContent')).toBe('Yo, page!');
   });
 
@@ -156,7 +162,7 @@ test.describe('page request fulfill', { requires: ['browser'], tags: ['playwrigh
     expect(await browser.title()).toEqual('Woof-Woof');
   });
 
-  test('should fulfill with multiple set-cookie', { skip: '`route.fulfill` refuses a header value with a newline, so the request is aborted and the navigation fails as an engine failure, which `fail` does not cover' }, async ({ browser }) => {
+  test('should fulfill with multiple set-cookie', async ({ browser }) => {
     const cookies = ['a=b', 'c=d'];
     await browser.route('**/multiple-set-cookie.html', (route) => route.fulfill({
       status: 200,
@@ -173,7 +179,7 @@ test.describe('page request fulfill', { requires: ['browser'], tags: ['playwrigh
     expect(response.headers['x-header-2']).toBe('v2');
   });
 
-  test('should fulfill with fetch response that has multiple set-cookie', { skip: '`route.fulfill` refuses a header value with a newline, so the request is aborted and the navigation fails as an engine failure, which `fail` does not cover' }, async ({ browser }) => {
+  test('should fulfill with fetch response that has multiple set-cookie', async ({ browser }) => {
     await browser.route('**/respond?*', async (route) => {
       const response = await route.fetch();
       await route.fulfill({ status: response.status, headers: { ...response.headers }, body: await response.text() });

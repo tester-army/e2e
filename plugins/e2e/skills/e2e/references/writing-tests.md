@@ -491,17 +491,20 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
   `route.fetch()` reads upstream without deciding the route and returns
-  `{ url, status, headers, text(), json() }`; redirects are not followed.
+  `{ url, status, headers, body(), text(), json() }`; redirects are not followed.
+  Hand binary bodies on with `body()`, never `text()`.
   The handler calls exactly one of
-  `fulfill({ status?, headers?, contentType?, json | body | path })`,
+  `fulfill({ status?, headers?, contentType?, json | body | path })` (`body`
+  a string or bytes; several cookies as one `\n`-joined `set-cookie`),
   `continue({ url?, method?, headers?, postData? })` (straight to the
-  network), `fallback()` (the route registered before it), or `abort()`;
+  network; a header set to `undefined` is dropped, configured site headers
+  still added), `fallback()` (the route registered before it), or `abort()`;
   none or two fails the next step with `ACTION_FAILED`, an unsupported
   option with `INVALID_ARGUMENT`.
 - `unrouteAll()` removes every route; configured site headers stay.
 - `waitForResponse(pattern, { timeout? })`: resolves once the headers
-  arrive, with `{ url, status, headers, json(), text() }`; `text()` and
-  `json()` wait for the body (up to the action timeout) and reject with
+  arrive, with `{ url, status, headers, body(), json(), text() }`; the body
+  readers wait for the body (up to the action timeout) and reject with
   `ACTION_FAILED` when it could not be read. Start the wait before the
   request, including the first `browser.goto` or `app.open`.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.

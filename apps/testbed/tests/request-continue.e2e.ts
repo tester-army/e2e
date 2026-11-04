@@ -58,10 +58,10 @@ test.describe('page request continue', { requires: ['browser'], tags: ['playwrig
     expect(serverRequest.headers['host']).toBe(new URL(EMPTY_PAGE).host);
   });
 
-  test('should delete header with undefined value', { fail: 'a header override takes strings only, so `undefined` cannot delete one' }, async ({ browser }) => {
+  test('should delete header with undefined value', async ({ browser }) => {
     await browser.goto('/empty.html');
     await browser.route(`${PREFIX}/cors-echo`, (route) => route.continue({
-      headers: { ...route.request.headers, foo: undefined } as unknown as Record<string, string>,
+      headers: { ...route.request.headers, foo: undefined },
     }));
     const serverRequest = await fetched(browser, `${PREFIX}/cors-echo`, "{ headers: { foo: 'a', bar: 'b' } }");
     expect(serverRequest.method).toBe('GET');
@@ -281,10 +281,10 @@ test.describe('page request continue', { requires: ['browser'], tags: ['playwrig
     expect(serverRequest.headers['custom']).toBe('value');
   });
 
-  test('continue should delete headers on redirects', { fail: 'a header override takes strings only, so `undefined` cannot delete one' }, async ({ browser }) => {
+  test('continue should delete headers on redirects', async ({ browser }) => {
     await browser.goto('/empty.html');
     await browser.route('**/redirect?**', (route) => route.continue({
-      headers: { ...route.request.headers, foo: undefined } as unknown as Record<string, string>,
+      headers: { ...route.request.headers, foo: undefined },
     }));
     const serverRequest = await fetched(browser, `${PREFIX}/redirect?to=/cors-echo`, "{ headers: { foo: 'a' } }");
     expect(serverRequest.method).toBe('GET');
