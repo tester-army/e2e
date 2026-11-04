@@ -172,7 +172,7 @@ export class RunningTree {
    */
   private detailRows(test: RunningTest, maxEvents: number, budget: number, now: number, held: PausedTest | undefined): string[] {
     const maxWidth = terminalColumns() - WIDTH_MARGIN - DETAIL_INDENT.length;
-    const prompt = held === undefined ? [] : stepPromptRows(this.pc, held.prompt, { maxWidth }).slice(0, budget);
+    const prompt = held === undefined ? [] : fitPrompt(stepPromptRows(this.pc, held.prompt, { maxWidth }), held.prompt.steps.length, budget);
     const current = [...this.stepRows(test, maxEvents, budget - prompt.length, now), ...prompt];
     const room = budget - current.length;
     const rendered = (test.ran ?? test.steps).map((step) => stepLine(this.pc, step, { maxWidth }));
@@ -227,4 +227,14 @@ export function waitingRow(pc: Colors, now: number, word: string): string {
   const frame = Math.floor(now / REPAINT_INTERVAL_MS);
   const spinner = pc.cyan(SPINNER_FRAMES[Math.floor(frame / SPINNER_HOLD_FRAMES) % SPINNER_FRAMES.length]!);
   return `${spinner} ${shimmer(pc, word, frame)}`;
+}
+
+/**
+ * The prompt's rows in `budget`: its held steps, then its keys. Short of
+ * room, held steps go first, so the prompt always says how to answer it.
+ */
+function fitPrompt(rows: readonly string[], steps: number, budget: number): string[] {
+  if (rows.length <= budget) return [...rows];
+  const keys = rows.slice(steps);
+  return [...rows.slice(0, Math.max(0, budget - keys.length)), ...keys].slice(0, budget);
 }

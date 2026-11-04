@@ -1333,6 +1333,25 @@ describe('ListReporter', () => {
       }
     });
 
+    it('keeps the --step keys on a short terminal, cutting held steps first', () => {
+      const restore = withTerminalSize({ columns: 120, rows: 18 });
+      try {
+        const { chunks, output } = liveCapture();
+        const reporter = new ListReporter(output, { live: true, colors: false, stepping: true });
+        reporter.handle(runStarted());
+        reporter.handle(plan([{ file: 'tests/coffee.e2e.ts', tests: 1 }]));
+        reporter.handle(testStarted('t1', 'orders a drink', 'chromium', 'tests/coffee.e2e.ts'));
+        const held = (n: number) => ({ step: { target: 'chromium', testId: 't1', agent: 'default', repeat: 0, title: 'orders a drink', api: 'locator.click', label: `button ${n}` }, number: n });
+        reporter.showStepPrompt({ steps: [held(2), held(3), held(4), held(5), held(6), held(7), held(8), held(9)], help: false });
+        const window = chunks.at(-1)!.replace(ANSI_PATTERN, '');
+        expect(window).toContain('press enter to run these 8 steps');
+        expect(window).toContain('▶ step 2');
+        expect(window).not.toContain('▶ step 9');
+      } finally {
+        restore();
+      }
+    });
+
     it('prints the --step prompt as one line without a live window', () => {
       const lines: string[] = [];
       const reporter = new ListReporter({ write: (line) => lines.push(line) }, { live: false, colors: false, stepping: true });

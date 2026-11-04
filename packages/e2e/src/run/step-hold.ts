@@ -90,6 +90,11 @@ export class AttemptHolds {
     if (cancel.aborted) throw abortError(cancel, cancelledError);
     if (this.pending === 0) {
       this.remainingMs = this.options.budget.deadline.remaining();
+      // Already past it, as after code that blocked the event loop: the body times out now, not after a prompt.
+      if (this.remainingMs === 0 && this.timer !== undefined) {
+        this.timer.check();
+        return;
+      }
       this.timer?.stop();
     }
     this.pending += 1;
