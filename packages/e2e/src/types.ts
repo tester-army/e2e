@@ -574,7 +574,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   focus(options?: ActionOptions): Promise<void>;
   /** Hovers over exactly one matching actionable node. */
   hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
+  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root, and an empty array clears the input. */
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;

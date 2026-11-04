@@ -2,7 +2,8 @@
  * `setInputFiles` against a real page, through both kinds of target the
  * engine acts on: a file input and a label for one take the files without a
  * click, a button that opens a hidden input's chooser is clicked and the
- * chooser takes them, and a button that opens nothing fails.
+ * chooser takes them, an empty list clears either, and a button that opens
+ * nothing fails.
  */
 
 import { mkdtempSync, writeFileSync } from 'node:fs';
@@ -43,9 +44,9 @@ async function targetOf(kind: (typeof KINDS)[number], selector: string): Promise
   return { kind, element };
 }
 
-/** Uploads the fixture file and returns the contract error it failed with, classified as the engine reports it. */
-async function upload(target: ActionTarget): Promise<Error | undefined> {
-  const action = { kind: 'setInputFiles', paths: [file] } as const;
+/** Uploads `paths`, the fixture file by default, and returns the contract error it failed with, classified as the engine reports it. */
+async function upload(target: ActionTarget, paths: readonly string[] = [file]): Promise<Error | undefined> {
+  const action = { kind: 'setInputFiles', paths } as const;
   try {
     await dispatchLocatorAction(target, action, { timeoutMs: 2000, signal: new AbortController().signal }, () => {
       throw new Error('no second target');
@@ -85,6 +86,24 @@ describe.each(KINDS)('through the %s target', (kind) => {
       <input id="avatar" type="file" hidden>${COUNT_CLICKS}`);
     expect(await upload(await targetOf(kind, '#pick'))).toBeUndefined();
     expect((await state()).files).toBe('avatar.png');
+  });
+
+  it.each([
+    ['a file input', '<input id="avatar" type="file">', '#avatar'],
+    ['a button over a hidden input', `<button id="pick" type="button" onclick="document.getElementById('avatar').click()">Choose avatar</button><input id="avatar" type="file" hidden>`, '#pick'],
+  ])('clears %s with an empty list and fires input and change', async (_name, html, selector) => {
+    await page.setContent(`${html}${COUNT_CLICKS}`);
+    expect(await upload(await targetOf(kind, selector))).toBeUndefined();
+    await page.evaluate(() => {
+      const events: string[] = [];
+      (window as unknown as { events: string[] }).events = events;
+      const input = document.querySelector('#avatar')!;
+      input.addEventListener('input', () => events.push('input'));
+      input.addEventListener('change', () => events.push('change'));
+    });
+    expect(await upload(await targetOf(kind, selector), [])).toBeUndefined();
+    expect((await state()).files).toBe('');
+    expect(await page.evaluate(() => (window as unknown as { events: string[] }).events)).toEqual(['input', 'change']);
   });
 
   it('fails when the button opens no file chooser', async () => {

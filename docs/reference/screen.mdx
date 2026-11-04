@@ -814,19 +814,20 @@ await screen.getByRole('button', 'Account').hover();
 #### `setInputFiles`
 
 ```ts
-/** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
+/** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root, and an empty array clears the input. */
 setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
 ```
 
 ```ts
 await screen.getByLabel('Receipt').setInputFiles('fixtures/receipt.pdf');
+await screen.getByLabel('Receipt').setInputFiles([]);
 ```
 
-On the web it also takes a button that opens a file chooser.
+An empty array clears the input and fires `input` and `change`. On the web it also takes a button that opens a file chooser.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | An empty list or a blank entry. |
+| `INVALID_ARGUMENT` | A blank path. |
 | `ACTION_FAILED` | On the web, a button that opens no file chooser. |
 
 #### `dragTo`

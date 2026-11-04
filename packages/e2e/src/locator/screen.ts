@@ -516,8 +516,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void> {
     const list = typeof paths === 'string' ? [paths] : [...paths];
-    if (list.length === 0 || list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
-      throw new TestError('INVALID_ARGUMENT', 'setInputFiles requires one or more non-empty paths');
+    if (list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
+      throw new TestError('INVALID_ARGUMENT', 'setInputFiles paths must be non-empty strings');
     }
     const base = this.context.projectRoot;
     const resolved = list.map((entry) => (base === undefined ? entry : nodePath.resolve(base, entry)));

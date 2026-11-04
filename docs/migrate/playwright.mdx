@@ -168,11 +168,11 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `fill(value)` | the same; also takes a `Secret` | same |
 | `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | same |
 | `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | same |
-| `clear()`, `focus()`, `hover()`, `setInputFiles()`, `dragTo()` | the same verbs, each with `timeout` as the only option: no `force`, `trial`, `position`, `modifiers`, or `sourcePosition`. Another key is `INVALID_ARGUMENT`. `setInputFiles` is web only | renamed |
+| `clear()`, `focus()`, `hover()`, `setInputFiles()`, `dragTo()` | the same verbs, each with `timeout` as the only option: no `force`, `trial`, `position`, `modifiers`, or `sourcePosition`. Another key is `INVALID_ARGUMENT`. `setInputFiles` is web only, and `setInputFiles([])` clears the input | renamed |
 | `check()`, `uncheck()` | the same, except when the state updates late or the click removes the control, see [What differs on purpose](#what-differs-on-purpose). `uncheck()` on a checked radio, `role=radio` included, is `NOT_ACTIONABLE` | by design |
 | `selectOption('pro')` | `selectOption('Pro')`: a string matches the option's label only, where Playwright matches its value or its label; `selectOption({ value: 'pro' })` for the value | by design |
 | `selectOption(['a', 'b'])` | one option per call. An array is `INVALID_ARGUMENT` | missing |
-| `setInputFiles({ name, buffer })`, `setInputFiles([])` | paths only, resolved from the project root; an empty list is `INVALID_ARGUMENT`, so there is no clear | missing |
+| `setInputFiles({ name, buffer })` | paths only, resolved from the project root | missing |
 | `scrollIntoViewIfNeeded()` | `scrollIntoView()` | renamed |
 | `locator.innerText()` | `textContent()`, whitespace collapsed to single spaces | renamed |
 | `locator.textContent()` | the rendered text, what `innerText()` reads, see [What differs on purpose](#what-differs-on-purpose) | by design |
