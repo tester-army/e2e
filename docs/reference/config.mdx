@@ -43,6 +43,7 @@ export default {
 | [`assertionTimeout`](#assertiontimeout) | `number` | `5000` |
 | [`cleanupTimeout`](#cleanuptimeout) | `number` | `30000` |
 | [`retries`](#retries) | `number` | `0`, `1` in CI |
+| [`retryOn`](#retryon) | `('test' \| 'infrastructure')[]` | `['test']` |
 | [`failOnSkippedFailure`](#failonskippedfailure) | `boolean` | `false` |
 | [`maxDuration`](#maxduration) | `number` | - |
 | [`workers`](#workers) | `number` | half the cores, `1` in CI |
@@ -173,6 +174,25 @@ retries: 2, // default: 1 in CI, else 0
 ```
 
 - 0 through 10.
+
+#### `retryOn`
+
+Failure categories that spend `retries`.
+
+```ts
+retryOn: ['test', 'infrastructure'], // default: ['test']
+```
+
+- Each entry once from `test` and `infrastructure`, and `test` must always
+  be one of them.
+- `test` retries a failing test on its own assertion and runtime errors;
+  `infrastructure` also retries one-off harness errors (a device daemon
+  timeout, a crashed snapshot helper), so a suite whose failures are
+  transient reports them as flaky instead of failed.
+- Test timeouts consume the budget whatever this says; an operation
+  timeout is a `test` failure.
+- Requires `retries` (or the CI default) to be at least 1 for a retry
+  to happen at all.
 
 #### `failOnSkippedFailure`
 

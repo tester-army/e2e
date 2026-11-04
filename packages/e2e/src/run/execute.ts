@@ -478,6 +478,7 @@ export class TargetExecutor implements SerialHost {
         }
         return attempt;
       },
+      pair.options.retryOn,
     );
 
     this.emitUnitResult(pair, finalStatus, attempts, hookFailure);
@@ -577,6 +578,7 @@ export class TargetExecutor implements SerialHost {
         }
         return attempt;
       },
+      pair.options.retryOn,
     );
 
     this.emitUnitResult(pair, finalStatus, attempts, hookFailure);

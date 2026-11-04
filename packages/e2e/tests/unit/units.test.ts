@@ -76,6 +76,7 @@ function makeTest(
 const defaultOptions: ResolvedTestOptions = {
   timeout: 30_000,
   retries: 0,
+  retryOn: ['test'],
   platforms: undefined,
   requires: [],
   session: undefined,

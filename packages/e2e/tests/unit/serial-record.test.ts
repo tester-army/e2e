@@ -16,11 +16,12 @@ import { buildReport } from '../../src/report/build.ts';
 import { outcome } from '../../src/report/outcome.ts';
 import { RealmManager } from '../../src/run/realm.ts';
 import type { AttemptRecord, ResultRecord, SerialAttemptRecord, SerialGroupRecord } from '../../src/run/records.ts';
-import { runSerialUnit, type SerialHost } from '../../src/run/serial.ts';
+import { runSerialUnit, SerialGroupProgress, type SerialHost } from '../../src/run/serial.ts';
 
 const OPTIONS: ResolvedTestOptions = {
   timeout: 30_000,
   retries: 0,
+  retryOn: ['test'],
   platforms: undefined,
   requires: [],
   session: undefined,
@@ -162,5 +163,50 @@ describe('serial attempt record provenance', () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('serial crash retry follow-up', () => {
+  const INFRA_ERROR = {
+    category: 'infrastructure',
+    code: 'ENGINE_FAILURE',
+    message: 'engine died',
+    retryable: false,
+  } as const;
+
+  const failedAttempt: SerialAttemptRecord = {
+    id: 'attempt-0',
+    index: 0,
+    status: 'failed',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    durationMs: 5,
+    members: [],
+    artifacts: [],
+    error: INFRA_ERROR,
+    secondaryErrors: [],
+    cleanup: 'complete',
+    cutRetry: false,
+  };
+
+  it('lets a finished infrastructure failure follow into the crash attempt when retryOn names it', () => {
+    const target = makeTarget('web', 0);
+    const members = serialPairs(target).slice(0, 1).map((pair) => ({
+      ...pair,
+      options: { ...pair.options, retries: 1, retryOn: ['test', 'infrastructure'] as const },
+    }));
+    const progress = new SerialGroupProgress();
+    progress.attemptFinished(failedAttempt);
+    const settled = progress.crashed(members, target, INFRA_ERROR, 'failed');
+    expect(settled?.group.attempts).toHaveLength(2);
+  });
+
+  it('closes the finished attempt instead when retryOn does not name infrastructure', () => {
+    const target = makeTarget('web', 0);
+    const members = serialPairs(target).slice(0, 1).map((pair) => ({ ...pair, options: { ...pair.options, retries: 1 } }));
+    const progress = new SerialGroupProgress();
+    progress.attemptFinished(failedAttempt);
+    const settled = progress.crashed(members, target, INFRA_ERROR, 'failed');
+    expect(settled?.group.attempts).toHaveLength(1);
+    expect(settled?.group.attempts[0]!.secondaryErrors).toHaveLength(1);
   });
 });
