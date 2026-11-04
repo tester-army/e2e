@@ -53,6 +53,7 @@ import { applyPostSteps, frameSelectors, projectExpression } from './locators.ts
 import { contentBox, frameContentInset, placeRectInFrame, ROOT_NODE_ID, toSemanticNode } from './observation.ts';
 import { captureObservation } from './observation-capture.ts';
 import { maskOptions, secureFieldMasks } from './observe.ts';
+import { SHOWN_SELECTOR } from './shown-selector.ts';
 import { withHiddenCaret } from './screenshot-caret.ts';
 import { connectionAbort, withOperationDeadline, type OperationBound } from './operation-budget.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
@@ -782,8 +783,8 @@ export class PlaywrightSurface {
         const token = session.token();
         const refs = session.refs;
         const page = this.requirePage();
-        const frame = await this.frameBox(expression);
-        const projected = projectExpression(page, expression, this.testIdAttribute);
+        const frame = await this.frameOf(expression);
+        const projected = projectExpression(page, expression, { testIdAttribute: this.testIdAttribute, frameHidden: frame.hidden });
         const { displayValue, name, steps } = projected;
         // Every match is read by the `e2e-read` selector engine in the task that finds it, so a
         // page that replaces it a frame later cannot detach it before the read. A
@@ -810,7 +811,9 @@ export class PlaywrightSurface {
             : first === undefined
               ? []
               : await first.evaluate(takeReadsFunction, { token: read.token, elements: handles });
-        const reads = taken.filter((raw) => raw !== null);
+        const reads = taken
+          .filter((raw) => raw !== null)
+          .map((raw) => (frame.hidden ? { ...raw, states: { ...raw.states, hidden: true } } : raw));
         if (reads.length !== taken.length) {
           releaseHandles();
           throw new TestError(
@@ -863,7 +866,7 @@ export class PlaywrightSurface {
           const id = refs.storeLocated(
             pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
           );
-          return inFrame(toSemanticNode({ id, revision: '' }, raw), frame);
+          return inFrame(toSemanticNode({ id, revision: '' }, raw), frame.box);
         });
       },
       staleOr,
@@ -990,16 +993,21 @@ export class PlaywrightSurface {
    * the same chain; a frame-scoped `count` is 0 until that frame's document
    * has loaded, which is what makes `FRAME_NOT_FOUND` worth retrying. Returns
    * the innermost frame's content box in the top-level viewport, where its
-   * document's viewport starts: undefined for an expression in the main
-   * document, null for a frame with no box.
+   * document's viewport starts (undefined for an expression in the main
+   * document, null for a frame with no box), and
+   * whether a frame along the chain is hidden: a frame element's own `hidden`
+   * state, read in the document around it, so a cross-origin frame reads too.
+   * Every node in a hidden frame is hidden, and so are the frames under it.
    */
-  private async frameBox(expression: LocatorExpression): Promise<Rect | null | undefined> {
+  private async frameOf(expression: LocatorExpression): Promise<{ box: Rect | null | undefined; hidden: boolean }> {
     let scope: Page | FrameLocator = this.requirePage();
     let element: Locator | undefined;
+    let hidden = false;
     for (const selector of frameSelectors(expression)) {
       let count: number;
       try {
         count = await scope.locator(selector).count();
+        if (count === 1 && !hidden) hidden = (await scope.locator(selector).locator(SHOWN_SELECTOR).count()) === 0;
       } catch (cause) {
         throw translatePwError(cause, 'frame resolution');
       }
@@ -1016,10 +1024,10 @@ export class PlaywrightSurface {
       element = scope.locator(selector);
       scope = scope.frameLocator(selector);
     }
-    if (element === undefined) return undefined;
+    if (element === undefined) return { box: undefined, hidden };
     try {
       const border = await element.boundingBox();
-      return border === null ? null : contentBox(border, await element.evaluate(frameContentInset));
+      return { box: border === null ? null : contentBox(border, await element.evaluate(frameContentInset)), hidden };
     } catch (cause) {
       throw translatePwError(cause, 'frame resolution');
     }

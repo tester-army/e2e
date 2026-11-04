@@ -165,7 +165,7 @@ test.describe('locator frame', { requires: ['browser'], tags: ['playwright'] }, 
     expect(error).toBeDefined();
   });
 
-  test('should treat elements inside hidden iframe as hidden', { fail: 'the visibility read does not count an element inside a `visibility: hidden` iframe as hidden' }, async ({ browser }) => {
+  test('should treat elements inside hidden iframe as hidden', async ({ browser }) => {
     await browser.goto(content(`
       <iframe name="hidden" style="visibility: hidden" srcdoc="<button>Hidden</button>"></iframe>
       <div style="visibility: hidden">
@@ -194,7 +194,7 @@ test.describe('locator frame', { requires: ['browser'], tags: ['playwright'] }, 
     await button.waitFor({ state: 'visible' });
   });
 
-  test('should wait for hidden iframe to become visible', { fail: 'the visibility read does not count an element inside a `visibility: hidden` iframe as hidden' }, async ({ browser }) => {
+  test('should wait for hidden iframe to become visible', async ({ browser }) => {
     await browser.goto(content(`<iframe name="frame" style="visibility: hidden" srcdoc="<button onclick='window.__clicked = true'>Button</button>"></iframe>`));
     const button = browser.frameLocator('[name=frame]').locator('button');
     await expect(button).toBeHidden();
@@ -214,7 +214,7 @@ test.describe('locator frame', { requires: ['browser'], tags: ['playwright'] }, 
     expect(await button.isVisible()).toBe(false);
   });
 
-  test('should treat elements inside hidden cross-origin iframe as hidden', { fail: 'the visibility read does not count an element inside a `visibility: hidden` iframe as hidden' }, async ({ browser }) => {
+  test('should treat elements inside hidden cross-origin iframe as hidden', async ({ browser }) => {
     await browser.goto('/empty.html');
     await browser.goto(content(`<iframe style="visibility: hidden" src="${CROSS}/frames/frame.html"></iframe>`));
     const div = browser.frameLocator('iframe').locator('div');
