@@ -1047,10 +1047,11 @@ export class PlaywrightSurface {
     return this.guard(operation, 'screenshot', async (currentOperation) => {
       const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
+      const deadline = Date.now() + currentOperation.timeoutMs;
       const masks = await secureFieldMasks(page);
       await withHiddenCaret(page, () => page.screenshot({
         path: absolute,
-        timeout: currentOperation.timeoutMs,
+        timeout: Math.max(1, deadline - Date.now()),
         caret: 'initial',
         ...maskOptions(masks),
       }));
