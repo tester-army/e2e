@@ -225,7 +225,8 @@ mobile({ platform: 'ios', settle: 300 }); // default: 150
  * once the wait is over and acted on where it landed. Unmoved controls are
  * acted on immediately only when keyboard visibility is unchanged. Opening
  * or closing the keyboard also uses the remaining budget. Raise it for
- * slower transitions.
+ * slower transitions. Screen swipes in tests wait out the remaining budget before
+ * scrolling.
  */
 readonly transition?: number | undefined;
 ```

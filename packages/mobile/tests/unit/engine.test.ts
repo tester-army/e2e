@@ -1917,6 +1917,23 @@ describe('device fixture', () => {
     });
   });
 
+  it('gives a screen swipe the remaining transition budget after an alert is dismissed', async () => {
+    autoAdvanceTimers();
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    await screenRootOf(h);
+    await fixture(h).alert('accept');
+    const dismissedAt = Date.now();
+    const screen = await screenRootOf(h);
+    await sleep(30);
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...operation(), origin: 'test' });
+
+    expect(Date.now() - dismissedAt).toBe(120);
+    expect(h.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down' });
+  });
+
   it('counts a back, home, alert, keyboard, rotation, or fold as an action, so a control that arrives with it waits out the transition budget', async () => {
     autoAdvanceTimers();
     const h = harness({ transition: 120 });
@@ -3024,6 +3041,32 @@ describe('deterministic actions', () => {
   const test = (): OperationContext => ({ ...operation(), origin: 'test' });
 
   beforeEach(autoAdvanceTimers);
+
+  it('does not dispatch a screen swipe whose transition wait was cancelled', async () => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const controller = new AbortController();
+    const pending = h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), signal: controller.signal });
+    setTimeout(() => controller.abort(), 20);
+
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
+  it('rejects an already cancelled screen swipe without starting its transition wait', async () => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const controller = new AbortController();
+    controller.abort();
+    const startedAt = Date.now();
+
+    await expect(h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), signal: controller.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
 
   /**
    * Taps under a stopped clock. The fake client records a dispatch the moment
