@@ -898,6 +898,14 @@ test('drives the gadget', async (fixtures) => {
 test('bounds a hanging fixture call', async (fixtures) => {
   await (fixtures as any).gadget.hang({ timeout: 200 });
 });
+
+test('waits for the test deadline with timeout 0', { timeout: 3_000 }, async (fixtures) => {
+  await (fixtures as any).gadget.hang({ timeout: 0 });
+});
+
+test('refuses a negative timeout', async (fixtures) => {
+  await (fixtures as any).gadget.hang({ timeout: -1 });
+});
 `;
       const { outcome, project } = await runProject(
         { 'tests/gadget.e2e.ts': file },
@@ -925,6 +933,10 @@ test('bounds a hanging fixture call', async (fixtures) => {
       expect(hangs.status).toBe('failed');
       expect(hangs.attempts[0]!.error?.code).toBe('ACTION_FAILED');
       expect(hangs.attempts[0]!.error?.message).toContain('gadget.hang exceeded its timeout of 200ms');
+      const unbounded = resultByTitle(outcome, 'waits for the test deadline with timeout 0');
+      expect(unbounded.attempts[0]!.error?.code).toBe('TEST_TIMEOUT');
+      const negative = resultByTitle(outcome, 'refuses a negative timeout');
+      expect(negative.attempts[0]!.error?.code).toBe('INVALID_ARGUMENT');
       assertValidReport(outcome.report);
       project.cleanup();
     },

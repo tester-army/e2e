@@ -2,7 +2,9 @@ import { getEventListeners } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   budgetText,
+  checkStepTimeout,
   Deadline,
+  stepTimeout,
   NEGATION_GRACE_MS,
   POLL_INTERVAL_MS,
   pollCondition,
@@ -16,6 +18,33 @@ import { EngineError } from '../../src/engine/contract.ts';
 
 afterEach(() => {
   vi.useRealTimers();
+});
+
+describe('checkStepTimeout', () => {
+  it('takes no timeout, 0, and finite positive milliseconds', () => {
+    for (const timeout of [undefined, 0, 1, 2.5, 60_000]) expect(() => checkStepTimeout(timeout, 'tap')).not.toThrow();
+  });
+
+  it('refuses negative, NaN, infinite, and non-number timeouts as INVALID_ARGUMENT', () => {
+    for (const timeout of [-1, Number.NaN, Number.POSITIVE_INFINITY, '100', null]) {
+      expect(() => checkStepTimeout(timeout, 'tap')).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('tap timeout') }));
+    }
+  });
+
+  it('gives withTimeout no timer for the infinite budget of 0', async () => {
+    vi.useFakeTimers();
+    const pending = withTimeout(new Promise<string>((resolve) => setTimeout(() => resolve('done'), 60_000)), stepTimeout(0, 'tap')!, () => new Error('timed out'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    await expect(pending).resolves.toBe('done');
+  });
+
+  it('turns 0 into an infinite budget, which a phase deadline caps', () => {
+    expect(stepTimeout(0, 'tap')).toBe(Number.POSITIVE_INFINITY);
+    expect(stepTimeout(250, 'tap')).toBe(250);
+    expect(stepTimeout(undefined, 'tap')).toBeUndefined();
+    const phase = new Deadline(1000, 5000);
+    expect(Deadline.min(new Deadline(stepTimeout(0, 'tap')!, 5000), phase)).toBe(phase);
+  });
 });
 
 describe('Deadline', () => {

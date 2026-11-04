@@ -320,7 +320,7 @@ class ScreenImpl implements Screen {
     }
     return await this.context.steps.run('screen', api, 'whole screen', async () => {
       const { engine } = this.context;
-      return this.context.renderTree(await engine.session.observe(engine.operation(options?.timeout)));
+      return this.context.renderTree(await engine.session.observe(engine.operationWithin(engine.deadline(options?.timeout))));
     });
   }
 

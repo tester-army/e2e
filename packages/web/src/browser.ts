@@ -23,6 +23,7 @@ import {
   obj,
   pollCondition,
   raceAbort,
+  stepTimeout,
   rejectUnknownOptions,
   TestError,
   toTextPattern,
@@ -354,10 +355,7 @@ async function collectDownloads(
   timeout: number | undefined,
   api: 'browser.waitForDownload' | 'browser.waitForDownloads',
 ): Promise<DownloadedFile[]> {
-  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
-    throw new TestError('INVALID_ARGUMENT', `${api} timeout must be positive and finite`);
-  }
-  const operation = context.operation(timeout);
+  const operation = context.operation(stepTimeout(timeout, api));
   const waitMs = operation.timeoutMs;
   const deadline = new Deadline(waitMs);
   const scope = new AbortController();
@@ -458,16 +456,17 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
    * be cut at the action timeout.
    */
   const navigation = (
+    api: string,
     options: { timeout?: number } | undefined,
     run: (operation: OperationContext) => Promise<void>,
   ): Promise<void> => {
-    const operation = context.operation(options?.timeout ?? context.timeouts.test);
+    const operation = context.operation(stepTimeout(options?.timeout, api) ?? context.timeouts.test);
     return surface.guard(operation, 'navigation', run);
   };
 
   /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
-  const deadlineFor = (timeout: number | undefined): Deadline =>
-    new Deadline(context.operation(timeout ?? context.timeouts.assertion).timeoutMs);
+  const deadlineFor = (timeout: number | undefined, api: string): Deadline =>
+    new Deadline(context.operation(stepTimeout(timeout, api) ?? context.timeouts.assertion).timeoutMs);
 
   /** The page URL, read within the action timeout or, for a matcher poll, within the poll's deadline. */
   const currentUrl = (deadline?: Deadline) =>
@@ -480,7 +479,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
-      return navigation(options, (operation) => surface.navigating(async () => {
+      return navigation('browser.goto', options, (operation) => surface.navigating(async () => {
         const page = await surface.ensurePage();
         await page.goto(resolved, {
           waitUntil: options?.waitUntil ?? 'load',
@@ -489,15 +488,15 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       }));
     },
     reload: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.reload', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     back: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.back', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     forward: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.forward', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     url: () => currentUrl(),
@@ -649,7 +648,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     },
     waitForResponse(pattern, options) {
       const wirePattern = toTextPattern(pattern);
-      const operation = context.operation(options?.timeout);
+      const operation = context.operation(stepTimeout(options?.timeout, 'browser.waitForResponse'));
       return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
         const page = await surface.ensurePage();
         const response = await page.waitForResponse(
@@ -826,7 +825,7 @@ interface ExpectationDeps {
   currentUrl(deadline: Deadline): Promise<string>;
   currentTitle(deadline: Deadline): Promise<string>;
   baseHref(): string;
-  deadlineFor(timeout: number | undefined): Deadline;
+  deadlineFor(timeout: number | undefined, api: string): Deadline;
   readonly context: EngineFixtureContext;
 }
 
@@ -849,7 +848,7 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
     read: (deadline: Deadline) => Promise<BrowserSample>,
     timeout: number | undefined,
   ): Promise<void> => {
-    const deadline = deps.deadlineFor(timeout);
+    const deadline = deps.deadlineFor(timeout, api);
     // pollCondition calls onTimeout only after a read completed, so a sample is always there.
     let last: BrowserSample | undefined;
     await pollCondition({

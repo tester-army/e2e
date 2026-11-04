@@ -22,6 +22,7 @@
  * - should deselect all options when passed no values for a select without multiple: no arrays.
  * - should throw if passed wrong types: asserts Playwright's protocol validator messages; the option is typed.
  * - should wait for multiple options to be present: `selectOption` takes one option, no arrays.
+ * - should select single option: a bare string selects by label only on purpose, where Playwright matches the value or the label.
  */
 
 import { test } from '@e2e-dev/web';
@@ -35,13 +36,6 @@ const giveItAChanceToResolve = '() => new Promise((resolve) => { let frames = 0;
 const addScarlet = "() => { const option = document.createElement('option'); option.value = 'scarlet'; option.textContent = 'Scarlet'; document.querySelector('select').appendChild(option); }";
 
 test.describe('page select option', { requires: ['browser'], tags: ['playwright'] }, () => {
-  test('should select single option', { fail: 'a bare string selects by label only, where Playwright matches the value or the label', timeout: 5000 }, async ({ browser }) => {
-    await browser.goto('/input/select.html');
-    await browser.locator('select').selectOption('blue');
-    expect(await browser.evaluate('() => window.result.onInput')).toEqual(['blue']);
-    expect(await browser.evaluate('() => window.result.onChange')).toEqual(['blue']);
-  });
-
   test('should select single option by value', async ({ browser }) => {
     await browser.goto('/input/select.html');
     await browser.locator('select').selectOption({ value: 'blue' });

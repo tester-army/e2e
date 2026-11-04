@@ -236,6 +236,13 @@ describe('expect.poll', () => {
     e2eExpect.poll(() => 1, { timeout: 0, interval: 1 });
   });
 
+  it('refuses timeout 0 outside an attempt, where no test deadline bounds it', async () => {
+    await vexpect(e2eExpect.poll(() => 'running', { timeout: 0 }).toBe('done')).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: vexpect.stringContaining('runs only inside a test'),
+    });
+  });
+
   describe('inside an attempt', () => {
     it('defaults the timeout to the attempt assertionTimeout until the attempt ends', async () => {
       const live = attempt({ assertionTimeout: 80, deadlineMs: 10_000 });
@@ -260,6 +267,20 @@ describe('expect.poll', () => {
           /last: expected "running" to be "done"/,
         );
         vexpect(Date.now() - started).toBeLessThan(1000);
+      } finally {
+        live.end();
+      }
+    });
+
+    it('polls with timeout 0 past the assertion timeout, until the attempt deadline', async () => {
+      const live = attempt({ assertionTimeout: 20, deadlineMs: 150 });
+      try {
+        const started = Date.now();
+        await failsWith(
+          () => e2eExpect.poll(() => 'running', { timeout: 0, interval: 10 }).toBe('done'),
+          /stopped at the attempt deadline after \d+ ms/,
+        );
+        vexpect(Date.now() - started).toBeGreaterThanOrEqual(140);
       } finally {
         live.end();
       }

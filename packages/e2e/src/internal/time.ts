@@ -1,6 +1,6 @@
 /** Deadline and cancellation helpers. */
 
-import { asEngineError, E2EError, isE2EError } from './errors.ts';
+import { asEngineError, E2EError, isE2EError, TestError } from './errors.ts';
 
 export class Deadline {
   readonly endsAt: number;
@@ -22,6 +22,26 @@ export class Deadline {
   static min(a: Deadline, b: Deadline): Deadline {
     return a.endsAt <= b.endsAt ? a : b;
   }
+}
+
+/**
+ * Refuses a per-call step timeout that is not a finite number of
+ * milliseconds, 0 or more. 0 means no step deadline: the step waits until
+ * the running phase's deadline (the test timeout in the body).
+ */
+export function checkStepTimeout(timeout: unknown, api: string): asserts timeout is number | undefined {
+  if (timeout === undefined || (typeof timeout === 'number' && Number.isFinite(timeout) && timeout >= 0)) return;
+  throw new TestError('INVALID_ARGUMENT', `${api} timeout must be a finite number of milliseconds, 0 or more; got ${String(timeout)}`);
+}
+
+/**
+ * The budget of a call's own `timeout` option, checked by `checkStepTimeout`.
+ * 0 becomes an infinite budget, so `context.operation` caps it by the running
+ * phase's deadline alone; undefined stays undefined for the default.
+ */
+export function stepTimeout(timeout: unknown, api: string): number | undefined {
+  checkStepTimeout(timeout, api);
+  return timeout === 0 ? Number.POSITIVE_INFINITY : timeout;
 }
 
 /**
@@ -219,12 +239,16 @@ export async function pollReads(options: PollReadsOptions): Promise<void> {
   }
 }
 
-/** Races a promise against a timeout; on timeout invokes onTimeout to build the error. */
+/**
+ * Races a promise against a timeout; on timeout invokes onTimeout to build the
+ * error. An infinite timeout, `stepTimeout`'s 0, sets no timer.
+ */
 export async function withTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
   onTimeout: () => Error,
 ): Promise<T> {
+  if (timeoutMs === Number.POSITIVE_INFINITY) return promise;
   let timer: NodeJS.Timeout | undefined;
   try {
     return await Promise.race([

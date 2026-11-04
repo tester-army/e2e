@@ -22,6 +22,7 @@
  * - should contain raw response header after fulfill: needs `request.response()`.
  * - should be able to intercept every navigation to a page controlled by service worker: service workers.
  * - should respect URLPattern ignoreCase: `route` takes a glob or RegExp, not a URLPattern.
+ * - should not support ? in glob pattern: `?` in a route glob matches one character on purpose, where Playwright reads it literally.
  */
 
 import { test, type WebRoute } from '@e2e-dev/web';
@@ -83,28 +84,6 @@ test.describe('page route', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.unroute('**/empty.html');
     await browser.goto(EMPTY_PAGE);
     expect(intercepted).toEqual([1]);
-  });
-
-  test('should not support ? in glob pattern', { fail: '`?` in a route glob matches one character, where Playwright reads it literally' }, async ({ browser }) => {
-    await browser.route(/\/index/, async (route) => {
-      const { pathname, search } = new URL(route.request.url);
-      const body = { '/index': 'index-no-hello', '/index123hello': 'index123hello', '/index1hello': 'index1hello' }[pathname] ?? `${pathname.slice(1)}${search}`;
-      await route.fulfill({ body, contentType: 'text/html' });
-    });
-    await browser.route('**/index?hello', (route) => route.fulfill({ body: 'intercepted any character' }));
-    await browser.route('**/index\\?hello', (route) => route.fulfill({ body: 'intercepted question mark' }));
-
-    await browser.goto(`${PREFIX}/index?hello`);
-    expect(await browser.evaluate('document.documentElement.outerHTML')).toContain('intercepted question mark');
-
-    await browser.goto(`${PREFIX}/index`);
-    expect(await browser.evaluate('document.documentElement.outerHTML')).toContain('index-no-hello');
-
-    await browser.goto(`${PREFIX}/index1hello`);
-    expect(await browser.evaluate('document.documentElement.outerHTML')).toContain('index1hello');
-
-    await browser.goto(`${PREFIX}/index123hello`);
-    expect(await browser.evaluate('document.documentElement.outerHTML')).toContain('index123hello');
   });
 
   test('should work when POST is redirected with 302', async ({ browser }) => {

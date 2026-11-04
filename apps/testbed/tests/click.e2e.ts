@@ -137,7 +137,7 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.goto('/input/button.html');
     await browser.evaluate("() => { document.querySelector('button').style.display = 'none'; }");
     let done = false;
-    const clicked = browser.locator('button').tap({ timeout: 10_000 }).then(() => (done = true));
+    const clicked = browser.locator('button').tap({ timeout: 0 }).then(() => (done = true));
     await browser.evaluate(giveItAChanceToClick);
     expect(await browser.evaluate('result')).toBe('Was not clicked');
     expect(done).toBe(false);
@@ -151,7 +151,7 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.goto('/input/button.html');
     await browser.evaluate("() => { document.querySelector('button').style.visibility = 'hidden'; }");
     let done = false;
-    const clicked = browser.locator('button').tap({ timeout: 10_000 }).then(() => (done = true));
+    const clicked = browser.locator('button').tap({ timeout: 0 }).then(() => (done = true));
     await browser.evaluate(giveItAChanceToClick);
     expect(await browser.evaluate('result')).toBe('Was not clicked');
     expect(done).toBe(false);
@@ -165,7 +165,7 @@ test.describe('page click', { requires: ['browser'], tags: ['playwright'] }, () 
     await browser.goto('/input/button.html');
     await browser.evaluate("() => { document.querySelector('button').parentElement.style.display = 'none'; }");
     let done = false;
-    const clicked = browser.locator('button').tap({ timeout: 10_000 }).then(() => (done = true));
+    const clicked = browser.locator('button').tap({ timeout: 0 }).then(() => (done = true));
     await browser.evaluate(giveItAChanceToClick);
     expect(done).toBe(false);
     await browser.evaluate("() => { document.querySelector('button').parentElement.style.display = 'block'; }");

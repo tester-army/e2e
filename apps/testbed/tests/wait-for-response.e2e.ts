@@ -41,7 +41,7 @@ test.describe('page wait for response', { requires: ['browser'], tags: ['playwri
     expect((error2 as Error).message).toContain('/foo.css/i');
   });
 
-  test('should work with no timeout', { skip: 'a timeout must be positive, so there is no `timeout: 0` for no timeout (refused as INVALID_ARGUMENT, which `fail` does not cover)' }, async ({ browser }) => {
+  test('should work with no timeout', async ({ browser }) => {
     await browser.goto(EMPTY_PAGE);
     const [response] = await Promise.all([
       browser.waitForResponse(`${PREFIX}/digits/2.png`, { timeout: 0 }),

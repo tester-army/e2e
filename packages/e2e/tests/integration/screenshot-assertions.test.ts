@@ -203,7 +203,7 @@ test('crops and masks', async ({ app, screen }) => {
 
 test('tolerant', async ({ app, screen }) => {
   await app.open('/');
-  await expect(screen).toHaveScreenshot('home', { maxDiffPixels: 800, timeout: 1000 });
+  await expect(screen).toHaveScreenshot('home', { maxDiffPixels: 800, timeout: 0 });
   await expect(screen).toHaveScreenshot('home', { maxDiffPixelRatio: 0.001, timeout: 1000 });
   await expect(screen).not.toHaveScreenshot('home', { timeout: 1000 });
 });
@@ -576,6 +576,7 @@ test('frame', async ({ app, gadget }) => {
     ['a name with a path separator', `'../home'`, 'name must be a file name'],
     ['an unknown option', `'home', { fullPage: true }`, '"fullPage"'],
     ['a threshold above 1', `'home', { threshold: 2 }`, 'threshold must be a number from 0 to 1'],
+    ['a negative timeout', `'home', { timeout: -1 }`, 'timeout must be a finite number of milliseconds, 0 or more'],
     ['a mask that is not a locator', `'home', { mask: ['#clock'] }`, 'mask must be an array of locators'],
     ['a mask color that is not #rrggbb', `'home', { maskColor: 'red' }`, 'maskColor must be a color written #rrggbb'],
     ['a name too long for a file name', `'${'あ'.repeat(60)}'`, 'at most 150 bytes'],

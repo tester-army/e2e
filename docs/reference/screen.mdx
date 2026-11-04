@@ -574,13 +574,13 @@ await screen.debug();
 Each action resolves one node, waits for actionability, and performs one
 operation. The timeout is
 [`config.actionTimeout`](/reference/config#actiontimeout), and every action
-takes `{ timeout }` to override it. An action takes only the options its
-signature names.
+takes `{ timeout }` to override it: `0` waits until the test timeout. An
+action takes only the options its signature names.
 
 | Throws | When |
 | --- | --- |
 | `UNSUPPORTED_CAPABILITY` | The engine does not list the action's kind in `actions`; thrown before reaching the engine. |
-| `INVALID_ARGUMENT` | An option key the action does not take, Playwright's `trial`, `force`, or `noWaitAfter` included. Thrown before the node is resolved, so the control is never touched. |
+| `INVALID_ARGUMENT` | An option key the action does not take, Playwright's `trial`, `force`, or `noWaitAfter` included, or a negative, `NaN`, or infinite `timeout`. Thrown before the node is resolved, so the control is never touched. |
 | `LOCATOR_NOT_FOUND` | No match before the timeout. |
 | `LOCATOR_AMBIGUOUS` | More than one match. |
 | `ACTION_FAILED` | The action may already have committed; it is never repeated. |

@@ -221,6 +221,31 @@ describe('browser.route decisions', () => {
     expect(hits.get('/echo')).toBeUndefined();
   });
 
+  it('hands timeout 0 to the operation as a budget only the test deadline caps, and refuses a negative one', async () => {
+    const asked: (number | undefined)[] = [];
+    const recording = createBrowserFixture(surface, {
+      app: { site: '127.0.0.1', resolveUrl },
+      operation: (timeoutMs?: number) => {
+        asked.push(timeoutMs);
+        return { signal, timeoutMs: Math.min(timeoutMs ?? 5_000, 5_000), runId: 'routes', attemptId: 'routes', origin: 'test' };
+      },
+      timeouts: { test: 5_000, action: 5_000, assertion: 5_000 },
+      expectable: (target: object) => target,
+      fixture: (_name: string, target: object) => target,
+      attachArtifact: () => undefined,
+    } as unknown as EngineFixtureContext);
+    await recording.goto(`${origin}/`, { timeout: 0 });
+    await recording.waitForURL(`${origin}/`, { timeout: 0 });
+    expect(asked.slice(0, 2)).toEqual([Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY]);
+    for (const call of [
+      async () => recording.goto(`${origin}/`, { timeout: -1 }),
+      async () => recording.waitForURL(`${origin}/`, { timeout: Number.NaN }),
+      async () => recording.waitForDownload(async () => undefined, { timeout: Number.POSITIVE_INFINITY }),
+    ]) {
+      await expect(call()).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+  });
+
   it('rejects an invalid download count before running the trigger', async () => {
     let calls = 0;
     await expect(browser.waitForDownloads(async () => { calls += 1; }, { count: 0 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
