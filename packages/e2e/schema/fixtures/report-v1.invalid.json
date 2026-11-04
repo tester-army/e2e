@@ -10,6 +10,7 @@
         "tags": [""],
         "attempts": [
           {
+            "expectedFailure": { "error": "a mark always has a reason" },
             "artifacts": [
               {
                 "id": "no-file",

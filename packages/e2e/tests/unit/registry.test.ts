@@ -60,7 +60,7 @@ describe('registration', () => {
       'test options has unknown key "timout"; did you mean "timeout"?',
     );
     await expect(register(() => test('x', { retry: 2 } as never, noop))).rejects.toThrow(
-      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, only, platforms, requires, session, agentContext, agent, trace, video',
+      'test options has unknown key "retry"; expected one of timeout, retries, tags, skip, fail, only, platforms, requires, session, agentContext, agent, trace, video',
     );
     await expect(register(() => test.describe('group', { searial: true } as never, () => {}))).rejects.toThrow(
       'describe options has unknown key "searial"; did you mean "serial"?',
@@ -136,6 +136,27 @@ describe('registration', () => {
     });
     expect(registration.tests.map((item) => item.mode)).toEqual(['skip', 'only', 'skip']);
     expect(registration.tests[2]!.options.skip).toBe('flaky upstream');
+  });
+
+  it('registers expected failures by test.fail(title, fn) and the fail option, and checks the option', async () => {
+    const registration = await collectModule(async () => {
+      test.fail('registered', noop);
+      test('by option', { fail: 'known gap' }, noop);
+    });
+    expect(registration.tests.map((item) => [item.mode, item.options.fail])).toEqual([
+      ['normal', true],
+      ['normal', 'known gap'],
+    ]);
+    await expect(collectModule(async () => test('bad', { fail: 1 } as never, noop))).rejects.toThrow(
+      'test options: fail must be true, false, or a reason string, got 1',
+    );
+    await expect(collectModule(async () => test.describe('group', { fail: true } as never, () => {}))).rejects.toThrow(/unknown key "fail"/);
+    await expect(collectModule(async () => test.setup('login', { sessions: ['admin'], fail: true } as never, noop))).rejects.toThrow(/unknown key "fail"/);
+  });
+
+  it('rejects test.fail(condition) outside a test body', async () => {
+    expect(() => test.fail(true, 'not here')).toThrow(CollectionError);
+    expect(() => test.fail(false)).toThrow(/must be called inside a test body/);
   });
 
   it('validates titles', async () => {
@@ -242,7 +263,7 @@ describe('serial groups', () => {
   });
 
   it('rejects member overrides of unit-owned options', async () => {
-    for (const options of [{ retries: 1 }, { trace: 'on' }, { video: 'on' }, { session: 's' }, { skip: true }, { only: true }]) {
+    for (const options of [{ retries: 1 }, { trace: 'on' }, { video: 'on' }, { session: 's' }, { skip: true }, { fail: true }, { only: true }]) {
       await expect(
         collectModule(async () => {
           test.describe('unit', { serial: true }, () => {

@@ -15,7 +15,7 @@ import { resultId } from '../internal/ids.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import type { RunEvent, RunEventFact, RunEventOf, RunEventResult, SetupStep } from '../run/events.ts';
 import type { AppLogRecord, StepRecord } from '../run/steps.ts';
-import { cleanupErrorsOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
+import { cleanupErrorsOf, expectedFailureOf, failureBeforeSkip, type ArtifactRecord, type AttemptRecord, type AttemptStatus, type FailureEvidence, type ResultStatus, type SerialGroupRecord } from '../run/records.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 import { projectSource } from './build.ts';
 import { codeFrame, userFrame } from './code-frame.ts';
@@ -249,6 +249,14 @@ function serialMemberDetails(group: SerialGroupRecord, testId: string, passed: b
     skipReason: neverRan ? undefined : own.skip?.reason,
     replays: replayNotices(steps, configured),
   };
+}
+
+/** The list row's mark for a result whose `test.fail` mark covered its last attempt's failure. */
+function expectedFailureLine(result: RunEventResult): Pick<TestLine, 'expectedFailure'> {
+  const mark = expectedFailureOf(result);
+  if (mark?.error === undefined) return {};
+  const [first = ''] = bounded(`${mark.error.code}: ${mark.error.message}`).split('\n');
+  return { expectedFailure: { reason: bounded(mark.reason), errorLine: first } };
 }
 
 /** One failed pair, held for the `Failed Tests` section, or a skipped one for `Skipped After Failure`. */
@@ -802,6 +810,7 @@ export class ListReporter implements Reporter {
       usage,
       firstErrorLine: error === undefined ? undefined : bounded(error.message).split('\n')[0],
       skipReason: result.skip === undefined ? undefined : bounded(result.skip.reason),
+      ...expectedFailureLine(result),
       cleanupErrors,
       steps,
       replays,
@@ -914,12 +923,14 @@ export class ListReporter implements Reporter {
     switch (line.status) {
       case 'passed':
         return [
-          `   ${pc.green(F_CHECK)} ${title} ${duration}${ai}`,
+          `   ${pc.green(F_CHECK)} ${title}${this.expectedTag(line)} ${duration}${ai}`,
+          ...this.expectedFailureLines(line),
           ...this.cleanupLines(line),
         ];
       case 'flaky':
         return [
-          `   ${pc.yellow(F_CHECK)} ${title} ${pc.yellow('(flaky)')} ${duration}${ai}`,
+          `   ${pc.yellow(F_CHECK)} ${title} ${pc.yellow('(flaky)')}${this.expectedTag(line)} ${duration}${ai}`,
+          ...this.expectedFailureLines(line),
           ...this.cleanupLines(line),
         ];
       case 'skipped': {
@@ -943,6 +954,19 @@ export class ListReporter implements Reporter {
         return rows;
       }
     }
+  }
+
+  /** ` (failed as expected)` after the title of a test whose `test.fail` mark covered its failure. */
+  private expectedTag(line: TestLine): string {
+    return line.expectedFailure === undefined ? '' : ` ${this.pc.dim('(failed as expected)')}`;
+  }
+
+  /** The reason and the covered failure's first line under a test that failed as expected. */
+  private expectedFailureLines(line: TestLine): string[] {
+    const mark = line.expectedFailure;
+    if (mark === undefined) return [];
+    const glance = fitColumns(`${mark.reason}: ${mark.errorLine}`, terminalColumns() - ERROR_GLANCE_INDENT);
+    return [`     ${this.pc.dim(`${F_RIGHT} ${glance}`)}`];
   }
 
   /** One yellow glance line per cleanup failure under the test. */

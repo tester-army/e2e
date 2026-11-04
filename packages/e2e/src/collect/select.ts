@@ -2,6 +2,7 @@
 
 import { ConfigurationError, CollectionError } from '../internal/errors.ts';
 import { resultId } from '../internal/ids.ts';
+import { expectedFailureOption } from '../internal/expected-failure.ts';
 import { didYouMean, suggestionNote } from '../internal/suggest.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
 import { attemptKeep, attemptVideo, type AttemptRecordings, type RecordingKind, type ResolvedRecording } from '../internal/recording-modes.ts';
@@ -24,6 +25,8 @@ export interface ResolvedTestOptions {
    */
   readonly agents: readonly string[];
   readonly skipReason: string | undefined;
+  /** Why the test is expected to fail (its `fail` option), or undefined when it is not. */
+  readonly expectedFailure: string | undefined;
   readonly serial: boolean;
   /**
    * The test's own `trace`, innermost layer first; undefined leaves it to
@@ -219,6 +222,7 @@ export function resolveOptions(test: CollectedTest, config: ResolvedConfig): Res
     agents: effectiveAgents(test, pin, config.agentNames),
     agentContext: agentContextParts.length === 0 ? undefined : agentContextParts.join('\n'),
     skipReason,
+    expectedFailure: expectedFailureOption(test.options.fail),
     serial: serialRoot !== undefined,
     trace,
     video,

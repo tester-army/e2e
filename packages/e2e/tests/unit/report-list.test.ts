@@ -351,6 +351,19 @@ describe('ListReporter', () => {
       ]);
     });
 
+    it('marks a test that failed as test.fail expected, with the reason and the failure', () => {
+      const { lines, output } = capture();
+      const reporter = plainReporter({ ...output, raw: () => {} }, true);
+      reporter.handle(plan([{ file: 'tests/a.e2e.ts', tests: 1 }]));
+      const error = { category: 'test' as const, code: 'ASSERTION_FAILED', message: 'expected 1, got 0\nmore', retryable: false };
+      reporter.handle(finished(result({ status: 'passed', file: 'tests/a.e2e.ts', attempts: [attempt({ expectedFailure: { reason: 'known gap', error } })] })));
+      expect(lines).toEqual([
+        ' ✓ |chromium| tests/a.e2e.ts (1 test) 120ms',
+        '   ✓ suite > case (failed as expected) 120ms',
+        '     → known gap: ASSERTION_FAILED: expected 1, got 0',
+      ]);
+    });
+
     it('suppresses deselected skipped results entirely', () => {
       const { lines, output } = capture();
       const reporter = plainReporter(output);

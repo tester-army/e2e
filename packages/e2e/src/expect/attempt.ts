@@ -19,6 +19,8 @@ export interface PublishedAttempt {
   readonly budget: AttemptBudget;
   /** Where `expect.soft` keeps its failures until the body settles. */
   readonly soft: SoftFailures;
+  /** Marks the attempt expected to fail (`test.fail`); absent where no mark is allowed. */
+  readonly expectFailure?: (reason: string) => void;
   /** Hosted callers have no runner-owned body lineage; their polls belong to the session. */
   readonly polls?: PollScope;
 }
