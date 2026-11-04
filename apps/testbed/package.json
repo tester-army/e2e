@@ -11,6 +11,7 @@
     "test:lightpanda": "node node_modules/e2e/dist/cli/bin.js run --config e2e.lightpanda.config.ts --exclude-tag playwright",
     "test:lightpanda:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.lightpanda-agent.config.ts",
     "app": "node app/server.mjs",
+    "test:scroll": "node node_modules/e2e/dist/cli/bin.js run --config e2e.scroll.config.ts",
     "test:agent": "node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts",
     "test:dogfood": "node node_modules/e2e/dist/cli/bin.js run --config e2e.dogfood.config.ts",
     "test:stress": "node node_modules/e2e/dist/cli/bin.js run --config e2e.stress.config.ts",
