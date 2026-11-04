@@ -41,7 +41,7 @@
  * - mask option should work with elementhandle: element handles.
  * - mask option should hide elements based on attr: e2e has no `style` option.
  * - mask option should remove elements based on attr: e2e has no `style` option.
- * - page screenshot animations (all 15 tests): e2e has no `animations` option.
+ * - page screenshot animations (all 13 tests): e2e has no `animations` option.
  * - should throw if screenshot size is too large: e2e has no `fullPage` option.
  * - page screenshot should capture css transform: golden only, of a 3D transform with no stable pixel to check.
  * The `fullPage` option of should work while navigating and should work with Array deleted is dropped: they take the viewport.
@@ -359,7 +359,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
       });
     });
 
-    test('should mask in parallel', { fail: 'two screenshot steps at once are refused' }, async ({ app, browser, screen }) => {
+    test('should mask in parallel', { fail: 'two screenshot steps at once interfere: one finds its mask node stale' }, async ({ app, browser, screen }) => {
       await browser.setViewport({ width: 500, height: 500 });
       await browser.goto('/empty.html');
       await attachFrame(browser, 'frame1', `${PREFIX}/grid.html`);
@@ -367,7 +367,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
       await addStyleTag(browser, 'iframe { border: none; }');
       await storeMaskedReference(browser, app, 'should-mask-in-parallel-1', [{ frame: '#frame1', selector: 'div', index: 1 }]);
       await storeMaskedReference(browser, app, 'should-mask-in-parallel-2', [{ frame: '#frame2', selector: 'div', index: 3 }]);
-      await Promise.all([
+      const results = await Promise.allSettled([
         expect(screen).toHaveScreenshot('should-mask-in-parallel-1', {
           mask: [browser.frameLocator('#frame1').locator('div').nth(1)],
         }),
@@ -375,6 +375,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
           mask: [browser.frameLocator('#frame2').locator('div').nth(3)],
         }),
       ]);
+      for (const result of results) if (result.status === 'rejected') throw result.reason;
     });
 
     test('should remove mask after screenshot', async ({ app, browser, screen }) => {
@@ -436,7 +437,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
   });
 });
 
-test('should capture css box-shadow', { requires: ['browser'] }, async ({ app, browser }) => {
+test('should capture css box-shadow', { requires: ['browser'], tags: ['playwright'] }, async ({ app, browser }) => {
   await browser.goto(content(`<div style="box-shadow: red 10px 10px 10px; width: 50px; height: 50px;"></div>`));
   const screenshot = readPng(await app.screenshot());
   expect(rgb(screenshot, 30, 30)).toEqual([255, 255, 255]);

@@ -35,7 +35,7 @@ const giveItAChanceToResolve = '() => new Promise((resolve) => { let frames = 0;
 const addScarlet = "() => { const option = document.createElement('option'); option.value = 'scarlet'; option.textContent = 'Scarlet'; document.querySelector('select').appendChild(option); }";
 
 test.describe('page select option', { requires: ['browser'], tags: ['playwright'] }, () => {
-  test('should select single option', { fail: 'a bare string selects by label only, where Playwright matches the value or the label' }, async ({ browser }) => {
+  test('should select single option', { fail: 'a bare string selects by label only, where Playwright matches the value or the label', timeout: 5000 }, async ({ browser }) => {
     await browser.goto('/input/select.html');
     await browser.locator('select').selectOption('blue');
     expect(await browser.evaluate('() => window.result.onInput')).toEqual(['blue']);

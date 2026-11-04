@@ -2,7 +2,8 @@
  * Adapted from microsoft/playwright tests/library/download.spec.ts at v1.64.1.
  * Copyright Microsoft Corporation. Licensed under the Apache License 2.0 (see ../app/playwright/LICENSE).
  * Rewritten against the e2e public API: `page.waitForEvent('download')` is `browser.waitForDownload(trigger)`,
- * which saves the file, and `download.path()` is the saved file's `absolutePath`.
+ * which saves the file, and `download.path()` is the saved file's `absolutePath`. e2e has no
+ * `download.url()`, so its assertions are dropped.
  */
 
 /*

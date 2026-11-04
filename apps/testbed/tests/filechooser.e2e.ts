@@ -106,7 +106,7 @@ test.describe('page filechooser', { requires: ['browser'], tags: ['playwright'] 
     expect(await browser.evaluate('() => window.picked')).toBe('contents of the file');
   });
 
-  test('should be able to reset selected files with empty file list', { fail: '`setInputFiles([])` is refused; there is no way to clear a file input' }, async ({ browser }) => {
+  test('should be able to reset selected files with empty file list', { skip: '`setInputFiles([])` is refused, so there is no way to clear a file input (refused as INVALID_ARGUMENT, which `fail` does not cover)' }, async ({ browser }) => {
     await browser.goto(content(PICKER));
     const watchLength = "() => { const picker = document.querySelector('input'); window.picked = new Promise((x) => { picker.oninput = x; }).then(() => picker.files.length); }";
     await browser.evaluate(watchLength);

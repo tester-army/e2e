@@ -2,6 +2,45 @@
  * Adapted from microsoft/playwright tests/page/page-click.spec.ts at v1.64.1.
  * Copyright Microsoft Corporation. Licensed under the Apache License 2.0 (see ../app/playwright/LICENSE).
  * Rewritten against the e2e public API: `page.click(selector)` is a locator tap.
+ *
+ * Not ported:
+ * - should click button inside frameset: needs element handles and Frame objects.
+ * - should issue clicks in parallel in page and popup: needs `waitForEvent('popup')`.
+ * - should select the text by triple clicking: no `clickCount`.
+ * - should waitFor visible when already visible: could be ported with the current API; not done yet.
+ * - should not wait with force: e2e tap has no force option.
+ * - should click the button with fixed position inside an iframe: Playwright skips it on Chromium (`it.fixme(browserName === 'chromium')`).
+ * - should click the button with px border with offset: could be ported with the current API; not done yet.
+ * - should click the button with em border with offset: could be ported with the current API; not done yet.
+ * - should click a very large button with offset: a `position` tap scrolls the node into view, not the offset point.
+ * - should click a button in scrolling container with offset: same.
+ * - should wait for becoming hit target with trial run: no `trial` option.
+ * - trial run should work with short timeout: same.
+ * - trial run should not click: same.
+ * - trial run should not double click: same.
+ * - should fail when obscured and not waiting for hit target: e2e tap has no force option.
+ * - should wait for LABEL to be clickable when it has pointer-events:none: could be ported with the current API; not done yet.
+ * - should report nice error when element is detached and force-clicked: needs element handles, and e2e tap has no force option.
+ * - should fail when element detaches after animation: needs element handles.
+ * - should retry when element detaches after animation: could be ported with the current API; not done yet.
+ * - should retry when element is animating from outside the viewport: could be ported with the current API; not done yet.
+ * - should fail when element is animating from outside the viewport with force: e2e tap has no force option.
+ * - should dispatch microtasks in order: could be ported with the current API; not done yet.
+ * - should not throw protocol error when navigating during the click: needs Playwright's `__testHookBeforeStable`.
+ * - should retry when navigating during the click: same.
+ * - should not hang when frame is detached: same, and needs Frame objects.
+ * - should click in an iframe with border 2: could be ported with the current API; not done yet.
+ * - should not retain removed iframe after clicking inside it: needs `page.requestGC`.
+ * - should click a button that is overlaid by a permission popup: could be ported with the current API; not done yet.
+ * - should click in a transformed iframe with force: e2e tap has no force option.
+ * - ensure events are dispatched in the individual tasks: needs `page.on('console')`.
+ * - should set PointerEvent.pressure on pointerdown: could be ported with the current API; not done yet.
+ * - should set PointerEvent.pressure on pointermove: could be ported with the current API; not done yet.
+ * - should click with tweened mouse movement: needs click `steps`.
+ * - should abort via signal: needs `AbortSignal`.
+ * - should throw an Error when aborted in-flight with a string reason: same.
+ * - should abort via already-aborted signal: same.
+ * - should throw an Error when aborted via an already-aborted signal with a string reason: same.
  */
 
 import { test } from '@e2e-dev/web';

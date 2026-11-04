@@ -17,7 +17,7 @@ here.
   `controls` (control states, scrolling, the browser fixture's page, the
   speed counter, about). `app/pages/index.mjs` merges them and
   `app/layout.mjs` renders the nav from that registry.
-- `app/playwright/` — Playwright's test assets (v1.64.1, Apache-2.0, with its
+- `app/playwright/`: Playwright's test assets (v1.64.1, Apache-2.0, with its
   `LICENSE` and `NOTICE`) and the dynamic routes its test server sets, served
   by the playground for any path it has no page for.
 - `app/bug-garden.mjs` — a bookshop with planted defects, for `e2e explore`.
@@ -30,10 +30,12 @@ here.
   states and the failure codes (`controls`), pointer coordinates and path
   swipes (`pointer`), viewport and node scrolling (`scroll`), the `browser`
   fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
-  The files tagged `playwright` are Playwright's own `tests/page` specs at
-  v1.64.1, ported to the public API: each header names its source and the
-  tests left out, and `fail: 'reason'` marks a test e2e fails on purpose or
-  by a known gap (`--tag playwright` runs only them).
+  The files tagged `playwright` are Playwright's own `tests/page` specs (and
+  `tests/library/download.spec.ts`) at v1.64.1, ported to the public API:
+  each header names its source and the tests left out. `fail: 'reason'`
+  marks a known difference from Playwright; `skip: 'reason'` one that fails
+  with an error `fail` does not cover. `--tag playwright` runs only them, and
+  CI runs them on every pull request.
   `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`,
   and the ported tests' `content`, `asset`, `PREFIX`, and `CROSS`.
 - `e2e.lightpanda.config.ts` and `e2e.lightpanda-agent.config.ts`: the

@@ -11,7 +11,7 @@
  * - should fulfill with global fetch result: needs `playwright.request` and `fulfill({ response })`.
  * - should fulfill with fetch result: needs `page.request` and `fulfill({ response })`.
  * - should fulfill with fetch result and overrides: needs `page.request` and `fulfill({ response })`.
- * - headerValue should return set-cookie from intercepted response: expected to fail on Chromium, and e2e has no `test.fail`.
+ * - headerValue should return set-cookie from intercepted response: Playwright expects it to fail on Chromium.
  * - should fulfill with har response: HAR.
  * - should fulfill with gzip and readback: needs a gzip server and `fulfill({ response })`.
  */
@@ -156,7 +156,7 @@ test.describe('page request fulfill', { requires: ['browser'], tags: ['playwrigh
     expect(await browser.title()).toEqual('Woof-Woof');
   });
 
-  test('should fulfill with multiple set-cookie', { skip: 'a header value cannot hold a newline, so a fulfilled response sets one cookie (an engine failure, which `fail` does not cover)' }, async ({ browser }) => {
+  test('should fulfill with multiple set-cookie', { skip: '`route.fulfill` refuses a header value with a newline, so the request is aborted and the navigation fails as an engine failure, which `fail` does not cover' }, async ({ browser }) => {
     const cookies = ['a=b', 'c=d'];
     await browser.route('**/multiple-set-cookie.html', (route) => route.fulfill({
       status: 200,
@@ -173,7 +173,7 @@ test.describe('page request fulfill', { requires: ['browser'], tags: ['playwrigh
     expect(response.headers['x-header-2']).toBe('v2');
   });
 
-  test('should fulfill with fetch response that has multiple set-cookie', { skip: 'a header value cannot hold a newline, so a fulfilled response sets one cookie (an engine failure, which `fail` does not cover)' }, async ({ browser }) => {
+  test('should fulfill with fetch response that has multiple set-cookie', { skip: '`route.fulfill` refuses a header value with a newline, so the request is aborted and the navigation fails as an engine failure, which `fail` does not cover' }, async ({ browser }) => {
     await browser.route('**/respond?*', async (route) => {
       const response = await route.fetch();
       await route.fulfill({ status: response.status, headers: { ...response.headers }, body: await response.text() });

@@ -30,9 +30,13 @@ const readFirstFile = (selector: string): string => `() => {
   return promise.then(() => reader.result);
 }`;
 
-/** A fresh directory for files a test writes. */
+const outputDirs: string[] = [];
+
+/** A fresh directory for files a test writes, removed after the test. */
 function outputDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-upload-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-upload-'));
+  outputDirs.push(dir);
+  return dir;
 }
 
 /** Writes a 200MB file of `A`s, Playwright's large upload. */
@@ -59,6 +63,10 @@ const recordEvents = (selector: string): string => `() => {
 }`;
 
 test.describe('page set input files', { requires: ['browser'], tags: ['playwright'] }, () => {
+  test.afterEach(() => {
+    for (const dir of outputDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
   test('should upload the file', async ({ browser }) => {
     await browser.goto('/input/fileupload.html');
     await browser.locator('input[type=file]').setInputFiles(asset('file-to-upload.txt'));

@@ -6,7 +6,6 @@
 
 /*
  * Not ported:
- * - should allow null origin for about:blank: there is no page before the first `goto`, so no `about:blank` origin.
  * - should navigate to dataURL and not fire dataURL requests: `goto` refuses `data:` URLs on purpose.
  * - should show custom HTTP headers: needs `page.setExtraHTTPHeaders`.
  * - should work with custom referer headers: needs `page.setExtraHTTPHeaders`.
@@ -441,6 +440,21 @@ test.describe('page route', { requires: ['browser'], tags: ['playwright'] }, () 
     ]);
     expect(result).toEqual(['electric', 'gas']);
     expect(response.headers['access-control-allow-origin']).toBe(PREFIX);
+  });
+
+  test('should allow null origin for about:blank', async ({ browser }) => {
+    // e2e opens no page before the first goto, where Playwright starts on about:blank.
+    await browser.goto('about:blank');
+    await browser.route('**/something', (route) => route.fulfill({ contentType: 'text/plain', status: 200, body: 'done' }));
+    const [response, text] = await Promise.all([
+      browser.waitForResponse(`${CROSS}/something`),
+      browser.evaluate(`async (url) => {
+        const data = await fetch(url, { method: 'GET', headers: { 'X-PINGOTHER': 'pingpong' } });
+        return data.text();
+      }`, `${CROSS}/something`),
+    ]);
+    expect(text).toBe('done');
+    expect(response.headers['access-control-allow-origin']).toBe('null');
   });
 
   test('should respect cors overrides', async ({ browser }) => {
