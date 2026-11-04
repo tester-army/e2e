@@ -269,6 +269,10 @@ app: {
   ready is `APP_UNREACHABLE`; the run stops before its tests and leaves the
   last run's report and results as they were (`command.log` still gets this
   boot's output).
+- In `e2e run`, a command that exits after readiness and before shutdown fails the run with `APP_UNREACHABLE`.
+  This includes exit code 0 and termination by a signal.
+  The runner interrupts active tests and stops queued tests.
+  The error names the command and its exit code or signal, with a redacted log tail when `log` is set.
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest
   through `env`, or name host variables in `inheritEnv` (`['DATABASE_URL',

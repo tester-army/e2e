@@ -144,6 +144,7 @@ export interface ManagedProcessHooks {
   readonly starting?: (label: string, url: string | undefined) => void;
   /** `reused` when the process attached to one already serving the URL instead of spawning. */
   readonly ready?: (label: string, url: string | undefined, durationMs: number, reused: boolean) => void;
+  readonly unexpectedExit?: (cause: InfrastructureError) => void;
 }
 
 /**
@@ -153,6 +154,7 @@ export interface ManagedProcessHooks {
  */
 export class ManagedProcess {
   private child: ChildProcess | null = null;
+  private phase: 'starting' | 'running' | 'stopping' | 'exited' = 'starting';
   private reusedExisting = false;
   private spawnedProcess = false;
   /** Hides `command.env` and `inheritEnv` values in a quoted startup failure; built at spawn. */
@@ -192,6 +194,7 @@ export class ManagedProcess {
     // A function, not a narrowed local: the signal flips while `launch` awaits.
     const aborted = (): boolean => signal?.aborted === true;
     if (aborted()) return;
+    this.phase = 'starting';
     const startedAt = Date.now();
     const url = 'readyUrl' in this.readiness ? this.readiness.readyUrl : undefined;
     this.hooks.starting?.(this.label, url);
@@ -266,6 +269,11 @@ export class ManagedProcess {
       child.once('exit', (code, exitSignal) => {
         exit = { code, signal: exitSignal };
         resolve();
+        const unexpected = this.phase === 'running';
+        this.phase = 'exited';
+        if (unexpected) {
+          this.hooks.unexpectedExit?.(this.unreachable(`${this.label} ${describeExit(exit)} after becoming ready`, logOffset));
+        }
       });
     });
 
@@ -316,6 +324,8 @@ export class ManagedProcess {
         readyUrl !== undefined &&
         (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining, untilHalf), signal))
       ) {
+        if (exit !== undefined) continue;
+        this.phase = 'running';
         return;
       }
       // The exit event wakes the wait early so an exit is seen at once, not on the next poll.
@@ -412,6 +422,7 @@ export class ManagedProcess {
   /** Gracefully terminates the whole process group, then force-kills. A reused process was never ours to stop. */
   async stop(): Promise<void> {
     if (this.reusedExisting) return;
+    this.phase = 'stopping';
     const child = this.child;
     this.child = null;
     if (child === null) return;

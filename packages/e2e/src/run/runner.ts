@@ -960,6 +960,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ci: isCiMode(env),
       env,
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
+      unexpectedExit: (cause: InfrastructureError) => {
+        if (!interrupted.aborted) abortRun({ error: serializeError(cause) });
+      },
       starting: (label: string, url: string | undefined) => emit({ type: 'setup', step: appStep(label, url), state: 'started' }),
       ready: (label: string, url: string | undefined, durationMs: number, reused: boolean) =>
         emit({
