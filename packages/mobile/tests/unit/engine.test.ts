@@ -1435,6 +1435,7 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
       ...(origin === 'agent' ? { settle: true, settleQuietMs: 150 } : {}),
     });
     expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(0);
+    expect(h.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(0);
   });
 
   it.each([
@@ -1477,6 +1478,28 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
       from: { x: 422, y: 172.5 },
       to: { x: 422, y: 57.5 },
     });
+    expect(h.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(0);
+  });
+
+  it('learns a changed screen size for a screen swipe when the screenshot confirms it', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      viewport: { width: 760, height: 844 },
+      keyboard: { kind: 'visible', frame: { x: 0, y: 400, width: 760, height: 444 } },
+    }));
+    h.fake.respond('capture.screenshot', () => ({ logicalWidth: 760, logicalHeight: 844 }));
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({
+      from: { x: 380, y: 300 },
+      to: { x: 380, y: 100 },
+    });
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+    expect(h.fake.methods().filter((method) => method === 'capture.screenshot')).toHaveLength(1);
   });
 
   it('uses the known viewport for a screen swipe when the capture omits it', async () => {

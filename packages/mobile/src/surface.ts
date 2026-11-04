@@ -1310,9 +1310,9 @@ export class AgentDeviceSurface {
       const before = this.latestScreen;
       const raw = await this.snapshotOrEmpty(operation, false, input);
       const keyboard = raw.keyboard?.kind === 'visible' ? raw.keyboard.frame : undefined;
-      const viewport = raw.viewport !== undefined && (this.knownViewport === undefined || sameScreen(raw.viewport, this.knownViewport))
-        ? raw.viewport
-        : this.knownViewport;
+      const viewport = keyboard === undefined
+        ? undefined
+        : await this.viewportFor(this.project(raw), operation.signal, input);
       const area = keyboard && viewport && keyboard.y > 0 && keyboard.y < viewport.height
         ? { x: 0, y: 0, width: viewport.width, height: keyboard.y }
         : undefined;
