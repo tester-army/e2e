@@ -18,12 +18,11 @@ public static class MauiProgram
 
         return MauiApp.CreateBuilder()
             .UseMauiApp<App>()
-            // The brand fonts (SIL OFL, see Resources/Fonts/OFL.txt).
+            // The fonts (SIL OFL, see Resources/Fonts/OFL.txt).
             .ConfigureFonts(fonts =>
             {
-                fonts.AddFont("StackSansNotch_400Regular.ttf", "StackSansNotch");
                 fonts.AddFont("Inter_400Regular.ttf", "Inter");
-                fonts.AddFont("DMMono_400Regular.ttf", "DMMono");
+                fonts.AddFont("JetBrainsMono_400Regular.ttf", "JetBrainsMono");
             })
             .Build();
     }

@@ -3,7 +3,7 @@
 A Jetpack Compose greeting app for Android with three locator tests and two
 agent tests. The test project is in `e2e/`, next to the Gradle project.
 
-<img src="screenshot-greeting.png" alt="Compose app with the greeting Hello, Ada!" width="300" /> <img src="screenshot-error.png" alt="Compose app with the error Enter a name first." width="300" />
+<img src="screenshot-greeting.png" alt="Compose app with the greeting hello, Ada!" width="300" /> <img src="screenshot-error.png" alt="Compose app with the error enter a name first." width="300" />
 
 ## Run
 
@@ -50,6 +50,6 @@ For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mob
 
 The bundled fonts use the [SIL Open Font License](app/src/main/assets/OFL.txt).
 
-Last checked on 2026-10-29 with e2e 0.21.3, @e2e-dev/mobile 0.12.4, Kotlin
+Last checked on 2026-11-04 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, Kotlin
 2.4.20, AGP 9.4.1, and Compose BOM 2026.09.00 on an Android 16 emulator.
 The three locator tests and the two agent tests passed.

@@ -2,7 +2,7 @@
 
 An Angular greeting app with three locator tests and two agent tests.
 
-![Angular example app with the greeting "Hello, Ada!"](screenshot.png)
+![Angular example app with the greeting "hello, Ada!"](screenshot.png)
 
 ## Run
 

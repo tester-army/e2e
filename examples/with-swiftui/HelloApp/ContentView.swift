@@ -9,93 +9,102 @@ struct ContentView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 10) {
-                Image("HelmetMark")
-                    .resizable()
-                    .frame(width: 32, height: 32)
-                    .accessibilityLabel("e2e")
-                Text("/").font(Brand.mono(26))
-                Text("e2e").font(Brand.display(26)).tracking(-1.5)
-            }
-            .foregroundStyle(Brand.textPrimary)
-            .padding(.vertical, 20)
+            Logotype()
+                .fill(Brand.offWhite)
+                .frame(width: 69, height: 24)
+                .accessibilityElement()
+                .accessibilityLabel("e2e")
+                .accessibilityAddTraits(.isImage)
+                .padding(.vertical, 12)
 
-            Rectangle().fill(Brand.hairline).frame(height: 0.5)
+            Rectangle().fill(Brand.neutral800).frame(height: 1)
 
-            VStack(alignment: .leading, spacing: 16) {
-                Text("[01] with-swiftui")
+            VStack(alignment: .leading, spacing: 0) {
+                Text("[ with-swiftui ]")
                     .font(Brand.mono(12))
-                    .tracking(0.6)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Brand.textSecondary)
-                Text("Say hello")
-                    .font(Brand.display(38))
-                    .foregroundStyle(Brand.textPrimary)
+                    .tracking(0.48)
+                    .foregroundStyle(Brand.green)
+                Text("say hello")
+                    .font(Brand.sans(39))
+                    .tracking(-1.17)
+                    .foregroundStyle(Brand.offWhite)
                     .accessibilityAddTraits(.isHeader)
+                    .padding(.top, 8)
                 Text("A demo screen for the e2e examples. Type a name and the app greets you.")
-                    .font(Brand.sans(16))
-                    .lineSpacing(4)
-                    .foregroundStyle(Brand.textSecondary)
+                    .font(Brand.sans(18))
+                    .lineSpacing(7)
+                    .foregroundStyle(Brand.neutral500)
+                    .padding(.top, 24)
 
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Name")
-                        .font(Brand.mono(11))
-                        .tracking(1.1)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Brand.textFaint)
-
-                    // accessibilityIdentifier is what getByTestId finds.
-                    TextField("Name", text: $name, prompt: Text("Ada Lovelace").foregroundStyle(Brand.textFaint))
-                        .accessibilityIdentifier("name")
-                        // The prompt is not a name; without this the field reads as an unnamed textbox.
-                        .accessibilityLabel("Name")
-                        .autocorrectionDisabled()
-                        .focused($nameFocused)
-                        .onSubmit(greet)
-                        .font(Brand.mono(14))
-                        .foregroundStyle(Brand.textPrimary)
-                        .padding(.horizontal, 12)
-                        .frame(height: 44)
-                        .background(Brand.fieldFill)
-                        .overlay(Rectangle().stroke(Brand.fieldStroke, lineWidth: 0.5))
+                VStack(alignment: .leading, spacing: 16) {
+                    // The design system's text field: the label sits inside the field, above the value.
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("name")
+                            .font(Brand.mono(12))
+                            .foregroundStyle(Brand.neutral400)
+                            // The field carries the name for assistive tech.
+                            .accessibilityHidden(true)
+                        // accessibilityIdentifier is what getByTestId finds.
+                        TextField("", text: $name)
+                            .accessibilityIdentifier("name")
+                            .accessibilityLabel("name")
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .focused($nameFocused)
+                            .onSubmit(greet)
+                            .font(Brand.sans(16))
+                            .foregroundStyle(Brand.offWhite)
+                            .tint(Brand.offWhite)
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                    .background(Brand.neutral800)
+                    .overlay(Rectangle().strokeBorder(fieldOutline, lineWidth: 2))
+                    .contentShape(Rectangle())
+                    .onTapGesture { nameFocused = true }
 
                     Button(action: greet) {
-                        Text("Greet")
-                            .font(Brand.mono(13))
-                            .textCase(.uppercase)
-                            .foregroundStyle(Brand.textOnLight)
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(Brand.buttonFill)
+                        Text("greet")
+                            .font(Brand.mono(15))
+                            .foregroundStyle(Brand.offWhite)
+                            .frame(maxWidth: .infinity, minHeight: 48)
+                            .background(Brand.blue)
                     }
+                    .buttonStyle(PressScale())
                     .accessibilityIdentifier("greet")
 
                     if showError {
-                        Text("Enter a name first.")
+                        Text("enter a name first.")
                             .font(Brand.sans(14))
-                            .foregroundStyle(Brand.accent)
+                            .foregroundStyle(Brand.mint)
                             .accessibilityIdentifier("error")
                     }
 
                     if let greeted {
-                        Text("Hello, \(greeted)!")
-                            .font(Brand.sans(14))
-                            .foregroundStyle(Brand.textPrimary)
-                            .padding(14)
+                        Text("hello, \(greeted)!")
+                            .font(Brand.sans(16))
+                            .foregroundStyle(Brand.offWhite)
+                            .padding(16)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Brand.panel)
-                            .overlay(Rectangle().stroke(Brand.hairline, lineWidth: 0.5))
+                            .background(Brand.neutral800)
                             .accessibilityIdentifier("greeting")
                     }
                 }
-                .padding(.top, 24)
+                .padding(.top, 40)
             }
             .padding(.top, 48)
 
             Spacer()
         }
         .padding(.horizontal, 24)
-        .background(Brand.canvas.ignoresSafeArea())
+        .background(Brand.black.ignoresSafeArea())
         .preferredColorScheme(.dark)
+    }
+
+    /// Focus and the error change the outline's colour only, so nothing moves.
+    private var fieldOutline: Color {
+        if showError { return Brand.mint }
+        return nameFocused ? Brand.green : .clear
     }
 
     private func greet() {
@@ -104,7 +113,7 @@ struct ContentView: View {
         guard !value.isEmpty else {
             showError = true
             greeted = nil
-            AccessibilityNotification.Announcement("Enter a name first.").post()
+            AccessibilityNotification.Announcement("enter a name first.").post()
             return
         }
         showError = false
@@ -113,23 +122,63 @@ struct ContentView: View {
     }
 }
 
-/// e2e brand: dark canvas, square corners, hairlines instead of shadows, white text at falling alphas.
-private enum Brand {
-    static let canvas = Color(hex: 0x111111)
-    static let panel = Color(hex: 0x161616)
-    static let fieldFill = Color(hex: 0x1A1A1A)
-    static let buttonFill = Color(hex: 0xF9F8F7)
-    static let textPrimary = Color(hex: 0xF9F8F7)
-    static let textOnLight = Color(hex: 0x161616)
-    static let textSecondary = Color.white.opacity(0.7)
-    static let textFaint = Color.white.opacity(0.5)
-    static let hairline = Color.white.opacity(0.12)
-    static let fieldStroke = Color.white.opacity(0.3)
-    static let accent = Color(hex: 0xFF8001)
+/// Buttons change no colour when pressed; a press scales them a little.
+private struct PressScale: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.scaleEffect(configuration.isPressed ? 0.98 : 1)
+    }
+}
 
-    static func display(_ size: CGFloat) -> Font { .custom("StackSansNotch-Regular", fixedSize: size) }
+/// The e2e logotype, drawn from the official logo's bars so it stays sharp at any size.
+private struct Logotype: Shape {
+    private static let size = CGSize(width: 407, height: 142)
+    private static let bars: [CGRect] = [
+        CGRect(x: 155.91, y: 0, width: 90.24, height: 19.06),
+        CGRect(x: 26.94, y: 24.48, width: 82.4, height: 19.09),
+        CGRect(x: 145.32, y: 24.48, width: 35.83, height: 19.09),
+        CGRect(x: 220.91, y: 24.48, width: 35.84, height: 19.09),
+        CGRect(x: 297.82, y: 24.48, width: 82.43, height: 19.09),
+        CGRect(x: 10.59, y: 49.04, width: 32.69, height: 19.05),
+        CGRect(x: 92.79, y: 49.04, width: 33.14, height: 19.05),
+        CGRect(x: 210.32, y: 49.04, width: 35.83, height: 19.05),
+        CGRect(x: 281.46, y: 49.04, width: 32.69, height: 19.05),
+        CGRect(x: 363.66, y: 49.04, width: 33.18, height: 19.05),
+        CGRect(x: 0, y: 73.54, width: 135.96, height: 19.08),
+        CGRect(x: 185.09, y: 73.54, width: 35.8, height: 19.08),
+        CGRect(x: 270.88, y: 73.54, width: 135.97, height: 19.08),
+        CGRect(x: 4.13, y: 98.07, width: 32.68, height: 19.05),
+        CGRect(x: 158.07, y: 98.04, width: 35.83, height: 19.08),
+        CGRect(x: 274.98, y: 98.07, width: 32.68, height: 19.05),
+        CGRect(x: 26.94, y: 122.57, width: 82.4, height: 19.05),
+        CGRect(x: 145.32, y: 122.57, width: 113.33, height: 19.05),
+        CGRect(x: 297.82, y: 122.57, width: 82.43, height: 19.05),
+    ]
+
+    func path(in rect: CGRect) -> Path {
+        let scale = min(rect.width / Self.size.width, rect.height / Self.size.height)
+        var path = Path()
+        for bar in Self.bars {
+            path.addRect(bar.applying(CGAffineTransform(scaleX: scale, y: scale)).offsetBy(dx: rect.minX, dy: rect.minY))
+        }
+        return path
+    }
+}
+
+/// e2e design system: black canvas, square corners, e2e blue for the one action, green and mint
+/// accents, an 8pt spacing grid, and lowercase headings and UI. Inter and JetBrains Mono stand in
+/// for the brand's own typefaces.
+private enum Brand {
+    static let black = Color(hex: 0x000000)
+    static let offWhite = Color(hex: 0xF7F7F7)
+    static let neutral800 = Color(hex: 0x1C1C1C)
+    static let neutral500 = Color(hex: 0x8D8D8D)
+    static let neutral400 = Color(hex: 0xB1B1B1)
+    static let blue = Color(hex: 0x1A5FFF)
+    static let green = Color(hex: 0x64FF9D)
+    static let mint = Color(hex: 0x8AF9FF)
+
     static func sans(_ size: CGFloat) -> Font { .custom("Inter-Regular", fixedSize: size) }
-    static func mono(_ size: CGFloat) -> Font { .custom("DMMono-Regular", fixedSize: size) }
+    static func mono(_ size: CGFloat) -> Font { .custom("JetBrainsMono-Regular", fixedSize: size) }
 }
 
 private extension Color {

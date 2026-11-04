@@ -2,7 +2,7 @@
 
 A Next.js App Router greeting app with three locator tests and two agent tests.
 
-![Next.js example app with the greeting "Hello, Ada!"](screenshot.png)
+![Next.js example app with the greeting "hello, Ada!"](screenshot.png)
 
 ## Run
 
