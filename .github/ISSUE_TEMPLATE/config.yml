@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions and help
+    url: https://tester.army/discord
+    about: Ask on Discord. Issues are for bug reports, feature requests, and docs fixes.
   - name: Security vulnerability
     url: https://github.com/tester-army/e2e/security/advisories/new
     about: Report privately. See SECURITY.md for the trust model and response times.
