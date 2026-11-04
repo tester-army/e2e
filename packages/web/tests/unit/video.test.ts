@@ -17,14 +17,15 @@ const VIEWPORT = { width: 320, height: 200 };
 
 /**
  * A page whose screencast writes its file on start unless told not to, sends
- * its first frame at once (or after `firstFrameMs`, or never with `null`),
- * and fails to stop when told to.
+ * its first frame at once (or after `firstFrameMs`, or never with `null`)
+ * and records when, and fails to stop when told to.
  */
 function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error; viewport?: { width: number; height: number }; firstFrameMs?: number | null } = {}) {
   const started: string[] = [];
   const sizes: { width: number; height: number }[] = [];
   const startOptions: Record<string, unknown>[] = [];
   const stopped = { count: 0, at: [] as number[] };
+  const framed = { at: [] as number[] };
   const page = {
     viewportSize: () => options.viewport ?? VIEWPORT,
     screencast: {
@@ -36,7 +37,12 @@ function fakePage(options: { writes?: boolean; stopError?: Error; startError?: E
         startOptions.push({ path: file, size, ...rest });
         if (options.writes !== false) writeFileSync(file, 'webm');
         const firstFrameMs = options.firstFrameMs === undefined ? 0 : options.firstFrameMs;
-        if (firstFrameMs !== null) setTimeout(() => start.onFrame?.(), firstFrameMs);
+        if (firstFrameMs !== null) {
+          setTimeout(() => {
+            framed.at.push(Date.now());
+            start.onFrame?.();
+          }, firstFrameMs);
+        }
       },
       stop: async () => {
         stopped.at.push(Date.now());
@@ -45,7 +51,7 @@ function fakePage(options: { writes?: boolean; stopError?: Error; startError?: E
       },
     },
   } as unknown as Page;
-  return { page, started, sizes, startOptions, stopped };
+  return { page, started, sizes, startOptions, stopped, framed };
 }
 
 describe('VideoRecorder', () => {
@@ -62,9 +68,10 @@ describe('VideoRecorder', () => {
     const video = recorder();
     const late = fakePage({ firstFrameMs: 150 });
     await video.arm(late.page);
-    const stopping = Date.now();
     await video.stop();
-    expect(late.stopped.at[0]! - stopping).toBeGreaterThanOrEqual(140);
+    // Against the frame, not the clock: its timer starts inside arm, before arm returns.
+    expect(late.framed.at).toHaveLength(1);
+    expect(late.stopped.at[0]!).toBeGreaterThanOrEqual(late.framed.at[0]!);
 
     const silent = fakePage({ firstFrameMs: null });
     await video.arm(silent.page);
