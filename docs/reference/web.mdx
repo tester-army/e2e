@@ -616,7 +616,7 @@ await browser.route('**/api/quote', async (route) => {
 });
 ```
 
-`route.fetch()` returns the upstream `{ url, status, headers, text(), json() }`
+`route.fetch()` returns the upstream `{ url, status, headers, body(), text(), json() }`
 with the site's headers, under the action timeout, without deciding the route.
 It does not follow redirects, which could take it past the navigation rule.
 
@@ -628,7 +628,11 @@ It does not follow redirects, which could take it past the navigation rule.
 - Routes run newest first.
 - The handler must decide exactly once, with `fulfill`, `continue`,
   `fallback`, or `abort`, each described on `WebRoute` below.
-- A `continue` URL goes through the same rule as `goto`.
+- A `continue` URL goes through the same rule as `goto`. A `continue` header
+  set to `undefined` is dropped, also on redirects.
+- A `fulfill` body is a string or bytes (`Buffer`, `Uint8Array`), sent as is.
+- To set several cookies, join them with `\n` in one `set-cookie` header, as
+  `route.fetch()` headers report them. Any other line break in a header is refused.
 - A handler that throws (a failed `expect` on the request, say) fails the
   next step with that error, or the attempt at its end when no step follows.
   A handler still running then gets the cleanup budget to finish. Whatever it
@@ -649,12 +653,13 @@ It does not follow redirects, which could take it past the navigation rule.
  */
 export type RouteFulfillResponse = {
   status?: number;
+  /** Response headers; `set-cookie` may join several cookies with `\n`, as `route.fetch()` reports them. */
   headers?: Record<string, string>;
   /** Sets the `Content-Type` response header. */
   contentType?: string;
 } & (
   | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
+  | { body: string | Uint8Array; json?: never; path?: never }
   | { path: string; json?: never; body?: never }
   | { body?: never; json?: never; path?: never }
 );
@@ -665,8 +670,8 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
+  /** Replaces every request header; `undefined` drops one, and the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string | undefined>;
   /** Request body. */
   postData?: string;
 }
@@ -726,7 +731,7 @@ expect(response.status).toBe(201);
 
 - The deadline bounds the match: the response resolves as soon as its headers
   arrive.
-- `text()` and `json()` wait for the body on a budget of their own,
+- `body()`, `text()`, and `json()` wait for the body on a budget of their own,
   `config.actionTimeout` capped by the test deadline.
 - `url`, `status`, and `headers` are always readable.
 - A genuinely empty body reads as `''`.
@@ -734,7 +739,7 @@ expect(response.status).toBe(201);
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | A predicate function as the pattern. |
-| `ACTION_FAILED` | Nothing matches inside the deadline. From `text()` and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
+| `ACTION_FAILED` | Nothing matches inside the deadline. From `body()`, `text()`, and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
 
 ```ts
 export interface WebResponse {
@@ -742,8 +747,10 @@ export interface WebResponse {
   readonly url: string;
   /** HTTP status. */
   readonly status: number;
-  /** Response headers, lower-cased names. */
+  /** Response headers, lower-cased names; `route.fetch()` joins several `set-cookie` values with `\n`, `waitForResponse` leaves cookie headers out. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and returns its bytes. */
+  body(): Promise<Buffer>;
   /** Waits for the body and parses it as JSON. */
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text. */

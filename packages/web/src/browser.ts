@@ -55,12 +55,13 @@ import type { PlaywrightSurface } from './surface.ts';
  */
 export type RouteFulfillResponse = {
   status?: number;
+  /** Response headers; `set-cookie` may join several cookies with `\n`, as `route.fetch()` reports them. */
   headers?: Record<string, string>;
   /** Sets the `Content-Type` response header. */
   contentType?: string;
 } & (
   | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
+  | { body: string | Uint8Array; json?: never; path?: never }
   | { path: string; json?: never; body?: never }
   | { body?: never; json?: never; path?: never }
 );
@@ -71,8 +72,8 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
+  /** Replaces every request header; `undefined` drops one, and the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string | undefined>;
   /** Request body. */
   postData?: string;
 }
@@ -102,8 +103,10 @@ export interface WebResponse {
   readonly url: string;
   /** HTTP status. */
   readonly status: number;
-  /** Response headers, lower-cased names. */
+  /** Response headers, lower-cased names; `route.fetch()` joins several `set-cookie` values with `\n`, `waitForResponse` leaves cookie headers out. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and returns its bytes; rejects with `ACTION_FAILED` when the body could not be read. */
+  body(): Promise<Buffer>;
   /** Waits for the body and parses it as JSON; rejects with `ACTION_FAILED` when the body could not be read. */
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text; rejects with `ACTION_FAILED` when the body could not be read. */
@@ -112,7 +115,7 @@ export interface WebResponse {
 
 /**
  * Reads the body once the response is known and keeps the outcome: a body
- * that arrived decodes to text on every call, a body the browser could not
+ * that arrived returns a copy of its bytes on every call, a body the browser could not
  * read rejects every call with `ACTION_FAILED` naming the cause. Swallowing
  * that failure would hand the test an empty string the server never sent,
  * indistinguishable from a real empty body. `failure` names the reason the
@@ -125,10 +128,10 @@ async function readResponseBody(
   api: 'waitForResponse' | 'route.fetch',
   body: () => Promise<Buffer>,
   failure: () => string | undefined = () => undefined,
-): Promise<() => Promise<string>> {
+): Promise<() => Promise<Buffer>> {
   try {
-    const text = new TextDecoder().decode(await body());
-    return () => Promise.resolve(text);
+    const bytes = await body();
+    return () => Promise.resolve(Buffer.from(bytes));
   } catch (cause) {
     const error = new TestError(
       'ACTION_FAILED',
@@ -136,6 +139,23 @@ async function readResponseBody(
     );
     return () => Promise.reject(error);
   }
+}
+
+/** The `WebResponse` over a Playwright response's metadata and a reader for its body bytes. */
+function webResponse(
+  response: { url(): string; status(): number; headers(): Record<string, string> },
+  body: () => Promise<Buffer>,
+): WebResponse {
+  const text = async (): Promise<string> => new TextDecoder().decode(await body());
+  return {
+    url: response.url(),
+    status: response.status(),
+    headers: response.headers(),
+    body,
+    // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
+    json: async <T = unknown>() => JSON.parse(await text()) as T,
+    text,
+  };
 }
 
 export interface CookieFields {
@@ -554,15 +574,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
                 maxRedirects: 0,
               });
               try {
-                const text = await readResponseBody('route.fetch', () => response.body());
-                return {
-                  url: response.url(),
-                  status: response.status(),
-                  headers: response.headers(),
-                  // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
-                  json: async <T = unknown>() => JSON.parse(await text()) as T,
-                  text,
-                };
+                return webResponse(response, await readResponseBody('route.fetch', () => response.body()));
               } finally {
                 await response.dispose();
               }
@@ -645,28 +657,21 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           { timeout: currentOperation.timeoutMs },
         );
         // Started now, while the browser still holds the body, and awaited
-        // only by `text` and `json` on a budget of their own: the timeout
+        // only by the body readers on a budget of their own: the timeout
         // bounds the match, never a body still streaming in behind headers
         // that already arrived.
         const body = readResponseBody('waitForResponse', () => response.body(), () => response.request().failure()?.errorText);
-        const text = async (): Promise<string> => {
+        const read = async (): Promise<Buffer> => {
           const { signal, timeoutMs } = context.operation();
-          const read = await raceAbort(
+          const bytes = await raceAbort(
             withTimeout(body, timeoutMs, () =>
               new TestError('ACTION_FAILED', `waitForResponse: response body did not finish within ${timeoutMs}ms`)),
             signal,
             'waitForResponse body',
           );
-          return read();
+          return bytes();
         };
-        return {
-          url: response.url(),
-          status: response.status(),
-          headers: response.headers(),
-          // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
-          json: async <T = unknown>() => JSON.parse(await text()) as T,
-          text,
-        };
+        return webResponse(response, read);
       });
     },
     cookies: () =>

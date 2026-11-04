@@ -166,14 +166,14 @@ test.describe('download', { requires: ['browser'], tags: ['playwright'] }, () =>
     assertDownloadToPDF(download, asset('empty.pdf'));
   });
 
-  test('should be able to download a inline PDF file via response interception', { fail: '`route.fulfill` bodies are strings, so binary bytes do not survive the round trip' }, async ({ browser }) => {
+  test('should be able to download a inline PDF file via response interception', async ({ browser }) => {
     await browser.goto('/empty.html');
     await browser.route('**/empty.pdf', async (route) => {
       const response = await route.fetch();
       await route.fulfill({
         status: response.status,
         headers: { ...response.headers, 'Content-Disposition': 'attachment' },
-        body: await response.text(),
+        body: await response.body(),
       });
     });
     await browser.goto(content('<a href="/empty.pdf">open</a>'));
