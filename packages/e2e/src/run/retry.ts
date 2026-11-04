@@ -18,13 +18,8 @@ export interface RetryAttempt {
   readonly error?: SerializedError | undefined;
 }
 
-/**
- * Only test-category failures and timeouts consume retry budget. A test
- * marked `test.fail` that passed is not retried: the body ran to the end and
- * passed, and a retry that failed would only report it as flaky.
- */
+/** Only test-category failures and timeouts consume retry budget, an unexpected pass of a `test.fail` test included. */
 export function isRetryEligible(attempt: RetryAttempt): boolean {
-  if (attempt.error?.code === 'UNEXPECTED_PASS') return false;
   return (
     attempt.status === 'timed-out' ||
     (attempt.error !== undefined && attempt.error.category === 'test')

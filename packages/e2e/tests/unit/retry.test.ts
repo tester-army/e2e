@@ -20,8 +20,8 @@ describe('isRetryEligible', () => {
     expect(isRetryEligible({ status: 'failed' })).toBe(false);
   });
 
-  it('never retries an unexpected pass of a test marked test.fail', () => {
-    expect(isRetryEligible({ status: 'failed', error: { ...error('test'), code: 'UNEXPECTED_PASS' } })).toBe(false);
+  it('retries an unexpected pass of a test marked test.fail', () => {
+    expect(isRetryEligible({ status: 'failed', error: { ...error('test'), code: 'UNEXPECTED_PASS' } })).toBe(true);
   });
 });
 

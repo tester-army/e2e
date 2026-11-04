@@ -150,7 +150,8 @@ test('exports a PDF', { fail: 'PDF export is broken' }, async ({ app }) => {}); 
   `INVALID_ARGUMENT` or `STEP_NOT_AWAITED`. Any of these beside the test
   failure keeps it failed too, unless it landed in cleanup; a cleanup
   error is still reported on its own and still sets the exit code.
-- An expected failure is not retried, and neither is an unexpected pass.
+- An expected failure is not retried. An unexpected pass is retried like
+  any failure; a retry that then fails as expected makes the test `flaky`.
 - A skip wins over the mark, also after a failure.
 - Videos and traces follow the verdict: with `retain-on-failure`, an
   expected failure keeps none, and an unexpected pass keeps both.

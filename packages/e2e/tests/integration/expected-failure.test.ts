@@ -137,17 +137,22 @@ describe('marked late', () => {
   );
 
   it(
-    'retries neither an expected failure nor an unexpected pass, and a failure before the mark retries as usual',
+    'does not retry an expected failure, retries an unexpected pass, and a failure before the mark retries as usual',
     async () => {
       const file = `import { expect, test } from 'e2e';
 
-const counter = globalThis as { failRuns?: number };
+const counter = globalThis as { failRuns?: number; passRuns?: number };
 
 test('expected failure', { fail: 'gap', retries: 2 }, async () => {
   expect(1).toBe(2);
 });
 
 test('unexpected pass', { fail: 'gap', retries: 2 }, async () => {});
+
+test('passes once, then fails as expected', { fail: 'gap', retries: 2 }, async () => {
+  counter.passRuns = (counter.passRuns ?? 0) + 1;
+  if (counter.passRuns > 1) expect(1).toBe(2);
+});
 
 test('fails before the mark', { retries: 2 }, async () => {
   counter.failRuns = (counter.failRuns ?? 0) + 1;
@@ -160,7 +165,10 @@ test('fails before the mark', { retries: 2 }, async () => {
       expect(resultByTitle(outcome, 'expected failure')).toMatchObject({ status: 'passed' });
       expect(resultByTitle(outcome, 'expected failure').attempts).toHaveLength(1);
       expect(resultByTitle(outcome, 'unexpected pass')).toMatchObject({ status: 'failed' });
-      expect(resultByTitle(outcome, 'unexpected pass').attempts).toHaveLength(1);
+      expect(resultByTitle(outcome, 'unexpected pass').attempts.map((attempt) => attempt.error?.code)).toEqual(['UNEXPECTED_PASS', 'UNEXPECTED_PASS', 'UNEXPECTED_PASS']);
+      const flaky = resultByTitle(outcome, 'passes once, then fails as expected');
+      expect(flaky.status).toBe('flaky');
+      expect(flaky.attempts.map((attempt) => attempt.status)).toEqual(['failed', 'passed']);
       const late = resultByTitle(outcome, 'fails before the mark');
       expect(late.status).toBe('flaky');
       expect(late.attempts.map((attempt) => attempt.status)).toEqual(['failed', 'passed']);
