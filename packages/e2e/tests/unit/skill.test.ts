@@ -66,7 +66,7 @@ describe('the bundled agent skill', () => {
       const content = readFileSync(new URL(`${entry.name}/SKILL.md`, skills), 'utf8');
       const frontmatter = /^---\n([\s\S]*?)\n---\n/.exec(content)?.[1] ?? '';
       expect(frontmatter, entry.name).toMatch(new RegExp(`^name: ${entry.name}\\n`));
-      expect(frontmatter, entry.name).not.toMatch(/:\s*[[{]/);
+      expect(frontmatter, entry.name).not.toMatch(/(?::|^\s*-)[ \t]*[[{]/m);
     }
   });
 
