@@ -168,16 +168,19 @@ describe('whole observation capture ownership', () => {
     expect(fixture.element.dispose).toHaveBeenCalledOnce();
   });
 
-  it('cannot publish an older capture over a newer observation on the same page', async () => {
+  it('runs a concurrent observation after the one in flight, and publishes both in call order', async () => {
     const fixture = await setup('metadata');
     const current = document();
     fixture.page.evaluateHandle.mockImplementationOnce(fixture.evaluateHandle.getMockImplementation()!)
       .mockImplementationOnce(current.evaluateHandle);
-    const oldFailure = expect(fixture.surface.observe(fixture.operation)).rejects.toMatchObject({ code: 'NODE_STALE' });
+    const older = fixture.surface.observe(fixture.operation);
     await vi.advanceTimersByTimeAsync(0);
-    await fixture.surface.observe(fixture.operation);
+    const newer = fixture.surface.observe(fixture.operation);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(current.evaluateHandle).not.toHaveBeenCalled();
     fixture.gate.resolve();
-    await oldFailure;
+    await expect(older).resolves.toMatchObject({ location: 'https://app.test' });
+    await expect(newer).resolves.toMatchObject({ location: 'https://app.test' });
     expect(fixture.element.dispose).toHaveBeenCalledOnce();
     expect(current.element.dispose).not.toHaveBeenCalled();
   });

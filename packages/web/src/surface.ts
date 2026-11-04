@@ -1120,12 +1120,21 @@ export class PlaywrightSurface {
     );
   }
 
-  /** Captures privately, then publishes only into the page and ref generation that requested it. */
-  private async captureObservation(
+  /** Captures privately in the session's turn, then publishes only into the page and ref generation that requested it. */
+  private captureObservation(
     operation: OperationContext,
     options: EngineObserveOptions | undefined,
   ): Promise<EngineSnapshot> {
     const session = this.requireSession();
+    return session.observeInTurn(operation, (turn) => this.captureInTurn(session, turn, options));
+  }
+
+  /** One observation that holds the session's turn. */
+  private async captureInTurn(
+    session: AttemptSession,
+    operation: OperationContext,
+    options: EngineObserveOptions | undefined,
+  ): Promise<EngineSnapshot> {
     const token = session.token();
     const refs = session.refs;
     const page = this.requirePage();

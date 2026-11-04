@@ -53,6 +53,8 @@ export class AttemptSession {
   private state: SessionState = { kind: 'empty' };
   private generation = {};
   private observed = true;
+  /** Settles when the latest observation in line has finished; never rejects. */
+  private observing: Promise<void> = Promise.resolve();
   /** Until the attempt's first page opens: a persistent browser's own first tab can serve as that page. */
   private firstPage = true;
   private requestedViewport: { readonly width: number; readonly height: number } | undefined;
@@ -83,6 +85,25 @@ export class AttemptSession {
   observedGeneration(token: object): void {
     this.check(token);
     this.observed = true;
+  }
+
+  /**
+   * Runs one observation after every earlier one has finished, so each
+   * publishes its references in turn instead of the later one superseding a
+   * capture still in flight. Time spent waiting comes out of the operation's.
+   */
+  async observeInTurn<T>(operation: OperationContext, capture: (operation: OperationContext) => Promise<T>): Promise<T> {
+    const queued = Date.now();
+    const before = this.observing;
+    let finished!: () => void;
+    const mine = new Promise<void>((resolve) => { finished = resolve; });
+    this.observing = before.then(() => mine);
+    try {
+      await raceAbort(before, operation.signal, 'observe');
+      return await capture({ ...operation, timeoutMs: Math.max(1, operation.timeoutMs - (Date.now() - queued)) });
+    } finally {
+      finished();
+    }
   }
 
   /** Observation-backed pointer and keyboard input needs evidence captured after recovery. */

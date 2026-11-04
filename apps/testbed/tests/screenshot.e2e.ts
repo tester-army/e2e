@@ -359,7 +359,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
       });
     });
 
-    test('should mask in parallel', { fail: 'two screenshot steps at once interfere: one finds its mask node stale' }, async ({ app, browser, screen }) => {
+    test('should mask in parallel', async ({ app, browser, screen }) => {
       await browser.setViewport({ width: 500, height: 500 });
       await browser.goto('/empty.html');
       await attachFrame(browser, 'frame1', `${PREFIX}/grid.html`);
