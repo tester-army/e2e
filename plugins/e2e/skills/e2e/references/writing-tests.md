@@ -245,9 +245,9 @@ the action timeout, then read once with no retry for a value. `isVisible()`,
 `nth(i)` locator per current match and `allTextContents()` every match's
 text, both `[]` at zero. Text is the rendered text, whitespace collapsed: on
 the web what `innerText` reads (`text-transform` applies, `display: none`
-drops out, `<br>` is a space); `toHaveText` reads the same. `isChecked()` is
-`false`, not an error, on a node with no checked state, so query checkable
-controls by role. `waitFor({ state?: 'attached' | 'detached' | 'visible' | 'hidden', timeout? })` waits
+drops out, `<br>` is a space); `toHaveText` reads the same. `isChecked()` on a
+node with no checked state, and `inputValue()` on one with no value, throw
+`ACTION_FAILED`. `waitFor({ state?: 'attached' | 'detached' | 'visible' | 'hidden', timeout? })` waits
 within `actionTimeout`, else `LOCATOR_NOT_FOUND`. For a value that has to
 settle use `expect`, not a read. Reading a password field's value or
 attributes is `POLICY_DENIED`, as is `toHaveAttribute` on one, negated too.

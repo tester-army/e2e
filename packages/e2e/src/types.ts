@@ -584,7 +584,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
   /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
-  /** Reads the current input value. */
+  /** Reads the current input value; throws `ACTION_FAILED` on a node with no value, such as a heading. */
   inputValue(): Promise<string>;
   /** Reads one attribute. */
   getAttribute(name: string): Promise<string | null>;
@@ -596,7 +596,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   isEnabled(): Promise<boolean>;
   /** Reads current disabled state, the negation of `isEnabled`. */
   isDisabled(): Promise<boolean>;
-  /** Reads current checked state. */
+  /** Reads current checked state; throws `ACTION_FAILED` on a node with no checked state, such as a button. */
   isChecked(): Promise<boolean>;
   /** Reads the current viewport-relative rectangle. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
