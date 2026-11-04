@@ -75,6 +75,82 @@ export default {
 }
 
 describe('app command exits after readiness', () => {
+  it('delivers an app exit buffered while another app is still starting', async () => {
+    const portA = await freePort();
+    const portB = await freePort();
+    const project = createProject({
+      'server.cjs': `const fs = require('node:fs');
+const control = process.argv[4];
+fs.writeFileSync(control + 'pid', String(process.pid));
+const server = require('node:http').createServer((_request, response) => response.end('ready'));
+const listen = () => server.listen(Number(process.argv[2]), '127.0.0.1');
+if (control === 'a-') listen();
+else {
+  const gate = setInterval(() => {
+    if (!fs.existsSync('allow-b-ready')) return;
+    clearInterval(gate);
+    listen();
+  }, 10);
+}
+setInterval(() => {
+  if (fs.existsSync(control + 'exit-now')) process.exit(1);
+}, 10);`,
+      'e2e.config.ts': managedConfig([
+        { name: 'a', port: portA, control: 'a-' },
+        { name: 'b', port: portB, control: 'b-' },
+      ]),
+      'tests/buffered.e2e.ts': `import { writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+const owner = (url: string) => new URL(url).port === '${portA}' ? 'a' : 'b';
+test('first test', async ({ app }) => { writeFileSync(owner(app.baseUrl!) + '-first-ran', 'ran'); });
+test('queued test', async ({ app }) => { writeFileSync(owner(app.baseUrl!) + '-queued-ran', 'ran'); });`,
+    });
+    const controller = new AbortController();
+    let aReady = false;
+    const running = runExistingWithConfigFile(project, {
+      runOptions: {
+        interruptSignal: controller.signal,
+        onEvent(event) {
+          if (event.type === 'setup' && event.state === 'finished' && event.step.kind === 'app' && event.step.label === 'target "a" command') aReady = true;
+        },
+      },
+    });
+    try {
+      await expect.poll(() => aReady).toBe(true);
+      writeFileSync(path.join(project.dir, 'a-exit-now'), 'requested');
+      const pid = Number(readFileSync(path.join(project.dir, 'a-pid'), 'utf8'));
+      await expect.poll(() => {
+        try {
+          process.kill(pid, 0);
+          return true;
+        } catch {
+          return false;
+        }
+      }).toBe(false);
+      writeFileSync(path.join(project.dir, 'allow-b-ready'), 'ready');
+      const outcome = await running;
+      expect(outcome.exitCode).toBe(3);
+      expect(outcome.report.run.errors).toEqual([
+        expect.objectContaining({ code: 'APP_UNREACHABLE', message: expect.stringContaining('target "a" command exited with code 1 after becoming ready') }),
+      ]);
+      const a = outcome.results.filter((result) => result.target.name === 'a');
+      expect(a.map((result) => [result.status, result.skip?.reason])).toEqual([
+        ['skipped', 'target "a" command exited with code 1 after becoming ready'],
+        ['skipped', 'target "a" command exited with code 1 after becoming ready'],
+      ]);
+      expect(outcome.results.filter((result) => result.target.name === 'b').map((result) => result.status)).toEqual(['passed', 'passed']);
+      expect(existsSync(path.join(project.dir, 'a-first-ran'))).toBe(false);
+      expect(existsSync(path.join(project.dir, 'a-queued-ran'))).toBe(false);
+      expect(existsSync(path.join(project.dir, 'b-first-ran'))).toBe(true);
+      expect(existsSync(path.join(project.dir, 'b-queued-ran'))).toBe(true);
+      assertValidReport(outcome.report);
+    } finally {
+      controller.abort();
+      await running;
+      project.cleanup();
+    }
+  });
+
   for (const { mode, description, detail } of EXIT_MODES) {
     it.skipIf(process.platform === 'win32' && mode === 'SIGTERM')(`fails the run and stops queued tests after ${description}`, async () => {
       const port = await freePort();
@@ -147,6 +223,34 @@ test('queued test', async () => { writeFileSync('queued-ran', 'ran'); });`,
       expect(active?.status).toBe('interrupted');
       expect(active?.attempts).toEqual([expect.objectContaining({ status: 'interrupted', cleanup: 'forced' })]);
       expect(outcome.results.find((result) => result.test.title === 'queued test')?.status).toBe('skipped');
+      expect(existsSync(path.join(project.dir, 'queued-ran'))).toBe(false);
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('returns the infrastructure exit code when app death interrupts a serial group', async () => {
+    const port = await freePort();
+    const project = createProject({
+      'server.cjs': SERVER,
+      'e2e.config.ts': managedConfig([{ name: 'a', port, control: 'a-' }]),
+      'tests/serial.e2e.ts': `import { writeFileSync } from 'node:fs';
+import { test } from 'e2e';
+test.describe('dependent group', { serial: true }, () => {
+  test('active member', async () => {
+    writeFileSync('a-exit-now', 'requested');
+    await new Promise(() => {});
+  });
+  test('queued member', async () => { writeFileSync('queued-ran', 'ran'); });
+});`,
+    });
+    try {
+      const outcome = await runExistingWithConfigFile(project, {});
+      expect(existsSync(path.join(project.dir, 'a-exit-now'))).toBe(true);
+      expect(outcome.exitCode).toBe(3);
+      expect(outcome.report.run.serialGroups?.map((group) => group.status)).toEqual(['interrupted']);
+      expect(outcome.report.run.errors.map((error) => error.code)).toEqual(['APP_UNREACHABLE']);
       expect(existsSync(path.join(project.dir, 'queued-ran'))).toBe(false);
       assertValidReport(outcome.report);
     } finally {

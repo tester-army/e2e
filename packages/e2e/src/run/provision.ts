@@ -218,7 +218,7 @@ export class PreparedEngines {
 /** The hooks the app commands report through; a run narrates each as a setup step. */
 export interface ProcessHooks extends Omit<ManagedProcessHooks, 'unexpectedExit'> {
   /** An owned app command exited; every declaring target depends on it. */
-  readonly unexpectedExit?: (targetNames: readonly string[], cause: InfrastructureError) => void;
+  readonly commandExited?: (targetNames: readonly string[], cause: InfrastructureError) => void;
 }
 
 /**
@@ -250,7 +250,7 @@ export async function startDeclaredProcesses(
       const start = async (scope: AbortSignal): Promise<AppProcesses> => {
         const app = new ManagedProcess(label, command, projectRoot, { readyUrl }, {
           ...hooks,
-          unexpectedExit: (cause) => hooks.unexpectedExit?.(targetNames, cause),
+          unexpectedExit: (cause) => hooks.commandExited?.(targetNames, cause),
         });
         const stop: AppProcesses['stop'] = async (onFailure) => {
           try {

@@ -154,6 +154,7 @@ interface FakeBehaviour {
   readonly attemptsBeforeHang?: readonly AttemptRecord[];
   /** The hung pair starts its next attempt after `attemptsBeforeHang`, and the worker exits on its own once interrupted. */
   readonly exitDuringNextAttemptOnInterrupt?: boolean;
+  readonly exitSynchronouslyOnInterrupt?: boolean;
   /** The hung pair starts its next attempt after `attemptsBeforeHang` and keeps running through an interrupt. */
   readonly startAttemptBeforeHang?: boolean;
   /** Serial group attempts the unit's pairs (one group) finish before the worker hangs. */
@@ -289,6 +290,10 @@ class FakeRunner implements UnitRunner {
       this.behaviour.onControl?.(message);
     }
     if (message.type === 'interrupt') this.fleet.interruptSkips.push(message.skip);
+    if (message.type === 'interrupt' && this.behaviour.exitSynchronouslyOnInterrupt === true) {
+      this.end('interrupted');
+      return;
+    }
     if (message.type === 'interrupt' && this.behaviour.exitDuringNextAttemptOnInterrupt === true) {
       setTimeout(() => this.end('code 7, signal null'), 0);
       return;
@@ -548,6 +553,28 @@ describe('app command failures', () => {
     expect(collected.results[1]?.skip?.reason).toBe(failure.error.message);
     expect(collected.runErrors).toEqual([{ error: failure.error }]);
     expect(fleet.killed).toEqual([0]);
+  });
+
+  it('interrupts every starting worker and keeps the app-exit reason when transports exit synchronously', async () => {
+    const target = makeTarget('a', 0);
+    const pairs = ['first', 'second'].map((name) => makePair(makeTest(`tests/${name}.e2e.ts`, name), target));
+    const fleet = new FakeFleet({ neverReady: ['a'], exitSynchronouslyOnInterrupt: true });
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 2,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 10);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(fleet.spawned).toHaveLength(2);
+    expect(fleet.interruptSkips).toEqual([failure.error.message, failure.error.message].map((reason) => ({ cause: 'infrastructure-unavailable', reason })));
+    expect(collected.results.map((result) => [result.test.title, result.status, result.skip?.reason])).toEqual([
+      ['first', 'skipped', failure.error.message], ['second', 'skipped', failure.error.message],
+    ]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
   });
 
   it.each([false, true])('keeps app interruption when the watchdog kills first, without stopping healthy work at maxFailures (serial: %s)', async (serial) => {

@@ -490,11 +490,7 @@ class Scheduler {
     const affected: TargetState[] = [];
     for (const name of failure.targetNames) {
       const state = this.targets.get(name);
-      if (state === undefined || state.unavailable?.kind === 'app-exit') continue;
-      const pending = state.setupQueue.length > 0 || state.fileQueue.length > 0 || this.workers.some((worker) =>
-        worker.targetName === name && (worker.queued !== undefined || worker.unit?.pairs.some((pair) => !worker.reported.has(pairKey(pair.test.id, pair.agent, pair.repeat))) === true),
-      );
-      if (pending) affected.push(state);
+      if (state !== undefined && this.hasPendingWork(state)) affected.push(state);
     }
     if (affected.length === 0) return;
     this.options.events.onRunError({ error: failure.error });
@@ -503,6 +499,13 @@ class Scheduler {
       this.failTarget(state, { kind: 'app-exit', skip: { cause: 'infrastructure-unavailable', reason } });
     }
     this.wakeUp();
+  }
+
+  /** Whether a target still owns queued work or pairs that have not reported a result. */
+  private hasPendingWork(state: TargetState): boolean {
+    return state.setupQueue.length > 0 || state.fileQueue.length > 0 || this.workers.some((worker) =>
+      worker.targetName === state.target.name && (worker.queued !== undefined || worker.unit?.pairs.some((pair) => !worker.reported.has(pairKey(pair.test.id, pair.agent, pair.repeat))) === true),
+    );
   }
 
   private wakeUp(): void {
@@ -527,20 +530,23 @@ class Scheduler {
     // Snapshot first: retiring a worker mutates `this.workers`, and iterating
     // the live array would skip entries as they are spliced out.
     const live = [...this.workers];
-    for (const worker of live) {
-      worker.runner.send({ type: 'interrupt', ...(this.stopSkip === undefined ? {} : { skip: this.stopSkip }) });
-      if (worker.state === 'busy') {
-        worker.killAfter(this.options.interruptGraceMs);
-        continue;
-      }
-      const queued = worker.queued;
-      worker.queued = undefined;
-      if (queued !== undefined) {
-        for (const pair of queued.pairs) this.report(unstartedResult(pair, skip));
-      }
-      if (worker.state === 'retired') this.revokeReuse(worker);
-      else this.retire(worker, false);
+    for (const worker of live) this.interruptWorker(worker, this.stopSkip);
+  }
+
+  /** Interrupts one worker and reports any unit it has not started. */
+  private interruptWorker(worker: SchedulerWorker, skip: SkipInfo | undefined): void {
+    worker.runner.send({ type: 'interrupt', ...(skip === undefined ? {} : { skip }) });
+    if (worker.state === 'busy') {
+      worker.killAfter(this.options.interruptGraceMs);
+      return;
     }
+    const queued = worker.queued;
+    worker.queued = undefined;
+    if (queued !== undefined) {
+      for (const pair of queued.pairs) this.report(unstartedResult(pair, skip ?? INTERRUPTED_BEFORE_START));
+    }
+    if (worker.state === 'retired') this.revokeReuse(worker);
+    else this.retire(worker, false);
   }
 
   /**
@@ -1032,18 +1038,7 @@ class Scheduler {
       }
       if (interrupted) {
         if (appExited && running !== undefined) {
-          const attempt = active?.pair === key ? active : undefined;
-          this.report(finishedResult(pair, [...finished, {
-            id: attempt?.id ?? uuidv7(),
-            index: running,
-            status: 'interrupted',
-            startedAt: attempt?.startedAt ?? timestamp(),
-            durationMs: attempt === undefined ? 0 : Date.now() - Date.parse(attempt.startedAt),
-            steps: [],
-            artifacts: [],
-            secondaryErrors: [],
-            cleanup: 'forced',
-          }]));
+          this.report(finishedResult(pair, [...finished, interruptedAttempt(active?.pair === key ? active : undefined, running)]));
           continue;
         }
         this.report(
@@ -1128,21 +1123,7 @@ class Scheduler {
     state.unavailable = unavailable;
     this.skipQueues(state, unavailable.skip);
     if (unavailable.kind !== 'app-exit') return;
-    for (const worker of this.workers) {
-      if (worker.targetName !== state.target.name) continue;
-      worker.runner.send({ type: 'interrupt', skip: unavailable.skip });
-      if (worker.state === 'busy') {
-        worker.killAfter(this.options.interruptGraceMs);
-        continue;
-      }
-      const queued = worker.queued;
-      worker.queued = undefined;
-      if (queued !== undefined) {
-        for (const pair of queued.pairs) this.report(unstartedResult(pair, unavailable.skip));
-      }
-      if (worker.state === 'retired') this.revokeReuse(worker);
-      else this.retire(worker, false);
-    }
+    for (const worker of this.workersOf(state.target.name)) this.interruptWorker(worker, unavailable.skip);
   }
 
   /** Shuts every remaining worker down, force-killing stragglers. */
@@ -1179,6 +1160,21 @@ function hungAttempt(hung: WatchedAttempt): AttemptRecord {
     steps: [],
     artifacts: [],
     error: hangError(hung),
+    secondaryErrors: [],
+    cleanup: 'forced',
+  };
+}
+
+/** An interrupted attempt synthesized when an app exit stops its worker. */
+function interruptedAttempt(active: WatchedAttempt | undefined, index: number): AttemptRecord {
+  return {
+    id: active?.id ?? uuidv7(),
+    index,
+    status: 'interrupted',
+    startedAt: active?.startedAt ?? timestamp(),
+    durationMs: active === undefined ? 0 : Date.now() - Date.parse(active.startedAt),
+    steps: [],
+    artifacts: [],
     secondaryErrors: [],
     cleanup: 'forced',
   };

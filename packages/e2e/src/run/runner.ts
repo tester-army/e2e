@@ -963,7 +963,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
       ci: isCiMode(env),
       env,
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
-      unexpectedExit: (targetNames: readonly string[], cause: InfrastructureError) => {
+      commandExited: (targetNames: readonly string[], cause: InfrastructureError) => {
         receiveAppFailure({ targetNames, error: serializeError(cause) });
       },
       starting: (label: string, url: string | undefined) => emit({ type: 'setup', step: appStep(label, url), state: 'started' }),
