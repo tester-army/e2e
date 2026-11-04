@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "The ClawHub CLI that clawhub.yml publishes the skills with, installed from this lockfile.",
+  "dependencies": {
+    "clawhub": "0.25.1"
+  }
+}
