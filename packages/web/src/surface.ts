@@ -9,8 +9,9 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Browser, BrowserContext, ElementHandle, FrameLocator, Locator, Page, Route } from 'playwright-core';
+import type { Browser, BrowserContext, ElementHandle, Frame, FrameLocator, Locator, Page, Request, Route } from 'playwright-core';
 import {
+  Deadline,
   EngineError,
   obj,
   raceAbort,
@@ -68,6 +69,8 @@ import {
   DEFAULT_VIEWPORT,
   ErrorLatch,
   invalidState,
+  isClassified,
+  isPwTimeout,
   message,
   navigationStaleOr,
   performViewportSwipe,
@@ -299,6 +302,8 @@ export class PlaywrightSurface {
   private artifactsDir = '';
   /** Navigations the engine has in flight, which the app log leaves to the step that started them. */
   private ownNavigations = 0;
+  /** One entry per navigation in flight, set to the URL of a document request a test route aborted during it. */
+  private readonly navigationAborts = new Set<{ url?: string }>();
   /** What the attempt tells its trace beside the app log; absent between attempts. */
   private trace: TraceFeed | undefined;
   private artifactCounter = 0;
@@ -701,6 +706,9 @@ export class PlaywrightSurface {
         ? await withOperationDeadline(operation, label, (remaining) => fn({ ...operation, ...remaining() }), bound)
         : await this.session.run(operation, label, fn, bound);
     } catch (cause) {
+      // A handler error latched while the operation ran is its cause: a route
+      // that refused its own arguments aborts the request the step waited on.
+      this.latch.throwPending();
       throw translate(cause, label);
     }
   }
@@ -730,16 +738,38 @@ export class PlaywrightSurface {
     return this.acted(operation, this.guard(operation, 'resize', () => this.setViewport(size)));
   }
 
-  /** Runs one navigation the engine itself makes, so the app log leaves it to the step that asked for it. */
+  /**
+   * Runs one navigation the engine itself makes, so the app log leaves it to
+   * the step that asked for it. A navigation that fails after a test route
+   * aborted its document request failed because the test aborted it: an
+   * action failure, not an engine fault.
+   */
   async navigating<T>(work: () => Promise<T>): Promise<T> {
     this.ownNavigations += 1;
+    const watch: { url?: string } = {};
+    this.navigationAborts.add(watch);
     try {
       const result = await work();
       this.trace?.tellEnvironment();
       return result;
+    } catch (cause) {
+      if (watch.url === undefined || isClassified(cause) || isPwTimeout(cause)) throw cause;
+      throw new TestError('ACTION_FAILED', `navigation failed: a route aborted the request for ${watch.url}: ${message(cause)}`, { cause });
     } finally {
+      this.navigationAborts.delete(watch);
       this.ownNavigations -= 1;
     }
+  }
+
+  /**
+   * Records a request a test route is about to abort, when it loads the
+   * document of the attempt's page. Never throws: the abort must follow.
+   */
+  noteRouteAbort(request: Request): void {
+    if (this.navigationAborts.size === 0 || !request.isNavigationRequest()) return;
+    const main = this.openPage()?.mainFrame();
+    if (main === undefined || frameOf(request) !== main) return;
+    for (const watch of this.navigationAborts) watch.url ??= request.url();
   }
 
   /** Resolves with what an action resolved with once the trace has the screen it left (`TraceFeed.screenAfterAction`); an action that failed leaves none. */
@@ -1053,17 +1083,36 @@ export class PlaywrightSurface {
   /** Redacted at the source: secure fields in every frame are masked, and the caret is hidden without editing styles, as in observation pixels. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
     return this.guard(operation, 'screenshot', async (currentOperation) => {
-      const page = this.requirePage();
       const { relative, absolute } = this.artifactPath('screenshots', label, '.png');
-      const deadline = Date.now() + currentOperation.timeoutMs;
-      const masks = await secureFieldMasks(page);
-      await withHiddenCaret(page, () => page.screenshot({
-        path: absolute,
-        timeout: Math.max(1, deadline - Date.now()),
-        caret: 'initial',
-        ...maskOptions(masks),
-      }));
-      return relative;
+      const deadline = new Deadline(currentOperation.timeoutMs);
+      // The masks are resolved in the document showing when the capture
+      // starts. A capture that fails while the page replaces that document
+      // is taken of the replacing one, masked by the same rule, within the
+      // step's own deadline.
+      for (;;) {
+        const page = this.requirePage();
+        const documents = watchDocuments(page);
+        try {
+          const masks = await secureFieldMasks(page);
+          await withHiddenCaret(page, () => page.screenshot({
+            path: absolute,
+            timeout: Math.max(1, deadline.remaining()),
+            caret: 'initial',
+            ...maskOptions(masks),
+          }));
+          return relative;
+        } catch (cause) {
+          if (!documents.replaced() || isPwTimeout(cause) || currentOperation.signal.aborted) throw cause;
+          if (deadline.expired()) {
+            throw new EngineError('OPERATION_TIMEOUT', `screenshot timed out: the page replaced its document during every capture for ${currentOperation.timeoutMs}ms`, {
+              retryable: false,
+              cause,
+            });
+          }
+        } finally {
+          documents.stop();
+        }
+      }
     });
   }
 
@@ -1166,6 +1215,32 @@ export class PlaywrightSurface {
       RefRegistry.dispose(generation);
       throw cause;
     }
+  }
+}
+
+/** Watches `page` until `stop` for a frame that commits a new document or detaches, either of which replaces a document a capture is reading. */
+function watchDocuments(page: Page): { readonly replaced: () => boolean; readonly stop: () => void } {
+  let replaced = false;
+  const mark = (): void => {
+    replaced = true;
+  };
+  page.on('framenavigated', mark);
+  page.on('framedetached', mark);
+  return {
+    replaced: () => replaced,
+    stop: () => {
+      page.off('framenavigated', mark);
+      page.off('framedetached', mark);
+    },
+  };
+}
+
+/** The frame a request belongs to; undefined for a popup's first navigation, which Playwright issues before the popup's frame exists. */
+function frameOf(request: Request): Frame | undefined {
+  try {
+    return request.frame();
+  } catch {
+    return undefined;
   }
 }
 
