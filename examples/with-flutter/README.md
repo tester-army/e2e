@@ -3,7 +3,7 @@
 A Flutter greeting app with three locator tests and two agent tests per
 platform. The test project is in `e2e/`, next to the Flutter project.
 
-<img src="screenshot-android.png" alt="Flutter app on Android with the greeting Hello, Ada!" width="300" /> <img src="screenshot-ios.png" alt="Flutter app on iOS with the greeting Hello, Ada!" width="300" />
+<img src="screenshot-android.png" alt="Flutter app on Android with the greeting hello, Ada!" width="300" /> <img src="screenshot-ios.png" alt="Flutter app on iOS with the greeting hello, Ada!" width="300" />
 
 ## Run
 
@@ -49,6 +49,6 @@ For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mob
 
 The bundled fonts use the [SIL Open Font License](assets/fonts/OFL.txt).
 
-Last checked on 2026-10-29 with e2e 0.21.3, @e2e-dev/mobile 0.12.4, and
+Last checked on 2026-11-04 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, and
 Flutter 3.47 on an Android 16 emulator and an iOS 26 simulator. The three
 locator tests and the two agent tests passed on each.

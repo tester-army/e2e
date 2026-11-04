@@ -4,9 +4,9 @@ An Astro greeting page with three locator tests and two agent tests. The
 page ships no UI framework: one `<script>` in
 [src/pages/index.astro](src/pages/index.astro) handles the form.
 
-![Astro example app with the greeting "Hello, Ada!"](screenshot.png)
+![Astro example app with the greeting "hello, Ada!"](screenshot.png)
 
-![Astro example app asking for a name after Greet is pressed with an empty field](screenshot-error.png)
+![Astro example app asking for a name after greet is pressed with an empty field](screenshot-error.png)
 
 ## Run
 

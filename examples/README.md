@@ -1,7 +1,7 @@
 # Examples
 
 Standalone apps with three locator tests and two agent tests each.
-Every app uses the same demo: enter a name and press Greet.
+Every app uses the same demo: enter a name and press greet.
 
 | Example | Technology | Runs on |
 | --- | --- | --- |

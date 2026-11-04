@@ -2,7 +2,7 @@
 
 A Vite + React greeting app with three locator tests and two agent tests.
 
-![Vite example app with the greeting "Hello, Ada!"](screenshot.png)
+![Vite example app with the greeting "hello, Ada!"](screenshot.png)
 
 ## Run
 

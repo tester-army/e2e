@@ -5,38 +5,38 @@ import { Component, signal } from '@angular/core';
   template: `
     <div class="page">
       <header class="nav">
-        <img src="/e2e-lockup-32-white.svg" alt="e2e" width="109" height="32" />
+        <img src="/e2e-logotype-white.svg" alt="e2e" width="69" height="24" />
       </header>
 
       <main class="hero">
-        <p class="eyebrow">[01] with-angular</p>
-        <h1 class="title">Say hello</h1>
+        <p class="eyebrow">[ with-angular ]</p>
+        <h1 class="title">say hello</h1>
         <p class="lede">A demo screen for the e2e examples. Type a name and the app greets you.</p>
 
         <form class="form" (submit)="greet($event)">
-          <label class="label" for="name">Name</label>
-          <div class="row">
+          <div class="field">
             <input
               #field
               id="name"
-              class="field"
+              class="field-input"
               autocomplete="off"
-              placeholder="Ada Lovelace"
+              [attr.aria-invalid]="error()"
               [value]="name()"
               (input)="name.set(field.value)"
             />
-            <button class="button" type="submit">Greet</button>
+            <label class="field-label" for="name">name</label>
           </div>
+          <button class="button" type="submit">greet</button>
           @if (error()) {
-            <p class="error" role="alert">Enter a name first.</p>
+            <p class="error" role="alert">enter a name first.</p>
           }
           @if (greeted(); as greeted) {
-            <p class="status" role="status">Hello, {{ greeted }}!</p>
+            <p class="status" role="status">hello, {{ greeted }}!</p>
           }
         </form>
       </main>
 
-      <footer class="footer">Example app for e2e. The tests live in tests/.</footer>
+      <footer class="footer">example app for e2e. the tests live in tests/.</footer>
     </div>
   `,
 })
