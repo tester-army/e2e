@@ -136,29 +136,16 @@ test.fail('known gap'); // inside a body, always
 test('exports a PDF', { fail: 'PDF export is broken' }, async ({ app }) => {}); // by option
 ```
 
-- The body keeps running after the call. The test still runs its hooks and
-  teardown. A `beforeEach` hook can mark the test too.
-- A test failure, such as a failed assertion, a failed action, an error the
-  test threw, or a timeout, makes the test `passed`. The report keeps the
-  reason and the original error.
+- The body keeps running after the call. A `beforeEach` hook can mark the
+  test too.
+- A failed assertion, action, thrown error, or timeout makes the test
+  `passed`. The report keeps the reason and the error.
 - A pass makes the test `failed` with `UNEXPECTED_PASS`. Remove the mark
   once the cause is fixed.
-- Not covered, so the test fails as usual: infrastructure errors such as
-  `ENGINE_FAILURE`, configuration and internal errors, interrupts, blocked
-  agent verdicts such as `STEP_BUDGET_EXHAUSTED`, a failed `beforeAll` or
-  `afterAll` hook, and a test that misuses the API, such as
-  `INVALID_ARGUMENT` or `STEP_NOT_AWAITED`. Any of these beside the test
-  failure keeps it failed too, unless it landed in cleanup; a cleanup
-  error is still reported on its own and still sets the exit code.
-- An expected failure is not retried. An unexpected pass is retried like
-  any failure; a retry that then fails as expected makes the test `flaky`.
-- A skip wins over the mark, also after a failure.
-- Videos and traces follow the verdict: with `retain-on-failure`, an
-  expected failure keeps none, and an unexpected pass keeps both.
-
-In `report.json`, a marked attempt has `expectedFailure: { reason, error? }`;
-`error` is the failure the mark covered. The result has
-`expectedFailure: { reason }`. Secrets in the reason are redacted.
+- Infrastructure errors, interrupts, a failed `beforeAll` or `afterAll`, and
+  API misuse such as `INVALID_ARGUMENT` still fail the test.
+- An expected failure is not retried. An unexpected pass is.
+- A skip wins over the mark.
 
 | Throws | When |
 | --- | --- |
