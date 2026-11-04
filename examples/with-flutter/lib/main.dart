@@ -162,6 +162,7 @@ class _GreetingScreenState extends State<GreetingScreen> {
                 const SizedBox(height: 16),
                 // MergeSemantics folds the identifier into the button's own node.
                 // Buttons change no colour when pressed or hovered: no overlay, no splash.
+                // Keyboard focus draws the green focus outline instead.
                 MergeSemantics(
                   child: Semantics(
                     identifier: 'greet',
@@ -170,14 +171,24 @@ class _GreetingScreenState extends State<GreetingScreen> {
                       height: 48,
                       child: TextButton(
                         onPressed: _greet,
-                        style: TextButton.styleFrom(
-                          backgroundColor: Brand.blue,
-                          foregroundColor: Brand.offWhite,
-                          overlayColor: Colors.transparent,
-                          splashFactory: NoSplash.splashFactory,
-                          shape: const RoundedRectangleBorder(),
-                          textStyle: Brand.mono(15, Brand.offWhite),
-                        ),
+                        style:
+                            TextButton.styleFrom(
+                              backgroundColor: Brand.blue,
+                              foregroundColor: Brand.offWhite,
+                              overlayColor: Colors.transparent,
+                              splashFactory: NoSplash.splashFactory,
+                              shape: const RoundedRectangleBorder(),
+                              textStyle: Brand.mono(15, Brand.offWhite),
+                            ).copyWith(
+                              side: WidgetStateProperty.resolveWith(
+                                (states) => states.contains(WidgetState.focused)
+                                    ? const BorderSide(
+                                        color: Brand.green,
+                                        width: 2,
+                                      )
+                                    : BorderSide.none,
+                              ),
+                            ),
                         child: const Text('greet'),
                       ),
                     ),
@@ -257,7 +268,10 @@ class LogotypePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = [size.width / 407, size.height / 142].reduce((a, b) => a < b ? a : b);
+    final scale = [
+      size.width / 407,
+      size.height / 142,
+    ].reduce((a, b) => a < b ? a : b);
     final paint = Paint()..color = color;
     for (final [x, y, width, height] in _bars) {
       canvas.drawRect(
