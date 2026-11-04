@@ -50,8 +50,13 @@ export interface CaptureDeps {
   readonly site: string | undefined;
   /** Reserves a disjoint range before the reader can stamp any element, including on timeout. */
   reserveIds(count: number): number;
-  /** Publishes one element handle under its id in the generation being built. */
-  commit(id: string, element: ElementHandle<Element>): void;
+  /**
+   * Publishes one element handle under its id in the generation being built.
+   * Absent for a capture nobody will act on (the trace's screen): no handle is
+   * read per node, and only iframe boundary elements are fetched, to reach
+   * their content frames, then disposed with the capture.
+   */
+  commit?(id: string, element: ElementHandle<Element>): void;
 }
 
 export interface CaptureOptions {
@@ -112,7 +117,7 @@ export async function captureDocument(
     const captured = await captureInto(deps, scope, stage, host, framePath, budget, signal);
     scope.check();
     for (const [id, element] of staged) {
-      deps.commit(id, element);
+      deps.commit?.(id, element);
       scope.release(element);
     }
     return captured;
@@ -174,8 +179,14 @@ async function captureInto(
   // number, the root's id must not change with it.
   if (framePath.length === 0 && ids.length > 0) ids[0] = ROOT_NODE_ID;
   const elementsHandle = await scope.read(() => captured.getProperty('elements'), (handle) => scope.own(handle));
-  const elements = await collectElementHandles(scope, elementsHandle, nodes.length);
-  elements.forEach((element, index) => stage(ids[index] as string, element));
+  let elements: readonly (ElementHandle<Element> | undefined)[];
+  if (deps.commit === undefined) {
+    elements = await collectFrameElements(scope, elementsHandle, nodes);
+  } else {
+    const collected = await collectElementHandles(scope, elementsHandle, nodes.length);
+    collected.forEach((element, index) => stage(ids[index] as string, element));
+    elements = collected;
+  }
   let nodeCount = nodes.length;
   let truncated = walkTruncated === true;
   const frameChildren = new Map<number, FrameChild>();
@@ -208,7 +219,10 @@ async function captureInto(
       truncated = true;
       continue;
     }
-    const child = await scope.read(() => captureDocument({ ...deps, commit: stage }, frame, {
+    const child = await scope.read(() => captureDocument({
+      ...deps,
+      ...(deps.commit === undefined ? {} : { commit: stage }),
+    }, frame, {
       framePath: [...framePath, selector],
       budget: remaining,
       deadline: scope.deadline,
@@ -268,6 +282,31 @@ async function collectElementHandles(
       });
     }
     elements.push(element);
+  }
+  return elements;
+}
+
+/**
+ * Reads the element handle of each iframe boundary node only, indexed like the
+ * node list, for a capture that publishes no refs. The scope owns and disposes
+ * them with the capture; every other slot stays empty.
+ */
+async function collectFrameElements(
+  scope: CaptureScope,
+  elementsHandle: JSHandle,
+  nodes: readonly RawObservedNode[],
+): Promise<(ElementHandle<Element> | undefined)[]> {
+  const elements: (ElementHandle<Element> | undefined)[] = [];
+  for (let index = 0; index < nodes.length; index += 1) {
+    if (nodes[index]!.frameSelector === undefined) continue;
+    const property = await scope.read(() => elementsHandle.getProperty(String(index)), (handle) => scope.own(handle));
+    const element = (property.asElement() ?? null) as ElementHandle<Element> | null;
+    if (element === null) {
+      throw new EngineError('NODE_STALE', `observation node ${index} lost its element`, {
+        retryable: true,
+      });
+    }
+    elements[index] = element;
   }
   return elements;
 }

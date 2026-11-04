@@ -73,7 +73,7 @@ describe('semantic capture fallback', () => {
     const { surface, screenshot } = await setup();
     const dispose = vi.fn(async () => undefined);
     vi.mocked(captureDocument).mockImplementationOnce(async (deps) => {
-      deps.commit('old', { dispose } as unknown as ElementHandle<Element>);
+      deps.commit?.('old', { dispose } as unknown as ElementHandle<Element>);
       return { tree: { ref: { id: ROOT_NODE_ID, revision: '' } }, truncated: false, nodeCount: 1 };
     });
     await surface.observe(operation());

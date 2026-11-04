@@ -9,7 +9,7 @@ import type { Page } from 'playwright-core';
 import type { EngineAttemptContext, OperationContext } from 'e2e/engine';
 import { captureObservation, type CaptureSettings } from './observation-capture.ts';
 import { withOperationDeadline } from './operation-budget.ts';
-import { RefRegistry } from './refs.ts';
+import type { RefRegistry } from './refs.ts';
 
 /** How long the screen an action left may take for the trace before the step goes without one. */
 const TRACE_SCREEN_TIMEOUT_MS = 1_000;
@@ -68,9 +68,9 @@ export class TraceFeed {
    * Hands the harness the screen an action left. The read is on the action's
    * path, as the `screen` contract allows, and only when the attempt keeps a
    * trace (the harness hands no `screen` otherwise). The screen is captured
-   * like an observation but never published, so every ref a test or model
-   * holds stays valid; a page that cannot answer within a second leaves the
-   * step without one.
+   * like an observation but never published, and without the element handles
+   * nothing will act on, so every ref a test or model holds stays valid; a
+   * page that cannot answer within a second leaves the step without one.
    */
   async screenAfterAction(operation: OperationContext): Promise<void> {
     const sink = this.context.screen;
@@ -81,9 +81,8 @@ export class TraceFeed {
       if (page === undefined) return;
       const budget = { signal: operation.signal, timeoutMs: TRACE_SCREEN_TIMEOUT_MS };
       const captured = await withOperationDeadline(budget, 'trace screen', (remaining) =>
-        captureObservation(page, refs, this.settings, { ...operation, ...remaining() }, undefined),
+        captureObservation(page, refs, this.settings, { ...operation, ...remaining() }, undefined, false),
       );
-      RefRegistry.dispose(captured.generation);
       sink(captured.snapshot);
     } catch {
       // A screen the page could not give in time is no evidence the trace claims.

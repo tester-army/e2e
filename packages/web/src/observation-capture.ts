@@ -1,6 +1,6 @@
 /** One observation transaction: settling, semantic capture, masked pixels, and staged refs. */
 
-import type { Page } from 'playwright-core';
+import type { ElementHandle, Page } from 'playwright-core';
 import { EngineError, type EngineObserveOptions, type EngineSnapshot, type OperationContext } from 'e2e/engine';
 import { CaptureScope } from './capture-scope.ts';
 import { captureDocument, ROOT_NODE_ID } from './observation.ts';
@@ -20,13 +20,19 @@ export interface CaptureSettings {
   readonly site: string | undefined;
 }
 
-/** Captures under one deadline, retaining no refs from a failed or abandoned document. */
+/**
+ * Captures under one deadline, retaining no refs from a failed or abandoned
+ * document. With `retainRefs` false (the trace's screen) the snapshot is the
+ * same but no element handle is read per node and the generation comes back
+ * empty; ids are still reserved so none repeats.
+ */
 export async function captureObservation(
   page: Page,
   refs: RefRegistry,
   settings: CaptureSettings,
   operation: OperationContext,
   options: EngineObserveOptions | undefined,
+  retainRefs = true,
 ): Promise<CapturedObservation> {
   const deadline = Date.now() + operation.timeoutMs;
   let accepting = true;
@@ -51,10 +57,12 @@ export async function captureObservation(
         captureDocument({
           ...settings,
           reserveIds: (count) => refs.reserveIds(count),
-          commit: (id, element) => {
-            if (accepting && !operation.signal.aborted) generation.set(id, { kind: 'element', element });
-            else void element.dispose().catch(() => undefined);
-          },
+          ...(retainRefs ? {
+            commit: (id: string, element: ElementHandle<Element>) => {
+              if (accepting && !operation.signal.aborted) generation.set(id, { kind: 'element', element });
+              else void element.dispose().catch(() => undefined);
+            },
+          } : {}),
         }, page, {
           framePath: [], budget: MAX_OBSERVED_NODES,
           deadline: semanticDeadline, signal: operation.signal,
