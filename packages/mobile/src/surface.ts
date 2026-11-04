@@ -697,14 +697,15 @@ export class AgentDeviceSurface {
    */
   private async stopScreenRecording(video: ScreenRecording, signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
     return raceAbort(() => {
-      video.stopping ??= this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' })).then((result) => {
+      // Cleanup must wait for this bookkeeping as well as the SDK request.
+      video.stopping ??= this.track(this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' })).then((result) => {
         if (this.recording === video) this.recording = undefined;
         if (result.recordOnlySession === true) this.screenReplaced();
         return result;
       }, (cause: unknown) => {
         video.stopping = undefined;
         throw cause;
-      });
+      }));
       return video.stopping;
     }, signal, 'stop video recording');
   }
