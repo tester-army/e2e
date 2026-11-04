@@ -207,8 +207,9 @@ GitHub release. A release that published `e2e` then lists it in the MCP
 Registry (`mcp-registry.yml`); to retry a failed listing, run that workflow
 by hand with the version. It also publishes the skills under `skills/` to
 ClawHub as `@e2e/<skill>` (`clawhub.yml`, with the `CLAWHUB_TOKEN` secret);
-retry it the same way, with the newest version only, since an older tag
-would publish older skills. `@e2edev/e2e` is the
+retry it the same way with `dry-run` unchecked (a dispatch only previews by
+default), and with the newest version only, since an older tag would
+publish older skills. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 
