@@ -26,7 +26,7 @@
 import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
 import { bound, collapseText } from '../internal/text.ts';
-import { descriptorTiers, fieldsEqual, testIdShapeTier, type DescriptorField } from './relocate.ts';
+import { descriptorTiers, fieldsEqual, tierView, type DescriptorField, type DescriptorTier } from './relocate.ts';
 import {
   MAX_TRACE_ANCHORS,
   MAX_TRACE_DESCRIPTOR_CHARS,
@@ -184,7 +184,7 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
 /** Whether an anchor's text, or a minted test id that is all it has, cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
 function isVolatileAnchor(anchor: TraceTargetDescriptor, countIsData: (anchor: TraceTargetDescriptor) => boolean): boolean {
   const texts = [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
-  if (isBareNumber(anchor) || testIdShapeTier(anchor) !== undefined) return true;
+  if (isBareNumber(anchor) || descriptorTiers(anchor).some((tier) => tier.kind === 'shape')) return true;
   if (texts.some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)))) return true;
   return texts.some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
 }
@@ -307,38 +307,45 @@ function identityKey(descriptor: TraceTargetDescriptor): string {
 }
 
 /**
- * Whether some tier of a recorded anchor equals some projected node on every
- * anchor field, and on its value and states exactly: an empty field is not
- * the field filled in, nor an unchecked switch the switch turned on. An
- * alert is compared by its shape (`alertShape`).
+ * Whether a recorded anchor is on screen, on every tier but a test id shape
+ * (`descriptorTiers`): a vanished anchor stays exact, as entries recorded
+ * beside siblings of its shape expect.
  */
 function anchorIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): boolean {
-  const states = statesKey(anchor.states);
-  const shape = isAlert(anchor) ? alertShape : (descriptor: TraceTargetDescriptor) => descriptor;
-  return descriptorTiers(anchor).some((tier) =>
-    nodes.some(
-      (node) =>
-        node.descriptor.value === anchor.value &&
-        statesKey(node.descriptor.states) === states &&
-        fieldsEqual(shape(tier), shape(node.descriptor), ANCHOR_FIELDS),
-    ),
-  );
+  return anchorOnTiers(anchor, nodes, (tier) => tier.kind !== 'shape');
+}
+
+/** Whether an anchor that appeared is on screen, on any tier: a minted test id matches any node of its shape. */
+function appearedIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): boolean {
+  return anchorOnTiers(anchor, nodes, () => true);
 }
 
 /**
- * Whether an anchor that appeared is on screen: `anchorIn`, or any node of
- * its shape for a minted test id (`testIdShapeTier`). A vanished one stays
- * exact, as entries recorded beside siblings of its shape expect.
+ * Whether some tier of a recorded anchor that `tried` admits equals some
+ * projected node on every anchor field, and on its value and states exactly:
+ * an empty field is not the field filled in, nor an unchecked switch the
+ * switch turned on. An alert is compared by its shape (`alertShape`).
  */
-function appearedIn(anchor: TraceTargetDescriptor, nodes: readonly AnchorNode[]): boolean {
-  if (anchorIn(anchor, nodes)) return true;
-  const minted = testIdShapeTier(anchor);
-  if (minted === undefined) return false;
-  const shaped = nodes.flatMap((node) => {
-    const descriptor = testIdShapeTier(node.descriptor);
-    return descriptor === undefined ? [] : [{ ...node, descriptor }];
-  });
-  return anchorIn(minted, shaped);
+function anchorOnTiers(
+  anchor: TraceTargetDescriptor,
+  nodes: readonly AnchorNode[],
+  tried: (tier: DescriptorTier) => boolean,
+): boolean {
+  const states = statesKey(anchor.states);
+  const shape = isAlert(anchor) ? alertShape : (descriptor: TraceTargetDescriptor) => descriptor;
+  return descriptorTiers(anchor).some(
+    (tier) =>
+      tried(tier) &&
+      nodes.some((node) => {
+        const view = tierView(tier, node.descriptor);
+        return (
+          view !== undefined &&
+          node.descriptor.value === anchor.value &&
+          statesKey(node.descriptor.states) === states &&
+          fieldsEqual(shape(tier.descriptor), shape(view), ANCHOR_FIELDS)
+        );
+      }),
+  );
 }
 
 /**
@@ -396,6 +403,6 @@ function statesKey(states: readonly TraceAnchorState[] | undefined): string {
  */
 function anchorKey(descriptor: TraceTargetDescriptor): string {
   const tiers = descriptorTiers(descriptor);
-  const loosest = testIdShapeTier(descriptor) ?? tiers[tiers.length - 1] ?? descriptor;
+  const loosest = tiers[tiers.length - 1]?.descriptor ?? descriptor;
   return JSON.stringify([...ANCHOR_FIELDS.map((field) => loosest[field]), descriptor.value, statesKey(descriptor.states)]);
 }
