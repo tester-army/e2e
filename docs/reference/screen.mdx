@@ -574,7 +574,8 @@ await screen.debug();
 Each action resolves one node, waits for actionability, and performs one
 operation. The timeout is
 [`config.actionTimeout`](/reference/config#actiontimeout), and every action
-takes `{ timeout }` to override it: `0` waits until the test timeout. An
+takes `{ timeout }` to override it: `0` waits until
+the test timeout, or `cleanupTimeout` in `afterEach`. An
 action takes only the options its signature names.
 
 | Throws | When |

@@ -34,6 +34,7 @@ describe('checkStepTimeout', () => {
   it('gives withTimeout no timer for the infinite budget of 0', async () => {
     vi.useFakeTimers();
     const pending = withTimeout(new Promise<string>((resolve) => setTimeout(() => resolve('done'), 60_000)), stepTimeout(0, 'tap')!, () => new Error('timed out'));
+    expect(vi.getTimerCount()).toBe(1);
     await vi.advanceTimersByTimeAsync(60_000);
     await expect(pending).resolves.toBe('done');
   });

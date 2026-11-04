@@ -142,7 +142,8 @@ actionTimeout: 10_000, // default: 30000
 
 - A targeted agent action is bounded by the smaller of `actionTimeout` and 15 s.
 - A call's own `timeout` option wins over it. `timeout: 0` sets no deadline
-  for that call; the test timeout still bounds it.
+  for that call; the test timeout, or `cleanupTimeout` in `afterEach`, still
+  bounds it.
 - `--action-timeout <ms>` overrides it for one run.
 
 #### `assertionTimeout`
@@ -154,7 +155,8 @@ assertionTimeout: 10_000, // default: 5000
 ```
 
 - A matcher's own `timeout` option wins over it. `timeout: 0` sets no deadline
-  for that matcher; the test timeout still bounds it.
+  for that matcher; the test timeout, or `cleanupTimeout` in `afterEach`,
+  still bounds it.
 - `--assertion-timeout <ms>` overrides it for one run.
 
 #### `cleanupTimeout`

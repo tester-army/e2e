@@ -263,7 +263,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.unroute()` | `browser.unroute()` | web only |
 | `page.unrouteAll()` | `browser.unrouteAll()` | web only; clears test routes |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `body()`, `json()`, `text()`. A string is the glob of `browser.route`, tested against the whole URL, query included: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `'\\?'` is a literal `?` | web only |
-| `{ timeout: 0 }` for no timeout | the same; the test timeout still bounds it | same |
+| `{ timeout: 0 }` for no timeout | the same; the test timeout, or `cleanupTimeout` in `afterEach`, still bounds it | same |
 | `response.ok()`, `response.request()` | `status` | missing |
 | `page.waitForRequest()`, `request.postDataJSON()` | none yet for `waitForRequest`; `route.request.postData` is a string | missing |
 | `routeFromHAR()`, `routeWebSocket()` | not yet | missing |

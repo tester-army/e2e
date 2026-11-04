@@ -1764,7 +1764,7 @@ const operation = context.operation(stepTimeout(options?.timeout, 'kiosk.print')
 - `withTimeout` races a promise against a timeout and throws what
   `onTimeout` builds.
 - `stepTimeout` turns a call's own `timeout` option into a budget for
-  `context.operation`: `0` waits until the test timeout, and a negative,
+  `context.operation`: `0` waits until the test timeout, or `cleanupTimeout` in `afterEach`, and a negative,
   `NaN`, or infinite one is `INVALID_ARGUMENT`.
 - `withinCleanupBudget` never rejects. It resolves when the promise settles,
   failures included, when `signal` aborts, or when `timeoutMs` passes.
