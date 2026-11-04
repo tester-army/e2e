@@ -70,6 +70,17 @@ describe('the bundled agent skill', () => {
     }
   });
 
+  it('links every file of a consumer skill from its SKILL.md', () => {
+    // Hermes Agent installs a skill from GitHub as SKILL.md plus the files it links, nothing else.
+    const skills = new URL('../../../../skills/', import.meta.url);
+    for (const entry of readdirSync(skills, { withFileTypes: true }).filter((dirent) => dirent.isDirectory())) {
+      const skill = new URL(`${entry.name}/`, skills);
+      const content = readFileSync(new URL('SKILL.md', skill), 'utf8');
+      const files = markdownFiles(skill, '').filter((file) => file !== 'SKILL.md');
+      for (const file of files) expect(content, `${entry.name}/${file}`).toContain(`](${file})`);
+    }
+  });
+
   it('ships the docs pages in the published package through the build copy', () => {
     expect(packageJson.files).toContain('docs');
   });
