@@ -17,6 +17,8 @@ tracker.
 
 ## Issues
 
+- Questions and help requests go to [Discord](https://tester.army/discord),
+  not issues. Question issues are closed.
 - Bug reports need a link to a public repository or sandbox that reproduces
   the bug, and the steps to run it. Reports without them are closed.
 - Feature requests need the proposed API, its upsides, and its downsides.
