@@ -1437,6 +1437,66 @@ describe('session hooks, viewport swipe, location, artifacts', () => {
     expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(0);
   });
 
+  it.each([
+    { top: 200, from: 150, to: 50 },
+    { top: 400, from: 300, to: 100 },
+  ])('keeps a screen swipe in the known screen viewport when the app is clipped and the keyboard starts at $top', async ({ top, from, to }) => {
+    const h = harness();
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      viewport: { width: 130, height: 281.33 },
+      keyboard: { kind: 'visible', frame: { x: 0, y: top, width: 390, height: 844 - top } },
+    }));
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(h.fake.lastArgs('interactions.swipe')).toEqual({
+      from: { x: 195, y: from },
+      to: { x: 195, y: to },
+      settle: true,
+      settleQuietMs: 150,
+    });
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(0);
+  });
+
+  it('follows a rotated capture for a screen swipe without reusing the portrait viewport', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      viewport: { width: 844, height: 390 },
+      keyboard: { kind: 'visible', frame: { x: 0, y: 230, width: 844, height: 160 } },
+    }));
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({
+      from: { x: 422, y: 172.5 },
+      to: { x: 422, y: 57.5 },
+    });
+  });
+
+  it('uses the known viewport for a screen swipe when the capture omits it', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    h.fake.respond('capture.snapshot', () => ({
+      ...SETTINGS_SNAPSHOT,
+      viewport: undefined,
+      keyboard: { kind: 'visible', frame: { x: 0, y: 400, width: 390, height: 444 } },
+    }));
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({
+      from: { x: 195, y: 300 },
+      to: { x: 195, y: 100 },
+    });
+  });
+
   it('keeps a screen swipe on the default scroll path when keyboard geometry is unavailable', async () => {
     const h = harness();
     await openAttempt(h);
