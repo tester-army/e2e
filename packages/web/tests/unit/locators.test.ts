@@ -162,6 +162,8 @@ describe('projectExpression', () => {
     expect(inHiddenFrame(button())).toEqual([ROOTS, 'role(button)', 'locator(css=:not(*))']);
     const text: LocatorExpression = { kind: 'query', query: { kind: 'text', value: { kind: 'string', value: 'Save', exact: true } } };
     expect(inHiddenFrame(text)).toEqual([ROOTS, 'text(Save,exact)']);
+    const visibleText: LocatorExpression = { kind: 'query', query: { ...text.query, visible: true } };
+    expect(inHiddenFrame(visibleText)).toEqual([ROOTS, 'text(Save,exact)', 'locator(css=:not(*))']);
   });
 
   it('projects a testId query onto the configured attribute, encoded as getByTestId encodes it', () => {

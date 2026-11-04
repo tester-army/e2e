@@ -66,14 +66,16 @@ describe('a node inside a hidden frame', () => {
 
   it('reads as hidden when its frame, an ancestor of the frame, or an enclosing frame is hidden', async () => {
     for (const frames of [['#hidden'], ['#hidden-parent'], ['#outer', '#inner']]) {
-      const [node] = await engine.locate!(withinFrames(frames, BUTTON), operation);
-      expect(node?.states?.hidden).toBe(true);
+      const matches = await engine.locate!(withinFrames(frames, BUTTON), operation);
+      expect(matches).toHaveLength(1);
+      expect(matches[0]!.states?.hidden).toBe(true);
     }
   });
 
   it('reads as shown in a frame that shows itself again under a hidden ancestor', async () => {
-    const [node] = await engine.locate!(withinFrames(['#override'], BUTTON), operation);
-    expect(node?.states?.hidden).toBeUndefined();
+    const matches = await engine.locate!(withinFrames(['#override'], BUTTON), operation);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.states?.hidden).toBeUndefined();
   });
 
   it('is no match of a visible or role query, indexed or not', async () => {
@@ -86,7 +88,8 @@ describe('a node inside a hidden frame', () => {
 
   it('reads as shown once the frame shows again', async () => {
     await page.locator('#hidden').evaluate((frame: HTMLElement) => { frame.style.visibility = 'visible'; });
-    const [node] = await engine.locate!(withinFrames(['#hidden'], BUTTON), operation);
-    expect(node?.states?.hidden).toBeUndefined();
+    const matches = await engine.locate!(withinFrames(['#hidden'], BUTTON), operation);
+    expect(matches).toHaveLength(1);
+    expect(matches[0]!.states?.hidden).toBeUndefined();
   });
 });
