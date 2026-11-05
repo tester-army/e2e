@@ -182,6 +182,10 @@ async function captureInto(
   let elements: readonly (ElementHandle<Element> | undefined)[];
   if (deps.commit === undefined) {
     elements = await collectFrameElements(scope, elementsHandle, nodes);
+    // A read after the element array rejects a navigation that committed while
+    // it was being read; the tree and the URL would otherwise come from
+    // different documents.
+    await scope.read(() => captured.evaluate(() => undefined));
   } else {
     const collected = await collectElementHandles(scope, elementsHandle, nodes.length);
     collected.forEach((element, index) => stage(ids[index] as string, element));
