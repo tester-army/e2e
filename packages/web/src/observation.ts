@@ -11,6 +11,7 @@ import {
   OBSERVED_TEXT_LIMIT,
   type NodeRef,
   type SemanticNode,
+  type ViewportPoint,
 } from 'e2e/engine';
 import {
   readDocumentSemanticsFunction,
@@ -329,22 +330,28 @@ export function contentBox(border: Rect, inset: Rect): Rect {
 
 /** The tree with every box translated into the frame's space and clipped to its box; a box left empty by the clip is dropped. */
 function placeInFrame(node: SemanticNode, frame: Rect): SemanticNode {
-  const { rect, ...rest } = node;
-  const placed = rect === undefined ? undefined : placeRectInFrame(rect, frame);
+  const { rect, origin, ...rest } = node;
   return {
     ...rest,
-    ...(placed === undefined ? {} : { rect: placed }),
+    ...(rect === undefined ? {} : placeBoxInFrame(rect, origin, frame)),
     ...(node.children === undefined ? {} : { children: node.children.map((child) => placeInFrame(child, frame)) }),
   };
 }
 
 /**
- * A box a child document measured against its own viewport, in the top-level
- * viewport's space: shifted by the frame's box and clipped to it; undefined
- * when nothing of it is inside the frame.
+ * A node box a child document measured against its own viewport, in the
+ * top-level viewport's space: `rect` shifted by the frame's box and clipped
+ * to it, empty when nothing of it is inside the frame. `origin` is shifted
+ * but never clipped, and a clip that moves the box's corner keeps the
+ * unclipped corner as `origin`, so an offset into the node lands where it
+ * would at the top level.
  */
-export function placeRectInFrame(rect: Rect, frame: Rect): Rect | undefined {
-  return clipRect(offsetRect(rect, frame), frame);
+export function placeBoxInFrame(rect: Rect, origin: ViewportPoint | undefined, frame: Rect): Pick<SemanticNode, 'rect' | 'origin'> {
+  const placed = clipRect(offsetRect(rect, frame), frame);
+  if (placed === undefined) return {};
+  const corner = origin ?? rect;
+  const shifted = { x: corner.x + frame.x, y: corner.y + frame.y };
+  return shifted.x === placed.x && shifted.y === placed.y ? { rect: placed } : { rect: placed, origin: shifted };
 }
 
 function offsetRect(rect: Rect, by: Rect): Rect {
@@ -387,6 +394,7 @@ export function toSemanticNode(
     ...(raw.level !== null ? { level: raw.level } : {}),
     attributes: raw.attributes,
     ...(raw.rect !== null ? { rect: raw.rect } : {}),
+    ...(raw.origin !== null ? { origin: raw.origin } : {}),
     ...(framePath.length > 0 ? { framePath } : {}),
     ...(children.length > 0 ? { children } : {}),
   };
