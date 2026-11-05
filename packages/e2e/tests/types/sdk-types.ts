@@ -1025,3 +1025,5 @@ void (connectEngine({ manifest: protocolManifest, transport: socketTransport({ h
 void ({ ...protocolManifest, methods: ['engine/teleport'] } satisfies EngineManifest);
 // @ts-expect-error initialization options cross the wire, so they are JSON
 void connectEngine({ manifest: protocolManifest, transport: socketTransport({ host: '127.0.0.1', port: 7000 }), initializationOptions: { onReady: () => {} } });
+
+await agent.assert('all settings are reachable', { explore: true, maxSteps: 10, maxModelCalls: 6, vision: 'only' });
