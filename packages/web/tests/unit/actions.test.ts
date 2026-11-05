@@ -321,7 +321,7 @@ describe('dispatchLocatorAction', () => {
       source.target,
       { kind: 'dragTo', target: { id: 'n2', revision: 'r' } },
       OPERATION,
-      () => destination.target,
+      () => Promise.resolve(destination.target),
     );
     expect(source.locator.dragTo).toHaveBeenCalledWith(destination.target.locator, { timeout: 7 });
   });

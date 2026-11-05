@@ -14,11 +14,11 @@ describe('located element refs', () => {
     const refs = new RefRegistry();
     const pinned = handle();
     const id = refs.storeLocated({ kind: 'element', element: pinned.element });
-    expect(refs.lookup({ id, revision: '' })).toEqual({ kind: 'element', element: pinned.element });
+    await expect(refs.lookup({ id, revision: '' })).resolves.toEqual({ kind: 'element', element: pinned.element });
     refs.clear();
     await Promise.resolve();
     expect(pinned.dispose).toHaveBeenCalledTimes(1);
-    expect(() => refs.lookup({ id, revision: '' })).toThrow(/stale/);
+    await expect(refs.lookup({ id, revision: '' })).rejects.toThrow(/stale/);
   });
 
   it('are disposed when pruned past the registry bound', async () => {

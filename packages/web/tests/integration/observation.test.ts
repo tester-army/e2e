@@ -1,9 +1,10 @@
 /** Observation metadata must not retain earlier captures in the browser. */
 
-import { chromium, type ElementHandle } from 'playwright-core';
+import { chromium } from 'playwright-core';
 import { expect, it } from 'vitest';
 import { captureDocument, type DocumentHost } from '../../src/observation.ts';
 import type { readDocumentSemanticsFunction } from '../../src/read-node.ts';
+import { Published } from '../helpers/published.ts';
 
 it('collects captured metadata while published element handles stay actionable', async () => {
   const browser = await chromium.launch();
@@ -23,22 +24,22 @@ it('collects captured metadata while published element handles stay actionable',
       }) as DocumentHost['evaluateHandle'],
     };
     let nextId = 1;
-    let published = new Map<string, ElementHandle<Element>>();
+    let published = new Published();
     let buttonId: string | undefined;
     for (let index = 0; index < 3; index += 1) {
       const previous = published;
-      published = new Map();
+      published = new Published();
       const snapshot = await captureDocument(
         {
           testIdAttribute: 'data-testid',
           site: undefined,
           reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-          commit: (id, element) => { published.set(id, element); },
+          commit: published.commit,
         },
         host,
         { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
       );
-      await Promise.all([...previous.values()].map((element) => element.dispose()));
+      previous.dispose();
       expect(snapshot.nodeCount).toBe(2);
       buttonId = snapshot.tree.children?.find((node) => node.role === 'button')?.ref.id;
     }
@@ -47,9 +48,9 @@ it('collects captured metadata while published element handles stay actionable',
     expect(await metadata.evaluate((refs) => refs.map((ref) => ref.deref() === undefined)))
       .toEqual([true, true, true, true, true, true]);
     expect(buttonId).toBeDefined();
-    await published.get(buttonId!)!.click();
+    await (await published.element(buttonId!)).click();
     expect(await page.getByRole('button').innerText()).toBe('Clicked');
-    await Promise.all([...published.values()].map((element) => element.dispose()));
+    published.dispose();
     await metadata.dispose();
   } finally {
     await browser.close();

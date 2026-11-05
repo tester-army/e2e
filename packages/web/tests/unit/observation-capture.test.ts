@@ -7,7 +7,7 @@ import { PlaywrightSurface } from '../../src/surface.ts';
 import { BrowserConnection } from '../../src/browser-connection.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
-type ReadStage = 'evaluation' | 'metadata' | 'elements' | 'properties' | 'frame';
+type ReadStage = 'evaluation' | 'metadata' | 'elements' | 'element' | 'frame';
 const surfaces = new Set<PlaywrightSurface>();
 
 /** One externally completed protocol reply. */
@@ -34,16 +34,16 @@ function document(stalled?: ReadStage) {
   };
   const elements = {
     dispose: vi.fn(async () => undefined),
-    getProperties: vi.fn(async () => {
-      await checkpoint('properties');
-      return new Map([['0', element]]);
+    evaluateHandle: vi.fn(async () => {
+      await checkpoint('element');
+      return element;
     }),
   };
   const captured = {
     dispose: vi.fn(async () => undefined),
     evaluate: vi.fn(async () => {
       await checkpoint('metadata');
-      return JSON.stringify({ nodes: [{ ...raw, ...(stalled === 'frame' ? { frameSelector: '#child' } : {}) }], ids: ['n1'], truncated: false });
+      return JSON.stringify({ nodes: [{ ...raw, ...(stalled === 'frame' || stalled === 'element' ? { frameSelector: '#child' } : {}) }], ids: ['n1'], truncated: false });
     }),
     getProperty: vi.fn(async () => { await checkpoint('elements'); return elements; }),
   };
@@ -102,7 +102,7 @@ afterEach(async () => {
 });
 
 describe('whole observation capture ownership', () => {
-  it.each<ReadStage>(['evaluation', 'metadata', 'elements', 'properties', 'frame'])('recovers a stalled %s and disposes late handles', async (stage) => {
+  it.each<ReadStage>(['evaluation', 'metadata', 'elements', 'element', 'frame'])('recovers a stalled %s and disposes late handles', async (stage) => {
     const fixture = await setup(stage);
     const result = fixture.surface.observe(fixture.operation, { pixelFallback: true });
     await vi.advanceTimersByTimeAsync(60);
@@ -113,8 +113,9 @@ describe('whole observation capture ownership', () => {
     expect(fixture.captured.dispose).toHaveBeenCalledOnce();
     if (stage === 'evaluation') expect(fixture.captured.evaluate).not.toHaveBeenCalled();
     if (stage === 'metadata') expect(fixture.captured.getProperty).not.toHaveBeenCalled();
-    if (stage === 'elements') expect(fixture.elements.getProperties).not.toHaveBeenCalled();
-    if (stage === 'properties' || stage === 'frame') expect(fixture.element.dispose).toHaveBeenCalledOnce();
+    if (stage === 'elements') expect(fixture.elements.evaluateHandle).not.toHaveBeenCalled();
+    if (stage === 'elements' || stage === 'element' || stage === 'frame') expect(fixture.elements.dispose).toHaveBeenCalledOnce();
+    if (stage === 'element' || stage === 'frame') expect(fixture.element.dispose).toHaveBeenCalledOnce();
   });
 
   it('times out stalled metadata within the operation budget when fallback is disabled', async () => {
@@ -135,7 +136,7 @@ describe('whole observation capture ownership', () => {
     fixture.elements.dispose.mockImplementation(() => new Promise(() => undefined));
     expect((await fixture.surface.observe(fixture.operation)).treeUnavailable).toBeUndefined();
     expect(fixture.captured.dispose).toHaveBeenCalledOnce();
-    expect(fixture.element.dispose).not.toHaveBeenCalled();
+    expect(fixture.elements.evaluateHandle).not.toHaveBeenCalled();
   });
 
   it.each(['mask', 'screenshot'])('keeps a complete tree when optional %s capture exhausts its deadline', async (stage) => {
@@ -148,7 +149,7 @@ describe('whole observation capture ownership', () => {
     const snapshot = await result;
     expect(snapshot.treeUnavailable).toBeUndefined();
     expect(snapshot.pixels).toBeUndefined();
-    expect(fixture.element.dispose).not.toHaveBeenCalled();
+    expect(fixture.elements.dispose).not.toHaveBeenCalled();
     gate.resolve();
     await vi.advanceTimersByTimeAsync(0);
     if (stage === 'mask') expect(fixture.screenshot).not.toHaveBeenCalled();
@@ -165,7 +166,7 @@ describe('whole observation capture ownership', () => {
     gate.resolve();
     await vi.advanceTimersByTimeAsync(0);
     expect(fixture.screenshot).not.toHaveBeenCalled();
-    expect(fixture.element.dispose).toHaveBeenCalledOnce();
+    expect(fixture.elements.dispose).toHaveBeenCalledOnce();
   });
 
   it('runs a concurrent observation after the one in flight, and publishes both in call order', async () => {
@@ -181,8 +182,8 @@ describe('whole observation capture ownership', () => {
     fixture.gate.resolve();
     await expect(older).resolves.toMatchObject({ location: 'https://app.test' });
     await expect(newer).resolves.toMatchObject({ location: 'https://app.test' });
-    expect(fixture.element.dispose).toHaveBeenCalledOnce();
-    expect(current.element.dispose).not.toHaveBeenCalled();
+    expect(fixture.elements.dispose).toHaveBeenCalledOnce();
+    expect(current.elements.dispose).not.toHaveBeenCalled();
   });
 
   it('cannot publish a capture after its page was replaced', async () => {
@@ -194,6 +195,6 @@ describe('whole observation capture ownership', () => {
     await fixture.surface.ensurePage();
     fixture.gate.resolve();
     await failure;
-    expect(fixture.element.dispose).toHaveBeenCalledOnce();
+    expect(fixture.elements.dispose).toHaveBeenCalledOnce();
   });
 });
