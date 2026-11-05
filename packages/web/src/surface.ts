@@ -890,9 +890,10 @@ export class PlaywrightSurface {
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
         const { refs } = this.requireSession();
-        return refs.lookup(ref).then((target) =>
-          dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other)),
-        );
+        return refs.lookup(ref).then((target) => {
+          currentOperation.signal.throwIfAborted();
+          return dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+        });
       },
       (cause) => classifyActionError(cause, action),
     ));

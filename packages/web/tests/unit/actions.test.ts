@@ -325,6 +325,24 @@ describe('dispatchLocatorAction', () => {
     );
     expect(source.locator.dragTo).toHaveBeenCalledWith(destination.target.locator, { timeout: 7 });
   });
+
+  it('starts no drag when the second side resolves after the operation ended', async () => {
+    const source = stubLocator();
+    const destination = stubLocator();
+    const controller = new AbortController();
+    await expect(
+      dispatchLocatorAction(
+        source.target,
+        { kind: 'dragTo', target: { id: 'n2', revision: 'r' } },
+        { timeoutMs: 7, signal: controller.signal },
+        async () => {
+          controller.abort(new EngineError('OPERATION_TIMEOUT', 'drag timed out', { retryable: false }));
+          return destination.target;
+        },
+      ),
+    ).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+    expect(source.locator.dragTo).not.toHaveBeenCalled();
+  });
 });
 
 describe('dispatchPointerAction', () => {

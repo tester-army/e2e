@@ -213,6 +213,7 @@ export async function dispatchLocatorAction(
       return;
     case 'dragTo': {
       const other = await lookup(action.target);
+      operation.signal.throwIfAborted();
       // Playwright's own drag when both sides are locators: it waits for
       // actionability on each and reports better failures than a pointer
       // sequence can. Anything else - an observed reference on either side -

@@ -7,11 +7,11 @@ import { RefRegistry, type ListedTarget } from '../../src/refs.ts';
 
 /** A scripted array handle whose `evaluateHandle` answers with one element handle per call. */
 function scripted(options: { missing?: boolean; gate?: Promise<void> } = {}) {
-  const made: { dispose: ReturnType<typeof vi.fn> }[] = [];
+  const made: { index: number; dispose: ReturnType<typeof vi.fn> }[] = [];
   const dispose = vi.fn(() => Promise.resolve());
-  const evaluateHandle = vi.fn(async () => {
+  const evaluateHandle = vi.fn(async (_read: unknown, index: number) => {
     await options.gate;
-    const element = { dispose: vi.fn(() => Promise.resolve()), asElement: () => (options.missing === true ? null : element) };
+    const element = { index, dispose: vi.fn(() => Promise.resolve()), asElement: () => (options.missing === true ? null : element) };
     made.push(element);
     return element;
   });
@@ -96,6 +96,7 @@ describe('observed refs', () => {
       generation: new Map([['n1', target(list, 0)], ['n2', target(list, 1)]]),
     });
     const resolved = await registry.lookup({ id: 'n2', revision: '' });
+    expect(made.map((element) => element.index)).toEqual([1]);
     expect(resolved).toEqual({ kind: 'element', element: made[0] });
   });
 
