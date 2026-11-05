@@ -7,7 +7,7 @@ icon: "code-branch"
 Agentic testing lets you describe a user's intention and the expected
 result in natural language. The agent can choose the actions to perform
 and judge whether the screen meets your expectations. Your test focuses
-on the outcome, with fewer selectors to maintain as the UI changes.
+on the outcome, with no selectors to maintain as the UI changes.
 
 Deterministic testing specifies the actions and checks in code. Both
 approaches can test user outcomes, and e2e lets you mix them in one test.
@@ -18,9 +18,9 @@ Use agentic tests when UI changes keep forcing you to update selectors
 in your tests. They also suit flows that take many interactions but are
 easy to describe in plain English, such as filling out and submitting a form.
 
-With `agent.act`, you describe a user intention, such as applying a
+`agent.act` lets you describe a user intention, such as applying a
 discount code. The agent figures out which controls to use and what to do.
-With `agent.assert`, you describe what should be true on the screen.
+`agent.assert` lets you describe what should be true on the screen.
 
 For example, inside a test with the `app` and `agent` fixtures:
 
