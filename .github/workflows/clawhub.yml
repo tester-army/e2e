@@ -1,0 +1,94 @@
+name: clawhub
+
+# Publishes the consumer skills under skills/ to ClawHub as @e2e/<skill>, from
+# that e2e release's tag. `release.yml` calls it after each release that
+# published e2e; dispatch it by hand with the newest version to retry a
+# failed publish (an older tag would publish older skills), or with dry-run
+# to see what would change. A skill whose files match a version already on
+# ClawHub is skipped; a changed one gets the next patch version there. The
+# CLI comes from the lockfile in .github/actions/clawhub, since it holds the
+# token.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: e2e version to publish from, e.g. 0.22.0
+        required: true
+        type: string
+    secrets:
+      CLAWHUB_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: e2e version to publish from, e.g. 0.22.0
+        required: true
+        type: string
+      dry-run:
+        description: Print what would be published without publishing
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: clawhub
+  cancel-in-progress: false
+
+env:
+  VERSION: ${{ inputs.version }}
+  DRY_RUN: ${{ inputs.dry-run && 'true' || 'false' }}
+
+jobs:
+  publish:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - name: Check the version
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version must be a release version like 0.22.0, got: $VERSION"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: e2e@${{ inputs.version }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+
+      # From the default branch: a release tag can predate the action.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/actions/clawhub
+          path: ci
+          persist-credentials: false
+
+      - uses: ./ci/.github/actions/clawhub
+
+      # An empty token would start the CLI's device login, whose code lands in the public log.
+      - name: Log in
+        run: |
+          [ -n "$CLAWHUB_TOKEN" ] || { echo "::error::the CLAWHUB_TOKEN secret is not set"; exit 1; }
+          "$RUNNER_TEMP/clawhub/node_modules/.bin/clawhub" login --token "$CLAWHUB_TOKEN"
+        env:
+          CLAWHUB_TOKEN: ${{ secrets.CLAWHUB_TOKEN }}
+
+      - name: Publish
+        run: |
+          commit="$(git rev-parse HEAD)"
+          failed=()
+          dry=()
+          [ "$DRY_RUN" = true ] && dry=(--dry-run)
+          for dir in skills/*/; do
+            skill="$(basename "$dir")"
+            "$RUNNER_TEMP/clawhub/node_modules/.bin/clawhub" --no-input skill publish "$dir" \
+              --owner e2e --slug "$skill" --name "$skill" \
+              --changelog "From e2e $VERSION." \
+              --source-repo "$GITHUB_REPOSITORY" --source-commit "$commit" \
+              --source-ref "e2e@$VERSION" --source-path "skills/$skill" \
+              "${dry[@]}" \
+              || failed+=("$skill")
+          done
+          [ ${#failed[@]} -eq 0 ] || { echo "::error::could not publish: ${failed[*]}"; exit 1; }

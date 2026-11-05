@@ -1,0 +1,13 @@
+name: clawhub
+description: >-
+  Installs the ClawHub CLI from this directory's lockfile, without install
+  scripts, at $RUNNER_TEMP/clawhub/node_modules/.bin/clawhub.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        mkdir -p "$RUNNER_TEMP/clawhub"
+        cp "$GITHUB_ACTION_PATH/package.json" "$GITHUB_ACTION_PATH/package-lock.json" "$RUNNER_TEMP/clawhub/"
+        npm ci --prefix "$RUNNER_TEMP/clawhub" --ignore-scripts --no-audit --no-fund
