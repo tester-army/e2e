@@ -35,7 +35,7 @@ Without the key, the agent tests skip. Add `-- --no-cache` to use fresh
 model calls. Results are in `e2e/.e2e/report.json`.
 
 See [e2e/e2e.config.ts](e2e/e2e.config.ts) and [e2e/tests/](e2e/tests/) for the setup.
-For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mobile).
+For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](HelloApp/Fonts/OFL.txt).
 

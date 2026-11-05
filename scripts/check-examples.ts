@@ -1,6 +1,6 @@
 /**
  * Checks `examples/examples.json`, the list of examples on
- * https://e2e.tester.army/examples, against `examples/examples.schema.json`
+ * https://e2e.com/examples, against `examples/examples.schema.json`
  * and the rules in `examples-registry.ts`.
  *
  * Usage: `node scripts/check-examples.ts [--online]`. `--online` also fetches

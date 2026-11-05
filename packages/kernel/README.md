@@ -34,7 +34,7 @@ a test's `video` option) gets a Kernel replay of the browser's screen as its
 `video/replay.mp4`; a headless browser and `replay: false` get the page
 screencast.
 
-Full documentation lives at [e2e.tester.army/docs/integrations/kernel](https://e2e.tester.army/docs/integrations/kernel).
+Full documentation lives at [e2e.com/docs/integrations/kernel](https://e2e.com/docs/integrations/kernel).
 
 ## License
 

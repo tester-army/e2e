@@ -36,7 +36,7 @@ or later, verdicts see a masked screenshot and
 records every model call against the step budget. Secrets stay declared
 handles that only `typeSecret` fills.
 
-See the [decision models guide](https://e2e.tester.army/docs/decision-models)
+See the [decision models guide](https://e2e.com/docs/decision-models)
 for setup, vision, gates, provider options, and limits.
 
 ## Test filter
@@ -58,4 +58,4 @@ export default {
 ```
 
 The model must answer `boolean` questions. See
-[Test filters](https://e2e.tester.army/docs/filters) for CI setup.
+[Test filters](https://e2e.com/docs/filters) for CI setup.

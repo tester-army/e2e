@@ -1,9 +1,9 @@
 # Security
 
 The user-facing version of this document is
-[e2e.tester.army/docs/security](https://e2e.tester.army/docs/security). Every
+[e2e.com/docs/security](https://e2e.com/docs/security). Every
 rule and limit, as the code enforces it, is in
-[e2e.tester.army/docs/reference/security](https://e2e.tester.army/docs/reference/security).
+[e2e.com/docs/reference/security](https://e2e.com/docs/reference/security).
 
 ## Reporting a vulnerability
 
@@ -112,7 +112,7 @@ arguments or results, exploration goals, or findings. Engine names, platforms, m
 ids, and MCP client names are sent as declared when they are plain tokens and as
 `other` otherwise; an error code that is not an upper-case token is `OTHER`.
 Every property
-is listed at [e2e.tester.army/docs/telemetry](https://e2e.tester.army/docs/telemetry),
+is listed at [e2e.com/docs/telemetry](https://e2e.com/docs/telemetry),
 and `E2E_TELEMETRY_DEBUG=1` prints each event instead of sending it. PostHog
 stores no request address and, because every event carries
 `$geoip_disable: true`, derives no location from it.
@@ -125,7 +125,7 @@ Telemetry falls under the disclosure policy above.
 
 There is no crash reporting. The main outbound connections are below; the
 full list, integrations and reporters included, is under
-[Outbound connections](https://e2e.tester.army/docs/reference/security#outbound-connections):
+[Outbound connections](https://e2e.com/docs/reference/security#outbound-connections):
 
 - one telemetry request per CLI invocation or completed `run()` to
   `eu.i.posthog.com`, plus at most one per session that `e2e mcp` serves,

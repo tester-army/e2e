@@ -1,6 +1,6 @@
 /**
  * The examples registry, `examples/examples.json`: every example on
- * https://e2e.tester.army/examples, official, partner, and community. The site
+ * https://e2e.com/examples, official, partner, and community. The site
  * (tester-army/e2e-site) downloads the file at build time and renders a page
  * per entry from it and the README at its `repository` (or its `readme`);
  * `site.yml` redeploys

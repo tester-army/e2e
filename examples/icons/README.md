@@ -3,7 +3,7 @@
 These are the logos of the examples in `../examples.json` that are about one
 framework or one company's product, such as the starter apps and the Stripe
 example. An example's `icon` is a file name in
-this folder, which e2e.tester.army serves at `/examples/icons/`; an example
+this folder, which e2e.com serves at `/examples/icons/`; an example
 without one shows the e2e logo. When you add a logo, add the file here and
 list its source below.
 

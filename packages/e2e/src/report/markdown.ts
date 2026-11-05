@@ -92,7 +92,7 @@ const MAX_EVIDENCE_PATHS = 4;
 const MAX_ASSESSMENT_CHARS = 2_000;
 const MAX_GOAL_CHARS = 400;
 const MAX_LEFT_OUT_ROWS = 50;
-const SITE_URL = 'https://e2e.tester.army';
+const SITE_URL = 'https://e2e.com';
 const TRUNCATED_NOTE = '_Truncated to fit a pull request comment; the full report is in `report.json`._';
 
 /** A result with what it left behind, read once. */

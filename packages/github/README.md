@@ -26,7 +26,7 @@ keeps a comment of its own. When the reporter cannot
 post (another CI, a push, a fork's read-only token) it says why in one summary
 row and never changes the run's exit code.
 
-Full documentation lives at [e2e.tester.army/docs/github](https://e2e.tester.army/docs/github).
+Full documentation lives at [e2e.com/docs/github](https://e2e.com/docs/github).
 
 ## License
 

@@ -24,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const DOCS = join(ROOT, 'docs');
-const SITE = 'https://e2e.tester.army/docs';
+const SITE = 'https://e2e.com/docs';
 const SIDEBAR_DIR = '/images/icons/';
 const CARD_DIR = '/images/integrations/';
 
