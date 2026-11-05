@@ -63,6 +63,7 @@
               "index",
               "quickstart",
               "core-concepts",
+              "agentic-vs-deterministic",
               "coding-agents",
               "mcp-server",
               "ci"

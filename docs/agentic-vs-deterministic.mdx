@@ -1,0 +1,91 @@
+---
+title: Agentic or deterministic
+description: Choose natural-language goals, exact actions, or a mix of both for your end-to-end tests.
+icon: "code-branch"
+---
+
+Agentic testing lets you describe a user's intention in natural language.
+The agent reads the screen and chooses the actions needed to reach that
+goal. Your test focuses on the outcome, with fewer selectors to maintain
+as the UI changes.
+
+Deterministic testing specifies the actions and checks in code. Both
+approaches can test user outcomes, and e2e lets you mix them in one test.
+
+## When to use agentic tests?
+
+Use agentic tests for user journeys where the outcome matters and the UI
+changes often. They also suit flows that take many interactions but are
+easy to describe as a goal, such as filling out and submitting a form.
+
+With `agent.act`, you describe what the user wants to do without
+prescribing every click.
+
+For example, inside a test with the `app`, `agent`, and `screen` fixtures:
+
+```ts
+await app.open('/checkout');
+await agent.act('apply the discount code SUMMER');
+await expect(screen.getByRole('status')).toHaveText('10% off');
+```
+
+You don't need to name the discount field or the button that applies it.
+
+Tests tied to CSS classes or test IDs need edits when those identifiers
+change. An agent can find controls from the current screen, so a moved
+button or a redesigned form can leave the goal unchanged. This reduces
+time spent repairing selectors after UI changes.
+
+For a complex journey, write a sequence of goals in plain English. Keep
+each goal to one outcome and check it before continuing. See
+[Goals](/core-concepts#goals) for how to split a journey into steps.
+
+## Specify exact actions
+
+Use locators when the interaction itself matters or the path is already
+short and stable. The same discount test can specify every action:
+
+```ts
+await app.open('/checkout');
+await screen.getByLabel('Discount code').fill('SUMMER');
+await screen.getByRole('button', 'Apply').tap();
+await expect(screen.getByRole('status')).toHaveText('10% off');
+```
+
+These actions and checks make no model calls. Prefer roles and labels so
+the test refers to controls the user recognizes. Deterministic tests don't
+have to depend on CSS classes or test IDs.
+
+Use exact assertions for requirements such as a price, a validation
+message, or a count. If the button must be named `Apply`, a locator that
+requires that name makes the requirement explicit.
+
+## Combine goals with exact checks
+
+Start with agentic actions for a journey that changes often and
+deterministic assertions for its required outcomes, as in the first example.
+
+Use `agent.assert` when the result needs interpretation, such as whether
+a chart trends upward. Keep exact values in deterministic checks. See
+[Assertions](/core-concepts#assertions) for semantic and visual checks.
+
+Adaptation follows the goal you write. If a specific path matters, name
+it in the goal or use locators for those actions. A vague instruction can
+allow a result you didn't intend.
+
+Live agent steps add model latency and cost, and can make mistakes. The
+[replay cache](/cache) can repeat recorded actions without model calls.
+When a recording no longer matches, the agent can adapt to the changed
+UI unless strict cache mode is enabled. See
+[Self-healing tests](/self-healing) for how this works.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Core concepts" icon="lightbulb" href="/core-concepts">
+    Write goals, assertions, and locator steps.
+  </Card>
+  <Card title="Self-healing tests" icon="bandage" href="/self-healing">
+    See how an agent recovers when a recorded flow changes.
+  </Card>
+</CardGroup>
