@@ -279,7 +279,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
     expect(rgb(screenshot, 300, 300)).toEqual([255, 255, 255]);
   });
 
-  test('should work while navigating', { skip: 'a screenshot taken while the page navigates fails as stale instead of capturing whichever document shows (an engine failure, which `fail` does not cover)' }, async ({ app, browser }) => {
+  test('should work while navigating', async ({ app, browser }) => {
     await browser.setViewport({ width: 500, height: 500 });
     await browser.goto('/redirectloop1.html');
     for (let i = 0; i < 10; i++) {

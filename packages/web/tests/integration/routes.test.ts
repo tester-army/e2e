@@ -121,6 +121,7 @@ describe('browser.route decisions', () => {
     browser = createBrowserFixture(surface, {
       app: { site: '127.0.0.1', resolveUrl },
       operation: (timeoutMs = 5_000) => ({ signal, timeoutMs, runId: 'routes', attemptId: 'routes', origin: 'test' }),
+      timeouts: { test: 5_000, assertion: 5_000 },
       expectable: (target: object) => target,
       fixture: (_name: string, target: object) => target,
       attachArtifact: (_kind: string, relative: string) => attached.push(relative),
@@ -549,6 +550,23 @@ describe('browser.route decisions', () => {
       code: 'ACTION_FAILED',
       message: 'route handler already decided; fulfill called twice',
     });
+  });
+
+  it('fails a navigation its route aborted as an action failure, not an engine fault', async () => {
+    await browser.route('**/aborted', (route) => route.abort());
+    await expect(browser.goto(`${origin}/aborted`)).rejects.toMatchObject({
+      code: 'ACTION_FAILED',
+      message: expect.stringContaining(`navigation failed: a route aborted the request for ${origin}/aborted`),
+    });
+  });
+
+  it('fails a navigation with the route error that aborted it', async () => {
+    await browser.route('**/refused', (route) => route.fulfill({ headers: { 'bad name': 'x' } }));
+    await expect(browser.goto(`${origin}/refused`)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('invalid header name: "bad name"'),
+    });
+    await expect(browser.url()).resolves.toBe(`${origin}/`);
   });
 
   it('takes the decision the moment fulfill is called, awaited or not', async () => {

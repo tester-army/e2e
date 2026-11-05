@@ -536,6 +536,12 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       // is latched on the surface and fails the next step with its real cause.
       const handleRoute = async (route: Route): Promise<void> => {
         let decided = false;
+        const request = route.request();
+        // Noted before the abort, so a navigation it fails reads as aborted by the test.
+        const abort = async (): Promise<void> => {
+          surface.noteRouteAbort(request);
+          await route.abort();
+        };
         const decide = (name: string) => {
           if (decided) {
             throw new TestError('ACTION_FAILED', `route handler already decided; ${name} called twice`);
@@ -550,11 +556,10 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           try {
             await act();
           } catch (cause) {
-            await route.abort().catch(() => undefined);
+            await abort().catch(() => undefined);
             throw cause;
           }
         };
-        const request = route.request();
         const postData = request.postData();
         const publicRoute: WebRoute = {
           request: {
@@ -606,7 +611,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           },
           abort: async (...args: unknown[]) => {
             requireNoArguments('route.abort', args);
-            await decideWith('abort', () => route.abort());
+            await decideWith('abort', abort);
           },
         };
         try {
@@ -623,7 +628,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
               ? cause
               : new TestError('ACTION_FAILED', `route handler failed: ${causeMessage(cause)}`),
           );
-          if (!decided) await route.abort().catch(() => undefined);
+          if (!decided) await abort().catch(() => undefined);
         }
       };
       // Tracked so the attempt end waits for a handler still running and

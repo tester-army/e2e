@@ -635,6 +635,9 @@ It does not follow redirects, which could take it past the navigation rule.
   `route.fetch()` headers report them. Any other line break in a header is refused.
 - A handler that throws (a failed `expect` on the request, say) fails the
   next step with that error, or the attempt at its end when no step follows.
+  A step the handler made fail, such as the `goto` whose request it left
+  aborted, fails with the handler's error. A `goto` whose request a handler
+  aborted on purpose fails with `ACTION_FAILED`.
   A handler still running then gets the cleanup budget to finish. Whatever it
   throws after the budget is dropped.
 
