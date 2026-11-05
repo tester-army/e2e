@@ -2,10 +2,10 @@
  * The e2e wordmark: the logotype from the e2e design system, six rows of
  * horizontal bars, drawn in half blocks in the terminal's own foreground the
  * way the logo pack's black and white files fill it. On a terminal that can
- * show it the logo loads top to bottom like a scan, half a terminal row at a
- * time, each bar dim until the scan line has passed it. Where motion does not
- * belong it is printed at rest, and output that is not a terminal never sees
- * it.
+ * show it the logo loads top to bottom like a scan, each bar a thin line, dim
+ * until the scan line has passed it; once every bar is drawn they all fill to
+ * full height at once. Where motion does not belong it is printed at rest, and
+ * output that is not a terminal never sees it.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -36,19 +36,20 @@ const BARS: readonly string[] = [
 
 /**
  * A terminal row holds two pixel rows. A bar is two pixel rows and the gap
- * between bars two more, so at rest every bar is one row of full blocks with
- * a blank row under it; the scan line moves one pixel row, half a terminal
- * row, at a time.
+ * between bars one, the closest terminal resolution gets to the logo's thick
+ * bars and thin gaps; every row of the output carries at most one bar, and a
+ * bar's thin line is its top pixel row.
  */
 const BAR_PX = 2;
-const PITCH_PX = 4;
+const PITCH_PX = 3;
 const WORDMARK_WIDTH = BARS[0]!.length;
 const WORDMARK_PX = (BARS.length - 1) * PITCH_PX + BAR_PX;
 /** Terminal rows the wordmark takes. */
 const WORDMARK_ROWS = Math.ceil(WORDMARK_PX / 2);
 
 const FRAME_MS = 16;
-/** One pass of the scan line from the top of the logo to the bottom. */
+/** One pass of the scan line from the top of the logo to the bottom, then a beat with every thin line drawn before the bars fill. */
+const SCAN_MS = 420;
 const DURATION_MS = 500;
 /** How far, in pixel rows, the scan line moves past a bar before the bar turns solid. */
 const SCAN_HEAD_PX = 1.5;
@@ -98,16 +99,19 @@ function cells(grid: readonly (readonly (Cell | undefined)[])[], styled: boolean
 }
 
 /**
- * The logo `elapsed` milliseconds into the scan: every pixel row above the
- * scan line drawn, the bar the line is on dim, the rows below it not yet.
+ * The logo `elapsed` milliseconds into the animation: during the scan, the
+ * thin line of every bar above the scan line, dim while the line is close;
+ * once the animation is over, every bar at full height.
  */
 function frame(elapsed: number, styled: boolean): string[] {
   const grid: (Cell | undefined)[][] = Array.from({ length: WORDMARK_PX }, () => Array.from({ length: WORDMARK_WIDTH }, () => undefined));
-  const line = (Math.min(elapsed, DURATION_MS) / DURATION_MS) * (WORDMARK_PX + SCAN_HEAD_PX);
+  const filled = elapsed >= DURATION_MS;
+  const line = (Math.min(elapsed, SCAN_MS) / SCAN_MS) * (WORDMARK_PX + SCAN_HEAD_PX);
   BARS.forEach((bar, index) => {
     const top = index * PITCH_PX;
-    const cell: Cell = line - (top + BAR_PX) < SCAN_HEAD_PX ? 'dim' : 'solid';
-    for (let row = 0; row < BAR_PX && top + row < line; row++) {
+    if (!filled && top >= line) return;
+    const cell: Cell = filled || line - (top + 1) >= SCAN_HEAD_PX ? 'solid' : 'dim';
+    for (let row = 0; row < (filled ? BAR_PX : 1); row++) {
       for (let x = 0; x < WORDMARK_WIDTH; x++) if (bar[x] === '#') grid[top + row]![x] = cell;
     }
   });

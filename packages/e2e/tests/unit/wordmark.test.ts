@@ -11,16 +11,14 @@ const ESC = '\u001b';
 
 const REST = [
   '                   ███████████',
-  '',
-  '   ██████████     ████     █████     ██████████',
-  '',
+  '   ▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄     ▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄',
+  '   ▀▀▀▀▀▀▀▀▀▀     ▀▀▀▀     ▀▀▀▀▀     ▀▀▀▀▀▀▀▀▀▀',
   ' ████      ████           ████     ████      ████',
-  '',
-  '█████████████████      ████      █████████████████',
-  '',
+  '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄      ▄▄▄▄      ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
+  '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀      ▀▀▀▀      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
   ' ████              █████          ████',
-  '',
-  '   ██████████     ██████████████     ██████████',
+  '   ▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄',
+  '   ▀▀▀▀▀▀▀▀▀▀     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀     ▀▀▀▀▀▀▀▀▀▀',
 ];
 
 interface FakeStream extends WordmarkStream {
@@ -43,7 +41,7 @@ function stream(options: { tty?: boolean; columns?: number; rows?: number; depth
 }
 
 describe('wordmarkBanner', () => {
-  it('draws the logo at rest as plain full-block rows with a blank row between bars in the terminal foreground, with no styling at any color depth', () => {
+  it('draws the logo at rest as plain half blocks in the terminal foreground, with no styling at any color depth', () => {
     for (const depth of [24, 8, 4, 1]) {
       expect(wordmarkBanner(stream({ depth }))).toBe(`${REST.join('\n')}\n`);
     }
@@ -79,14 +77,14 @@ describe('playWordmark', () => {
       [stream({ depth: 1 }), { env: { CI: 'true' } }],
       [stream({ depth: 1 }), { env: { TERM: 'dumb' } }],
       [stream({ depth: 1 }), { env: {}, motion: false }],
-      [stream({ rows: 11 }), { env: {} }],
+      [stream({ rows: 9 }), { env: {} }],
     ] as const) {
       await playWordmark(out, options);
       expect(out.writes).toEqual([`${REST.join('\n')}\n\n`]);
     }
   });
 
-  it('scans the logo in top to bottom over half a second, repainting in place with the bar under the scan line dim, and leaves it at rest with the cursor shown', async () => {
+  it('scans the logo in top to bottom as thin lines, dim under the scan line, then fills every bar at once, all in half a second, and leaves it at rest with the cursor shown', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     vi.setTimerTickMode('nextTimerAsync');
     const out = stream();
@@ -100,27 +98,31 @@ describe('playWordmark', () => {
     expect(out.writes.at(-1)).toBe(`${ESC}[?25h`);
     const paints = out.writes.slice(1, -1);
     expect(paints.length).toBeGreaterThan(10);
-    // Every paint is one synchronized update of the eleven logo rows; every paint after the first erases the one before.
+    // Every paint is one synchronized update of the nine logo rows; every paint after the first erases the one before.
     expect(paints.every((paint) => paint.startsWith(`${ESC}[?2026h`) && paint.endsWith(`${ESC}[?2026l`))).toBe(true);
-    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[11A${ESC}[0J`))).toBe(true);
+    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[9A${ESC}[0J`))).toBe(true);
     const first = stripVTControlCharacters(paints[0]!);
-    expect(first.split('\n')).toHaveLength(12);
+    expect(first.split('\n')).toHaveLength(10);
     // The bar under the scan line is dim; nothing is ever colored.
     expect(paints.some((paint) => paint.includes(`${ESC}[2m`))).toBe(true);
     expect(paints.every((paint) => !paint.includes('38;') && !paint.includes(`${ESC}[39m`))).toBe(true);
-    // Rows load top to bottom, never out of place: below an empty row every row is empty, and ink only ever sits where the logo at rest has it.
-    for (const paint of paints) {
+    // Bars load top to bottom, never out of place: below an undrawn bar no bar is drawn, and ink only ever sits where the logo at rest has it.
+    // During the scan each bar's thin line lands on one of these rows, in order.
+    const thinRows = [0, 1, 3, 4, 6, 7];
+    for (const paint of paints.slice(0, -1)) {
       const lines = stripVTControlCharacters(paint).split('\n').slice(0, REST.length);
-      const bars = lines.filter((_, row) => REST[row] !== '');
-      const firstEmpty = bars.findIndex((line) => line.trim() === '');
-      if (firstEmpty !== -1) expect(bars.slice(firstEmpty).every((line) => line.trim() === '')).toBe(true);
+      const drawn = thinRows.map((row) => lines[row]!.trim() !== '');
+      const firstUndrawn = drawn.indexOf(false);
+      if (firstUndrawn !== -1) expect(drawn.slice(firstUndrawn).every((bar) => !bar)).toBe(true);
       expect(lines.every((line, row) => [...line].every((char, column) => char === ' ' || REST[row]![column] !== ' '))).toBe(true);
     }
-    // A third of the way in the top bar is drawn and the bottom rows are not.
+    // Until the fill every bar is a thin line, one pixel row: no paint before the last has a full block.
+    expect(paints.slice(0, -1).every((paint) => !paint.includes('█'))).toBe(true);
+    // A third of the way in the top bar's thin line is drawn and the bottom rows are not.
     const third = stripVTControlCharacters(paints[Math.floor(paints.length / 3)]!).split('\n');
-    expect(third[0]).toBe(REST[0]);
+    expect(third[0]).toBe(REST[0]!.replaceAll('█', '▀'));
     expect(third.slice(6).every((line) => line.trim() === '')).toBe(true);
     // The last paint is the logo at rest, unstyled, in place, with a blank line under it.
-    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[11A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
+    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[9A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
   });
 });
