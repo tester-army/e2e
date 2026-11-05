@@ -36,7 +36,7 @@ const BARS: readonly string[] = [
 
 /**
  * A bar is two half-block pixel rows tall and the gap between bars one, the
- * logo's own bar-to-gap rhythm at terminal resolution; a terminal row holds
+ * closest terminal resolution gets to the logo's thick bars and thin gaps; a terminal row holds
  * two pixel rows, so every row of the output carries at most one bar.
  */
 const BAR_PX = 2;
