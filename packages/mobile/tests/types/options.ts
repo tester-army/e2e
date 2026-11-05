@@ -1,5 +1,6 @@
 /** Compile-time assertions for the device engine's options and the hosted device provider seam. */
-import type { DeviceLease, DeviceProvider, DeviceRequest, MobileOptions } from '../../src/index.ts';
+import type { AgentDeviceClient as SubpathClient } from '../../src/agent-device.ts';
+import type { DeviceLease, DeviceProvider, DeviceRequest, DeviceSession, MobileOptions } from '../../src/index.ts';
 
 ({ platform: 'ios', device: 'iPhone 16' }) satisfies MobileOptions;
 ({ platform: 'android', device: ['Pixel_8', 'Pixel_9'] }) satisfies MobileOptions;
@@ -35,3 +36,7 @@ const farm = {
 ({ daemon: { baseUrl: 'http://10.0.0.7:4700' } }) satisfies DeviceLease;
 // @ts-expect-error a lease names its daemon by URL.
 ({ id: 'lease-1', daemon: { baseUrl: 4700 } }) satisfies DeviceLease;
+
+// The subpath's client type is the one the engine's `device.unstable_raw.client` carries.
+({}) as DeviceSession['client'] satisfies SubpathClient;
+({}) as SubpathClient satisfies DeviceSession['client'];
