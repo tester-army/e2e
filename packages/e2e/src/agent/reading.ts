@@ -138,6 +138,12 @@ export function pageMoved(before: PageReading, after: PageReading): boolean {
  */
 const LANDED_NEW_SHARE = 1 / 3;
 
+/**
+ * The fewest new lines a landed page shows. A third of a short screen is one
+ * line, and one changing line is a counter, not a page turn.
+ */
+const LANDED_MIN_NEW_LINES = 2;
+
 /** How many lines of `after` the page before did not read, clock-like values masked. */
 function newLines(before: PageReading, after: PageReading): number {
   const unmatched = new Map<string, number>();
@@ -154,16 +160,18 @@ function newLines(before: PageReading, after: PageReading): number {
 /**
  * Whether a capture taken after paging is the page the swipe landed on,
  * without a second read to confirm it: a third or more of what it reads is
- * new, clock-like values aside, and it is not sparser. A capture that reads the
- * same may be the screen before the scroll rendered, or the end of the list;
- * one that differs by a line or two may be that screen with a counter ticking
- * beside it; a sparser one may be a windowed list between the scroll and the
- * rows it draws for it. Only those need another look. A page whose rows differ
- * by a clock-like value alone is not vouched for here either, since a clock
- * ticking beside the stale screen reads just like it: it takes the look that
- * proves it holds still, while `pageMoved` keeps it paging.
+ * new (two lines at least), clock-like values aside, and it is not sparser
+ * than the page before. A capture that reads the same may be the screen before
+ * the scroll rendered, or the end of the list; one that differs by a line or
+ * two may be that screen with a counter ticking beside it; a sparser one may
+ * be a windowed list between the scroll and the rows it draws for it. Only
+ * those need another look. A page whose rows differ by a clock-like value
+ * alone is not vouched for here either, since a clock ticking beside the stale
+ * screen reads just like it: it takes the look that proves it holds still,
+ * while `pageMoved` keeps it paging. The page before is the only baseline, so
+ * a page that was itself still drawing is not caught.
  */
 export function pageLanded(before: PageReading, after: PageReading): boolean {
   if (after.lines.length < before.lines.length || sameLines(before, after)) return false;
-  return newLines(before, after) >= Math.ceil(after.lines.length * LANDED_NEW_SHARE);
+  return newLines(before, after) >= Math.max(LANDED_MIN_NEW_LINES, Math.ceil(after.lines.length * LANDED_NEW_SHARE));
 }

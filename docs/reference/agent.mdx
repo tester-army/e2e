@@ -340,9 +340,9 @@ click, as a Shift-click extends a selection.
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
 `scroll_to({ text })` reads each scrolled screen once when at least a third of
-its lines are new and it is no sparser than the screen before. Any other screen
-is read until it holds still, so a counter ticking beside a list that has not
-scrolled yet is not a new page. A list ends at a screen that stops changing: one
+its lines (two at least) are new and it is no sparser than the screen before.
+Any other screen is read until it holds still, so a counter ticking beside a
+list that has not scrolled yet is not a new page. A list ends at a screen that stops changing: one
 clock-like value (`12:05`) changing does not count, two or more at once (a time
 picker's rows) do. On a device, the next observation checks stability without
 waiting for a second scroll effect. Engines with `scrollIntoView` still wait for

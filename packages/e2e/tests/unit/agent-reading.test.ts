@@ -77,8 +77,9 @@ describe('a clock on the screen', () => {
   });
 
   it('still lets a page that moved read differently', () => {
-    const before = readPage(indexOf(clock('12:05'), row('Row 1')));
-    const after = readPage(indexOf(clock('12:06'), row('Row 2')));
+    const rows = (...texts: string[]) => texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } }));
+    const before = readPage(indexOf(clock('12:05'), ...rows('Row 1', 'Row 2')));
+    const after = readPage(indexOf(clock('12:06'), ...rows('Row 3', 'Row 4')));
     expect(pageMoved(before, after)).toBe(true);
     expect(pageLanded(before, after)).toBe(true);
   });
@@ -134,6 +135,11 @@ describe('pageLanded', () => {
 
     it('declines a stale list when only the status line changed', () => {
       expect(pageLanded(listed('3 unread', ...eight), listed('4 unread', ...eight))).toBe(false);
+    });
+
+    it('declines a short screen where the status line is the only new line', () => {
+      expect(pageLanded(listed('3 unread', 'Row 1'), listed('4 unread', 'Row 1'))).toBe(false);
+      expect(pageLanded(listed('3 unread', 'Row 1', 'Row 2'), listed('4 unread', 'Row 1', 'Row 2'))).toBe(false);
     });
 
     it('accepts a scrolled list, with the status line the same or changed', () => {

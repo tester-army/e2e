@@ -581,8 +581,8 @@ export class ActionDispatcher {
         within = turned.within;
         // A settled look: a browser scrolls on a later frame than the wheel
         // event, and a raw read right after it sees the page as it was. A page
-        // at least a third of whose lines are new and that is no sparser has
-        // landed, so it is read once; one that reads the same (not rendered
+        // at least a third (two lines at least) of whose lines are new and
+        // that is no sparser has landed, so it is read once; one that reads the same (not rendered
         // yet, or the end), differs by a line or two (a counter), or is
         // thinner (rows still drawing) is read until it holds.
         observation = await this.feed.look(
