@@ -1668,7 +1668,8 @@
         "name": "Slawek Radzyminski",
         "github": "slawekradzyminski"
       },
-      "license": "MIT",
+      "license": "NONE",
+      "licenseUrl": "https://choosealicense.com/no-permission/",
       "tags": {
         "framework": [
           "vite",
