@@ -19,16 +19,22 @@ runs:
     # The prefix holds what decides the package list: the Ubuntu release and
     # the Playwright version. The suffix is a digest of the .deb file names,
     # so a key names one exact set of package versions.
+    # The directory sits under /var/cache, not the runner's temp directory:
+    # apt downloads as `_apt`, which cannot traverse /home/runner and would
+    # fall back to downloading as root. The runner owns the directory so the
+    # cache can restore into it; `partial` belongs to `_apt`, as in
+    # /var/cache/apt/archives.
     - name: Point apt at the cached archives
       id: apt
       shell: bash
       env:
-        ARCHIVES: ${{ runner.temp }}/chromium-apt
+        ARCHIVES: /var/cache/chromium-apt
       run: |
         set -euo pipefail
         . /etc/os-release
         PLAYWRIGHT="$(node -p "require('./packages/web/package.json').dependencies['playwright-core']")"
-        mkdir -p "$ARCHIVES/partial"
+        sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 "$ARCHIVES"
+        sudo install -d -o _apt -g root -m 700 "$ARCHIVES/partial"
         printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\n' "$ARCHIVES" \
           | sudo tee /etc/apt/apt.conf.d/99chromium-archives > /dev/null
         echo "archives=$ARCHIVES" >> "$GITHUB_OUTPUT"
