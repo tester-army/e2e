@@ -125,7 +125,7 @@ password comes from [configured credentials](/authentication).
 | `.swipe('up', 'fast')` | `.swipe({ direction: 'down', momentum: 'fast' })`: Detox names the finger's direction, e2e the content's |
 | `.scroll(200, 'down')` | `screen.swipe({ direction: 'down' })` |
 | `waitFor(el).toBeVisible().whileElement(list).scroll(...)` | `screen.scrollUntilVisible(el)` |
-| `.scrollTo('bottom')` | `screen.scrollUntilVisible(el)` on the last node |
+| `list.scrollTo('bottom')` | `list.scrollUntilVisible(lastRow)` on the same list |
 | `.adjustSliderToPosition()`, `.setDatePickerDate()` | Not yet |
 | `.getAttributes()` | `.textContent()`, `.inputValue()`, `.getAttribute(name)`, `.boundingBox()` |
 | `waitFor(el).toBeVisible().withTimeout(ms)` | `await expect(el).toBeVisible({ timeout: ms })` |
@@ -141,7 +141,7 @@ password comes from [configured credentials](/authentication).
 | `device.launchApp({ url })`, `device.openURL({ url })` | `device.openLink(url)` |
 | `device.terminateApp()` | `device.closeApp()` |
 | `device.uninstallApp()` | Not yet. `device.installApp(path, { reinstall: true })` installs with no data |
-| `device.resetContentAndSettings()` | No equivalent. `app.clearState()` and, on iOS, `device.clearKeychain()` reset the app |
+| `device.resetContentAndSettings()` | No equivalent. `app.clearState()` resets the app; on iOS, `device.clearKeychain()` clears the simulator keychain for every app |
 | `device.reloadReactNative()` | No equivalent. `app.restart()` is the nearest |
 | `device.sendToHome()`, `device.pressBack()` | `device.home()`, `device.back()` |
 | `device.setLocation(lat, lon)` | `device.setLocation({ latitude, longitude })` |
