@@ -11,14 +11,11 @@ const ESC = '\u001b';
 
 const REST = [
   '                   ███████████',
-  '   ▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄     ▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄',
-  '   ▀▀▀▀▀▀▀▀▀▀     ▀▀▀▀     ▀▀▀▀▀     ▀▀▀▀▀▀▀▀▀▀',
+  '   ██████████     ████     █████     ██████████',
   ' ████      ████           ████     ████      ████',
-  '▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄      ▄▄▄▄      ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄',
-  '▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀      ▀▀▀▀      ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀',
+  '█████████████████      ████      █████████████████',
   ' ████              █████          ████',
-  '   ▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄▄▄▄▄     ▄▄▄▄▄▄▄▄▄▄',
-  '   ▀▀▀▀▀▀▀▀▀▀     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀     ▀▀▀▀▀▀▀▀▀▀',
+  '   ██████████     ██████████████     ██████████',
 ];
 interface FakeStream extends WordmarkStream {
   readonly writes: string[];
@@ -39,7 +36,7 @@ function stream(options: { tty?: boolean; columns?: number; rows?: number } = {}
 }
 
 describe('wordmarkBanner', () => {
-  it('draws the logo at rest as plain half blocks in the terminal foreground', () => {
+  it('draws the logo at rest as plain full blocks, one row per bar, in the terminal foreground', () => {
     expect(wordmarkBanner(stream())).toBe(`${REST.join('\n')}\n`);
   });
 
@@ -73,7 +70,7 @@ describe('playWordmark', () => {
       [stream(), { env: { CI: 'true' } }],
       [stream(), { env: { TERM: 'dumb' } }],
       [stream(), { env: {}, motion: false }],
-      [stream({ rows: 9 }), { env: {} }],
+      [stream({ rows: 6 }), { env: {} }],
     ] as const) {
       await playWordmark(out, options);
       expect(out.writes).toEqual([`${REST.join('\n')}\n\n`]);
@@ -94,11 +91,11 @@ describe('playWordmark', () => {
     expect(out.writes.at(-1)).toBe(`${ESC}[?25h`);
     const paints = out.writes.slice(1, -1);
     expect(paints.length).toBeGreaterThan(10);
-    // Every paint is one synchronized update of the nine logo rows; every paint after the first erases the one before.
+    // Every paint is one synchronized update of the six logo rows; every paint after the first erases the one before.
     expect(paints.every((paint) => paint.startsWith(`${ESC}[?2026h`) && paint.endsWith(`${ESC}[?2026l`))).toBe(true);
-    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[9A${ESC}[0J`))).toBe(true);
+    expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[6A${ESC}[0J`))).toBe(true);
     const first = stripVTControlCharacters(paints[0]!);
-    expect(first.split('\n')).toHaveLength(10);
+    expect(first.split('\n')).toHaveLength(7);
     // Nothing is ever styled or colored.
     expect(paints.every((paint) => [`${ESC}[0m`, `${ESC}[1m`, `${ESC}[2m`, '38;'].every((style) => !paint.includes(style)))).toBe(true);
     // Every paint is the logo down to some row and blank below it, and the rows arrive top to bottom.
@@ -112,6 +109,6 @@ describe('playWordmark', () => {
     expect(reached.every((count, index) => index === 0 || [0, 1].includes(count - reached[index - 1]!))).toBe(true);
     expect(reached.at(-1)).toBe(REST.length);
     // The last paint is the logo at rest, unstyled, in place, with a blank line under it.
-    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[9A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
+    expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[6A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
   });
 });

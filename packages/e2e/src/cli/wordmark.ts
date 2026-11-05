@@ -1,7 +1,7 @@
 /**
  * The e2e wordmark: the logotype from the e2e design system, six rows of
- * horizontal bars, drawn in block characters in the terminal's own foreground
- * the way the logo pack's black and white files fill it. On a terminal that
+ * horizontal bars, drawn in full blocks in the terminal's own foreground the
+ * way the logo pack's black and white files fill it. On a terminal that
  * can show it the logo loads top to bottom like a scan, one row at a time.
  * Where motion does not belong it is printed at rest, and output that is not
  * a terminal never sees it.
@@ -30,37 +30,21 @@ const BARS: readonly string[] = [
   '...##########.....##############.....##########...',
 ];
 
-/**
- * A terminal row holds two pixel rows. A bar is two pixel rows and the gap
- * between bars one, the closest terminal resolution gets to the logo's thick
- * bars and thin gaps, so every row of the output carries at most one bar.
- */
-const BAR_PX = 2;
-const PITCH_PX = 3;
 const WORDMARK_WIDTH = BARS[0]!.length;
-const WORDMARK_PX = (BARS.length - 1) * PITCH_PX + BAR_PX;
 
-/** The half block for a cell's lit pixels: bit 1 the upper half, 2 the lower. */
-const HALVES = [' ', '▀', '▄', '█'] as const;
-
-/** The logo in half blocks, one line per terminal row. */
-const LOGO: readonly string[] = (() => {
-  const lit = (y: number, x: number): boolean => y % PITCH_PX < BAR_PX && BARS[Math.floor(y / PITCH_PX)]?.[x] === '#';
-  const lines: string[] = [];
-  for (let y = 0; y < WORDMARK_PX; y += 2) {
-    let line = '';
-    for (let x = 0; x < WORDMARK_WIDTH; x++) line += HALVES[(lit(y, x) ? 1 : 0) | (lit(y + 1, x) ? 2 : 0)];
-    lines.push(line.trimEnd());
-  }
-  return lines;
-})();
+/**
+ * The logo as text: each bar one row of full blocks, rows stacked with no
+ * blank row between them, so the terminal's own line spacing is the gap
+ * between bars and no bar is ever split across two rows.
+ */
+const LOGO: readonly string[] = BARS.map((bar) => bar.replaceAll('#', '█').replaceAll('.', ' ').trimEnd());
 
 /** Terminal rows the wordmark takes. */
 const WORDMARK_ROWS = LOGO.length;
 
 const FRAME_MS = 16;
 /** The scan draws one row this often. */
-const ROW_MS = 50;
+const ROW_MS = 75;
 const DURATION_MS = ROW_MS * WORDMARK_ROWS;
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
