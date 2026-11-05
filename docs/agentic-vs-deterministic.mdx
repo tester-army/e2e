@@ -32,15 +32,15 @@ await expect(screen.getByRole('status')).toHaveText('10% off');
 You don't need to name the discount field or the button that applies it.
 
 Tests tied to CSS classes or test IDs need edits when those identifiers
-change. An agent can find controls from the current screen, so a moved
-button or a redesigned form can leave the goal unchanged. This reduces
+change. Move a button or redesign a form, and the agent can still work
+toward the same goal using what's on screen. This reduces
 time spent repairing selectors after UI changes.
 
 For a complex journey, write a sequence of goals in plain English. Keep
 each goal to one outcome and check it before continuing. See
 [Goals](/core-concepts#goals) for how to split a journey into steps.
 
-## Specify exact actions
+## When to use deterministic tests?
 
 Use locators when the interaction itself matters or the path is already
 short and stable. The same discount test can specify every action:
@@ -60,7 +60,7 @@ Use exact assertions for requirements such as a price, a validation
 message, or a count. If the button must be named `Apply`, a locator that
 requires that name makes the requirement explicit.
 
-## Combine goals with exact checks
+## Combine agentic with deterministic tests
 
 Start with agentic actions for a journey that changes often and
 deterministic assertions for its required outcomes, as in the first example.
