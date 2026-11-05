@@ -153,15 +153,15 @@ function newLines(before: PageReading, after: PageReading): number {
 
 /**
  * Whether a capture taken after paging is the page the swipe landed on,
- * without a second read to confirm it: most of what it reads is new, clock-like
- * values aside, and it is not sparser. A capture that reads the same may be
- * the screen before the scroll rendered, or the end of the list; one that
- * differs by a line or two may be that screen with a counter ticking beside
- * it; a sparser one may be a windowed list between the scroll and the rows it
- * draws for it. Only those need another look. A page whose rows differ by a
- * clock-like value alone is not vouched for here either, since a clock ticking
- * beside the stale screen reads just like it: it takes the look that proves
- * it holds still, while `pageMoved` keeps it paging.
+ * without a second read to confirm it: a third or more of what it reads is
+ * new, clock-like values aside, and it is not sparser. A capture that reads the
+ * same may be the screen before the scroll rendered, or the end of the list;
+ * one that differs by a line or two may be that screen with a counter ticking
+ * beside it; a sparser one may be a windowed list between the scroll and the
+ * rows it draws for it. Only those need another look. A page whose rows differ
+ * by a clock-like value alone is not vouched for here either, since a clock
+ * ticking beside the stale screen reads just like it: it takes the look that
+ * proves it holds still, while `pageMoved` keeps it paging.
  */
 export function pageLanded(before: PageReading, after: PageReading): boolean {
   if (after.lines.length < before.lines.length || sameLines(before, after)) return false;

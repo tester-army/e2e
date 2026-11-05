@@ -339,14 +339,14 @@ click, as a Shift-click extends a selection.
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
-`scroll_to({ text })` reads a scrolled screen once when most of what it shows
-is new and it is no sparser than the one before, and keeps reading it until it
-holds still otherwise (a counter ticking beside a list that has not scrolled
-yet is not a new page). The list's end is a screen that stops changing; a clock-like
-value (`12:05`) ticking beside it does not count as changing, while several
-changing at once (a time picker's rows) do. On a device,
-the next observation checks stability without waiting for a second scroll
-effect. Engines with `scrollIntoView` still wait for the final adjustment
+`scroll_to({ text })` reads a scrolled screen once when at least a third of
+what it shows is new and it is no sparser than the one before, and keeps
+reading it until it holds still otherwise (a counter ticking beside a list that
+has not scrolled yet is not a new page). The list's end is a screen that stops
+changing; a clock-like value (`12:05`) ticking beside it does not count as
+changing, while several changing at once (a time picker's rows) do. On a
+device, the next observation checks stability without waiting for a second
+scroll effect. Engines with `scrollIntoView` still wait for the final adjustment
 that brings the matched node into view. Replay follows the same rule.
 
 `upload` takes the model's path, but the runner decides:
