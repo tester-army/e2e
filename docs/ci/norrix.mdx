@@ -1,0 +1,134 @@
+---
+title: Norrix
+description: Build a NativeScript app with Norrix and run its e2e suite on a Norrix simulator or emulator.
+icon: "/images/icons/norrix.png"
+---
+
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const setupPrompt = `Add an e2e suite to this NativeScript app and run it on Norrix. Docs: \`https://e2e.tester.army/docs/ci/norrix.md\` and \`https://e2e.tester.army/docs/mobile.md\`
+
+1. Read both pages.
+2. Create \`e2e/\` with its own \`package.json\`, \`e2e.config.ts\`, and a first test. Set \`bundleId\` to the id in \`nativescript.config.ts\`.
+3. Add a \`testID\` to each element the test checks.
+4. Ask me to store the model key with \`norrix env set\`, scoped to this project.
+5. Ask me to run \`norrix build ios debug --simulator\` and tell you when it succeeds. Then run \`norrix test ios --runner e2e --wait\` and fix errors until the suite passes.`;
+
+[Norrix](https://norrix.net) builds NativeScript apps in the cloud.
+`norrix test` runs an e2e suite against a simulator or emulator build on a
+Norrix machine. Norrix installs the suite's dependencies, installs the build
+on a booted device, and runs `e2e run` for the targets on the build's
+platform. E2E tests need a Norrix Enterprise organization.
+
+<Note>
+Norrix's [E2E Testing guide](https://docs.norrix.net/guides/e2e-testing/)
+takes a NativeScript app from no tests to a suite that runs locally, on
+Norrix, and in CI. The [`norrix test` reference](https://docs.norrix.net/cli/test/)
+lists every flag.
+</Note>
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+## Suite
+
+Keep the suite in its own directory, usually `e2e/`, with its own
+`package.json` and `e2e.config.ts`. Norrix installs it without your app's
+dependencies:
+
+```text
+my-app/
+├── app/
+├── nativescript.config.ts
+└── e2e/
+    ├── package.json      # e2e, @e2e-dev/mobile, ai, and your provider package if not the gateway
+    ├── e2e.config.ts
+    └── tests/
+```
+
+```ts title="e2e/e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { gateway } from 'ai';
+import { mobile } from '@e2e-dev/mobile';
+
+export default {
+  agents: { default: { model: gateway('openai/gpt-6-luna-fast') } },
+  targets: [
+    { name: 'ios', engine: mobile({ platform: 'ios' }), app: { bundleId: 'org.example.myapp' } },
+    { name: 'android', engine: mobile({ platform: 'android' }), app: { bundleId: 'org.example.myapp' } },
+  ],
+  workers: 1,
+} satisfies E2EConfig;
+```
+
+- Norrix sets each target's `app.appPath` to its build. Leave `device` out
+  of `mobile()` to use the simulator or emulator Norrix booted.
+- Give the elements your tests check a `testID`, and find them with
+  `getByTestId`. See [Test ids by framework](/mobile#test-ids-by-framework).
+- Norrix keeps the [replay cache](/cache) between runs, per organization,
+  project, and platform, and writes to it although CI defaults to
+  read-only. A config with `cache: 'off'` or a custom `store` keeps its
+  own.
+
+## Run on Norrix
+
+From the app directory, build for a simulator:
+
+```bash
+norrix build ios debug --simulator
+```
+
+`norrix build` returns once the build starts. Wait until
+`norrix build-status <id>` reports `success`, then run the suite:
+
+```bash
+norrix test ios --runner e2e --wait
+```
+
+For Android, build with `norrix build android debug --emulator` and run
+`norrix test android --runner e2e --wait`. `--wait` exits non-zero when the
+run fails, is cancelled, or times out.
+
+| Flag | What it does |
+| --- | --- |
+| `--suite-dir <path>` | The suite directory, when it is not `.` or `./e2e` |
+| `--target <name>` | One target from `e2e.config.ts`. Default: every target on the build's platform |
+| `--tests`, `--grep`, `--tag` | Run some test files, the tests whose title matches, or the tests with a tag |
+| `--junit-output <dir>` | Download `junit.xml` into the directory. Implies `--wait` |
+| `--build <id>`, `-n` | Test one build with no prompts, for CI |
+
+The dashboard's **View Report** shows the report and a video of each failed
+attempt. For a GitHub Actions workflow that waits for the build, see
+[Run in CI](https://docs.norrix.net/guides/e2e-testing/#run-in-ci) in
+Norrix's guide.
+
+## Model key
+
+Store your provider's key, such as `AI_GATEWAY_API_KEY`, as a Norrix
+environment variable. Tests that never use `agent` need none:
+
+```bash
+norrix env set AI_GATEWAY_API_KEY "$AI_GATEWAY_API_KEY" --project my-app
+```
+
+Every suite that runs in a variable's scope can read it, and without
+`--project` that is every suite the organization runs. Run only code you
+trust there. See [Model credentials](/ci#model-credentials).
+
+Norrix environment variables also fill the config's
+[secrets and credentials](/authentication), through `E2E_SECRET_<NAME>` and
+`E2E_USER_<NAME>_PASSWORD`.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Mobile" icon="mobile-screen" href="/mobile">
+    Write device tests, and set test ids in each UI framework.
+  </Card>
+  <Card title="Continuous integration" icon="rotate" href="/ci">
+    CI defaults, sharding, reruns, and exit codes.
+  </Card>
+</CardGroup>

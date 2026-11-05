@@ -102,6 +102,7 @@
               "ci/eas-workflows",
               "ci/bitrise",
               "ci/codemagic",
+              "ci/norrix",
               "github"
             ]
           },
