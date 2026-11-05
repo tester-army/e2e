@@ -4,7 +4,7 @@
  * are fetched, to reach their frames.
  */
 
-import { chromium, type Browser, type ElementHandle, type JSHandle, type Page } from 'playwright-core';
+import { chromium, type Browser, type ElementHandle, type Frame, type JSHandle, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { OperationContext } from 'e2e/engine';
 import { captureDocument, type DocumentHost } from '../../src/observation.ts';
@@ -31,13 +31,35 @@ function counting(page: Page) {
       if (key === 'getProperty') {
         return async (name: string) => {
           if (/^\d+$/.test(name)) reads.indexed.push(name);
-          const property = await target.getProperty(name);
-          return name === 'elements' ? track(property) : property;
+          return track(await target.getProperty(name));
+        };
+      }
+      if (key === 'asElement') {
+        return () => {
+          const element = target.asElement();
+          return element === null ? null : track(element);
+        };
+      }
+      if (key === 'contentFrame') {
+        return async () => {
+          const frame = await (target as ElementHandle<Element>).contentFrame();
+          return frame === null ? null : trackFrame(frame);
         };
       }
       return (value as (...args: unknown[]) => unknown).bind(target);
     },
   });
+  /** Wraps a child frame host so its own handle reads are counted too. */
+  const trackFrame = (frame: Frame): Frame => new Proxy(frame, {
+    get(target, key) {
+      const value = Reflect.get(target, key, target) as unknown;
+      if (typeof value !== 'function') return value;
+      if (key === 'evaluateHandle') {
+        return async (...args: Parameters<Frame['evaluateHandle']>) => track(await target.evaluateHandle(...args));
+      }
+      return (value as (...args: unknown[]) => unknown).bind(target);
+    },
+  }) as Frame;
   const host: DocumentHost = { evaluateHandle: async (...args: Parameters<Page['evaluateHandle']>) => track(await page.evaluateHandle(...args)) } as DocumentHost;
   return { host, reads };
 }
