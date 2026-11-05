@@ -356,7 +356,7 @@ export class PlaywrightSurface {
     const scripts = await this.configuredInitScripts.doctor(info.projectRoot);
     if (this.leases !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: `browsers come from the "${this.leases.name}" provider` }];
     if (this.connect !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: 'the browser is attached over CDP' }];
-    return [...scripts, ...browserCheck(this.browserName, info.env, info.headed)];
+    return [...scripts, ...(await browserCheck(this.browserName, info.env, info.headed))];
   }
 
   /** Releases the browsers `prepare` leased; a local launch or a `connect` has nothing to release. */

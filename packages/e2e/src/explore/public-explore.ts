@@ -10,7 +10,6 @@ import type { RunEventSink } from '../run/events.ts';
 import { ownedRun, runResult, type RunResult } from '../run/public-run.ts';
 import { toSelectionRunOptions } from '../run/runner.ts';
 import type { E2EConfig } from '../types.ts';
-import { explore } from './index.ts';
 
 /** Options for one exploration through the public runner API. Recording and output settings come from the config. */
 export interface ExplorationOptions {
@@ -57,8 +56,10 @@ export interface ExplorationResult extends RunResult {
 export async function runExploration(options: ExplorationOptions = {}): Promise<ExplorationResult> {
   const { configPath, rawConfig } = toSelectionRunOptions({ config: options.config });
   // Named one by one, as `run` passes its options: a caller's extra keys, such as the CLI's reporters or output, never reach the explorer.
-  const outcome = await ownedRun('runner.explore', options, (owned) =>
-    explore({
+  // The explorer loads here, so importing `e2e/runner` for `run` or `list` does not load it.
+  const outcome = await ownedRun('runner.explore', options, async (owned) => {
+    const { explore } = await import('./index.ts');
+    return explore({
       cwd: options.cwd,
       configPath,
       rawConfig,
@@ -69,7 +70,7 @@ export async function runExploration(options: ExplorationOptions = {}): Promise<
       maxSteps: options.maxSteps,
       timeoutMs: options.timeoutMs,
       ...owned,
-    }),
-  );
+    });
+  });
   return { ...runResult(outcome), explore: outcome.explore };
 }

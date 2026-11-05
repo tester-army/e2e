@@ -2,7 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import Limrun from '@limrun/api';
+import type Limrun from '@limrun/api';
 import type { AndroidInstance } from '@limrun/api/resources/android-instances';
 import type { IosInstance } from '@limrun/api/resources/ios-instances';
 import type { DeviceProvider, DeviceRequest } from '@e2e-dev/mobile';
@@ -20,13 +20,17 @@ export interface LimrunOptions {
 }
 
 type Instance = IosInstance | AndroidInstance;
-type Held = { stateDir: string; env: NodeJS.ProcessEnv; client: Limrun; platform: 'ios' | 'android'; stopHeartbeat?: () => Promise<void> };
+/** The SDK client with the error class its not-found checks compare against, which only the loaded SDK has. */
+type LimrunApi = { readonly client: Limrun; readonly NotFoundError: typeof Limrun.NotFoundError };
+type Held = { stateDir: string; env: NodeJS.ProcessEnv; api: LimrunApi; platform: 'ios' | 'android'; stopHeartbeat?: () => Promise<void> };
 
-function api(env: DeviceRequest['env']): Limrun {
+/** A client for the run's API key. The SDK loads here, with the first device a worker leases, not with the config. */
+async function api(env: DeviceRequest['env']): Promise<LimrunApi> {
   const apiKey = env.LIMRUN_API_KEY?.trim();
   if (!apiKey) throw new ConfigurationError('INVALID_CONFIG', '@e2e-dev/limrun requires LIMRUN_API_KEY in the run environment');
+  const { default: Sdk } = await import('@limrun/api');
   // Retrying a create after an ambiguous response could allocate a second device.
-  return new Limrun({ apiKey, baseURL: env.LIMRUN_BASE_URL?.trim() || 'https://api.limrun.com', maxRetries: 0, timeout: 60_000, defaultHeaders: { 'X-Limrun-Client': 'e2e' } });
+  return { client: new Sdk({ apiKey, baseURL: env.LIMRUN_BASE_URL?.trim() || 'https://api.limrun.com', maxRetries: 0, timeout: 60_000, defaultHeaders: { 'X-Limrun-Client': 'e2e' } }), NotFoundError: Sdk.NotFoundError };
 }
 
 function access(instance: Instance): { apiUrl: string; token: string } {
@@ -35,7 +39,7 @@ function access(instance: Instance): { apiUrl: string; token: string } {
   return { apiUrl, token };
 }
 
-async function ready(client: Limrun, platform: 'ios' | 'android', instance: Instance, signal: AbortSignal): Promise<Instance> {
+async function ready({ client, NotFoundError }: LimrunApi, platform: 'ios' | 'android', instance: Instance, signal: AbortSignal): Promise<Instance> {
   let current = instance;
   while (true) {
     signal.throwIfAborted();
@@ -46,17 +50,17 @@ async function ready(client: Limrun, platform: 'ios' | 'android', instance: Inst
       current = await (platform === 'ios' ? client.iosInstances : client.androidInstances).get(instance.metadata.id, { signal });
     } catch (cause) {
       // The regional create can precede the backend read model. The caller's budget bounds readiness.
-      if (!(cause instanceof Limrun.NotFoundError)) throw cause;
+      if (!(cause instanceof NotFoundError)) throw cause;
     }
   }
 }
 
-async function deleteInstance(client: Limrun, platform: 'ios' | 'android', id: string, signal: AbortSignal): Promise<void> {
+async function deleteInstance({ client, NotFoundError }: LimrunApi, platform: 'ios' | 'android', id: string, signal: AbortSignal): Promise<void> {
   try {
     await (platform === 'ios' ? client.iosInstances : client.androidInstances).delete(id, { signal });
   } catch (cause) {
     // An expired or already deleted instance needs no further cleanup.
-    if (!(cause instanceof Limrun.NotFoundError)) throw cause;
+    if (!(cause instanceof NotFoundError)) throw cause;
   }
 }
 
@@ -92,7 +96,7 @@ export function limrun(options: LimrunOptions = {}): DeviceProvider {
     await resource.stopHeartbeat?.();
     const results = await Promise.allSettled([
       stopDriver(resource.stateDir, resource.env, signal).then(() => rm(resource.stateDir, { recursive: true, force: true })),
-      deleteInstance(resource.client, resource.platform, id, signal),
+      deleteInstance(resource.api, resource.platform, id, signal),
     ]);
     const errors = results.flatMap((result) => result.status === 'rejected' ? [result.reason] : []);
     if (errors.length) throw new AggregateError(errors, `Could not fully release Limrun instance ${id}: ${errors.map((error: unknown) => error instanceof Error ? error.message : String(error)).join('; ')}`);
@@ -104,7 +108,10 @@ export function limrun(options: LimrunOptions = {}): DeviceProvider {
     async acquire(request) {
       assertDriverVersion(request.agentDeviceVersion);
       request.signal.throwIfAborted();
-      const client = api(request.env);
+      const sdk = await api(request.env);
+      // The import is the first await, so an interrupt during it must not go on to create a device.
+      request.signal.throwIfAborted();
+      const { client } = sdk;
       if (request.platform === 'android') await assertAndroidTools({ ...request.env }, request.signal);
       const spec = { hardTimeout: options.hardTimeout ?? '1h', ...(options.region === undefined ? {} : { region: options.region }) };
       const metadata = { displayName: `e2e ${request.targetName} worker ${request.slot + 1}`, labels: { source: 'e2e', run: request.runId, target: request.targetName, slot: String(request.slot) } };
@@ -116,11 +123,11 @@ export function limrun(options: LimrunOptions = {}): DeviceProvider {
       let resource: Held | undefined;
       try {
         const stateDir = await mkdtemp(path.join(tmpdir(), 'e2e-limrun-'));
-        resource = { stateDir, env: { ...request.env }, client, platform: request.platform };
+        resource = { stateDir, env: { ...request.env }, api: sdk, platform: request.platform };
         held.set(id, resource);
         request.log(`created ${id}`);
         const signal = AbortSignal.any([request.signal, AbortSignal.timeout(300_000)]);
-        const instance = await ready(client, request.platform, created, signal);
+        const instance = await ready(sdk, request.platform, created, signal);
         resource.env = driverEnv(request.env, instance, request.platform);
         const binding = await startDriver({ stateDir, runId: request.runId, slot: request.slot, platform: request.platform, app: request.app, appPath: request.appPath }, resource.env, signal);
         resource.stopHeartbeat = await startHeartbeat(binding, request.log);
@@ -129,7 +136,7 @@ export function limrun(options: LimrunOptions = {}): DeviceProvider {
         const signal = AbortSignal.timeout(30_000);
         try {
           if (resource) await release(id, resource, signal);
-          else await deleteInstance(client, request.platform, id, signal);
+          else await deleteInstance(sdk, request.platform, id, signal);
         } catch (cleanup) {
           throw new AggregateError([cause, cleanup], `Limrun acquisition failed; cleanup also failed for ${id}`, { cause: cleanup });
         }

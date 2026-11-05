@@ -11,6 +11,8 @@
  * Responses API, and `opencodeConsole()` loads every SDK but
  * `@ai-sdk/openai-compatible` lazily. Type imports erase and are
  * exempt, as is the scaffold text `e2e init` writes from template literals.
+ * The startup table at the end holds the other half: what an entry loads
+ * before its code runs leaves out the packages only one command or session needs.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -53,22 +55,15 @@ const SCOPES: readonly Scope[] = [
 
 /** A block comment, a template literal, or a line comment: where an import statement is only quoted. */
 const QUOTED = /\/\*[\s\S]*?\*\/|`(?:[^`\\]|\\[\s\S])*`|\/\/.*/g;
-/** A static import, re-export, or side-effect import; the clause is what sits between the keyword and `from`, absent for a side effect. */
-const STATIC = /^\s*(?:import|export)\s+(type\s+)?(?:(\{[^}]*\}|\*(?:\s+as\s+\w+)?|\w+(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+\w+))?)\s+from\s+)?['"]([^'"]+)['"]/gm;
+/**
+ * A static import, re-export, or side-effect import. The first group is the
+ * `type` that erases the whole statement from the output. A `type` on each
+ * specifier does not: `verbatimModuleSyntax` leaves `import {} from 'x'`, which
+ * still loads `x`.
+ */
+const STATIC = /^\s*(?:import|export)\s+(type\s+)?(?:(?:\{[^}]*\}|\*(?:\s+as\s+\w+)?|\w+(?:\s*,\s*(?:\{[^}]*\}|\*\s+as\s+\w+))?)\s+from\s+)?['"]([^'"]+)['"]/gm;
 /** A dynamic import, unless it sits in a `typeof import('x')` type position. */
 const DYNAMIC = /(typeof\s+)?\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
-
-function isTypeOnly(typeKeyword: string | undefined, clause: string | undefined): boolean {
-  if (typeKeyword !== undefined) return true;
-  if (clause === undefined) return false;
-  const braced = /^\{([\s\S]*)\}$/.exec(clause);
-  if (braced === null) return false;
-  return braced[1]!
-    .split(',')
-    .map((specifier) => specifier.trim())
-    .filter((specifier) => specifier !== '')
-    .every((specifier) => specifier.startsWith('type '));
-}
 
 interface ValueImport {
   readonly specifier: string;
@@ -80,7 +75,7 @@ function valueImports(source: string): ValueImport[] {
   const code = source.replace(QUOTED, ' ');
   const found: ValueImport[] = [];
   for (const match of code.matchAll(STATIC)) {
-    if (!isTypeOnly(match[1], match[2])) found.push({ specifier: match[3]!, text: match[0].trim() });
+    if (match[1] === undefined) found.push({ specifier: match[2]!, text: match[0].trim() });
   }
   for (const match of code.matchAll(DYNAMIC)) {
     if (match[1] === undefined) found.push({ specifier: match[2]!, text: match[0] });
@@ -152,6 +147,64 @@ describe('the ai package', () => {
   });
 });
 
+/** The static runtime imports of a module: what loads when it is imported, before any of its code runs. */
+function staticImports(source: string): string[] {
+  const code = source.replace(QUOTED, ' ');
+  return [...code.matchAll(STATIC)].filter((match) => match[1] === undefined).map((match) => match[2]!);
+}
+
+/**
+ * Every package the static imports reach from `entry`, each with the chain of
+ * files that leads to it. A dynamic import is not followed: that module loads
+ * when the code that asks for it runs.
+ */
+function startupPackages(dir: string, entry: string): Map<string, string[]> {
+  const src = path.join(PACKAGES, dir, 'src');
+  const chains = new Map<string, string[]>([[entry, [entry]]]);
+  const reached = new Map<string, string[]>();
+  const queue = [entry];
+  for (const file of queue) {
+    const chain = chains.get(file)!;
+    for (const specifier of staticImports(readFileSync(path.join(src, file), 'utf8'))) {
+      if (specifier.startsWith('.')) {
+        const next = path.normalize(path.join(path.dirname(file), specifier));
+        if (chains.has(next)) continue;
+        chains.set(next, [...chain, next]);
+        queue.push(next);
+      } else if (!specifier.startsWith('node:')) {
+        const name = packageOf(specifier);
+        if (!reached.has(name)) reached.set(name, [...chain, name]);
+      }
+    }
+  }
+  return reached;
+}
+
+/** What a process loads for an entry before it knows what it will do, and the packages that serve only some of what it does. */
+const STARTUP: readonly { readonly dir: string; readonly entry: string; readonly lazy: readonly string[] }[] = [
+  // `e2e run`, `list`, and `--help` need none of the MCP server, the prompts, or the schemas of `mcp`, `init`, `login`, and `explore`.
+  { dir: 'e2e', entry: 'cli/index.ts', lazy: ['@modelcontextprotocol/server', '@clack/prompts', 'zod'] },
+  { dir: 'e2e', entry: 'runner.ts', lazy: ['@modelcontextprotocol/server', '@clack/prompts', 'zod', 'commander'] },
+  { dir: 'e2e', entry: 'run/worker/entry.ts', lazy: ['@modelcontextprotocol/server', '@clack/prompts', 'zod', 'commander'] },
+  // A config imports these in every process, and only a worker that runs an ACP step or leases a Limrun device calls them.
+  { dir: 'acp', entry: 'index.ts', lazy: ['@agentclientprotocol/sdk', '@modelcontextprotocol/server'] },
+  { dir: 'limrun', entry: 'index.ts', lazy: ['@limrun/api'] },
+  // `e2e list`, and a run whose browsers a provider hosts, read the config without ever launching a browser.
+  { dir: 'web', entry: 'index.ts', lazy: ['playwright-core'] },
+];
+
+describe.each(STARTUP)('importing packages/$dir/src/$entry', ({ dir, entry, lazy }) => {
+  it(`loads none of ${lazy.join(', ')} until the code that needs it runs`, () => {
+    const reached = startupPackages(dir, entry);
+    const loaded = lazy.flatMap((name) => (reached.has(name) ? [reached.get(name)!.join(' > ')] : []));
+    expect(loaded, 'import it with `await import()` in the function that uses it').toEqual([]);
+  });
+
+  it('is scanned: its static imports reach some package at all', () => {
+    expect(startupPackages(dir, entry).size).toBeGreaterThan(0);
+  });
+});
+
 describe('the scan', () => {
   const specifiers = (source: string) => valueImports(source).map((found) => found.specifier);
 
@@ -161,7 +214,6 @@ describe('the scan', () => {
     expect(specifiers("import 'tsx/esm/api';")).toEqual(['tsx/esm/api']);
     expect(specifiers("const sdk = await import('ai');")).toEqual(['ai']);
     expect(specifiers("import type { Tool } from 'ai';")).toEqual([]);
-    expect(specifiers("import { type Tool, type ToolSet } from 'ai';")).toEqual([]);
     expect(specifiers("export type { Tool } from 'ai';")).toEqual([]);
     expect(specifiers("type Sdk = typeof import('ai');")).toEqual([]);
     expect(specifiers(`  import: "import { gateway } from 'ai';",`)).toEqual([]);
@@ -169,6 +221,13 @@ describe('the scan', () => {
     expect(specifiers("/** Loads `ai` once: `await import('ai')`. */\nimport { slot } from './slot.ts';")).toEqual(['./slot.ts']);
     expect(specifiers("// falls back to import('ai')\nimport { z } from 'zod';")).toEqual(['zod']);
     expect(specifiers("const example = `import { test } from '@e2e-dev/web';\nimport { expect } from 'e2e';\n`;")).toEqual([]);
+  });
+
+  it('counts a list of type specifiers as a runtime import, since the output keeps `import {} from`', () => {
+    expect(specifiers("import { type Tool, type ToolSet } from 'ai';")).toEqual(['ai']);
+    expect(specifiers("import { type Tool } from 'ai';")).toEqual(['ai']);
+    expect(staticImports("import { type Browser } from 'playwright-core';")).toEqual(['playwright-core']);
+    expect(staticImports("import type { Browser } from 'playwright-core';")).toEqual([]);
   });
 
   it('objects to a devDependency, a bare builtin, and an optional peer outside its home', () => {
