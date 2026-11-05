@@ -1,0 +1,77 @@
+name: chromium
+description: >-
+  Installs Playwright's Chromium and its system packages, with the .deb files
+  apt downloads for them restored from and saved to the Actions cache.
+
+# `--with-deps` installs about 38 MB of packages from the Ubuntu mirror, and
+# the mirror often serves them at about 200 kB/s: the step takes 2 to 5
+# minutes instead of 15 seconds in nearly half of the jobs. apt reads the
+# archives from a directory this action restores first, so it downloads only
+# the packages whose version changed since the cache was saved.
+inputs:
+  only-shell:
+    description: Install only the headless shell, not the full browser.
+    default: 'true'
+
+runs:
+  using: composite
+  steps:
+    # The prefix holds what decides the package list: the Ubuntu release and
+    # the Playwright version. The suffix is a digest of the .deb file names,
+    # so a key names one exact set of package versions.
+    # The directory sits under /var/cache, not the runner's temp directory:
+    # apt downloads as `_apt`, which cannot traverse /home/runner and would
+    # fall back to downloading as root. The runner owns the directory so the
+    # cache can restore into it; `partial` belongs to `_apt`, as in
+    # /var/cache/apt/archives.
+    - name: Point apt at the cached archives
+      id: apt
+      shell: bash
+      env:
+        ARCHIVES: /var/cache/chromium-apt
+      run: |
+        set -euo pipefail
+        . /etc/os-release
+        PLAYWRIGHT="$(node -p "require('./packages/web/package.json').dependencies['playwright-core']")"
+        sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 "$ARCHIVES"
+        sudo install -d -o _apt -g root -m 700 "$ARCHIVES/partial"
+        printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\n' "$ARCHIVES" \
+          | sudo tee /etc/apt/apt.conf.d/99chromium-archives > /dev/null
+        echo "archives=$ARCHIVES" >> "$GITHUB_OUTPUT"
+        echo "prefix=chromium-apt-$ID-$VERSION_ID-$(uname -m)-playwright-$PLAYWRIGHT" >> "$GITHUB_OUTPUT"
+    # No entry has exactly this key: restore-keys picks the newest entry with
+    # the prefix.
+    - name: Restore the archives
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.apt.outputs.archives }}/*.deb
+        key: ${{ steps.apt.outputs.prefix }}
+        restore-keys: ${{ steps.apt.outputs.prefix }}-
+    - name: Install Chromium
+      shell: bash
+      env:
+        ONLY_SHELL: ${{ inputs.only-shell == 'true' && '--only-shell' || '' }}
+      run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps $ONLY_SHELL
+    # autoclean deletes the archives the mirror no longer serves, so the set
+    # changes only when a package version does.
+    - name: Name the archive set
+      id: set
+      shell: bash
+      env:
+        ARCHIVES: ${{ steps.apt.outputs.archives }}
+        PREFIX: ${{ steps.apt.outputs.prefix }}
+      run: |
+        set -euo pipefail
+        sudo apt-get autoclean -qq
+        DIGEST="$(find "$ARCHIVES" -maxdepth 1 -name '*.deb' -printf '%f\n' | sort | sha256sum | cut -c1-16)"
+        echo "key=$PREFIX-$DIGEST" >> "$GITHUB_OUTPUT"
+        echo "count=$(find "$ARCHIVES" -maxdepth 1 -name '*.deb' | wc -l)" >> "$GITHUB_OUTPUT"
+    # Jobs of one run that all missed race for the same key; one saves and
+    # the others log a warning.
+    - name: Save the archives
+      if: steps.set.outputs.count != '0' && steps.set.outputs.key != steps.restore.outputs.cache-matched-key
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.apt.outputs.archives }}/*.deb
+        key: ${{ steps.set.outputs.key }}

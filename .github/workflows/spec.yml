@@ -64,7 +64,7 @@ jobs:
           pnpm exec tsc -p .dev/skills/babysit/scripts
           node --test .dev/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps --only-shell
+        uses: ./.github/actions/chromium
       # On a pull request, Jev leaves out the tests the change can't affect;
       # a push to main passes no --changed-since and runs every test.
       # Without the key (a fork's pull request), every test runs.
@@ -98,7 +98,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
+        with:
+          only-shell: false
       - name: Unit and integration tests
         run: pnpm test
 
