@@ -1054,7 +1054,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           });
 
     pendingNonRun = [];
-    const scheduled = await debug.time('scheduler', () =>
+    appExitTargets = await debug.time('scheduler', () =>
       runUnits({
         plans,
         workers: runWorkers,
@@ -1096,7 +1096,6 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         },
       }),
     );
-    appExitTargets = scheduled.appExitTargets;
   };
 
   // The interrupt bridge is armed for the whole body — app startup, collection,

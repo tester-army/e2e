@@ -107,11 +107,6 @@ export interface TargetFailure {
   readonly error: SerializedError;
 }
 
-/** Targets whose interrupted verdicts came from an app failure rather than a user interrupt. */
-export interface RunUnitsOutcome {
-  readonly appExitTargets: ReadonlySet<string>;
-}
-
 /** Consecutive worker-boot failures per target before its units are failed. */
 const MAX_INIT_FAILURES = 2;
 
@@ -129,8 +124,8 @@ function isInterruptSignal(signal: NodeJS.Signals | null): boolean {
   return signal === 'SIGINT' || signal === 'SIGTERM' || signal === 'SIGHUP';
 }
 
-/** Runs every planned unit and streams records. */
-export async function runUnits(options: RunUnitsOptions): Promise<RunUnitsOutcome> {
+/** Runs planned units and returns the names of targets interrupted by app exits. */
+export async function runUnits(options: RunUnitsOptions): Promise<ReadonlySet<string>> {
   return new Scheduler(options).run();
 }
 
@@ -438,7 +433,7 @@ class Scheduler {
     }
   }
 
-  async run(): Promise<RunUnitsOutcome> {
+  async run(): Promise<ReadonlySet<string>> {
     for (const plan of this.options.plans) {
       this.targets.set(plan.target.name, {
         target: plan.target,
@@ -479,9 +474,7 @@ class Scheduler {
       this.options.forceSignal.removeEventListener('abort', onInterrupt);
       await this.drain();
     }
-    return {
-      appExitTargets: new Set([...this.targets.values()].filter((state) => state.unavailable?.kind === 'app-exit').map((state) => state.target.name)),
-    };
+    return new Set([...this.targets.values()].filter((state) => state.unavailable?.kind === 'app-exit').map((state) => state.target.name));
   }
 
   /** Stops only owners that still have test work, reporting one error for the shared command. */
