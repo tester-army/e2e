@@ -9,9 +9,9 @@
  *
  * The sidebar shows no icons, so no page's frontmatter sets `icon:`.
  *
- * Pages under `docs/integrations/` and `docs/ci/` must also have a card on
- * their overview (`docs/integrations/index.mdx`, `docs/ci.mdx`), so a new
- * page cannot ship without the card that shows its logo.
+ * Every vendor page must also have a card on its section's overview
+ * (`docs/integrations/index.mdx`, `docs/ci.mdx`, `docs/migrate/index.mdx`),
+ * so a new page cannot ship without the card that shows its logo.
  *
  * Usage: `node scripts/check-docs-logos.ts`, part of `pnpm docs:check`.
  * Exits 1 listing every problem.
@@ -27,10 +27,10 @@ const SITE = 'https://e2e.com/docs';
 const CARD_DIR = '/images/integrations/';
 
 /** Vendor sections, and the overview page that must hold a card for each of their pages. */
-const SECTIONS: { dir: string; overview?: string }[] = [
+const SECTIONS: { dir: string; overview: string }[] = [
   { dir: 'integrations', overview: 'integrations/index.mdx' },
   { dir: 'ci', overview: 'ci.mdx' },
-  { dir: 'migrate' },
+  { dir: 'migrate', overview: 'migrate/index.mdx' },
 ];
 
 const CARD = /<Card\b[^>]*>/g;
@@ -77,7 +77,7 @@ function rendered(source: string): string {
 /** Whether a page's frontmatter sets `icon:`. */
 function hasFrontmatterIcon(source: string): boolean {
   const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? '';
-  return /^icon:/m.test(frontmatter);
+  return /^\s*["']?icon["']?\s*:/m.test(frontmatter);
 }
 
 /** One attribute of a JSX tag. */
@@ -130,7 +130,6 @@ for (const path of pages(DOCS)) {
 }
 
 for (const { dir, overview } of SECTIONS) {
-  if (!overview) continue;
   for (const [target, file] of vendorPages) {
     if (!target.startsWith(`/${dir}/`) || carded.get(overview)?.has(target)) continue;
     problems.push(`${file}: no <Card href="${target}"> on docs/${overview}; add one with its logo under docs${CARD_DIR}`);

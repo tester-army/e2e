@@ -174,8 +174,8 @@ placeholder:
 
 - Put the logo at `docs/images/integrations/<brand>.svg`, in brand colors.
   Use it on every `<Card>` that links to the page.
-- An integration or CI page also gets a card on its overview,
-  `docs/integrations/index.mdx` or `docs/ci.mdx`.
+- Every vendor page also gets a card on its section's overview:
+  `docs/integrations/index.mdx`, `docs/ci.mdx`, or `docs/migrate/index.mdx`.
 - A near-black mark needs a `filter: invert(1)` rule for dark mode in the
   site's styles, like Expo's and TestMu AI's. Say so in the PR.
 
@@ -468,7 +468,7 @@ Each group opens with one table, one row per entry. Keep it to the minimum:
 - [ ] No `icon:` in the frontmatter.
 - [ ] A vendor page (`docs/integrations/`, `docs/ci/`, `docs/migrate/`)
       has the vendor's logo on every card that links to it
-      ([Vendor logos](#vendor-logos)). A new integration or CI page has a
-      card on its overview.
+      ([Vendor logos](#vendor-logos)) and a card on its section's
+      overview.
 - [ ] Links and anchors resolve. Moved pages have redirects.
 - [ ] `pnpm docs:check` passes.
