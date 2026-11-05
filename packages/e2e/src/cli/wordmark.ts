@@ -35,12 +35,13 @@ const BARS: readonly string[] = [
 ];
 
 /**
- * A bar is two half-block pixel rows tall and the gap between bars one, the
- * closest terminal resolution gets to the logo's thick bars and thin gaps; a terminal row holds
- * two pixel rows, so every row of the output carries at most one bar.
+ * A terminal row holds two pixel rows. A bar is two pixel rows and the gap
+ * between bars two more, so at rest every bar is one row of full blocks with
+ * a blank row under it; the scan line moves one pixel row, half a terminal
+ * row, at a time.
  */
 const BAR_PX = 2;
-const PITCH_PX = 3;
+const PITCH_PX = 4;
 const WORDMARK_WIDTH = BARS[0]!.length;
 const WORDMARK_PX = (BARS.length - 1) * PITCH_PX + BAR_PX;
 /** Terminal rows the wordmark takes. */
