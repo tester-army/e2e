@@ -86,6 +86,10 @@ suites that consume the built packages the way a user would.
   The `@e2e-dev/mobile/tools` subpath holds the agent-side `open_app`, `swipe`,
   and `alert` tools; focused-field typing uses the engine's keyboard grammar.
   The main entry never loads the AI SDK.
+  The `@e2e-dev/mobile/agent-device` subpath re-exports the engine's own
+  agent-device (client factory, error helpers, common types) for custom
+  tools, so a project never pins a second copy. It is unstable like
+  `device.unstable_raw`.
   The `@e2e-dev/mobile/lease` subpath holds the agent-device lease plumbing
   device-cloud providers (`testmu`, `browserstack`) share: one daemon per
   slot, heartbeat, and a release that fails unless the session end is

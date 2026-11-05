@@ -4,7 +4,6 @@
  * must re-export the engine's own import, not a copy of it.
  */
 
-import { readFileSync } from 'node:fs';
 import * as agentDevice from 'agent-device';
 import { describe, expect, it } from 'vitest';
 import * as subpath from '../../src/agent-device.ts';
@@ -24,15 +23,5 @@ describe('@e2e-dev/mobile/agent-device', () => {
       'isAgentDeviceError',
       'normalizeAgentDeviceError',
     ]);
-  });
-
-  it('is in the export map, built from its source module', () => {
-    const manifest = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as {
-      exports: Record<string, { types: string; default: string }>;
-    };
-    expect(manifest.exports['./agent-device']).toEqual({
-      types: './dist/agent-device.d.ts',
-      default: './dist/agent-device.js',
-    });
   });
 });

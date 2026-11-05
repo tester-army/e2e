@@ -71,7 +71,7 @@ try {
     "import { expect, test } from 'e2e';\n\nenum Answer { Yes = 'yes' }\n\ntest('TypeScript runs', () => {\n  expect(Answer.Yes).toBe('yes');\n});\n",
   );
 
-  // A second agent-device client reaches the engine's copy through the subpath, with no `agent-device` dependency of its own.
+  // The subpath resolves with no `agent-device` dependency in the project, and the graph holds one agent-device.
   writeFileSync(
     join(project, 'agent-device.mjs'),
     [

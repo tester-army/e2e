@@ -8,8 +8,11 @@
  * This re-exports what a tool commonly needs: the client factory, the error
  * helpers, and the types for snapshots, screenshots, targets, gestures,
  * text entry, alerts, and waits. Daemon lifecycle (`ensureDaemon`,
- * `startAgentDevice`) is left out because the engine owns the daemon. The
- * rest of agent-device is not part of this package's contract.
+ * `startAgentDevice`) is left out because the engine owns the daemon.
+ *
+ * Unstable, like `device.unstable_raw`: this is agent-device's API at the
+ * version this package pins, and it can change in any release that bumps
+ * agent-device.
  */
 
 export {

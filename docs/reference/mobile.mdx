@@ -447,23 +447,27 @@ await client.apps.list(device.unstable_raw.selection);
 After the worker disposes the session, reading `unstable_raw` or `client`
 throws `INVALID_STATE`.
 
-A custom tool that calls agent-device imports it from
-`@e2e-dev/mobile/agent-device`. It is the agent-device copy the engine uses,
-so the project needs no `agent-device` dependency of its own and has no
-second version to keep in sync. A client created with the engine's
-[`session`](#session) name drives the same session the engine does.
+Code that imports agent-device, such as a custom tool, imports it from
+`@e2e-dev/mobile/agent-device`. That is the copy the engine uses, so the
+project needs no `agent-device` dependency of its own to keep in sync.
 
 ```ts
-import { createAgentDeviceClient, type AgentDeviceClient } from '@e2e-dev/mobile/agent-device';
-
-const client: AgentDeviceClient = createAgentDeviceClient({ session: 'e2e-iphone-0' });
+import { isAgentDeviceError, type AgentDeviceClient, type SnapshotNode } from '@e2e-dev/mobile/agent-device';
 ```
 
-The subpath exports `createAgentDeviceClient`, the error helpers (`AppError`,
+It exports `createAgentDeviceClient`, the error helpers (`AppError`,
 `isAgentDeviceError`, `normalizeAgentDeviceError`), `centerOfRect`, and the
 types for the client, snapshots and nodes, screenshots, targets, gestures,
-text entry, alerts, and waits. It leaves out `ensureDaemon` and
-`startAgentDevice`, because the engine owns the daemon.
+text entry, alerts, and waits. `ensureDaemon` and `startAgentDevice` are left
+out because the engine owns the daemon.
+
+- Inside a test, use `device.unstable_raw.client`. A client you build with
+  `createAgentDeviceClient` does not get the engine's daemon, lease, or
+  per-worker session name, so on a hosted device or with more than one
+  worker it reaches a different device.
+- Like `unstable_raw`, this is agent-device's API at the version
+  `@e2e-dev/mobile` pins. It can change in any release that bumps
+  agent-device.
 
 #### `locator`
 
