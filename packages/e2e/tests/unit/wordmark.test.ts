@@ -77,14 +77,14 @@ describe('playWordmark', () => {
     }
   });
 
-  it('scans the logo in row by row from the top in under half a second, and leaves it at rest with the cursor shown', async () => {
+  it('sweeps a scan line down the logo in about half a second, revealing each row half a row at a time, and leaves it at rest with the cursor shown', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     vi.setTimerTickMode('nextTimerAsync');
     const out = stream();
     const started = performance.now();
     await playWordmark(out, { env: {} });
     const elapsed = performance.now() - started;
-    expect(elapsed).toBeGreaterThanOrEqual(400);
+    expect(elapsed).toBeGreaterThanOrEqual(600);
     expect(elapsed).toBeLessThan(1000);
 
     expect(out.writes[0]).toBe(`${ESC}[?25l`);
@@ -98,16 +98,19 @@ describe('playWordmark', () => {
     expect(first.split('\n')).toHaveLength(7);
     // Nothing is ever styled or colored.
     expect(paints.every((paint) => [`${ESC}[0m`, `${ESC}[1m`, `${ESC}[2m`, '38;'].every((style) => !paint.includes(style)))).toBe(true);
-    // Every paint is the logo down to some row and blank below it, and the rows arrive top to bottom.
-    const scanned = paints.slice(0, -1).map((paint) => stripVTControlCharacters(paint).split('\n').slice(0, REST.length));
-    const reached = scanned.map((lines) => {
-      const count = lines.findIndex((line, row) => line !== REST[row]);
-      expect(lines.slice(count === -1 ? REST.length : count).every((line) => line === '')).toBe(true);
-      return count === -1 ? REST.length : count;
+    // The scan line sweeps down half a row at a time: each row goes blank, the line alone, its bars' top halves with the line in the gaps, drawn.
+    const states = (row: number): readonly string[] => ['', '▔'.repeat(50), REST[row]!.padEnd(50).replaceAll(' ', '▔').replaceAll('█', '▀'), REST[row]!];
+    const progress = paints.map((paint) => {
+      const lines = stripVTControlCharacters(paint).split('\n').slice(0, REST.length);
+      return lines.map((line, row) => states(row).indexOf(line));
     });
-    expect(reached[0]).toBe(1);
-    expect(reached.every((count, index) => index === 0 || [0, 1].includes(count - reached[index - 1]!))).toBe(true);
-    expect(reached.at(-1)).toBe(REST.length);
+    expect(progress.flat().every((state) => state !== -1)).toBe(true);
+    // Rows above are always as far along as rows below, and no row ever goes back.
+    expect(progress.every((rows) => rows.every((state, row) => row === 0 || state <= rows[row - 1]!))).toBe(true);
+    expect(progress.every((rows, index) => index === 0 || rows.every((state, row) => state >= progress[index - 1]![row]!))).toBe(true);
+    // Every row passes through the line, its top halves, and drawn, so the line never skips a half row; it starts on the top row.
+    expect(REST.every((_, row) => [1, 2, 3].every((state) => progress.some((rows) => rows[row] === state)))).toBe(true);
+    expect(progress[0]).toEqual([1, 0, 0, 0, 0, 0]);
     // The last paint is the logo at rest, unstyled, in place, with a blank line under it.
     expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[6A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
   });

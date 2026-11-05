@@ -2,7 +2,8 @@
  * The e2e wordmark: the logotype from the e2e design system, six rows of
  * horizontal bars, drawn in full blocks in the terminal's own foreground the
  * way the logo pack's black and white files fill it. On a terminal that
- * can show it the logo loads top to bottom like a scan, one row at a time.
+ * can show it a scan line sweeps down the logo, and each row shows its top
+ * half as the line crosses it, then fills in.
  * Where motion does not belong it is printed at rest, and output that is not
  * a terminal never sees it.
  */
@@ -43,9 +44,10 @@ const LOGO: readonly string[] = BARS.map((bar) => bar.replaceAll('#', '█').rep
 const WORDMARK_ROWS = LOGO.length;
 
 const FRAME_MS = 16;
-/** The scan draws one row this often. */
-const ROW_MS = 75;
-const DURATION_MS = ROW_MS * WORDMARK_ROWS;
+/** One sweep of the scan line from above the top row to below the bottom one. */
+const DURATION_MS = 600;
+/** The scan line: a thin line across the logo's whole width. */
+const SCAN_LINE = '▔';
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
 export interface WordmarkStream {
@@ -55,10 +57,21 @@ export interface WordmarkStream {
   write(text: string): unknown;
 }
 
-/** The logo `elapsed` milliseconds into the scan: the rows the scan has reached, and the rows below it blank. */
+/**
+ * The logo `elapsed` milliseconds into the scan. The scan line moves half a
+ * row at a time: a row it has passed is drawn, the row it is crossing shows
+ * its bars' top halves with the line in the gaps, the row it is entering is
+ * the line alone, and the rows below it are blank.
+ */
 function frame(elapsed: number): readonly string[] {
-  const reached = Math.floor(elapsed / ROW_MS) + 1;
-  return LOGO.map((line, row) => (row < reached ? line : ''));
+  const line = Math.floor((elapsed / DURATION_MS) * (WORDMARK_ROWS * 2 + 1));
+  return LOGO.map((text, row) => {
+    const passed = line - row * 2;
+    if (passed >= 2) return text;
+    if (passed === 1) return text.padEnd(WORDMARK_WIDTH).replaceAll(' ', SCAN_LINE).replaceAll('█', '▀');
+    if (passed === 0) return SCAN_LINE.repeat(WORDMARK_WIDTH);
+    return '';
+  });
 }
 
 /** The wordmark at rest: the logo rows, plain. */
