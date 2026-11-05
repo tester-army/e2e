@@ -1,13 +1,13 @@
 ---
 title: Agentic or deterministic
-description: Choose natural-language goals, exact actions, or a mix of both for your end-to-end tests.
+description: Choose agentic or deterministic actions and assertions for your end-to-end tests.
 icon: "code-branch"
 ---
 
-Agentic testing lets you describe a user's intention in natural language.
-The agent reads the screen and chooses the actions needed to carry it
-out. Your test focuses on the outcome, with fewer selectors to maintain
-as the UI changes.
+Agentic testing lets you describe a user's intention and the expected
+result in natural language. The agent can choose the actions to perform
+and judge whether the screen meets your expectations. Your test focuses
+on the outcome, with fewer selectors to maintain as the UI changes.
 
 Deterministic testing specifies the actions and checks in code. Both
 approaches can test user outcomes, and e2e lets you mix them in one test.
@@ -20,16 +20,18 @@ easy to describe in plain English, such as filling out and submitting a form.
 
 With `agent.act`, you describe a user intention, such as applying a
 discount code. The agent figures out which controls to use and what to do.
+With `agent.assert`, you describe what should be true on the screen.
 
-For example, inside a test with the `app`, `agent`, and `screen` fixtures:
+For example, inside a test with the `app` and `agent` fixtures:
 
 ```ts
 await app.open('/checkout');
 await agent.act('apply the discount code SUMMER');
-await expect(screen.getByRole('status')).toHaveText('10% off');
+await agent.assert('the checkout shows code SUMMER applied with a 10% discount');
 ```
 
-You don't need to name the discount field or the button that applies it.
+You don't need to name the discount field, the button that applies it,
+or the element that shows the result.
 
 Tests tied to CSS classes or test IDs need edits when those identifiers
 change. Move a button or redesign a form, and the agent can still carry
@@ -39,6 +41,27 @@ time spent repairing selectors after UI changes.
 For a complex journey, write a sequence of goals in plain English. Keep
 each goal to one outcome and check it before continuing. See
 [Goals](/core-concepts#goals) for how to split a journey into steps.
+
+## Check meaning and appearance
+
+Agentic assertions are useful when several wordings or layouts would
+satisfy the same requirement. For example, a validation message can
+explain what's wrong without matching one exact sentence:
+
+```ts
+await agent.assert('the error message explains that an email address is required');
+```
+
+For a visual check, add `vision: true` so the model also sees a screenshot:
+
+```ts
+await agent.assert('the chart trends upward', { vision: true });
+```
+
+`agent.assert` checks the current screen and fails if the statement is
+false or the evidence is insufficient. Use `agent.waitFor` when the UI
+still needs time to reach the expected state. See
+[Assertions](/core-concepts#assertions) for both methods.
 
 ## When to use deterministic tests?
 
@@ -56,25 +79,31 @@ These actions and checks make no model calls. Prefer roles and labels so
 the test refers to controls the user recognizes. Deterministic tests don't
 have to depend on CSS classes or test IDs.
 
-Use exact assertions for requirements such as a price, a validation
-message, or a count. If the button must be named `Apply`, a locator that
-requires that name makes the requirement explicit.
+Use deterministic assertions when you can express the expected result
+as an exact value, count, or state. They check it without model judgment.
+If a validation message must use specific wording, check that text with
+`expect`.
 
 ## Combine agentic with deterministic tests
 
-Start with agentic actions for a journey that changes often and
-deterministic assertions for its required outcomes, as in the first example.
+Choose actions and assertions independently. You can let the agent find
+its way through a changing UI, then check an exact value with `expect`:
 
-Use `agent.assert` when the result needs interpretation, such as whether
-a chart trends upward. Keep exact values in deterministic checks. See
-[Assertions](/core-concepts#assertions) for semantic and visual checks.
+```ts
+await agent.act('apply the discount code SUMMER');
+await expect(screen.getByRole('status')).toHaveText('10% off');
+```
+
+You can also use locators to fill and submit a form, then use
+`agent.assert` to check whether its validation message explains the problem.
 
 Adaptation follows the goal you write. If a specific path matters, name
 it in the goal or use locators for those actions. A vague instruction can
 allow a result you didn't intend.
 
-Live agent steps add model latency and cost, and can make mistakes. The
-[replay cache](/cache) can repeat recorded actions without model calls.
+Model-driven actions and assertions add latency and cost, and can make
+mistakes. The [replay cache](/cache) can repeat recorded `agent.act`
+actions without model calls. Assertions run again on every test run.
 When a recording no longer matches, the agent can adapt to the changed
 UI unless strict cache mode is enabled. See
 [Self-healing tests](/self-healing) for how this works.
