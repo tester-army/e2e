@@ -15,6 +15,7 @@ const EXIT_MODES = [
 
 const SERVER = `const fs = require('node:fs');
 const control = process.argv[4] ?? '';
+fs.writeFileSync(control + 'pid', String(process.pid));
 fs.appendFileSync('starts', control + '\\n');
 require('node:http').createServer((_request, response) => response.end('ready'))
   .listen(Number(process.argv[2]), '127.0.0.1');
@@ -400,7 +401,7 @@ test('queued test', async () => {
         { name: 'a', port: portA, control: 'a-' },
         { name: 'b', port: portB, control: 'b-' },
       ]),
-      'tests/completed.e2e.ts': `import { existsSync, writeFileSync } from 'node:fs';
+      'tests/completed.e2e.ts': `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { test } from 'e2e';
 ${WAIT_FOR_FILE}
 test('completes its target', async ({ app }) => {
@@ -409,12 +410,18 @@ test('completes its target', async ({ app }) => {
   } else {
     writeFileSync('b-running', 'started');
     await waitForFile('a-completed');
+    const pid = Number(readFileSync('a-pid', 'utf8'));
     const deadline = Date.now() + 5000;
-    while (await fetch('http://127.0.0.1:${portA}').then(() => true, () => false)) {
+    while (true) {
+      try { process.kill(pid, 0); }
+      catch (error) {
+        if (error instanceof Error && 'code' in error && error.code === 'ESRCH') break;
+        throw error;
+      }
       if (Date.now() >= deadline) throw new Error('completed target app did not exit');
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    if (!(await fetch(app.baseUrl!)).ok) throw new Error('healthy app stopped answering');
+    process.kill(Number(readFileSync('b-pid', 'utf8')), 0);
     writeFileSync('b-finished', 'finished');
   }
 });`,

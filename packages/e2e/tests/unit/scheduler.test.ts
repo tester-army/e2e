@@ -531,6 +531,85 @@ describe('app command failures', () => {
     expect(fleet.unitsByWorker.flat()).toEqual([]);
   });
 
+  it('does not restore resource reuse when a retired starting worker reports ready', async () => {
+    const perTarget = ['a', 'healthy'].map((name, index) => {
+      const target = makeTarget(name, index);
+      return { target, pairs: [makePair(makeTest('tests/a.e2e.ts', 'test'), target)] };
+    });
+    const fleet = new FakeFleet({ shutdownUntil: 'terminate' });
+    vi.useFakeTimers();
+    const running = run(makeSelection(perTarget), makeCollection(['tests/a.e2e.ts'], perTarget.flatMap((entry) => entry.pairs)), fleet, {
+      workers: 1,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 0);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.target.name, result.status])).toEqual([
+      ['a', 'skipped'], ['healthy', 'passed'],
+    ]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.controls.filter(({ worker, message }) => worker === 0 && message.type === 'shutdown').map(({ message }) => message)).toEqual([
+      { type: 'shutdown' },
+    ]);
+  });
+
+  it('gracefully disposes an app-failed worker after unit-done while healthy work continues', async () => {
+    const target = makeTarget('a', 0, boundedEngine(1));
+    const healthy = makeTarget('healthy', 1, boundedEngine(1));
+    const pairs = [makePair(makeTest('tests/a.e2e.ts', 'finishes'), target)];
+    const healthyPairs = ['first', 'second'].map((title) => makePair(makeTest(`tests/${title}.e2e.ts`, title), healthy));
+    const fleet = new FakeFleet({ overrun: Object.fromEntries([...pairs, ...healthyPairs].map((pair) => [pair.test.id, 'slow-teardown' as const])) });
+    vi.useFakeTimers();
+    const running = run(
+      makeSelection([{ target, pairs }, { target: healthy, pairs: healthyPairs }]),
+      makeCollection([...pairs, ...healthyPairs].map((pair) => pair.test.file), [...pairs, ...healthyPairs]),
+      fleet,
+      {
+        workers: 2,
+        interruptGraceMs: 15000,
+        subscribeTargetFailures(receive) {
+          setTimeout(() => receive(failure), 10);
+          return () => undefined;
+        },
+      },
+    );
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.target.name, result.test.title, result.status])).toEqual([
+      ['a', 'finishes', 'passed'], ['healthy', 'first', 'passed'], ['healthy', 'second', 'passed'],
+    ]);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.controls.filter(({ worker, message }) => worker === 0 && message.type === 'shutdown').map(({ message }) => message)).toEqual([
+      { type: 'shutdown' },
+    ]);
+    expect(fleet.killed).toEqual([]);
+  });
+
+  it('does not report WORKER_EXIT when an app-interrupted worker exits before its grace expires', async () => {
+    const target = makeTarget('a', 0);
+    const pairs = ['active', 'queued'].map((title) => makePair(makeTest(`tests/${title}.e2e.ts`, title), target));
+    const fleet = new FakeFleet({ hangOn: ['file::a::tests/active.e2e.ts'], exitDuringNextAttemptOnInterrupt: true });
+    vi.useFakeTimers();
+    const running = run(makeSelection([{ target, pairs }]), makeCollection(pairs.map((pair) => pair.test.file), pairs), fleet, {
+      workers: 1,
+      subscribeTargetFailures(receive) {
+        setTimeout(() => receive(failure), 10);
+        return () => undefined;
+      },
+    });
+    await vi.runAllTimersAsync();
+    const collected = await running;
+    expect(collected.results.map((result) => [result.test.title, result.status])).toEqual([
+      ['queued', 'skipped'], ['active', 'interrupted'],
+    ]);
+    expect(collected.results.find((result) => result.test.title === 'queued')?.skip?.reason).toBe(failure.error.message);
+    expect(collected.runErrors).toEqual([{ error: failure.error }]);
+    expect(fleet.killed).toEqual([]);
+  });
+
   it('reports an active attempt as interrupted when its worker ignores the app exit and is killed', async () => {
     const target = makeTarget('a', 0);
     const pairs = ['spins', 'queued'].map((name, index) => makePair(makeTest('tests/a.e2e.ts', name, { declarationIndex: index }), target));
