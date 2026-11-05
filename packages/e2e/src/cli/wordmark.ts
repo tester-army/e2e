@@ -2,8 +2,8 @@
  * The e2e wordmark: the logotype from the e2e design system, six rows of
  * horizontal bars, drawn in full blocks in the terminal's own foreground the
  * way the logo pack's black and white files fill it. On a terminal that
- * can show it a scan line sweeps down the logo, and each row shows its top
- * half as the line crosses it, then fills in.
+ * can show it the logo shades in, ░ to ▒ to ▓ to █, each row starting a beat
+ * after the one above it.
  * Where motion does not belong it is printed at rest, and output that is not
  * a terminal never sees it.
  */
@@ -44,10 +44,12 @@ const LOGO: readonly string[] = BARS.map((bar) => bar.replaceAll('#', '█').rep
 const WORDMARK_ROWS = LOGO.length;
 
 const FRAME_MS = 16;
-/** One sweep of the scan line from above the top row to below the bottom one. */
-const DURATION_MS = 600;
-/** The scan line: a thin line across the logo's whole width. */
-const SCAN_LINE = '▔';
+/** The shades a bar passes through, from blank to solid. */
+const SHADES = [' ', '░', '▒', '▓', '█'] as const;
+/** How long one row takes to shade in, and how much later each row starts than the one above it. */
+const ROW_MS = 360;
+const ROW_STAGGER_MS = 40;
+const DURATION_MS = ROW_MS + ROW_STAGGER_MS * (WORDMARK_ROWS - 1);
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
 export interface WordmarkStream {
@@ -58,19 +60,15 @@ export interface WordmarkStream {
 }
 
 /**
- * The logo `elapsed` milliseconds into the scan. The scan line moves half a
- * row at a time: a row it has passed is drawn, the row it is crossing shows
- * its bars' top halves with the line in the gaps, the row it is entering is
- * the line alone, and the rows below it are blank.
+ * The logo `elapsed` milliseconds into the animation: each row's bars in the
+ * shade its progress has reached, easing out so the light shades pass
+ * quickly and the solid one settles in.
  */
 function frame(elapsed: number): readonly string[] {
-  const line = Math.floor((elapsed / DURATION_MS) * (WORDMARK_ROWS * 2 + 1));
   return LOGO.map((text, row) => {
-    const passed = line - row * 2;
-    if (passed >= 2) return text;
-    if (passed === 1) return text.padEnd(WORDMARK_WIDTH).replaceAll(' ', SCAN_LINE).replaceAll('█', '▀');
-    if (passed === 0) return SCAN_LINE.repeat(WORDMARK_WIDTH);
-    return '';
+    const progress = Math.min(1, Math.max(0, (elapsed - row * ROW_STAGGER_MS) / ROW_MS));
+    const shade = SHADES[Math.min(SHADES.length - 1, Math.floor((1 - (1 - progress) ** 3) * SHADES.length))]!;
+    return shade === ' ' ? '' : text.replaceAll('█', shade);
   });
 }
 
