@@ -304,7 +304,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
     expect(await browser.evaluate('window.__resized')).toBe(false);
   });
 
-  test('should work with Array deleted', { fail: 'the evaluate wrapper needs the page\'s `Array`' }, async ({ app, browser }) => {
+  test('should work with Array deleted', async ({ app, browser }) => {
     await browser.setViewport({ width: 500, height: 500 });
     await browser.goto('/grid.html');
     await browser.evaluate('() => { delete window.Array; }');

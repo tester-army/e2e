@@ -75,6 +75,7 @@ import {
   navigationStaleOr,
   performViewportSwipe,
   sanitizeFilename,
+  pageScriptFailure,
   staleOr,
   translatePwError,
 } from './support.ts';
@@ -809,98 +810,114 @@ export class PlaywrightSurface {
       operation,
       'locate',
       async (currentOperation) => {
-        const session = this.requireSession();
-        const token = session.token();
-        const refs = session.refs;
-        const page = this.requirePage();
-        const frame = await this.frameOf(expression);
-        const projected = projectExpression(page, expression, { testIdAttribute: this.testIdAttribute, frameHidden: frame.hidden });
-        const { displayValue, name, steps } = projected;
-        // Every match is read by the `e2e-read` selector engine in the task that finds it, so a
-        // page that replaces it a frame later cannot detach it before the read. A
-        // predicate-filtered match is one element among many candidates (every input with a
-        // value, every control the label engine kept). Re-resolving it by position at action
-        // time would act on a neighbor whenever the page inserted or removed an element in
-        // between, so such matches are pinned to the handles of the elements the query returned,
-        // and their reads are taken back from those very handles: what was read and what is
-        // acted on are one set of elements by construction.
-        const read = readSelector({ testIdAttribute: this.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR });
-        const reading = projected.locator.locator(read.selector);
-        const handles =
-          displayValue !== null || name !== null
-            ? ((await reading.elementHandles()) as ElementHandle<Element>[])
-            : null;
-        /** Disposes every handle this locate took, on the paths that hand none of them out. */
-        const releaseHandles = (): void => {
-          for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
-        };
-        const first = handles?.[0];
-        const taken =
-          handles === null
-            ? await reading.evaluateAll(takeReadsFunction, { token: read.token })
-            : first === undefined
-              ? []
-              : await first.evaluate(takeReadsFunction, { token: read.token, elements: handles });
-        const reads = taken
-          .filter((raw) => raw !== null)
-          .map((raw) => (frame.hidden ? { ...raw, states: { ...raw.states, hidden: true } } : raw));
-        if (reads.length !== taken.length) {
-          releaseHandles();
-          throw new TestError(
-            'INVALID_LOCATOR',
-            'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead',
-          );
+        try {
+          return await this.locateNow(expression, currentOperation);
+        } catch (cause) {
+          throw (await pageScriptFailure(this.frameScope(expression), cause, 'locate', currentOperation.timeoutMs)) ?? cause;
         }
-        const candidates = reads.flatMap((raw, index) => (projected.visible && raw.states.hidden ? [] : [{ raw, index }]));
-        // An exact label query matches any of the control's labels as the engine's reader names
-        // them, so text a label marks aria-hidden (a required-field marker) never hides a field,
-        // and an aria-label override or a second label does not either.
-        const predicate =
-          displayValue !== null
-            ? (raw: RawNodeData) => matchesText(raw.value ?? '', displayValue)
-            : name !== null
-              ? (raw: RawNodeData) =>
-                  raw.labels !== null && raw.labels.some((label) => matchesText(label, name))
-              : null;
-        const matches =
-          predicate === null
-            ? candidates
-            : await applyPostSteps(
-                candidates.filter(({ raw }) => predicate(raw)),
-                steps,
-                // A filter after a position runs on that one element alone.
-                async ({ index }, options) =>
-                  (await projected.locator.nth(index).filter(options).count()) > 0,
-              );
-        if (currentOperation.signal.aborted) {
-          releaseHandles();
-          throw cancelled('locate cancelled');
-        }
-        try { session.check(token); } catch (cause) {
-          releaseHandles();
-          throw cause;
-        }
-        if (handles !== null) {
-          // Only the matches keep their handles; the rest would otherwise live until the page goes.
-          const kept = new Set(matches.map(({ index }) => index));
-          for (const [index, handle] of handles.entries()) {
-            if (!kept.has(index)) void handle.dispose().catch(() => undefined);
-          }
-        }
-        return matches.map(({ raw, index }) => {
-          const pinned = handles?.[index];
-          // A single match keeps the strict locator, so a ref that turns
-          // ambiguous between locate and perform is stale instead of acting
-          // on whichever element is first.
-          const locator = reads.length === 1 ? projected.locator : projected.locator.nth(index);
-          const id = refs.storeLocated(
-            pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
-          );
-          return inFrame(toSemanticNode({ id, revision: '' }, raw), frame.box);
-        });
       },
       staleOr,
     );
+  }
+
+  /** The body of `locate`, inside its guard. */
+  private async locateNow(expression: LocatorExpression, currentOperation: OperationContext): Promise<readonly SemanticNode[]> {
+    const session = this.requireSession();
+    const token = session.token();
+    const refs = session.refs;
+    const page = this.requirePage();
+    const frame = await this.frameOf(expression);
+    const projected = projectExpression(page, expression, { testIdAttribute: this.testIdAttribute, frameHidden: frame.hidden });
+    const { displayValue, name, steps } = projected;
+    // Every match is read by the `e2e-read` selector engine in the task that finds it, so a
+    // page that replaces it a frame later cannot detach it before the read. A
+    // predicate-filtered match is one element among many candidates (every input with a
+    // value, every control the label engine kept). Re-resolving it by position at action
+    // time would act on a neighbor whenever the page inserted or removed an element in
+    // between, so such matches are pinned to the handles of the elements the query returned,
+    // and their reads are taken back from those very handles: what was read and what is
+    // acted on are one set of elements by construction.
+    const read = readSelector({ testIdAttribute: this.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR });
+    const reading = projected.locator.locator(read.selector);
+    const handles =
+      displayValue !== null || name !== null
+        ? ((await reading.elementHandles()) as ElementHandle<Element>[])
+        : null;
+    /** Disposes every handle this locate took, on the paths that hand none of them out. */
+    const releaseHandles = (): void => {
+      for (const handle of handles ?? []) void handle.dispose().catch(() => undefined);
+    };
+    const first = handles?.[0];
+    const taken =
+      handles === null
+        ? await reading.evaluateAll(takeReadsFunction, { token: read.token })
+        : first === undefined
+          ? []
+          : await first.evaluate(takeReadsFunction, { token: read.token, elements: handles });
+    const reads = taken
+      .filter((raw) => raw !== null)
+      .map((raw) => (frame.hidden ? { ...raw, states: { ...raw.states, hidden: true } } : raw));
+    if (reads.length !== taken.length) {
+      releaseHandles();
+      throw new TestError(
+        'INVALID_LOCATOR',
+        'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead',
+      );
+    }
+    const candidates = reads.flatMap((raw, index) => (projected.visible && raw.states.hidden ? [] : [{ raw, index }]));
+    // An exact label query matches any of the control's labels as the engine's reader names
+    // them, so text a label marks aria-hidden (a required-field marker) never hides a field,
+    // and an aria-label override or a second label does not either.
+    const predicate =
+      displayValue !== null
+        ? (raw: RawNodeData) => matchesText(raw.value ?? '', displayValue)
+        : name !== null
+          ? (raw: RawNodeData) =>
+              raw.labels !== null && raw.labels.some((label) => matchesText(label, name))
+          : null;
+    const matches =
+      predicate === null
+        ? candidates
+        : await applyPostSteps(
+            candidates.filter(({ raw }) => predicate(raw)),
+            steps,
+            // A filter after a position runs on that one element alone.
+            async ({ index }, options) =>
+              (await projected.locator.nth(index).filter(options).count()) > 0,
+          );
+    if (currentOperation.signal.aborted) {
+      releaseHandles();
+      throw cancelled('locate cancelled');
+    }
+    try { session.check(token); } catch (cause) {
+      releaseHandles();
+      throw cause;
+    }
+    if (handles !== null) {
+      // Only the matches keep their handles; the rest would otherwise live until the page goes.
+      const kept = new Set(matches.map(({ index }) => index));
+      for (const [index, handle] of handles.entries()) {
+        if (!kept.has(index)) void handle.dispose().catch(() => undefined);
+      }
+    }
+    return matches.map(({ raw, index }) => {
+      const pinned = handles?.[index];
+      // A single match keeps the strict locator, so a ref that turns
+      // ambiguous between locate and perform is stale instead of acting
+      // on whichever element is first.
+      const locator = reads.length === 1 ? projected.locator : projected.locator.nth(index);
+      const id = refs.storeLocated(
+        pinned === undefined ? { kind: 'locator', locator } : { kind: 'element', element: pinned },
+      );
+      return inFrame(toSemanticNode({ id, revision: '' }, raw), frame.box);
+    });
+  }
+
+  /** The page or frame an expression's frame selectors lead to, unresolved. */
+  private frameScope(expression: LocatorExpression): Page | FrameLocator {
+    let scope: Page | FrameLocator = this.requirePage();
+    for (const selector of frameSelectors(expression)) scope = scope.frameLocator(selector);
+    return scope;
   }
 
   /**

@@ -98,7 +98,7 @@ test.describe('locator misc 2', { requires: ['browser'], tags: ['playwright'] },
     await promise;
   });
 
-  test('locator.count should work with deleted Map in main world', { fail: '`browser.evaluate` and the in-page readers run in the main world, so a page that deletes `Map` breaks them; Playwright runs its own in a utility world' }, async ({ browser }) => {
+  test('locator.count should work with deleted Map in main world', { fail: 'locators resolve in Playwright\'s main world, which a page that replaces `Map` breaks; Playwright resolves its own in a utility world, but e2e\'s closed-shadow reach and locate reads need the main world' }, async ({ browser }) => {
     await browser.goto('/empty.html');
     await browser.evaluate('() => { window.Map = 1; }');
     await browser.locator('#searchResultTableDiv .x-grid3-row').count();

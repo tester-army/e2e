@@ -40,8 +40,8 @@ import {
 import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
-import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
-import { compileEvaluation, pageFunctionSource } from './evaluation.ts';
+import { isTestErrorCode, message as causeMessage, pageScriptFailure, translatePwError } from './support.ts';
+import { compileEvaluation, decodeEvaluation, pageFunctionSource } from './evaluation.ts';
 import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaLabel, mediaProblem, type WebMedia } from './media.ts';
 import { lowercaseNames } from './protected-app.ts';
@@ -517,12 +517,18 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const evaluate = compileEvaluation(source, arg !== undefined);
       // JSON safety is checked above; Playwright's recursive argument type cannot expand JsonValue.
       const input: unknown = arg;
-      const result = await surface.guard(context.operation(), 'evaluate', () =>
-        surface.requirePage().evaluate(evaluate, input),
-      );
-      if (!result.ok) throw new TestError('EVALUATE_FAILED', result.message);
-      validateJsonValue(result.value, 'evaluate result');
-      return result.value as T;
+      // A handle, not a value: the boundary resolves to a string, which Playwright
+      // keeps out of its in-page serializer when it is taken back from a handle.
+      const report = await surface.guard(context.operation(), 'evaluate', async (operation) => {
+        const page = surface.requirePage();
+        try {
+          const handle = await page.evaluateHandle(evaluate, input);
+          return await handle.jsonValue();
+        } catch (cause) {
+          throw (await pageScriptFailure(page, cause, 'evaluate', operation.timeoutMs)) ?? cause;
+        }
+      });
+      return decodeEvaluation(report) as T;
     },
     async addInitScript(script: unknown, ...rest: unknown[]) {
       const source = await testInitScriptSource(script, rest.length === 0 ? undefined : { arg: rest[0] }, (file) => surface.projectPath(file));

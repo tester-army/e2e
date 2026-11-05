@@ -1,7 +1,7 @@
 /** Shared error translation, filename, and swipe helpers for the Playwright engine. */
 
 import { setTimeout } from 'node:timers/promises';
-import type { ElementHandle, Locator as PwLocator, Mouse, Page } from 'playwright-core';
+import type { ElementHandle, FrameLocator, Locator as PwLocator, Mouse, Page } from 'playwright-core';
 import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
 
@@ -358,6 +358,42 @@ const NAVIGATION_RACE_PATTERN =
 /** Whether a Playwright failure describes a read that lost its document to a navigation. */
 export function isNavigationRace(cause: unknown): boolean {
   return NAVIGATION_RACE_PATTERN.test(message(cause));
+}
+
+/**
+ * The failure of an operation whose in-page code the page's own scripts broke,
+ * as `EVALUATE_FAILED`, or undefined when something else failed. A page that
+ * deletes or replaces a JavaScript built-in (`Map`, `Object`) breaks every
+ * script Playwright runs in its main world, e2e's locate reads included. Told
+ * apart by asking the frame in both worlds: Playwright's utility world still
+ * reads the document before and after a main-world query that runs no e2e
+ * code fails, so the frame lives throughout and e2e's own code is not the
+ * cause.
+ */
+export async function pageScriptFailure(
+  scope: Page | FrameLocator,
+  cause: unknown,
+  operation: string,
+  timeoutMs: number,
+): Promise<TestError | undefined> {
+  if (isClassified(cause) || isPwTimeout(cause) || isNavigationRace(cause)) return undefined;
+  const root = scope.locator(':root');
+  /** Whether Playwright's utility world still reads the frame's document. */
+  const alive = (): Promise<boolean> => root.count().then(() => true, () => false);
+  if (!(await alive())) return undefined;
+  try {
+    await root.evaluate(() => 0, undefined, { timeout: Math.max(timeoutMs, 1) });
+    return undefined;
+  } catch (probe) {
+    if (isPwTimeout(probe) || isNavigationRace(probe)) return undefined;
+  }
+  // A crash or a closed target between the two probes fails this read too.
+  if (!(await alive())) return undefined;
+  return new TestError(
+    'EVALUATE_FAILED',
+    `${operation} failed: the page deleted or replaced a JavaScript built-in that in-page automation code needs: ${message(cause)}`,
+    { cause },
+  );
 }
 
 /**
