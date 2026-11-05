@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.star-history.com/tester-army/e2e"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=tester-army/e2e&type=trending&theme=dark" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=tester-army/e2e&type=trending" /></picture></a>
+  <a href="https://trendshift.io/repositories/274762" target="_blank"><img src="https://trendshift.io/api/badge/repositories/274762" alt="tester-army/e2e | Trendshift" width="250" height="55" /></a>
 </p>
 
 # e2e
