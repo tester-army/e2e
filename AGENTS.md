@@ -546,9 +546,9 @@ trees, on both platforms, without a device.
   old ones in the same pull request. A step that was never recorded still runs
   live. A strict run replays on retries too and never writes or deletes an
   entry, whatever the mode.
-  The web benchmark's entries are in. The mobile benchmark's iOS entries are
-  recorded on a Mac; nobody has recorded on an Android emulator yet, so the
-  Android side spends model calls until an emulator recording is committed.
+  The web benchmark's entries are in. The mobile benchmark's iOS and Android
+  entries are recorded on a Mac; Android replays with `--strict-cache`, iOS
+  leniently.
 - No implicit default model. For the built-in agent, the entry's `model`
   serves `act`; the judgment calls (`assert`, `waitFor`, `extract`) use its
   `judge` when one is configured, else `model`. A judgment never sees the
