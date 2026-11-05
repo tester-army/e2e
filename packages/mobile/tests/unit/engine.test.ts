@@ -3109,6 +3109,47 @@ describe('deterministic actions', () => {
     expect(h.fake.methods()).not.toContain('interactions.scroll');
   });
 
+  it.each([20, 20.5])('does not send a %s ms capped screen swipe when its timer wakes before the wall-clock deadline', async (timeoutMs) => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const timerNow = Date.now;
+    const startedAt = timerNow();
+    // The timer fires while the clock the budget reads still lags it by 1 ms.
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => startedAt + Math.max(0, timerNow() - startedAt - 1));
+    try {
+      await expect(h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), timeoutMs })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
+      expect(Date.now() - startedAt).toBeLessThan(timeoutMs);
+      expect(h.fake.methods()).not.toContain('interactions.scroll');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('sends a screen swipe when its action budget can accommodate the full transition', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const startedAt = Date.now();
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), timeoutMs: 200 });
+
+    expect(Date.now() - startedAt).toBe(160);
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(1);
+  });
+
+  it('reports cancellation when the caller aborts a capped transition wait', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const controller = new AbortController();
+    const pending = h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), signal: controller.signal, timeoutMs: 20 });
+    setTimeout(() => controller.abort(), 10);
+
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
   it('ends an arriving control transition at its action budget without tapping', async () => {
     const h = harness({ transition: 160 });
     await openAttempt(h);

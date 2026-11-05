@@ -1247,9 +1247,17 @@ export class AgentDeviceSurface {
 
   /** Waits for the transition without exceeding the action's remaining budget. */
   private async waitOutTransition(operation: OperationContext, budget: InputBudget): Promise<void> {
-    const remaining = Math.min(this.transitionMs - (Date.now() - this.lastActionAt), budget.remainingMs());
-    if (remaining <= 0) return;
-    await raceAbort(() => sleep(remaining, operation.signal), operation.signal, 'transition wait');
+    await raceAbort(async () => {
+      const remaining = this.transitionMs - (Date.now() - this.lastActionAt);
+      if (remaining <= 0) return;
+      const available = budget.remainingMs();
+      if (available > 0) await sleep(Math.min(remaining, available), operation.signal);
+      // A capped timer can wake before the clock reaches the deadline. It
+      // still could not fit the transition, so it must never send input.
+      if (available < remaining) {
+        throw new EngineError('OPERATION_TIMEOUT', 'transition could not finish within the action budget', { retryable: false });
+      }
+    }, operation.signal, 'transition wait');
   }
 
   /**
