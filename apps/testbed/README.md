@@ -28,7 +28,8 @@ here.
   groups, routes, dialogs, frames, downloads, uploads, keyboard input,
   credentials and secrets, plus one file per surface added since: control
   states and the failure codes (`controls`), pointer coordinates and path
-  swipes (`pointer`), viewport and node scrolling (`scroll`), the `browser`
+  swipes (`pointer`), viewport and node scrolling and a scripted
+  `scroll_to` by text (`scroll`), the `browser`
   fixture's own verbs (`browser`), and the per-action speed floor (`speed`).
   The files tagged `playwright` are Playwright's own `tests/page` specs (and
   `tests/library/download.spec.ts`) at v1.64.1, ported to the public API:
