@@ -75,22 +75,15 @@ describe('pageValueEncoder', () => {
     expect(JSON.parse(encodePageValue('\ud800')!)).toBe('\ud800');
   });
 
-  it('uses a key-less object\'s toJSON and blanks a toJSON key', () => {
-    expect(encodePageValue({ toJSON: () => 'ignored', sku: 'a' })).toBe('{"toJSON":{},"sku":"a"}');
-    expect(encodePageValue(new (class { toJSON() { return { sku: 'a' }; } })())).toBe('{"sku":"a"}');
-  });
-
-  it('skips a key whose getter throws', () => {
-    expect(encodePageValue({ get broken() { throw new Error('no'); }, sku: 'a' })).toBe('{"sku":"a"}');
-  });
-
   it.each([
     ['NaN', Number.NaN, 'contains a non-finite number'],
     ['a Date', { when: new Date(0) }, 'must be JSON-safe'],
-    ['a RegExp', [/x/], 'must be JSON-safe'],
-    ['an object made from Error.prototype', Object.create(Error.prototype), 'must be JSON-safe'],
+    ['a Map', [new Map()], 'must be JSON-safe'],
+    ['an object with toJSON', new (class { toJSON() { return 1; } })(), 'must be JSON-safe'],
     ['a bigint', { id: 1n }, 'must be JSON-safe, found bigint'],
-    ['a symbol', [Symbol('x')], 'must be JSON-safe, found undefined'],
+    ['a symbol', [Symbol('x')], 'must be JSON-safe, found symbol'],
+    ['an undefined member', { missing: undefined }, 'must be JSON-safe, found undefined'],
+    ['a function', () => 1, 'must be JSON-safe, found function'],
   ])('rejects %s', (_label, value, invalid) => {
     expect(() => encodePageValue(value)).toThrow(expect.objectContaining({ invalid }));
   });
@@ -103,9 +96,12 @@ describe('pageValueEncoder', () => {
     expect(() => encodePageValue(cyclic)).toThrow(expect.objectContaining({ invalid: 'contains a cycle' }));
   });
 
-  it('returns no text for a root that has no JSON form', () => {
+  it('encodes a null-prototype object', () => {
+    expect(encodePageValue(Object.assign(Object.create(null), { sku: 'a' }))).toBe('{"sku":"a"}');
+  });
+
+  it('returns no text for an undefined root', () => {
     expect(encodePageValue(undefined)).toBeUndefined();
-    expect(encodePageValue(() => 1)).toBeUndefined();
   });
 });
 

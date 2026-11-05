@@ -601,8 +601,8 @@ const title = await browser.evaluate<string>('document.title');
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). |
-| `EVALUATE_FAILED` | The evaluated code threw. The error carries its message. |
+| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). A class instance, such as a `DOMRect` or an element, is not: return `rect.toJSON()` or the fields you need. |
+| `EVALUATE_FAILED` | The evaluated code threw, or the page replaced a JavaScript built-in such as `Map` that the engine needs. The error carries the message. |
 | `ACTION_FAILED` | A Playwright timeout. |
 | `ENGINE_FAILURE` | The page closed or the context was lost. |
 

@@ -107,18 +107,17 @@ describe('browser.evaluate error boundaries', () => {
     await expect(browser.evaluate('() => { const cart = {}; cart.self = cart; return cart; }')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: 'evaluate result contains a cycle' });
   });
 
-  it('converts page objects the way it always has', async () => {
-    await page.setContent('<div style="width: 10px; height: 20px"></div>');
+  it('returns JSON only', async () => {
+    await page.setContent('<div></div>');
     await expect(browser.evaluate('() => document.querySelector("div").getBoundingClientRect()'))
-      .resolves.toMatchObject({ width: 10, height: 20 });
-    await expect(browser.evaluate('() => [document.body, document, window]'))
-      .resolves.toEqual(['ref: <Node>', 'ref: <Document>', 'ref: <Window>']);
+      .rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: 'evaluate result must be JSON-safe' });
+    await expect(browser.evaluate('() => document.body')).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(browser.evaluate('() => document.querySelector("div").getBoundingClientRect().toJSON()'))
+      .resolves.toMatchObject({ width: expect.any(Number) });
     await expect(browser.evaluate('() => { const item = { sku: "a" }; return [item, item]; }'))
       .resolves.toEqual([{ sku: 'a' }, { sku: 'a' }]);
     await expect(browser.evaluate('() => "quote \\" line\\n\\u2028 \\ud83d\\ude00 lone \\ud800"'))
       .resolves.toBe('quote " line\n\u2028 \ud83d\ude00 lone \ud800');
-    expect(Object.is(await browser.evaluate('() => -0'), -0)).toBe(true);
-    await expect(browser.evaluate('() => function () {}')).resolves.toBeUndefined();
   });
 
   it('returns a result after the page deletes or replaces the globals the transport could use', async () => {

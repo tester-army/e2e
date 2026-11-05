@@ -395,7 +395,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
       const frame = document.createElement('iframe');
       frame.id = 'emoji-test';
       frame.src = '/input/textarea.html';
-      frame.onload = resolve;
+      frame.onload = () => resolve();
       document.body.appendChild(frame);
     })`);
     await browser.frameLocator('#emoji-test').locator('textarea').pressSequentially('👹 Tokyo street Japan 🇯🇵');

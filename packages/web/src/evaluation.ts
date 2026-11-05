@@ -48,71 +48,28 @@ interface InvalidPageValue {
 
 /**
  * Builds, in the page, the encoder of an evaluation result into JSON text.
- * Called before the caller's code runs, it takes every intrinsic it needs
- * from literals then, so code that deletes or replaces `Array`, `Object`,
- * `JSON`, `String`, or `Map` cannot reach the encoder. It converts like
- * Playwright's result serializer did (own enumerable keys, a key-less
- * object's `toJSON`, DOM references as `ref: <...>` strings) and rejects what
- * the engine's JSON check rejected after it, throwing `{ invalid }` with the
- * reason. Embedded into the page as source, so it captures nothing from
- * this module.
+ * Called before the caller's code runs, it takes the intrinsics it needs from
+ * literals, so code that deletes or replaces `Array`, `Object`, or `JSON`
+ * cannot reach it. Only JSON passes: `null`, booleans, finite numbers,
+ * strings, arrays, and plain objects. Anything else throws `{ invalid }` with
+ * the reason `validateJsonValue` gives. Embedded into the page as source, so
+ * it captures nothing from this module.
  */
 export function pageValueEncoder(): (root: unknown) => string | undefined {
-  const ObjectIntrinsic = ({}).constructor as ObjectConstructor;
-  const { getPrototypeOf, getOwnPropertyDescriptor, keys } = ObjectIntrinsic;
+  const { getPrototypeOf, keys } = ({}).constructor as ObjectConstructor;
+  const objectPrototype: unknown = getPrototypeOf({});
   const { isArray } = ([] as unknown[]).constructor as ArrayConstructor;
-  const tagOf = ObjectIntrinsic.prototype.toString;
   const charCodeAt = ''.charCodeAt;
-  const rejectedTags: Record<string, true | null> = { __proto__: null, '[object Error]': true, '[object Date]': true,
-    '[object URL]': true, '[object RegExp]': true, '[object ArrayBuffer]': true, '[object Int8Array]': true,
-    '[object Uint8Array]': true, '[object Uint8ClampedArray]': true, '[object Int16Array]': true,
-    '[object Uint16Array]': true, '[object Int32Array]': true, '[object Uint32Array]': true,
-    '[object Float32Array]': true, '[object Float64Array]': true, '[object BigInt64Array]': true,
-    '[object BigUint64Array]': true };
-  let errorPrototype: unknown = null;
-  const notCallable: unknown = 0;
-  try {
-    (notCallable as () => void)();
-  } catch (cause) {
-    errorPrototype = getPrototypeOf(getPrototypeOf(cause));
-  }
-  let nodeType: (() => unknown) | undefined;
-  for (let proto: unknown = typeof document === 'object' ? document : null; proto !== null && nodeType === undefined; proto = getPrototypeOf(proto)) {
-    nodeType = getOwnPropertyDescriptor(proto, 'nodeType')?.get;
-  }
-  const pageWindow = typeof window === 'object' ? window : undefined;
   const hex = '0123456789abcdef';
   const invalid = (reason: string): InvalidPageValue => ({ invalid: reason });
   const quote = (text: string): string => {
     let out = '"';
     for (let i = 0; i < text.length; i++) {
       const code = charCodeAt.call(text, i);
-      if (code === 34 || code === 92 || code < 32 || code === 0x2028 || code === 0x2029 || (code >= 0xd800 && code <= 0xdfff)) {
-        out += `\\u${hex[code >> 12]}${hex[(code >> 8) & 15]}${hex[(code >> 4) & 15]}${hex[code & 15]}`;
-      } else {
-        out += text[i];
-      }
+      const escape = code === 34 || code === 92 || code < 32 || code === 0x2028 || code === 0x2029 || (code >= 0xd800 && code <= 0xdfff);
+      out += escape ? `\\u${hex[code >> 12]}${hex[(code >> 8) & 15]}${hex[(code >> 4) & 15]}${hex[code & 15]}` : text[i];
     }
     return `${out}"`;
-  };
-  const reference = (value: object): string | undefined => {
-    if (pageWindow !== undefined && value === pageWindow) return 'ref: <Window>';
-    if (nodeType === undefined) return undefined;
-    try {
-      return nodeType.call(value) === 9 ? 'ref: <Document>' : 'ref: <Node>';
-    } catch {
-      return undefined;
-    }
-  };
-  const isError = (value: object): boolean => {
-    for (let proto: unknown = getPrototypeOf(value); proto !== null; proto = getPrototypeOf(proto)) {
-      if (proto === errorPrototype) return true;
-    }
-    try {
-      return (getPrototypeOf(value) as { name?: unknown } | null)?.name === 'Error';
-    } catch {
-      return false;
-    }
   };
   const ancestors: object[] = [];
   const encode = (value: unknown): string => {
@@ -124,57 +81,33 @@ export function pageValueEncoder(): (root: unknown) => string | undefined {
         return value ? 'true' : 'false';
       case 'number':
         if (value !== value || value === Infinity || value === -Infinity) throw invalid('contains a non-finite number');
-        return value === 0 && 1 / value < 0 ? '-0' : `${value}`;
-      case 'bigint':
-        throw invalid('must be JSON-safe, found bigint');
+        return `${value}`;
       case 'object':
         break;
       default:
-        throw invalid('must be JSON-safe, found undefined');
+        throw invalid(`must be JSON-safe, found ${typeof value}`);
     }
-    const ref = reference(value);
-    if (ref !== undefined) return quote(ref);
-    if (rejectedTags[tagOf.call(value)] === true || isError(value)) throw invalid('must be JSON-safe');
+    const array = isArray(value);
+    const prototype: unknown = getPrototypeOf(value);
+    if (!array && prototype !== objectPrototype && prototype !== null) throw invalid('must be JSON-safe');
     for (let i = 0; i < ancestors.length; i++) {
       if (ancestors[i] === value) throw invalid('contains a cycle');
     }
     ancestors[ancestors.length] = value;
     let text = '';
-    if (isArray(value)) {
+    if (array) {
       for (let i = 0; i < value.length; i++) text += `${i === 0 ? '' : ','}${encode(value[i])}`;
       text = `[${text}]`;
     } else {
       const record = value as Record<string, unknown>;
       const names = keys(record);
-      let count = 0;
-      for (let i = 0; i < names.length; i++) {
-        const name = names[i]!;
-        let item: unknown;
-        try {
-          item = record[name];
-        } catch {
-          continue;
-        }
-        text += `${count === 0 ? '' : ','}${quote(name)}:${name === 'toJSON' && typeof item === 'function' ? '{}' : encode(item)}`;
-        count += 1;
-      }
-      let replacement: { value: unknown } | undefined;
-      if (count === 0) {
-        try {
-          if (typeof record.toJSON === 'function') replacement = { value: (record.toJSON as () => unknown)() };
-        } catch {
-          replacement = undefined;
-        }
-      }
-      text = replacement === undefined ? `{${text}}` : encode(replacement.value);
+      for (let i = 0; i < names.length; i++) text += `${i === 0 ? '' : ','}${quote(names[i]!)}:${encode(record[names[i]!])}`;
+      text = `{${text}}`;
     }
     ancestors.length -= 1;
     return text;
   };
-  return (root) => {
-    const type = typeof root;
-    return type === 'undefined' || type === 'symbol' || type === 'function' ? undefined : encode(root);
-  };
+  return (root) => (root === undefined ? undefined : encode(root));
 }
 
 /**
