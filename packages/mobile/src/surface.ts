@@ -1245,33 +1245,32 @@ export class AgentDeviceSurface {
     return best;
   }
 
+  /** Waits for the transition without exceeding the action's remaining budget. */
+  private async waitOutTransition(operation: OperationContext, budget: InputBudget): Promise<void> {
+    const remaining = Math.min(this.transitionMs - (Date.now() - this.lastActionAt), budget.remainingMs());
+    if (remaining <= 0) return;
+    await raceAbort(() => sleep(remaining, operation.signal), operation.signal, 'transition wait');
+  }
+
   /**
    * Waits for a control that arrived or moved with the last action, returning
-   * whether it waited. Controls already present at the same place need no wait,
-   * unless keyboard state changed: a keyboard change can precede the app's relayout.
-   * A screen swipe has no target control from which to infer that it is already
-   * in place; its remaining action budget also bounds the wait.
+   * whether it needs a fresh capture. Controls already present at the same
+   * place need no wait, unless keyboard state changed: a keyboard change can
+   * precede the app's relayout.
    */
-  private async waitForTransition(entry: NodeBinding | undefined, operation: OperationContext, budget?: InputBudget): Promise<boolean> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<boolean> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
     if (remaining <= 0) return false;
     const before = this.screenBeforeAction;
-    if (entry !== undefined && before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
-    const waitMs = Math.min(remaining, budget?.remainingMs() ?? remaining);
-    if (waitMs <= 0) return false;
-    await sleep(waitMs, operation.signal);
-    // The sleep resolves on abort; the action behind it must not go out once
-    // the caller has already been told the operation was cancelled.
-    if (operation.signal.aborted) {
-      throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
-    }
+    if (before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
+    await this.waitOutTransition(operation, budget);
     return true;
   }
 
   /** Refreshes a control after a transition wait, keeping the binding when no wait was needed. */
   private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<NodeBinding> {
-    if (await this.waitForTransition(entry, operation)) return this.relocated(entry, operation, budget);
+    if (await this.waitForTransition(entry, operation, budget)) return this.relocated(entry, operation, budget);
     return entry;
   }
 
@@ -1324,7 +1323,7 @@ export class AgentDeviceSurface {
     // chrome flow that way.
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
-      if (deterministic) await raceAbort(() => this.waitForTransition(undefined, operation, input), operation.signal, 'swipe transition');
+      if (deterministic) await this.waitOutTransition(operation, input);
       const before = this.latestScreen;
       await this.command('swipe', (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle })), operation.signal);
       this.markAction(before);
@@ -1346,7 +1345,7 @@ export class AgentDeviceSurface {
     const run = async (): Promise<unknown> => {
       let target = entry;
       if (filling) {
-        if (deterministic) await this.waitForTransition(entry, operation);
+        if (deterministic) await this.waitForTransition(entry, operation, input);
         target = await this.relocated(entry, operation, input, true);
         if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {

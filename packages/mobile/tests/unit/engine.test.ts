@@ -3042,6 +3042,34 @@ describe('deterministic actions', () => {
 
   beforeEach(autoAdvanceTimers);
 
+  it('keeps agent-origin screen swipes immediate with driver settling', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const startedAt = Date.now();
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down', settle: true, settleQuietMs: 150 });
+  });
+
+  it('counts captures between consecutive screen swipes toward the transition budget', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    const screen = await screenRootOf(h);
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, test());
+    const firstSwipeAt = Date.now();
+    h.fake.respond('capture.snapshot', async () => { await sleep(50); return SETTINGS_SNAPSHOT; });
+    const nextScreen = await screenRootOf(h);
+
+    await h.engine.perform!(nextScreen.ref, { kind: 'swipe', direction: 'down' }, test());
+
+    expect(Date.now() - firstSwipeAt).toBe(120);
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(2);
+  });
+
   it('does not dispatch a screen swipe whose transition wait was cancelled', async () => {
     const h = harness({ transition: 300 });
     await openAttempt(h);
@@ -3079,6 +3107,18 @@ describe('deterministic actions', () => {
     expect(Date.now() - startedAt).toBe(20);
     await sleep(200);
     expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
+  it('ends an arriving control transition at its action budget without tapping', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    const startedAt = Date.now();
+
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, { ...test(), timeoutMs: 20 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    expect(Date.now() - startedAt).toBe(20);
+    expect(h.fake.methods()).not.toContain('interactions.press');
   });
 
   /**
