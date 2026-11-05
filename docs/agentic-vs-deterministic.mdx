@@ -5,8 +5,8 @@ icon: "code-branch"
 ---
 
 Agentic testing lets you describe a user's intention in natural language.
-The agent reads the screen and chooses the actions needed to reach that
-goal. Your test focuses on the outcome, with fewer selectors to maintain
+The agent reads the screen and chooses the actions needed to carry it
+out. Your test focuses on the outcome, with fewer selectors to maintain
 as the UI changes.
 
 Deterministic testing specifies the actions and checks in code. Both
@@ -14,12 +14,12 @@ approaches can test user outcomes, and e2e lets you mix them in one test.
 
 ## When to use agentic tests?
 
-Use agentic tests for user journeys where the outcome matters and the UI
-changes often. They also suit flows that take many interactions but are
-easy to describe as a goal, such as filling out and submitting a form.
+Use agentic tests when UI changes keep forcing you to update selectors
+in your tests. They also suit flows that take many interactions but are
+easy to describe in plain English, such as filling out and submitting a form.
 
-With `agent.act`, you describe what the user wants to do without
-prescribing every click.
+With `agent.act`, you describe a user intention, such as applying a
+discount code. The agent figures out which controls to use and what to do.
 
 For example, inside a test with the `app`, `agent`, and `screen` fixtures:
 
@@ -32,8 +32,8 @@ await expect(screen.getByRole('status')).toHaveText('10% off');
 You don't need to name the discount field or the button that applies it.
 
 Tests tied to CSS classes or test IDs need edits when those identifiers
-change. Move a button or redesign a form, and the agent can still work
-toward the same goal using what's on screen. This reduces
+change. Move a button or redesign a form, and the agent can still carry
+out the user's intention using what's on screen. This reduces
 time spent repairing selectors after UI changes.
 
 For a complex journey, write a sequence of goals in plain English. Keep
@@ -42,8 +42,8 @@ each goal to one outcome and check it before continuing. See
 
 ## When to use deterministic tests?
 
-Use locators when the interaction itself matters or the path is already
-short and stable. The same discount test can specify every action:
+Use locators for short, stable flows where you already know which controls
+to use. You specify each field and button in code, as in this discount test:
 
 ```ts
 await app.open('/checkout');
