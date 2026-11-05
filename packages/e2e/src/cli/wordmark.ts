@@ -1,20 +1,16 @@
 /**
  * The e2e wordmark: the logotype from the e2e design system, six rows of
- * horizontal bars, drawn in half blocks in the terminal's own foreground the
- * way the logo pack's black and white files fill it. On a terminal that can
- * show it the logo loads top to bottom like a scan, each bar a thin line, dim
- * until the scan line has passed it; once every bar is drawn they all fill to
- * full height at once. Where motion does not belong it is printed at rest, and
- * output that is not a terminal never sees it.
+ * horizontal bars, drawn in block characters in the terminal's own foreground
+ * the way the logo pack's black and white files fill it. On a terminal that
+ * can show it the logo loads top to bottom like a scan, one row at a time.
+ * Where motion does not belong it is printed at rest, and output that is not
+ * a terminal never sees it.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { envFlag } from '../internal/env.ts';
 
 const ESC = '\u001b';
-const RESET = `${ESC}[0m`;
-const DIM = `${ESC}[2m`;
-const SOLID = `${ESC}[22m`;
 const SYNC_START = `${ESC}[?2026h`;
 const SYNC_END = `${ESC}[?2026l`;
 const HIDE_CURSOR = `${ESC}[?25l`;
@@ -37,25 +33,35 @@ const BARS: readonly string[] = [
 /**
  * A terminal row holds two pixel rows. A bar is two pixel rows and the gap
  * between bars one, the closest terminal resolution gets to the logo's thick
- * bars and thin gaps; every row of the output carries at most one bar, and a
- * bar's thin line is its top pixel row.
+ * bars and thin gaps, so every row of the output carries at most one bar.
  */
 const BAR_PX = 2;
 const PITCH_PX = 3;
 const WORDMARK_WIDTH = BARS[0]!.length;
 const WORDMARK_PX = (BARS.length - 1) * PITCH_PX + BAR_PX;
+
+/** The half block for a cell's lit pixels: bit 1 the upper half, 2 the lower. */
+const HALVES = [' ', '▀', '▄', '█'] as const;
+
+/** The logo in half blocks, one line per terminal row. */
+const LOGO: readonly string[] = (() => {
+  const lit = (y: number, x: number): boolean => y % PITCH_PX < BAR_PX && BARS[Math.floor(y / PITCH_PX)]?.[x] === '#';
+  const lines: string[] = [];
+  for (let y = 0; y < WORDMARK_PX; y += 2) {
+    let line = '';
+    for (let x = 0; x < WORDMARK_WIDTH; x++) line += HALVES[(lit(y, x) ? 1 : 0) | (lit(y + 1, x) ? 2 : 0)];
+    lines.push(line.trimEnd());
+  }
+  return lines;
+})();
+
 /** Terminal rows the wordmark takes. */
-const WORDMARK_ROWS = Math.ceil(WORDMARK_PX / 2);
+const WORDMARK_ROWS = LOGO.length;
 
 const FRAME_MS = 16;
-/** One pass of the scan line from the top of the logo to the bottom, then a beat with every thin line drawn before the bars fill. */
-const SCAN_MS = 420;
-const DURATION_MS = 500;
-/** How far, in pixel rows, the scan line moves past a bar before the bar turns solid. */
-const SCAN_HEAD_PX = 1.5;
-
-/** A lit cell: solid at rest, or dim while the scan line is on its bar. */
-type Cell = 'solid' | 'dim';
+/** The scan draws one row this often. */
+const ROW_MS = 50;
+const DURATION_MS = ROW_MS * WORDMARK_ROWS;
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
 export interface WordmarkStream {
@@ -63,69 +69,17 @@ export interface WordmarkStream {
   readonly columns?: number | undefined;
   readonly rows?: number | undefined;
   write(text: string): unknown;
-  getColorDepth?(): number;
 }
 
-/** The half block for a cell's lit pixels: bit 1 the upper half, 2 the lower. */
-const HALVES = [' ', '▀', '▄', '█'] as const;
-
-/**
- * Pixels to terminal cells: two pixel rows make one half block. Solid cells
- * carry no styling at all, so the logo at rest is plain text in the
- * terminal's foreground; dim runs are marked when `styled`.
- */
-function cells(grid: readonly (readonly (Cell | undefined)[])[], styled: boolean): string[] {
-  const lines: string[] = [];
-  for (let y = 0; y < grid.length; y += 2) {
-    let line = '';
-    let current: Cell = 'solid';
-    for (let x = 0; x < WORDMARK_WIDTH; x++) {
-      const upper = grid[y]![x];
-      const lower = grid[y + 1]?.[x];
-      const cell = upper ?? lower;
-      if (cell === undefined) {
-        line += ' ';
-        continue;
-      }
-      if (styled && cell !== current) {
-        line += cell === 'dim' ? DIM : SOLID;
-        current = cell;
-      }
-      line += HALVES[(upper === undefined ? 0 : 1) | (lower === undefined ? 0 : 2)];
-    }
-    lines.push(line.includes(ESC) ? `${line.trimEnd()}${RESET}` : line.trimEnd());
-  }
-  return lines;
-}
-
-/**
- * The logo `elapsed` milliseconds into the animation: during the scan, the
- * thin line of every bar above the scan line, dim while the line is close;
- * once the animation is over, every bar at full height.
- */
-function frame(elapsed: number, styled: boolean): string[] {
-  const grid: (Cell | undefined)[][] = Array.from({ length: WORDMARK_PX }, () => Array.from({ length: WORDMARK_WIDTH }, () => undefined));
-  const filled = elapsed >= DURATION_MS;
-  const line = (Math.min(elapsed, SCAN_MS) / SCAN_MS) * (WORDMARK_PX + SCAN_HEAD_PX);
-  BARS.forEach((bar, index) => {
-    const top = index * PITCH_PX;
-    if (!filled && top >= line) return;
-    const cell: Cell = filled || line - (top + 1) >= SCAN_HEAD_PX ? 'solid' : 'dim';
-    for (let row = 0; row < (filled ? BAR_PX : 1); row++) {
-      for (let x = 0; x < WORDMARK_WIDTH; x++) if (bar[x] === '#') grid[top + row]![x] = cell;
-    }
-  });
-  return cells(grid, styled);
+/** The logo `elapsed` milliseconds into the scan: the rows the scan has reached, and the rows below it blank. */
+function frame(elapsed: number): readonly string[] {
+  const reached = Math.floor(elapsed / ROW_MS) + 1;
+  return LOGO.map((line, row) => (row < reached ? line : ''));
 }
 
 /** The wordmark at rest: the logo rows, plain. */
-function rest(): string[] {
-  return frame(Number.POSITIVE_INFINITY, false);
-}
-
-/** Whether the stream shows styling at all; `NO_COLOR` and a dumb terminal report a depth of one. */
-function styledOn(stream: WordmarkStream): boolean {
-  return (stream.getColorDepth?.() ?? 1) > 1;
+function rest(): readonly string[] {
+  return LOGO;
 }
 
 /** The wordmark is for a terminal at least two columns wider than itself; a terminal of unknown width counts as 80 columns, like the reporters do. */
@@ -160,8 +114,8 @@ export interface PlayWordmarkOptions {
 }
 
 /**
- * Scans the logo in on `stream` and resolves with it at rest on the screen,
- * one blank line under it, and the cursor restored. Where motion does not
+ * Scans the logo in on `stream` and resolves with it at rest on
+ * the screen, one blank line under it, and the cursor restored. Where motion does not
  * belong the wordmark is printed at rest at once; a stream that is not a wide
  * enough terminal gets nothing.
  * Ctrl-C or SIGTERM during the animation restores the cursor and exits 130, as
@@ -173,7 +127,6 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
     stream.write(`${rest().join('\n')}\n\n`);
     return;
   }
-  const styled = styledOn(stream);
   let rows = 0;
   const paint = (lines: readonly string[]): void => {
     let payload = SYNC_START;
@@ -192,7 +145,7 @@ export async function playWordmark(stream: WordmarkStream, options: PlayWordmark
   try {
     const started = performance.now();
     for (let elapsed = 0; elapsed < DURATION_MS; elapsed = performance.now() - started) {
-      paint(frame(elapsed, styled));
+      paint(frame(elapsed));
       await sleep(FRAME_MS);
     }
     paint([...rest(), '']);
