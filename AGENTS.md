@@ -107,10 +107,9 @@ suites that consume the built packages the way a user would.
   package, each engine an optional peer and each provider on its own entry
   that never imports the other engine (`@e2e-dev/testmu` and
   `@e2e-dev/testmu/web`).
-  Its docs page under `docs/integrations/` ships with the vendor's logo as
-  the sidebar icon and on its overview card (`authoring-docs`, "Page
-  icons"); `scripts/check-docs-logos.ts` fails `pnpm docs:check` without
-  them.
+  Its docs page under `docs/integrations/` ships with the vendor's logo on
+  its overview card (`authoring-docs`, "Vendor logos");
+  `scripts/check-docs-logos.ts` fails `pnpm docs:check` without it.
 - `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
   `BrowserProvider` that starts a local `lightpanda serve` per worker slot
   and stops it with the run; no vendor SDK, the binary is the dependency.
