@@ -183,6 +183,10 @@
       {
         "id": "deep-links",
         "label": "Deep links"
+      },
+      {
+        "id": "migration",
+        "label": "Migration"
       }
     ],
     "platform": [
@@ -1647,6 +1651,35 @@
         ],
         "useCase": [
           "api-testing"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
+      "slug": "playwright-migration",
+      "title": "Migrating a Playwright suite to e2e",
+      "shortTitle": "Playwright migration",
+      "description": "302 API and UI scenarios ported from Playwright for a React training shop, with agent steps on Claude Sonnet, measured costs, and planted faults.",
+      "source": "community",
+      "repository": "https://github.com/slawekradzyminski/tests-e2e/tree/30ca7dfa8a4add7288256e7b7739a64be8899d0f",
+      "author": {
+        "name": "Slawek Radzyminski",
+        "github": "slawekradzyminski"
+      },
+      "license": "NONE",
+      "licenseUrl": "https://choosealicense.com/no-permission/",
+      "tags": {
+        "framework": [
+          "vite",
+          "react"
+        ],
+        "useCase": [
+          "migration",
+          "api-testing",
+          "e-commerce",
+          "authentication"
         ],
         "platform": [
           "web"
