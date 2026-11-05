@@ -56,14 +56,16 @@ async function setChecked(target: ActionTarget, checked: boolean, operation: Con
   const verb = checked ? 'check' : 'uncheck';
   try {
     if ((await element.isChecked()) === checked) return;
-    if (!checked && (await isRadio(element))) {
+    const radio = checked ? undefined : await radioKind(element);
+    if (radio === 'native') {
       throw new EngineError('NOT_ACTIONABLE', 'uncheck cannot clear a radio button; select another radio in its group', {
         retryable: false,
       });
     }
     await element.click({ timeout: remaining() });
+    const hint = radio === 'aria' ? '; a radio usually clears only when another radio in its group is selected' : '';
     const unchanged = (detail = ''): EngineError =>
-      new EngineError('NOT_ACTIONABLE', `${verb} clicked the control but its checked state did not change${detail}`, {
+      new EngineError('NOT_ACTIONABLE', `${verb} clicked the control but its checked state did not change${detail}${hint}`, {
         retryable: false,
       });
     let firstRead = true;
@@ -89,11 +91,16 @@ async function setChecked(target: ActionTarget, checked: boolean, operation: Con
   }
 }
 
-/** Whether a checkable element is a radio, which a click can select but never clear. */
-function isRadio(element: ElementHandle<Element>): Promise<boolean> {
-  return element.evaluate(
-    (node) => (node instanceof HTMLInputElement && node.type === 'radio') || node.getAttribute('role') === 'radio',
-  );
+/**
+ * Which kind of radio a checkable element is, if any. A native radio can be
+ * selected but never cleared by a click. An ARIA radio is clicked like any
+ * control, as Playwright does: its script decides what a click does.
+ */
+function radioKind(element: ElementHandle<Element>): Promise<'native' | 'aria' | undefined> {
+  return element.evaluate((node) => {
+    if (node instanceof HTMLInputElement && node.type === 'radio') return 'native';
+    return node.getAttribute('role') === 'radio' ? 'aria' : undefined;
+  });
 }
 
 /**

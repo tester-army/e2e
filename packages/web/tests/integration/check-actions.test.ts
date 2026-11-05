@@ -157,6 +157,22 @@ describe.each(KINDS)('through the %s target', (kind) => {
     expect(await clicks()).toBe(0);
   });
 
+  it('unchecks an ARIA radio by clicking it, leaving the radio behavior to its script', async () => {
+    await page.setContent(`
+      <div role="radio" id="pro" aria-checked="true" tabindex="0"
+        onclick="this.setAttribute('aria-checked', 'false')">Pro</div>`);
+    expect(await perform(await targetOf(kind, '#pro'), { kind: 'uncheck' })).toBeUndefined();
+    expect(await page.getAttribute('#pro', 'aria-checked')).toBe('false');
+  });
+
+  it('fails an ARIA radio whose click keeps it checked, naming the radio group', async () => {
+    await page.setContent('<div role="radio" id="pro" aria-checked="true" tabindex="0">Pro</div>');
+    expect(await perform(await targetOf(kind, '#pro'), { kind: 'uncheck' })).toMatchObject({
+      code: 'NOT_ACTIONABLE',
+      message: expect.stringContaining('another radio in its group'),
+    });
+  });
+
   it('refuses a control that cannot be checked', async () => {
     await page.setContent('<button id="go">Go</button>');
     expect(await perform(await targetOf(kind, '#go'), { kind: 'check' })).toMatchObject({ code: 'NOT_ACTIONABLE' });

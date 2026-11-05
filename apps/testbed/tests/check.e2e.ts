@@ -59,7 +59,7 @@ test.describe('page check', { requires: ['browser'], tags: ['playwright'] }, () 
     expect(await browser.evaluate("() => window.checkbox.getAttribute('aria-checked')")).toBe('true');
   });
 
-  test('should uncheck radio by aria role', { fail: '`uncheck` refuses a `role=radio`, where Playwright clicks it and refuses only a native radio' }, async ({ browser }) => {
+  test('should uncheck radio by aria role', async ({ browser }) => {
     await browser.goto(content(`<div role='radio' id='checkbox' aria-checked="true">CHECKBOX</div>
       <script>
         checkbox.addEventListener('click', () => checkbox.setAttribute('aria-checked', 'false'));
@@ -79,7 +79,7 @@ test.describe('page check', { requires: ['browser'], tags: ['playwright'] }, () 
     }
   });
 
-  test('should uncheck the box by aria role', { fail: '`uncheck` refuses a `role=radio`, where Playwright clicks it and refuses only a native radio' }, async ({ browser }) => {
+  test('should uncheck the box by aria role', async ({ browser }) => {
     for (const role of ['checkbox', 'menuitemcheckbox', 'option', 'radio', 'switch', 'menuitemradio', 'treeitem']) {
       await browser.goto(content(`<div role='${role}' id='checkbox' aria-checked="true">CHECKBOX</div>
         <script>

@@ -772,6 +772,10 @@ uncheck(options?: ActionOptions): Promise<void>;
 await screen.getByRole('checkbox', 'Remember me').uncheck();
 ```
 
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | A checked native radio button, which only another radio in its group clears. |
+
 #### `selectOption`
 
 ```ts
@@ -935,6 +939,10 @@ On a checkbox or radio, `inputValue()` and `toHaveValue` read its value
 attribute, `on` when it has none, whatever its checked state. `isChecked()`
 reads the state.
 
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | A node with no value, such as a heading or a button. A field with no value reads `""`. |
+
 #### `getAttribute`
 
 ```ts
@@ -1023,8 +1031,12 @@ isChecked(): Promise<boolean>;
 const remembered = await screen.getByRole('checkbox', 'Remember me').isChecked();
 ```
 
-`false` on a node with no checked state, such as a button or a heading. It
-does not throw.
+A checkable role with no state reported, such as an ARIA switch without
+`aria-checked`, reads `false`.
+
+| Throws | When |
+| --- | --- |
+| `ACTION_FAILED` | A node with no checked state, such as a button or a heading. |
 
 #### `boundingBox`
 

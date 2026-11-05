@@ -36,7 +36,7 @@ test.describe('locator convenience', { requires: ['browser'], tags: ['playwright
     expect(await locator.getAttribute('foo')).toBe(null);
   });
 
-  test('inputValue should work', { fail: '`inputValue()` on an element that is no input reads "" instead of throwing' }, async ({ browser }) => {
+  test('inputValue should work', async ({ browser }) => {
     await browser.goto('/dom.html');
 
     await browser.locator('#select').selectOption({ value: 'foo' });
@@ -69,7 +69,7 @@ test.describe('locator convenience', { requires: ['browser'], tags: ['playwright
     expect(await button2.isDisabled()).toBe(false);
   });
 
-  test('isChecked should work', { fail: '`isChecked()` on an element that is no checkbox reads false instead of throwing' }, async ({ browser }) => {
+  test('isChecked should work', async ({ browser }) => {
     await browser.goto(content(`<input type='checkbox' checked><div>Not a checkbox</div>`));
     const element = browser.locator('input');
     expect(await element.isChecked()).toBe(true);

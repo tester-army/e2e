@@ -169,16 +169,16 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `pressSequentially(text, { delay })` | the same; keystrokes through the platform keyboard, a `Secret` is refused | same |
 | `press(key)` | the same; modifiers join with `+`, see the [key grammar](/reference/engine#keys) | same |
 | `clear()`, `focus()`, `hover()`, `setInputFiles()`, `dragTo()` | the same verbs, each with `timeout` as the only option: no `force`, `trial`, `position`, `modifiers`, or `sourcePosition`. Another key is `INVALID_ARGUMENT`. `setInputFiles` is web only, and `setInputFiles([])` clears the input | renamed |
-| `check()`, `uncheck()` | the same, except when the state updates late or the click removes the control, see [What differs on purpose](#what-differs-on-purpose). `uncheck()` on a checked radio, `role=radio` included, is `NOT_ACTIONABLE` | by design |
+| `check()`, `uncheck()` | the same, except when the state updates late or the click removes the control, see [What differs on purpose](#what-differs-on-purpose). `uncheck()` on a checked native radio is `ACTION_FAILED`; a `role=radio` is clicked, as in Playwright | by design |
 | `selectOption('pro')` | `selectOption('Pro')`: a string matches the option's label only, where Playwright matches its value or its label; `selectOption({ value: 'pro' })` for the value | by design |
 | `selectOption(['a', 'b'])` | one option per call. An array is `INVALID_ARGUMENT` | missing |
 | `setInputFiles({ name, buffer })` | paths only, resolved from the project root | missing |
 | `scrollIntoViewIfNeeded()` | `scrollIntoView()` | renamed |
 | `locator.innerText()` | `textContent()`, whitespace collapsed to single spaces | renamed |
 | `locator.textContent()` | the rendered text, what `innerText()` reads, see [What differs on purpose](#what-differs-on-purpose) | by design |
-| `inputValue()` | the same on an input, textarea, or select; `""` on any other element, where Playwright throws | missing |
-| `getAttribute()`, `isVisible()`, `isHidden()`, `isEnabled()`, `isDisabled()`, `boundingBox()` | the same | same |
-| `isChecked()` | the same on a checkbox, radio, or `aria-checked` node; `false` on any other, see [What differs on purpose](#what-differs-on-purpose) | by design |
+| `getAttribute()`, `isVisible()`, `isHidden()`, `isEnabled()`, `isDisabled()`, `isChecked()`, `boundingBox()` | the same | same |
+| `inputValue()` | the same, and reads a `contenteditable` editor, where Playwright throws | by design |
+| `inputValue()`, `isChecked()` on a `<label>` | throws, where Playwright reads its control. Locate the control with `getByLabel` | missing |
 | `isEditable()` | not yet | missing |
 | `waitFor({ state: 'visible' })`, `'hidden'`, `'attached'`, `'detached'` | the same | same |
 | `locator.evaluate(fn)`, `evaluateAll(fn)` | `browser.evaluate(fn, selector)` with a CSS selector argument | missing |
@@ -414,10 +414,9 @@ context.
   await expect(screen.getByTestId('total')).toHaveText('Total 42');            // Playwright: 'Total debug42'
   await expect(screen.getByTestId('address')).toHaveText('Line one Line two'); // Playwright: 'Line oneLine two'
   ```
-- A node with no checked state is unchecked. `isChecked()` is `false` and
-  `.not.toBeChecked()` passes on a button or a heading, where Playwright
-  throws. Query a checkable control by role, so the query fails when the
-  control changes kind.
+- `.not.toBeChecked()` passes on a button or a heading, where Playwright
+  throws, as `isChecked()` does. Query a checkable control by role, so the
+  query fails when the control changes kind.
 
   ```ts
   await expect(screen.getByRole('checkbox', 'Subscribe')).not.toBeChecked();

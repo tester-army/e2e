@@ -8,6 +8,7 @@ import { locatorBrand } from '../internal/brands.ts';
 import { isSecret } from '../secrets.ts';
 import { TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
+import { isCheckable, isValueControl } from '../internal/roles.ts';
 import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { obj } from '../internal/objects.ts';
@@ -561,7 +562,9 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async inputValue(): Promise<string> {
     const node = await this.readGuarded();
-    return node.value ?? '';
+    if (node.value !== undefined) return node.value;
+    if (isValueControl(node)) return '';
+    throw new TestError('ACTION_FAILED', `Node is not an <input>, <textarea> or <select> element: ${this.label}`);
   }
 
   async getAttribute(name: string): Promise<string | null> {
@@ -588,6 +591,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async isChecked(): Promise<boolean> {
     const node = await this.readGuarded(false);
+    if (!isCheckable(node)) throw new TestError('ACTION_FAILED', `Not a checkbox or radio button: ${this.label}`);
     return node.states?.checked === true;
   }
 

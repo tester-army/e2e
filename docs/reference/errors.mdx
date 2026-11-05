@@ -111,7 +111,7 @@ category a blocked verdict reports as the obstacle.
 | `APP_NOT_OPEN` | An operation needed an open app: `app.open()` had not run, or the engine reported invalid state | test | 1 |
 | `LOCATOR_NOT_FOUND` | No matching node within the deadline, or an agent action refers to a node that is no longer available. For a filtered locator the message can also list how many candidates each filter step left, counted after the failure, when that diagnostic pass can read the chain | test | 1 |
 | `LOCATOR_AMBIGUOUS` | More than one match for a single-node operation. Fails at once, with no polling, and for a filtered locator can list how many candidates each filter step left, counted after the failure, when that diagnostic pass can read the chain | test | 1 |
-| `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed | test | 1 |
+| `ACTION_FAILED` | Actionability failure, operation timeout, or an action that may already have committed. Also `inputValue()` on a node with no value and `isChecked()` on a node with no checked state | test | 1 |
 | `STEP_BUDGET_EXHAUSTED` | The model-call or action-step budget ran out before a conclusion | test | 1 |
 | `STEP_TIMEOUT` | The invocation deadline expired, including an operation that timed out within a poll tick of it. Carries the last judgment where one exists, with the [vision hint](/reference/agent#agent-assert) when that judgment was inconclusive | test | 1 |
 | `CONTEXT_OVERFLOW` | A request exceeded the model's context window. `act` shortens its history and retries once if that makes the request smaller; judgments fail at once. Lower `agents.<name>.maxObservationBytes`, or split the instruction into shorter steps. Reported as blocked: automation | test | 1 |
