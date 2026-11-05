@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AppProcesses } from '../../src/run/managed-process.ts';
+import type { ProcessPool } from '../../src/run/process-pool.ts';
 import type { Target } from '../../src/types.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
@@ -25,7 +26,7 @@ const { resolveConfig } = (await import(resolveModule)) as typeof import('../../
 const debugModule = new URL('../../dist/internal/debug.js', import.meta.url).href;
 const { DebugTrace } = (await import(debugModule)) as typeof import('../../src/internal/debug.ts');
 
-/** How long a test waits for the app process to start or exit: vitest's 1 s default is too short on a loaded machine. */
+/** How long a test waits for the app process to start: vitest's 1 s default is too short on a loaded machine. */
 const PROCESS_POLL = { timeout: 5_000 };
 
 describe('SharedAppProcesses', { timeout: 30_000 }, () => {
@@ -74,6 +75,20 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
       { projectRoot: dir, env: {} },
     );
 
+  /** Tracks the pool's actual starts and shares each stop with teardown. */
+  const trackStarts = (pool: InstanceType<typeof SharedAppProcesses>): ProcessPool => ({
+    acquire: (key, launch, signal) => pool.acquire(key, (scope) => {
+      const pending = launch(scope).then((processes) => {
+        let stopping: Promise<void> | undefined;
+        const tracked: AppProcesses = { stop: (onFailure) => stopping ??= processes.stop(onFailure) };
+        started.push(tracked);
+        return tracked;
+      });
+      launching.push(pending);
+      return pending;
+    }, signal),
+  });
+
   const start = (
     pool: InstanceType<typeof SharedAppProcesses>,
     config: ReturnType<typeof load>,
@@ -86,24 +101,23 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
       () => ({ ci: false }),
       AbortSignal.any([signal, teardown.signal]),
       new DebugTrace(false),
-      {
-        acquire: (key, launch, requestSignal) => pool.acquire(key, (scope) => {
-          const pending = launch(scope).then((processes) => {
-            let stopping: Promise<void> | undefined;
-            const tracked: AppProcesses = { stop: (onFailure) => stopping ??= processes.stop(onFailure) };
-            started.push(tracked);
-            return tracked;
-          });
-          launching.push(pending);
-          return pending;
-        }, requestSignal),
-      },
+      trackStarts(pool),
     );
     starting.push(opening.catch(() => undefined));
     return opening;
   };
 
   const serving = async (): Promise<boolean> => fetch(url).then((response) => response.ok, () => false);
+
+  /** A server whose SIGTERM handler can hold shutdown or record its project. */
+  const shutdownCommand = (onStop: string) => {
+    writeFileSync(path.join(dir, 'shutdown.cjs'), `
+const fs = require('node:fs');
+process.on('SIGTERM', () => { ${onStop} });
+require('./server.cjs');
+`);
+    return { ...command, args: ['shutdown.cjs', String(port)] };
+  };
 
   it('shares the app command sessions on fresh loads both declare, whatever page each opens', async () => {
     /** A fresh load of one config: t0 opens the app's root, t1 a page of it, on one command. */
@@ -159,54 +173,26 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     cancel.abort();
     await expect(opening).rejects.toMatchObject({ code: 'CANCELLED' });
     // Nobody holds the abandoned start, so the pool stops what it spawned.
-    await expect.poll(serving, PROCESS_POLL).toBe(false);
+    await Promise.allSettled(launching);
+    expect(await serving()).toBe(false);
     // The next attempt starts it afresh rather than waiting on the abandoned start.
     const retry = new AbortController();
     const again = start(pool, config, 't0', retry.signal);
     await expect.poll(serving, PROCESS_POLL).toBe(true);
     retry.abort();
     await expect(again).rejects.toMatchObject({ code: 'CANCELLED' });
-    await expect.poll(serving, PROCESS_POLL).toBe(false);
-    expect(startupLog(dir)).toBe('app\napp\n');
-  });
-
-  it.skipIf(process.platform === 'win32')('waits for an abandoned process to finish shutting down before teardown removes its project', async () => {
-    writeFileSync(path.join(dir, 'delayed-stop.cjs'), `
-process.on('SIGTERM', () => setTimeout(() => {
-  require('node:fs').writeFileSync('shutdown.log', 'stopped');
-  process.exit(0);
-}, 100));
-require('./server.cjs');
-`);
-    const config = load({ app: {
-      url,
-      readyUrl: 'http://127.0.0.1:1/',
-      command: { ...command, args: ['delayed-stop.cjs', String(port)], startupTimeout: 600_000 },
-    } });
-    const opening = start(new SharedAppProcesses(), config);
-    await expect.poll(serving, PROCESS_POLL).toBe(true);
-
-    await stopProcesses();
-
-    await expect(opening).rejects.toMatchObject({ code: 'CANCELLED' });
+    await Promise.allSettled(launching);
     expect(await serving()).toBe(false);
-    expect(readFileSync(path.join(dir, 'shutdown.log'), 'utf8')).toBe('stopped');
+    expect(startupLog(dir)).toBe('app\napp\n');
   });
 
   it.skipIf(process.platform === 'win32')('waits for a stop already running in the pool when teardown begins', async () => {
     const stoppingFile = path.join(dir, 'stopping');
     const releaseFile = path.join(dir, 'release-stop');
-    writeFileSync(path.join(dir, 'gated-stop.cjs'), `
-const fs = require('node:fs');
-process.on('SIGTERM', () => {
-  fs.writeFileSync('stopping', 'started');
-  setInterval(() => {
-    if (fs.existsSync('release-stop')) process.exit(0);
-  }, 10);
-});
-require('./server.cjs');
-`);
-    const config = load({ app: { url, command: { ...command, args: ['gated-stop.cjs', String(port)] } } });
+    const config = load({ app: { url, command: shutdownCommand(`
+      fs.writeFileSync('stopping', 'started');
+      setInterval(() => { if (fs.existsSync('release-stop')) process.exit(0); }, 10);
+    `) } });
     const first = await start(new SharedAppProcesses(), config);
     const stopping = first.stop(() => undefined);
     let cleaning: Promise<void> | undefined;
@@ -239,18 +225,13 @@ require('./server.cjs');
         rmSync(evidence, { recursive: true, force: true });
       }
     });
-    writeFileSync(path.join(dir, 'observed-stop.cjs'), `
-const fs = require('node:fs');
-process.on('SIGTERM', () => setTimeout(() => {
-  fs.writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({ projectExists: fs.existsSync(${JSON.stringify(dir)}) }));
-  process.exit(0);
-}, 100));
-require('./server.cjs');
-`);
     const config = load({ app: {
       url,
       readyUrl: 'http://127.0.0.1:1/',
-      command: { ...command, args: ['observed-stop.cjs', String(port)], startupTimeout: 600_000 },
+      command: shutdownCommand(`setTimeout(() => {
+        fs.writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({ projectExists: fs.existsSync(${JSON.stringify(dir)}) }));
+        process.exit(0);
+      }, 100);`),
     } });
     void start(new SharedAppProcesses(), config);
     await expect.poll(serving, PROCESS_POLL).toBe(true);

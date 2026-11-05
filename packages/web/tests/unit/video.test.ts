@@ -18,14 +18,14 @@ const VIEWPORT = { width: 320, height: 200 };
 /**
  * A page whose screencast writes its file on start unless told not to, sends
  * its first frame at once (or after `firstFrameMs`, or never with `null`)
- * and records when, and fails to stop when told to.
+ * and records frame/stop order, and can fail to stop.
  */
 function fakePage(options: { writes?: boolean; stopError?: Error; startError?: Error; viewport?: { width: number; height: number }; firstFrameMs?: number | null } = {}) {
   const started: string[] = [];
   const sizes: { width: number; height: number }[] = [];
   const startOptions: Record<string, unknown>[] = [];
   const stopped = { count: 0, at: [] as number[] };
-  const framed = { at: [] as number[] };
+  const events: ('frame' | 'stop')[] = [];
   const page = {
     viewportSize: () => options.viewport ?? VIEWPORT,
     screencast: {
@@ -39,19 +39,20 @@ function fakePage(options: { writes?: boolean; stopError?: Error; startError?: E
         const firstFrameMs = options.firstFrameMs === undefined ? 0 : options.firstFrameMs;
         if (firstFrameMs !== null) {
           setTimeout(() => {
-            framed.at.push(Date.now());
+            events.push('frame');
             start.onFrame?.();
           }, firstFrameMs);
         }
       },
       stop: async () => {
+        events.push('stop');
         stopped.at.push(Date.now());
         stopped.count += 1;
         if (options.stopError !== undefined) throw options.stopError;
       },
     },
   } as unknown as Page;
-  return { page, started, sizes, startOptions, stopped, framed };
+  return { page, started, sizes, startOptions, stopped, events };
 }
 
 describe('VideoRecorder', () => {
@@ -69,9 +70,7 @@ describe('VideoRecorder', () => {
     const late = fakePage({ firstFrameMs: 150 });
     await video.arm(late.page);
     await video.stop();
-    // Against the frame, not the clock: its timer starts inside arm, before arm returns.
-    expect(late.framed.at).toHaveLength(1);
-    expect(late.stopped.at[0]!).toBeGreaterThanOrEqual(late.framed.at[0]!);
+    expect(late.events).toEqual(['frame', 'stop']);
 
     const silent = fakePage({ firstFrameMs: null });
     await video.arm(silent.page);
