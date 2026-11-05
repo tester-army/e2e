@@ -25,15 +25,14 @@ interface Paged {
   readonly found: string | undefined;
 }
 
-/** What a row reads: "Row 7", or a half-hourly slot ("9:00 AM", "9:30 AM") for a timetable whose rows differ by a clock-like value alone. */
+/** What a row reads: "Row 7", or a half-hourly slot ("9:00", "9:30") for a timetable whose rows differ by a clock-like value alone. */
 type RowText = (index: number) => string;
 
 const numbered: RowText = (index) => `Row ${String(index)}`;
 
 const slotAt: RowText = (index) => {
   const minutes = 9 * 60 + index * 30;
-  const hours = Math.floor(minutes / 60);
-  return `${String(hours > 12 ? hours - 12 : hours)}:${String(minutes % 60).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+  return `${String(Math.floor(minutes / 60))}:${String(minutes % 60).padStart(2, '0')}`;
 };
 
 function rowsOf(page: number, count = PER_PAGE, textOf: RowText = numbered): ScriptedNode[] {
@@ -167,21 +166,21 @@ describe('scroll_to a text, reads per page', () => {
 
   describe('with rows that differ by a clock-like value alone', () => {
     it('pages on to the row, and reads each page until it holds still', async () => {
-      const result = await scrollTo('3:30 PM', 'now', false, slotAt);
+      const result = await scrollTo('15:30', 'now', false, slotAt);
       expect(result.error).toBeUndefined();
-      expect(result.found).toContain('3:30 PM');
+      expect(result.found).toContain('15:30');
       expect(result.swipes).toBe(4);
     });
 
     it('pages on to the row with a clock ticking beside the list', async () => {
-      const result = await scrollTo('3:30 PM', 'now', true, slotAt);
+      const result = await scrollTo('15:30', 'now', true, slotAt);
       expect(result.error).toBeUndefined();
-      expect(result.found).toContain('3:30 PM');
+      expect(result.found).toContain('15:30');
       expect(result.swipes).toBe(4);
     });
 
     it('still ends at the end of the list with LOCATOR_NOT_FOUND', async () => {
-      const result = await scrollTo('11:00 PM', 'never', false, slotAt);
+      const result = await scrollTo('23:00', 'never', false, slotAt);
       expect(result.error).toBe('LOCATOR_NOT_FOUND');
       expect(result.swipes).toBe(3);
     });

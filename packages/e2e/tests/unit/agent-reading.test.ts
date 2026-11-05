@@ -91,17 +91,17 @@ describe('rows that differ by a clock-like value alone', () => {
   const slot = (id: string, text: string, at: number) => node(id, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } });
 
   it('is a page that moved, a time picker turning over', () => {
-    expect(pageMoved(slots('9:00 AM', '9:30 AM', '10:00 AM'), slots('10:30 AM', '11:00 AM', '11:30 AM'))).toBe(true);
+    expect(pageMoved(slots('9:00', '9:30', '10:00'), slots('10:30', '11:00', '11:30'))).toBe(true);
     expect(pageMoved(readPage(indexOf(header, slot('a', '9:00', 0), slot('b', '9:30', 1))), readPage(indexOf(header, slot('a', '10:00', 0), slot('b', '10:30', 1))))).toBe(true);
   });
 
   it('is not one a swipe has landed on, since a clock beside the stale screen reads the same', () => {
-    expect(pageLanded(slots('9:00 AM', '9:30 AM', '10:00 AM'), slots('10:30 AM', '11:00 AM', '11:30 AM'))).toBe(false);
+    expect(pageLanded(slots('9:00', '9:30', '10:00'), slots('10:30', '11:00', '11:30'))).toBe(false);
   });
 
   it('is the same page when none changed, and not one when a single value changed', () => {
-    expect(pageMoved(slots('9:00 AM', '9:30 AM'), slots('9:00 AM', '9:30 AM'))).toBe(false);
-    expect(pageMoved(slots('9:00 AM', '9:30 AM'), slots('9:00 AM', '9:31 AM'))).toBe(false);
+    expect(pageMoved(slots('9:00', '9:30'), slots('9:00', '9:30'))).toBe(false);
+    expect(pageMoved(slots('9:00', '9:30'), slots('9:00', '9:31'))).toBe(false);
   });
 });
 
