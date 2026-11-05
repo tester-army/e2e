@@ -255,7 +255,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 
 | Playwright | e2e | Status |
 | --- | --- | --- |
-| `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once. A string is a glob on the full URL, never resolved against `app.url`. `?` matches any one character, where Playwright reads it literally; `{a,b}` is literal, and `**/` needs at least one segment | web only |
+| `page.route(pattern, handler)` | `browser.route(pattern, handler)`; a string or `RegExp` pattern, no predicate function; the handler decides exactly once. A string is a glob on the full URL, never resolved against `app.url`. `?` matches any one character on purpose, where Playwright reads it literally; `{a,b}` is literal, and `**/` needs at least one segment | web only |
 | `route.fulfill({ json, body, path, status, headers, contentType })` | the same; one of `json`, `body`, or `path`, and `path` is relative to the project root. `body` is a string, `Buffer`, or `Uint8Array`, and a `\n`-joined `set-cookie` sets each cookie | web only |
 | `route.continue({ url, method, headers, postData })`, `route.fallback()` | the same; a `url` resolves against `app.url` and keeps the request's `http` or `https` scheme. A header set to `undefined` is dropped; configured site headers still apply. `fallback()` takes no overrides | web only |
 | `route.fetch()` | argument-free: no `timeout`, `headers`, or `maxRedirects` options, and redirects return unfollowed; returns `{ url, status, headers, body(), text(), json() }` without deciding the route | web only |
@@ -263,7 +263,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.unroute()` | `browser.unroute()` | web only |
 | `page.unrouteAll()` | `browser.unrouteAll()` | web only; clears test routes |
 | `page.waitForResponse(pattern)` | `browser.waitForResponse(pattern)`: a string or `RegExp`, no predicate function; `url`, `status`, `headers`, `body()`, `json()`, `text()`. A string is the glob of `browser.route`, tested against the whole URL, query included: Playwright's `'/api/orders'` is the full URL or `'**/api/orders'`, and `'\\?'` is a literal `?` | web only |
-| `{ timeout: 0 }` for no timeout | a positive number of ms. `0` on `browser.waitForResponse`, `waitForDownload`, or `toHaveScreenshot` is `INVALID_ARGUMENT`; on other calls it times out at once | missing |
+| `{ timeout: 0 }` for no timeout | the same; the test timeout, or `cleanupTimeout` in `afterEach`, still bounds it | same |
 | `response.ok()`, `response.request()` | `status` | missing |
 | `page.waitForRequest()`, `request.postDataJSON()` | none yet for `waitForRequest`; `route.request.postData` is a string | missing |
 | `routeFromHAR()`, `routeWebSocket()` | not yet | missing |

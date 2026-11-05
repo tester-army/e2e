@@ -621,7 +621,8 @@ await expect.poll(() => readStatus(), { message: 'the batch never finished' }).n
 
 - `timeout` is the deadline in milliseconds, a finite number 0 or more. It is
   capped by the test deadline in the body, or the hook's `cleanupTimeout`
-  during `afterEach`.
+  during `afterEach`. `0` polls until that cap, so outside a test it is
+  `INVALID_CONFIG`.
 - `interval` is the pause between reads in milliseconds, a finite number
   above 0.
 - `message` is an extra line in the timeout error, after the matcher line.

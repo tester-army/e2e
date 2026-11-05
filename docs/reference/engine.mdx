@@ -1747,6 +1747,7 @@ obj({ a: 1, b: undefined, c: 3 }); // { a: 1, c: 3 }
 ```ts
 export function raceAbort<T>(work: Promise<T> | (() => Promise<T>), signal: AbortSignal, label: string): Promise<T>;
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Error): Promise<T>;
+export function stepTimeout(timeout: unknown, api: string): number | undefined;
 export function withinCleanupBudget(
   promise: Promise<unknown>,
   budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
@@ -1755,12 +1756,16 @@ export function withinCleanupBudget(
 
 ```ts
 await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
+const operation = context.operation(stepTimeout(options?.timeout, 'kiosk.print'));
 ```
 
 - `raceAbort` abandons the wait when `signal` aborts. Pass a thunk to check
   cancellation before dispatch.
 - `withTimeout` races a promise against a timeout and throws what
   `onTimeout` builds.
+- `stepTimeout` turns a call's own `timeout` option into a budget for
+  `context.operation`: `0` waits until the test timeout, or `cleanupTimeout` in `afterEach`, and a negative,
+  `NaN`, or infinite one is `INVALID_ARGUMENT`.
 - `withinCleanupBudget` never rejects. It resolves when the promise settles,
   failures included, when `signal` aborts, or when `timeoutMs` passes.
 

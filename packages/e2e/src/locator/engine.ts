@@ -20,7 +20,7 @@ import {
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { describeExpression, expressionHints, filterSpine } from './expression.ts';
-import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, ReadWindow, sleep } from '../internal/time.ts';
+import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, ReadWindow, sleep, stepTimeout } from '../internal/time.ts';
 import { timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { targetLabel } from '../cache/trace.ts';
@@ -123,9 +123,9 @@ export class LocatorEngine {
     return this.options.redact?.(text) ?? text;
   }
 
-  /** Builds an operation context capped by the remaining test timeout. */
+  /** Builds an operation context on a plain budget, capped by the remaining test timeout: 0 is an expired one. */
   operation(timeoutMs?: number): OperationContext {
-    return this.operationWithin(this.deadline(timeoutMs));
+    return this.operationWithin(this.capped(timeoutMs));
   }
 
   /** The reads of one wait on `deadline`: the last may run past it, up to the running phase's deadline. */
@@ -133,12 +133,18 @@ export class LocatorEngine {
     return new ReadWindow(deadline, this.options.budget.deadline);
   }
 
-  /** Deadline for one action-family operation, capped by the running phase's deadline. */
+  /**
+   * Deadline for one action-family operation on a call's own `timeout`,
+   * capped by the running phase's deadline. 0 sets no deadline of its own,
+   * so the phase's alone bounds it.
+   */
   deadline(timeoutMs?: number): Deadline {
-    return Deadline.min(
-      new Deadline(timeoutMs ?? this.options.actionTimeout),
-      this.options.budget.deadline,
-    );
+    return this.capped(stepTimeout(timeoutMs, 'the step'));
+  }
+
+  /** A deadline `timeoutMs` (default the action timeout) from now, capped by the running phase's deadline. */
+  private capped(timeoutMs: number | undefined): Deadline {
+    return Deadline.min(new Deadline(timeoutMs ?? this.options.actionTimeout), this.options.budget.deadline);
   }
 
   /** An operation context bounded by a deadline a caller shares across steps, such as the swipes of one scroll. */

@@ -21,6 +21,7 @@
  * - description should return description for locator with multiple describe calls: same.
  * - toString() returns formatted locator: e2e locators have no Playwright toString().
  * - toString() prefers description: same.
+ * - textContent should work: `textContent()` reads rendered text with whitespace normalized on purpose, where Playwright keeps the raw text.
  */
 
 import { test } from '@e2e-dev/web';
@@ -49,12 +50,6 @@ test.describe('locator convenience', { requires: ['browser'], tags: ['playwright
 
     const error = await browser.locator('#inner').inputValue().catch((e: unknown) => e);
     expect(error).toEqual(expect.any(Error));
-  });
-
-  test('textContent should work', { fail: '`textContent()` normalizes whitespace, where Playwright keeps the raw text' }, async ({ browser }) => {
-    await browser.goto('/dom.html');
-    const locator = browser.locator('#inner');
-    expect(await locator.textContent()).toBe('Text,\nmore text');
   });
 
   test('isEnabled and isDisabled should work', async ({ screen, browser }) => {

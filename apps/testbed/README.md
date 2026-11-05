@@ -33,8 +33,9 @@ here.
   The files tagged `playwright` are Playwright's own `tests/page` specs (and
   `tests/library/download.spec.ts`) at v1.64.1, ported to the public API:
   each header names its source and the tests left out. `fail: 'reason'`
-  marks a known difference from Playwright; `skip: 'reason'` one that fails
-  with an error `fail` does not cover. `--tag playwright` runs only them, and
+  marks a gap to close; `skip: 'reason'` one that fails with an error `fail`
+  does not cover. A difference e2e keeps on purpose is left out in the
+  header and stated in `docs/migrate/playwright.mdx`. `--tag playwright` runs only them, and
   CI runs them on every pull request.
   `tests/helpers.ts` holds the shared `failure`, `boxOf`, and `centerOf`,
   and the ported tests' `content`, `asset`, `PREFIX`, and `CROSS`.

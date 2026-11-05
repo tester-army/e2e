@@ -458,7 +458,7 @@ The [config](/reference/config) sets each member's budget:
 
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
 `forward`, `waitForResponse`, `waitForDownload`, and `waitForDownloads`, capped
-by the test deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`,
+by the test deadline (`cleanupTimeout` in `afterEach`); `0` waits until it. `url`, `title`, `evaluate`, `addInitScript`, `route`,
 `unroute`, `unrouteAll`, `cookies`, `setCookies`, `clearCookies`, `setViewport`,
 `emulateMedia`, `onDialog`, `keyboard.*`, and `mouse.*` take no override.
 

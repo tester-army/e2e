@@ -370,6 +370,30 @@ describe('LocatorEngine secret fill', () => {
   });
 });
 
+describe('LocatorEngine step deadline', () => {
+  it('waits past the action timeout with timeout 0, until the phase deadline', async () => {
+    const budget = new AttemptBudget(new AbortController().signal, new Deadline(600));
+    const { engine } = makeEngine({ resolve: Array.from({ length: 50 }, () => () => [] as readonly NodeRef[]) }, { actionTimeout: 100, budget });
+    expect(engine.deadline(0)).toBe(budget.deadline);
+    const started = Date.now();
+    await expect(engine.perform(EXPRESSION, { kind: 'tap' }, 0)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(550);
+  });
+
+  it('keeps an operation budget of 0 an expired one, for a caller passing what is left of its deadline', () => {
+    const { engine } = makeEngine({}, { actionTimeout: 100 });
+    expect(engine.operation(0).timeoutMs).toBe(1);
+  });
+
+  it('refuses a negative, NaN, or infinite timeout before resolving', async () => {
+    const { engine, calls } = makeEngine({});
+    for (const timeout of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(engine.perform(EXPRESSION, { kind: 'tap' }, timeout)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    expect(calls.resolve).toBe(0);
+  });
+});
+
 describe('AttemptBudget.capped', () => {
   it("caps every wait inside it, ends a missing node's wait at the cap, and gives the phase its deadline back", async () => {
     const budget = new AttemptBudget(new AbortController().signal, new Deadline(30_000));
