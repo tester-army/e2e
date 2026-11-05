@@ -10,8 +10,9 @@
  * run (`expectations.ts`).
  */
 
-import type { Page } from 'playwright-core';
+import type { Browser, Page } from 'playwright-core';
 import type { SemanticNode } from 'e2e/engine';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { captureDocument } from '../../src/observation.ts';
 import { Published } from '../helpers/published.ts';
 
@@ -130,6 +131,23 @@ function normalize(text: string): string {
 
 function describe(role: string, name: string): string {
   return `${role} ${JSON.stringify(name)}`;
+}
+
+/**
+ * A page to cross-check, in its own context: closed shadow roots are recorded
+ * at creation, and the clock is paused before any document loads. The engine
+ * and both oracles read the live page one after another, so a timer that
+ * replaced an element between those reads would compare them on different
+ * documents; with the clock stopped, a page reads as its load and its network
+ * left it, the same for every reader.
+ */
+export async function openCheckPage(browser: Browser): Promise<Page> {
+  const context = await browser.newContext();
+  await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+  const start = Date.now();
+  await context.clock.install({ time: start });
+  await context.clock.pauseAt(start);
+  return context.newPage();
 }
 
 /** One capture through the engine's own reader, with the element behind each node id. */
@@ -282,7 +300,7 @@ async function compareWithPlaywright(page: Page, node: SemanticNode, into: Disag
   }
 }
 
-/** Cross-checks the page as it is now; the page keeps the marker attributes afterwards. */
+/** Cross-checks the page as it is now, on a page from `openCheckPage`; the page keeps the marker attributes afterwards. */
 export async function crossCheck(page: Page): Promise<CrossCheckResult> {
   const { nodes, published, facts } = await captureTagged(page);
   try {

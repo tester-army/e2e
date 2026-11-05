@@ -455,6 +455,9 @@ CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2e-dev/web exec v
   of `tests/crosscheck/crosscheck.ts`, each with its reason, not lines.
 - A reader change (`src/in-page/read-semantics.ts`) runs it before the PR.
   A bug in that family starts as a fixture page line here.
+- Pages load with Playwright's clock paused (`openCheckPage`), so a timer
+  cannot replace a node between the engine's read and the oracles'. Content a
+  timer reveals is never read: build fixture pages synchronously.
 - `tests/integration/conformance.test.ts` holds the reader to a third
   oracle: the role and accessible-name expectations of the axe-core test
   suite (`tests/conformance/axe-core/`, vendored byte for byte through
