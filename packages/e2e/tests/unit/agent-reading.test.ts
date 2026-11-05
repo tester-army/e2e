@@ -63,6 +63,23 @@ describe('readPage', () => {
   });
 });
 
+describe('a clock on the screen', () => {
+  const clock = (time: string) => node('clock', { role: 'status', name: 'Clock', text: time, rect: { x: 0, y: 0, width: 100, height: 20 } });
+  const row = (text: string) => node('r', { role: 'listitem', text, rect: { x: 0, y: 40, width: 300, height: 40 } });
+
+  it('does not make a page that has not moved read differently', () => {
+    const before = readPage(indexOf(clock('12:05'), row('Row 1')));
+    expect(readPage(indexOf(clock('12:06'), row('Row 1'))).shape).toBe(before.shape);
+    expect(readPage(indexOf(clock('9:59:59'), row('Row 1'))).shape).toBe(before.shape);
+    expect(pageLanded(before, readPage(indexOf(clock('12:06'), row('Row 1'))))).toBe(false);
+  });
+
+  it('still lets a page that moved read differently', () => {
+    const before = readPage(indexOf(clock('12:05'), row('Row 1')));
+    expect(pageLanded(before, readPage(indexOf(clock('12:06'), row('Row 2'))))).toBe(true);
+  });
+});
+
 describe('pageLanded', () => {
   const rows = (...texts: string[]) => readPage(indexOf(...texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: at * 40, width: 300, height: 40 } }))));
 

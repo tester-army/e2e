@@ -5,7 +5,7 @@
  */
 
 import type { SemanticNode } from '../engine/surface.ts';
-import type { SemanticAgentObservation } from './observation.ts';
+import { maskClocks, type SemanticAgentObservation } from './observation.ts';
 
 /** A reading for matching: lower-cased, whitespace runs collapsed, trimmed. */
 export function normalizeReading(text: string): string {
@@ -82,14 +82,16 @@ export interface PageReading {
  * What a screen reads and where, for telling a page that moved from one that
  * did not. Name and text both count: a windowed list's rows keep one name
  * and one slot on the screen while the text in them changes, and that is the
- * list moving. The size is how many nodes carry a reading.
+ * list moving. Clock-like values are masked the way `observationShape` masks
+ * them: a ticking clock on screen is not a page that moved. The size is how
+ * many nodes carry a reading.
  */
 export function readPage(observation: Pick<SemanticAgentObservation, 'nodes'>): PageReading {
   const lines: string[] = [];
   for (const node of observation.nodes.values()) {
     if (node.name === undefined && node.text === undefined) continue;
     const at = node.rect === undefined ? '' : `${String(Math.round(node.rect.x))},${String(Math.round(node.rect.y))}`;
-    lines.push(`${node.name ?? ''}|${node.text ?? ''}@${at}`);
+    lines.push(maskClocks(`${node.name ?? ''}|${node.text ?? ''}@${at}`));
   }
   return { shape: lines.join('\n'), size: lines.length };
 }

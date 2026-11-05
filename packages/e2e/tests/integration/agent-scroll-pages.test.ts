@@ -34,30 +34,39 @@ function rowsOf(page: number, count = PER_PAGE): ScriptedNode[] {
   }));
 }
 
-async function scrollTo(text: string, turning: Turning): Promise<Paged> {
+/** A clock that reads a minute later on every capture, as one ticking on the screen does. */
+function clockAt(minute: number): ScriptedNode {
+  return { id: 'clock', role: 'status', name: 'Clock', text: `12:${String(minute % 60).padStart(2, '0')}`, rect: { x: 0, y: 0, width: 100, height: 20 } };
+}
+
+async function scrollTo(text: string, turning: Turning, withClock = false): Promise<Paged> {
   let observations = 0;
   let page = 0;
   const atSwipe: number[] = [];
   const list: ScriptedNode = { id: 'list', role: 'list', name: 'Ledger', children: rowsOf(0) };
+  const clock = clockAt(0);
   const turn = (to: number, count = PER_PAGE) => {
     page = to;
     list.children = rowsOf(to, count);
   };
   const fake = createFakeEngine({
     actions: ['swipe'],
-    observe: () => { observations += 1; },
+    observe: () => {
+      observations += 1;
+      clock.text = clockAt(observations).text;
+    },
     perform: (_ref, action) => {
       if (action.kind !== 'swipe') return;
       atSwipe.push(observations);
       const next = turning === 'never' ? page : page + 1;
       if (turning === 'now') turn(next);
-      if (turning === 'late') setTimeout(() => turn(next), 40);
+      if (turning === 'late') setTimeout(() => turn(page + 1), 40);
       if (turning === 'drawn-late') {
         turn(next, 1);
         setTimeout(() => turn(next), 60);
       }
     },
-    scene: () => [list],
+    scene: () => (withClock ? [clock, list] : [list]),
   });
   let error: string | undefined;
   let found: string | undefined;
@@ -119,5 +128,29 @@ describe('scroll_to a text, reads per page', () => {
     const result = await scrollTo('Row 99', 'never');
     expect(result.error).toBe('LOCATOR_NOT_FOUND');
     expect(result.swipes).toBe(3);
+  });
+
+  describe('with a clock ticking on the screen', () => {
+    it('reads each page once when the swipe landed', async () => {
+      const result = await scrollTo('Row 13', 'now', true);
+      expect(result.error).toBeUndefined();
+      expect(result.found).toContain('Row 13');
+      expect(result.swipes).toBe(4);
+      expect(result.capturesPerPage).toEqual([1, 1, 1, 1]);
+    });
+
+    it('does not take the tick for a turned page, and does not page past the row', async () => {
+      const result = await scrollTo('Row 4', 'late', true);
+      expect(result.error).toBeUndefined();
+      expect(result.found).toContain('Row 4');
+      expect(result.swipes).toBe(1);
+      expect(result.capturesPerPage.every((captures) => captures >= 2)).toBe(true);
+    });
+
+    it('still ends a list that stops moving with LOCATOR_NOT_FOUND, not at the screen cap', async () => {
+      const result = await scrollTo('Row 99', 'never', true);
+      expect(result.error).toBe('LOCATOR_NOT_FOUND');
+      expect(result.swipes).toBe(3);
+    });
   });
 });
