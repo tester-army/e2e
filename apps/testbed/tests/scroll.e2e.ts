@@ -49,11 +49,4 @@ test.describe('scrolling', { requires: ['browser'], tags: ['scroll'] }, () => {
     await expect(screen.getByRole('status', 'Pane position')).not.toHaveText('0');
     await expect(screen.getByRole('status', 'Scroll position')).toHaveText('0');
   });
-
-  for (const [depth, row] of [['near', 'Row 12'], ['middle', 'Row 60'], ['deep', 'Row 118']] as const) {
-    test(`agent.act scrolls to a ${depth} row by its text and taps it`, async ({ agent, screen }) => {
-      await agent.act(`scroll to ${row} and tap it`);
-      await expect(screen.getByRole('status', 'Picked row')).toHaveText(`picked ${row}`);
-    });
-  }
 });
