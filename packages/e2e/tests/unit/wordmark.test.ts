@@ -109,7 +109,7 @@ describe('playWordmark', () => {
       return count === -1 ? REST.length : count;
     });
     expect(reached[0]).toBe(1);
-    expect(reached.every((count, index) => index === 0 || count >= reached[index - 1]!)).toBe(true);
+    expect(reached.every((count, index) => index === 0 || [0, 1].includes(count - reached[index - 1]!))).toBe(true);
     expect(reached.at(-1)).toBe(REST.length);
     // The last paint is the logo at rest, unstyled, in place, with a blank line under it.
     expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[9A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
