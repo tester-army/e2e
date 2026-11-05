@@ -4,9 +4,9 @@
  *
  * Two populations with different lifetimes live here. Locator-backed refs
  * from `locate` hold no live handles and are pruned oldest-first past a
- * bound. Handle-backed refs from `observe` form one generation per
- * observation: the whole generation is swapped atomically and the superseded
- * one disposed in a sweep, so locator-ref eviction can never destroy a handle
+ * bound. List-backed refs from `observe` form one generation per
+ * observation: the whole generation is swapped atomically and its element
+ * lists disposed in a sweep, so locator-ref eviction can never destroy a list
  * an in-flight observation still references.
  */
 

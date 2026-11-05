@@ -33,8 +33,9 @@ function withinViewport(point: Point, viewport: { width: number; height: number 
 
 /**
  * A resolved node is addressed either by a deterministic locator expression or
- * by a live element handle captured during one agent observation. Handles are
- * always elements: the in-page observation walk records `Element` nodes only.
+ * by an element handle made from one agent observation's element list.
+ * Handles are always elements: the in-page observation walk records `Element`
+ * nodes only.
  */
 export type ActionTarget =
   | { readonly kind: 'locator'; readonly locator: PwLocator }
