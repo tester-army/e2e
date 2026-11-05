@@ -89,8 +89,8 @@ spread.
   (`ABOUT`, `android:id/title`) are the node's `testId`, what `getByTestId`
   matches.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
-  the tree exposes the checked state; Android switches do not), focus on
-  editable fields, `Enter`, single-character keys, swipe within a node, drag.
+  the tree exposes the checked state, as switches do on both platforms),
+  focus on editable fields, `Enter`, single-character keys, swipe within a node, drag.
   `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`,
   `modifiers` on `tap` or `doubleTap`, focus on a control, and other keys fail with
   `UNSUPPORTED_CAPABILITY`.
