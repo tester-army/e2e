@@ -1,18 +1,9 @@
 /**
- * agent-device for custom tools that extend this engine. A project that
- * imports `agent-device` directly has to install it itself, because pnpm
- * does not resolve a bare import from a transitive dependency, and keep it
- * at the exact version this package pins, because two versions do not
- * share one daemon. Importing from here uses the engine's own copy.
- *
- * This re-exports what a tool commonly needs: the client factory, the error
- * helpers, and the types for snapshots, screenshots, targets, gestures,
- * text entry, alerts, and waits. Daemon lifecycle (`ensureDaemon`,
- * `startAgentDevice`) is left out because the engine owns the daemon.
- *
- * Unstable, like `device.unstable_raw`: this is agent-device's API at the
- * version this package pins, and it can change in any release that bumps
- * agent-device.
+ * The engine's own agent-device, for custom tools, so a project never
+ * installs a second copy that has to match this package's pin. Daemon
+ * lifecycle (`ensureDaemon`, `startAgentDevice`) is left out because the
+ * engine owns the daemon. Unstable, like `device.unstable_raw`: it can
+ * change in any release that bumps agent-device.
  */
 
 export {
