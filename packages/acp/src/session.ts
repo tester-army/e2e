@@ -15,23 +15,22 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
-import {
-  client,
-  methods,
-  ndJsonStream,
-  PROTOCOL_VERSION,
-  type ClientContext,
-  type InitializeResponse,
-  type NewSessionResponse,
-  type RequestPermissionRequest,
-  type RequestPermissionResponse,
-  type SessionConfigOption,
-  type SessionNotification,
-  type ToolCallUpdate,
-  type Usage,
+import type {
+  ClientContext,
+  InitializeResponse,
+  NewSessionResponse,
+  RequestPermissionRequest,
+  RequestPermissionResponse,
+  SessionConfigOption,
+  SessionNotification,
+  ToolCallUpdate,
+  Usage,
 } from '@agentclientprotocol/sdk/unstable';
 import { ConfigurationError } from 'e2e/engine';
 import { MCP_SERVER_NAME, serveTools, type ServedTool, type ToolServer } from './mcp.ts';
+
+/** The ACP SDK's request names, which `selectMode` takes from the session that loaded the SDK. */
+type AcpMethods = typeof import('@agentclientprotocol/sdk/unstable').methods;
 
 /** Tool kinds an agent uses for its own tools and subagents; never a call of ours without an adapter's mark. */
 const BUILT_IN_KINDS = new Set(['read', 'edit', 'delete', 'move', 'search', 'execute', 'fetch', 'think', 'switch_mode']);
@@ -104,6 +103,10 @@ export async function startSession(
   signal: AbortSignal,
   onOwnTool: (title: string) => void = () => undefined,
 ): Promise<AcpSession> {
+  signal.throwIfAborted();
+  // Loaded when the first session starts, not when the config imports this package: a process that never runs an ACP step never loads it.
+  const { client, methods, ndJsonStream, PROTOCOL_VERSION } = await import('@agentclientprotocol/sdk/unstable');
+  // Nothing awaits between this check and the abort listener below, so an abort during the import is not missed.
   signal.throwIfAborted();
   const cwd = mkdtempSync(join(tmpdir(), 'e2e-acp-'));
   let server: ToolServer | undefined;
@@ -192,7 +195,7 @@ export async function startSession(
     } else if (modelOption?.type === 'select') {
       modelId = String(modelOption.currentValue);
     }
-    if (launch.mode !== undefined) await startup(selectMode(agent, session, launch.mode));
+    if (launch.mode !== undefined) await startup(selectMode(agent, session, launch.mode, methods));
   } catch (error) {
     teardown();
     if (isAuthRequired(error)) {
@@ -265,7 +268,7 @@ function isAuthRequired(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: unknown }).code === AUTH_REQUIRED;
 }
 
-async function selectMode(agent: ClientContext, session: NewSessionResponse, mode: string): Promise<void> {
+async function selectMode(agent: ClientContext, session: NewSessionResponse, mode: string, methods: AcpMethods): Promise<void> {
   const option = session.configOptions?.find((entry) => entry.category === 'mode');
   if (option !== undefined && selectValues(option).includes(mode)) {
     await agent.request(methods.agent.session.setConfigOption, { sessionId: session.sessionId, configId: option.id, value: mode });

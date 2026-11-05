@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseUpgradeTarget, upgrade, type UpgradeOptions, type UpgradeTarget } from '../../src/cli/upgrade.ts';
+import { upgrade, type UpgradeOptions } from '../../src/cli/upgrade.ts';
+import { parseUpgradeTarget, type UpgradeTarget } from '../../src/cli/upgrade-target.ts';
 
 type Releases = Record<string, Record<string, string> | { peers: Record<string, string>; deprecated: string }>;
 
