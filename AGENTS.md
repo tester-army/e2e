@@ -161,6 +161,15 @@ suites that consume the built packages the way a user would.
   keeps it current on reruns, writing the same text to the job summary. It
   reads the token, event, and repository when the run finishes, never at
   config load, and renders the page with `renderMarkdownReport` from `e2e`.
+- `packages/insights` — the published `@e2e-dev/insights` package: the
+  `insights()` reporter appends each run's report, reduced to ids, titles,
+  statuses, timings, model counters, and error codes (`history-1`, pinned by
+  its own `schema/history-v1.schema.json`), to `.e2e/history/runs.jsonl`;
+  the `e2e-insights` bin scores that history (flaky, broken, cache misses,
+  cost) as text, Markdown, HTML, or JSON; `quarantineFilter()` is a
+  `TestFilter` that leaves flaky tests out, so it acts only with
+  `--changed-since`. It reads `report-1` through the public `Report` type
+  only, so a report change that breaks its digest fails its tests.
 - `packages/testmu` — the published `@e2e-dev/testmu` package: TestMu AI
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's

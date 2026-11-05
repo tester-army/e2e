@@ -185,6 +185,13 @@ hosted service's video by URL.
   comment per run (edited on rerun) plus the job summary; needs
   `pull-requests: write` and `GITHUB_TOKEN` (or `GH_TOKEN`) in the step's
   env.
+- `insights()` from `@e2e-dev/insights`: appends each run to
+  `.e2e/history/runs.jsonl`. `npx e2e-insights` reads it and lists broken,
+  failing, and flaky tests across runs, replay cache misses, model cost, and
+  the slowest tests (`--format markdown|html|json`, `--fail-on
+  flaky|broken`). To find a flaky test, read this before rerunning the
+  suite. `quarantineFilter({ mode: 'skip' })` leaves flaky tests out of
+  `--changed-since` runs; a test whose latest result failed always runs.
 
 ## Exit codes
 

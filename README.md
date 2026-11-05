@@ -72,6 +72,7 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | [`@e2e-dev/limrun`](https://www.npmjs.com/package/@e2e-dev/limrun) | Limrun hosted iOS simulators and Android emulators for mobile tests. |
 | [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas) | Expo Simulators hosted iOS simulators and Android emulators for the mobile engine. |
 | [`@e2e-dev/github`](https://www.npmjs.com/package/@e2e-dev/github) | Reporter that posts results as a pull request comment. |
+| [`@e2e-dev/insights`](https://e2e.com/docs/insights) | Run history: flaky and broken tests, replay cache misses, and model cost across runs, plus a filter that quarantines flaky tests. |
 
 ## Documentation
 
