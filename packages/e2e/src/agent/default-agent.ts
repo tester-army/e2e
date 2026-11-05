@@ -17,7 +17,7 @@ import { testTitleLine } from './prompts.ts';
 import { grammarTools } from './primitives.ts';
 import { ScreenPresenter } from './screen-update.ts';
 import { compactScreenHistory, compactScreenshotHistory } from './transcript-compaction.ts';
-import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
+import { createToolLoopExecutor, type ToolLoopHelpers, type ToolLoopExecutorOptions } from './tool-loop.ts';
 import { toolAppliesTo, withToolContext } from './tool.ts';
 import { boundToolOutput } from './tool-output.ts';
 import type { AgentTool } from '../types.ts';
@@ -42,6 +42,14 @@ Rules:
 - On a touch screen, a tap made while the keyboard is up may only close the keyboard; the result says so when the keyboard went away. Then act on the control again rather than concluding.
 - Conclude "passed" only when the latest result shows the outcome the step asked for. A result that reports no change, or only the keyboard closing, means the decisive action did not land: act again or conclude "failed". A result that says only that no listed node changed has not ruled out a drawn change: take a screenshot, when offered, before deciding. Never describe an unchanged screen as the outcome.`;
 
+/** Assertion-specific rules allow evidence gathered across several viewports. */
+const ASSERT_RULES = `You are judging exactly one assertion against the current application screen.
+- Use only the observation, scrolling, and read-only project tools offered to you. Do not tap, type, navigate, or change application state.
+- Combine evidence from every observation in this step. Items need not fit in one viewport. Scroll only to inspect the assertion's subject, and stop when you have enough evidence.
+- Node ids belong to the observed tree. Never invent ids; use scroll_to for a listed node or scroll to inspect more of the current screen.
+- Each scroll result contains a fresh observation. When screenshots are shown, each result includes fresh pixels too.
+- Conclude passed when the collected evidence establishes the assertion, failed with ASSERTION_FAILED when it contradicts the assertion, and failed with ASSERTION_INCONCLUSIVE when the available evidence or remaining budget cannot establish an answer.`;
+
 /** One presenter per dispatched step, shared by the opening prompt and the tools that follow it. */
 const presenters = new WeakMap<StepExecutorContext, ScreenPresenter>();
 
@@ -56,7 +64,7 @@ function presenterFor(context: StepExecutorContext): ScreenPresenter {
 
 /** What the built-in agent is built from: an agents entry's `system` and its validated `tools`. */
 export interface BuiltInAgentOptions {
-  /** Appended to the built-in execution rules; only the act loop reads it. */
+  /** Appended to the built-in execution rules; read by act and exploring assert loops. */
   readonly system?: string | undefined;
   /** Project tools from `defineTool`, validated by config resolution. */
   readonly tools?: Readonly<Record<string, AgentTool>>;
@@ -65,33 +73,33 @@ export interface BuiltInAgentOptions {
 /** Builds the built-in AI SDK step executor. */
 export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecutor {
   const userTools = options.tools ?? {};
-  const system = (): string =>
-    [BASE_RULES, options.system]
+  const system = (context: StepExecutorContext): string =>
+    [context.step.kind === 'assert' ? ASSERT_RULES : BASE_RULES, options.system]
       .filter((part): part is string => part !== undefined && part.trim() !== '')
       .join('\n\n');
-  return createToolLoopExecutor({
+  const loopOptions: ToolLoopExecutorOptions = {
     ...BUILT_IN_AGENT,
     system,
-    prepareMessages: (messages) => compactScreenshotHistory(compactScreenHistory(messages)),
-    tools: (context, helpers) => ({
-      ...guardedTools(helpers, projectTools(context, userTools)),
-      ...grammarTools(context, { guard: helpers.guard, screen: presenterFor(context) }),
-    }),
+    tools: (context, helpers) => {
+      const tools = grammarTools(context, { guard: helpers.guard, screen: presenterFor(context) });
+      if (context.step.kind === 'assert' && context.step.vision === false) delete tools['screenshot'];
+      return { ...guardedTools(helpers, projectTools(context, userTools)), ...tools };
+    },
     buildPrompt: async (context) => {
-      // The opening look is tree-only, unless no listed interactive node
+      // An act opens tree-only, unless no listed interactive node
       // exists at all: then the opening prompt carries a screenshot, because the tree describes a canvas, a game,
       // or a semantics-free native screen too poorly to act on, and the model
       // would only spend a turn asking for one. One listed control is enough
       // to leave the decision to the model; a small page is not a blind one.
       let observation = await context.observe();
-      if (observation.pixels === undefined && interactiveNodeCount(observation) === 0) {
+      if (context.step.kind === 'act' && observation.pixels === undefined && interactiveNodeCount(observation) === 0) {
         observation = await context.observe({ pixels: true });
       }
       const title = testTitleLine(context.attempt.titlePath);
       const parts = [
         ...(title === undefined ? [] : [title]),
         context.step.kind === 'assert'
-          ? `Judge whether this assertion holds; do not change application state: ${context.step.instruction}`
+          ? `Judge whether this assertion holds: ${context.step.instruction}`
           : `Execute this test step: ${context.step.instruction}`,
       ];
       if (context.step.params !== undefined) {
@@ -100,7 +108,7 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
       if (context.replayedPrefix !== undefined) {
         parts.push(formatReplayedPrefix(context.replayedPrefix));
       }
-      if (context.ledger !== '') {
+      if (context.step.kind === 'act' && context.ledger !== '') {
         parts.push(`Previously completed steps:\n${context.ledger}`);
       }
       const opening = presenterFor(context).open(observation);
@@ -115,7 +123,30 @@ export function createBuiltInAgent(options: BuiltInAgentOptions = {}): StepExecu
         },
       ];
     },
+  };
+  const executor = createToolLoopExecutor({
+    ...loopOptions,
+    prepareMessages: (messages) => compactScreenshotHistory(compactScreenHistory(messages)),
   });
+  // Earlier viewports remain evidence for an assertion even after scrolling away.
+  const assertionExecutor = createToolLoopExecutor({ ...loopOptions, preserveEvidence: true });
+  return {
+    ...executor,
+    vision: true,
+    runStep: (context) => {
+      if (context.step.kind !== 'assert') return executor.runStep(context);
+      const assertionContext = Object.create(context, {
+        observe: { value: async (observeOptions: Parameters<StepExecutorContext['observe']>[0]) => {
+          const observation = await context.observe({ ...observeOptions, pixels: context.step.vision !== false });
+          if (context.step.vision !== 'only') return observation;
+          if (observation.pixels === undefined) throw new AgentError('POLICY_DENIED', "agent.assert vision: 'only' requires available pixel evidence");
+          const { tree: _tree, ...rest } = observation;
+          return { ...rest, text: 'Judge from the screenshots only.', treeUnavailable: true };
+        } },
+      }) as StepExecutorContext;
+      return assertionExecutor.runStep(assertionContext);
+    },
+  };
 }
 
 /**
@@ -167,6 +198,7 @@ export function projectTools(
     const tool = defined.tool as Tool;
     const execute = tool.execute!.bind(tool);
     const mutates = defined.annotations.mutates;
+    if (context.step.kind === 'assert' && mutates) continue;
     wrapped[name] = {
       ...tool,
       execute: async (input: never, executionOptions: ToolExecutionOptions<unknown>) => {

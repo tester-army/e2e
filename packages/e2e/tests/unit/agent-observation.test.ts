@@ -4,6 +4,11 @@ import { changeShape, interactiveNodeCount, isTransitionalObservation, observati
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../../src/engine/contract.ts';
 import { SecretLedger } from '../../src/internal/redact.ts';
 import { describeDelta } from '../../src/cache/anchors.ts';
+import { ObservationFeed } from '../../src/agent/observation-feed.ts';
+import { OperationQueue } from '../../src/agent/operation-queue.ts';
+import type { AgentContext } from '../../src/agent/invocation.ts';
+import type { StepAccounting } from '../../src/agent/step-accounting.ts';
+import { StepRecorder } from '../../src/run/steps.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
   return { ref: { id, revision: 'r1' }, ...extra };
@@ -24,6 +29,35 @@ function observation(tree: SemanticNode, pixels?: Observation['pixels']): Extrac
 }
 
 const NO_REDACT = (text: string): string => text;
+
+it('enforces tree-only observation requests, projection, and unavailable-tree fallback', async () => {
+  const pixels = { data: new Uint8Array(4), mediaType: 'image/png' as const, width: 2, height: 2, scale: 1 };
+  let raw: Observation = { ...observation(node('root'), pixels), redaction: { secureNodeCount: 0, maskedRegionCount: 0 } };
+  const capture = vi.fn(async () => raw);
+  const signal = new AbortController().signal;
+  const runtime = {
+    engine: { signal, session: { observe: capture } },
+    app: {}, redact: NO_REDACT, redactCut: NO_REDACT,
+    steps: new StepRecorder('attempt'),
+  } as unknown as AgentContext;
+  const accounting = {
+    api: 'agent.assert', signal, checkpoint: () => undefined,
+    operation: () => ({ signal, timeoutMs: 1_000 }), remainingMs: () => 1_000,
+    metrics: { actionSteps: 0, contextBytes: 0, ledgerBytes: 0, observationBytes: 0 },
+  } as unknown as StepAccounting;
+  const feed = new ObservationFeed(runtime, accounting, new OperationQueue(), {
+    pixelsAllowed: false, maxObservationBytes: 4_096, maxInputTokens: 10_000, instructionBytes: 0,
+  });
+  const view = await feed.observe({ pixels: true });
+  expect(capture).toHaveBeenCalledWith(expect.anything(), { pixels: false, pixelFallback: false });
+  expect(view.pixels).toBeUndefined();
+  raw = {
+    kind: 'pixels', root: node('root').ref, revision: 'r2', capturedAt: '',
+    viewport: { width: 2, height: 2 }, pixels,
+    redaction: { secureNodeCount: 0, maskedRegionCount: 0 },
+  };
+  await expect(feed.observe()).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+});
 
 describe('prepareObservation', () => {
   it('keeps unavailable semantics separate from an empty tree and requires permitted masked evidence', () => {

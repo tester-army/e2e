@@ -16,7 +16,7 @@ export interface LoopCall {
   readonly toolNames: readonly string[];
   /** Text of the first user message: instruction, params, initial screen. */
   readonly prompt: string;
-  /** Image or file parts attached to user messages, excluding text captions. */
+  /** Images in user messages and tool results, excluding text captions. */
   readonly imageParts: number;
   /**
    * Text of the last user message. Equals `prompt` unless the executor opened
@@ -92,11 +92,7 @@ export function installFakeLoopModel(respond: LoopResponder): ModelInstance {
       turn,
       toolNames: (options.tools ?? []).map((tool) => tool.name).toSorted(),
       prompt: firstUserText(options.prompt),
-      imageParts: options.prompt.reduce((count, message) => count + (
-        message.role === 'user' && typeof message.content !== 'string'
-          ? message.content.filter((part) => part.type === 'image' || part.type === 'file').length
-          : 0
-      ), 0),
+      imageParts: countImages(options.prompt),
       lastPrompt: lastUserText(options.prompt),
       userMessages: options.prompt.filter((message) => message.role === 'user').length,
       toolResults,
@@ -211,4 +207,23 @@ export function nodeIdFor(observedText: string, pattern: RegExp): string {
 export function imagePointFor(resultText: string, css: { readonly x: number; readonly y: number }): { x: number; y: number } {
   const scale = Number(/\((\d+(?:\.\d+)?) per CSS pixel\)/.exec(resultText)?.[1] ?? '1');
   return { x: Math.round(css.x * scale), y: Math.round(css.y * scale) };
+}
+
+
+/** Counts image parts only in SDK evidence containers, never in arbitrary tool JSON. */
+function countImages(messages: readonly RawMessage[]): number {
+  let count = 0;
+  for (const message of messages) {
+    if (typeof message.content === 'string') continue;
+    for (const part of message.content) {
+      if (message.role === 'user' && (part.type === 'image' || part.type === 'file')) count += 1;
+      if (message.role !== 'tool' || part.type !== 'tool-result' || part.output?.type !== 'content') continue;
+      if (!Array.isArray(part.output.value)) continue;
+      count += part.output.value.filter((item: unknown) => {
+        if (typeof item !== 'object' || item === null || !('type' in item)) return false;
+        return item.type === 'image-data' || item.type === 'file-data' || item.type === 'image' || item.type === 'file';
+      }).length;
+    }
+  }
+  return count;
 }

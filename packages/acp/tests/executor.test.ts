@@ -159,7 +159,7 @@ describe('acp', () => {
     expect(log().filter((entry) => 'session' in entry)).toHaveLength(2);
   });
 
-  it('refuses actions that change the screen on an assertion, and lets it hover', async () => {
+  it('refuses actions that change the screen on an assertion, including hover', async () => {
     const { executor, log } = scripted([
       [{ call: 'tap', args: { target: 'n2' } }, { call: 'hover', args: { target: 'n2' } }, { call: 'complete_step', args: { status: 'failed', summary: 'no todo' } }],
     ]);
@@ -169,8 +169,20 @@ describe('acp', () => {
     // The runner gives a failed assertion its ASSERTION_FAILED code.
     expect(verdict).toEqual({ status: 'failed', summary: 'no todo' });
     expect(step.tap).not.toHaveBeenCalled();
-    expect(step.hover).toHaveBeenCalledWith({ id: 'n2' });
+    expect(step.hover).not.toHaveBeenCalled();
     expect(JSON.stringify(log().find((entry) => entry['call'] === 'tap'))).toContain('this step is an assertion');
+  });
+
+  it('advertises action tools when the attempt begins with an assertion', async () => {
+    const { executor, log } = scripted([[pass], [{ call: 'tap', args: { target: 'n2' } }, pass]]);
+    const first = context({ kind: 'assert' });
+    cleanups.push(first.end);
+    await expect(executor.runStep(first.ctx)).resolves.toMatchObject({ status: 'passed' });
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
+    expect(second.tap).toHaveBeenCalledWith({ id: 'n2' });
+    const session = log().find(entry => 'session' in entry)?.['session'] as { tools: string[] };
+    expect(session.tools).toContain('tap');
   });
 
   it("concludes through the built-in agent's complete_step: blocked needs a code", async () => {
@@ -191,6 +203,20 @@ describe('acp', () => {
     // Nothing runs after the verdict.
     expect(step.tap).not.toHaveBeenCalled();
     expect(String(log().find((entry) => 'prompt' in entry)?.['prompt'])).toContain('Verdict rules:');
+  });
+
+  it('validates verdict codes against the active kind across one attempt', async () => {
+    const inconclusive = { call: 'complete_step', args: { status: 'failed', summary: 'not enough evidence', errorCode: 'ASSERTION_INCONCLUSIVE' } };
+    const { executor, log } = scripted([[inconclusive, { ...pass, args: { ...pass.args, errorCode: 'ASSERTION_INCONCLUSIVE' } }], [inconclusive]]);
+    const first = context();
+    cleanups.push(first.end);
+    await expect(executor.runStep(first.ctx)).resolves.toEqual(pass.args);
+    const second = context({ kind: 'assert', attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    await expect(executor.runStep(second.ctx)).resolves.toEqual(inconclusive.args);
+    const refusal = log().find((entry) => entry['call'] === 'complete_step');
+    expect(JSON.stringify(refusal?.['result'])).toContain('complete_step failed: errorCode:');
+    expect(JSON.stringify(log())).toContain('the errorCode ASSERTION_INCONCLUSIVE you sent does not apply to a passed verdict and was ignored.');
+    expect(log().filter((entry) => 'session' in entry)).toHaveLength(1);
   });
 
   it('skips actions batched behind the verdict', async () => {

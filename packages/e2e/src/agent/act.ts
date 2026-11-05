@@ -42,6 +42,10 @@ import { StepAccounting } from './step-accounting.ts';
 import { failedStepOutcome, StepTraceSession, type StepCacheHost, type StepOutcome } from './step-cache.ts';
 import type { ParamTemplate } from '../cache/template.ts';
 
+/** Default exploration ceilings, capped by the configured agent limits. */
+const EXPLORATION_MAX_ACTIONS = 10;
+const EXPLORATION_MAX_MODEL_CALLS = 6;
+
 /** What a dispatch needs of the agent a step runs with; an interactive step supplies its own. */
 export type DispatchAgent = Pick<AgentSelection, 'name' | 'config' | 'executor' | 'agentContext'>;
 
@@ -102,8 +106,8 @@ export async function runActStep(
 
 /**
  * Runs one `agent.assert()` call through the executor socket. Used when a
- * custom executor is configured: the brain that plans flows also judges
- * assertions, so swapping brains swaps all the thinking. The built-in
+ * custom executor is configured or exploration is requested. The brain that
+ * plans flows also judges assertions, so swapping brains swaps all the thinking. The built-in
  * single-judgment tier remains the default-path implementation. `screenshot`
  * is harness evidence taken after the verdict, so it is honored here as on
  * the default path; `vision` is what the executor's model sees, so it reaches
@@ -115,7 +119,7 @@ export async function runAssertStep(
   options: AssertOptions | undefined,
 ): Promise<void> {
   const normalized = validateInstruction(assertion, 'agent.assert');
-  // An assert changes no state, so its secrets are named to the executor but never fillable.
+  // Assertions may scroll, but their secrets are never fillable.
   const { projected, templates } = validateParams(options?.params, 'agent.assert');
   const agent = runtime.select(options?.agent);
   const vision = resolveVision(options?.vision);
@@ -133,14 +137,22 @@ export async function runAssertStep(
     secrets: new Map(),
     templates,
     defaultFailureCode: 'ASSERTION_FAILED',
-    timeout: options?.timeout,
-    maxSteps: undefined,
-    maxModelCalls: undefined,
+    ...assertionLimits(options, agent.config),
     agent: options?.agent,
     ...(options?.screenshot === undefined ? {} : { screenshot: options.screenshot }),
-    // `false` asks for the tree, which is what an executor gets with no option at all.
-    ...(vision === false ? {} : { vision }),
+    // Custom executors own their default evidence policy; the built-in loop enforces tree-only mode.
+    ...(vision === false && agent.customExecutor ? {} : { vision }),
   }, agent);
+}
+
+/** Resolves exploration defaults without changing ordinary assertion limits. */
+function assertionLimits(options: AssertOptions | undefined, config: AgentSelection['config']): Pick<DispatchSpec, 'timeout' | 'maxSteps' | 'maxModelCalls'> {
+  if (options?.explore !== true) return { timeout: options?.timeout, maxSteps: undefined, maxModelCalls: undefined };
+  return {
+    timeout: options.timeout === undefined ? config.judgmentTimeout : options.timeout,
+    maxSteps: options.maxSteps === undefined ? Math.min(EXPLORATION_MAX_ACTIONS, config.maxSteps) : options.maxSteps,
+    maxModelCalls: options.maxModelCalls === undefined ? Math.min(EXPLORATION_MAX_MODEL_CALLS, config.maxModelCalls) : options.maxModelCalls,
+  };
 }
 
 /**
@@ -232,11 +244,13 @@ class ActDispatch {
     // a batched turn from resolving two targets against one stale screen.
     const queue = new OperationQueue();
     this.feed = new ObservationFeed(runtime, this.accounting, queue, {
+      pixelsAllowed: spec.vision !== false,
       maxObservationBytes: agent.config.maxObservationBytes,
       maxInputTokens: agent.config.maxInputTokens,
       instructionBytes: tokenUpperBound(spec.instruction),
     });
     this.dispatcher = new ActionDispatcher(runtime, this.accounting, this.feed, queue, {
+      readOnly: spec.kind === 'assert',
       instruction: spec.instruction,
       params: spec.params,
       secrets: spec.secrets,
@@ -249,8 +263,7 @@ class ActDispatch {
     const stepIndex = runtime.steps.currentStepIndex;
     if (stepIndex === undefined) throw new Error('agent step dispatched outside a recorded step');
     this.stepIndex = stepIndex;
-    // Only act steps are cacheable: an assert must not change state, so its
-    // trace would be empty — nothing to replay, nothing worth a read. An
+    // Only act steps are cacheable: assertions explore live on every run. An
     // executor that declared `cache: 'off'` sees every step itself.
     const cache = spec.kind === 'act' && agent.executor.cache !== 'off' ? runtime.cache : undefined;
     this.stepCache =
@@ -436,7 +449,8 @@ class ActDispatch {
       settled.errorCode !== undefined && settled.errorCode in CATEGORY_BY_CODE
         ? settled.errorCode
         : this.spec.defaultFailureCode;
-    throw new AgentError(code, `${this.spec.api} ${settled.status}: ${settled.summary}`, {
+    const assertionCode = this.assertionCode(code);
+    throw new AgentError(assertionCode, `${this.spec.api} ${settled.status}: ${settled.summary}`, {
       blocked: settled.status === 'blocked',
       ...(screenshot === undefined ? {} : { screenshot }),
     });
@@ -450,9 +464,21 @@ class ActDispatch {
   settleThrown(error: AgentError): AgentError {
     if (!RUNTIME_CODES.has(error.code)) return error;
     const hardStop = this.accounting.hardStop;
-    if (hardStop !== undefined) return hardStop;
-    if (this.accounting.vouches(error.code)) return error;
+    if (hardStop !== undefined) {
+      const code = this.assertionCode(hardStop.code);
+      return code === hardStop.code ? hardStop : new AgentError(code, hardStop.message, { cause: hardStop });
+    }
+    if (this.accounting.vouches(error.code)) {
+      const code = this.assertionCode(error.code);
+      return code === error.code ? error : new AgentError(code, error.message, { cause: error });
+    }
     return this.invented(error.code, error);
+  }
+
+  /** Exhausted exploration cannot establish a product verdict. */
+  private assertionCode(code: AgentErrorCode): AgentErrorCode {
+    return this.spec.kind === 'assert' && (code === 'STEP_BUDGET_EXHAUSTED' || code === 'STEP_TIMEOUT' || code === 'STEP_NO_CONCLUSION')
+      ? 'ASSERTION_INCONCLUSIVE' : code;
   }
 
   /** What the settled step did, for the caller of `agent.act()`. */

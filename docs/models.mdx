@@ -231,6 +231,9 @@ const agent = {
 };
 ```
 
+Built-in `agent.assert` with `explore: true` runs the tool loop on
+`agents.<name>.model`, even when `judge` is set.
+
 Reports name the model of each judgment. `judge` takes an AI SDK language
 model. For Clef or Jev, use the [decision executor](/decision-models). See
 [what a judgment sees](/agent-steps#what-the-model-sees).

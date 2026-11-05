@@ -30,9 +30,10 @@ snapshot when most of it changed. Node ids stay the same while their
 elements exist. A failed action also returns the current screen, so the
 model can choose its next action.
 
-Judgments from `assert`, `waitFor`, and `extract` see the instruction,
+Default judgments from `assert`, `waitFor`, and `extract` see the instruction,
 the current screen, and the agent's `context`, never completed steps or the
 acting agent's summaries. They can use a separate [judge model](/models#a-judge-of-its-own).
+Built-in exploring assertions use `agents.<name>.model`, even when `judge` is set.
 
 `vision: true` adds a masked screenshot, and `vision: 'only'` judges the
 screenshot alone. See the [agent reference](/reference/agent#vision) for
@@ -60,6 +61,13 @@ The loop detects repeated calls and cycles. After three failed actions in a
 row, it tells the model to change its approach. After five, it asks for a
 verdict. It also asks for a verdict when the budget or the deadline is
 near.
+
+## Assertion exploration
+
+With `explore: true`, `agent.assert` can scroll and combine evidence from several
+viewports using read-only tools. The viewport remains where exploration ends.
+Use it for content elsewhere on the current screen, and `waitFor` for changes over time. See
+[assertion exploration](/reference/agent#agent-assert) for tools, budgets, and verdicts.
 
 ## How a step ends
 
@@ -89,7 +97,7 @@ verdict can carry.
 Each call has a model-call budget and a default timeout. See
 [budgets](/reference/agent#budgets).
 
-- `assert` and `extract` make one judgment, plus one repair call if the
+- `assert` without exploration and `extract` make one judgment, plus one repair call if the
   answer is malformed. When the data is not on screen, `extract` fails with
   `ASSERTION_INCONCLUSIVE` and returns no placeholder.
 - `waitFor` makes no model call while the screen stays the same.

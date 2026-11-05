@@ -23,11 +23,14 @@ import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport, POINT_VERBS } from './point-tap.ts';
 import { ScreenPresenter, type ScreenOutput, type ScreenUpdateOptions } from './screen-update.ts';
 
+import { READ_ONLY_GRAMMAR } from './action-names.ts';
+
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
 const MODEL_ERROR_CODES = [
   'ACTION_FAILED',
   'AUTOMATION_UNSUPPORTED',
   'ASSERTION_FAILED',
+  'ASSERTION_INCONCLUSIVE',
   'AUTHENTICATION_FAILED',
   'AUTH_CREDENTIAL_UNAVAILABLE',
   'AUTH_CREDENTIAL_INVALID',
@@ -146,8 +149,11 @@ export interface VerdictTool {
  * dropped and the result says so, never refused: one model attaches
  * `ACTION_FAILED` to about half of its passes, and a schema refusal had it
  * resend the identical call until the turn budget ran out.
+ *
+ * @param kind The step's kind. `act` excludes `ASSERTION_INCONCLUSIVE`;
+ * `assert` permits it. Omit to retain the combined verdict vocabulary.
  */
-export function createVerdictTool(): VerdictTool {
+export function createVerdictTool(kind?: 'act' | 'assert'): VerdictTool {
   let verdict: StepVerdict | undefined;
   const tool = schemaTool({
     description:
@@ -162,7 +168,7 @@ export function createVerdictTool(): VerdictTool {
           'One to three sentences for the next step: what you did, what the screen shows now, and any value it will need (a name or id you created, a message you saw). No page narration; under 400 characters.',
         ),
       errorCode: z
-        .enum(MODEL_ERROR_CODES)
+        .enum(kind === 'act' ? MODEL_ERROR_CODES.filter(code => code !== 'ASSERTION_INCONCLUSIVE') : MODEL_ERROR_CODES)
         .optional()
         .describe('Why the step failed or what blocked it. Only with status failed or blocked; a passed step carries none.'),
     }),
@@ -641,7 +647,9 @@ export function grammarTools(
         ),
     });
   }
-  return tools;
+  return context.step.kind === 'assert'
+    ? Object.fromEntries(Object.entries(tools).filter(([name]) => name in READ_ONLY_GRAMMAR))
+    : tools;
 }
 
 /**

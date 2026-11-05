@@ -255,6 +255,38 @@ what the screen presents (an overlay, a broken layout, a chart) where the
 tree would answer first. `'only'` never falls back to the tree: unprovably
 masked pixels fail with `POLICY_DENIED`.
 
+### Viewport exploration
+
+With `explore: true`, `agent.assert` can scroll the current screen and combine
+evidence from several viewports. This helps when a list fits on a tablet but
+needs scrolling on a phone.
+
+```ts
+await agent.assert('Settings lists HOS Settings, Account, Language and Theme', {
+  explore: true,
+  maxSteps: 10,
+  maxModelCalls: 6,
+});
+```
+
+Exploration offers `observe`, `scroll`, `scroll_to`, and project tools declared
+`mutates: false`. The built-in executor also offers `screenshot` when `vision`
+is `true` or `'only'`; the default is tree-only. Other actions are rejected. The viewport stays
+where exploration ends.
+
+Defaults are 10 scroll actions and 6 model calls, each capped at the selected
+agent's configured limit. Overrides may exceed the 10/6 defaults, up to the
+configured limits. The deadline
+defaults to `judgmentTimeout`. `maxSteps` or `maxModelCalls` without
+`explore: true` throws `INVALID_ARGUMENT`. The built-in executor uses
+`agents.<name>.model`, even when `judge` is configured.
+
+A contradiction is `ASSERTION_FAILED`; insufficient evidence within the time
+or action/model budget is `ASSERTION_INCONCLUSIVE`.
+
+Use `waitFor` for a condition that changes over time, and `explore` for content
+elsewhere on the current screen.
+
 ## Write instructions the model can execute
 
 - One goal per `act`; goal order is the test's, the path the model's.
