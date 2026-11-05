@@ -90,6 +90,12 @@ const ALERT_ROLES: ReadonlySet<string> = new Set(['alert', 'alertdialog']);
  * "Express" the pick replaced with a status reading "Express" vanished, but
  * an anchor of that text would still match the status, and the recording
  * would fail its own check on every replay.
+ *
+ * An anchor made of text that never repeats (`VOLATILE_TEXT`, a bare number)
+ * is dropped whenever either side of the delta has a stable anchor: a clock
+ * is never a step's result. A count is dropped only from a side that has a
+ * stable anchor of its own, since `3 records imported` is how an import
+ * reports its result. With no stable anchor anywhere the volatile ones stay.
  */
 export function describeDelta(
   startNodes: ReadonlyMap<string, RedactedNode>,
@@ -100,10 +106,20 @@ export function describeDelta(
   const end = projectAnchors(endNodes);
   const startKeys = new Set(start.map((anchor) => anchor.key));
   const endKeys = new Set(end.map((anchor) => anchor.key));
-  return {
-    appeared: deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved),
-    gone: deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved),
+  const appeared = deltaSide(end, start, (anchor) => startKeys.has(anchor.key), routeMoved);
+  const gone = deltaSide(start, end, (anchor) => endKeys.has(anchor.key) || anchorIn(anchor.descriptor, end), routeMoved);
+  const pick = (side: DeltaSide, other: DeltaSide) => {
+    const kept = side.stable.length > 0 ? side.stable : other.stable.length > 0 ? side.withCounts : side.all;
+    return kept.slice(0, MAX_TRACE_ANCHORS).map((anchor) => anchor.descriptor);
   };
+  return { appeared: pick(appeared, gone), gone: pick(gone, appeared) };
+}
+
+/** One side of the delta in recording order: all of it, the part that is not volatile, and all but the text that never repeats. */
+interface DeltaSide {
+  readonly all: readonly AnchorNode[];
+  readonly stable: readonly AnchorNode[];
+  readonly withCounts: readonly AnchorNode[];
 }
 
 /** One projected anchor with the node it came from. */
@@ -113,13 +129,13 @@ interface AnchorNode {
   readonly leaf: boolean;
 }
 
-/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and capped. */
+/** The side of the delta `nodes` holds and `other` does not (`inOther`), ordered and not yet capped. */
 function deltaSide(
   nodes: readonly AnchorNode[],
   other: readonly AnchorNode[],
   inOther: (anchor: AnchorNode) => boolean,
   routeMoved: boolean,
-): TraceTargetDescriptor[] {
+): DeltaSide {
   const otherShapes = new Set(other.map((anchor) => countShape(anchor.descriptor)));
   const volatile = (anchor: TraceTargetDescriptor) => isVolatileAnchor(anchor, (count) => routeMoved || otherShapes.has(countShape(count)));
   const seen = new Set<string>();
@@ -133,18 +149,21 @@ function deltaSide(
     (ANNOUNCEMENT_ROLES.has(role) ? announcements : anchor.leaf ? leaves : containers).push(anchor);
   }
   const all = [...announcements, ...leaves, ...containers];
-  const stable = all.filter((anchor) => isAlert(anchor.descriptor) || !volatile(anchor.descriptor));
-  return (stable.length > 0 ? stable : all).slice(0, MAX_TRACE_ANCHORS).map((anchor) => anchor.descriptor);
+  return {
+    all,
+    stable: all.filter((anchor) => isAlert(anchor.descriptor) || !volatile(anchor.descriptor)),
+    withCounts: all.filter((anchor) => isAlert(anchor.descriptor) || !isTextVolatile(anchor.descriptor)),
+  };
 }
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
  * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in milliseconds. An
  * anchor made of it hands every replay off, so it is skipped while some
- * stable anchor exists; with nothing else, the volatile ones stay, because a
- * replay that always hands off is still safer than one that passes on
- * mechanics alone. An alert keeps it, and is compared with these parts read
- * as placeholders (`alertShape`).
+ * stable anchor exists on either side of the delta; with nothing else, the
+ * volatile ones stay, because a replay that always hands off is still safer
+ * than one that passes on mechanics alone. An alert keeps it, and is
+ * compared with these parts read as placeholders (`alertShape`).
  */
 const VOLATILE_TEXT: readonly RegExp[] = [
   /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?/,
@@ -184,9 +203,18 @@ function isBareNumber(anchor: TraceTargetDescriptor): boolean {
 
 /** Whether an anchor's text cannot read the same on the next run; `countIsData` decides an anchor holding a count. */
 function isVolatileAnchor(anchor: TraceTargetDescriptor, countIsData: (anchor: TraceTargetDescriptor) => boolean): boolean {
-  const texts = [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
-  if (isBareNumber(anchor) || texts.some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)))) return true;
-  return texts.some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
+  if (isTextVolatile(anchor)) return true;
+  return anchorTexts(anchor).some((value) => COUNT_TEXT.some((pattern) => pattern.test(value))) && countIsData(anchor);
+}
+
+/** Whether an anchor is a clock, date, minted id or bare number: never a step's result, whatever the other side shows. */
+function isTextVolatile(anchor: TraceTargetDescriptor): boolean {
+  return isBareNumber(anchor) || anchorTexts(anchor).some((value) => VOLATILE_TEXT.some((pattern) => pattern.test(value)));
+}
+
+/** The texts an anchor can say its text in: its text, name and value. */
+function anchorTexts(anchor: TraceTargetDescriptor): string[] {
+  return [anchor.text, anchor.name, anchor.value].filter((value): value is string => value !== undefined);
 }
 
 /** An anchor with every digit run read as one placeholder: the text a running count keeps while its numbers move. */
