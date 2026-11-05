@@ -45,7 +45,7 @@ model calls. Results are in `e2e/.e2e/report.json`.
 `getByTestId` finds the `identifier` of a `Semantics` widget: the resource id
 on Android, the accessibility identifier on iOS. See [lib/main.dart](lib/main.dart).
 See [e2e/e2e.config.ts](e2e/e2e.config.ts) and [e2e/tests/](e2e/tests/) for the setup.
-For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mobile).
+For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](assets/fonts/OFL.txt).
 

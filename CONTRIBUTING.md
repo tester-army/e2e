@@ -32,7 +32,7 @@ The changes most likely to be accepted:
 - Engine and platform fixes (a browser, device, or OS that misbehaves)
 - Performance improvements
 - Community examples: a link to your own example repository on
-  [e2e.tester.army/examples](https://e2e.tester.army/examples), added to
+  [e2e.com/examples](https://e2e.com/examples), added to
   [`examples/examples.json`](./examples/examples.json) as
   [`examples/CONTRIBUTING.md`](./examples/CONTRIBUTING.md) describes
 

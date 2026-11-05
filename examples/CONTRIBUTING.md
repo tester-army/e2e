@@ -1,6 +1,6 @@
 # Contributing an example
 
-[e2e.tester.army/examples](https://e2e.tester.army/examples) lists every
+[e2e.com/examples](https://e2e.com/examples) lists every
 example in [`examples.json`](examples.json): the official ones, which the e2e
 team maintains in this folder and in other tester-army repositories, and
 partner and community examples in their own GitHub repositories. Built something with
@@ -37,7 +37,7 @@ Your editor can autocomplete the fields from
 
 ## The fields
 
-- `slug` is the page's address, `e2e.tester.army/examples/<slug>`.
+- `slug` is the page's address, `e2e.com/examples/<slug>`.
 - `repository` is `https://github.com/<owner>/<repo>/tree/<ref>`, or
   `https://github.com/<owner>/<repo>/tree/<ref>/<path>` for a folder. The
   `<ref>` of a community example is the full SHA of the commit the pull

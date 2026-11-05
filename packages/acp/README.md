@@ -23,5 +23,5 @@ export default {
 - `codex()` starts Codex through `@agentclientprotocol/codex-acp`.
 
 The runner records every action, so steps replay from the cache without the
-agent. See the [guide](https://e2e.tester.army/docs/subscriptions#use-your-coding-agent) for options,
+agent. See the [guide](https://e2e.com/docs/subscriptions#use-your-coding-agent) for options,
 containment, and limits.

@@ -146,4 +146,4 @@ ones the engine launches. Under pnpm, run the bin by name:
 
 ## Documentation
 
-Full documentation lives at [e2e.tester.army/docs](https://e2e.tester.army/docs).
+Full documentation lives at [e2e.com/docs](https://e2e.com/docs).

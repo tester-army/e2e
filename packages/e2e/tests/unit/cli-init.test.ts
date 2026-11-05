@@ -123,7 +123,7 @@ describe('e2e init', () => {
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(read('.gitignore')).toContain('.e2e/summary.md');
     expect(read('.gitignore')).toContain('.e2e/cache/');
-    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.tester.army/docs/cache#commit-the-replay-cache');
+    expect(output()).toContain('.e2e/cache/ is ignored; committing agent.act replays is opt-in, see https://e2e.com/docs/cache#commit-the-replay-cache');
     expect(read('.agents/skills/e2e/SKILL.md')).toMatch(/^---\nname: e2e\n/);
     expect(read('.claude/skills/e2e/references/setup.md')).toContain('# Setting up e2e');
     expect(clack.confirm).not.toHaveBeenCalled();

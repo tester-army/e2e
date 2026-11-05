@@ -36,12 +36,12 @@ the inventory and before writing any code. Each later step leans on them.
 
 | Source | Detect it by | Migration guide | Engine |
 | --- | --- | --- | --- |
-| Playwright | `playwright.config.*`, `@playwright/test` | [migrate/playwright](https://e2e.tester.army/docs/migrate/playwright.md) | [web](https://e2e.tester.army/docs/web.md) |
-| Cypress | `cypress.config.*`, a `cypress/` folder | [migrate/cypress](https://e2e.tester.army/docs/migrate/cypress.md) | [web](https://e2e.tester.army/docs/web.md) |
-| Selenium | `selenium-webdriver`, Selenium in a `pom.xml`, `build.gradle`, or `requirements.txt` | [migrate/selenium](https://e2e.tester.army/docs/migrate/selenium.md) | [web](https://e2e.tester.army/docs/web.md) |
-| Detox | `.detoxrc*`, `detox` in `package.json` | [migrate/detox](https://e2e.tester.army/docs/migrate/detox.md) | [mobile](https://e2e.tester.army/docs/mobile.md) |
-| Maestro | YAML flows opening with `appId:` and `---`, `.maestro/`, `maestro test` in a script or workflow | [migrate/maestro](https://e2e.tester.army/docs/migrate/maestro.md) | [mobile](https://e2e.tester.army/docs/mobile.md) |
-| TesterArmy | `testerarmy` MCP tools, a `testerarmy` entry in an MCP config, `testerarmy` or `tester.army` in a script or workflow, or the user says so | [migrate/testerarmy](https://e2e.tester.army/docs/migrate/testerarmy.md) | [web](https://e2e.tester.army/docs/web.md) or [mobile](https://e2e.tester.army/docs/mobile.md), by the project's type |
+| Playwright | `playwright.config.*`, `@playwright/test` | [migrate/playwright](https://e2e.com/docs/migrate/playwright.md) | [web](https://e2e.com/docs/web.md) |
+| Cypress | `cypress.config.*`, a `cypress/` folder | [migrate/cypress](https://e2e.com/docs/migrate/cypress.md) | [web](https://e2e.com/docs/web.md) |
+| Selenium | `selenium-webdriver`, Selenium in a `pom.xml`, `build.gradle`, or `requirements.txt` | [migrate/selenium](https://e2e.com/docs/migrate/selenium.md) | [web](https://e2e.com/docs/web.md) |
+| Detox | `.detoxrc*`, `detox` in `package.json` | [migrate/detox](https://e2e.com/docs/migrate/detox.md) | [mobile](https://e2e.com/docs/mobile.md) |
+| Maestro | YAML flows opening with `appId:` and `---`, `.maestro/`, `maestro test` in a script or workflow | [migrate/maestro](https://e2e.com/docs/migrate/maestro.md) | [mobile](https://e2e.com/docs/mobile.md) |
+| TesterArmy | `testerarmy` MCP tools, a `testerarmy` entry in an MCP config, `testerarmy` or `tester.army` in a script or workflow, or the user says so | [migrate/testerarmy](https://e2e.com/docs/migrate/testerarmy.md) | [web](https://e2e.com/docs/web.md) or [mobile](https://e2e.com/docs/mobile.md), by the project's type |
 
 WebdriverIO and Appium have no guide. Map their WebDriver calls with the
 Selenium guide; map Appium's device commands with the Detox and Maestro
@@ -295,7 +295,7 @@ as you go, not at the end; an interrupted session must leave it true.
 ```md
 # Migration to e2e
 
-Source: Maestro, `__e2e__/flows/**` (guide: https://e2e.tester.army/docs/migrate/maestro.md, engine: https://e2e.tester.army/docs/mobile.md)
+Source: Maestro, `__e2e__/flows/**` (guide: https://e2e.com/docs/migrate/maestro.md, engine: https://e2e.com/docs/mobile.md)
 e2e: `e2e.config.ts`, tests `tests/**/*.e2e.ts`
 Start dependencies: `pnpm e2e:mock-server`
 Run old: `maestro test __e2e__`

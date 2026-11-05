@@ -1,6 +1,6 @@
 name: site
 
-# Redeploys e2e.tester.army, which reads docs/ and the examples registry
+# Redeploys e2e.com, which reads docs/ and the examples registry
 # (examples/examples.json and the logos in examples/icons/) from the commit
 # `main` points to at build time, so every docs or examples change on `main`
 # goes live. A workflow-level `paths:` filter is fine here: no ruleset

@@ -46,7 +46,7 @@ model calls. Results are in `e2e/.e2e/report.json`.
 `getByTestId` finds a Compose `testTag` once the screen sets
 `testTagsAsResourceId`; see [GreetingScreen.kt](app/src/main/kotlin/dev/e2e/examples/compose/GreetingScreen.kt).
 See [e2e/e2e.config.ts](e2e/e2e.config.ts) and [e2e/tests/](e2e/tests/) for the setup.
-For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mobile).
+For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](app/src/main/assets/OFL.txt).
 

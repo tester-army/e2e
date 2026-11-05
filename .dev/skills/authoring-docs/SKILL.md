@@ -231,7 +231,7 @@ page and `../snippets/` for a page in `docs/ci/`, `docs/integrations/`, or
 ```mdx
 import { SetupPrompt } from './snippets/setup-prompt-card.jsx';
 
-export const setupPrompt = `<task>. Docs: \`https://e2e.tester.army/docs/<page>.md\`
+export const setupPrompt = `<task>. Docs: \`https://e2e.com/docs/<page>.md\`
 
 1. <one step, imperative>
 2. ...`;

@@ -285,4 +285,4 @@ jobs:
   with `npx e2e list --changed-since origin/main`, after committing: the
   decision filter reads what the commits change, and a file only the
   working tree changes by name alone.
-  Reference: https://e2e.tester.army/docs/filters
+  Reference: https://e2e.com/docs/filters
