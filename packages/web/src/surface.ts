@@ -889,9 +889,11 @@ export class PlaywrightSurface {
           this.requireSession().requireObservation();
           return performViewportSwipe(page, action.direction, action.momentum ?? 'none');
         }
-        return dispatchLocatorAction(this.requireSession().refs.lookup(ref), action, currentOperation, (other) =>
-          this.requireSession().refs.lookup(other),
-        );
+        const { refs } = this.requireSession();
+        return refs.lookup(ref).then((target) => {
+          currentOperation.signal.throwIfAborted();
+          return dispatchLocatorAction(target, action, currentOperation, (other) => refs.lookup(other));
+        });
       },
       (cause) => classifyActionError(cause, action),
     ));
@@ -1111,8 +1113,9 @@ export class PlaywrightSurface {
 
   /**
    * Captures one atomic semantic observation. Secure fields are masked in the
-   * page before the tree leaves the engine, and every node keeps a live
-   * element handle valid until the next observation replaces the generation.
+   * page before the tree leaves the engine, and every node stays reachable
+   * through its document's element list until the next observation replaces
+   * the generation; an action makes the node's handle on first use.
    *
    * With `options.pixels`, masked viewport pixels are captured alongside the
    * tree rather than after it, so the image and the node geometry describe the

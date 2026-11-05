@@ -152,7 +152,7 @@ export async function dispatchLocatorAction(
   target: ActionTarget,
   action: LocatorAction,
   operation: ConnectionBudget,
-  lookup: (ref: NodeRef) => ActionTarget,
+  lookup: (ref: NodeRef) => Promise<ActionTarget>,
 ): Promise<void> {
   const timeout = operation.timeoutMs;
   const locator = asActionable(target);
@@ -212,7 +212,8 @@ export async function dispatchLocatorAction(
       await uploadFiles(target, action.paths, operation);
       return;
     case 'dragTo': {
-      const other = lookup(action.target);
+      const other = await lookup(action.target);
+      operation.signal.throwIfAborted();
       // Playwright's own drag when both sides are locators: it waits for
       // actionability on each and reports better failures than a pointer
       // sequence can. Anything else - an observed reference on either side -

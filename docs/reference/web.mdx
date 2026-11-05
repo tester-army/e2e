@@ -992,11 +992,14 @@ observation budget, capped at two seconds, for the screenshot. The deadline
 covers the page walk, metadata and element readback, and nested frames.
 
 Semantic metadata crosses the Playwright connection as one JSON string, to
-cut serialization overhead. Actions still use the live element handles
-captured with that metadata. A page that replaces `JSON.stringify`, or adds
-`toJSON` methods to object or array prototypes, gets structured transfer.
-Cleanup does not wait for stalled protocol replies. An abandoned reader
-cannot reuse node IDs or publish handles over a newer observation.
+cut serialization overhead. The elements the reader walked stay in one
+in-page array per document, and an action makes the handle for its node from
+that array the first time it reaches for it. A reference still names the
+element the walk read, not whatever sits at that position later. A page that
+replaces `JSON.stringify`, or adds `toJSON` methods to object or array
+prototypes, gets structured transfer. Cleanup does not wait for stalled
+protocol replies. An abandoned reader cannot reuse node IDs or publish
+references over a newer observation.
 
 ## surfaceOf
 

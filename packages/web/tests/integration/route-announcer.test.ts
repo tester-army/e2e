@@ -23,11 +23,11 @@ it('omits the announcer empty or populated and keeps the app alert', async () =>
       await announcer.evaluate((el, value) => {
         el.textContent = value;
       }, text);
-      const { nodes, elements } = await captureTagged(page);
+      const { nodes, published } = await captureTagged(page);
       try {
         expect(nodes.filter((node) => node.role === 'alert')).toMatchObject([{ name: 'Acme Notes', testId: 'app-alert' }]);
       } finally {
-        await Promise.all([...elements.values()].map((element) => element.dispose()));
+        published.dispose();
       }
     }
     expect(await announcer.innerText()).toBe('Acme Notes');

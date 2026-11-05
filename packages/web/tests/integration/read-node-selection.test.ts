@@ -1,9 +1,10 @@
 /** The real reader reports the text selected inside the focused field, and only there. */
 
-import { chromium, type Browser, type ElementHandle, type Page } from 'playwright-core';
+import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { captureDocument } from '../../src/observation.ts';
+import { Published } from '../helpers/published.ts';
 
 let browser: Browser;
 let page: Page;
@@ -20,18 +21,18 @@ afterAll(async () => {
 /** One observation of the page through the same capture the engine uses, keyed by test id. */
 async function captureByTestId(): Promise<Map<string | undefined, SemanticNode>> {
   let nextId = 1;
-  const published = new Map<string, ElementHandle<Element>>();
+  const published = new Published();
   const { tree } = await captureDocument(
     {
       testIdAttribute: 'data-testid',
       site: undefined,
       reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: (id, element) => { published.set(id, element); },
+      commit: published.commit,
     },
     page,
     { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
   );
-  await Promise.all([...published.values()].map((element) => element.dispose()));
+  published.dispose();
   const nodes: SemanticNode[] = [];
   const walk = (node: SemanticNode) => { nodes.push(node); for (const child of node.children ?? []) walk(child); };
   walk(tree);

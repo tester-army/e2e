@@ -4,29 +4,37 @@
  *
  * Two populations with different lifetimes live here. Locator-backed refs
  * from `locate` hold no live handles and are pruned oldest-first past a
- * bound. Handle-backed refs from `observe` form one generation per
- * observation: the whole generation is swapped atomically and the superseded
- * one disposed in a sweep, so locator-ref eviction can never destroy a handle
+ * bound. List-backed refs from `observe` form one generation per
+ * observation: the whole generation is swapped atomically and its element
+ * lists disposed in a sweep, so locator-ref eviction can never destroy a list
  * an in-flight observation still references.
  */
 
 import { EngineError, type EngineSnapshot, type NodeRef } from 'e2e/engine';
+import type { ElementList } from './element-list.ts';
 import type { ActionTarget } from './support.ts';
 
 /** Located refs are pruned oldest-first past this bound so the map cannot grow unboundedly. */
 const MAX_STORED_REFS = 2048;
 
+/** An observed node: one position in the element list of the document it was read from. */
+export interface ListedTarget {
+  readonly kind: 'listed';
+  readonly list: ElementList;
+  readonly index: number;
+}
+
 /** A complete observation and the private handles that back its semantic refs. */
 export interface CapturedObservation {
   readonly snapshot: EngineSnapshot;
-  readonly generation: Map<string, ActionTarget>;
+  readonly generation: Map<string, ListedTarget>;
 }
 
 export class RefRegistry {
   private counter = 0;
   private capture = 0;
   private readonly located = new Map<string, ActionTarget>();
-  private observation = new Map<string, ActionTarget>();
+  private observation = new Map<string, ListedTarget>();
 
   mintId(): string {
     this.counter += 1;
@@ -54,14 +62,18 @@ export class RefRegistry {
 
   /**
    * Ids are the engine's; revisions are the harness's. The adapter already
-   * rejected a ref from a superseded resolution, so lookup is by id alone.
+   * rejected a ref from a superseded resolution, so lookup is by id alone. An
+   * observed node's element handle is made here, the first time an action
+   * reaches for it.
    */
-  lookup(ref: NodeRef): ActionTarget {
-    const target = this.located.get(ref.id) ?? this.observation.get(ref.id);
-    if (target === undefined) {
+  async lookup(ref: NodeRef): Promise<ActionTarget> {
+    const located = this.located.get(ref.id);
+    if (located !== undefined) return located;
+    const observed = this.observation.get(ref.id);
+    if (observed === undefined) {
       throw new EngineError('NODE_STALE', `node reference ${ref.id} is stale`, { retryable: true });
     }
-    return target;
+    return { kind: 'element', element: await observed.list.at(observed.index) };
   }
 
   /** Starts a capture, preventing older in-flight observations from publishing afterward. */
@@ -89,10 +101,13 @@ export class RefRegistry {
     this.located.clear();
   }
 
-  /** Disposes every element handle in one observation generation. */
-  static dispose(generation: ReadonlyMap<string, ActionTarget>): void {
+  /** Disposes every element handle in one generation, each list once however many nodes it backs. */
+  static dispose(generation: ReadonlyMap<string, ActionTarget | ListedTarget>): void {
+    const lists = new Set<ElementList>();
     for (const target of generation.values()) {
-      if (target.kind === 'element') void target.element.dispose().catch(() => undefined);
+      if (target.kind === 'listed') lists.add(target.list);
+      else if (target.kind === 'element') void target.element.dispose().catch(() => undefined);
     }
+    for (const list of lists) list.dispose();
   }
 }

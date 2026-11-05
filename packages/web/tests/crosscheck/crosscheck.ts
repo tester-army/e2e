@@ -10,9 +10,10 @@
  * run (`expectations.ts`).
  */
 
-import type { ElementHandle, Page } from 'playwright-core';
+import type { Page } from 'playwright-core';
 import type { SemanticNode } from 'e2e/engine';
 import { captureDocument } from '../../src/observation.ts';
+import { Published } from '../helpers/published.ts';
 
 /** One field on which the engine and an oracle read a node differently. */
 export interface Disagreement {
@@ -134,11 +135,11 @@ function describe(role: string, name: string): string {
 /** One capture through the engine's own reader, with the element behind each node id. */
 export async function captureTagged(page: Page): Promise<{
   nodes: SemanticNode[];
-  elements: Map<string, ElementHandle<Element>>;
+  published: Published;
   facts: Map<string, ElementFacts>;
 }> {
   let nextId = 1;
-  const elements = new Map<string, ElementHandle<Element>>();
+  const published = new Published();
   const { tree } = await captureDocument(
     {
       testIdAttribute: 'data-testid',
@@ -148,16 +149,14 @@ export async function captureTagged(page: Page): Promise<{
         nextId += count;
         return first;
       },
-      commit: (id, element) => {
-        elements.set(id, element);
-      },
+      commit: published.commit,
     },
     page,
     { framePath: [], budget: 5000, deadline: Date.now() + 30_000, signal: new AbortController().signal },
   );
   const facts = new Map<string, ElementFacts>();
-  for (const [id, element] of elements) {
-    facts.set(id, await element.evaluate((el, [attribute, value]) => {
+  for (const id of published.ids()) {
+    facts.set(id, await (await published.element(id)).evaluate((el, [attribute, value]) => {
       el.setAttribute(attribute!, value!);
       const root = el.getRootNode();
       const view = el.ownerDocument.defaultView;
@@ -169,7 +168,7 @@ export async function captureTagged(page: Page): Promise<{
       };
     }, [MARKER, id]));
   }
-  return { nodes: flatten(tree), elements, facts };
+  return { nodes: flatten(tree), published, facts };
 }
 
 /** Where an element sits, for the policies above and the oracles' reach. */
@@ -285,7 +284,7 @@ async function compareWithPlaywright(page: Page, node: SemanticNode, into: Disag
 
 /** Cross-checks the page as it is now; the page keeps the marker attributes afterwards. */
 export async function crossCheck(page: Page): Promise<CrossCheckResult> {
-  const { nodes, elements, facts } = await captureTagged(page);
+  const { nodes, published, facts } = await captureTagged(page);
   try {
     const chrome = await chromeTree(page);
     const disagreements: Disagreement[] = [];
@@ -309,6 +308,6 @@ export async function crossCheck(page: Page): Promise<CrossCheckResult> {
     }
     return { compared, disagreements };
   } finally {
-    await Promise.all([...elements.values()].map((element) => element.dispose()));
+    published.dispose();
   }
 }
