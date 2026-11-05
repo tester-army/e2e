@@ -84,7 +84,7 @@ describe('playWordmark', () => {
     }
   });
 
-  it('settles the logo in over half a second, repainting in place with the rows shifted sideways and dim until they land, and leaves it at rest with the cursor shown', async () => {
+  it('scans the logo in top to bottom over half a second, repainting in place with the bar under the scan line dim, and leaves it at rest with the cursor shown', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     vi.setTimerTickMode('nextTimerAsync');
     const out = stream();
@@ -103,16 +103,20 @@ describe('playWordmark', () => {
     expect(paints.slice(1).every((paint) => paint.startsWith(`${ESC}[?2026h${ESC}[9A${ESC}[0J`))).toBe(true);
     const first = stripVTControlCharacters(paints[0]!);
     expect(first.split('\n')).toHaveLength(10);
-    // Rows still settling are dim; nothing is ever colored.
+    // The bar under the scan line is dim; nothing is ever colored.
     expect(paints.some((paint) => paint.includes(`${ESC}[2m`))).toBe(true);
     expect(paints.every((paint) => !paint.includes('38;') && !paint.includes(`${ESC}[39m`))).toBe(true);
-    // The whole logo shows from the first paint, every row shifted off its place.
-    const opening = first.split('\n').slice(0, REST.length);
-    expect(opening.every((line, row) => line.trim() !== '' && line !== REST[row])).toBe(true);
-    // Rows land top to bottom: a third of the way in the top row is in place and the bottom rows are not.
+    // Rows load top to bottom, never out of place: below an empty row every row is empty, and ink only ever sits where the logo at rest has it.
+    for (const paint of paints) {
+      const lines = stripVTControlCharacters(paint).split('\n').slice(0, REST.length);
+      const firstEmpty = lines.findIndex((line) => line.trim() === '');
+      if (firstEmpty !== -1) expect(lines.slice(firstEmpty).every((line) => line.trim() === '')).toBe(true);
+      expect(lines.every((line, row) => [...line].every((char, column) => char === ' ' || REST[row]![column] !== ' '))).toBe(true);
+    }
+    // A third of the way in the top bar is drawn and the bottom rows are not.
     const third = stripVTControlCharacters(paints[Math.floor(paints.length / 3)]!).split('\n');
     expect(third[0]).toBe(REST[0]);
-    expect(third.slice(7, 9).every((line, row) => line !== REST[row + 7])).toBe(true);
+    expect(third.slice(6, 9).every((line) => line.trim() === '')).toBe(true);
     // The last paint is the logo at rest, unstyled, in place, with a blank line under it.
     expect(paints.at(-1)).toBe(`${ESC}[?2026h${ESC}[9A${ESC}[0J${REST.join('\n')}\n\n${ESC}[?2026l`);
   });

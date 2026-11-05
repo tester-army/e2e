@@ -2,10 +2,10 @@
  * The e2e wordmark: the logotype from the e2e design system, six rows of
  * horizontal bars, drawn in half blocks in the terminal's own foreground the
  * way the logo pack's black and white files fill it. On a terminal that can
- * show it the logo appears glitched, every row shifted sideways and dim, and
- * the rows settle into place top to bottom, each turning solid as it lands.
- * Where motion does not belong it is printed at rest, and output that is not
- * a terminal never sees it.
+ * show it the logo loads top to bottom like a scan, half a terminal row at a
+ * time, each bar dim until the scan line has passed it. Where motion does not
+ * belong it is printed at rest, and output that is not a terminal never sees
+ * it.
  */
 
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -47,14 +47,12 @@ const WORDMARK_PX = (BARS.length - 1) * PITCH_PX + BAR_PX;
 const WORDMARK_ROWS = Math.ceil(WORDMARK_PX / 2);
 
 const FRAME_MS = 16;
-/** Where each row starts, in columns from its place: alternating sides, so the glitch reads as a tear rather than a slide. */
-const OFFSETS: readonly number[] = [-6, 5, -4, 7, -5, 4];
-/** How long one row takes to settle, and how much later each row starts than the one above it. */
-const ROW_MS = 300;
-const ROW_STAGGER_MS = 40;
-const DURATION_MS = ROW_MS + ROW_STAGGER_MS * (BARS.length - 1);
+/** One pass of the scan line from the top of the logo to the bottom. */
+const DURATION_MS = 500;
+/** How far, in pixel rows, the scan line moves past a bar before the bar turns solid. */
+const SCAN_HEAD_PX = 1.5;
 
-/** A lit cell: solid at rest, or dim while its row is still settling. */
+/** A lit cell: solid at rest, or dim while the scan line is on its bar. */
 type Cell = 'solid' | 'dim';
 
 /** What the wordmark needs from an output stream; `process.stdout` and `process.stderr` qualify. */
@@ -99,20 +97,17 @@ function cells(grid: readonly (readonly (Cell | undefined)[])[], styled: boolean
 }
 
 /**
- * The logo `elapsed` milliseconds into the animation: every row drawn, each
- * eased from its starting offset toward its place, dim until it lands.
+ * The logo `elapsed` milliseconds into the scan: every pixel row above the
+ * scan line drawn, the bar the line is on dim, the rows below it not yet.
  */
 function frame(elapsed: number, styled: boolean): string[] {
   const grid: (Cell | undefined)[][] = Array.from({ length: WORDMARK_PX }, () => Array.from({ length: WORDMARK_WIDTH }, () => undefined));
+  const line = (Math.min(elapsed, DURATION_MS) / DURATION_MS) * (WORDMARK_PX + SCAN_HEAD_PX);
   BARS.forEach((bar, index) => {
-    const progress = Math.min(1, Math.max(0, (elapsed - index * ROW_STAGGER_MS) / ROW_MS));
-    const shift = Math.round(OFFSETS[index]! * (1 - progress) ** 3);
-    const cell: Cell = shift === 0 ? 'solid' : 'dim';
-    for (let x = 0; x < WORDMARK_WIDTH; x++) {
-      if (bar[x] !== '#') continue;
-      const column = x + shift;
-      if (column < 0 || column >= WORDMARK_WIDTH) continue;
-      for (let row = 0; row < BAR_PX; row++) grid[index * PITCH_PX + row]![column] = cell;
+    const top = index * PITCH_PX;
+    const cell: Cell = line - (top + BAR_PX) < SCAN_HEAD_PX ? 'dim' : 'solid';
+    for (let row = 0; row < BAR_PX && top + row < line; row++) {
+      for (let x = 0; x < WORDMARK_WIDTH; x++) if (bar[x] === '#') grid[top + row]![x] = cell;
     }
   });
   return cells(grid, styled);
@@ -160,7 +155,7 @@ export interface PlayWordmarkOptions {
 }
 
 /**
- * Settles the logo in on `stream` and resolves with it at rest on the screen,
+ * Scans the logo in on `stream` and resolves with it at rest on the screen,
  * one blank line under it, and the cursor restored. Where motion does not
  * belong the wordmark is printed at rest at once; a stream that is not a wide
  * enough terminal gets nothing.
