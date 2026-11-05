@@ -77,7 +77,7 @@ function rendered(source: string): string {
 /** Whether a page's frontmatter sets `icon:`. */
 function hasFrontmatterIcon(source: string): boolean {
   const frontmatter = /^---\n([\s\S]*?)\n---/.exec(source)?.[1] ?? '';
-  return /^\s*["']?icon["']?\s*:/m.test(frontmatter);
+  return /^["']?icon["']?\s*:/m.test(frontmatter);
 }
 
 /** One attribute of a JSX tag. */
