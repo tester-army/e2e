@@ -38,7 +38,7 @@ import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
-import { nodeReading, normalizeReading, pageLanded, readPage, type PageReading } from './reading.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
 import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { SETTLE_AFTER } from './settle-policy.ts';
@@ -569,14 +569,13 @@ export class ActionDispatcher {
         }
         if (screens >= MAX_SCROLL_UNTIL_SCREENS) throw notFound(`within ${String(MAX_SCROLL_UNTIL_SCREENS)} screens ${direction}`);
         const reading = observation.kind === 'semantic' ? readPage(observation) : undefined;
-        still = reading !== undefined && reading.shape === previous?.shape ? still + 1 : 0;
+        still = reading !== undefined && previous !== undefined && !pageMoved(previous, reading) ? still + 1 : 0;
         if (still >= SCROLL_UNTIL_STILL_PAGES) throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
         if (still >= SCROLL_UNTIL_WRONG_LIST_PAGES && within !== undefined) {
           within = undefined;
           still = 0;
         }
         previous = reading;
-        const before = reading;
         const turned = await this.page(direction, within);
         paged = turned.paged;
         within = turned.within;
@@ -587,7 +586,7 @@ export class ActionDispatcher {
         // yet, or the end) or thinner (rows still drawing) is read until it holds.
         observation = await this.feed.look(
           'held-still',
-          (seen) => before !== undefined && seen.kind === 'semantic' && pageLanded(before, readPage(seen)),
+          (seen) => previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen)),
         );
       }
     });

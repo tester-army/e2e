@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
-import { nodeReading, normalizeReading, pageLanded, readPage } from '../../src/agent/reading.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage } from '../../src/agent/reading.ts';
 import { redacted } from '../helpers/redacted.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -57,9 +57,9 @@ describe('readPage', () => {
     const before = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 1', rect }));
     const after = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 2', rect }));
     const same = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 1', rect }));
-    expect(readPage(before).shape).not.toBe(readPage(after).shape);
-    expect(readPage(before).shape).toBe(readPage(same).shape);
-    expect(readPage(indexOf(node('box', { role: 'group', rect })))).toEqual({ shape: '', size: 0 });
+    expect(pageMoved(readPage(before), readPage(after))).toBe(true);
+    expect(pageMoved(readPage(before), readPage(same))).toBe(false);
+    expect(readPage(indexOf(node('box', { role: 'group', rect }))).lines).toEqual([]);
   });
 });
 
@@ -67,16 +67,41 @@ describe('a clock on the screen', () => {
   const clock = (time: string) => node('clock', { role: 'status', name: 'Clock', text: time, rect: { x: 0, y: 0, width: 100, height: 20 } });
   const row = (text: string) => node('r', { role: 'listitem', text, rect: { x: 0, y: 40, width: 300, height: 40 } });
 
-  it('does not make a page that has not moved read differently', () => {
+  it('is not a page that moved, however it ticked', () => {
     const before = readPage(indexOf(clock('12:05'), row('Row 1')));
-    expect(readPage(indexOf(clock('12:06'), row('Row 1'))).shape).toBe(before.shape);
-    expect(readPage(indexOf(clock('9:59:59'), row('Row 1'))).shape).toBe(before.shape);
-    expect(pageLanded(before, readPage(indexOf(clock('12:06'), row('Row 1'))))).toBe(false);
+    for (const time of ['12:06', '9:59:59']) {
+      const after = readPage(indexOf(clock(time), row('Row 1')));
+      expect(pageMoved(before, after)).toBe(false);
+      expect(pageLanded(before, after)).toBe(false);
+    }
   });
 
   it('still lets a page that moved read differently', () => {
     const before = readPage(indexOf(clock('12:05'), row('Row 1')));
-    expect(pageLanded(before, readPage(indexOf(clock('12:06'), row('Row 2'))))).toBe(true);
+    const after = readPage(indexOf(clock('12:06'), row('Row 2')));
+    expect(pageMoved(before, after)).toBe(true);
+    expect(pageLanded(before, after)).toBe(true);
+  });
+});
+
+describe('rows that differ by a clock-like value alone', () => {
+  const slots = (...times: string[]) =>
+    readPage(indexOf(...times.map((text, at) => node(`s${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: at * 40, width: 300, height: 40 } }))));
+  const header = node('h', { role: 'heading', name: 'Pick a time', rect: { x: 0, y: 0, width: 300, height: 40 } });
+  const slot = (id: string, text: string, at: number) => node(id, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } });
+
+  it('is a page that moved, a time picker turning over', () => {
+    expect(pageMoved(slots('9:00 AM', '9:30 AM', '10:00 AM'), slots('10:30 AM', '11:00 AM', '11:30 AM'))).toBe(true);
+    expect(pageMoved(readPage(indexOf(header, slot('a', '9:00', 0), slot('b', '9:30', 1))), readPage(indexOf(header, slot('a', '10:00', 0), slot('b', '10:30', 1))))).toBe(true);
+  });
+
+  it('is not one a swipe has landed on, since a clock beside the stale screen reads the same', () => {
+    expect(pageLanded(slots('9:00 AM', '9:30 AM', '10:00 AM'), slots('10:30 AM', '11:00 AM', '11:30 AM'))).toBe(false);
+  });
+
+  it('is the same page when none changed, and not one when a single value changed', () => {
+    expect(pageMoved(slots('9:00 AM', '9:30 AM'), slots('9:00 AM', '9:30 AM'))).toBe(false);
+    expect(pageMoved(slots('9:00 AM', '9:30 AM'), slots('9:00 AM', '9:31 AM'))).toBe(false);
   });
 });
 

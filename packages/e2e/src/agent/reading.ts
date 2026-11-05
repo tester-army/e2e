@@ -72,38 +72,74 @@ export function nodeReading(
   return best?.node;
 }
 
-/** What a screen reads (`shape`) and how many nodes read anything (`size`). */
+/** One node of a page: what it reads with clock-like values masked, and as it is. */
+interface PageLine {
+  readonly masked: string;
+  readonly exact: string;
+}
+
+/** What a screen reads, a line per node that carries a name or text. */
 export interface PageReading {
-  readonly shape: string;
-  readonly size: number;
+  readonly lines: readonly PageLine[];
 }
 
 /**
  * What a screen reads and where, for telling a page that moved from one that
  * did not. Name and text both count: a windowed list's rows keep one name
  * and one slot on the screen while the text in them changes, and that is the
- * list moving. Clock-like values are masked the way `observationShape` masks
- * them: a ticking clock on screen is not a page that moved. The size is how
- * many nodes carry a reading.
+ * list moving. Each line is kept masked and as it is, since a clock-like
+ * value is both a clock ticking and a time picker's row.
  */
 export function readPage(observation: Pick<SemanticAgentObservation, 'nodes'>): PageReading {
-  const lines: string[] = [];
+  const lines: PageLine[] = [];
   for (const node of observation.nodes.values()) {
     if (node.name === undefined && node.text === undefined) continue;
     const at = node.rect === undefined ? '' : `${String(Math.round(node.rect.x))},${String(Math.round(node.rect.y))}`;
-    lines.push(maskClocks(`${node.name ?? ''}|${node.text ?? ''}@${at}`));
+    const exact = `${node.name ?? ''}|${node.text ?? ''}@${at}`;
+    lines.push({ masked: maskClocks(exact), exact });
   }
-  return { shape: lines.join('\n'), size: lines.length };
+  return { lines };
+}
+
+/** Whether two pages read the same lines, clock-like values masked. */
+function sameLines(before: PageReading, after: PageReading): boolean {
+  return before.lines.length === after.lines.length && before.lines.every((line, at) => line.masked === after.lines[at]?.masked);
+}
+
+/**
+ * How many clock-like values changing at once are a list turning over and
+ * not clocks ticking: one clock ticks beside a screen, while a time picker or
+ * a timetable changes every row it shows. Several clocks ticking together
+ * (world clocks) read as a list that moves, which only costs the end-of-list
+ * check its early exit, as before.
+ */
+const TURNOVER_CLOCKS = 2;
+
+/**
+ * Whether the screen moved between two looks, for ending a scroll at the end
+ * of its list. A different set of lines is a page that moved, whatever
+ * clock-like values read. When only those differ, one changing is a clock
+ * ticking beside a list that has not moved, and several are the list's own
+ * rows (a time picker, a timetable) turning over.
+ */
+export function pageMoved(before: PageReading, after: PageReading): boolean {
+  if (!sameLines(before, after)) return true;
+  let ticked = 0;
+  for (const [at, line] of before.lines.entries()) if (line.exact !== after.lines[at]?.exact) ticked += 1;
+  return ticked >= TURNOVER_CLOCKS;
 }
 
 /**
  * Whether a capture taken after paging is the page the swipe landed on,
  * without a second read to confirm it: it reads differently from the page
- * before and is not sparser. A capture that reads the same may be the
- * screen before the scroll rendered, or the end of the list; a sparser one
- * may be a windowed list between the scroll and the rows it draws for it.
- * Only those need another look.
+ * before, clock-like values aside, and is not sparser. A capture that reads
+ * the same may be the screen before the scroll rendered, or the end of the
+ * list; a sparser one may be a windowed list between the scroll and the rows
+ * it draws for it. Only those need another look. A page whose rows differ by
+ * a clock-like value alone is not vouched for here, since a clock ticking
+ * beside the stale screen reads just like it: it takes the look that proves
+ * it holds still, while `pageMoved` keeps it paging.
  */
 export function pageLanded(before: PageReading, after: PageReading): boolean {
-  return after.shape !== before.shape && after.size >= before.size;
+  return !sameLines(before, after) && after.lines.length >= before.lines.length;
 }

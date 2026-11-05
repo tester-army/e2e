@@ -25,11 +25,22 @@ interface Paged {
   readonly found: string | undefined;
 }
 
-function rowsOf(page: number, count = PER_PAGE): ScriptedNode[] {
+/** What a row reads: "Row 7", or a half-hourly slot ("9:00 AM", "9:30 AM") for a timetable whose rows differ by a clock-like value alone. */
+type RowText = (index: number) => string;
+
+const numbered: RowText = (index) => `Row ${String(index)}`;
+
+const slotAt: RowText = (index) => {
+  const minutes = 9 * 60 + index * 30;
+  const hours = Math.floor(minutes / 60);
+  return `${String(hours > 12 ? hours - 12 : hours)}:${String(minutes % 60).padStart(2, '0')} ${hours >= 12 ? 'PM' : 'AM'}`;
+};
+
+function rowsOf(page: number, count = PER_PAGE, textOf: RowText = numbered): ScriptedNode[] {
   return Array.from({ length: count }, (_unused, at) => ({
     id: `row-${String(at)}`,
     role: 'listitem',
-    text: `Row ${String(page * PER_PAGE + at)}`,
+    text: textOf(page * PER_PAGE + at),
     rect: { x: 0, y: 20 + at * 40, width: 100, height: 40 },
   }));
 }
@@ -39,15 +50,15 @@ function clockText(minute: number): string {
   return `12:${String(minute % 60).padStart(2, '0')}`;
 }
 
-async function scrollTo(text: string, turning: Turning, withClock = false): Promise<Paged> {
+async function scrollTo(text: string, turning: Turning, withClock = false, textOf: RowText = numbered): Promise<Paged> {
   let observations = 0;
   let page = 0;
   const atSwipe: number[] = [];
-  const list: ScriptedNode = { id: 'list', role: 'list', name: 'Ledger', children: rowsOf(0) };
+  const list: ScriptedNode = { id: 'list', role: 'list', name: 'Ledger', children: rowsOf(0, PER_PAGE, textOf) };
   const clock: ScriptedNode = { id: 'clock', role: 'status', name: 'Clock', text: clockText(0), rect: { x: 0, y: 0, width: 100, height: 20 } };
   const turn = (to: number, count = PER_PAGE) => {
     page = to;
-    list.children = rowsOf(to, count);
+    list.children = rowsOf(to, count, textOf);
   };
   const fake = createFakeEngine({
     actions: ['swipe'],
@@ -149,6 +160,28 @@ describe('scroll_to a text, reads per page', () => {
 
     it('still ends a list that stops moving with LOCATOR_NOT_FOUND, not at the screen cap', async () => {
       const result = await scrollTo('Row 99', 'never', true);
+      expect(result.error).toBe('LOCATOR_NOT_FOUND');
+      expect(result.swipes).toBe(3);
+    });
+  });
+
+  describe('with rows that differ by a clock-like value alone', () => {
+    it('pages on to the row, and reads each page until it holds still', async () => {
+      const result = await scrollTo('3:30 PM', 'now', false, slotAt);
+      expect(result.error).toBeUndefined();
+      expect(result.found).toContain('3:30 PM');
+      expect(result.swipes).toBe(4);
+    });
+
+    it('pages on to the row with a clock ticking beside the list', async () => {
+      const result = await scrollTo('3:30 PM', 'now', true, slotAt);
+      expect(result.error).toBeUndefined();
+      expect(result.found).toContain('3:30 PM');
+      expect(result.swipes).toBe(4);
+    });
+
+    it('still ends at the end of the list with LOCATOR_NOT_FOUND', async () => {
+      const result = await scrollTo('11:00 PM', 'never', false, slotAt);
       expect(result.error).toBe('LOCATOR_NOT_FOUND');
       expect(result.swipes).toBe(3);
     });
