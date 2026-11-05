@@ -1,5 +1,11 @@
 # @e2e-dev/decision
 
+## 0.3.2
+
+### Patch Changes
+
+- [#1574](https://github.com/tester-army/e2e/pull/1574) [`db70c36`](https://github.com/tester-army/e2e/commit/db70c36c6ea009ad3207e10b7e27393d3b54ffc3) Thanks [@okwasniewski](https://github.com/okwasniewski)! - On a page with 255 or more elements, the decision executor no longer asks the model a target question with 256 choices, one over the TypeSafe limit of 255. Each question now lists at most 254 targets plus `none`. Elements past the cap are left out as before, and the model can scroll to reach them.
+
 ## 0.3.1
 
 ### Patch Changes

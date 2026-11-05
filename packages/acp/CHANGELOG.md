@@ -1,5 +1,15 @@
 # @e2e-dev/acp
 
+## 0.1.1
+
+### Patch Changes
+
+- [#1491](https://github.com/tester-army/e2e/pull/1491) [`108bc60`](https://github.com/tester-army/e2e/commit/108bc604cdcfcfacc8ab66bd179c408bf6887ccf) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump @agentclientprotocol/sdk to 2.2.0, @ai-sdk/provider to 4.0.35, and oxc to 0.156.0.
+
+- [#1516](https://github.com/tester-army/e2e/pull/1516) [`0410fc9`](https://github.com/tester-army/e2e/commit/0410fc9c74ffac45d5174b7a3a5b3e6f15fdf32f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump agent-device to 0.21.36, @agentclientprotocol/sdk to 2.4.0, @vitest/expect to 5.1.0, and oxc to 0.157.0.
+
+- [#1576](https://github.com/tester-army/e2e/pull/1576) [`33a1541`](https://github.com/tester-army/e2e/commit/33a154157975bb38a421a912052e4d0e436067c8) Thanks [@kdy1](https://github.com/kdy1)! - Start faster by loading heavy dependencies when a command or session needs them. The CLI no longer loads the MCP server, the prompt library, or the schema library until `mcp`, `init`, `login`, `logout`, `models`, `explore`, `upgrade`, `doctor`, or `--watch` runs, so `e2e --version` and `--help` take about 25% less time. `@e2e-dev/web` imports Playwright when a browser is first launched or looked up, so a process that only reads the config skips it: `e2e list` on a web project takes about 44% less time, and importing the package half as long. A worker loads Playwright for its first browser instead of before its first test, so that test's reported duration grows by about 0.14 s while the run takes no longer. `e2e/runner` no longer loads the explorer when imported. `@e2e-dev/acp` loads the ACP and MCP SDKs when its first session starts, and `@e2e-dev/limrun` loads `@limrun/api` when its first device is leased.
+
 ## 0.1.0
 
 ### Minor Changes
