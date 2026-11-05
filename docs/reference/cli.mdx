@@ -56,8 +56,8 @@ $ npx e2e --version
 - Output is colored on a terminal or in CI, and plain when piped or when
   `NO_COLOR` is set. `FORCE_COLOR` keeps the colors.
 - `e2e` without a command prints the help on stderr and exits 2.
-- On a terminal 55 or more columns wide, `e2e --help` opens with the e2e
-  wordmark: the site's lettering in block characters. Piped output and
+- On a terminal 52 or more columns wide, `e2e --help` opens with the e2e
+  logo in block characters. Piped output and
   narrower terminals get the text alone.
 - When a newer `e2e` is on npm, a command run on a terminal ends with the
   version and the [`e2e upgrade`](#e2e-upgrade) command for the project's
@@ -134,14 +134,14 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | 2 | No terminal on stdin and stdout, and no `--yes`. The message names the flag. |
 | 2 | `--example` with a directory that has files in it, or the example download failed. Nothing stays behind. |
 | 2 | The dependency installation failed. |
-| 130 | Ctrl-C or SIGTERM while the wordmark is written or the example downloads, or SIGINT during the dependency installation. A partial example is removed. |
+| 130 | Ctrl-C or SIGTERM while the logo is drawn or the example downloads, or SIGINT during the dependency installation. A partial example is removed. |
 
 ##### Prompts
 
-On a terminal, the wizard opens with the e2e wordmark, written letter by
-letter over about a second, the way a pen writes it. With `--yes`, in CI, on
-a dumb terminal, or on a terminal under 11 rows, it prints at once. Piped
-output never shows it.
+On a terminal 52 or more columns wide, the wizard opens with the e2e logo,
+shading in from ░ to █, top rows first, in about half a second. With
+`--yes`, in CI, on a dumb terminal, or on a terminal under 7 rows, it prints
+at once. Piped output and narrower terminals never show it.
 
 For a new project, the wizard asks for:
 
