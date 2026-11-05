@@ -49,12 +49,13 @@ function clockText(minute: number): string {
   return `12:${String(minute % 60).padStart(2, '0')}`;
 }
 
-async function scrollTo(text: string, turning: Turning, withClock = false, textOf: RowText = numbered): Promise<Paged> {
+async function scrollTo(text: string, turning: Turning, withClock = false, textOf: RowText = numbered, withCounter = false): Promise<Paged> {
   let observations = 0;
   let page = 0;
   const atSwipe: number[] = [];
   const list: ScriptedNode = { id: 'list', role: 'list', name: 'Ledger', children: rowsOf(0, PER_PAGE, textOf) };
   const clock: ScriptedNode = { id: 'clock', role: 'status', name: 'Clock', text: clockText(0), rect: { x: 0, y: 0, width: 100, height: 20 } };
+  const counter: ScriptedNode = { id: 'counter', role: 'status', name: 'Inbox', text: '0 unread', rect: { x: 0, y: 0, width: 100, height: 20 } };
   const turn = (to: number, count = PER_PAGE) => {
     page = to;
     list.children = rowsOf(to, count, textOf);
@@ -64,6 +65,7 @@ async function scrollTo(text: string, turning: Turning, withClock = false, textO
     observe: () => {
       observations += 1;
       clock.text = clockText(observations);
+      counter.text = `${String(observations)} unread`;
     },
     perform: (_ref, action) => {
       if (action.kind !== 'swipe') return;
@@ -76,7 +78,7 @@ async function scrollTo(text: string, turning: Turning, withClock = false, textO
         setTimeout(() => turn(next), 60);
       }
     },
-    scene: () => (withClock ? [clock, list] : [list]),
+    scene: () => [...(withClock ? [clock] : []), ...(withCounter ? [counter] : []), list],
   });
   let error: string | undefined;
   let found: string | undefined;
@@ -161,6 +163,24 @@ describe('scroll_to a text, reads per page', () => {
       const result = await scrollTo('Row 99', 'never', true);
       expect(result.error).toBe('LOCATOR_NOT_FOUND');
       expect(result.swipes).toBe(3);
+    });
+  });
+
+  describe('with a counter changing on the screen', () => {
+    it('reads each page once when the swipe landed', async () => {
+      const result = await scrollTo('Row 13', 'now', false, numbered, true);
+      expect(result.error).toBeUndefined();
+      expect(result.found).toContain('Row 13');
+      expect(result.swipes).toBe(4);
+      expect(result.capturesPerPage).toEqual([1, 1, 1, 1]);
+    });
+
+    it('does not take the counter for a turned page, and does not page past the row', async () => {
+      const result = await scrollTo('Row 4', 'late', false, numbered, true);
+      expect(result.error).toBeUndefined();
+      expect(result.found).toContain('Row 4');
+      expect(result.swipes).toBe(1);
+      expect(result.capturesPerPage.every((captures) => captures >= 2)).toBe(true);
     });
   });
 

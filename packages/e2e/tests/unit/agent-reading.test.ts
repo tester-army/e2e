@@ -121,4 +121,35 @@ describe('pageLanded', () => {
     expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows('Row 4'))).toBe(false);
     expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows())).toBe(false);
   });
+
+  describe('with a status line beside the list', () => {
+    const listed = (status: string, ...texts: string[]) =>
+      readPage(
+        indexOf(
+          node('status', { role: 'status', name: 'Inbox', text: status, rect: { x: 0, y: 0, width: 300, height: 20 } }),
+          ...texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } })),
+        ),
+      );
+    const eight = ['Row 1', 'Row 2', 'Row 3', 'Row 4', 'Row 5', 'Row 6', 'Row 7', 'Row 8'];
+
+    it('declines a stale list when only the status line changed', () => {
+      expect(pageLanded(listed('3 unread', ...eight), listed('4 unread', ...eight))).toBe(false);
+    });
+
+    it('accepts a scrolled list, with the status line the same or changed', () => {
+      const scrolled = ['Row 7', 'Row 8', 'Row 9', 'Row 10', 'Row 11', 'Row 12', 'Row 13', 'Row 14'];
+      expect(pageLanded(listed('3 unread', ...eight), listed('3 unread', ...scrolled))).toBe(true);
+      expect(pageLanded(listed('3 unread', ...eight), listed('4 unread', ...scrolled))).toBe(true);
+    });
+
+    it('accepts a list scrolled by a row, whose rows each move to the slot above', () => {
+      expect(pageLanded(listed('3 unread', ...eight), listed('3 unread', ...eight.slice(1), 'Row 9'))).toBe(true);
+    });
+  });
+
+  it('wants a third of the lines to be new', () => {
+    const nine = ['Row 1', 'Row 2', 'Row 3', 'Row 4', 'Row 5', 'Row 6', 'Row 7', 'Row 8', 'Row 9'];
+    expect(pageLanded(rows(...nine), rows(...nine.slice(0, 6), 'Row 10', 'Row 11', 'Row 12'))).toBe(true);
+    expect(pageLanded(rows(...nine), rows(...nine.slice(0, 7), 'Row 10', 'Row 11'))).toBe(false);
+  });
 });

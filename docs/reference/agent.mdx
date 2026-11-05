@@ -339,9 +339,10 @@ click, as a Shift-click extends a selection.
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
-`scroll_to({ text })` reads a scrolled screen once when it reads differently
-from the one before and is no sparser, and keeps reading it until it holds
-still otherwise. The list's end is a screen that stops changing; a clock-like
+`scroll_to({ text })` reads a scrolled screen once when most of what it shows
+is new and it is no sparser than the one before, and keeps reading it until it
+holds still otherwise (a counter ticking beside a list that has not scrolled
+yet is not a new page). The list's end is a screen that stops changing; a clock-like
 value (`12:05`) ticking beside it does not count as changing, while several
 changing at once (a time picker's rows) do. On a device,
 the next observation checks stability without waiting for a second scroll

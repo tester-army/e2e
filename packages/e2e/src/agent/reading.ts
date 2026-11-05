@@ -130,16 +130,40 @@ export function pageMoved(before: PageReading, after: PageReading): boolean {
 }
 
 /**
+ * The share of a page's lines that must be new for a swipe to have turned it.
+ * A page turn replaces most of the rows it shows; a counter or a status line
+ * beside a stale list replaces a line or two. A third leaves room for chrome
+ * as large as the list itself, and a page with more takes the look that
+ * proves it holds still, which only costs the read this saves.
+ */
+const LANDED_NEW_SHARE = 1 / 3;
+
+/** How many lines of `after` the page before did not read, clock-like values masked. */
+function newLines(before: PageReading, after: PageReading): number {
+  const unmatched = new Map<string, number>();
+  for (const line of before.lines) unmatched.set(line.masked, (unmatched.get(line.masked) ?? 0) + 1);
+  let fresh = 0;
+  for (const line of after.lines) {
+    const left = unmatched.get(line.masked) ?? 0;
+    if (left > 0) unmatched.set(line.masked, left - 1);
+    else fresh += 1;
+  }
+  return fresh;
+}
+
+/**
  * Whether a capture taken after paging is the page the swipe landed on,
- * without a second read to confirm it: it reads differently from the page
- * before, clock-like values aside, and is not sparser. A capture that reads
- * the same may be the screen before the scroll rendered, or the end of the
- * list; a sparser one may be a windowed list between the scroll and the rows
- * it draws for it. Only those need another look. A page whose rows differ by
- * a clock-like value alone is not vouched for here, since a clock ticking
+ * without a second read to confirm it: most of what it reads is new, clock-like
+ * values aside, and it is not sparser. A capture that reads the same may be
+ * the screen before the scroll rendered, or the end of the list; one that
+ * differs by a line or two may be that screen with a counter ticking beside
+ * it; a sparser one may be a windowed list between the scroll and the rows it
+ * draws for it. Only those need another look. A page whose rows differ by a
+ * clock-like value alone is not vouched for here either, since a clock ticking
  * beside the stale screen reads just like it: it takes the look that proves
  * it holds still, while `pageMoved` keeps it paging.
  */
 export function pageLanded(before: PageReading, after: PageReading): boolean {
-  return !sameLines(before, after) && after.lines.length >= before.lines.length;
+  if (after.lines.length < before.lines.length || sameLines(before, after)) return false;
+  return newLines(before, after) >= Math.ceil(after.lines.length * LANDED_NEW_SHARE);
 }
