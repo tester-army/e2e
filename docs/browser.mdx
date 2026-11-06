@@ -6,9 +6,8 @@ description: Mock an API, handle a dialog, download a file, reach into an iframe
 ---
 
 The `browser` fixture of `@e2e-dev/web` mocks requests, handles dialogs,
-downloads files, and runs code in the page. The engine runs Chromium,
-Firefox, and WebKit through
-[Playwright](https://github.com/microsoft/playwright). For navigation,
+downloads files, and runs code in the page. The engine drives Chromium and
+Firefox over WebDriver BiDi. For navigation,
 interactions, and checks, use `screen`, `app`, and `expect`.
 
 Import `test` from `@e2e-dev/web` to get `browser`:
@@ -87,7 +86,7 @@ expect(csv).toContain('Invoice');
 ```
 
 e2e saves the file as a `download` artifact. Read it through
-`file.absolutePath`, which works with hosted browsers too. `file.path` is
+`file.absolutePath`. `file.path` is
 relative to the attempt's artifact directory, not to the project.
 
 ## Reach into an iframe
@@ -188,7 +187,7 @@ browsers on one app are two targets, as in
 [One size per target](/web#one-size-per-target):
 
 ```ts title="Target fragment"
-{ name: 'webkit', engine: web({ browser: 'webkit' }), app },
+{ name: 'firefox', engine: web({ browser: 'firefox' }), app },
 ```
 
 In CI, install the extra browser with the
@@ -196,19 +195,20 @@ In CI, install the extra browser with the
 
 <CodeGroup>
 ```bash npm
-npx @e2e-dev/web install webkit --with-deps
+npx @e2e-dev/web install firefox --with-deps
 ```
 
 ```bash pnpm
-pnpm exec e2e-web install webkit --with-deps
+pnpm exec e2e-web install firefox --with-deps
 ```
 
 ```bash bun
-bunx @e2e-dev/web install webkit --with-deps
+bunx @e2e-dev/web install firefox --with-deps
 ```
 </CodeGroup>
 
-`connect` attaches to a remote Chromium over CDP instead of launching one,
+WebKit is not supported. `connect` attaches to a remote Chromium over CDP
+instead of launching one,
 or to another browser that speaks CDP, such as a running
 [Lightpanda](/integrations/lightpanda).
 To set sizes, see [Viewports](/web#viewports).
@@ -243,7 +243,7 @@ A provider implements this interface:
 export interface BrowserProvider {
   /** Label in progress lines and error messages. */
   readonly name: string;
-  /** `worker` (default): one browser per worker slot for the run. `attempt`: a fresh browser per attempt. */
+  /** `worker` (default): one browser per worker slot for the run. `attempt`: a fresh browser per attempt, not supported right now. */
   readonly scope?: 'worker' | 'attempt';
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
@@ -365,10 +365,9 @@ Two workers lease two sessions in parallel and keep them for the run.
 ### Pick a lease scope
 
 `scope: 'worker'`, the default, keeps one browser per worker slot for the
-whole run. `scope: 'attempt'` gives each attempt, retries included, a fresh
-browser that no earlier test touched, for the cost of a session start per
-attempt. A hosted session costs money while it runs, so keep `workers` at
-what the suite can fill.
+whole run. `scope: 'attempt'`, a fresh browser per attempt, is not supported
+right now: `web()` throws `INVALID_CONFIG` for it. A hosted session costs
+money while it runs, so keep `workers` at what the suite can fill.
 
 A worker that dies (a crash, `process.exit`, a kill) can't release what it
 acquired. Implement `sweep` to have the runner release those leases when
@@ -391,37 +390,11 @@ browser lives until the service ends it.
 - The side that acquired a lease releases it, exactly one time.
 </Accordion>
 
-<Accordion title="Attempt scope: limits">
-The attempt runs in the browser's persistent default context, on its first
-tab, so the remote browser must contain only that context. The limits of
-[`connect.reconnectEndpoint`](/reference/web#recovering-a-cdp-transport)
-apply:
-
-- No `headers`, `basicAuth`, `userAgent`, `locale`, or `timezoneId`. Each
-  is `INVALID_CONFIG`.
-- No `app.clearState()`. It is `UNSUPPORTED_CAPABILITY`, naming the scope.
-- No session state capture or restore. A run whose tests use a
-  [session](/authentication) on the target fails with `COLLECTION_ERROR`
-  before its setup test signs in.
-
-After a transport drop, the next operation reattaches through the lease's
-`reconnectEndpoint`, else its `cdpEndpoint`, and checks that it is the same
-browser.
-</Accordion>
-
 ### Downloads on the provider
 
-Implement `downloads`, and `browser.waitForDownload` works as it does
-locally. A hosted browser saves a download to its own disk, where the
-runner can't open it. With `downloads`, it saves the file under `dir`, and
-the engine passes the finished file's path to `read`. `read` fetches the
-bytes through the service's file API, in the worker, bounded by the call's
-timeout. [Kernel](/integrations/kernel#downloads) serves downloads this
-way.
-
-Without `downloads`, a download on a browser on another machine fails with
-`ENGINE_FAILURE`, naming the provider. A provider whose browsers run on the
-runner's machine needs nothing.
+`browser.waitForDownload` and `setInputFiles` are not supported on a
+provider's browser right now. Each throws `UNSUPPORTED_CAPABILITY`, naming the
+provider. The engine ignores `downloads`.
 
 ### Recording on the provider
 

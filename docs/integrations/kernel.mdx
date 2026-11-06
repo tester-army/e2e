@@ -8,7 +8,7 @@ description: Run web targets in Kernel's hosted Chromium with the kernel() brows
 
 `kernel()` from `@e2e-dev/kernel` is a
 [browser provider](/browser#hosted-browsers) for [Kernel](https://kernel.sh).
-Each worker slot, or each attempt, gets its own hosted Chromium. Tests stay
+Each worker slot gets its own hosted Chromium. Tests stay
 the same. Only the target's `browser` changes.
 
 ## Setup
@@ -50,9 +50,8 @@ export default {
 Set `KERNEL_API_KEY` in the environment that `e2e run` starts in, such as a
 CI secret. `workers` sets how many browsers run at the same time.
 
-Without the key, or on a Kernel error, the lease fails with that message. In
-`worker` scope the run ends before any test. In `attempt` scope only the
-attempt fails.
+Without the key, or on a Kernel error, the lease fails with that message,
+and the run ends before any test.
 
 ## Fill the screen
 
@@ -78,7 +77,7 @@ and the rest of `BrowserCreateParams` in your `@onkernel/sdk`. It adds two:
 
 | Option   | Default    | Meaning |
 | -------- | ---------- | ------- |
-| `scope`  | `'worker'` | One browser per worker slot, or per attempt. See [Scopes](#scopes). |
+| `scope`  | `'worker'` | One browser per worker slot. See [Scopes](#scopes). |
 | `replay` | `true`     | A Kernel replay or the engine's screencast. See [Recordings](#recordings). |
 
 ## Scopes
@@ -89,11 +88,8 @@ sees another test's cookies, storage, or permissions. Kernel's first tab
 stays open behind it. A Kernel `profile` has no effect, because it applies
 only to the browser's default context.
 
-`scope: 'attempt'` leases a new browser for each attempt, retries included.
-The attempt runs in its default context, on its first tab, so a `profile`
-applies and the live view shows one tab. Each test pays for a browser start,
-and the [limits of a per-attempt lease](/browser#hosted-browsers) apply,
-sessions included.
+`scope: 'attempt'`, a new browser for each attempt, is not supported right
+now: `web()` throws `INVALID_CONFIG` for it.
 
 ## Recordings
 
@@ -112,15 +108,14 @@ Kernel replays only headed browsers, its default. With `headless: true` or
 
 ## Downloads
 
-`browser.waitForDownload` works as it does locally, in both scopes. The
-provider copies each file off the browser's disk into the attempt's
-artifacts.
+`browser.waitForDownload` and `setInputFiles` are not supported on a Kernel
+browser right now. Each throws `UNSUPPORTED_CAPABILITY`.
 
 ## Watch and clean up browsers
 
 The reporter logs `browser <id>, watch at <live view URL>` for each new
 browser. Each browser carries the tags `e2e_run`, `e2e_target`, `e2e_slot`,
-and `e2e_attempt` in `'attempt'` scope, on top of your `tags`. Kernel's
+on top of your `tags`. Kernel's
 dashboard then names the run that started it.
 
 When the run ends, the provider deletes every active browser tagged with the
@@ -132,7 +127,7 @@ itself dies first, Kernel deletes each browser after `timeout_seconds` idle,
 
 <CardGroup cols={2}>
   <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
-    How a browser provider leases browsers, and the limits of `'attempt'` scope.
+    How a browser provider leases browsers.
   </Card>
   <Card title="Continuous integration" icon="rotate" href="/ci">
     Run the suite on GitHub Actions or another CI service.
