@@ -528,9 +528,16 @@ export class BidiSurface {
     return saved;
   }
 
-  /** Changes the attempt's media features from the next paint on. */
+  /**
+   * Changes the attempt's media features from the next paint on. Firefox
+   * overrides only `prefers-color-scheme` over BiDi, so a reduced-motion
+   * change refuses there; `web({ reducedMotion })` still applies at launch.
+   */
   emulateMedia(media: WebMedia, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'emulateMedia', async (session) => {
+      if (this.options.browser === 'firefox' && media.reducedMotion !== undefined) {
+        throw new EngineError('UNSUPPORTED_CAPABILITY', 'browser.emulateMedia({ reducedMotion }) is not supported on Firefox, which overrides only prefers-color-scheme over WebDriver BiDi; set web({ reducedMotion }) instead', { retryable: false });
+      }
       session.media = { ...session.media, ...media };
       await session.applyMedia();
     });

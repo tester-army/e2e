@@ -332,7 +332,8 @@ export class BidiSession {
     if (this.media.colorScheme === undefined && this.media.reducedMotion === undefined) return;
     const features: Emulation.MediaFeatures = obj({
       'prefers-color-scheme': this.media.colorScheme === 'no-preference' ? null : this.media.colorScheme,
-      'prefers-reduced-motion': this.media.reducedMotion,
+      // Firefox overrides only the color scheme; its reduced motion is the launch preference.
+      'prefers-reduced-motion': this.settings.browser === 'firefox' ? undefined : this.media.reducedMotion,
     });
     await this.connection.send('emulation.setMediaFeaturesOverride', { features, userContexts: [this.userContext] });
   }

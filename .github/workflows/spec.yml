@@ -125,11 +125,48 @@ jobs:
       - name: Fresh install with pnpm ${{ matrix.pnpm }}
         run: node scripts/install-smoke.ts ${{ matrix.pnpm }}
 
+  # The testbed's own tests on Firefox. The tests ported from Playwright
+  # (tag playwright) assert Chromium's errors and run on Chromium in `check`.
+  # Left out: HTML5 drag and drop, which Firefox's remote agent ends without a
+  # drop (https://bugzilla.mozilla.org/show_bug.cgi?id=1515879), and the one
+  # visual comparison Firefox renders past its stored (Chromium) screenshot's
+  # threshold.
+  firefox:
+    name: testbed (firefox)
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build
+        run: pnpm run build
+      - name: Install Firefox
+        run: node packages/web/dist/bin.js install firefox --with-deps
+      - name: Testbed on Firefox
+        working-directory: apps/testbed
+        run: node node_modules/e2e/dist/cli/bin.js run --config e2e.firefox.config.ts --exclude-tag playwright --grep-invert 'drags and drops on the board|dragging the card marks it done|scrolls a block below the fold into view before comparing it'
+      - name: Upload report
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: testbed-firefox
+          path: |
+            apps/testbed/.e2e/report.json
+            apps/testbed/.e2e/results
+          if-no-files-found: warn
+          retention-days: 7
+
   # The one check the ruleset requires from this workflow. A skipped job
   # passes (the change cannot reach it); a failed or cancelled one fails it.
   gate:
     name: spec gate
-    needs: [check, test, install]
+    needs: [check, test, install, firefox]
     if: ${{ always() }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
