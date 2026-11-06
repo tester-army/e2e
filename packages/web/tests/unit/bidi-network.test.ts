@@ -358,6 +358,172 @@ describe('AttemptNetwork', () => {
     expect(fake.commands('network.removeIntercept').map((command) => command.params['intercept'])).toContain('intercept-2');
   });
 
+  describe('redirect hops and the site headers', () => {
+    /** The `x-preview` header and the route's own on a redirect hop's continue, or undefined when it went on untouched. */
+    async function hop(fake: FakeBidi, id: string, url: string, count: number, carried: Record<string, string>): Promise<Record<string, string> | undefined> {
+      const base = request(id, url);
+      const headers = Object.entries({ Accept: '*/*', ...carried }).map(([name, value]) => ({ name, value: { type: 'string', value } }));
+      fake.emit('network.beforeRequestSent', { ...base, redirectCount: count, request: { ...(base['request'] as object), headers } });
+      await settle();
+      await settle();
+      const sent = fake.commands('network.continueRequest').at(-1)?.params;
+      if (sent?.['request'] !== id) throw new Error(`no continue for ${id}`);
+      const wire = sent['headers'] as { name: string; value: { value: string } }[] | undefined;
+      return wire === undefined ? undefined : Object.fromEntries(wire.map((header) => [header.name, header.value.value]));
+    }
+
+    it('adds the site headers to every hop on the site and to none off it, for a request no route matched', async () => {
+      const fake = new FakeBidi();
+      const { net } = network(fake, { holdAll: true });
+      await net.bind('user-1');
+      await net.addContext('tab');
+      fake.emit('network.beforeRequestSent', request('r', `${SITE}/start`));
+      await settle();
+      expect(fake.commands('network.continueRequest').at(-1)?.params['headers']).toContainEqual({ name: 'x-preview', value: { type: 'string', value: 'token' } });
+      expect(await hop(fake, 'r', `${SITE}/next`, 1, {})).toEqual({ accept: '*/*', 'x-preview': 'token' });
+      expect(await hop(fake, 'r', 'https://external.test/end', 2, { 'x-preview': 'token' })).toEqual({ accept: '*/*' });
+      expect(await hop(fake, 'r', 'https://external.test/again', 3, {})).toBeUndefined();
+      expect(await hop(fake, 'r', `${SITE}/back`, 4, {})).toEqual({ accept: '*/*', 'x-preview': 'token' });
+      expect(await hop(fake, 'r', 'https://external.test/last', 5, { 'x-preview': 'token' })).toEqual({ accept: '*/*' });
+    });
+
+    it('applies a route’s header overrides to every hop, and the site headers only to hops on the site', async () => {
+      const fake = new FakeBidi();
+      const { net } = network(fake);
+      await net.bind('user-1');
+      await net.addContext('tab');
+      await net.addRoute(route(() => true, async (held, decisions) => {
+        await decisions.continue({ headers: { ...held.headers, 'X-Route': 'routed' } });
+      }));
+      fake.emit('network.beforeRequestSent', request('r', `${SITE}/start`));
+      await settle();
+      await settle();
+      expect(await hop(fake, 'r', `${SITE}/next`, 1, {})).toEqual({ accept: '*/*', 'x-route': 'routed', 'x-preview': 'token' });
+      expect(await hop(fake, 'r', 'https://external.test/end', 2, { 'x-preview': 'token', 'x-route': 'routed' })).toEqual({ accept: '*/*', 'x-route': 'routed' });
+      expect(await hop(fake, 'r', `${SITE}/back`, 3, {})).toEqual({ accept: '*/*', 'x-route': 'routed', 'x-preview': 'token' });
+    });
+
+    it('sends nothing of the site’s to a request that starts off the site and redirects there and away again', async () => {
+      const fake = new FakeBidi();
+      const { net } = network(fake, { holdAll: true });
+      await net.bind('user-1');
+      await net.addContext('tab');
+      fake.emit('network.beforeRequestSent', request('r', 'https://external.test/start'));
+      await settle();
+      expect(fake.commands('network.continueRequest').at(-1)?.params).toEqual({ request: 'r' });
+      expect(await hop(fake, 'r', `${SITE}/in`, 1, {})).toEqual({ accept: '*/*', 'x-preview': 'token' });
+      expect(await hop(fake, 'r', 'https://external.test/out', 2, { 'x-preview': 'token' })).toEqual({ accept: '*/*' });
+    });
+  });
+
+  it('calls a new user context idle while a request of the one it replaced never finished', async () => {
+    const fake = new FakeBidi();
+    const { net } = network(fake);
+    await net.bind('user-1');
+    await net.track();
+    fake.emit('network.beforeRequestSent', request('stuck', `${SITE}/stuck`, []));
+    await net.bind('user-2');
+    await net.track();
+    const started = Date.now();
+    await net.waitForIdle(AbortSignal.timeout(2_000));
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  it('stops counting the requests of a tab that closed without their events', async () => {
+    const fake = new FakeBidi();
+    const { net } = network(fake);
+    await net.bind('user-1');
+    await net.addContext('tab');
+    await net.track();
+    fake.emit('network.beforeRequestSent', request('stuck', `${SITE}/stuck`, []));
+    await net.removeContext('tab');
+    await net.waitForIdle(AbortSignal.timeout(2_000));
+  });
+
+  it.each([
+    ['the subscription', 'session.subscribe'],
+    ['the request collector', 'network.addDataCollector'],
+    ['the intercept', 'network.addIntercept'],
+  ])('takes a route back when %s fails to install, and installs everything on the next try', async (_step, method) => {
+    const fake = new FakeBidi();
+    const { net } = network(fake);
+    await net.bind('user-1');
+    await net.addContext('tab');
+    let failed = false;
+    let intercepts = 0;
+    const answers: Record<string, (params: Record<string, unknown>) => { result: unknown }> = {
+      'session.subscribe': () => ({ result: { subscription: 'subscription-1' } }),
+      'network.addDataCollector': () => ({ result: { collector: 'collector-2' } }),
+      'network.addIntercept': () => ({ result: { intercept: `intercept-${(intercepts += 1)}` } }),
+    };
+    fake.on(method, (params) => {
+      const ours = method !== 'network.addDataCollector' || (params['dataTypes'] as string[]).includes('request');
+      if (ours && !failed) {
+        failed = true;
+        return { error: 'unknown error', message: 'install failed' };
+      }
+      return answers[method]!(params);
+    });
+    const handled: string[] = [];
+    await expect(net.addRoute(route(() => true, async (_held, decisions) => {
+      handled.push('first');
+      await decisions.continue();
+    }))).rejects.toThrow('install failed');
+    await net.addRoute(route(() => true, async (_held, decisions) => {
+      handled.push('second');
+      await decisions.fallback();
+    }));
+    expect(fake.commands('session.subscribe')).toHaveLength(method === 'session.subscribe' ? 2 : 1);
+    expect(fake.commands('network.addDataCollector').filter((command) => (command.params['dataTypes'] as string[]).includes('request'))).toHaveLength(method === 'network.addDataCollector' ? 2 : 1);
+    expect(fake.commands('network.addIntercept').map((command) => command.params)).toEqual([
+      ...(method === 'network.addIntercept' ? [{ phases: ['beforeRequestSent'], contexts: ['tab'] }] : []),
+      { phases: ['beforeRequestSent'], contexts: ['tab'] },
+    ]);
+    fake.emit('network.beforeRequestSent', request('r', `${SITE}/a`));
+    await settle();
+    await settle();
+    expect(handled).toEqual(['second']);
+    expect(fake.commands('network.continueRequest').map((command) => command.params['request'])).toEqual(['r']);
+  });
+
+  describe('a response body still loading', () => {
+    /** A network bound to user-1, and a response whose headers arrived but whose body never finished. */
+    async function pending() {
+      const fake = new FakeBidi();
+      const { net } = network(fake);
+      await net.bind('user-1');
+      const waiting = net.waitForResponse(() => true, AbortSignal.timeout(5_000));
+      await settle();
+      fake.emit('network.responseStarted', { ...request('r', `${SITE}/r`, []), response: { url: `${SITE}/r`, status: 200, headers: [] } });
+      return { fake, net, response: await waiting };
+    }
+
+    it('fails its read once the network is disposed', async () => {
+      const { net, response } = await pending();
+      await net.dispose();
+      await expect(response.body()).rejects.toThrow('the network ended before the response finished loading');
+    });
+
+    it('fails a read already waiting when the network is disposed', async () => {
+      const { net, response } = await pending();
+      const body = response.body();
+      await net.dispose();
+      await expect(body).rejects.toThrow('the network ended');
+    });
+
+    it('fails its read once the user context is replaced', async () => {
+      const { net, response } = await pending();
+      await net.bind('user-2');
+      await expect(response.body()).rejects.toThrow('the network ended');
+    });
+
+    it('fails its read once the connection closes', async () => {
+      const { fake, response } = await pending();
+      fake.drop();
+      await expect(response.body()).rejects.toThrow('the BiDi connection closed');
+    });
+  });
+
   it('keeps a removal that failed while rebinding, and tries it again on dispose', async () => {
     const fake = new FakeBidi();
     const { net } = network(fake, { holdAll: true, exclusive: true });

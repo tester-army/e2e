@@ -109,9 +109,10 @@ export class BidiConnection {
     return () => set.delete(listener);
   }
 
-  /** Runs `handler` once when the transport closes. */
-  onClose(handler: () => void): void {
+  /** Runs `handler` once when the transport closes; returns the removal. */
+  onClose(handler: () => void): () => void {
     this.closeHandlers.add(handler);
+    return () => this.closeHandlers.delete(handler);
   }
 
   /** Closes the transport; commands in flight fail as disconnected. */

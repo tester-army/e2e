@@ -223,13 +223,13 @@ const TWINS = `<!doctype html>
 </body>
 </html>`;
 
-/** Shows the `x-fixture-header` request header, or `none`; see `headersPage`. */
-function headersPage(value: string | undefined): string {
+/** Shows the `x-fixture-header` request header, or `none`, after what each `/bounce` hop on the way saw. */
+function headersPage(value: string | undefined, seen: readonly string[]): string {
   return `<!doctype html>
 <html>
 <head><title>Fixture Headers</title></head>
 <body>
-<h1>${value ?? 'none'}</h1>
+<h1>${[...seen, value ?? 'none'].join(' > ')}</h1>
 </body>
 </html>`;
 }
@@ -419,7 +419,16 @@ export function startFixtureApp(): Promise<FixtureApp> {
     if (url.pathname === '/headers') {
       const value = request.headers['x-fixture-header'];
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(headersPage(Array.isArray(value) ? value.join(',') : value));
+      response.end(headersPage(Array.isArray(value) ? value.join(',') : value, url.searchParams.getAll('seen')));
+      return;
+    }
+    if (url.pathname === '/bounce') {
+      const value = request.headers['x-fixture-header'];
+      const next = new URL(url.searchParams.get('to') ?? '/headers', 'http://fixture.test');
+      for (const seen of url.searchParams.getAll('seen')) next.searchParams.append('seen', seen);
+      next.searchParams.append('seen', (Array.isArray(value) ? value.join(',') : value) ?? 'none');
+      response.writeHead(302, { location: next.href });
+      response.end();
       return;
     }
     if (url.pathname === '/protected') {

@@ -117,6 +117,24 @@ describe('web({ headers, basicAuth })', () => {
     }
   });
 
+  it('sends the headers to every redirect hop on the app\'s site and to none off it, routed or not', async () => {
+    const engine = web({ headers: { 'x-fixture-header': 'let-me-in' } });
+    try {
+      await boot(engine, app, artifactsDir, 'h3');
+      const bounce = (from: string, to: string): string => `${from}/bounce?to=${encodeURIComponent(to)}`;
+      expect(await headingAt(engine, 'h3', bounce(app.url, `${app.url}/headers`))).toBe('let-me-in > let-me-in');
+      expect(await headingAt(engine, 'h3', bounce(app.url, `${other.url}/headers`))).toBe('let-me-in > none');
+      expect(await headingAt(engine, 'h3', bounce(app.url, bounce(other.url, `${app.url}/headers`)))).toBe('let-me-in > none > let-me-in');
+      // A route's own header overrides reach every hop; the site's stay on the site.
+      await browserOf(engine, app).route('**/bounce?*', async (route) => {
+        await route.continue({ headers: { ...route.request.headers, 'x-fixture-header': 'from-route' } });
+      });
+      expect(await headingAt(engine, 'h3', bounce(app.url, bounce(other.url, `${app.url}/headers`)))).toBe('let-me-in > from-route > let-me-in');
+    } finally {
+      await shutdown(engine);
+    }
+  });
+
   it('blocks service workers under headers, since routing never sees a worker\'s requests', async () => {
     // Registers the fixture's worker and counts what the browser now holds:
     // a blocked registration resolves like a real one but registers nothing.
