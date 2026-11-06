@@ -1,7 +1,7 @@
 /**
  * The `e2e init` step that registers the `e2e mcp` server with the coding
- * agents that read a project-level MCP config file. Each file is JSON with a
- * `mcpServers` map; the entry is merged in and every other server is left
+ * agents that read a project-level MCP config file. JSON clients use a
+ * `mcpServers` map; Codex uses TOML. Every other server is left
  * exactly as it was. A file reached through a symlink, or under a linked
  * directory, is never read or written through: init reports the link and
  * skips it.
@@ -10,6 +10,7 @@
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { realpathOfExisting } from '../../internal/paths.ts';
+import { readCodexConfig, updateCodexConfig } from './codex-config.ts';
 
 interface McpLocation {
   /** Project-relative config file with `/` separators. */
@@ -22,11 +23,12 @@ interface McpLocation {
 export const MCP_LOCATIONS = [
   { file: '.mcp.json', hint: 'Claude Code' },
   { file: '.cursor/mcp.json', hint: 'Cursor' },
+  { file: '.codex/config.toml', hint: 'Codex' },
 ] as const satisfies readonly McpLocation[];
 
 const MCP_SERVER_NAME = 'e2e';
 
-/** How every client starts the server: the project's own e2e, never a fetched one. */
+/** How clients start the server from the project with e2e installed. */
 const SERVER_ENTRY = { command: 'npx', args: ['e2e', 'mcp'] } as const;
 
 export interface McpRegistration {
@@ -54,6 +56,7 @@ export interface McpPlan {
 
 interface McpConfigDocument {
   mcpServers?: Record<string, unknown>;
+  mcp_servers?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -61,10 +64,11 @@ function readDocument(absolute: string): McpConfigDocument | undefined {
   if (!existsSync(absolute)) return undefined;
   const text = readFileSync(absolute, 'utf8');
   let parsed: unknown;
+  const toml = absolute.endsWith('.toml');
   try {
-    parsed = text.trim() === '' ? {} : JSON.parse(text);
+    parsed = toml ? readCodexConfig(text) : text.trim() === '' ? {} : JSON.parse(text);
   } catch (cause) {
-    throw new Error(`${absolute} is not valid JSON; fix it or remove it before registering the MCP server`, { cause });
+    throw new Error(`${absolute} is not valid ${toml ? 'TOML' : 'JSON'}; fix it or remove it before registering the MCP server`, { cause });
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`${absolute} must hold a JSON object with a "mcpServers" map`);
@@ -99,7 +103,8 @@ export function findRegisteredMcpFiles(cwd: string): string[] {
   return MCP_LOCATIONS.map((location) => location.file).filter((file) => {
     if (linkOnPath(cwd, path.join(cwd, file)) !== undefined) return false;
     try {
-      const servers = readDocument(path.join(cwd, file))?.mcpServers;
+      const document = readDocument(path.join(cwd, file));
+      const servers = file.endsWith('.toml') ? document?.mcp_servers : document?.mcpServers;
       return typeof servers === 'object' && servers !== null && MCP_SERVER_NAME in servers;
     } catch {
       return false;
@@ -125,9 +130,10 @@ export function planMcpRegistration(cwd: string, files: readonly string[]): McpP
     }
     const absolute = path.join(cwd, file);
     const document = readDocument(absolute) ?? {};
+    const serverKey = file.endsWith('.toml') ? 'mcp_servers' : 'mcpServers';
     const servers =
-      typeof document.mcpServers === 'object' && document.mcpServers !== null && !Array.isArray(document.mcpServers)
-        ? document.mcpServers
+      typeof document[serverKey] === 'object' && document[serverKey] !== null && !Array.isArray(document[serverKey])
+        ? document[serverKey]
         : {};
     const existing = servers[MCP_SERVER_NAME];
     const entry = typeof existing === 'object' && existing !== null && !Array.isArray(existing)
@@ -141,7 +147,7 @@ export function planMcpRegistration(cwd: string, files: readonly string[]): McpP
       relative: file,
       existing: original !== undefined,
       absolute,
-      content: `${JSON.stringify(merged, null, indent)}\n`,
+      content: file.endsWith('.toml') ? updateCodexConfig(original ?? '', SERVER_ENTRY) : `${JSON.stringify(merged, null, indent)}\n`,
     });
   }
   return { registrations, links };

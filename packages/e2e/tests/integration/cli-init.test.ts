@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { getStaticTOMLValue, parseTOML } from 'toml-eslint-parser';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dependencyRange } from '../../src/cli/init/versions.ts';
 
@@ -54,6 +57,36 @@ afterEach(() => {
 });
 
 describe('initializing standalone projects', () => {
+  it('starts the installed MCP server from the generated Codex config with an empty npm cache offline', async () => {
+    await execFileAsync(process.execPath, [CLI, 'init', '--yes', '--mcp', '.codex/config.toml'], { cwd: dir });
+    linkPackages('e2e');
+    // Linking the package alone does not create the executable shim an install provides.
+    const bin = path.join(dir, 'node_modules', '.bin');
+    mkdirSync(bin);
+    writeFileSync(
+      path.join(bin, process.platform === 'win32' ? 'e2e.cmd' : 'e2e'),
+      process.platform === 'win32'
+        ? '@node "%~dp0..\\e2e\\dist\\cli\\bin.js" %*\r\n'
+        : '#!/bin/sh\nexec node "$(dirname "$0")/../e2e/dist/cli/bin.js" "$@"\n',
+      { mode: 0o755 },
+    );
+    const document = getStaticTOMLValue(parseTOML(readFileSync(path.join(dir, '.codex/config.toml'), 'utf8'))) as {
+      mcp_servers: { e2e: { command: string; args: string[] } };
+    };
+    expect(document.mcp_servers.e2e).toEqual({ command: 'npx', args: ['e2e', 'mcp'] });
+    const client = new Client({ name: 'init-codex-test', version: '1.0.0' });
+    const transport = new StdioClientTransport({
+      ...document.mcp_servers.e2e, cwd: dir, stderr: 'pipe',
+      env: { ...process.env, npm_config_offline: 'true', npm_config_cache: path.join(dir, 'npm-cache') },
+    });
+    try {
+      await client.connect(transport);
+      expect((await client.listTools()).tools.map((tool) => tool.name)).toContain('open_session');
+    } finally {
+      await client.close();
+    }
+  });
+
   it('preserves configured MCP server settings when reinitializing a project', async () => {
     const original = JSON.stringify({
       mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'], env: { APP_ENV: 'staging' }, timeout: 30_000 }, other: { command: 'other' } },

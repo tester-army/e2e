@@ -651,10 +651,10 @@ describe('e2e init argument parsing', () => {
   });
 
   it('merges repeated --skills and --mcp flags like comma-separated ones', async () => {
-    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json');
+    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json,.codex/config.toml');
     expect(initMock).toHaveBeenCalledExactlyOnceWith(
       process.cwd(),
-      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json'] }),
+      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json', '.codex/config.toml'] }),
     );
   });
 
@@ -680,7 +680,7 @@ describe('e2e init argument parsing', () => {
     [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
     [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
     [['--skills', ''], 'must name at least one skill directory'],
-    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, none'],
+    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, .codex/config.toml, none'],
     [['--mcp', 'none,.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
     [['--mcp', 'none', '--mcp', '.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
     [['--skills', '.claude/skills', '--skills', 'none'], 'error: --skills: none cannot be combined with other values'],

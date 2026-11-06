@@ -78,8 +78,10 @@ model: an AI SDK provider key, or a ChatGPT subscription through
 ## MCP server
 
 The plugin does not bundle the e2e MCP server, which runs from the project's
-own `e2e` install. To let Codex drive the running app, add it to the
-project's `.codex/config.toml`:
+own `e2e` install. `e2e init` offers to register it for Codex. In an existing
+project, run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI
+or add the entry below. Install dependencies, trust the project, and start a
+new Codex session from the project directory:
 
 ```toml
 [mcp_servers.e2e]
