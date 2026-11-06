@@ -237,12 +237,17 @@ const TWINS = `<!doctype html>
 </html>`;
 
 /** Shows the `x-fixture-header` request header, or `none`, after what each `/bounce` hop on the way saw. */
+/** `text` with the characters HTML gives meaning escaped, so a reflected header or query value stays text. */
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+}
+
 function headersPage(value: string | undefined, seen: readonly string[]): string {
   return `<!doctype html>
 <html>
 <head><title>Fixture Headers</title></head>
 <body>
-<h1>${[...seen, value ?? 'none'].join(' > ')}</h1>
+<h1>${escapeHtml([...seen, value ?? 'none'].join(' > '))}</h1>
 </body>
 </html>`;
 }
