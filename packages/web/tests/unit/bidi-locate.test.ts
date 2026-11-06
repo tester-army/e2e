@@ -16,7 +16,7 @@ function raw(fields: Partial<RawNodeData>): RawNodeData {
   return {
     role: null, name: null, labels: null, text: null, value: null, selection: null, inputPurpose: 'none',
     states: { checked: null, disabled: false, selected: null, expanded: null, pressed: null, focused: false, hidden: false, secure: false },
-    level: null, attributes: {}, testId: null, rect: { x: 0, y: 0, width: 10, height: 10 },
+    level: null, attributes: {}, testId: null, rect: { x: 0, y: 0, width: 10, height: 10 }, origin: null,
     ...fields,
   };
 }

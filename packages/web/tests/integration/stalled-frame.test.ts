@@ -4,98 +4,77 @@
  * that navigation to commit.
  */
 
-import type { Browser, BrowserContext, Page, Route } from 'playwright-core';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import type { OperationContext } from 'e2e/engine';
-import { BrowserConnection } from '../../src/browser-connection.ts';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
-import { captureObservation } from '../../src/observation-capture.ts';
-import { capturePixels } from '../../src/observe.ts';
-import { RefRegistry } from '../../src/refs.ts';
-import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { WebRoute } from '../../src/browser.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
-const connection = new BrowserConnection();
-let app: FixtureApp;
-let context: BrowserContext;
-let opened: Page | undefined;
-const held: Route[] = [];
-
-const operation: OperationContext = {
-  signal: new AbortController().signal,
-  timeoutMs: 5_000,
-  runId: 'run',
-  attemptId: 'attempt',
-  origin: 'agent',
-};
+let session: WebSession;
+const held: { route: WebRoute; release: () => void }[] = [];
 
 beforeAll(async () => {
-  app = await startFixtureApp();
-  const browser: Browser = await connection.acquire('chromium', false, 30_000);
-  context = await browser.newContext({ viewport: { width: 320, height: 200 } });
-  await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+  session = await startWebSession({ web: { viewport: { width: 320, height: 200 } }, startAttempt: false });
+  session.serve('/', '<!doctype html><title>Host</title><h1>Host</h1>');
+});
+
+beforeEach(async () => {
+  await session.startAttempt();
 });
 
 afterEach(async () => {
-  await opened?.close();
-  await Promise.all(held.splice(0).map((route) => route.abort().catch(() => undefined)));
+  for (const { route, release } of held.splice(0)) {
+    await route.abort().catch(() => undefined);
+    release();
+  }
+  await session.endAttempt();
 });
 
 afterAll(async () => {
-  await context?.close();
-  await connection.dispose();
-  await app?.close();
+  await session.close();
 });
 
 /** Opens a page holding an iframe whose request for `/held.html` never gets an answer. */
-async function pageWithHeldFrame(attributes = ''): Promise<Page> {
-  const page = await context.newPage();
-  opened = page;
+async function pageWithHeldFrame(attributes = ''): Promise<void> {
   let routed!: () => void;
   const routeReady = new Promise<void>((resolve) => (routed = resolve));
-  await page.route('**/held.html', (route) => {
-    held.push(route);
+  await session.browser.route('**/held.html', (route) => new Promise<void>((release) => {
+    held.push({ route, release });
     routed();
-  });
-  await page.goto(app.url);
-  await page.evaluate((extra) => {
+  }));
+  await session.open(`${session.origin}/`);
+  await session.browser.evaluate((extra: string) => {
     document.body.insertAdjacentHTML('beforeend', `<iframe ${extra} src="/held.html"></iframe>`);
+    return null;
   }, attributes);
   await routeReady;
-  expect(page.frames().map((frame) => frame.url())).toEqual([`${app.url}/`, '']);
-  return page;
 }
 
+/** One agent observation with pixels. */
+const observeWithPixels = () => session.engine.observe!({ ...session.op(5_000), origin: 'agent' }, { pixels: true });
+
 describe('a frame whose navigation is held', () => {
-  it('leaves the observation whole and its pixels proven masked', async () => {
-    const page = await pageWithHeldFrame();
-
-    const { snapshot } = await captureObservation(page, new RefRegistry(), { testIdAttribute: 'data-testid', site: app.url }, operation, { pixels: true });
-
+  it('leaves the observation whole and its pixels masked', async () => {
+    await pageWithHeldFrame();
+    const snapshot = await observeWithPixels();
     expect(snapshot.pixels?.width).toBe(320);
     expect(snapshot.truncated).toBeUndefined();
     expect(snapshot.maskedRegionCount).toBe(0);
-    const pixels = await capturePixels(page, operation, { width: 320, height: 200 });
-    expect(pixels.maskingProven).toBe(true);
   });
 
   it('masks a secure field the parent wrote into the initial document', async () => {
-    const page = await pageWithHeldFrame();
-    await page.evaluate(() => {
+    await pageWithHeldFrame();
+    await session.browser.evaluate(() => {
       document.querySelector('iframe')!.contentDocument!.body.innerHTML = '<input type="password" value="hunter2">';
+      return null;
     });
-
-    const pixels = await capturePixels(page, operation, { width: 320, height: 200 });
-
-    expect(pixels.maskedRegionCount).toBe(1);
-    expect(pixels.maskingProven).toBe(true);
+    const snapshot = await observeWithPixels();
+    expect(snapshot.pixels).toBeDefined();
+    expect(snapshot.maskedRegionCount).toBe(1);
   });
 
   it('captures past a sandboxed frame no script can reach', async () => {
-    const page = await pageWithHeldFrame('sandbox');
-
-    const pixels = await capturePixels(page, operation, { width: 320, height: 200 });
-
-    expect(pixels.maskedRegionCount).toBe(0);
-    expect(pixels.maskingProven).toBe(true);
+    await pageWithHeldFrame('sandbox');
+    const snapshot = await observeWithPixels();
+    expect(snapshot.pixels).toBeDefined();
+    expect(snapshot.maskedRegionCount).toBe(0);
   });
 });

@@ -6,16 +6,14 @@
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
-import type { EngineCleanupContext, EngineFixtureContext, OperationContext } from 'e2e/engine';
-import { createBrowserFixture, type Browser } from '../../src/browser.ts';
-import { PlaywrightSurface, type WebOptions } from '../../src/surface.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+import type { EngineCleanupContext, EngineHandle } from 'e2e/engine';
+import type { Browser } from '../../src/browser.ts';
+import { web, type WebOptions } from '../../src/index.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 declare global {
   interface Window {
@@ -32,51 +30,35 @@ const PAGES: Record<string, string> = {
 
 const signal = new AbortController().signal;
 const cleanup = (): EngineCleanupContext => ({ signal, timeoutMs: 30_000 });
-const operation = (): OperationContext => ({ signal, timeoutMs: 30_000, runId: 'init-scripts', attemptId: 'a', origin: 'test' });
 
 describe('init scripts', () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-init-scripts-'));
-  let server: Server;
-  let url: string;
 
   beforeAll(async () => {
     writeFileSync(path.join(projectRoot, 'from-file.js'), "(window.trail ??= []).push('file');\n");
-    server = createServer((request, response) => {
-      const body = PAGES[request.url ?? ''];
-      response.writeHead(body === undefined ? 404 : 200, { 'content-type': 'text/html' });
-      response.end(body ?? 'not found');
-    });
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   });
 
   afterAll(async () => {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
-  /** Boots one worker of a surface with `options` and runs `body` in one attempt with its `browser` fixture. */
-  async function attempt(options: WebOptions, body: (browser: Browser, surface: PlaywrightSurface) => Promise<void>): Promise<void> {
-    const surface = new PlaywrightSurface(options);
-    const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-init-scripts-artifacts-'));
+  /** Boots one worker with `options` and runs `body` in one attempt with its `browser` fixture. */
+  async function attempt(options: WebOptions, body: (browser: Browser, session: WebSession) => Promise<void>): Promise<void> {
+    const session = await startWebSession({ web: options, projectRoot });
     try {
-      await surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-        env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
-      await surface.startAttempt({ attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
-      const browser = createBrowserFixture(surface, {
-        operation,
-        app: { resolveUrl: (target: string) => new URL(target, url).href },
-        timeouts: { test: 30_000, assertion: 5_000 },
-        expectable: (target: object) => target,
-        fixture: (_name: string, target: object) => target,
-      } as unknown as EngineFixtureContext);
-      await body(browser, surface);
+      for (const [pathname, html] of Object.entries(PAGES)) session.serve(pathname, html);
+      await body(session.browser, session);
     } finally {
-      await surface.endAttempt(cleanup()).catch(() => undefined);
-      await surface.dispose(cleanup());
-      rmSync(artifactsDir, { recursive: true, force: true });
+      await session.close();
     }
   }
+
+  /** What the page's frame, or the tab `window.open` returned, saw at boot, read from the top document. */
+  const seenAtBootOf = (browser: Browser, target: 'frame' | 'tab') => browser.evaluate(async (where: string) => {
+    const view = where === 'frame' ? document.querySelector('iframe')!.contentWindow! : Reflect.get(window, 'tab') as Window;
+    while (view.document.readyState !== 'complete' || view.location.href === 'about:blank') await new Promise((resolve) => setTimeout(resolve, 20));
+    return (view as Window & { seenAtBoot?: string[] }).seenAtBoot ?? null;
+  }, target);
 
   const seenAtBoot = (browser: Browser) => browser.evaluate(() => window.seenAtBoot ?? null);
 
@@ -87,28 +69,23 @@ describe('init scripts', () => {
       () => { (window.trail ??= []).push('function'); },
       { method() { (window.trail ??= []).push('method'); } }.method,
     ];
-    await attempt({ initScripts }, async (browser, surface) => {
+    await attempt({ initScripts }, async (browser, session) => {
       const expected = ['source', 'file', 'function', 'method'];
       await browser.goto('/framed');
       expect(await seenAtBoot(browser)).toEqual(expected);
-      const frame = surface.requirePage().frames()[1]!;
-      await frame.waitForLoadState();
-      expect(await frame.evaluate(() => window.seenAtBoot)).toEqual(expected);
+      expect(await seenAtBootOf(browser, 'frame')).toEqual(expected);
 
-      const opened = surface.requireContext().waitForEvent('page');
-      await browser.evaluate((target) => { window.open(target); return null; }, `${url}/`);
-      const tab = await opened;
-      await tab.waitForLoadState();
-      expect(await tab.evaluate(() => window.seenAtBoot)).toEqual(expected);
+      await browser.evaluate((target: string) => { Reflect.set(window, 'tab', window.open(target)); return null; }, `${session.origin}/`);
+      expect(await seenAtBootOf(browser, 'tab')).toEqual(expected);
 
-      await surface.reset(operation());
+      await session.engine.session!.reset!(session.op());
       await browser.goto('/');
       expect(await seenAtBoot(browser)).toEqual(expected);
     });
   });
 
   it('adds a test script after the configured ones, from the next document on, for the rest of the attempt', async () => {
-    await attempt({ initScripts: ["(window.trail ??= []).push('config');"] }, async (browser, surface) => {
+    await attempt({ initScripts: ["(window.trail ??= []).push('config');"] }, async (browser, session) => {
       await browser.goto('/');
       await browser.addInitScript((wallet) => { (window.trail ??= []).push(`wallet:${wallet.address}`); }, { address: '0xabc' });
       expect(await seenAtBoot(browser)).toEqual(['config']);
@@ -120,7 +97,7 @@ describe('init scripts', () => {
         (window.trail ??= []).push(`own __proto__:${String(Object.hasOwn(value, '__proto__'))}`);
       }, arg);
       await browser.addInitScript({ path: 'from-file.js' });
-      await surface.reset(operation());
+      await session.engine.session!.reset!(session.op());
       await browser.goto('/');
       expect(await seenAtBoot(browser)).toEqual(['config', 'wallet:0xabc', 'own __proto__:true', 'file']);
     });
@@ -142,14 +119,14 @@ describe('init scripts', () => {
   });
 
   it('fails the run, and a worker, with INVALID_CONFIG when a configured file cannot be read', async () => {
-    const surface = new PlaywrightSurface({ initScripts: [{ path: 'nope.js' }] });
-    await expect(surface.prepare({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, slots: 1, env: {},
+    const surface: EngineHandle = web({ initScripts: [{ path: 'nope.js' }] });
+    await expect(surface.prepare!({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, slots: 1, env: {},
       signal, headed: false, log: () => undefined })).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringMatching(/nope\.js \(ENOENT\)/) });
-    await expect(surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, env: {}, headed: false,
+    await expect(surface.init!({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, env: {}, headed: false,
       workerSlot: 0, signal, log: () => undefined })).rejects.toMatchObject({
       code: 'INVALID_CONFIG',
       message: expect.stringMatching(/web\(\{ initScripts \}\)\[0\] path cannot be read: .*nope\.js \(ENOENT\)/),
     });
-    await surface.dispose(cleanup());
+    await surface.dispose!(cleanup());
   });
 });

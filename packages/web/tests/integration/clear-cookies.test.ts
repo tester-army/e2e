@@ -4,56 +4,26 @@
  * clears every cookie, HttpOnly ones included, and page storage stays.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
-import type { EngineFixtureContext } from 'e2e/engine';
-import { PlaywrightSurface } from '../../src/surface.ts';
-import { createBrowserFixture, type Browser, type CookieFilter } from '../../src/browser.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
-
-/** Answers every path with an empty page. */
-function startServer(): Promise<{ server: Server; port: number }> {
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { 'content-type': 'text/html' });
-    response.end('<!doctype html><title>Cookies</title>');
-  });
-  return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve({ server, port: (server.address() as AddressInfo).port }));
-  });
-}
+import type { Browser, CookieFilter } from '../../src/browser.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 describe('browser.clearCookies', () => {
-  const surface = new PlaywrightSurface({});
-  const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-clear-cookies-'));
-  const signal = new AbortController().signal;
-  let server: Server;
+  let session: WebSession;
   let origin: string;
-  let page: Page;
   let browser: Browser;
+  const page = { evaluate: <T,>(fn: () => T) => browser.evaluate(fn as never) as Promise<T> };
 
   beforeAll(async () => {
-    const started = await startServer();
-    server = started.server;
-    origin = `http://127.0.0.1:${started.port}`;
-    await surface.init({ runId: 'cookies', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-      env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+    session = await startWebSession({ startAttempt: false });
+    origin = session.origin;
+    session.serve('/', '<!doctype html><title>Cookies</title>');
   });
 
   beforeEach(async () => {
-    await surface.startAttempt({ attemptId: 'cookies', artifactsDir: projectRoot, signal, resolveSecret: noSecrets, ...ignoreTrace });
-    page = await surface.ensurePage();
-    await page.goto(`${origin}/`);
-    browser = createBrowserFixture(surface, {
-      app: { site: '127.0.0.1', resolveUrl: (url: string) => new URL(url, `${origin}/`).href },
-      operation: (timeoutMs = 5_000) => ({ signal, timeoutMs, runId: 'cookies', attemptId: 'cookies', origin: 'test' }),
-      expectable: (target: object) => target,
-      fixture: (_name: string, target: object) => target,
-    } as unknown as EngineFixtureContext);
+    await session.startAttempt();
+    await session.open(`${origin}/`);
+    browser = session.browser;
     await browser.setCookies([
       { name: 'session', value: 'root', domain: '127.0.0.1', path: '/', httpOnly: true },
       { name: 'session', value: 'admin', domain: '127.0.0.1', path: '/admin', httpOnly: true },
@@ -63,13 +33,11 @@ describe('browser.clearCookies', () => {
   });
 
   afterEach(async () => {
-    await surface.endAttempt({ signal, timeoutMs: 5_000 });
+    await session.endAttempt();
   });
 
   afterAll(async () => {
-    await surface.dispose({ signal, timeoutMs: 5_000 });
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(projectRoot, { recursive: true, force: true });
+    await session.close();
   });
 
   /** The remaining cookies as sorted `name=value` pairs. */
@@ -90,6 +58,7 @@ describe('browser.clearCookies', () => {
     await page.evaluate(() => {
       localStorage.setItem('preference', 'kept');
       sessionStorage.setItem('tab', 'kept');
+      return null;
     });
     await browser.clearCookies();
     expect(await remaining()).toEqual([]);
@@ -98,8 +67,10 @@ describe('browser.clearCookies', () => {
 
   it('refuses an unknown filter and a value that is not a string or RegExp, clearing nothing', async () => {
     const refused = expect.objectContaining({ code: 'INVALID_ARGUMENT' });
-    expect(() => browser.clearCookies({ url: origin } as unknown as CookieFilter)).toThrow(refused);
-    expect(() => browser.clearCookies({ name: 1 } as unknown as CookieFilter)).toThrow(refused);
+    // The harness records each fixture call as a step, so a refusal thrown before the call's promise is a rejection all the same.
+    const clear = (filter: unknown) => Promise.resolve().then(() => browser.clearCookies(filter as CookieFilter));
+    await expect(clear({ url: origin })).rejects.toThrow(refused);
+    await expect(clear({ name: 1 })).rejects.toThrow(refused);
     expect(await remaining()).toHaveLength(4);
   });
 });

@@ -7,14 +7,9 @@
  * hovering it sees, though the browser names it by the glyph.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { EngineCleanupContext, EngineHandle, LocatorExpression, OperationContext, SemanticNode } from 'e2e/engine';
-import { surfaceOf, web } from '../../src/index.ts';
-import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+import type { LocatorExpression, SemanticNode } from 'e2e/engine';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 const PAGE = `
   <style>
@@ -32,14 +27,6 @@ const PAGE = `
   <label><i class="glyph"></i> Phone <input></label>
   <h2 data-testid="don't">Don't "quote" a &gt;&gt; b</h2>
 `;
-
-function cleanup(): EngineCleanupContext {
-  return { signal: new AbortController().signal, timeoutMs: 30_000 };
-}
-
-function operation(): OperationContext {
-  return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-glyphs', attemptId: 'glyphs-1', origin: 'test' };
-}
 
 /** A role query, with a string name when one is given. */
 function byRole(role: string, name?: string, exact = true): LocatorExpression {
@@ -60,34 +47,20 @@ function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
 }
 
 describe('names with CSS generated content', () => {
-  let app: FixtureApp;
-  let artifactsDir: string;
-  const engine: EngineHandle = web();
-  const op = operation();
-  const names = (expression: LocatorExpression) => engine.locate!(expression, op).then((nodes) => nodes.map((node) => node.name));
+  let page: WebSession;
+  const names = (expression: LocatorExpression) => page.locate(expression).then((nodes) => nodes.map((node) => node.name));
 
   beforeAll(async () => {
-    app = await startFixtureApp();
-    artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-glyphs-'));
-    await engine.init!({
-      runId: 'run-glyphs', targetName: 'web', projectRoot: process.cwd(),
-      app: { site: new URL(app.url).hostname }, env: {}, headed: false,
-      workerSlot: 0, log: () => undefined, signal: new AbortController().signal,
-    });
-    await engine.startAttempt!({ attemptId: 'glyphs-1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
-    await engine.session!.open!(`${app.url}/login`, op);
-    await surfaceOf(engine)!.page().setContent(PAGE);
+    page = await startWebSession();
+    await page.setContent(PAGE);
   });
 
   afterAll(async () => {
-    await engine.endAttempt!(cleanup());
-    await engine.dispose!(cleanup());
-    await app.close();
-    rmSync(artifactsDir, { recursive: true, force: true });
+    await page.close();
   });
 
   it('reads generated text into a name, reads icon glyphs as spaces, and names a glyph-only link by its title or not at all', async () => {
-    const snapshot = await engine.observe!(op);
+    const snapshot = await page.observe();
     const read = flatten(snapshot.root).filter((node) => node.role === 'button' || node.role === 'link').map((node) => [node.role, node.name]);
     expect(read).toEqual([
       ['button', '→ Next'],

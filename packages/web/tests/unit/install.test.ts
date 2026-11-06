@@ -1,12 +1,9 @@
-import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { browserCheck, ensureBrowsersInstalled, installArgs } from '../../src/install.ts';
-import type { BrowserName } from '../../src/browser-connection.ts';
+import { browserCheck, browserExecutable, ensureBrowsersInstalled } from '../../src/install.ts';
+import type { BrowserName } from '../../src/browser-names.ts';
 
 describe('browserCheck', () => {
   const firstRun = [
@@ -69,14 +66,14 @@ describe('ensureBrowsersInstalled', () => {
       },
     });
     expect(logs).toEqual([
-      'Downloading missing Playwright browsers (first run): chromium...',
+      'Downloading missing browsers (first run): chromium...',
       '|■■■■    |  50% of 171 MiB',
       'Browser download complete.',
     ]);
   });
 
   it('installs against the run environment, not the process environment', async () => {
-    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/run-specific/browsers' };
+    const env = { ...process.env, E2E_BROWSERS_PATH: '/run-specific/browsers' };
     const contexts: { env: NodeJS.ProcessEnv }[] = [];
     await ensureBrowsersInstalled(['chromium'], {
       log: () => {},
@@ -87,65 +84,7 @@ describe('ensureBrowsersInstalled', () => {
       },
     });
     expect(contexts).toHaveLength(1);
-    expect(contexts[0]?.env['PLAYWRIGHT_BROWSERS_PATH']).toBe('/run-specific/browsers');
-  });
-
-  it('defers to the installer when the run points at another browser cache', async () => {
-    // The default detection cannot see a cache this process was not started
-    // with, so it declines a verdict: the CLI runs with the run's environment
-    // and is a no-op when the cache is already complete, and the headline is
-    // not printed because nothing is known to be missing.
-    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/elsewhere/browsers' };
-    const installed: BrowserName[][] = [];
-    const logs: string[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: (line) => logs.push(line),
-      env,
-      install: async (names, context) => {
-        installed.push([...names]);
-        expect(context.env['PLAYWRIGHT_BROWSERS_PATH']).toBe('/elsewhere/browsers');
-      },
-    });
-    expect(installed).toEqual([['chromium']]);
-    expect(logs).toEqual([]);
-  });
-
-  it('does not collect the browsers the declared cache holds', async () => {
-    // The run spawns the install with the cache it was pointed at, and that
-    // command removes every revision no installed Playwright declares. Those
-    // revisions belong to the other tools sharing that cache.
-    const contexts: { env: NodeJS.ProcessEnv }[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: () => {},
-      isInstalled: () => false,
-      install: async (_names, context) => {
-        contexts.push({ env: context.env });
-      },
-    });
-    expect(contexts[0]?.env['PLAYWRIGHT_SKIP_BROWSER_GC']).toBe('1');
-  });
-
-  it('keeps a browser collection the caller asked for', async () => {
-    const contexts: { env: NodeJS.ProcessEnv }[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: () => {},
-      isInstalled: () => false,
-      env: { ...process.env, PLAYWRIGHT_SKIP_BROWSER_GC: '0' },
-      install: async (_names, context) => {
-        contexts.push({ env: context.env });
-      },
-    });
-    expect(contexts[0]?.env['PLAYWRIGHT_SKIP_BROWSER_GC']).toBe('0');
-  });
-
-  it('asks for the shell only on a headless chromium run', () => {
-    // The assertion the install runs on: a headless chromium run launches the
-    // shell, so `--only-shell` keeps the full build out of its download. A headed
-    // run launches the full build, and so does a browser that has no shell.
-    expect(installArgs(['chromium'], false)).toEqual(['--only-shell', 'chromium']);
-    expect(installArgs(['chromium'], true)).toEqual(['chromium']);
-    expect(installArgs(['firefox'], false)).toEqual(['firefox']);
-    expect(installArgs(['chromium', 'firefox'], false)).toEqual(['--only-shell', 'chromium', 'firefox']);
+    expect(contexts[0]?.env['E2E_BROWSERS_PATH']).toBe('/run-specific/browsers');
   });
 
   it('passes the run mode to the installer', async () => {
@@ -161,108 +100,66 @@ describe('ensureBrowsersInstalled', () => {
     expect(contexts[0]?.headed).toBe(true);
   });
 
-  // The bug lived in the built-in detection, so it is exercised against a real
-  // browser cache rather than an injected verdict. Playwright resolves its cache
-  // when it is first loaded and this file has already loaded it, so the real
-  // function runs in a child process started with the environment set up here.
+  // The detection reads the run's own cache, so each case lays out a cache
+  // of its own and points the run's environment at it.
   describe('the built-in detection', () => {
-    // The revision the installed Playwright declares: the reported executable
-    // names it, and a cache under another revision is not the one a run reads.
-    const reported = chromium.executablePath();
-    const revision = reported.slice(reported.lastIndexOf('chromium-') + 'chromium-'.length).split(path.sep)[0] ?? '';
-    // The child runs the built package, the same one a user gets, so the check it
-    // exercises is the one that ships.
-    const built = createRequire(import.meta.url).resolve('../../dist/install.js');
-    const packageDir = path.dirname(createRequire(import.meta.url).resolve('playwright-core/package.json'));
     let cache = '';
-    let previous: string | undefined;
 
-    /** Runs the built-in check in a process that loaded Playwright with this cache; true when nothing would install. */
-    const verdict = (headed: boolean): boolean => {
-      const probe = path.join(cache, 'probe.mjs');
-      writeFileSync(
-        probe,
-        `import { ensureBrowsersInstalled } from ${JSON.stringify(built)};
-let value = true;
-const logs = [];
-await ensureBrowsersInstalled(['chromium'], {
-  headed: ${String(headed)},
-  log: (line) => logs.push(line),
-  install: async () => { value = logs.length > 0 ? false : undefined; },
-});
-console.log(String(value));
-`,
-      );
-      const child = spawnSync(process.execPath, [probe], {
-        encoding: 'utf8',
-        cwd: path.dirname(path.dirname(packageDir)),
-        env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: cache },
+    /** True when nothing would install for a run in this mode against the laid-out cache. */
+    const verdict = async (headed: boolean): Promise<boolean> => {
+      let value = true;
+      const logs: string[] = [];
+      await ensureBrowsersInstalled(['chromium'], {
+        headed,
+        env: { ...process.env, E2E_BROWSERS_PATH: cache },
+        log: (line) => logs.push(line),
+        install: async () => { value = false; },
       });
-      if (child.status !== 0) throw new Error(`the detection probe failed: ${child.stderr}`);
-      expect(child.stdout.trim()).not.toBe('undefined');
-      return child.stdout.trim() === 'true';
+      expect(value).toBe(logs.length === 0);
+      return value;
     };
 
-    // This platform's paths inside each build's directory, e.g. `chrome-linux64/chrome`
-    // and `chrome-headless-shell-linux64/chrome-headless-shell`.
-    const buildDir = `${path.sep}chromium-${revision}${path.sep}`;
-    const fullRelative = reported.slice(reported.lastIndexOf(buildDir) + buildDir.length);
-    const platformDir = fullRelative.split(path.sep)[0] ?? '';
-    const shellRelative = path.join(
-      platformDir.replace(/^chrome-/, 'chrome-headless-shell-'),
-      process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell',
-    );
-
-    /** Lays out the builds named, each with its completion marker. */
-    const lay = (...builds: readonly ('shell' | 'full')[]): void => {
+    /** Lays out the chromium builds named: the headless shell, the full browser, or both. */
+    const lay = async (...builds: readonly ('shell' | 'full')[]): Promise<void> => {
       for (const build of builds) {
-        const dir = build === 'shell' ? `chromium_headless_shell-${revision}` : `chromium-${revision}`;
-        const exe = path.join(cache, dir, build === 'shell' ? shellRelative : fullRelative);
-        mkdirSync(path.dirname(exe), { recursive: true });
-        writeFileSync(exe, '');
-        writeFileSync(path.join(cache, dir, 'INSTALLATION_COMPLETE'), '');
+        const executable = await browserExecutable('chromium', build === 'full', { E2E_BROWSERS_PATH: cache });
+        mkdirSync(path.dirname(executable), { recursive: true });
+        writeFileSync(executable, '');
       }
     };
 
     beforeEach(() => {
       cache = mkdtempSync(path.join(tmpdir(), 'e2e-browsers-'));
-      previous = process.env['PLAYWRIGHT_BROWSERS_PATH'];
     });
 
     afterEach(() => {
-      if (previous === undefined) delete process.env['PLAYWRIGHT_BROWSERS_PATH'];
-      else process.env['PLAYWRIGHT_BROWSERS_PATH'] = previous;
       rmSync(cache, { recursive: true, force: true });
     });
 
-    it('reads a shell-only cache as installed for a headless run', () => {
-      // The full build executablePath() names is absent, which is what a run with
-      // only the shell installed looks like.
-      lay('shell');
-      expect(verdict(false)).toBe(true);
+    it('reads a shell-only cache as installed for a headless run', async () => {
+      await lay('shell');
+      expect(await verdict(false)).toBe(true);
     });
 
-    it('reads a shell-only cache as missing for a headed run', () => {
+    it('reads a shell-only cache as missing for a headed run', async () => {
       // A headed run launches the full build, and the shell is not that build.
-      lay('shell');
-      expect(verdict(true)).toBe(false);
+      await lay('shell');
+      expect(await verdict(true)).toBe(false);
     });
 
-    it('reads a full-build-only cache as installed for a headed run', () => {
-      lay('full');
-      expect(verdict(true)).toBe(true);
+    it('reads a full-build-only cache as installed for a headed run', async () => {
+      await lay('full');
+      expect(await verdict(true)).toBe(true);
     });
 
-    it('reads a full-build-only cache as missing for a headless run', () => {
-      // `playwright install --no-shell` leaves exactly this, and the headless
-      // launch would then fail on the shell it never got.
-      lay('full');
-      expect(verdict(false)).toBe(false);
+    it('reads a full-build-only cache as missing for a headless run', async () => {
+      await lay('full');
+      expect(await verdict(false)).toBe(false);
     });
 
-    it('reads an empty cache as missing either way', () => {
-      expect(verdict(false)).toBe(false);
-      expect(verdict(true)).toBe(false);
+    it('reads an empty cache as missing either way', async () => {
+      expect(await verdict(false)).toBe(false);
+      expect(await verdict(true)).toBe(false);
     });
   });
 });
