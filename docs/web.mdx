@@ -255,6 +255,11 @@ link is also listed as a control. The agent reads the first 512 characters
 of each block of text. In a longer block, e2e also lists its links and
 emphasized text on their own.
 
+Elements with no size are left out, except a checkbox or radio that a
+component library shrinks to no size under its own label, as Element Plus
+does. The agent sees that control with its checked state, and a tap on it
+clicks the label.
+
 ### Scoping a test to one size
 
 `platforms` and `requires` can't select a viewport, because every browser
