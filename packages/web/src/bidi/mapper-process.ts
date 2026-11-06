@@ -23,11 +23,85 @@ function isCloseRace(reason: unknown): boolean {
   return reason instanceof Error && reason.constructor.name === 'CloseError' && reason.message.startsWith('Target.setAutoAttach ');
 }
 
+/**
+ * `DisposableStack`, which the mapper constructs and Node 22 lacks (it ships
+ * from Node 24): a stack of cleanups run in reverse on `dispose`, once. Only
+ * what the explicit resource management proposal defines for the sync stack,
+ * installed only where the runtime has none.
+ */
+function installDisposableStack(): void {
+  if ('DisposableStack' in globalThis) return;
+  const dispose = Symbol.dispose ?? Symbol.for('Symbol.dispose');
+  class DisposableStackPolyfill {
+    #disposed = false;
+    #cleanups: (() => void)[] = [];
+
+    get disposed(): boolean {
+      return this.#disposed;
+    }
+
+    #open(): void {
+      if (this.#disposed) throw new ReferenceError('DisposableStack already disposed');
+    }
+
+    use<T>(value: T): T {
+      this.#open();
+      if (value !== null && value !== undefined) {
+        const method = (value as Record<symbol, unknown>)[dispose];
+        if (typeof method !== 'function') throw new TypeError('value is not disposable');
+        this.#cleanups.push(() => method.call(value));
+      }
+      return value;
+    }
+
+    adopt<T>(value: T, onDispose: (value: T) => void): T {
+      this.#open();
+      this.#cleanups.push(() => onDispose(value));
+      return value;
+    }
+
+    defer(onDispose: () => void): void {
+      this.#open();
+      this.#cleanups.push(onDispose);
+    }
+
+    move(): DisposableStackPolyfill {
+      this.#open();
+      const moved = new DisposableStackPolyfill();
+      moved.#cleanups = this.#cleanups;
+      this.#cleanups = [];
+      this.#disposed = true;
+      return moved;
+    }
+
+    dispose(): void {
+      if (this.#disposed) return;
+      this.#disposed = true;
+      const errors: unknown[] = [];
+      for (const cleanup of this.#cleanups.reverse()) {
+        try {
+          cleanup();
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      this.#cleanups = [];
+      if (errors.length > 0) throw errors.length === 1 ? errors[0] : new AggregateError(errors, 'DisposableStack cleanups failed');
+    }
+
+    [Symbol.dispose](): void {
+      this.dispose();
+    }
+  }
+  Object.defineProperty(globalThis, 'DisposableStack', { value: DisposableStackPolyfill, writable: true, configurable: true });
+}
+
 /** First line on stdout once the mapper serves, so the parent knows when to send. */
 export const MAPPER_READY = '{"e2e":"ready"}';
 
 /** Loads the mapper (here, so the driver importing `MAPPER_READY` never does), then serves the CDP URL the first stdin line names until the parent or the browser goes away. */
 async function serve(): Promise<void> {
+  installDisposableStack();
   process.on('unhandledRejection', (reason) => {
     if (isCloseRace(reason)) return;
     process.stderr.write(`chromium-bidi: ${reason instanceof Error ? (reason.stack ?? reason.message) : String(reason)}\n`);
