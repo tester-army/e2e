@@ -146,6 +146,7 @@ export class BidiSurface {
       projectRoot: info.projectRoot,
       permissions: Object.keys(info.app.permissions ?? {}),
       remoteFiles: this.options.leases !== undefined,
+      defaultUserContext: this.perAttempt,
       holdRequests: headers !== undefined,
       siteHeaders: (url) => siteHeadersFor(url, site, headers),
     };

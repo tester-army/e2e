@@ -53,6 +53,8 @@ export interface SessionSettings {
   readonly permissions: readonly string[];
   /** Whether the browser runs on another machine (a provider's lease), whose filesystem local paths do not reach. */
   readonly remoteFiles: boolean;
+  /** Runs the attempt in the browser's default user context, which a fresh per-attempt lease prepared, instead of a new one. */
+  readonly defaultUserContext: boolean;
   /** Whether every request is held for the configured site headers, and service workers blocked. */
   readonly holdRequests: boolean;
   readonly siteHeaders: (url: string) => Readonly<Record<string, string>> | undefined;
@@ -71,6 +73,9 @@ export interface AttemptSettings {
   /** The provider that serves downloads off a remote browser's disk; undefined for a local browser. */
   readonly remoteDownloads?: LeaseDownloads | undefined;
 }
+
+/** The browser's own user context, which a lease's `prepare` signed in and which outlives every attempt. */
+const DEFAULT_USER_CONTEXT = 'default';
 
 /** The user context and parent of each browsing context, as the session's events report them. */
 export class ContextOwners {
@@ -249,8 +254,8 @@ export class BidiSession {
    */
   async openUserContext(): Promise<void> {
     const connection = this.connection;
-    const { userContext } = await connection.send('browser.createUserContext', {});
-    if (this.closed) {
+    const { userContext } = this.settings.defaultUserContext ? { userContext: DEFAULT_USER_CONTEXT } : await connection.send('browser.createUserContext', {});
+    if (this.closed && userContext !== DEFAULT_USER_CONTEXT) {
       await connection.send('browser.removeUserContext', { userContext });
       throw cancelled('the attempt closed while its user context opened');
     }
@@ -296,7 +301,8 @@ export class BidiSession {
     await this.video?.contextClosing();
     const userContext = this.userContext;
     this.userContext = '';
-    if (userContext !== '') this.unremoved.add(userContext);
+    if (userContext === DEFAULT_USER_CONTEXT && this.context !== undefined) await releaseQuietly(this.connection.send('browsingContext.close', { context: this.context }));
+    else if (userContext !== '') this.unremoved.add(userContext);
     try {
       await this.removeUserContexts();
     } finally {

@@ -80,6 +80,8 @@ export function web(options: WebOptions = {}): EngineHandle {
       'web({ connect: { reconnectEndpoint } }) is not supported: a dropped CDP transport is not recovered mid-attempt; the next attempt attaches again through cdpEndpoint',
     );
   }
+  // A per-attempt lease runs in its browser's default context, which its `prepare` may have signed in.
+  const perAttempt = provider?.scope === 'attempt';
   const surface = new BidiSurface({
     browser,
     viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
@@ -129,17 +131,21 @@ export function web(options: WebOptions = {}): EngineHandle {
       back: (operation) => surface.back(operation),
       resize: (size, operation) => surface.resize(size, operation),
       restart: (operation) => surface.restart(operation),
-      reset: (operation) => surface.reset(operation),
+      reset: perAttempt ? () => Promise.reject(defaultContextLimit('app.clearState()', provider.name)) : (operation) => surface.reset(operation),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
-    state: {
-      capture: (operation) => surface.captureState(operation),
-      restore: (state, operation) => surface.restoreState(state, operation),
-    },
+    ...(perAttempt
+      ? {}
+      : {
+          state: {
+            capture: (operation) => surface.captureState(operation),
+            restore: (state, operation) => surface.restoreState(state, operation),
+          },
+        }),
     fixtures: {
       browser: (context) => createBidiBrowserFixture(surface, context),
     },
@@ -162,6 +168,17 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   reducedMotion: true,
   initScripts: true,
 } satisfies Record<keyof WebOptions, true>);
+
+/**
+ * What a per-attempt lease rules out, named with its cause: `what` replaces
+ * the browser context, and the attempt rides the leased browser's own one.
+ */
+function defaultContextLimit(what: string, provider: string): ConfigurationError {
+  return new ConfigurationError(
+    'UNSUPPORTED_CAPABILITY',
+    `${what} is unavailable with browser provider "${provider}" with scope "attempt": it replaces the browser context, and the attempt rides the leased browser's own; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test`,
+  );
+}
 
 /** True for a plain object; the shape both options take. Config runs as JavaScript, so the types alone are no guard. */
 function isRecord(value: unknown): value is Record<string, unknown> {
