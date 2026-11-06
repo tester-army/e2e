@@ -86,7 +86,7 @@ export interface WebSession {
 }
 
 /** Every node under `node`, depth first, `node` first. */
-export function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
+function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
   out.push(node);
   for (const child of node.children ?? []) flatten(child, out);
   return out;

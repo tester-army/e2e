@@ -174,12 +174,13 @@ describe('web({ browser: provider })', () => {
     expect(() => web({ browser: provider().impl, connect: { cdpEndpoint: () => 'ws://x' } })).toThrow(/two browser sources/);
   });
 
-  it('refuses an attempt-scoped provider, naming the scope that works', () => {
-    expect(() => web({ browser: provider({ scope: 'attempt' }).impl })).toThrow(expect.objectContaining({
-      code: 'INVALID_CONFIG',
-      message: expect.stringMatching(/browser provider "toy-cloud" with scope "attempt".*use connect\.cdpEndpoint or scope "worker"/),
-    }));
-    expect(() => web({ browser: provider().impl, headers: { 'x-preview': 'synthetic' } })).not.toThrow();
+  it('rides an attempt-scoped lease\'s own context: no saved sessions, and clearState names why', async () => {
+    const perAttempt = web({ browser: provider({ scope: 'attempt' }).impl, headers: { 'x-preview': 'synthetic' } });
+    expect(perAttempt.state).toBeUndefined();
+    await expect(perAttempt.session!.reset!({} as never)).rejects.toMatchObject({
+      code: 'UNSUPPORTED_CAPABILITY',
+      message: expect.stringMatching(/app\.clearState\(\) is unavailable with browser provider "toy-cloud" with scope "attempt"/),
+    });
   });
 
   it('declares context replacement and a finish hook for worker scope', () => {

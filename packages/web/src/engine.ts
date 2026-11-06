@@ -77,7 +77,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.connect?.reconnectEndpoint !== undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      'web({ connect: { reconnectEndpoint } }) is not supported: a dropped CDP transport is not recovered mid-attempt; the next attempt attaches again through cdpEndpoint',
+      'connect.reconnectEndpoint is not supported: a dropped CDP transport is not recovered mid-attempt; use connect.cdpEndpoint, which the next attempt attaches through again',
     );
   }
   // A per-attempt lease runs in its browser's default context, which its `prepare` may have signed in.

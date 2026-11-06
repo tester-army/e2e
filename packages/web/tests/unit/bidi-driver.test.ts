@@ -17,7 +17,7 @@ describe('web()', () => {
 
   it('refuses a persistent remote context, naming why', () => {
     const cdpEndpoint = () => 'ws://127.0.0.1:9222';
-    expect(() => web({ connect: { cdpEndpoint, reconnectEndpoint: cdpEndpoint } })).toThrow(/does not ride a persistent remote context \(connect.reconnectEndpoint\)/);
+    expect(() => web({ connect: { cdpEndpoint, reconnectEndpoint: cdpEndpoint } })).toThrow(/connect\.reconnectEndpoint is not supported/);
   });
 
   it('validates the options it takes', () => {

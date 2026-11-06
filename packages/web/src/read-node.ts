@@ -1,13 +1,7 @@
 /**
- * The wire types of the in-page semantic reader and the document walk
- * assembled from its source for page.evaluate. The reader itself lives in
- * `in-page/read-semantics.ts`; it is serialized into the page, so the page
- * function here is built from its source with `new Function` and stays free
- * of module-scope captures. Locator reads run it inside the selector engines
- * (`read-selector.ts`, `label-selector.ts`).
+ * The wire types of the in-page semantic reader. The reader itself lives in
+ * `in-page/read-semantics.ts` and is serialized into the page.
  */
-
-import { readSemanticsFunction } from './in-page/read-semantics.ts';
 
 /**
  * The one definition of a secure field.
@@ -119,21 +113,3 @@ export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'no
       : Mode extends { kind: 'nodes' }
         ? RawNodeData[]
         : RawObservation;
-
-/** Options for one document's tree walk. */
-interface TreeReadOptions {
-  readonly testIdAttribute: string;
-  readonly secureFieldSelector: string;
-  readonly mode: Extract<SemanticMode, { kind: 'tree' }>;
-}
-
-/**
- * Walks a whole document from its root element in one in-page call. Built
- * from the reader's source, so the caller
- * evaluates it directly on a page or frame instead of first resolving a
- * `:root` locator - one fewer protocol round trip per document per capture.
- */
-export const readDocumentSemanticsFunction = new Function(
-  'options',
-  `return (${readSemanticsFunction.toString()})(document.documentElement, options);`,
-) as (options: TreeReadOptions) => RawObservation;

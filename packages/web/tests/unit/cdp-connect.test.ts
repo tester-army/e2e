@@ -27,7 +27,7 @@ describe('web({ connect })', () => {
     const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' };
     expect(() => web({ connect })).toThrow(expect.objectContaining({
       code: 'INVALID_CONFIG',
-      message: expect.stringMatching(/does not ride a persistent remote context \(connect\.reconnectEndpoint\).*use connect\.cdpEndpoint/),
+      message: expect.stringMatching(/connect\.reconnectEndpoint is not supported.*use connect\.cdpEndpoint/),
     }));
   });
 
