@@ -103,8 +103,12 @@ export class BidiSurface {
    * `signal` and never publishes a browser once that aborted.
    */
   private acquiring: { readonly browser: Promise<BidiBrowser>; readonly signal: AbortSignal | undefined } | undefined;
-  /** Set by `dispose`: a launch that finishes after it closes its browser instead of publishing it. */
-  private disposed = false;
+  /**
+   * Aborted by `dispose`: a launch or lease still pending fails `CANCELLED`,
+   * and a launch that finishes after it closes its browser instead of
+   * publishing it. Replaced by `init`.
+   */
+  private disposal = new AbortController();
 
   constructor(private readonly options: BidiSurfaceOptions) {}
 
@@ -134,7 +138,7 @@ export class BidiSurface {
 
   /** Launches or attaches to the worker's browser. */
   async init(info: EngineInitInfo): Promise<void> {
-    this.disposed = false;
+    this.disposal = new AbortController();
     this.headed = info.headed;
     const headers = this.options.headers === undefined ? undefined : lowercaseNames(this.options.headers);
     const site = info.app.site;
@@ -171,20 +175,21 @@ export class BidiSurface {
   private async acquireBrowser(signal: AbortSignal): Promise<BidiBrowser> {
     if (this.browser !== undefined && !this.browser.connection.isClosed) return this.browser;
     const verb = this.attaches ? 'connect' : 'launch';
-    if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
+    const bound = AbortSignal.any([signal, this.disposal.signal]);
+    if (bound.aborted) throw cancelled(`browser ${verb} cancelled`);
     // An attach its caller gave up never publishes; it settles before the next one starts.
     if (this.acquiring?.signal?.aborted === true) await releaseQuietly(this.acquiring.browser);
     if (this.acquiring === undefined) {
-      const bound = this.attaches ? signal : undefined;
+      const caller = this.attaches ? signal : undefined;
       this.acquiring = {
-        signal: bound,
-        browser: this.launch(bound).finally(() => {
+        signal: caller,
+        browser: this.launch(caller).finally(() => {
           this.acquiring = undefined;
         }),
       };
     }
     try {
-      return await raceAbort(this.acquiring.browser, signal, `browser ${verb}`);
+      return await raceAbort(this.acquiring.browser, bound, `browser ${verb}`);
     } catch (cause) {
       throw classify(cause, `browser ${verb} failed`);
     }
@@ -201,19 +206,19 @@ export class BidiSurface {
    * aborted meanwhile.
    */
   private async launch(signal: AbortSignal | undefined): Promise<BidiBrowser> {
+    const disposal = this.disposal.signal;
     const stale = this.browser;
     this.browser = undefined;
     this.unrouteEvents();
     if (stale !== undefined) await releaseQuietly(stale.close());
-    const timeout = AbortSignal.timeout(BROWSER_LAUNCH_TIMEOUT_MS);
-    const browser = await this.openBrowser(signal === undefined ? timeout : AbortSignal.any([signal, timeout]));
+    const browser = await this.openBrowser(AbortSignal.any([AbortSignal.timeout(BROWSER_LAUNCH_TIMEOUT_MS), disposal, ...(signal === undefined ? [] : [signal])]));
     try {
       await withTimeout(
         browser.connection.send('session.subscribe', { events: [...SESSION_EVENTS] }),
         BROWSER_LAUNCH_TIMEOUT_MS,
         () => new EngineError('OPERATION_TIMEOUT', `the browser did not take its event subscription within ${BROWSER_LAUNCH_TIMEOUT_MS}ms`, { retryable: false }),
       );
-      if (this.disposed) throw cancelled('the engine was disposed while its browser launched');
+      if (disposal.aborted) throw cancelled('the engine was disposed while its browser launched');
       if (signal?.aborted === true) throw cancelled('browser connect cancelled');
     } catch (cause) {
       await releaseQuietly(browser.close());
@@ -253,12 +258,18 @@ export class BidiSurface {
     const credentials = basicAuth === undefined
       ? undefined
       : await raceAbort(() => httpCredentials(basicAuth, context.resolveSecret), context.signal, 'resolving the basic-auth password');
+    const signal = AbortSignal.any([context.signal, this.disposal.signal]);
     if (this.perAttempt) {
-      const lease = await this.options.leases!.startAttempt(context);
+      const lease = await this.options.leases!.startAttempt({ ...context, signal });
       this.attemptEndpoint = lease.cdpEndpoint;
     }
-    // On failure the lease stays the attempt's: `endAttempt` gives it back.
-    const browser = await this.acquireBrowser(context.signal);
+    let browser: BidiBrowser;
+    try {
+      browser = await this.acquireBrowser(signal);
+    } catch (cause) {
+      // The lease stays the attempt's: `endAttempt` gives it back.
+      throw this.perAttempt ? classify(cause, 'attaching to the leased browser') : cause;
+    }
     const session = new BidiSession(
       browser,
       this.settings,
@@ -331,7 +342,7 @@ export class BidiSurface {
 
   /** Ends the attempt, closes the browser, and releases a provider's lease, each attempted whatever the others did. */
   async dispose(context: EngineCleanupContext): Promise<void> {
-    this.disposed = true;
+    this.disposal.abort();
     const results = await Promise.allSettled([this.endAttempt(context)]);
     if (this.acquiring !== undefined) await releaseQuietly(withinCleanupBudget(this.acquiring.browser, context));
     const browser = this.browser;
@@ -394,7 +405,7 @@ export class BidiSurface {
     return this.guard(operation, 'navigation', (session, budget) => traverse(session, 1, budget.timeoutMs, budget.signal), { traced: true });
   }
 
-  /** Closes the tab, keeping the attempt's storage. */
+  /** Replaces the tab with a blank one, keeping the attempt's storage. */
   restart(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'restart', (session) => restart(session));
   }

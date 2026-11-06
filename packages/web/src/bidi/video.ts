@@ -161,8 +161,11 @@ export class BidiVideo {
   /**
    * Chromium's CDP screencast through the mapper. Each JPEG frame goes to
    * the encoder and is acknowledged once the encoder took it, so Chromium
-   * sends no faster than ffmpeg encodes. Everything the segment acquires is
-   * released when a later step of its start fails.
+   * sends no faster than ffmpeg encodes. A screencast sends a frame only
+   * when the page repaints, and Chromium drops one that lands while the tab's
+   * surface changes size, as it can when a new tab first navigates; so the
+   * segment ends on a screenshot of the viewport as it stands. Everything the
+   * segment acquires is released when a later step of its start fails.
    */
   private async chromiumSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
     const ffmpeg = ffmpegExecutable();
@@ -199,8 +202,9 @@ export class BidiVideo {
     const subscribed = subscription;
     return async () => {
       try {
-        await encoder.firstFrameOrGrace();
         off();
+        const screen = await unlessStale(currentScreen(connection, context, this.options.quality ?? 90), undefined);
+        if (screen !== undefined) await encoder.frame(screen);
         await unlessStale(connection.sendExtension('goog:cdp.sendCommand', { method: 'Page.stopScreencast', params: {}, session }), undefined);
         await releaseQuietly(connection.send('session.unsubscribe', { subscriptions: [subscribed] }));
       } finally {
@@ -212,12 +216,13 @@ export class BidiVideo {
   }
 }
 
-/**
- * How long a segment with no frame yet waits for one before it ends, and how
- * long the last frame holds past the end, as Playwright's recorder does: a
- * page that just painted may deliver its frame after the paint, and a viewer
- * needs a moment on the final screen.
- */
+/** The tab's viewport as it stands, as a JPEG in device pixels; the encoder scales it down to the segment's size. */
+async function currentScreen(connection: BidiConnection, context: string, quality: number): Promise<Buffer> {
+  const { data } = await connection.send('browsingContext.captureScreenshot', { context, origin: 'viewport', format: { type: 'image/jpeg', quality: quality / 100 } });
+  return Buffer.from(data, 'base64');
+}
+
+/** How long the last frame holds past the end, as Playwright's recorder does: a viewer needs a moment on the final screen. */
 const FRAME_GRACE_MS = 1_000;
 /** How long ffmpeg gets to take the queued frames and write the file before it is killed. */
 const CLOSE_TIMEOUT_MS = 10_000;
@@ -229,15 +234,15 @@ const STDERR_TAIL = 2_000;
  * output is a timeline of `FPS` ticks from the encoder's start: a frame
  * takes the tick it arrives in, a tick a frame already took leaves the
  * newer one for the next, and a tick with no new frame repeats the last.
- * Writes are serialized through ffmpeg's drain cycle.
+ * A frame larger than the output is scaled down to fit it, as the
+ * screencast scales its own. Writes are serialized through ffmpeg's drain
+ * cycle.
  */
 class FrameEncoder {
   private readonly process: ChildProcess;
   private last: Buffer | undefined;
   private written = 0;
   private readonly startedAt = performance.now();
-  private framed: () => void = () => undefined;
-  private readonly firstFrame = new Promise<void>((resolve) => (this.framed = resolve));
   private writing: Promise<void> = Promise.resolve();
   private stderr = '';
   private failure: Error | undefined;
@@ -251,7 +256,7 @@ class FrameEncoder {
       '-y', '-an',
       '-c:v', 'libvpx-vp9', '-qmin', '0', '-qmax', '50', '-crf', '8', '-deadline', 'realtime', '-cpu-used', '8',
       '-b:v', '1M', '-row-mt', '1',
-      '-vf', `pad=${width}:${height}:0:0:gray,crop=${width}:${height}:0:0`,
+      '-vf', `scale=w='min(iw,${width})':h='min(ih,${height})':force_original_aspect_ratio=decrease,pad=${width}:${height}:0:0:gray,crop=${width}:${height}:0:0`,
       output,
     ];
     this.process = spawn(ffmpeg, args, { stdio: ['pipe', 'ignore', 'pipe'] });
@@ -273,13 +278,7 @@ class FrameEncoder {
     this.fill(due);
     if (this.written === due) this.write(jpeg);
     this.last = jpeg;
-    this.framed();
     return this.writing;
-  }
-
-  /** Waits a moment for a first frame when none came. */
-  async firstFrameOrGrace(): Promise<void> {
-    await Promise.race([this.firstFrame, new Promise((resolve) => setTimeout(resolve, FRAME_GRACE_MS))]);
   }
 
   /**

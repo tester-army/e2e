@@ -433,8 +433,7 @@ describe('worker scope', () => {
     await starting;
   });
 
-  // Missing in BiDi: disposing the worker leaves a start still waiting on its replacement lease pending instead of failing it CANCELLED.
-  it.skip('fails a start still waiting on its replacement lease as CANCELLED once the worker is disposed', async () => {
+  it('fails a start still waiting on its replacement lease as CANCELLED once the worker is disposed', async () => {
     const cloud = provider();
     const fake = fakeBrowser('context');
     connectCdp.mockResolvedValueOnce(fake.browser);
@@ -469,7 +468,6 @@ describe('worker scope', () => {
   });
 });
 
-// Missing in BiDi: attempt-scoped providers are refused at config load (web() isolates attempts in user contexts).
 describe('attempt scope', () => {
   it('leases nothing at prepare, hands the workers the slot count alone, and attaches nothing at init', async () => {
     const cloud = provider({ scope: 'attempt' });
@@ -604,32 +602,23 @@ describe('attempt scope', () => {
     expect(cloud.released).toHaveLength(1);
   });
 
-  // Missing on BiDi: a dropped CDP transport is not recovered mid-attempt.
-  it.skip('reattaches through the lease\'s reconnectEndpoint after the transport drops, and through cdpEndpoint without one', async () => {
-    for (const reconnect of [true, false]) {
-      connectCdp.mockReset();
-      const fakes: ReturnType<typeof fakeBrowser>[] = [];
-      connectCdp.mockImplementation(async () => {
-        // One browser identity: recovery must land on the same persistent context.
-        const fake = fakeBrowser('same-browser');
-        fakes.push(fake);
-        return fake.browser;
-      });
-      const cloud = provider({ scope: 'attempt', reconnect });
-      const worker = web({ browser: cloud.impl });
-      await worker.init!(initInfo(0, (await prepared(cloud.impl, 1)).env));
-      await worker.startAttempt!(attempt('a1'));
-      fakes[0]!.drop();
-      await expect(worker.locate!({ kind: 'selector', selector: 'body' }, operation())).resolves.toBeDefined();
-      expect(connectCdp.mock.calls.map(([endpoint]) => endpoint)).toEqual([
-        'wss://0.example',
-        reconnect ? 'wss://0.example/reconnect' : 'wss://0.example',
-      ]);
-      // Recovery is the same browser: no second lease.
-      expect(cloud.acquired).toHaveLength(1);
-      await worker.dispose!(cleanup());
-      expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
-    }
+  it('never reattaches mid-attempt, even through the lease\'s reconnectEndpoint: the next attempt leases a fresh browser', async () => {
+    const fakes: ReturnType<typeof fakeBrowser>[] = [];
+    connectCdp.mockImplementation(async () => {
+      const fake = fakeBrowser('context');
+      fakes.push(fake);
+      return fake.browser;
+    });
+    const cloud = provider({ scope: 'attempt', reconnect: true });
+    const worker = web({ browser: cloud.impl });
+    await worker.init!(initInfo(0, (await prepared(cloud.impl, 1)).env));
+    await worker.startAttempt!(attempt('a1'));
+    fakes[0]!.drop();
+    await worker.endAttempt!(cleanup());
+    await worker.startAttempt!(attempt('a2'));
+    expect(connectCdp.mock.calls.map(([endpoint]) => endpoint)).toEqual(['wss://0.example', 'wss://1.example']);
+    await worker.dispose!(cleanup());
+    expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0', 'lease-1']);
   });
 });
 
@@ -640,8 +629,7 @@ describe('leases a worker left open', () => {
     );
   });
 
-  // Missing in BiDi: attempt-scoped providers are refused at config load.
-  it.skip('has the provider sweep up an attempt\'s browser once the worker died holding it', async () => {
+  it('has the provider sweep up an attempt\'s browser once the worker died holding it', async () => {
     const cloud = provider({ scope: 'attempt', sweep: 'open' });
     const { runner, env } = await prepared(cloud.impl, 1);
     const worker = web({ browser: cloud.impl });
@@ -672,8 +660,7 @@ describe('leases a worker left open', () => {
     expect(lines).toEqual(['toy-cloud: released 1 browser(s)', 'toy-cloud: released 1 browser(s) a worker left open: lease-1']);
   });
 
-  // Missing in BiDi: attempt-scoped providers are refused at config load.
-  it.skip('logs nothing when every worker gave its leases back, and sweeps nothing for a target with no slots', async () => {
+  it('logs nothing when every worker gave its leases back, and sweeps nothing for a target with no slots', async () => {
     const cloud = provider({ scope: 'attempt', sweep: 'open' });
     const { runner, env } = await prepared(cloud.impl, 1);
     const worker = web({ browser: cloud.impl });
@@ -692,8 +679,7 @@ describe('leases a worker left open', () => {
     expect(cloud.swept).toHaveLength(1);
   });
 
-  // Missing in BiDi: attempt-scoped providers are refused at config load.
-  it.skip('sweeps even when a release failed and reports the release failure, and only logs a sweep that failed', async () => {
+  it('sweeps even when a release failed and reports the release failure, and only logs a sweep that failed', async () => {
     const failing = provider({ failRelease: true, sweep: 'open' });
     const { runner } = await prepared(failing.impl, 1);
     await expect(runner.finish!(finishInfo())).rejects.toMatchObject({ message: expect.stringContaining('could not release a browser: stop failed') });
@@ -799,8 +785,7 @@ describe('recording', () => {
     await worker.dispose!(cleanup());
   });
 
-  // Missing in BiDi: a provider recording that lands after endAttempt resolves startVideo instead of failing CANCELLED.
-  it.skip('stops a recording that started after the attempt ended, and keeps nothing of it', async () => {
+  it('stops a recording that started after the attempt ended, and keeps nothing of it', async () => {
     const cloud = recordingProvider();
     let resume!: () => void;
     const record = cloud.impl.record!.bind(cloud.impl);

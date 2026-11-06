@@ -182,9 +182,10 @@ async function landedEntry(session: BidiSession): Promise<string | undefined> {
   }
 }
 
-/** Closes the tab, keeping the user context's storage; the harness reopens the app. */
-export function restart(session: BidiSession): Promise<void> {
-  return session.closeContext();
+/** Closes every tab, keeping the user context's storage, and opens a blank one; the harness reopens the app. */
+export async function restart(session: BidiSession): Promise<void> {
+  await session.closeContext();
+  await session.ensureContext();
 }
 
 /** Replaces the user context with a clean one and opens its blank tab. */

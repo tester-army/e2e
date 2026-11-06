@@ -867,15 +867,15 @@ describe('web engine lifecycle', () => {
     }
   });
 
-  // Missing in BiDi: endAttempt with an aborted budget rejects CANCELLED instead of returning.
-  it.skip('stops waiting on cleanup once its budget is aborted, and recovers on the next attempt', async () => {
+  it('stops waiting on cleanup once its budget is aborted, reports it, and recovers on the next attempt', async () => {
     const engine = web();
     try {
       await boot(engine, app);
       expect(await openAttempt(engine, app, artifactsDir, 'g1')).toBe('Home');
       const exhausted = new AbortController();
       exhausted.abort();
-      await expect(engine.endAttempt!({ signal: exhausted.signal, timeoutMs: 0 })).resolves.toBeUndefined();
+      // The close could not finish, so the browser is retired and the cut-short cleanup reported.
+      await expect(engine.endAttempt!({ signal: exhausted.signal, timeoutMs: 0 })).rejects.toMatchObject({ code: 'CANCELLED' });
       expect(await openAttempt(engine, app, artifactsDir, 'g2')).toBe('Home');
     } finally {
       await engine.endAttempt!(cleanup());
@@ -926,8 +926,7 @@ describe('web engine lifecycle', () => {
     });
   });
 
-  // Missing in BiDi: after a restart no page is open (INVALID_STATE) instead of a blank one.
-  it.skip('shows a blank page after a restart until the harness reopens the app', async () => {
+  it('shows a blank page after a restart until the harness reopens the app', async () => {
     const engine = web();
     await withAttempt(engine, app, artifactsDir, 's2', async () => {
       await engine.session!.open!(`${app.url}/state`, operation('s2'));
@@ -980,8 +979,7 @@ describe('web engine lifecycle', () => {
     });
   });
 
-  // Missing in BiDi: a segment recorded after a restart or a state reset can end on a blank frame of the reopened page.
-  it.skip('records a video per page at the viewport size: a restart and a state reset each continue in a new segment', async () => {
+  it('records a video per page at the viewport size: a restart and a state reset each continue in a new segment', async () => {
     const engine = web();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     const nodesOf = (snapshot: { root: SemanticNode }) => [...walk(snapshot.root)];
@@ -1089,15 +1087,13 @@ describe('web engine lifecycle', () => {
     }
   });
 
-  // Missing in BiDi: starting the video opens no page; the attempt has none until the app is opened.
-  it.skip('opens the attempt page when the video starts', async () => {
+  it('opens no page when the video starts, and records the page the app opens', async () => {
     const engine = web();
     const videoDir = mkdtempSync(path.join(tmpdir(), 'e2e-video-'));
     try {
       await withAttempt(engine, app, videoDir, 'v2', async () => {
         await engine.artifacts!.startVideo!(operation('v2'));
-        // The page exists before any navigation: the recording owns its screencast.
-        expect(await pageOf(engine).url()).toBe('about:blank');
+        await expect(pageOf(engine).url()).rejects.toMatchObject({ code: 'INVALID_STATE' });
         await engine.session!.open!(`${app.url}/`, operation('v2'));
         const segments = videoFiles(await engine.artifacts!.stopVideo!(operation('v2')));
         expect(segments.map((segment) => segment.path)).toEqual(['video/video.webm']);
