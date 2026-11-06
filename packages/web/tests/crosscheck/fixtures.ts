@@ -129,6 +129,18 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
     `,
   },
   {
+    name: 'controls drawn by their label',
+    html: `
+      <style>.shrunk { opacity: 0; width: 0; height: 0; margin: 0; position: absolute; z-index: -1 }</style>
+      <label><input type="checkbox">Plain</label>
+      <label><span><input class="shrunk" type="checkbox"><span class="box"></span></span><span>Agree</span></label>
+      <label><input class="shrunk" type="checkbox" checked>Newsletter</label>
+      <label><input class="shrunk" type="radio" name="size">Large</label>
+      <input class="shrunk" type="checkbox" id="unlabelled-shrunk" aria-label="Unlabelled">
+      <input class="shrunk" type="checkbox" id="hidden-label"><label for="hidden-label" style="display: none">Hidden label</label>
+    `,
+  },
+  {
     name: 'disabled states',
     html: `
       <button disabled>Disabled native</button>
