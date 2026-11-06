@@ -41,7 +41,7 @@ import { describePointAction, describePointDrag, describePointHit, hitTest, POIN
 import { nodeReading, normalizeReading, readingShape } from './reading.ts';
 import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { SETTLE_AFTER } from './settle-policy.ts';
+import { HELD_STILL_MS, SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 import { authorizeUploadPaths } from './upload-paths.ts';
@@ -81,6 +81,13 @@ const MAX_SCROLL_UNTIL_TEXT_CHARS = 200;
  * unchanged look is that as often as it is the end or the wrong list.
  */
 const SCROLL_UNTIL_STILL_PAGES = 3;
+/**
+ * How long the screen must also have stayed unchanged before the list counts
+ * as ended: a list that loads its next page on a timer holds still while it
+ * waits, and an engine that pages fast would otherwise read that pause as the
+ * end where a slower one would not.
+ */
+const SCROLL_UNTIL_STILL_MS = HELD_STILL_MS;
 const SCROLL_UNTIL_WRONG_LIST_PAGES = 2;
 
 /** The engine action each node verb performs; also the name its engine event carries. */
@@ -550,6 +557,7 @@ export class ActionDispatcher {
       let paged: Pick<Extract<RecordableAction, { name: 'scrollUntil' }>, 'node' | 'spans'> = {};
       let previous: string | undefined;
       let still = 0;
+      let changedAt = Date.now();
       let within = list;
       for (let screens = 0; ; screens += 1) {
         // Only the list being paged is read while it is on screen; once it is
@@ -570,7 +578,10 @@ export class ActionDispatcher {
         if (screens >= MAX_SCROLL_UNTIL_SCREENS) throw notFound(`within ${String(MAX_SCROLL_UNTIL_SCREENS)} screens ${direction}`);
         const shape = observation.kind === 'semantic' ? readingShape(observation) : undefined;
         still = shape !== undefined && shape === previous ? still + 1 : 0;
-        if (still >= SCROLL_UNTIL_STILL_PAGES) throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
+        if (still === 0) changedAt = Date.now();
+        if (still >= SCROLL_UNTIL_STILL_PAGES && Date.now() - changedAt >= SCROLL_UNTIL_STILL_MS) {
+          throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
+        }
         if (still >= SCROLL_UNTIL_WRONG_LIST_PAGES && within !== undefined) {
           within = undefined;
           still = 0;
