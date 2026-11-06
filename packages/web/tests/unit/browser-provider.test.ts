@@ -618,7 +618,7 @@ describe.skip('attempt scope', () => {
       await worker.init!(initInfo(0, (await prepared(cloud.impl, 1)).env));
       await worker.startAttempt!(attempt('a1'));
       fakes[0]!.drop();
-      await expect(worker.guard(operation(), 'probe', async () => 'reattached')).resolves.toBe('reattached');
+      await expect(worker.locate!({ kind: 'selector', selector: 'body' }, operation())).resolves.toBeDefined();
       expect(connectCdp.mock.calls.map(([endpoint]) => endpoint)).toEqual([
         'wss://0.example',
         reconnect ? 'wss://0.example/reconnect' : 'wss://0.example',
