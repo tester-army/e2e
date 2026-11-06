@@ -881,6 +881,59 @@ await browser.mouse.up();
 
 [`Browser`](#browser-interface) describes each method, `wheel` included.
 
+### Functions
+
+| Function | Returns |
+| --- | --- |
+| [`attachBrowser`](#attachbrowser) | `Promise<AttachedBrowser>` |
+
+#### `attachBrowser`
+
+`attachBrowser(cdpEndpoint: string, options?: AttachBrowserOptions)` attaches
+to a Chromium that is already running, outside any test. It returns the same
+`browser` and `screen` a test gets.
+
+```ts title="scripts/sign-in.ts"
+import { attachBrowser } from '@e2e-dev/web';
+
+await using attached = await attachBrowser('http://127.0.0.1:9222');
+const { browser, screen } = attached;
+await browser.goto('http://localhost:3000/login');
+await screen.getByLabel('Email').fill('qa@example.com');
+await screen.getByRole('button', 'Sign in').tap();
+```
+
+- `cdpEndpoint` is the DevTools HTTP endpoint or its `ws://` URL. Chromium
+  only.
+- It drives the first open tab in the browser's default context. When no
+  tab is open, it opens one.
+- Relative URLs have no base. Pass `browser.goto` a full URL.
+- `close()` detaches. The browser keeps running, with its tabs, cookies, and
+  storage. Only a tab the attach opened itself is closed. `close()` is
+  idempotent, runs on `await using`, and throws an `AggregateError` of what
+  failed.
+- There is no `app`, so nothing restarts the tab, clears its state, or saves
+  a session.
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `testIdAttribute` | `string` | `'data-testid'` |
+| `timeout` | `number` | `120000` |
+| `signal` | `AbortSignal` | - |
+
+- `timeout` is the budget in milliseconds for all operations together,
+  counted from the attach.
+- `signal` cancels attaching and every operation. `close()` still detaches.
+
+```ts
+interface AttachedBrowser extends AsyncDisposable {
+  readonly browser: Browser;
+  readonly screen: Screen;
+  /** Detaches. The browser keeps running, with its tabs, cookies, and storage. */
+  close(): Promise<void>;
+}
+```
+
 ## Installing browsers
 
 The engine runs pinned builds: Chrome for Testing 157.0.8103.38 for
@@ -933,9 +986,10 @@ The package exports these types for typing config helpers and fixtures:
 `BrowserDownloadContext`, `Browser`, `FrameScreen`,
 `BrowserExpectation`, `WebRoute`, `RouteFulfillResponse`,
 `RouteContinueOverrides`, `WebResponse`, `Cookie`, `CookieFields`,
-`CookieFilter`, `Dialog`, and `DialogHandler`.
+`CookieFilter`, `Dialog`, `DialogHandler`, `AttachBrowserOptions`, and
+`AttachedBrowser`.
 
-The runtime exports are `web`, and `test`, `describe`, `beforeEach`,
+The runtime exports are `web`, `attachBrowser`, and `test`, `describe`, `beforeEach`,
 `afterEach`, `beforeAll`, and `afterAll` typed with the `browser` fixture.
 
 ### `WebOptions`

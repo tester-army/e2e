@@ -1,14 +1,15 @@
 ---
 title: "e2e/runner"
-description: "Run a test suite or an exploration, list a selection, or host e2e sessions in another test runner."
+description: "Run a test suite or an exploration, list a selection, host e2e sessions in another test runner, or open one engine attempt."
 "og:image": "https://e2e.com/docs/images/og/reference/runner.png?v=a4609b13d7"
 "twitter:image": "https://e2e.com/docs/images/og/reference/runner.png?v=a4609b13d7"
 ---
 
 `e2e/runner` runs a suite from code without invoking the CLI. `run` executes
 tests and returns their report, `explore` runs one exploration and returns
-its findings, `list` returns a selection, and `openHost` hosts e2e sessions
-in another test runner. Importing `e2e` from a test file does not load the
+its findings, `list` returns a selection, `openHost` hosts e2e sessions
+in another test runner, and `openEngine` opens one engine attempt with no
+config. Importing `e2e` from a test file does not load the
 runner.
 
 ```ts title="scripts/run-e2e.ts"
@@ -42,6 +43,7 @@ console.log(result.status, result.report.run.summary);
 | [`explore`](#explore) | `Promise<ExploreResult>` |
 | [`list`](#list) | `Promise<ListResult>` |
 | [`openHost`](#openhost) | `Promise<E2EHost<Fixtures>>` |
+| [`openEngine`](#openengine) | `Promise<EngineSession<Fixtures>>` |
 | [`isE2EError`](#ise2eerror) | `boolean` |
 
 #### `run`
@@ -353,6 +355,46 @@ host until that host closes, so a second host must use another instance.
 Opening failures are classified, redacted errors; raw engine causes are not
 exposed. Match them with [`isE2EError`](#ise2eerror) and `error.code`.
 
+#### `openEngine`
+
+`openEngine<Fixtures>(engine: EngineHandle, options?: OpenEngineOptions)`
+opens one attempt on `engine` with no config, test, or agent. Use it to drive
+an app from code before tests do.
+
+```ts title="scripts/seed.ts"
+import { openEngine } from 'e2e/runner';
+import { web, type Browser } from '@e2e-dev/web';
+
+await using session = await openEngine<{ browser: Browser }>(web(), { timeout: 60_000 });
+const { browser, screen } = session.fixtures;
+await browser.goto('http://localhost:3000/login');
+await screen.getByRole('button', 'Sign in').tap();
+```
+
+- `session.fixtures` holds `screen`, `app`, and the engine's fixtures, with
+  the same waiting and errors a test gets.
+- Each call is one attempt. Open another session for a fresh one.
+- There is no `app.url`. Pass full URLs.
+- Artifacts go to a temporary directory that `close()` removes. Nothing is
+  written to the project, and video is off.
+- `session.close()` ends the attempt and disposes the engine. It is
+  idempotent, runs on `await using`, and throws an `AggregateError` of what
+  failed.
+
+| Option | Type | Default |
+| --- | --- | --- |
+| `cwd` | `string` | `process.cwd()` |
+| `env` | `NodeJS.ProcessEnv` | `process.env` |
+| `signal` | `AbortSignal` | - |
+| `timeout` | `number` | `120000` |
+| `headed` | `boolean` | `false` |
+
+- `cwd` is the directory relative paths resolve against.
+- `signal` cancels opening and every operation. `close()` still releases
+  what was opened.
+- `timeout` is the deadline in milliseconds for all of the session's
+  operations, counted from when it opens.
+
 #### `isE2EError`
 
 A type guard that recognizes a classified e2e error. Branch on its
@@ -537,8 +579,7 @@ A hosted session writes its trace, not `report.json`. For your runner's
 reporting, use `onStep`, `steps()`, `report()`, and `close()`'s failures.
 Your runner's test-body failures are not passed to e2e.
 
-The one-shot attempt `e2e mcp` uses stays internal. There is no top-level
-`openSession` export.
+For one attempt with no config or host, use [`openEngine`](#openengine).
 </Note>
 
 ## Types
@@ -553,6 +594,7 @@ The one-shot attempt `e2e mcp` uses stays internal. There is no top-level
 | `ListOptions`, `ListResult`, `ListedPair` | [`list`](#list)'s options, result, and one pair |
 | `OpenHostOptions`, `E2EHost` | [`openHost`](#openhost)'s options and the [host](#host) |
 | `OpenSessionOptions`, `E2ESession` | [`openSession`](#host-opensession)'s options and the [session](#session) |
+| `OpenEngineOptions`, `EngineSession` | [`openEngine`](#openengine)'s options and session |
 | `StepProgress`, `StepRecord` | One `onStep` progress event, and one step `steps()` returns |
 | `SerializedError` | One failure `close()` returns |
 
