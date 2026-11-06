@@ -1,11 +1,13 @@
 /**
- * The reference locator semantics over a semantic tree: what `locate`
- * answers for one `LocatorExpression` when the platform's tree is the whole
- * truth. An engine over such a tree (a device's accessibility snapshot, an
- * in-memory fake) calls this instead of interpreting the expression itself;
- * an engine with a native query engine (a browser) reproduces these rules.
- * One immediate pass, every match in document order; polling, strictness,
- * and staleness stay with the runner.
+ * The reference locator semantics: what `locate` answers for one
+ * `LocatorExpression`. `createResolver` holds the rules every engine shares
+ * (unions, scopes, filters, positions, the innermost rule) over whatever its
+ * platform reads; it is self-contained, so a browser engine serializes it
+ * into the page and resolves there. `resolveExpression` runs it over a
+ * semantic tree, for an engine whose tree is the whole truth (a device's
+ * accessibility snapshot, an in-memory fake). One immediate pass, every
+ * match in the platform's order; polling, strictness, and staleness stay
+ * with the runner.
  */
 
 import { matchesText } from '../internal/text.ts';
@@ -17,6 +19,171 @@ import {
   type TextPattern,
 } from './contract.ts';
 
+/** What the locator rules read of a platform's nodes. */
+export interface ResolverPlatform<N> {
+  /** Every node, in the order matches come in and `nth` counts by. */
+  readonly nodes: readonly N[];
+  /** The node's parent among `nodes`, undefined for a root. */
+  parent(node: N): N | undefined;
+  /** Whether `node` matches `query` by the platform's rules. */
+  matches(node: N, query: SemanticQuery): boolean;
+  /** Whether a `filter({ hasText })` keeps `node`. */
+  hasText(node: N, pattern: TextPattern): boolean;
+  /** The nodes among `candidates` a platform-native selector addresses, in their order. */
+  selector(selector: string, candidates: readonly N[]): readonly N[];
+  /** Throws the platform's error for a locator that cannot resolve. */
+  fail(code: 'FRAME_NOT_FOUND', message: string): never;
+}
+
+/**
+ * The locator rules over one platform: a function from an expression to the
+ * nodes it matches, in `platform.nodes` order, but a union's, which come in
+ * document order (each node before its children, a parent's children in
+ * `platform.nodes` order), as Playwright orders `or`. `text` and `label` queries
+ * answer with the innermost match, since a container echoing a descendant's
+ * text is not a second match; `scope` searches strict descendants of the
+ * scope's matches; `filter` keeps a match whose own or descendants' text
+ * answers `hasText` and whose descendants answer `has`, each `has` resolved
+ * among that match's descendants alone; `index` picks `first`, `last`, or a
+ * position. Linear in the nodes for every kind but `has`, which reads each
+ * match's subtree once. Serialized with `toString()`, so it closes over
+ * nothing of this module.
+ */
+export function createResolver<N>(platform: ResolverPlatform<N>): (expression: LocatorExpression) => N[] {
+  const INNERMOST_KINDS = new Set(['text', 'label']);
+  /** The tree the nodes form; built the first time a union or a `has` asks. */
+  interface TreeIndex {
+    /** Each node's place in `platform.nodes`. */
+    readonly position: Map<N, number>;
+    /** Each node's children, in `platform.nodes` order. */
+    readonly children: Map<N, N[]>;
+    /** Each node's place in document order. */
+    readonly rank: Map<N, number>;
+  }
+  let tree: TreeIndex | undefined;
+  const treeIndex = (): TreeIndex => {
+    if (tree !== undefined) return tree;
+    const position = new Map<N, number>();
+    const children = new Map<N, N[]>();
+    const roots: N[] = [];
+    platform.nodes.forEach((node, index) => {
+      position.set(node, index);
+      const parent = platform.parent(node);
+      if (parent === undefined) {
+        roots.push(node);
+        return;
+      }
+      const siblings = children.get(parent);
+      if (siblings === undefined) children.set(parent, [node]);
+      else siblings.push(node);
+    });
+    const rank = new Map<N, number>();
+    const stack = roots.toReversed();
+    while (stack.length > 0) {
+      const node = stack.pop() as N;
+      rank.set(node, rank.size);
+      const below = children.get(node);
+      if (below !== undefined) for (let index = below.length - 1; index >= 0; index -= 1) stack.push(below[index] as N);
+    }
+    tree = { position, children, rank };
+    return tree;
+  };
+
+  /** Drops every match that holds another match: each match marks its ancestors once. */
+  const innermostOnly = (matches: readonly N[]): N[] => {
+    const holders = new Set<N>();
+    for (const match of matches) {
+      for (let at = platform.parent(match); at !== undefined && !holders.has(at); at = platform.parent(at)) holders.add(at);
+    }
+    return matches.filter((match) => !holders.has(match));
+  };
+
+  /** The candidates that are strict descendants of a node in `ancestors`, each parent chain walked once. */
+  const descendantsOf = (ancestors: readonly N[], candidates: readonly N[]): N[] => {
+    if (ancestors.length === 0) return [];
+    const scopes = new Set(ancestors);
+    const known = new Map<N, boolean>();
+    const isInside = (node: N): boolean => {
+      const chain: N[] = [];
+      let inside = false;
+      for (let at: N | undefined = node; at !== undefined; ) {
+        const answer = known.get(at);
+        if (answer !== undefined) {
+          inside = answer;
+          break;
+        }
+        chain.push(at);
+        at = platform.parent(at);
+        if (at !== undefined && scopes.has(at)) {
+          inside = true;
+          break;
+        }
+      }
+      for (let index = chain.length - 1; index >= 0; index -= 1) {
+        known.set(chain[index] as N, inside);
+        inside ||= scopes.has(chain[index] as N);
+      }
+      return known.get(node) === true;
+    };
+    return candidates.filter(isInside);
+  };
+
+  /** The strict descendants of `node`, in `platform.nodes` order. */
+  const subtreeOf = (node: N): N[] => {
+    const { position, children } = treeIndex();
+    const out: N[] = [];
+    const stack = [...(children.get(node) ?? [])];
+    while (stack.length > 0) {
+      const at = stack.pop() as N;
+      out.push(at);
+      stack.push(...(children.get(at) ?? []));
+    }
+    return out.toSorted((a, b) => (position.get(a) ?? 0) - (position.get(b) ?? 0));
+  };
+
+  const resolve = (expression: LocatorExpression, candidates: readonly N[]): N[] => {
+    switch (expression.kind) {
+      case 'union': {
+        const matches = new Set([...resolve(expression.left, candidates), ...resolve(expression.right, candidates)]);
+        const { rank } = treeIndex();
+        return candidates.filter((node) => matches.has(node)).toSorted((a, b) => (rank.get(a) ?? 0) - (rank.get(b) ?? 0));
+      }
+      case 'query': {
+        const pool = expression.scope === undefined ? candidates : descendantsOf(resolve(expression.scope, candidates), candidates);
+        const matches = pool.filter((node) => platform.matches(node, expression.query));
+        return INNERMOST_KINDS.has(expression.query.kind) ? innermostOnly(matches) : matches;
+      }
+      case 'filter': {
+        const source = resolve(expression.source, candidates);
+        const { has, hasNot, hasText, hasNotText } = expression;
+        const pool = has === undefined && hasNot === undefined ? undefined : new Set(candidates);
+        return source.filter((node) => {
+          if (hasText !== undefined && !platform.hasText(node, hasText)) return false;
+          if (hasNotText !== undefined && platform.hasText(node, hasNotText)) return false;
+          if (pool !== undefined) {
+            const within = subtreeOf(node).filter((each) => pool.has(each));
+            if (has !== undefined && resolve(has, within).length === 0) return false;
+            if (hasNot !== undefined && resolve(hasNot, within).length > 0) return false;
+          }
+          return true;
+        });
+      }
+      case 'index': {
+        const source = resolve(expression.source, candidates);
+        const at = expression.index === 'first' ? 0 : expression.index === 'last' ? source.length - 1 : expression.index;
+        const picked = source[at];
+        return picked === undefined ? [] : [picked];
+      }
+      case 'selector':
+        return [...platform.selector(expression.selector, candidates)];
+      case 'frame':
+        return platform.fail('FRAME_NOT_FOUND', `no nested document matches ${JSON.stringify(expression.selector)}: this surface has none to scope a query into`);
+    }
+  };
+
+  return (expression) => resolve(expression, platform.nodes);
+}
+
 export interface ResolveExpressionOptions {
   /**
    * Answers a `selector` expression: the nodes the platform-native selector
@@ -25,21 +192,6 @@ export interface ResolveExpressionOptions {
    * language of its own.
    */
   readonly selector?: (selector: string, candidates: readonly SemanticNode[]) => readonly SemanticNode[];
-  /**
-   * The platform's own answer for whether `node` matches `query`, for a
-   * platform whose query engine reads more than the tree carries (a
-   * browser's text, hidden, and state rules); undefined leaves the query to
-   * the reference rules below.
-   */
-  readonly matches?: (node: SemanticNode, query: SemanticQuery) => boolean | undefined;
-  /** Whether a `filter({ hasText })` keeps `node`, for the same kind of platform; without it, any text of the node or a descendant counts. */
-  readonly hasText?: (node: SemanticNode, pattern: TextPattern) => boolean;
-  /**
-   * The order matches come in, and `nth` counts by, for a platform whose own
-   * engine orders them otherwise than the tree (a browser lists light-DOM
-   * matches before shadow-root ones); without it, tree order.
-   */
-  readonly order?: (a: SemanticNode, b: SemanticNode) => number;
 }
 
 /**
@@ -49,31 +201,17 @@ export interface ResolveExpressionOptions {
  *
  * Query kinds: `role` compares the role exactly, then the name, the requested
  * states, and the heading level, and never matches a hidden node; `label`
- * and `text` match the name (`text` the visible text too) and answer with
- * the innermost match, since a container echoing a descendant's text is not
- * a second match; `placeholder`, `displayValue`, and `testId` compare their
- * one field. `visible` drops hidden nodes from any kind. `scope` searches
- * strict descendants of the scope's matches; `filter` keeps a match whose
- * own or descendants' name, text, or value matches `hasText`, and whose
- * descendants answer `has`; `index` picks `first`, `last`, or a position.
- * `frame` is `FRAME_NOT_FOUND`: a semantic tree has no nested documents.
+ * and `text` match the name (`text` the visible text too); `placeholder`,
+ * `displayValue`, and `testId` compare their one field. `visible` drops
+ * hidden nodes from any kind. A `hasText` filter reads the node's and its
+ * descendants' name, text, and value. `frame` is `FRAME_NOT_FOUND`: a
+ * semantic tree has no nested documents.
  */
 export function resolveExpression(
   expression: LocatorExpression,
   nodes: readonly SemanticNode[],
   options: ResolveExpressionOptions = {},
 ): SemanticNode[] {
-  const tree = indexTree(nodes);
-  return resolve(expression, options.order === undefined ? tree.all : tree.all.toSorted(options.order), tree, options);
-}
-
-/** Every node of a tree in document order, with the parent of each. */
-interface TreeIndex {
-  readonly all: readonly SemanticNode[];
-  readonly parents: ReadonlyMap<SemanticNode, SemanticNode>;
-}
-
-function indexTree(roots: readonly SemanticNode[]): TreeIndex {
   const all: SemanticNode[] = [];
   const parents = new Map<SemanticNode, SemanticNode>();
   const walk = (node: SemanticNode, parent: SemanticNode | undefined): void => {
@@ -81,116 +219,32 @@ function indexTree(roots: readonly SemanticNode[]): TreeIndex {
     if (parent !== undefined) parents.set(node, parent);
     for (const child of node.children ?? []) walk(child, node);
   };
-  for (const root of roots) walk(root, undefined);
-  return { all, parents };
-}
-
-function resolve(
-  expression: LocatorExpression,
-  candidates: readonly SemanticNode[],
-  tree: TreeIndex,
-  options: ResolveExpressionOptions,
-): SemanticNode[] {
-  switch (expression.kind) {
-    case 'union': {
-      const matches = new Set([
-        ...resolve(expression.left, candidates, tree, options),
-        ...resolve(expression.right, candidates, tree, options),
-      ]);
-      return candidates.filter((node) => matches.has(node));
-    }
-    case 'query': {
-      const pool =
-        expression.scope === undefined
-          ? candidates
-          : descendantsOf(resolve(expression.scope, candidates, tree, options), candidates, tree);
-      const matches = pool.filter((node) => matchesQuery(node, expression.query, options));
-      return INNERMOST_KINDS.has(expression.query.kind) ? innermostOnly(matches, tree) : matches;
-    }
-    case 'filter': {
-      const source = resolve(expression.source, candidates, tree, options);
-      return source.filter((node) => {
-        const hasText = (pattern: TextPattern): boolean =>
-          options.hasText === undefined ? subtreeHasText(node, candidates, tree, pattern) : options.hasText(node, pattern);
-        if (expression.hasText !== undefined && !hasText(expression.hasText)) return false;
-        if (expression.hasNotText !== undefined && hasText(expression.hasNotText)) return false;
-        if (expression.has !== undefined || expression.hasNot !== undefined) {
-          const within = descendantsOf([node], candidates, tree);
-          if (expression.has !== undefined && resolve(expression.has, within, tree, options).length === 0) return false;
-          if (expression.hasNot !== undefined && resolve(expression.hasNot, within, tree, options).length > 0) return false;
-        }
-        return true;
-      });
-    }
-    case 'index': {
-      const source = resolve(expression.source, candidates, tree, options);
-      const position =
-        expression.index === 'first' ? 0 : expression.index === 'last' ? source.length - 1 : expression.index;
-      const picked = source[position];
-      return picked === undefined ? [] : [picked];
-    }
-    case 'selector': {
+  for (const root of nodes) walk(root, undefined);
+  return createResolver<SemanticNode>({
+    nodes: all,
+    parent: (node) => parents.get(node),
+    matches: matchesQuery,
+    hasText: subtreeHasText,
+    selector: (selector, candidates) => {
       if (options.selector === undefined) {
         throw new EngineError(
           'UNSUPPORTED_CAPABILITY',
-          `selector ${JSON.stringify(expression.selector)} needs a platform selector language, and this surface has none`,
+          `selector ${JSON.stringify(selector)} needs a platform selector language, and this surface has none`,
           { retryable: false },
         );
       }
-      return [...options.selector(expression.selector, candidates)];
-    }
-    case 'frame':
-      throw new EngineError(
-        'FRAME_NOT_FOUND',
-        `no nested document matches ${JSON.stringify(expression.selector)}: this surface has none to scope a query into`,
-        { retryable: false },
-      );
-  }
-}
-
-/** The query kinds a container answers for its descendants, so only the innermost match counts. */
-const INNERMOST_KINDS: ReadonlySet<SemanticQuery['kind']> = new Set(['text', 'label']);
-
-/**
- * Drops every match that contains another match, the way a browser's text
- * selector answers with the innermost element. A device tree echoes text
- * upwards: iOS reports a React Native Text host view and its StaticText child
- * with the same label, and a container view inherits its descendants' labels,
- * so without this rule every `getByText` on such a screen is ambiguous.
- */
-function innermostOnly(matches: readonly SemanticNode[], tree: TreeIndex): SemanticNode[] {
-  return matches.filter((node) => !matches.some((other) => other !== node && isWithin(other, node, tree)));
-}
-
-/** True when `node` is a strict descendant of `ancestor`. */
-function isWithin(node: SemanticNode, ancestor: SemanticNode, tree: TreeIndex): boolean {
-  for (let current = tree.parents.get(node); current !== undefined; current = tree.parents.get(current)) {
-    if (current === ancestor) return true;
-  }
-  return false;
-}
-
-/** The candidates that are strict descendants of any node in `ancestors`, in document order. */
-function descendantsOf(
-  ancestors: readonly SemanticNode[],
-  candidates: readonly SemanticNode[],
-  tree: TreeIndex,
-): SemanticNode[] {
-  if (ancestors.length === 0) return [];
-  return candidates.filter((node) => ancestors.some((ancestor) => isWithin(node, ancestor, tree)));
+      return options.selector(selector, candidates);
+    },
+    fail: (code, message) => {
+      throw new EngineError(code, message, { retryable: false });
+    },
+  })(expression);
 }
 
 /** Whether the node's own name, text, or value, or a descendant's, matches `pattern`. */
-function subtreeHasText(
-  node: SemanticNode,
-  candidates: readonly SemanticNode[],
-  tree: TreeIndex,
-  pattern: TextPattern,
-): boolean {
-  const textsOf = (entry: SemanticNode): (string | undefined)[] => [entry.name, entry.text, entry.value];
-  const matchesAny = (entry: SemanticNode): boolean =>
-    textsOf(entry).some((text) => text !== undefined && matchesText(text, pattern));
-  return matchesAny(node) || descendantsOf([node], candidates, tree).some(matchesAny);
+function subtreeHasText(node: SemanticNode, pattern: TextPattern): boolean {
+  if ([node.name, node.text, node.value].some((text) => text !== undefined && matchesText(text, pattern))) return true;
+  return (node.children ?? []).some((child) => subtreeHasText(child, pattern));
 }
 
 /** The states a role query may require, in contract order. */
@@ -204,10 +258,8 @@ const STATE_KEYS = ['checked', 'disabled', 'selected', 'expanded', 'pressed'] as
  * leave visibility to the action or assertion, unless the query says
  * `visible`, which drops hidden nodes for every kind.
  */
-function matchesQuery(node: SemanticNode, query: SemanticQuery, options: ResolveExpressionOptions): boolean {
+function matchesQuery(node: SemanticNode, query: SemanticQuery): boolean {
   if (query.visible === true && node.states?.hidden === true) return false;
-  const decided = options.matches?.(node, query);
-  if (decided !== undefined) return decided;
   switch (query.kind) {
     case 'role': {
       if (query.value.kind !== 'string') {

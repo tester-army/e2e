@@ -25,7 +25,7 @@ import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser, BidiBrowserName } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
 import { HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
-import { BUILTINS_INIT_SCRIPT, readerCall, readerInstallCall, READERS_INIT_SCRIPT, READERS_MISSING, type EncodedReaderArgs, type EncodedReaderName, type ReaderArgs, type ReaderMetadata, type ReaderName, type ReaderResult } from './readers.ts';
+import { BUILTINS_INIT_SCRIPT, readerCall, readerInstallCall, READERS_INIT_SCRIPT, READERS_MISSING, type ReaderArgs, type ReaderName, type ReaderResult } from './readers.ts';
 import { callFunction, ScriptError, type CallOptions, type ElementRef, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 import type { BidiVideo } from './video.ts';
 import type { ProviderVideo } from '../provider-video.ts';
@@ -435,14 +435,10 @@ export class BidiSession {
   /**
    * Calls the document's encoded reader `name` in `context` (the tab by
    * default) and decodes its metadata: one JSON string, or, when the page's
-   * JSON cannot be trusted, a structured value it asks for again. `args`
-   * makes each call's arguments, as a tree read reserves its ids per call.
+   * JSON cannot be trusted, the value itself, read whole in the same call.
    */
-  async readEncoded<K extends EncodedReaderName>(name: K, args: () => EncodedReaderArgs<K>, context?: string): Promise<{ metadata: ReaderMetadata<K>; elements: ElementRef[] }> {
-    type Answer = readonly [metadata: ReaderMetadata<K> | string | null, elements: ElementRef[]];
-    let [metadata, elements] = (await this.callReader(name, [...args(), false], undefined, context)) as Answer;
-    if (metadata === null) [metadata, elements] = (await this.callReader(name, [...args(), true], { maxObjectDepth: null }, context)) as Answer;
-    if (metadata === null) throw new EngineError('ENGINE_FAILURE', `the ${name} reader reported no metadata`, { retryable: false });
+  async readEncoded<K extends 'tree' | 'locate'>(name: K, args: ReaderArgs<K>, context?: string): Promise<{ metadata: Exclude<ReaderResult<K>[0], string>; elements: ElementRef[] }> {
+    const [metadata, elements] = (await this.callReader(name, args, { maxObjectDepth: null }, context)) as ReaderResult<K>;
     // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported metadata; each caller checks its alignment
     return { metadata: typeof metadata === 'string' ? JSON.parse(metadata) : metadata, elements };
   }

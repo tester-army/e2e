@@ -4,9 +4,31 @@ import { types } from 'node:util';
 import type { TextPattern } from '../engine/contract.ts';
 import type { TextMatch } from '../types.ts';
 import { sanitizeText, TestError } from './errors.ts';
-import { testPattern } from './regexp.ts';
 
 export type { TextPattern };
+
+/** Compiled wire patterns, bounded; assertion polls test the same pattern many times a second. */
+const MAX_CACHED_PATTERNS = 256;
+const compiled = new Map<string, RegExp>();
+
+/**
+ * Tests input against a wire regexp (source + flags). Compiled patterns are
+ * cached by source and flags; `lastIndex` is reset before every test, so
+ * sticky/global state can never leak between matches.
+ */
+export function testPattern(source: string, flags: string, input: string): boolean {
+  const key = `${flags}\n${source}`;
+  let pattern = compiled.get(key);
+  if (pattern === undefined) {
+    pattern = new RegExp(source, flags);
+    if (compiled.size >= MAX_CACHED_PATTERNS) {
+      compiled.delete(compiled.keys().next().value as string);
+    }
+    compiled.set(key, pattern);
+  }
+  pattern.lastIndex = 0;
+  return pattern.test(input);
+}
 
 /** Caps prose at `maxChars`, marking the cut with an ellipsis; a cut never splits a character in two (a surrogate pair). */
 export function bound(text: string, maxChars: number): string {
@@ -112,3 +134,16 @@ export function describePattern(pattern: TextPattern): string {
   if (pattern.kind === 'string') return JSON.stringify(pattern.value);
   return `/${pattern.source}/${pattern.flags}`;
 }
+
+/**
+ * `matchesText` and everything it calls as source that declares them, so an
+ * engine that matches in a page (a browser's locate) matches text by this
+ * one rule. Each function reads only this module's bindings, which the
+ * source declares too.
+ */
+export const MATCHES_TEXT_SOURCE = `const MAX_CACHED_PATTERNS = ${MAX_CACHED_PATTERNS};
+const compiled = new Map();
+${testPattern.toString()}
+${normalizeText.toString()}
+${compareText.toString()}
+${matchesText.toString()}`;

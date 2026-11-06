@@ -1,8 +1,7 @@
 /** URL normalization and origin policy helpers. */
 
 import { ConfigurationError } from './errors.ts';
-import { testPattern } from './regexp.ts';
-import { toTextPattern, withIgnoreCase } from './text.ts';
+import { testPattern, toTextPattern, withIgnoreCase } from './text.ts';
 
 export interface NormalizedBaseUrl {
   /** Serialized base URL without trailing artifacts beyond the normalized path. */

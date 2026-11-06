@@ -1,36 +1,31 @@
 /**
  * Observation and location on the BiDi driver: the semantic tree with its
- * on-site frames stitched in, masked pixels, and locator resolution with
- * the contract's reference semantics.
+ * on-site frames stitched in, masked pixels, and locators resolved in the
+ * page by the contract's locator rules.
  */
 
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import {
   EngineError,
-  matchesText,
   OBSERVED_NAME_LIMIT,
   OBSERVED_TEXT_LIMIT,
-  resolveExpression,
   type EngineObserveOptions,
   type EngineSnapshot,
   type LocatorExpression,
   type ObservationPixels,
   type SemanticNode,
-  type SemanticQuery,
-  type TextPattern,
   type ViewportSize,
   withTimeout,
 } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
 import { assembleTree, frameContentInset, isOnSiteFrame, ROOT_NODE_ID, toSemanticNode } from '../observation.ts';
 import { readPngSize } from '../observe.ts';
-import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../read-node.ts';
+import { SECURE_FIELD_SELECTOR } from '../read-node.ts';
 import { cancelled } from '../support.ts';
 import { isStale, releaseQuietly, unlessStale } from './errors.ts';
 import { contentContext, inViewport, resolveFrames, selectElements, splitFrames, type NodeTarget } from './frames.ts';
 import { domReady, maskSecureFields, unmaskSecureFields } from './page.ts';
-import type { EncodedReaderArgs, LocateWants, PlaywrightAria, WantedQuery } from './readers.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
 
@@ -146,12 +141,10 @@ export async function traceScreen(session: BidiSession, signal: AbortSignal): Pr
 }
 
 /**
- * Resolves one expression with the contract's reference semantics
- * (`resolveExpression`) over node-mode reads of the elements its queries
- * could match, in the document its frame chain names; a `selector` is
- * answered by `browsingContext.locateNodes`; text, label, display-value,
- * and role queries and text filters follow Playwright's own engines
- * (`playwrightMatches`), so both drivers answer one locator alike.
+ * Resolves one expression in the document its frame chain names, by the
+ * contract's locator rules run in the page (the `locate` reader), which
+ * match each element as Playwright's engines do; a `selector` is answered
+ * by `browsingContext.locateNodes` first.
  */
 export async function locate(session: BidiSession, expression: LocatorExpression): Promise<SemanticNode[]> {
   const { chain, context, matches } = await resolveLocator(session, expression);
@@ -186,32 +179,12 @@ async function resolveLocator(session: BidiSession, expression: LocatorExpressio
   const selected = await locateSelectors(session, inner, context);
   const options = { testIdAttribute: session.settings.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR };
   const frameHidden = await insideHiddenFrame(session, context, options);
-  const { metadata, elements } = await session.readEncoded('locate', (): EncodedReaderArgs<'locate'> => [options, wantedQueries(inner), CLOSED_SHADOW_ROOTS_KEY], context);
-  const { nodes, parents, valued, aria, order } = metadata;
-  if (!Array.isArray(nodes) || !Array.isArray(parents) || !Array.isArray(valued) || !Array.isArray(aria) || !Array.isArray(order) || [parents, valued, aria, order, elements].some((list) => list.length !== nodes.length)) {
+  const { metadata: nodes, elements } = await session.readEncoded('locate', [options, JSON.stringify(inner), selected, frameHidden, CLOSED_SHADOW_ROOTS_KEY], context);
+  if (!Array.isArray(nodes) || nodes.length !== elements.length) {
     throw new EngineError('ENGINE_FAILURE', 'located reads do not align with their elements', { retryable: false });
   }
-  if (frameHidden) {
-    for (const [index, node] of nodes.entries()) {
-      nodes[index] = { ...node, states: { ...node.states, hidden: true } };
-      aria[index] = { ...aria[index]!, hidden: true };
-    }
-  }
   const first = session.refs.reserveIds(nodes.length);
-  const ids = nodes.map((_node, index) => `n${first + index}`);
-  const sharedIds = new Map(ids.map((id, index) => [id, elements[index]!.sharedId]));
-  const reads = new Map(ids.map((id, index) => [id, { labels: nodes[index]!.labels ?? [], valued: valued[index]!, aria: aria[index]! }]));
-  const ranks = new Map(ids.map((id, index) => [id, order[index]!]));
-  const matches = resolveExpression(inner, buildForest(nodes, parents, ids), {
-    matches: (node, query) => playwrightMatches(node, query, reads.get(node.ref.id)),
-    hasText: (node, pattern) => matchesText(reads.get(node.ref.id)?.aria.text ?? '', pattern),
-    order: (a, b) => (ranks.get(a.ref.id) ?? 0) - (ranks.get(b.ref.id) ?? 0),
-    selector: (selector, candidates) => {
-      const hits = selected.get(selector) ?? new Set<string>();
-      return candidates.filter((node) => hits.has(sharedIds.get(node.ref.id) ?? ''));
-    },
-  });
-  return { chain, context, matches: matches.map((node) => ({ node, element: new ElementRef(sharedIds.get(node.ref.id) ?? '') })) };
+  return { chain, context, matches: nodes.map((raw, index) => ({ node: toSemanticNode({ id: `n${first + index}`, revision: '' }, raw), element: elements[index]! })) };
 }
 
 /**
@@ -227,68 +200,12 @@ async function insideHiddenFrame(session: BidiSession, context: string, options:
   return false;
 }
 
-/** What `playwrightMatches` reads of one located element. */
-interface LocatedRead {
-  readonly labels: readonly string[];
-  readonly valued: boolean;
-  readonly aria: PlaywrightAria;
-}
-
-/**
- * Whether `node` matches `query` by Playwright's engines, the Playwright
- * driver's semantics: a text query on the element's joined text, a label
- * query on any one of its labels, a display value on controls that display
- * one, and a role query that skips what is hidden from the accessibility
- * tree (not merely unrendered) and tells a `mixed` or absent state from
- * false. Other kinds keep the reference rules.
- */
-function playwrightMatches(node: SemanticNode, query: SemanticQuery, read: LocatedRead | undefined): boolean | undefined {
-  if (read === undefined) return undefined;
-  switch (query.kind) {
-    case 'text':
-      return matchesText(read.aria.text, query.value);
-    case 'label':
-      return read.labels.some((label) => matchesText(label, query.value));
-    case 'displayValue':
-      return read.valued && node.value !== undefined && matchesText(node.value, query.value);
-    case 'role': {
-      if (query.value.kind !== 'string' || (node.role ?? '') !== query.value.value || read.aria.hidden) return false;
-      if (query.name !== undefined && !matchesText(roleQueryName(node, read), query.name)) return false;
-      const states = query.states ?? {};
-      if (states.checked !== undefined && read.aria.checked !== states.checked) return false;
-      if (states.pressed !== undefined && read.aria.pressed !== states.pressed) return false;
-      if (states.expanded !== undefined && read.aria.expanded !== states.expanded) return false;
-      if (states.selected !== undefined && read.aria.selected !== states.selected) return false;
-      if (states.disabled !== undefined && (node.states?.disabled ?? false) !== states.disabled) return false;
-      return query.level === undefined || node.level === query.level;
-    }
-    default:
-      return undefined;
-  }
-}
-
-/** Roles the tree names from their content so a row reads as one line, which Playwright's accessible name leaves unnamed. */
-const TREE_CONTENT_NAMED = new Set(['listitem', 'status', 'alert']);
-
-/**
- * The name a role query compares: the reader's, except the content name the
- * tree gives a role accname does not name from content (a name equal to the
- * element's own text, with no authored label), which Playwright leaves empty.
- */
-function roleQueryName(node: SemanticNode, read: LocatedRead | undefined): string {
-  const name = node.name ?? '';
-  if (!TREE_CONTENT_NAMED.has(node.role ?? '') || read === undefined) return name;
-  const authored = ['aria-label', 'aria-labelledby', 'title'].some((attribute) => (node.attributes?.[attribute] ?? '').trim() !== '');
-  const squash = (text: string): string => text.replace(/\s+/g, ' ').trim();
-  return !authored && squash(name) === squash(read.aria.text) ? '' : name;
-}
-
-/** The shared ids every `selector` in the expression matches in `context`, read before the elements so one pass answers them all. */
-async function locateSelectors(session: BidiSession, expression: LocatorExpression, context: string): Promise<Map<string, Set<string>>> {
-  const out = new Map<string, Set<string>>();
+/** The elements every `selector` in the expression matches in `context`, read before the locate that answers the rest. */
+async function locateSelectors(session: BidiSession, expression: LocatorExpression, context: string): Promise<[string, ElementRef[]][]> {
+  const out: [string, ElementRef[]][] = [];
   for (const selector of selectorsOf(expression)) {
     const found = await selectElements(session.connection, context, selector);
-    out.set(selector, new Set(found.map(({ element }) => element.sharedId)));
+    out.push([selector, found.map(({ element }) => element)]);
   }
   return out;
 }
@@ -331,7 +248,7 @@ function selectorsOf(expression: LocatorExpression): Set<string> {
  * truncation; an off-site one stays a boundary node by design.
  */
 async function captureTree(session: BidiSession, context: string, framePath: readonly string[], budget: number, deadline: number): Promise<CapturedTree> {
-  const { metadata: decoded, elements } = await session.readEncoded('tree', (): EncodedReaderArgs<'tree'> => [{
+  const { metadata: decoded, elements } = await session.readEncoded('tree', [{
     testIdAttribute: session.settings.testIdAttribute,
     secureFieldSelector: SECURE_FIELD_SELECTOR,
     mode: { kind: 'tree', maxNodes: budget, idSeed: session.refs.reserveIds(budget), nameLimit: OBSERVED_NAME_LIMIT, textLimit: OBSERVED_TEXT_LIMIT },
@@ -459,79 +376,4 @@ async function captureUnlessNavigated(session: BidiSession, context: string, doc
     capture.catch(() => undefined);
     navigated.catch(() => undefined);
   }
-}
-
-/** A text pattern as a page function argument. */
-function patternArgument(pattern: TextPattern): TextPattern {
-  return pattern.kind === 'string'
-    ? { kind: 'string', value: pattern.value, exact: pattern.exact }
-    : { kind: 'regexp', source: pattern.source, flags: pattern.flags };
-}
-
-/**
- * What a locate must read, as the locate reader takes it: each query of the
- * expression, and whether a text filter needs every element with text. A
- * selector, or a role query whose role is a pattern, reads every element.
- */
-export function wantedQueries(expression: LocatorExpression): LocateWants {
-  const queries: WantedQuery[] = [];
-  let hasText = false;
-  let all = false;
-  const walk = (node: LocatorExpression): void => {
-    switch (node.kind) {
-      case 'query': {
-        const { kind, value, name } = node.query;
-        if (kind === 'role' && value.kind !== 'string') all = true;
-        queries.push({
-          kind,
-          value: patternArgument(value),
-          ...(name === undefined ? {} : { name: patternArgument(name) }),
-          ...(kind === 'role' && value.kind === 'string' ? { role: value.value } : {}),
-        });
-        if (node.scope !== undefined) walk(node.scope);
-        return;
-      }
-      case 'selector':
-        all = true;
-        return;
-      case 'filter':
-        if (node.hasText !== undefined || node.hasNotText !== undefined) hasText = true;
-        walk(node.source);
-        if (node.has !== undefined) walk(node.has);
-        if (node.hasNot !== undefined) walk(node.hasNot);
-        return;
-      case 'index':
-      case 'frame':
-        walk(node.source);
-        return;
-      case 'union':
-        walk(node.left);
-        walk(node.right);
-    }
-  };
-  walk(expression);
-  return { queries, hasText, all };
-}
-
-/** Builds the read elements into trees by their nearest read ancestor; the roots, in document order. */
-export function buildForest(nodes: readonly RawNodeData[], parents: readonly number[], ids: readonly string[]): SemanticNode[] {
-  const children: SemanticNode[][] = nodes.map(() => []);
-  const built: SemanticNode[] = [];
-  for (let index = nodes.length - 1; index >= 0; index -= 1) {
-    built[index] = toSemanticNode({ id: ids[index]!, revision: '' }, labelled(nodes[index]!), children[index]!);
-    const parent = parents[index]!;
-    if (parent >= 0) children[parent]!.unshift(built[index]!);
-  }
-  return built.filter((_node, index) => parents[index]! < 0);
-}
-
-/**
- * A read whose name the reader left empty (a hidden element has none) named
- * by its first label or its `aria-label`, so a label query finds a hidden
- * control as Playwright's `getByLabel` does.
- */
-function labelled(raw: RawNodeData): RawNodeData {
-  if (raw.name !== null) return raw;
-  const name = raw.labels?.[0] ?? raw.attributes['aria-label'];
-  return name === undefined ? raw : { ...raw, name };
 }

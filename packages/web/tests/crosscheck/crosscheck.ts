@@ -3,7 +3,8 @@
  * accessibility tree on the same live page, read over CDP through the BiDi
  * mapper. Every node the engine's reader reports is tagged in the DOM, then
  * looked up in Chrome's tree; every interactive node Chrome exposes that the
- * engine left out is reported too.
+ * engine left out is reported too. A second oracle is the engine's own
+ * locate: a role and name read off the tree must locate the element.
  *
  * The result is a list of disagreements keyed without node ids, so a list
  * can be committed as the expected state of a page and diffed on the next
@@ -11,7 +12,8 @@
  */
 
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT, type SemanticNode } from 'e2e/engine';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
+import { readerInstallCall } from '../../src/bidi/readers.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from '../../src/closed-shadow.ts';
 import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
 import { assembleTree } from '../../src/observation.ts';
 import { SECURE_FIELD_SELECTOR, type RawObservedNode } from '../../src/read-node.ts';
@@ -19,7 +21,7 @@ import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
 
 /** One field on which the engine and an oracle read a node differently. */
 export interface Disagreement {
-  readonly oracle: 'chrome' | 'axe';
+  readonly oracle: 'chrome' | 'axe' | 'engine';
   /** `role`, `name`, a state name, `level`, `missing` (Chrome has the node, the engine does not), or `unknown` (the other way). */
   readonly field: string;
   readonly ours: string;
@@ -44,9 +46,10 @@ const STRUCTURAL_ROLES = new Set(['document', 'text', 'generic', 'none', 'presen
  */
 
 /**
- * Roles the tree names from content where accname and Chrome leave them
- * unnamed (`NAME_FROM_CONTENT_ROLES` in `src/in-page/read-semantics.ts`):
- * a list row or a status message is read by what it says.
+ * Roles the tree names from content where accname, Chrome, and Playwright's
+ * getByRole leave them unnamed (`ROW_CONTENT_ROLES` in
+ * `src/in-page/read-semantics.ts`): a list row or a status message is read
+ * by what it says, and located by its text rather than that name.
  */
 const ENGINE_NAMED_ROLES = new Set(['listitem', 'status', 'alert']);
 
@@ -280,11 +283,39 @@ function compareWithChrome(node: SemanticNode, ax: AXNode, facts: ElementFacts, 
   }
 }
 
+/**
+ * Locates each `[id, expression]` with the engine's `locate` reader and
+ * answers the ids whose tagged element is not among the matches. Runs in
+ * the page.
+ */
+const UNLOCATED = `(checks, options, key, marker) => {
+  const locate = ${readerInstallCall('locate')};
+  return checks.filter(([id, expression]) => !locate(options, expression, [], false, key)[1].some((element) => element.getAttribute(marker) === id)).map(([id]) => id);
+}`;
+
+/**
+ * The engine oracle: every named node a role query could name, located by
+ * `getByRole(role, { name, exact: true })` with what the tree reads. The
+ * roles the tree names from content and Playwright's getByRole leaves
+ * unnamed (`ENGINE_NAMED_ROLES`) are left out, as is a name the tree cut.
+ */
+async function unlocated(page: BidiPage, nodes: readonly SemanticNode[], facts: ReadonlyMap<string, ElementFacts>): Promise<Disagreement[]> {
+  const named = nodes.filter((node) => {
+    const fact = facts.get(node.ref.id);
+    return node.role !== undefined && !STRUCTURAL_ROLES.has(node.role) && !ENGINE_NAMED_ROLES.has(node.role) && !ENGINE_ONLY_ROLES.has(node.role) &&
+      (node.name ?? '') !== '' && node.name!.length < OBSERVED_NAME_LIMIT && node.states?.hidden !== true && fact !== undefined && !fact.inChildFrame;
+  });
+  const checks = named.map((node) => [node.ref.id, JSON.stringify({ kind: 'query', query: { kind: 'role', value: { kind: 'string', value: node.role, exact: true }, name: { kind: 'string', value: node.name, exact: true } } })]);
+  const options = { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR };
+  const missed = new Set(await page.evaluate(UNLOCATED, checks, options, CLOSED_SHADOW_ROOTS_KEY, MARKER) as string[]);
+  return named.filter((node) => missed.has(node.ref.id)).map((node) => ({ oracle: 'engine', field: 'getByRole', ours: node.name!, theirs: 'no match', node: describe(node.role!, node.name!) }));
+}
+
 /** Cross-checks the page as it is now, on a page from `openCheckPage`; the page keeps the marker attributes afterwards. */
 export async function crossCheck(page: BidiPage): Promise<CrossCheckResult> {
   const { nodes, facts } = await captureTagged(page);
   const chrome = await chromeTree(page);
-  const disagreements: Disagreement[] = [];
+  const disagreements: Disagreement[] = await unlocated(page, nodes, facts);
   let compared = 0;
   for (const node of nodes) {
     const fact = facts.get(node.ref.id);

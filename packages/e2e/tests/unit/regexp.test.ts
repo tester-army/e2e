@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { testPattern } from '../../src/internal/regexp.ts';
+import { testPattern } from '../../src/internal/text.ts';
 
 describe('testPattern', () => {
   it('never leaks lastIndex state between calls with global or sticky flags', () => {

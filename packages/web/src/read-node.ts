@@ -82,12 +82,10 @@ export type SemanticMode =
   | { kind: 'node' }
   /** The element's `states.hidden` alone, for the `visible` narrowing a selector engine applies. */
   | { kind: 'hidden' }
-  /** Each listed element's role alone, under one reader: what a locate narrows a role query by before reading nodes. */
-  | { kind: 'roles'; elements: Element[] }
-  /** Each listed element's accessible name alone, under one reader: what a locate narrows a role query's name by. */
-  | { kind: 'names'; elements: Element[] }
   /** Each listed element as `node` reads it, under one reader, so a batch pays for the reader's setup once. */
   | { kind: 'nodes'; elements: Element[] }
+  /** The reads a locate matches elements by, in the locator projection (`LocatorReads`). */
+  | { kind: 'locator' }
   | {
       kind: 'tree';
       maxNodes: number;
@@ -108,8 +106,48 @@ export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'no
   ? RawNodeData
   : Mode extends { kind: 'hidden' }
     ? boolean
-    : Mode extends { kind: 'roles' | 'names' }
-      ? (string | null)[]
+    : Mode extends { kind: 'locator' }
+      ? LocatorReads
       : Mode extends { kind: 'nodes' }
         ? RawNodeData[]
         : RawObservation;
+
+/** An element's ARIA states as Playwright's role engine compares them: `mixed` and absent kept apart from false. */
+export interface AriaStates {
+  readonly checked: boolean | 'mixed';
+  readonly pressed: boolean | 'mixed';
+  readonly expanded: boolean | null;
+  readonly selected: boolean;
+}
+
+/**
+ * What a locate matches an element by, under one reader: each read is
+ * computed when first asked and kept for the rest of the read, so a query
+ * pays only for what it compares. Names follow the locator projection: a
+ * list row, a status, or an alert takes no name from its content, and an
+ * element the accessible name leaves unnamed is named by its first label.
+ */
+export interface LocatorReads {
+  /** Whether the element's role is `role`; the empty-box role is computed only when asked for. */
+  hasRole(element: Element, role: string): boolean;
+  /** The name a role query compares. */
+  name(element: Element): string | null;
+  /** The label sources a label query compares; see `RawNodeData.labels`. */
+  labels(element: Element): string[] | null;
+  /** The element's text as Playwright's text engine joins it: its shadow roots included, whitespace collapsed. */
+  text(element: Element): string;
+  /** The element's `states.hidden`. */
+  hidden(element: Element): boolean;
+  /** Whether Playwright's role engine leaves the element out as hidden from the accessibility tree. */
+  hiddenForAria(element: Element): boolean;
+  /** The element's ARIA states, read for `role`. */
+  states(element: Element, role: string): AriaStates;
+  /** The element's `states.disabled`. */
+  disabled(element: Element): boolean;
+  /** The level a role query compares, as Playwright reads it: a heading tag's, else a whole `aria-level` of at least 1, else none. */
+  level(element: Element): number | null;
+  /** The value a display-value query compares: an input's (but a checkbox's or radio's), a textarea's, or a select's; null for a secure field and anything else. */
+  displayValue(element: Element): string | null;
+  /** The element as a node read, in the locator projection. */
+  describe(element: Element): RawNodeData;
+}

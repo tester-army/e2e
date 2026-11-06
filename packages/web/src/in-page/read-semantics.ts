@@ -6,7 +6,7 @@
  * That is why it has a file of its own.
  */
 
-import type { RawNodeData, RawObservedNode, SemanticMode, SemanticResult } from '../read-node.ts';
+import type { LocatorReads, RawNodeData, RawObservedNode, SemanticMode, SemanticResult } from '../read-node.ts';
 
 /**
  * Serialized into the page by Playwright. Must stay self-contained: no outer
@@ -17,9 +17,11 @@ import type { RawNodeData, RawObservedNode, SemanticMode, SemanticResult } from 
  * `label-selector.ts`), so the element is always in its document.
  * `mode.kind === 'hidden'` answers that one element's `states.hidden` alone.
  * `mode.kind === 'tree'` walks the subtree for one agent observation and
- * returns live element handles aligned with the flattened node list. The two
- * modes also project nodes differently; those differences are data (see
- * `projection` below), not scattered branches.
+ * returns live element handles aligned with the flattened node list.
+ * `mode.kind === 'locator'` returns the reads a locate matches elements by
+ * (`LocatorReads`), each kept for the rest of the read. The modes also
+ * project nodes differently; those differences are data (see `projection`
+ * below), not scattered branches.
  */
 export const readSemanticsFunction = <Mode extends SemanticMode>(
   element: Element,
@@ -69,6 +71,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * origin+path, the root document named by its title, and no value on a
    * checkbox or radio, whose value attribute is an app token its checked
    * state already says more than. Node mode is the full locator-read surface.
+   * Locator mode reads names as Playwright's locators compare them: a list
+   * row, a status, or an alert takes no name from its content, and an element
+   * the accessible name leaves unnamed (a hidden control) is named by its
+   * first label, as `getByLabel` finds it.
    */
   const projection: {
     attributes: readonly string[] | null;
@@ -78,6 +84,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     lineText: boolean;
     documentRoot: boolean;
     checkableValue: boolean;
+    rowContentNames: boolean;
+    labelNames: boolean;
   } =
     options.mode.kind === 'tree'
       ? {
@@ -88,6 +96,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           lineText: true,
           documentRoot: true,
           checkableValue: false,
+          rowContentNames: true,
+          labelNames: false,
         }
       : {
           attributes: null,
@@ -97,6 +107,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
           lineText: false,
           documentRoot: false,
           checkableValue: true,
+          rowContentNames: options.mode.kind !== 'locator',
+          labelNames: options.mode.kind === 'locator',
         };
 
   /**
@@ -731,11 +743,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
 
   const NAME_OPAQUE_TAGS: ReadonlySet<string> = new Set(['TEXTAREA', 'SELECT', 'INPUT', 'SCRIPT', 'STYLE']);
 
-  /**
-   * Roles named from their content (accname 2F, the list Playwright's role
-   * selector uses), plus `listitem`, `status`, and `alert`, which the tree
-   * has always named so a list row or a message reads as one line.
-   */
+  /** Roles named from their content (accname 2F, the list Playwright's role selector uses). */
   const NAME_FROM_CONTENT_ROLES: ReadonlySet<string> = new Set([
     'button',
     'cell',
@@ -755,10 +763,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     'tab',
     'tooltip',
     'treeitem',
-    'listitem',
-    'status',
-    'alert',
   ]);
+
+  /** Roles the tree and node reads also name from their content, so a list row or a message reads as one line (`projection.rowContentNames`). */
+  const ROW_CONTENT_ROLES: ReadonlySet<string> = new Set(['listitem', 'status', 'alert']);
 
   /** HTML-AAM: the child element that names its parent when nothing ARIA does. */
   const NAMING_CHILD_TAGS: Readonly<Record<string, string>> = { fieldset: 'legend', figure: 'figcaption', table: 'caption' };
@@ -939,7 +947,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       if (el.type === 'reset') return 'Reset';
     }
     const role = implicitRole(el);
-    if (role !== null && NAME_FROM_CONTENT_ROLES.has(role)) {
+    if (role !== null && (NAME_FROM_CONTENT_ROLES.has(role) || (projection.rowContentNames && ROW_CONTENT_ROLES.has(role)))) {
       const text = nameTextOf(el, true);
       if (text !== '') return text;
     }
@@ -1353,6 +1361,118 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     return role !== null && ARIA_DISABLED_ROLES.indexOf(role) !== -1 && ariaDisabledInChain(el);
   };
 
+  /** The name the projection reports: the accessible name, else, with `projection.labelNames`, the element's first label. */
+  const projectedName = memoized((el: Element): string | null => {
+    const name = reportedName(el, accessibleName(el));
+    return name !== null || !projection.labelNames ? name : (labelsOf(el)?.[0] ?? null);
+  });
+
+  /**
+   * The reads a locate matches by, as Playwright's engines read an element
+   * where they differ from the tree: its text as the text engine joins it
+   * (shadow roots included), whether the role engine counts it hidden
+   * (`isElementHiddenForAria`), and its ARIA states with `mixed` and absent
+   * kept apart from false (`getAriaChecked`, `getAriaPressed`,
+   * `getAriaExpanded`, `getAriaSelected`), and its level (`getAriaLevel`: a
+   * heading tag's before `aria-level`, none without either). Everything
+   * else is this reader's, in the locator projection.
+   */
+  const locatorReads = (): LocatorReads => {
+    const texts = new Map<Element | ShadowRoot, string>();
+    const joinedTextOf = (root: Element | ShadowRoot): string => {
+      const cached = texts.get(root);
+      if (cached !== undefined) return cached;
+      let full = '';
+      const skipped = root.nodeType === 1 && (['SCRIPT', 'NOSCRIPT', 'STYLE'].indexOf(root.nodeName) !== -1 || (document.head !== null && document.head.contains(root)));
+      if (!skipped) {
+        if (root.nodeName === 'INPUT' && ['submit', 'button', 'reset'].indexOf((root as HTMLInputElement).type) !== -1) {
+          full = (root as HTMLInputElement).value;
+        } else {
+          for (let child = root.firstChild; child !== null; child = child.nextSibling) {
+            if (child.nodeType === 3) full += child.nodeValue ?? '';
+            else if (child.nodeType === 1) full += joinedTextOf(child as Element);
+          }
+          const shadow = root.nodeType === 1 ? (root as Element).shadowRoot : null;
+          if (shadow !== null) full += joinedTextOf(shadow);
+        }
+      }
+      texts.set(root, full);
+      return full;
+    };
+    const belongsHidden = memoized((el: Element): boolean => {
+      if (el.parentElement !== null && el.parentElement.shadowRoot !== null && el.assignedSlot === null) return true;
+      if (styleOf(el)?.display === 'none' || (el.getAttribute('aria-hidden') ?? '').toLowerCase() === 'true') return true;
+      const parent = parentOrHostOf(el);
+      return parent !== null && belongsHidden(parent);
+    });
+    const hiddenForAria = memoized((el: Element): boolean => {
+      if (['STYLE', 'SCRIPT', 'NOSCRIPT', 'TEMPLATE'].indexOf(el.nodeName) !== -1) return true;
+      const style = styleOf(el);
+      if (style === undefined) return true;
+      const slot = el.nodeName === 'SLOT';
+      if (style.display === 'contents' && !slot) {
+        for (let child = el.firstChild; child !== null; child = child.nextSibling) {
+          if (child.nodeType === 1 && !hiddenForAria(child as Element)) return false;
+          if (child.nodeType === 3 && (child.nodeValue ?? '').trim() !== '') return false;
+        }
+        return true;
+      }
+      const option = el.nodeName === 'OPTION' && el.closest('select') !== null;
+      const styleVisible = (typeof el.checkVisibility !== 'function' || el.checkVisibility()) && style.visibility === 'visible';
+      if (!option && !slot && !styleVisible) return true;
+      return belongsHidden(el);
+    });
+    const CHECKED_ROLES = ['checkbox', 'menuitemcheckbox', 'option', 'radio', 'switch', 'menuitemradio', 'treeitem'];
+    const EXPANDED_ROLES = ['application', 'button', 'checkbox', 'combobox', 'gridcell', 'link', 'listbox', 'menuitem', 'row', 'rowheader', 'tab', 'treeitem', 'columnheader', 'menuitemcheckbox', 'menuitemradio', 'switch'];
+    const SELECTED_ROLES = ['gridcell', 'option', 'row', 'tab', 'rowheader', 'columnheader', 'treeitem'];
+    const ariaState = (el: Element, attribute: string): boolean | 'mixed' => {
+      const value = el.getAttribute(attribute);
+      return value === 'true' ? true : value === 'mixed' ? 'mixed' : false;
+    };
+    return {
+      hasRole: (el, role) => {
+        const implicit = implicitRole(el);
+        if (implicit !== null) return implicit === role;
+        if (el.localName === 'iframe') return role === 'iframe';
+        return role === 'box' && isVisibleEmptyBox(el);
+      },
+      name: projectedName,
+      labels: labelsOf,
+      text: (el) => joinedTextOf(el).replace(/\u200b/g, '').trim().replace(/\s+/g, ' '),
+      hidden: (el) => isHidden(el),
+      hiddenForAria,
+      states: (el, role) => {
+        const input = el instanceof HTMLInputElement ? el : null;
+        let checked: boolean | 'mixed' = false;
+        if (input !== null && input.indeterminate) checked = 'mixed';
+        else if (input !== null && (input.type === 'checkbox' || input.type === 'radio')) checked = input.checked;
+        else if (CHECKED_ROLES.indexOf(role) !== -1) checked = ariaState(el, 'aria-checked');
+        let expanded: boolean | null = null;
+        if (el instanceof HTMLDetailsElement) expanded = el.open;
+        else if (EXPANDED_ROLES.indexOf(role) !== -1 && el.hasAttribute('aria-expanded')) expanded = el.getAttribute('aria-expanded') === 'true';
+        return {
+          checked,
+          pressed: role === 'button' ? ariaState(el, 'aria-pressed') : false,
+          expanded,
+          selected: el instanceof HTMLOptionElement ? el.selected : SELECTED_ROLES.indexOf(role) !== -1 && (el.getAttribute('aria-selected') ?? '').toLowerCase() === 'true',
+        };
+      },
+      disabled: isDisabled,
+      level: (el) => {
+        const tag = el.tagName.toLowerCase();
+        if (/^h[1-6]$/.test(tag)) return Number(tag.slice(1));
+        const attribute = el.getAttribute('aria-level');
+        const level = attribute === null ? Number.NaN : Number(attribute);
+        return Number.isInteger(level) && level >= 1 ? level : null;
+      },
+      displayValue: (el) =>
+        el.matches('input:not([type="checkbox" i]):not([type="radio" i]), textarea, select') && !el.matches(options.secureFieldSelector)
+          ? (el as HTMLInputElement).value
+          : null,
+      describe: (el) => describe(el),
+    };
+  };
+
   const describe = (el: Element, style = styleOf(el)): RawNodeData => {
     const tag = el.tagName.toLowerCase();
     const autocomplete = (el.getAttribute('autocomplete') ?? '').toLowerCase();
@@ -1446,7 +1566,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     else text = textOf(el);
     if (projection.textLimit !== null) text = text.slice(0, projection.textLimit);
 
-    let name = reportedName(el, accessibleName(el));
+    let name = projectedName(el);
     if (projection.nameLimit !== null && name !== null) name = name.slice(0, projection.nameLimit);
     // A secure field withholds its value, never its labels: a password field is still found by its label.
     const labels = labelsOf(el);
@@ -1501,15 +1621,10 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   if (options.mode.kind === 'node') {
     return describe(element) as SemanticResult<Mode>;
   }
-  if (options.mode.kind === 'roles') {
-    return options.mode.elements.map((el) => roleOf(el, el.localName)) as SemanticResult<Mode>;
-  }
-  if (options.mode.kind === 'names') {
-    return options.mode.elements.map((el) => reportedName(el, accessibleName(el))) as SemanticResult<Mode>;
-  }
   if (options.mode.kind === 'nodes') {
     return options.mode.elements.map((el) => describe(el)) as SemanticResult<Mode>;
   }
+  if (options.mode.kind === 'locator') return locatorReads() as SemanticResult<Mode>;
 
   const maxNodes = options.mode.maxNodes;
   const nodes: RawObservedNode[] = [];
