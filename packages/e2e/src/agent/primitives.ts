@@ -524,7 +524,7 @@ export function grammarTools(
   if (verbs.has('upload')) {
     tools['upload'] = screenTool({
       description:
-        `Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Use the project-relative paths the step gives you; when it names none, attach a sample: ${SAMPLE_NAMES.map((name) => `${SAMPLE_PREFIX}${name}`).join(', ')}. A file outside the project, a hidden one, or one that does not exist is refused.`,
+        `Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Use the project-relative paths the step gives you; when it names none, attach a sample: ${SAMPLE_NAMES.map((name) => `${SAMPLE_PREFIX}${name}`).join(', ')}. Any other file outside the project, a hidden one, or one that does not exist is refused.`,
       inputSchema: z.object({ target, files: z.array(z.string().min(1)).min(1) }),
       execute: ({ target: id, files }) =>
         acting(
