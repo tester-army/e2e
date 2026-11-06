@@ -6,17 +6,15 @@
  * the top-level viewport the pointer and the screenshot share.
  */
 
-import type { BrowsingContext } from 'webdriver-bidi-protocol';
 import { EngineError, TestError, type LocatorExpression, type SemanticNode } from 'e2e/engine';
-import { message } from '../support.ts';
 import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
 import { frameContentInset } from '../observation.ts';
-import { BidiError, type BidiConnection } from './connection.ts';
+import type { BidiConnection } from './connection.ts';
 import { ChromiumCdp } from './cdp.ts';
 import { callFunction, ElementRef, WindowRef } from './script.ts';
 import type { BidiBrowserName } from './launch.ts';
 import { compose, IDENTITY, invert, rectToQuad, scaleThenTranslate, type Projection } from './projection.ts';
-import { chainParts, cssChains, type CssStep, type SelectorPart } from './selector-tokens.ts';
+import { chainParts, cssChains, type CssStep } from './selector-tokens.ts';
 
 /** An element and the browsing context whose document holds it. */
 export interface NodeTarget {
@@ -68,15 +66,30 @@ export async function contentContext(connection: BidiConnection, frame: NodeTarg
   return window instanceof WindowRef ? window.context : undefined;
 }
 
+/** One `>>` chain part as the page reads it: CSS as its complex selectors (`cssChains`), or an XPath expression. */
+export type PagePart =
+  | { readonly engine: 'css'; readonly body: string; readonly chains: CssStep[][] }
+  | { readonly engine: 'xpath'; readonly body: string };
+
 /**
- * One chain part of `selector` as a `browsingContext.locateNodes` locator.
- * Only the CSS and XPath engines are supported; another is
- * `INVALID_LOCATOR`.
+ * The `>>` chain parts of `selector` as the page reads them. Only the CSS and
+ * XPath engines are supported, and only the last part may capture; anything
+ * else is `INVALID_LOCATOR`.
  */
-export function selectorLocator(part: SelectorPart, selector: string): BrowsingContext.Locator {
-  if (part.engine === 'css' || part.engine === 'xpath') return { type: part.engine, value: part.body };
-  throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: the ${part.engine}= engine is not supported`);
+export function pageParts(selector: string): PagePart[] {
+  const parts = chainParts(selector);
+  if (parts.slice(0, -1).some((part) => part.capture)) {
+    throw new TestError('INVALID_LOCATOR', 'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead');
+  }
+  return parts.map((part): PagePart => {
+    if (part.engine === 'css') return { engine: 'css', body: part.body, chains: cssChains(part.body) };
+    if (part.engine === 'xpath') return { engine: 'xpath', body: part.body };
+    throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: the ${part.engine}= engine is not supported`);
+  });
 }
+
+/** The sandbox realm selectors run in, so a page that replaced a built-in (`window.Map = 1`) cannot break them. */
+const SELECTOR_SANDBOX = 'e2e-selectors';
 
 /** One element a selector matched, and its tag name. */
 export interface SelectedElement {
@@ -85,107 +98,123 @@ export interface SelectedElement {
 }
 
 /**
- * The elements of `selector` in document order, through open shadow roots,
- * as Playwright's CSS engine reads it: each compound of `chains` (the
- * selector as `cssChains` splits it) is matched with the browser's own
- * `matches`, and the combinators between compounds walk the composed tree,
- * so a shadow host is the parent of its shadow root's children and
- * `my-host .inner` reaches into it. A selector the page cannot parse is
- * `INVALID_LOCATOR`. Runs in the page.
+ * The elements a `>>` chain (`pageParts`) matches, each part evaluated inside
+ * every element the part before it matched, as Playwright's engines read it.
+ * CSS pierces open shadow roots: the last compound is queried natively in the
+ * scope and in each shadow root under it, and the compounds before it are
+ * matched right to left up the composed tree, memoized per element and
+ * compound, with every combinator stopping at the scope element, which only a
+ * `:scope` compound matches. XPath stays in the light DOM, a leading `/` read
+ * from the scope element. Results come in composed tree order, a shadow
+ * root's elements before its host's light children. A selector the page
+ * cannot parse is its error message. Runs in the page, in `SELECTOR_SANDBOX`.
  */
-function cssSelectAll(selector: string, chains: CssStep[][], scopes?: Element[]): { element: Element; localName: string }[] | string {
-  const parentOf = (element: Element): Element | null =>
+function selectChain(parts: readonly PagePart[]): { element: Element; localName: string }[] | string {
+  const composedParent = (element: Element): Element | null =>
     element.parentElement ?? (element.parentNode !== null && element.parentNode.nodeType === 11 ? (element.parentNode as ShadowRoot).host : null);
-  const matchesFrom = (element: Element, chain: CssStep[], index: number): boolean => {
-    const step = chain[index]!;
-    if (!element.matches(step.compound)) return false;
-    if (index === 0) return true;
-    switch (step.combinator) {
-      case '>': {
-        const parent = parentOf(element);
-        return parent !== null && matchesFrom(parent, chain, index - 1);
+  let batches = 0;
+  const queryCss = (scope: Document | Element, chains: readonly (readonly CssStep[])[], into: Set<Element>): void => {
+    const roots: (Document | Element | ShadowRoot)[] = [];
+    const collect = (root: Document | Element | ShadowRoot): void => {
+      roots.push(root);
+      if (root.nodeType === 1 && (root as Element).shadowRoot !== null) collect((root as Element).shadowRoot!);
+      for (const element of root.querySelectorAll('*')) if (element.shadowRoot !== null) collect(element.shadowRoot);
+    };
+    collect(scope);
+    const isScope = (element: Element): boolean => (scope.nodeType === 9 ? element === (scope as Document).documentElement : element === scope);
+    const matchesCompound = (element: Element, compound: string): boolean => (compound.includes(':scope') ? isScope(element) : element !== scope) && element.matches(compound);
+    const parentOf = (element: Element): Element | null => (element === scope ? null : composedParent(element));
+    const previousOf = (element: Element): Element | null => (element === scope ? null : element.previousElementSibling);
+    for (const chain of chains) {
+      const memo = new Map<Element, (boolean | undefined)[]>();
+      const matchesBefore = (element: Element, index: number): boolean => {
+        if (index === 0) return true;
+        const known = memo.get(element)?.[index];
+        if (known !== undefined) return known;
+        const { combinator } = chain[index]!;
+        const before = chain[index - 1]!;
+        let result = false;
+        if (combinator === '>' || combinator === '+') {
+          const next = combinator === '>' ? parentOf(element) : previousOf(element);
+          result = next !== null && matchesCompound(next, before.compound) && matchesBefore(next, index - 1);
+        } else {
+          const step = combinator === '~' ? previousOf : parentOf;
+          for (let at = step(element); at !== null; at = step(at)) {
+            if (!matchesCompound(at, before.compound)) continue;
+            if (matchesBefore(at, index - 1)) {
+              result = true;
+              break;
+            }
+            if (before.combinator === combinator) break;
+          }
+        }
+        const entry = memo.get(element) ?? [];
+        entry[index] = result;
+        memo.set(element, entry);
+        return result;
+      };
+      const last = chain[chain.length - 1]!;
+      for (const root of roots) {
+        const size = into.size;
+        for (const element of root.querySelectorAll(last.compound)) if (matchesBefore(element, chain.length - 1)) into.add(element);
+        if (into.size > size) batches += 1;
       }
-      case '+': {
-        const previous = element.previousElementSibling;
-        return previous !== null && matchesFrom(previous, chain, index - 1);
-      }
-      case '~':
-        for (let previous = element.previousElementSibling; previous !== null; previous = previous.previousElementSibling) if (matchesFrom(previous, chain, index - 1)) return true;
-        return false;
-      default:
-        for (let ancestor = parentOf(element); ancestor !== null; ancestor = parentOf(ancestor)) if (matchesFrom(ancestor, chain, index - 1)) return true;
-        return false;
     }
   };
+  const queryXpath = (scope: Document | Element, body: string, into: Set<Element>): void => {
+    const expression = scope.nodeType !== 9 && body.startsWith('/') ? `.${body}` : body;
+    const found = (scope.ownerDocument ?? (scope as Document)).evaluate(expression, scope, null, XPathResult.ORDERED_NODE_ITERATOR_TYPE);
+    const size = into.size;
+    for (let node = found.iterateNext(); node !== null; node = found.iterateNext()) if (node.nodeType === 1) into.add(node as Element);
+    if (into.size > size) batches += 1;
+  };
+  const composedPath = (element: Element): Element[] => {
+    const path: Element[] = [];
+    for (let at: Element | null = element; at !== null; at = composedParent(at)) path.push(at);
+    return path.toReversed();
+  };
+  const compare = (a: readonly Element[], b: readonly Element[]): number => {
+    let index = 0;
+    while (index < a.length && index < b.length && a[index] === b[index]) index += 1;
+    if (index === a.length || index === b.length) return a.length - b.length;
+    const x = a[index]!;
+    const y = b[index]!;
+    if (x.parentNode === y.parentNode) return x.compareDocumentPosition(y) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+    return x.parentNode !== null && x.parentNode.nodeType === 11 ? -1 : 1;
+  };
   try {
-    document.querySelector(selector);
-    const out: { element: Element; localName: string }[] = [];
-    const seen = new Set<Element>();
-    const visit = (root: Document | ShadowRoot | Element): void => {
-      for (const element of root.querySelectorAll('*')) {
-        if (!seen.has(element) && chains.some((chain) => matchesFrom(element, chain, chain.length - 1))) {
-          seen.add(element);
-          out.push({ element, localName: element.localName });
-        }
-        if (element.shadowRoot !== null) visit(element.shadowRoot);
+    let matched: (Document | Element)[] = [document];
+    for (const part of parts) {
+      if (part.engine === 'css') document.querySelector(part.body);
+      const found = new Set<Element>();
+      batches = 0;
+      for (const scope of matched) {
+        if (part.engine === 'css') queryCss(scope, part.chains, found);
+        else queryXpath(scope, part.body, found);
       }
-    };
-    if (scopes === undefined) visit(document);
-    else for (const scope of scopes) {
-      visit(scope);
-      if (scope.shadowRoot !== null) visit(scope.shadowRoot);
+      matched = [...found];
     }
-    return out;
+    if (batches <= 1) return (matched as Element[]).map((element) => ({ element, localName: element.localName }));
+    const paths = new Map((matched as Element[]).map((element) => [element, composedPath(element)]));
+    return [...paths.keys()].toSorted((a, b) => compare(paths.get(a)!, paths.get(b)!)).map((element) => ({ element, localName: element.localName }));
   } catch (cause) {
     return cause instanceof Error ? cause.message : String(cause);
   }
 }
 
 /**
- * The elements `selector` matches in `context`'s document (see
- * `selectorLocator`): CSS across open shadow roots, as Playwright reads it,
- * XPath through `browsingContext.locateNodes`, which stays in the light DOM
- * as Playwright's XPath does.
+ * The elements `selector` matches in `context`'s document, in one round trip
+ * (`selectChain`): CSS across open shadow roots and XPath in the light DOM,
+ * as Playwright reads them.
  */
 export async function selectElements(connection: BidiConnection, context: string, selector: string): Promise<SelectedElement[]> {
-  const parts = chainParts(selector);
-  if (parts.slice(0, -1).some((part) => part.capture)) {
-    throw new TestError('INVALID_LOCATOR', 'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead');
-  }
-  let selected: SelectedElement[] | undefined;
-  for (const part of parts) {
-    selected = await selectWithin(connection, context, part, selected?.map((each) => each.element), selector);
-  }
-  return selected ?? [];
+  const found = await callFunction(connection, context, selectChain, [pageParts(selector)], { maxObjectDepth: null, sandbox: SELECTOR_SANDBOX });
+  if (typeof found === 'string') throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: ${found}`);
+  if (!isSelection(found)) throw new EngineError('ENGINE_FAILURE', `selector ${selector} read an unexpected value`, { retryable: false });
+  return found;
 }
 
-/** The elements one chain part matches: in the document, or inside `scopes` (descendants, open shadow roots included). */
-async function selectWithin(connection: BidiConnection, context: string, part: SelectorPart, scopes: readonly ElementRef[] | undefined, selector: string): Promise<SelectedElement[]> {
-  if (scopes !== undefined && scopes.length === 0) return [];
-  const locator = selectorLocator(part, selector);
-  if (locator.type === 'css') {
-    const chains = cssChains(locator.value);
-    const found = await callFunction(connection, context, cssSelectAll, scopes === undefined ? [locator.value, chains] : [locator.value, chains, [...scopes]], { maxObjectDepth: null });
-    if (typeof found === 'string') throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: ${found}`);
-    if (!isSelection(found)) throw new EngineError('ENGINE_FAILURE', `selector ${selector} read an unexpected value`, { retryable: false });
-    return found;
-  }
-  try {
-    const { nodes } = await connection.send('browsingContext.locateNodes', {
-      context,
-      locator,
-      ...(scopes === undefined ? {} : { startNodes: scopes.map((scope) => ({ sharedId: scope.sharedId })) as [{ sharedId: string }, ...{ sharedId: string }[]] }),
-    });
-    return nodes.flatMap((node) => (node.sharedId === undefined ? [] : [{ element: new ElementRef(node.sharedId), localName: node.value?.localName ?? '' }]));
-  } catch (cause) {
-    if (cause instanceof BidiError && cause.error === 'invalid selector') {
-      throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: ${message(cause)}`);
-    }
-    throw cause;
-  }
-}
-
-/** True for what `cssSelectAll` returns once its elements crossed the wire. */
+/** True for what `selectChain` returns once its elements crossed the wire. */
 function isSelection(value: unknown): value is SelectedElement[] {
   return Array.isArray(value) && value.every((each: unknown) =>
     typeof each === 'object' && each !== null && Reflect.get(each, 'element') instanceof ElementRef && typeof Reflect.get(each, 'localName') === 'string');
@@ -215,13 +244,8 @@ export class FrameRegistry {
    * rotated.
    */
   private async frameSteps(connection: BidiConnection, context: string): Promise<FrameStep[] | null> {
-    const steps: FrameStep[] = [];
-    for (const frame of this.chain(context)) {
-      const measured = await callFunction(connection, frame.context, FRAME_BOX, [frame.element, CLOSED_SHADOW_ROOTS_KEY]);
-      if (!isFrameBox(measured)) return null;
-      steps.push(measured);
-    }
-    return steps;
+    const boxes = await measureFrames(connection, this.chain(context));
+    return boxes !== null && boxes.every((box) => box !== TURNED) ? boxes : null;
   }
 
   /**
@@ -234,12 +258,8 @@ export class FrameRegistry {
    */
   async frameMaps(connection: BidiConnection, context: string, browser: BidiBrowserName): Promise<Projection[] | null> {
     const chain = this.chain(context);
-    const boxes: (FrameStep | typeof TURNED)[] = [];
-    for (const frame of chain) {
-      const measured = await callFunction(connection, frame.context, FRAME_BOX, [frame.element, CLOSED_SHADOW_ROOTS_KEY]);
-      if (measured !== TURNED && !isFrameBox(measured)) return null;
-      boxes.push(measured);
-    }
+    const boxes = await measureFrames(connection, chain);
+    if (boxes === null) return null;
     const sessions = browser === 'chromium' && boxes.includes(TURNED) ? await Promise.all(chain.map((frame) => ChromiumCdp.forContext(connection, frame.context))) : undefined;
     const maps: Projection[] = [];
     let root: Projection = IDENTITY;
@@ -351,6 +371,17 @@ function isFrameBox(value: unknown): value is FrameStep {
   return typeof value === 'object' && value !== null && 'content' in value && 'scale' in value;
 }
 
+/** Each frame of `chain` measured by `FRAME_BOX`, the documents read at once; null when one lays out no box. */
+async function measureFrames(connection: BidiConnection, chain: readonly NodeTarget[]): Promise<(FrameStep | typeof TURNED)[] | null> {
+  const boxes = await Promise.all(chain.map((frame) => callFunction(connection, frame.context, FRAME_BOX, [frame.element, CLOSED_SHADOW_ROOTS_KEY])));
+  const steps: (FrameStep | typeof TURNED)[] = [];
+  for (const box of boxes) {
+    if (box !== TURNED && !isFrameBox(box)) return null;
+    steps.push(box);
+  }
+  return steps;
+}
+
 /**
  * An iframe's content box in its own document's viewport, and the scale its
  * transforms (its own and its ancestors') apply to the document inside it;
@@ -400,46 +431,82 @@ export async function resolveFrames(
 ): Promise<string> {
   let context = top;
   for (const selector of selectors) {
-    const iframes = (await selectElements(connection, context, selector)).filter((found) => found.localName === 'iframe' || found.localName === 'frame');
-    if (iframes.length === 0) {
-      throw new EngineError('FRAME_NOT_FOUND', `no frame matches ${selector}`, { retryable: true });
-    }
-    if (iframes.length > 1) {
-      throw new EngineError('FRAME_AMBIGUOUS', `${iframes.length} frames match ${selector}`, { retryable: false });
-    }
-    const frame: NodeTarget = { element: iframes[0]!.element, context };
-    const child = await contentContext(connection, frame);
-    if (child === undefined) throw new EngineError('FRAME_NOT_FOUND', `frame ${selector} has no document yet`, { retryable: true });
-    frames.enter(child, frame);
-    context = child;
+    const found = await callFunction(connection, context, SELECT_FRAME, [pageParts(selector)], { maxObjectDepth: null, sandbox: SELECTOR_SANDBOX });
+    if (typeof found === 'string') throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: ${found}`);
+    const count = typeof found === 'object' && found !== null ? Reflect.get(found, 'count') : undefined;
+    if (typeof count !== 'number') throw new EngineError('ENGINE_FAILURE', `frame selector ${selector} read an unexpected value`, { retryable: false });
+    if (count === 0) throw new EngineError('FRAME_NOT_FOUND', `no frame matches ${selector}`, { retryable: true });
+    if (count > 1) throw new EngineError('FRAME_AMBIGUOUS', `${count} frames match ${selector}`, { retryable: false });
+    const element: unknown = Reflect.get(found as object, 'element');
+    const window: unknown = Reflect.get(found as object, 'window');
+    if (!(element instanceof ElementRef)) throw new EngineError('ENGINE_FAILURE', `frame selector ${selector} read an unexpected value`, { retryable: false });
+    if (!(window instanceof WindowRef)) throw new EngineError('FRAME_NOT_FOUND', `frame ${selector} has no document yet`, { retryable: true });
+    frames.enter(window.context, { element, context });
+    context = window.context;
   }
   return context;
 }
 
 /**
- * The expression a frame's document answers: the same expression with its
- * `frame` steps removed, since the caller already resolved the frame chain
- * they name (`frameSelectors` checks every branch names the same chain).
+ * The iframe or frame elements a chain (`pageParts`) matches, in one call:
+ * how many, and for exactly one, the element and its window. Runs in the
+ * page.
  */
-export function withinFrame(expression: LocatorExpression): LocatorExpression {
+const SELECT_FRAME = `(parts) => {
+  const found = (${selectChain.toString()})(parts);
+  if (typeof found === 'string') return found;
+  const frames = found.filter(({ localName }) => localName === 'iframe' || localName === 'frame');
+  const only = frames.length === 1 ? frames[0].element : null;
+  return { count: frames.length, element: only, window: only === null ? null : only.contentWindow };
+}`;
+
+/**
+ * A locator expression split at its frames in one walk: the selectors of the
+ * frames it descends through, outermost first, and the expression the
+ * innermost frame's document answers, its `frame` steps removed. A union
+ * whose branches, or a `has` or `hasNot` whose locator, names another frame
+ * chain than its source is `UNSUPPORTED_CAPABILITY`.
+ */
+export function splitFrames(expression: LocatorExpression): { chain: string[]; inner: LocatorExpression } {
+  const same = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((selector, index) => selector === b[index]);
   switch (expression.kind) {
-    case 'frame':
-      return withinFrame(expression.source);
-    case 'query':
-      return expression.scope === undefined ? expression : { ...expression, scope: withinFrame(expression.scope) };
-    case 'filter':
-      return {
-        ...expression,
-        source: withinFrame(expression.source),
-        ...(expression.has === undefined ? {} : { has: withinFrame(expression.has) }),
-        ...(expression.hasNot === undefined ? {} : { hasNot: withinFrame(expression.hasNot) }),
-      };
-    case 'index':
-      return { ...expression, source: withinFrame(expression.source) };
-    case 'union':
-      return { ...expression, left: withinFrame(expression.left), right: withinFrame(expression.right) };
+    case 'frame': {
+      const { chain, inner } = splitFrames(expression.source);
+      return { chain: [expression.selector, ...chain], inner };
+    }
+    case 'query': {
+      if (expression.scope === undefined) return { chain: [], inner: expression };
+      const { chain, inner } = splitFrames(expression.scope);
+      return { chain, inner: { ...expression, scope: inner } };
+    }
+    case 'filter': {
+      const source = splitFrames(expression.source);
+      const inners: { has?: LocatorExpression; hasNot?: LocatorExpression } = {};
+      for (const key of ['has', 'hasNot'] as const) {
+        const filter = expression[key];
+        if (filter === undefined) continue;
+        const { chain, inner } = splitFrames(filter);
+        if (chain.length > 0 && !same(chain, source.chain)) {
+          throw new EngineError('UNSUPPORTED_CAPABILITY', 'an inner has or hasNot locator must belong to the same frame as the locator it filters', { retryable: false });
+        }
+        inners[key] = inner;
+      }
+      return { chain: source.chain, inner: { ...expression, source: source.inner, ...inners } };
+    }
+    case 'index': {
+      const { chain, inner } = splitFrames(expression.source);
+      return { chain, inner: { ...expression, source: inner } };
+    }
+    case 'union': {
+      const left = splitFrames(expression.left);
+      const right = splitFrames(expression.right);
+      if (!same(left.chain, right.chain)) {
+        throw new EngineError('UNSUPPORTED_CAPABILITY', 'locator.or requires both branches in the same document', { retryable: false });
+      }
+      return { chain: left.chain, inner: { ...expression, left: left.inner, right: right.inner } };
+    }
     case 'selector':
-      return expression;
+      return { chain: [], inner: expression };
   }
 }
 

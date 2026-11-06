@@ -23,13 +23,12 @@ import {
   withTimeout,
 } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
-import { frameSelectors } from '../locators.ts';
 import { assembleTree, frameContentInset, isOnSiteFrame, ROOT_NODE_ID, toSemanticNode } from '../observation.ts';
 import { readPngSize } from '../observe.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../read-node.ts';
 import { cancelled } from '../support.ts';
 import { isStale, releaseQuietly, unlessStale } from './errors.ts';
-import { contentContext, inViewport, resolveFrames, selectElements, withinFrame, type NodeTarget } from './frames.ts';
+import { contentContext, inViewport, resolveFrames, selectElements, splitFrames, type NodeTarget } from './frames.ts';
 import { domReady, maskSecureFields, unmaskSecureFields } from './page.ts';
 import type { EncodedReaderArgs, LocateWants, PlaywrightAria, WantedQuery } from './readers.ts';
 import { ElementRef } from './script.ts';
@@ -182,9 +181,8 @@ export async function stillLocated(session: BidiSession, target: NodeTarget): Pr
 
 /** The nodes `expression` matches now, each with its element, and the document its frame chain leads to. */
 async function resolveLocator(session: BidiSession, expression: LocatorExpression): Promise<{ chain: string[]; context: string; matches: { node: SemanticNode; element: ElementRef }[] }> {
-  const chain = frameSelectors(expression);
+  const { chain, inner } = splitFrames(expression);
   const context = await resolveFrames(session.connection, session.requireContext(), chain, session.frames);
-  const inner = chain.length === 0 ? expression : withinFrame(expression);
   const selected = await locateSelectors(session, inner, context);
   const options = { testIdAttribute: session.settings.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR };
   const frameHidden = await insideHiddenFrame(session, context, options);

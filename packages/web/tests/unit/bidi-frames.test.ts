@@ -6,8 +6,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, SemanticNode } from 'e2e/engine';
-import { FrameRegistry, inViewport, resolveFrames, selectorLocator, withinFrame } from '../../src/bidi/frames.ts';
-import { chainParts } from '../../src/bidi/selector-tokens.ts';
+import { FrameRegistry, inViewport, pageParts, resolveFrames, splitFrames } from '../../src/bidi/frames.ts';
 import { project, type Projection } from '../../src/bidi/projection.ts';
 import { ElementRef } from '../../src/bidi/script.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
@@ -16,16 +15,17 @@ import { FakeBidi } from '../helpers/bidi-fake.ts';
 const text = (value: string) => ({ kind: 'string' as const, value, exact: true });
 const note: LocatorExpression = { kind: 'query', query: { kind: 'label', value: text('Note') } };
 
-/** Scripts the CSS lookup per context and each iframe's `contentWindow`. */
+/** Scripts the one frame lookup per context: the iframes it matches and, for exactly one, its `contentWindow`. */
 function frames(iframes: Record<string, string[]>, windows: Record<string, string>): FakeBidi {
   return new FakeBidi().on('script.callFunction', (params) => {
-    const [first] = params['arguments'] as ({ type: 'string'; value: string } | { sharedId: string })[];
-    if (first !== undefined && 'type' in first) {
-      const found = iframes[String((params['target'] as { context: string }).context)] ?? [];
-      const value = found.map((sharedId) => ({ type: 'object', value: [['element', { type: 'node', sharedId }], ['localName', { type: 'string', value: 'iframe' }]] }));
-      return { result: { type: 'success', realm: 'r', result: { type: 'array', value } } };
-    }
-    return { result: { type: 'success', realm: 'r', result: { type: 'window', value: { context: windows[(first as { sharedId: string }).sharedId] } } } };
+    const found = iframes[String((params['target'] as { context: string }).context)] ?? [];
+    const only = found.length === 1 ? found[0]! : undefined;
+    const value = [
+      ['count', { type: 'number', value: found.length }],
+      ['element', only === undefined ? { type: 'null' } : { type: 'node', sharedId: only }],
+      ['window', only === undefined || windows[only] === undefined ? { type: 'null' } : { type: 'window', value: { context: windows[only] } }],
+    ];
+    return { result: { type: 'success', realm: 'r', result: { type: 'object', value } } };
   });
 }
 
@@ -39,10 +39,12 @@ describe('resolveFrames', () => {
       { element: new ElementRef('inner'), context: 'outer-doc' },
     ]);
     expect(registry.chain('top')).toEqual([]);
+    expect(fake.commands('script.callFunction')).toHaveLength(2);
   });
 
-  it('is retryable FRAME_NOT_FOUND for no match and FRAME_AMBIGUOUS for two', async () => {
+  it('is retryable FRAME_NOT_FOUND for no match or no document and FRAME_AMBIGUOUS for two', async () => {
     await expect(resolveFrames(frames({}, {}).connection, 'top', ['#editor'], new FrameRegistry())).rejects.toMatchObject({ code: 'FRAME_NOT_FOUND', retryable: true });
+    await expect(resolveFrames(frames({ top: ['a'] }, {}).connection, 'top', ['#editor'], new FrameRegistry())).rejects.toMatchObject({ code: 'FRAME_NOT_FOUND', retryable: true });
     await expect(resolveFrames(frames({ top: ['a', 'b'] }, {}).connection, 'top', ['iframe'], new FrameRegistry())).rejects.toMatchObject({ code: 'FRAME_AMBIGUOUS' });
   });
 });
@@ -143,14 +145,33 @@ describe('FrameRegistry.frameMaps', () => {
   });
 });
 
-describe('withinFrame', () => {
-  it('drops the frame steps wherever they sit in the expression', () => {
-    const framed: LocatorExpression = { kind: 'frame', selector: '#editor', source: note };
-    expect(withinFrame(framed)).toEqual(note);
-    expect(withinFrame({ kind: 'index', index: 'first', source: framed })).toEqual({ kind: 'index', index: 'first', source: note });
-    expect(withinFrame({ kind: 'filter', source: framed, has: framed })).toEqual({ kind: 'filter', source: note, has: note });
+describe('splitFrames', () => {
+  const framed: LocatorExpression = { kind: 'frame', selector: '#editor', source: note };
+
+  it('lists the frames outermost first and drops the frame steps wherever they sit', () => {
+    expect(splitFrames(framed)).toEqual({ chain: ['#editor'], inner: note });
+    expect(splitFrames({ kind: 'frame', selector: '#outer', source: framed })).toEqual({ chain: ['#outer', '#editor'], inner: note });
+    expect(splitFrames({ kind: 'index', index: 'first', source: framed })).toEqual({ chain: ['#editor'], inner: { kind: 'index', index: 'first', source: note } });
+    expect(splitFrames({ kind: 'filter', source: framed, has: framed })).toEqual({ chain: ['#editor'], inner: { kind: 'filter', source: note, has: note } });
+    expect(splitFrames({ kind: 'filter', source: framed, hasNot: note })).toEqual({ chain: ['#editor'], inner: { kind: 'filter', source: note, hasNot: note } });
+    expect(splitFrames({ kind: 'union', left: framed, right: framed })).toEqual({ chain: ['#editor'], inner: { kind: 'union', left: note, right: note } });
+    expect(splitFrames({ ...note, scope: framed } as LocatorExpression)).toEqual({ chain: ['#editor'], inner: { ...note, scope: note } });
+    expect(splitFrames(note)).toEqual({ chain: [], inner: note });
+  });
+
+  it('rejects a union or an inner locator in another document', () => {
+    const elsewhere: LocatorExpression = { kind: 'frame', selector: '#other', source: note };
+    for (const expression of [
+      { kind: 'union', left: framed, right: elsewhere },
+      { kind: 'union', left: framed, right: note },
+      { kind: 'filter', source: framed, has: elsewhere },
+      { kind: 'filter', source: note, hasNot: framed },
+    ] satisfies LocatorExpression[]) {
+      expect(() => splitFrames(expression)).toThrow(expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY', retryable: false }));
+    }
   });
 });
+
 
 describe('inViewport', () => {
   const node: SemanticNode = { ref: { id: 'n1', revision: '' }, states: {}, attributes: {}, inputPurpose: 'none', rect: { x: 10, y: 10, width: 50, height: 20 } };
@@ -169,21 +190,21 @@ describe('inViewport', () => {
   });
 });
 
-describe('selectorLocator', () => {
-  /** The locator of `selector`'s only chain part. */
-  const locator = (selector: string): unknown => selectorLocator(chainParts(selector)[0]!, selector);
 
-  it('reads a selector as Playwright does: a prefix names the engine, a path is XPath, the rest CSS', () => {
-    expect(locator('xpath=//iframe')).toEqual({ type: 'xpath', value: '//iframe' });
-    expect(locator('css=#a > b')).toEqual({ type: 'css', value: '#a > b' });
-    expect(locator('//li')).toEqual({ type: 'xpath', value: '//li' });
-    expect(locator('(//li)[2]')).toEqual({ type: 'xpath', value: '(//li)[2]' });
-    expect(locator('../a')).toEqual({ type: 'xpath', value: '../a' });
-    expect(locator('iframe[name="pay"]')).toEqual({ type: 'css', value: 'iframe[name="pay"]' });
-    expect(locator('* > button')).toEqual({ type: 'css', value: '* > button' });
+describe('pageParts', () => {
+  it('reads each part as Playwright does: a prefix names the engine, a path is XPath, the rest CSS', () => {
+    expect(pageParts('xpath=//iframe >> css=#a > b >> //li >> (//li)[2] >> ../a >> * > button')).toEqual([
+      { engine: 'xpath', body: '//iframe' },
+      { engine: 'css', body: '#a > b', chains: [[{ compound: '#a', combinator: null }, { compound: 'b', combinator: '>' }]] },
+      { engine: 'xpath', body: '//li' },
+      { engine: 'xpath', body: '(//li)[2]' },
+      { engine: 'xpath', body: '../a' },
+      { engine: 'css', body: '* > button', chains: [[{ compound: '*', combinator: null }, { compound: 'button', combinator: '>' }]] },
+    ]);
   });
 
-  it('rejects an engine other than CSS and XPath', () => {
-    expect(() => locator('text=Hello')).toThrow('the text= engine is not supported');
+  it('rejects an engine other than CSS and XPath, and a capture before the last part', () => {
+    expect(() => pageParts('text=Hello')).toThrow('the text= engine is not supported');
+    expect(() => pageParts('*css=section >> button')).toThrow('a selector that captures with *');
   });
 });
