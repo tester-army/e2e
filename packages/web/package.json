@@ -1,7 +1,7 @@
 {
   "name": "@e2e-dev/web",
   "version": "0.15.5",
-  "description": "Web engine for e2e agentic end-to-end testing, built on Playwright",
+  "description": "Web engine for e2e agentic end-to-end testing: Chromium and Firefox over WebDriver BiDi",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -10,8 +10,9 @@
     "web-testing",
     "browser-testing",
     "browser-automation",
-    "playwright",
-    "chromium"
+    "webdriver-bidi",
+    "chromium",
+    "firefox"
   ],
   "license": "Apache-2.0",
   "contributors": [

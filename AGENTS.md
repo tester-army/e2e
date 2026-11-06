@@ -123,14 +123,17 @@ suites that consume the built packages the way a user would.
   (peer). Each worker slot boots one warm browser machine from the pinned
   Playwright Ubuntu image; a Node TCP relay exposes DevTools, and SDK agent
   readiness allows machine startup without waiting for published ports. In
-  `attempt` scope every attempt runs in a copy-on-write branch. With `app`,
+  `attempt` scope (the provider's default, which `@e2e-dev/web` rejects
+  with `INVALID_CONFIG` for now) every attempt runs in a copy-on-write
+  branch. With `app`,
   the app under test runs in the same machine, so a branch also copies its
   running app and data on the machine. When maintaining this integration,
   update the provider's SDK dev dependency to a published version and raise
   its peer minimum only if the provider needs new SDK behavior. Keep the
-  Playwright image and Chromium version in sync with `@e2e-dev/web`. Run
+  image's Chromium close to the build `@e2e-dev/web` pins (`CHROMIUM_BUILD`
+  in `packages/web/src/install.ts`). Run
   `pnpm --filter @e2e-dev/smol test:unit` and `pnpm check`, then verify live
-  machines in both attempt and worker scopes with an app running in the VM.
+  machines in worker scope with an app running in the VM.
 - `packages/limrun` — the Limrun hosted mobile device provider. Each worker
   leases one remote device, installs its app, and releases the device at exit.
 - `packages/decision` — the published `@e2e-dev/decision` package: a
@@ -312,8 +315,8 @@ pnpm --filter @e2e-dev/testbed run test:headed
 - `pnpm typecheck` runs `build` first, then per-package `typecheck`. The
   package `typecheck` covers `tests/**`, which is what makes
   `tests/types/sdk-types.ts` a test.
-- Integration tests need Chromium: `pnpm --filter @e2e-dev/web exec
-  playwright-core install chromium`. The web engine's `prepare` hook
+- Integration tests need Chromium: `node packages/web/dist/bin.js install
+  chromium` after `pnpm build`. The web engine's `prepare` hook
   also installs a missing browser once per run, in the runner, before `plan`
   is emitted and the run's clock starts.
 

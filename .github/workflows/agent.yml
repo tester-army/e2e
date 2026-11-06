@@ -95,10 +95,10 @@ jobs:
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
-      - name: Install browsers
-        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
+      - name: Install browsers
+        uses: ./.github/actions/chromium
       - name: Run ${{ matrix.script }}
         continue-on-error: ${{ matrix.optional }}
         env:

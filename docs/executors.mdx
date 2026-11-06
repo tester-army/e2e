@@ -220,41 +220,6 @@ call leaves a gap that the executor fills on replay. Entries are keyed by the
 configured agent and its context, not the executor, so changing an agent's
 executor keeps its entries.
 
-## Driving the page yourself
-
-On the web engine, `surfaceOf(handle)` from `@e2e-dev/web` gives you the
-current attempt's `Page` and `BrowserContext`. Both accessors throw
-`INVALID_STATE` outside an active attempt, and `page()` also when no page is
-open.
-
-```ts
-import type { E2EConfig, StepExecutor } from 'e2e';
-import { web, surfaceOf } from '@e2e-dev/web';
-
-const engine = web();
-const own: StepExecutor = {
-  name: 'own-tools',
-  version: '1',
-  cache: 'off',
-  async runStep(ctx) {
-    const page = surfaceOf(engine)!.page();   // the page app.open() navigated
-    await ctx.budgets.runTool({ name: 'click', mutates: true }, () =>
-      page.getByRole('button', { name: 'Save' }).click(),
-    );
-    return { status: 'passed', summary: 'saved' };
-  },
-};
-
-export default {
-  targets: [{ engine, app: { url: 'http://localhost:3000' } }],
-  agents: { default: { executor: own } },
-} satisfies E2EConfig;
-```
-
-Direct Playwright calls skip action authorization and the replay cache,
-and leave no artifacts. The step deadline and the verdict record still
-apply.
-
 ## Next
 
 <CardGroup cols={2}>

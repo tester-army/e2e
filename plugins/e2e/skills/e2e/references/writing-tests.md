@@ -140,9 +140,8 @@ label. `browser` (`Browser`): browser targets, import `test` from `@e2e-dev/web`
   returns its videos (`path` or hosted `url`). Fails while the test's
   `video` records: set `{ video: 'off' }` on the test.
 
-`clearState()` is `UNSUPPORTED_CAPABILITY` with `connect.reconnectEndpoint`
-or an attempt-scoped browser provider; on a device with no pinned `app`, both
-methods are.
+On a device with no pinned `app`, `restart()` and `clearState()` are
+`UNSUPPORTED_CAPABILITY`.
 
 ## Locators
 

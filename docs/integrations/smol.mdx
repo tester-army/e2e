@@ -1,7 +1,7 @@
 ---
 title: smol machines browsers
 sidebarTitle: smol machines
-description: Run each web test attempt in its own branch of a warm Chromium microVM on your computer with the smol() browser provider from @e2e-dev/smol.
+description: Run web tests in warm Chromium microVMs on your computer with the smol() browser provider from @e2e-dev/smol.
 "og:image": "https://e2e.com/docs/images/og/integrations/smol.png?v=93b61e0399"
 "twitter:image": "https://e2e.com/docs/images/og/integrations/smol.png?v=93b61e0399"
 ---
@@ -9,18 +9,23 @@ description: Run each web test attempt in its own branch of a warm Chromium micr
 `smol()` from `@e2e-dev/smol` is a
 [browser provider](/browser#hosted-browsers) that runs Chromium in
 [smol machines](https://smolmachines.com) microVMs on your computer. Each
-worker slot boots one browser machine. By default, each test attempt runs in
-a copy-on-write branch of it, ready in about a second, so every retry starts
-from the same browser state. The app's data resets only when the app
-[runs in the machine](#run-the-app-in-the-machine). State on your computer
-or in external services stays shared.
+worker slot boots one browser machine, and each test attempt gets a new
+browser context on it. State on your computer or in external services stays
+shared.
+
+<Warning>
+The provider's default `scope: 'attempt'`, a copy-on-write branch of the
+machine per attempt, is not supported by `@e2e-dev/web` right now, and
+`web()` throws `INVALID_CONFIG` for it. Pass `scope: 'worker'`. `prepare`
+needs `'attempt'` scope, so it is unavailable too.
+</Warning>
 
 ## Set up the provider
 
 <Note>
 smol machines run on macOS on Apple Silicon, or on Linux with KVM
 (`/dev/kvm`). They need no account or API key. The first boot pulls the
-Playwright Ubuntu image, so it takes longer.
+Playwright Ubuntu image, which carries Chromium, so it takes longer.
 </Note>
 
 Install the provider and the smol machines SDK:
@@ -50,7 +55,7 @@ export default {
   targets: [
     {
       name: 'web',
-      engine: web({ browser: smol({ hostPorts: [3000] }) }),
+      engine: web({ browser: smol({ scope: 'worker', hostPorts: [3000] }) }),
       app: {
         url: 'http://localhost:3000',
         command: { executable: 'npm', args: ['run', 'dev'] },
@@ -84,21 +89,20 @@ where attempts run. Disconnect before `prepare` resolves, and leave the
 browser running.
 
 <Accordion title="Sign in with Playwright">
-Install the `playwright-core` version that `@e2e-dev/web` pins, 1.64.1
-today, and match it when you upgrade. pnpm doesn't let your config import
-a dependency's dependency.
+Drive the browser with any CDP client. This example uses `playwright-core`,
+which `@e2e-dev/web` does not install, so add it to your project:
 
 <CodeGroup>
 ```bash npm
-npm install --save-dev playwright-core@1.64.1
+npm install --save-dev playwright-core
 ```
 
 ```bash pnpm
-pnpm add -D playwright-core@1.64.1
+pnpm add -D playwright-core
 ```
 
 ```bash bun
-bun add -d playwright-core@1.64.1
+bun add -d playwright-core
 ```
 </CodeGroup>
 
@@ -158,8 +162,8 @@ Set `app.url` to `http://localhost:<port>` and declare no `app.command`.
 ## Choose a scope
 
 `scope: 'attempt'`, the default, gives every attempt its own branch of the
-slot's warm browser, with the limits of a
-[per-attempt lease](/browser#hosted-browsers).
+slot's warm browser. It is not supported right now: `web()` throws
+`INVALID_CONFIG` for it.
 
 `scope: 'worker'` keeps one machine per worker slot for the run. Each
 attempt gets a new browser context on it, as in a local run, so sessions
@@ -181,7 +185,8 @@ and options such as `headers` and `locale` work. Nothing is branched, and
 ## What differs from a local browser
 
 The browser's back/forward cache is off, so going back reloads the page.
-`browser.waitForDownload` works as it does locally.
+`browser.waitForDownload` and `setInputFiles` throw `UNSUPPORTED_CAPABILITY`
+right now.
 
 ## Clean up leftover machines
 
@@ -198,6 +203,6 @@ for example `smol machine ls`.
     What runs on your computer, and what can still leak.
   </Card>
   <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
-    How a browser provider leases browsers, and the limits of `'attempt'` scope.
+    How a browser provider leases browsers.
   </Card>
 </CardGroup>

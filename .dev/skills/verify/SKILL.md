@@ -18,8 +18,8 @@ repeat.
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm --filter @e2e-dev/web exec playwright-core install chromium
 pnpm build                    # every consumer below runs dist; rebuild after each change
+node packages/web/dist/bin.js install chromium firefox
 ```
 
 A stale `dist` is the most common false result. Rebuild before trusting any

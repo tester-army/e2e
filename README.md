@@ -55,7 +55,7 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | Package | What it does |
 | --- | --- |
 | [`e2e`](https://www.npmjs.com/package/e2e) | The SDK, runner, and CLI. |
-| [`@e2e-dev/web`](https://www.npmjs.com/package/@e2e-dev/web) | Browser engine: Chromium, Firefox, and WebKit through Playwright. |
+| [`@e2e-dev/web`](https://www.npmjs.com/package/@e2e-dev/web) | Browser engine: Chromium and Firefox over WebDriver BiDi. |
 | [`@e2e-dev/mobile`](https://www.npmjs.com/package/@e2e-dev/mobile) | iOS and Android engine: simulators and emulators through agent-device. |
 | [`@e2e-dev/decision`](https://e2e.com/docs/decision-models) | Decision-model executors for bounded semantic actions and assertions, and `decisionFilter()`, which leaves out the tests a pull request is unlikely to affect. |
 | [`@e2e-dev/acp`](https://e2e.com/docs/subscriptions#use-your-coding-agent) | Runs agent steps on your own coding agent (Claude Code or Codex) over the Agent Client Protocol. |

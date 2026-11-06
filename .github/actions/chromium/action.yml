@@ -1,7 +1,8 @@
 name: chromium
 description: >-
-  Installs Playwright's Chromium and its system packages, with the .deb files
-  apt downloads for them restored from and saved to the Actions cache.
+  Installs the Chrome for Testing build @e2e-dev/web pins and its system
+  packages, with the .deb files apt downloads for them restored from and
+  saved to the Actions cache.
 
 # `--with-deps` installs about 38 MB of packages from the Ubuntu mirror, and
 # the mirror often serves them at about 200 kB/s: the step takes 2 to 5
@@ -10,14 +11,14 @@ description: >-
 # the packages whose version changed since the cache was saved.
 inputs:
   only-shell:
-    description: Install only the headless shell, not the full browser.
+    description: Install only the headless shell, not also the full browser a headed run launches.
     default: 'true'
 
 runs:
   using: composite
   steps:
     # The prefix holds what decides the package list: the Ubuntu release and
-    # the Playwright version. The suffix is a digest of the .deb file names,
+    # the Chrome build. The suffix is a digest of the .deb file names,
     # so a key names one exact set of package versions.
     # The directory sits under /var/cache, not the runner's temp directory:
     # apt downloads as `_apt`, which cannot traverse /home/runner and would
@@ -32,13 +33,14 @@ runs:
       run: |
         set -euo pipefail
         . /etc/os-release
-        PLAYWRIGHT="$(node -p "require('./packages/web/package.json').dependencies['playwright-core']")"
+        CHROME="$(sed -n "s/^export const CHROMIUM_BUILD = '\(.*\)';$/\1/p" packages/web/src/install.ts)"
+        [ -n "$CHROME" ] || { echo "::error::CHROMIUM_BUILD not found in packages/web/src/install.ts"; exit 1; }
         sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 "$ARCHIVES"
         sudo install -d -o _apt -g root -m 700 "$ARCHIVES/partial"
         printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\n' "$ARCHIVES" \
           | sudo tee /etc/apt/apt.conf.d/99chromium-archives > /dev/null
         echo "archives=$ARCHIVES" >> "$GITHUB_OUTPUT"
-        echo "prefix=chromium-apt-$ID-$VERSION_ID-$(uname -m)-playwright-$PLAYWRIGHT" >> "$GITHUB_OUTPUT"
+        echo "prefix=chromium-apt-$ID-$VERSION_ID-$(uname -m)-chrome-$CHROME" >> "$GITHUB_OUTPUT"
     # No entry has exactly this key: restore-keys picks the newest entry with
     # the prefix.
     - name: Restore the archives
@@ -48,11 +50,28 @@ runs:
         path: ${{ steps.apt.outputs.archives }}/*.deb
         key: ${{ steps.apt.outputs.prefix }}
         restore-keys: ${{ steps.apt.outputs.prefix }}-
+    # The install command is the engine's own CLI, so it needs the built
+    # package. A job that builds first skips this step.
+    - name: Build the web engine
+      shell: bash
+      run: |
+        set -euo pipefail
+        [ -f packages/web/dist/bin.js ] || { pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build; }
+    # apt-get needs root, so the install runs under sudo with the runner's
+    # HOME, which keeps the browsers in the runner's cache, then hands that
+    # cache back to the runner.
     - name: Install Chromium
       shell: bash
       env:
-        ONLY_SHELL: ${{ inputs.only-shell == 'true' && '--only-shell' || '' }}
-      run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps $ONLY_SHELL
+        ONLY_SHELL: ${{ inputs.only-shell }}
+      run: |
+        set -euo pipefail
+        sudo apt-get update -qq
+        install_chromium() { sudo env "PATH=$PATH" "HOME=$HOME" ${XDG_CACHE_HOME:+"XDG_CACHE_HOME=$XDG_CACHE_HOME"} node packages/web/dist/bin.js install chromium --with-deps "$@"; }
+        install_chromium
+        [ "$ONLY_SHELL" = 'true' ] || install_chromium --headed
+        CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/e2e"
+        sudo chown -R "$(id -u):$(id -g)" "$CACHE"
     # autoclean deletes the archives the mirror no longer serves, so the set
     # changes only when a package version does.
     - name: Name the archive set
