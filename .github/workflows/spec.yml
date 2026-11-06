@@ -72,6 +72,10 @@ jobs:
         run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0} --exclude-tag playwright', github.base_ref) || '' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      # `scroll_to` by text under a scripted executor; the default suite's
+      # arguments would not reach it, so it is a step of its own.
+      - name: Testbed, scroll_to
+        run: pnpm --filter @e2e-dev/testbed test:scroll
       # The tests ported from Playwright pin the web engine's behavior, so a
       # pull request runs all of them, not only the ones Jev picks.
       - name: Testbed, Playwright tests

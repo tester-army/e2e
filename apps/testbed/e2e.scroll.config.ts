@@ -8,8 +8,8 @@ import { web } from '@e2e-dev/web';
  * the suite stays deterministic. Its own config, because the `agent` fixture
  * needs the default agent to have a model or an executor, and the default
  * suite's default agent has neither on purpose: any `agent.act` added there
- * is `MODEL_UNAVAILABLE`, not a scripted step. It runs with the default suite
- * (`pnpm --filter @e2e-dev/testbed test`) and alone as `test:scroll`.
+ * is `MODEL_UNAVAILABLE`, not a scripted step. It runs as `test:scroll`, a CI
+ * step of its own.
  */
 const scrollToRow: StepExecutor = {
   name: 'scroll-to-row',
