@@ -1624,7 +1624,7 @@ export interface TestFilter {
 
 /** One test a filter may leave out: what names it, never its body. */
 export interface TestFilterCandidate {
-  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` takes. */
+  /** Stable test id (`<file>::<titles>`), the report's `testId`, and the key `exclude` and `relevance` take. */
   readonly id: string;
   /** Project-relative POSIX path of the test file. */
   readonly file: string;
@@ -1680,6 +1680,14 @@ export interface TestFilterContext {
 export interface TestFilterResult {
   /** The tests to leave out, by `TestFilterCandidate.id`, each with the reason the report shows; a test of a serial group still runs when another test of its group does. */
   readonly exclude: Readonly<Record<string, string>>;
+  /**
+   * How likely each test is to fail on this change, from 0 to 1, by
+   * `TestFilterCandidate.id`. Each target starts the files of the likeliest
+   * tests first, in bands at 75%, 50%, and 25%, and the target with the
+   * likeliest file goes first. A test no filter scores counts as 0, and one
+   * several filters score keeps its highest. It never leaves a test out.
+   */
+  readonly relevance?: Readonly<Record<string, number>>;
   /** One line about the whole decision, such as `the diff is too large to judge`. */
   readonly note?: string;
 }

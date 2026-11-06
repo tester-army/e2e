@@ -369,6 +369,12 @@ const jev = {
 ({ targets, filters: [{ filter: () => ({ exclude: {} }) }] }) satisfies E2EConfig;
 // @ts-expect-error a filter leaves tests out by id with a reason; it never lists the ones to keep
 ({ name: 'jev', filter: () => ({ keep: [] }) }) satisfies TestFilter;
+// A filter may also score the tests it was handed, by id, from 0 to 1, so the likeliest to fail start first.
+({ name: 'jev', filter: (tests) => ({ exclude: {}, relevance: Object.fromEntries(tests.map((candidate) => [candidate.id, 0.8])), note: 'one call' }) }) satisfies TestFilter;
+// @ts-expect-error a score is a number, not a label
+({ name: 'jev', filter: () => ({ exclude: {}, relevance: { 'tests/a.e2e.ts::a': 'high' } }) }) satisfies TestFilter;
+// @ts-expect-error relevance is a record of scores by test id, not a list of ids
+({ name: 'jev', filter: () => ({ exclude: {}, relevance: ['tests/a.e2e.ts::a'] }) }) satisfies TestFilter;
 declare const filterCandidate: TestFilterCandidate;
 // @ts-expect-error a candidate names a test, never its body
 filterCandidate.fn;

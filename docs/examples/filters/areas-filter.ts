@@ -19,10 +19,13 @@ export const areas = {
       for (const tag of AREAS[area] ?? []) reached.add(tag);
     }
     const exclude: Record<string, string> = {};
+    const relevance: Record<string, number> = {};
     for (const test of tests) {
       const tags = test.tags.filter((tag) => AREA_TAGS.has(tag));
-      if (tags.length > 0 && !tags.some((tag) => reached.has(tag))) exclude[test.id] = 'the change reaches none of its areas';
+      if (tags.length === 0) continue;
+      if (tags.some((tag) => reached.has(tag))) relevance[test.id] = 1;
+      else exclude[test.id] = 'the change reaches none of its areas';
     }
-    return { exclude };
+    return { exclude, relevance };
   },
 } satisfies TestFilter;

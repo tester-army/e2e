@@ -1,10 +1,10 @@
 /**
  * Test filters (`filters`): the selection kept when no filter is called, the
  * candidates a filter is handed and the setup file each one's session comes
- * from, filters composed in order, what a result may name and every way one
- * is refused, redaction and bounds on what a filter writes, how a throw, an
- * interrupt, or the deadline surfaces, and the record and summary line of
- * what each one decided.
+ * from, filters composed in order, what a result may name and score and
+ * every way one is refused, redaction and bounds on what a filter writes, how
+ * a throw, an interrupt, or the deadline surfaces, the record and summary
+ * line of what each one decided, and the notice for how many tests it ranked.
  */
 
 import { createHash } from 'node:crypto';
@@ -25,6 +25,7 @@ import {
   filterRecords,
   filterSelection,
   filterSummary,
+  rankingNotice,
   type FilterSelectionOptions,
   type TestFilterScope,
 } from '../../src/run/test-filters.ts';
@@ -157,7 +158,7 @@ describe('filterSelection', () => {
     const first = select(col, cfg);
     const { value, notices } = options(col, cfg);
     const kept = await filterSelection(first, value);
-    expect(kept).toEqual({ selection: first, records: [], changes: undefined });
+    expect(kept).toEqual({ selection: first, records: [], changes: undefined, relevance: new Map() });
     expect(kept.selection).toBe(first);
     expect(notices).toEqual(['warning: --changed-since: the config has no filters, so every test runs']);
 
@@ -175,7 +176,7 @@ describe('filterSelection', () => {
     const first = select(col, cfg);
     const { value, notices } = options(col, cfg, { selectionFilters: { lastFailed: new Set() } });
     const kept = await filterSelection(first, value);
-    expect(kept).toEqual({ selection: first, records: [], changes: { skipped: '--last-failed' } });
+    expect(kept).toEqual({ selection: first, records: [], changes: { skipped: '--last-failed' }, relevance: new Map() });
     expect(kept.selection).toBe(first);
     expect(notices).toEqual(['--last-failed: the tests the last run owes run without filters']);
     expect(never).not.toHaveBeenCalled();
@@ -454,7 +455,64 @@ describe('applyTestFilters', () => {
     ]);
   });
 
-  describe('refuses a result that is not { exclude, note? }, warning and leaving nothing out', () => {
+  describe('scores', () => {
+    it('collects the score each filter gives a test, keeps the highest across filters, and drops a collected test it was not handed', async () => {
+      const candidates = await candidatesOf('a', 'b', 'c');
+      const [a, b, c] = ['a', 'b', 'c'].map((title) => idOf(candidates, title)) as [string, string, string];
+      const outside = 'tests/z.e2e.ts::outside%20the%20shard';
+      const { scope: value } = scope({ collectedIds: new Set([...candidates.map((candidate) => candidate.id), outside]) });
+      const applied = await applyTestFilters(
+        [
+          filterOf('areas', () => ({ exclude: { [c]: 'unaffected' }, relevance: { [a]: 0.9, [b]: 0.3, [outside]: 1 } })),
+          filterOf('jev', () => ({ exclude: {}, relevance: { [a]: 0.4, [b]: 0.6, [c]: 1 } })),
+        ],
+        candidates,
+        value,
+      );
+      // `jev` was never handed `c`, which `areas` left out, and `areas` never `outside`.
+      expect([...applied.relevance]).toEqual([
+        [a, 0.9],
+        [b, 0.6],
+      ]);
+      expect(applied.decisions).toEqual([
+        { name: 'areas', candidates: 3 },
+        { name: 'jev', candidates: 2 },
+      ]);
+    });
+
+    it('takes 0 and 1, a relevance without a prototype, and no relevance at all, which scores nothing', async () => {
+      const candidates = await candidatesOf('a', 'b');
+      const relevance = Object.assign(Object.create(null) as Record<string, number>, { [idOf(candidates, 'a')]: 0, [idOf(candidates, 'b')]: 1 });
+      const { scope: value } = scope();
+      const scored = await applyTestFilters([filterOf('areas', () => ({ exclude: {}, relevance }))], candidates, value);
+      expect([...scored.relevance]).toEqual([
+        [idOf(candidates, 'a'), 0],
+        [idOf(candidates, 'b'), 1],
+      ]);
+      const silent = await applyTestFilters([filterOf('areas', () => ({ exclude: {} }))], candidates, value);
+      expect(silent.relevance.size).toBe(0);
+      expect((await applyTestFilters([filterOf('areas', () => ({ exclude: {}, relevance: {} }))], candidates, value)).relevance.size).toBe(0);
+    });
+
+    it('scores nothing for a filter that throws or is refused, even when its scores were valid', async () => {
+      const candidates = await candidatesOf('a', 'b');
+      const a = idOf(candidates, 'a');
+      const { scope: value } = scope();
+      const applied = await applyTestFilters(
+        [
+          filterOf('refused', () => invalid<TestFilterResult>({ exclude: { nope: 'x' }, relevance: { [a]: 1 } })),
+          filterOf('threw', () => {
+            throw new Error('no diff');
+          }),
+        ],
+        candidates,
+        value,
+      );
+      expect(applied.relevance.size).toBe(0);
+    });
+  });
+
+  describe('refuses a result that is not { exclude, relevance?, note? }, warning and leaving nothing out', () => {
     /** The note the `areas` filter leaves when it answers `answer` over tests signs in, pays, and refunds, checking it failed open: one warning, a failed decision, nothing left out. */
     async function refusal(answer: (candidates: readonly TestFilterCandidate[]) => unknown, overrides: Partial<TestFilterScope> = {}): Promise<string> {
       const candidates = await candidatesOf('signs in', 'pays', 'refunds');
@@ -464,26 +522,33 @@ describe('applyTestFilters', () => {
       const note = applied.decisions[0]?.note ?? '';
       expect(applied.decisions).toEqual([{ name: 'areas', candidates: 3, note, outcome: 'failed' }]);
       expect(applied.excluded.size).toBe(0);
+      expect(applied.relevance.size).toBe(0);
       expect(notices).toEqual([`warning: areas ${note}`]);
       return note;
     }
     const PREFIX = 'returned an invalid result, so it leaves nothing out: ';
-    /** The refusal of any key but exclude and note. */
-    const UNKNOWN = ": a filter returns { exclude: { [test.id]: reason }, note? }, and every test it doesn't name runs";
+    /** The refusal of any key but exclude, relevance, and note. */
+    const UNKNOWN = ": a filter returns { exclude: { [test.id]: reason }, relevance?: { [test.id]: 0 to 1 }, note? }, and every test it doesn't name runs";
     /** The refusal of an id no collected test has. */
     const STRANGER = ', which no collected test has; exclude takes test.id';
+    /** The refusal of a score for an id no collected test has. */
+    const UNSCORED = ', which no collected test has; relevance takes test.id';
 
     it.each([
-      ['null', () => null, 'expected { exclude, note? }, got null'],
-      ['undefined', () => undefined, 'expected { exclude, note? }, got undefined'],
-      ['an array', () => [], 'expected { exclude, note? }, got an array'],
-      ['a string', () => 'all', 'expected { exclude, note? }, got "all"'],
+      ['null', () => null, 'expected { exclude, relevance?, note? }, got null'],
+      ['undefined', () => undefined, 'expected { exclude, relevance?, note? }, got undefined'],
+      ['an array', () => [], 'expected { exclude, relevance?, note? }, got an array'],
+      ['a string', () => 'all', 'expected { exclude, relevance?, note? }, got "all"'],
       ['a keep list', () => ({ keep: [] }), `unknown key "keep"${UNKNOWN}`],
       ['an include map, never pointed at exclude', () => ({ include: {} }), `unknown key "include"${UNKNOWN}`],
       ['two unknown keys, naming the first', () => ({ exclude: {}, why: '', because: '' }), `unknown key "why"${UNKNOWN}`],
       ['no exclude', () => ({ note: 'nothing' }), 'exclude must be a plain object of test ids to reasons, got undefined'],
       ['an exclude map', () => ({ exclude: new Map() }), 'exclude must be a plain object of test ids to reasons, got an object'],
       ['a numeric note', () => ({ exclude: {}, note: 3 }), 'note must be a string, got 3'],
+      ['a relevance of null', () => ({ exclude: {}, relevance: null }), 'relevance must be a plain object of test ids to numbers from 0 to 1, got null'],
+      ['a relevance list', () => ({ exclude: {}, relevance: [] }), 'relevance must be a plain object of test ids to numbers from 0 to 1, got an array'],
+      ['a relevance map', () => ({ exclude: {}, relevance: new Map() }), 'relevance must be a plain object of test ids to numbers from 0 to 1, got an object'],
+      ['a relevance number', () => ({ exclude: {}, relevance: 1 }), 'relevance must be a plain object of test ids to numbers from 0 to 1, got 1'],
     ])('%s', async (_label, answer, issue) => {
       expect(await refusal(answer)).toBe(`${PREFIX}${issue}`);
     });
@@ -526,6 +591,39 @@ describe('applyTestFilters', () => {
       expect(several).toBe(`${PREFIX}exclude names "tests/zz.e2e.ts::nothing"${STRANGER}`);
     });
 
+    it('a score that is not a number from 0 to 1, naming the first test and what it was', async () => {
+      const candidates = await candidatesOf('signs in', 'pays', 'refunds');
+      const pays = idOf(candidates, 'pays');
+      const rows: [unknown, string][] = [
+        [-0.01, '-0.01'],
+        [1.01, '1.01'],
+        [Number.NaN, 'NaN'],
+        [Number.POSITIVE_INFINITY, 'Infinity'],
+        [Number.NEGATIVE_INFINITY, '-Infinity'],
+        ['0.5', '"0.5"'],
+        ['', '""'],
+        [null, 'null'],
+        [undefined, 'undefined'],
+        [true, 'true'],
+        [[0.5], 'an array'],
+      ];
+      for (const [score, got] of rows) {
+        const note = await refusal(() => ({ exclude: {}, relevance: { [pays]: score } }));
+        expect(note).toBe(`${PREFIX}the relevance of ${JSON.stringify(pays)} must be a number from 0 to 1, got ${got}`);
+      }
+      const two = await refusal(() => ({ exclude: {}, relevance: { [idOf(candidates, 'signs in')]: 0.5, [pays]: 2, [idOf(candidates, 'refunds')]: 'high' } }));
+      expect(two).toBe(`${PREFIX}the relevance of ${JSON.stringify(pays)} must be a number from 0 to 1, got 2`);
+    });
+
+    it('a score for an id no collected test has, a title among them, saying relevance takes test.id', async () => {
+      const candidates = await candidatesOf('signs in', 'pays', 'refunds');
+      const id = idOf(candidates, 'pays');
+      const typo = await refusal(() => ({ exclude: {}, relevance: { [`${id}x`]: 1 } }), { collectedIds: new Set(candidates.map((candidate) => candidate.id)) });
+      expect(typo).toBe(`${PREFIX}relevance names ${JSON.stringify(`${id}x`)}${UNSCORED}`);
+      const title = await refusal(() => ({ exclude: {}, relevance: { pays: 1 } }));
+      expect(title).toBe(`${PREFIX}relevance names "pays"${UNSCORED}`);
+    });
+
     it('redacts and cuts what it echoes, like a reason: a secret as an id or a key, quoting at most 200 code points of either, or the whole answer', async () => {
       /** How `note` quotes the key or id it echoes: its secret marker, then emoji up to 200 code points, the last an ellipsis. */
       const capped = (note: string) => {
@@ -537,10 +635,12 @@ describe('applyTestFilters', () => {
       expect(id).toBe(`${PREFIX}exclude names ${capped(id)}${STRANGER}`);
       const key = await refusal(() => ({ exclude: {}, [`${PASSWORD}${long}`]: 'r' }));
       expect(key).toBe(`${PREFIX}unknown key ${capped(key)}${UNKNOWN}`);
+      const score = await refusal(() => ({ exclude: {}, relevance: { [`${SECRET}${long}`]: 1 } }));
+      expect(score).toBe(`${PREFIX}relevance names ${capped(score)}${UNSCORED}`);
       const answer = await refusal(() => `${SECRET}\n${'x'.repeat(5000)}`);
-      expect(answer).toMatch(new RegExp(`^${PREFIX}expected \\{ exclude, note\\? \\}, got "<secret:[^>]+>\\\\nx+…$`));
+      expect(answer).toMatch(new RegExp(`^${PREFIX}expected \\{ exclude, relevance\\?, note\\? \\}, got "<secret:[^>]+>\\\\nx+…$`));
       expect([...answer]).toHaveLength(1024);
-      for (const note of [id, key, answer]) expect(note).not.toContain(SECRET);
+      for (const note of [id, key, score, answer]) expect(note).not.toContain(SECRET);
     });
 
     it('a result that throws as it is read, redacted', async () => {
@@ -682,6 +782,47 @@ describe('a filter past the deadline', () => {
     expect(called).toEqual({ leftBehind: 1, notices: [warning] });
     expect(notices).toEqual([warning, 'warning: refused returned an invalid result, so it leaves nothing out: exclude must be a plain object of test ids to reasons, got an array']);
     expect(leaveWorkBehind).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('rankingNotice', () => {
+  it('says how many of the tests the selection runs were scored, counting each test once across targets, when the scores tell them apart', async () => {
+    const col = await collection(() => {
+      test('a', noop);
+      test('b', noop);
+      test('c', { tags: ['slow'] }, noop);
+      test.skip('d', noop);
+    });
+    const cfg = config({ targets: [{ name: 'web', platform: 'web' }, { name: 'web-2', platform: 'web' }] });
+    const selection = select(col, cfg, { excludeTags: ['slow'] });
+    const candidates = filterCandidates(selection);
+    const [a, b] = [idOf(candidates, 'a'), idOf(candidates, 'b')] as [string, string];
+    expect(candidates.map(titleOf)).toEqual(['a', 'b']);
+
+    expect(rankingNotice(selection, new Map([[a, 1]]))).toBe('ranked 1 of 2 tests by relevance, likeliest first');
+    expect(rankingNotice(selection, new Map([[a, 0.8], [b, 0.1]]))).toBe('ranked 2 of 2 tests by relevance, likeliest first');
+    expect(rankingNotice(selection, new Map())).toBeUndefined();
+    // A score for a test the selection does not run counts for nothing: a slow test, a skip, a test no file has.
+    const slow = col.tests.find((entry) => entry.title === 'c')!.id;
+    const skipped = col.tests.find((entry) => entry.title === 'd')!.id;
+    expect(rankingNotice(selection, new Map([[slow, 1], [skipped, 1], ['tests/z.e2e.ts::gone', 1]]))).toBeUndefined();
+  });
+
+  it('says nothing when the scores leave every test in one band, since the order is the one without them', async () => {
+    const col = await collection(() => {
+      test('a', noop);
+      test('b', noop);
+    });
+    const selection = select(col, config());
+    const [a, b] = [idOf(filterCandidates(selection), 'a'), idOf(filterCandidates(selection), 'b')] as [string, string];
+    // 0.8 and 0.9 are both in the top band, and so are 0 and 0.24 in the lowest.
+    expect(rankingNotice(selection, new Map([[a, 0.8], [b, 0.9]]))).toBeUndefined();
+    expect(rankingNotice(selection, new Map([[a, 0], [b, 0.24]]))).toBeUndefined();
+    // One test scored 0.5 beside one unscored is two bands.
+    expect(rankingNotice(selection, new Map([[a, 0.5]]))).toBe('ranked 1 of 2 tests by relevance, likeliest first');
+    // A single test has nothing to rank against.
+    const alone = select(await collection(() => test('only', noop)), config());
+    expect(rankingNotice(alone, new Map([[idOf(filterCandidates(alone), 'only'), 1]]))).toBeUndefined();
   });
 });
 

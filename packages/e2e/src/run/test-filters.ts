@@ -18,6 +18,7 @@ import { leftOutTests } from '../report/left-out.ts';
 import type { TestFilter, TestFilterCandidate, TestFilterChanges, TestFilterContext } from '../types.ts';
 import { findChanges } from './changes.ts';
 import { staticSecretLedger } from './secrecy.ts';
+import { relevanceBand } from './units.ts';
 
 /** What `filterSelection` judges a selection with, and where each line about what the gate and the filters decided goes. */
 export interface FilterSelectionOptions {
@@ -36,11 +37,17 @@ export interface FilterSelectionOptions {
   readonly timeoutMs?: number | undefined;
 }
 
-/** A selection once the test filters had their say, the report's record of them, and the change they judged; no change when the config has no filter. */
+/**
+ * A selection once the test filters had their say, the report's record of
+ * them, the change they judged (none when the config has no filter), and
+ * how likely they rated each test to fail, by test id: empty when no filter
+ * ran or none scored a test.
+ */
 interface FilteredSelection {
   readonly selection: Selection;
   readonly records: readonly ReportFilter[];
   readonly changes: ReportChanges | undefined;
+  readonly relevance: ReadonlyMap<string, number>;
 }
 
 /** One filter's decision: its record before the final selection counts what it left out. */
@@ -70,15 +77,18 @@ type FilterCall =
   | { readonly outcome: 'answered'; readonly result: CheckedResult }
   | { readonly outcome: FilterOutcome; readonly note: string };
 
-/** What the filters decided: every test they left out, by test id, and one decision per filter that ran. */
+/** What the filters decided: every test they left out, by test id, how likely they rated each of the others to fail, and one decision per filter that ran. */
 interface AppliedTestFilters {
   readonly excluded: ReadonlyMap<string, TestExclusion>;
+  /** The highest score any filter gave each test it scored. */
+  readonly relevance: ReadonlyMap<string, number>;
   readonly decisions: readonly FilterDecision[];
 }
 
-/** A filter's answer once checked: what it left out, with each reason, and its note, redacted and cut; no note when it left none. */
+/** A filter's answer once checked: what it left out, with each reason, the scores it gave the tests it was handed, and its note, redacted and cut; no note when it left none. */
 interface CheckedResult {
   readonly exclude: readonly (readonly [string, string])[];
+  readonly relevance: readonly (readonly [string, number])[];
   readonly note: string | undefined;
 }
 
@@ -88,7 +98,10 @@ const MAX_FILTER_TEXT = 1024;
 /** The most code points an error quotes of a key or test id a filter chose. */
 const MAX_QUOTED = 200;
 
-const RESULT_KEYS: ReadonlySet<string> = new Set(['exclude', 'note']);
+const RESULT_KEYS: ReadonlySet<string> = new Set(['exclude', 'relevance', 'note']);
+
+/** What a run with no scored test carries, shared since nothing writes to it. */
+const NO_RELEVANCE: ReadonlyMap<string, number> = new Map();
 
 /** How long a filter call may take before the run stops waiting for it, unless the harness sets `filterTimeout`. */
 export const FILTER_TIMEOUT_MS = 300_000;
@@ -124,12 +137,12 @@ export async function filterSelection(first: Selection, options: FilterSelection
   const { config, collection, selectionFilters, signal, notice } = options;
   if (config.filters.length === 0) {
     if (!signal.aborted) notice(NO_FILTERS);
-    return { selection: first, records: [], changes: undefined };
+    return { selection: first, records: [], changes: undefined, relevance: NO_RELEVANCE };
   }
   /** `first` stands, for `record.skipped`, said as `message` or `<why>, so no filter ran`. */
   const skip = (record: ReportChanges & { readonly skipped: string }, message = `${record.skipped}, so no filter ran`): FilteredSelection => {
     notice(message);
-    return { selection: first, records: [], changes: record };
+    return { selection: first, records: [], changes: record, relevance: NO_RELEVANCE };
   };
   if (selectionFilters.lastFailed !== undefined) return skip({ skipped: '--last-failed' }, '--last-failed: the tests the last run owes run without filters');
   const candidates = filterCandidates(first);
@@ -157,7 +170,19 @@ export async function filterSelection(first: Selection, options: FilterSelection
     const summary = filterSummary(record);
     if (summary !== undefined) notice(summary);
   }
-  return { selection, records, changes: counts };
+  return { selection, records, changes: counts, relevance: applied.relevance };
+}
+
+/**
+ * The run notice for how many of the tests `selection` runs a filter scored,
+ * which the run starts first, likeliest first; `undefined` when the scores
+ * leave every test in one relevance band, so the order is the one without
+ * them. `e2e list` starts nothing, so it says nothing of the order.
+ */
+export function rankingNotice(selection: Selection, relevance: ReadonlyMap<string, number>): string | undefined {
+  const tests = filterCandidates(selection);
+  if (new Set(tests.map((test) => relevanceBand(relevance.get(test.id) ?? 0))).size < 2) return undefined;
+  return `ranked ${tests.filter((test) => relevance.has(test.id)).length} of ${tests.length} tests by relevance, likeliest first`;
 }
 
 /**
@@ -195,11 +220,12 @@ export function filterCandidates(selection: Selection): readonly TestFilterCandi
 /**
  * Calls each filter in order on the tests the ones before it kept, so the
  * result is their intersection. A filter whose input is empty is not called.
- * A filter that throws, answers with something other than `{ exclude, note? }`,
- * or runs past `scope.timeoutMs` leaves nothing out: the run warns and the
- * next filter is called on every test it was given. Reasons, notes, log
- * lines, and what a refused answer quotes are redacted and cut before
- * anything prints or records them.
+ * A filter that throws, answers with something other than
+ * `{ exclude, relevance?, note? }`, or runs past `scope.timeoutMs` leaves
+ * nothing out and scores nothing: the run warns and the next filter is called
+ * on every test it was given. A test several filters scored keeps its highest
+ * score. Reasons, notes, log lines, and what a refused answer quotes are
+ * redacted and cut before anything prints or records them.
  */
 export async function applyTestFilters(
   filters: readonly TestFilter[],
@@ -207,6 +233,7 @@ export async function applyTestFilters(
   scope: TestFilterScope,
 ): Promise<AppliedTestFilters> {
   const excluded = new Map<string, TestExclusion>();
+  const relevance = new Map<string, number>();
   const decisions: FilterDecision[] = [];
   let remaining = candidates;
   for (const filter of filters) {
@@ -223,12 +250,13 @@ export async function applyTestFilters(
       decisions.push({ name, candidates: input.length, note: call.note, outcome: call.outcome });
       continue;
     }
-    const { exclude, note } = call.result;
+    const { exclude, relevance: scores, note } = call.result;
     for (const [id, reason] of exclude) excluded.set(id, { filter: name, reason });
+    for (const [id, score] of scores) relevance.set(id, Math.max(relevance.get(id) ?? 0, score));
     decisions.push({ name, candidates: input.length, ...(note === undefined ? {} : { note }) });
     remaining = remaining.filter((candidate) => !excluded.has(candidate.id));
   }
-  return { excluded, decisions };
+  return { excluded, relevance, decisions };
 }
 
 /**
@@ -323,8 +351,9 @@ function quoted(text: string, redact: (text: string) => string): string {
 }
 
 /**
- * Checks a filter's answer: `{ exclude, note? }`, every excluded id a
- * collected test with a non-empty reason, and a string note. An id of a
+ * Checks a filter's answer: `{ exclude, relevance?, note? }`, every excluded
+ * id a collected test with a non-empty reason, every scored id a collected
+ * test with a number from 0 to 1, and a string note. An id of a
  * collected test the filter was not given, such as a setup test or one
  * `--shard` or an earlier filter left out, is ignored: that test's fate is
  * settled. Anything else is refused rather than guessed at, and the filter
@@ -337,13 +366,15 @@ function checkedResult(
   redact: (text: string) => string,
 ): CheckedResult {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new Error(`expected { exclude, note? }, got ${describeValue(raw)}`);
+    throw new Error(`expected { exclude, relevance?, note? }, got ${describeValue(raw)}`);
   }
   const unknown = Object.keys(raw).find((key) => !RESULT_KEYS.has(key));
   if (unknown !== undefined) {
-    throw new Error(`unknown key ${quoted(unknown, redact)}: a filter returns { exclude: { [test.id]: reason }, note? }, and every test it doesn't name runs`);
+    throw new Error(
+      `unknown key ${quoted(unknown, redact)}: a filter returns { exclude: { [test.id]: reason }, relevance?: { [test.id]: 0 to 1 }, note? }, and every test it doesn't name runs`,
+    );
   }
-  const { exclude, note } = raw as { exclude?: unknown; note?: unknown };
+  const { exclude, relevance, note } = raw as { exclude?: unknown; relevance?: unknown; note?: unknown };
   if (!isPlainObject(exclude)) {
     throw new Error(`exclude must be a plain object of test ids to reasons, got ${describeValue(exclude)}`);
   }
@@ -358,12 +389,43 @@ function checkedResult(
     const [id, reason] = unexplained;
     throw new Error(`the reason for ${quoted(id, redact)} must be a non-empty string, got ${describeValue(reason)}`);
   }
+  const scores = checkedRelevance(relevance, ids, collectedIds, redact);
   if (note !== undefined && typeof note !== 'string') {
     throw new Error(`note must be a string, got ${describeValue(note)}`);
   }
   const kept = cut(redact(note ?? ''));
   return {
     exclude: (entries as [string, string][]).filter(([id]) => ids.has(id)).map(([id, reason]) => [id, cut(redact(reason))]),
+    relevance: scores,
     note: kept.length === 0 ? undefined : kept,
   };
+}
+
+/**
+ * The scores a filter's `relevance` gives the tests it was handed, each a
+ * number from 0 to 1 by the id of a collected test; none when it has no
+ * `relevance`. Scores for a collected test it was not handed are dropped, as
+ * `exclude` drops them.
+ */
+function checkedRelevance(
+  relevance: unknown,
+  ids: ReadonlySet<string>,
+  collectedIds: ReadonlySet<string>,
+  redact: (text: string) => string,
+): readonly (readonly [string, number])[] {
+  if (relevance === undefined) return [];
+  if (!isPlainObject(relevance)) {
+    throw new Error(`relevance must be a plain object of test ids to numbers from 0 to 1, got ${describeValue(relevance)}`);
+  }
+  const entries = Object.entries(relevance);
+  const stranger = entries.find(([id]) => !ids.has(id) && !collectedIds.has(id));
+  if (stranger !== undefined) {
+    throw new Error(`relevance names ${quoted(stranger[0], redact)}, which no collected test has; relevance takes test.id`);
+  }
+  const unscored = entries.find(([, score]) => typeof score !== 'number' || !(score >= 0 && score <= 1));
+  if (unscored !== undefined) {
+    const [id, score] = unscored;
+    throw new Error(`the relevance of ${quoted(id, redact)} must be a number from 0 to 1, got ${describeValue(score)}`);
+  }
+  return (entries as [string, number][]).filter(([id]) => ids.has(id));
 }

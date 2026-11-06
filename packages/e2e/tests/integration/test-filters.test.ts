@@ -3,8 +3,9 @@
  * `changedSince`) through the runner, the public `e2e/runner` API, and the
  * built CLI on the fake engine: what a filter is given, what it leaves out
  * and why, a run it leaves empty booting nothing, a filter that fails or
- * outruns the deadline leaving nothing out, interrupts, `e2e list` as the
- * dry run, and each shard judging only its own slice. Each project here is
+ * outruns the deadline leaving nothing out, the tests a filter scores
+ * starting first, interrupts, `e2e list` as the dry run, and each shard
+ * judging only its own slice. Each project here is
  * a git repository whose `feature` branch changes `src/app.ts`, judged with
  * `changedSince: 'main'`, outside CI.
  */
@@ -90,9 +91,25 @@ const THREE_TESTS = {
   'tests/gamma.e2e.ts': testFile('gamma'),
 } as const;
 
+/** A test file declaring one test that throws. */
+function failingFile(title: string): string {
+  return `import { test } from 'e2e';\ntest(${JSON.stringify(title)}, async () => { throw new Error(${JSON.stringify(`${title} broke`)}); });\n`;
+}
+
 /** A candidate's own title: the last of its title path. */
 function titleOf(test: TestFilterCandidate): string {
   return test.titlePath.at(-1)!;
+}
+
+/** A filter that leaves nothing out and scores the tests titled by the keys of `scores`. */
+function scoring(name: string, scores: Readonly<Record<string, number>>): TestFilter {
+  return {
+    name,
+    filter: (tests) => ({
+      exclude: {},
+      relevance: Object.fromEntries(tests.flatMap((test) => (titleOf(test) in scores ? [[test.id, scores[titleOf(test)]!] as const] : []))),
+    }),
+  };
 }
 
 /** A filter that leaves out every test but those titled `keep`, each with a reason naming it. */
@@ -592,6 +609,94 @@ ${edit}
       await expect(listExisting(project, { config, ...options, changedSince: '-x' })).rejects.toMatchObject({ code: 'INVALID_CHANGED_SINCE', message });
     }
     expect(calls).toEqual([]);
+  });
+});
+
+describe('starting the likeliest tests first', () => {
+  const RANKED = 'ranked 2 of 3 tests by relevance, likeliest first';
+
+  /** Runs `files` with `filters` and `runOptions`, returning the titles of the tests in the order they started, and what the run left. */
+  async function started(files: Readonly<Record<string, string>>, filters: readonly TestFilter[], runOptions: Partial<RunProjectOptions['runOptions']> = {}) {
+    const project = fixture(files);
+    const titles: string[] = [];
+    const events: string[] = [];
+    const outcome = await runExisting(project, {
+      config: { filters },
+      runOptions: {
+        ...runOptions,
+        onEvent: (event) => {
+          events.push(describeEvent(event));
+          if (event.type === 'test-started') titles.push(event.title);
+        },
+      },
+    });
+    expect(outcome.report.run.errors).toEqual([]);
+    return { titles, events, outcome, report: reportOf(project) };
+  }
+
+  it('starts the tests a filter scored highest first, whatever their file order, says so once before the plan, and leaves the report in test order', async () => {
+    const { titles, events, outcome, report } = await started(THREE_TESTS, [scoring('areas', { gamma: 1, alpha: 0.3 })]);
+    expect(outcome.exitCode).toBe(0);
+    // gamma is in the top band, alpha in a band below it, and no filter scored beta.
+    expect(titles).toEqual(['gamma', 'alpha', 'beta']);
+    expect(events.filter((event) => event.includes('ranked'))).toEqual([`notice:filter:${RANKED}`]);
+    expect(events.indexOf(`notice:filter:${RANKED}`)).toBeLessThan(events.indexOf('plan'));
+    // The line follows the filter's own summary.
+    expect(events).toContain('notice:filter:areas kept all 3 tests');
+    expect(events.indexOf('notice:filter:areas kept all 3 tests')).toBeLessThan(events.indexOf(`notice:filter:${RANKED}`));
+    // Dispatch order is not report order, and the report says nothing of the scores.
+    expect(report.run.results.map((result) => result.titlePath.at(-1))).toEqual(['alpha', 'beta', 'gamma']);
+    expect(report.run.filters).toEqual([{ name: 'areas', candidates: 3, excluded: 0 }]);
+  });
+
+  it('starts in collection order, and says nothing of ranking, when no filter scored a test', async () => {
+    const { titles, events } = await started(THREE_TESTS, [keepOnly('areas', ['alpha', 'beta', 'gamma'])]);
+    expect(titles).toEqual(['alpha', 'beta', 'gamma']);
+    expect(events.some((event) => event.includes('ranked'))).toBe(false);
+  });
+
+  it('takes the highest score across filters, and ranks only the tests the filters left in', async () => {
+    const { titles, events, report } = await started(THREE_TESTS, [scoring('areas', { alpha: 0.9, beta: 0.1 }), scoring('jev', { beta: 0.8, gamma: 0.6 }), keepOnly('last', ['beta', 'gamma'])]);
+    expect(titles).toEqual(['beta', 'gamma']);
+    expect(events.filter((event) => event.includes('ranked'))).toEqual(['notice:filter:ranked 2 of 2 tests by relevance, likeliest first']);
+    expect(row(report, 'alpha').skip).toMatchObject({ cause: 'filtered', filter: 'last' });
+  });
+
+  it('reaches the failing test first, so --max-failures 1 stops the run before the others start', async () => {
+    const files = { ...THREE_TESTS, 'tests/gamma.e2e.ts': failingFile('gamma') };
+    const control = await started(files, [keepOnly('areas', ['alpha', 'beta', 'gamma'])], { maxFailures: 1 });
+    expect(control.titles).toEqual(['alpha', 'beta', 'gamma']);
+    expect(row(control.report, 'gamma').status).toBe('failed');
+
+    const ranked = await started(files, [scoring('areas', { gamma: 1 })], { maxFailures: 1 });
+    expect(ranked.titles).toEqual(['gamma']);
+    expect(ranked.outcome.exitCode).toBe(1);
+    expect(row(ranked.report, 'gamma').status).toBe('failed');
+    for (const title of ['alpha', 'beta']) {
+      expect(row(ranked.report, title)).toMatchObject({ status: 'skipped', selected: true, skip: { cause: 'failure-limit' } });
+    }
+  });
+
+  it('applies to a file-backed config run by the CLI, and says nothing of ranking on e2e list, which starts nothing', () => {
+    const project = fixture({
+      ...THREE_TESTS,
+      'tests/gamma.e2e.ts': failingFile('gamma'),
+      'e2e.config.ts': cliConfig(`[
+    { name: 'areas', filter(tests) {
+      return { exclude: {}, relevance: Object.fromEntries(tests.filter((test) => test.titlePath.at(-1) === 'gamma').map((test) => [test.id, 1])) };
+    } },
+  ]`),
+    });
+    const run = cli(project, ['run', '--changed-since', 'main', '--max-failures', '1']);
+    expect(run.exitCode, run.output).toBe(1);
+    expect(run.output).toContain('ranked 1 of 3 tests by relevance, likeliest first');
+    const report = reportOf(project);
+    expect(row(report, 'gamma').status).toBe('failed');
+    for (const title of ['alpha', 'beta']) expect(row(report, title).skip).toMatchObject({ cause: 'failure-limit' });
+
+    const listed = cli(project, ['list', '--changed-since', 'main']);
+    expect(listed.exitCode, listed.output).toBe(0);
+    expect(listed.output).not.toContain('ranked');
   });
 });
 
