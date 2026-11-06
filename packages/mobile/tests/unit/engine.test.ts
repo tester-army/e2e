@@ -2320,6 +2320,52 @@ describe('device fixture', () => {
     expect(h.fake.calls.length).toBe(before);
   });
 
+  it('refuses openApp launch arguments it would drop before any device command', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    await expect(device.openApp('com.other', { launchArguments: ['-e2e', 'YES'] })).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('needs `relaunch: true`'),
+    });
+    await expect(device.openApp('com.other', { relaunch: true, launchArguments: '-e2e YES' } as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: 'device.openApp({ launchArguments }) must be an array of strings',
+    });
+    await expect(device.openApp('com.other', { relaunch: true, launchArgs: ['-e2e'] } as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('it is `launchArguments`'),
+    });
+    await expect(device.openApp('com.other', { relaunh: true } as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('has no key "relaunh"'),
+    });
+    expect(h.fake.calls.length).toBe(before);
+  });
+
+  it('refuses launch options passed to installApp, pointing at where launch arguments go, before any device command', async () => {
+    const h = harness({ appPath: './b/App.app' });
+    await openAttempt(h);
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    for (const key of ['launchArguments', 'launchArgs', 'relaunch', 'permissions']) {
+      await expect(device.installApp('./b/App.app', { [key]: ['-e2e'] } as never)).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        message: expect.stringContaining(`takes no "${key}"; to launch the app with arguments, set the target's \`app.launchArguments\``),
+      });
+    }
+    await expect(device.installApp({ launchArguments: ['-e2e'] } as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: "device.installApp takes the build's path first, then { app, reinstall }",
+    });
+    await expect(device.installApp(undefined, { reinstal: true } as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: expect.stringContaining('has no key "reinstal"'),
+    });
+    expect(h.fake.calls.length).toBe(before);
+  });
+
   it('switches Wi-Fi and airplane mode on Android; on iOS, where simctl only repaints the status bar, refuses going offline and restores with no device command', async () => {
     const ios = harness();
     await openAttempt(ios);

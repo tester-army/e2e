@@ -119,13 +119,16 @@ export interface Device {
    * plain install replaces the binary and keeps its data. Resolves to the
    * identity to `openApp` it by, which becomes the app `app.open()` launches
    * when the target's build is installed and no `app.bundleId` is pinned.
+   * It launches nothing, so it takes no launch arguments: those go on the
+   * target's `app.launchArguments` or `openApp`'s `launchArguments`.
    */
   installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /**
    * Brings an app to the foreground; `relaunch` restarts it fresh.
-   * `launchArguments` and `permissions` apply to this launch alone; the
-   * target's `app.launchArguments` and `app.permissions` apply to a
-   * `relaunch` of the pinned app, and to no foreground-only open.
+   * `launchArguments` and `permissions` apply to this launch alone, and
+   * `launchArguments` needs `relaunch`; the target's `app.launchArguments`
+   * and `app.permissions` apply to a `relaunch` of the pinned app, and to no
+   * foreground-only open.
    */
   openApp(app: string, options?: OpenAppOptions): Promise<void>;
   /**

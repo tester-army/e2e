@@ -22,6 +22,7 @@ import {
   parseKey,
   raceAbort,
   rejectUnknownKeys,
+  rejectUnknownOptions,
   stopProviderRecording,
   withinCleanupBudget,
   type EngineAttemptContext,
@@ -103,6 +104,16 @@ export interface InstalledApp {
   readonly bundleId?: string;
 }
 
+/** The keys `device.installApp` options take. */
+const INSTALL_APP_OPTION_KEYS = ['app', 'reinstall'];
+
+/** The keys `device.openApp` options take. */
+const OPEN_APP_OPTION_KEYS = ['relaunch', 'launchArguments', 'permissions'];
+
+/** Where launch arguments go, for an error that refuses them anywhere else. */
+const LAUNCH_ARGUMENTS_HOME =
+  "set the target's `app.launchArguments`, which every `app.open()` passes, or call `device.openApp(app, { relaunch: true, launchArguments })` for one launch";
+
 /** Why nothing is pinned with `appPath` alone: the install is the suite's. */
 const UNINSTALLED_BUILD = "the build the target's `app.appPath` names installed first with `device.installApp()`";
 
@@ -119,7 +130,8 @@ export interface OpenAppOptions {
   readonly relaunch?: boolean;
   /**
    * Arguments this launch hands the app: its process arguments on iOS,
-   * `am start` arguments on Android. Replaces the target's
+   * `am start` arguments on Android. Needs `relaunch: true`, since a running
+   * app keeps the arguments it was launched with. Replaces the target's
    * `app.launchArguments` for a relaunch of the pinned app.
    */
   readonly launchArguments?: readonly string[];
@@ -358,6 +370,46 @@ export function assertPermissions(label: string, permissions: unknown, code: 'IN
     if (state !== undefined && !PERMISSION_STATES.includes(state as string)) {
       fail(`${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
     }
+  }
+}
+
+/**
+ * Refuses what `device.installApp` would otherwise drop: a build path that is
+ * not a string, or an option it does not take. An install launches nothing,
+ * so a launch option there names where it belongs.
+ */
+function assertInstallAppArguments(appPath: unknown, options: object): void {
+  if (appPath !== undefined && typeof appPath !== 'string') {
+    throw new TestError('INVALID_ARGUMENT', `device.installApp takes the build's path first, then { ${INSTALL_APP_OPTION_KEYS.join(', ')} }`);
+  }
+  const launchOption = Object.getOwnPropertyNames(options).find((key) => key === 'launchArgs' || OPEN_APP_OPTION_KEYS.includes(key));
+  if (launchOption !== undefined) {
+    throw new TestError('INVALID_ARGUMENT', `device.installApp only installs the build and takes no "${launchOption}"; to launch the app with arguments, ${LAUNCH_ARGUMENTS_HOME}`);
+  }
+  rejectUnknownOptions('device.installApp', options, INSTALL_APP_OPTION_KEYS);
+}
+
+/**
+ * Refuses `device.openApp` options that would launch the app without what
+ * they say: an unknown key, launch arguments that are not a list of strings,
+ * or launch arguments on a foreground-only open, which leaves a running app's
+ * process, and its arguments, as they are.
+ */
+function assertOpenAppOptions(options: OpenAppOptions): void {
+  if (Object.hasOwn(options, 'launchArgs')) {
+    throw new TestError('INVALID_ARGUMENT', 'device.openApp options has no key "launchArgs"; it is `launchArguments`');
+  }
+  rejectUnknownOptions('device.openApp', options, OPEN_APP_OPTION_KEYS);
+  const { launchArguments } = options;
+  if (launchArguments === undefined) return;
+  if (!Array.isArray(launchArguments) || !launchArguments.every((argument) => typeof argument === 'string')) {
+    throw new TestError('INVALID_ARGUMENT', 'device.openApp({ launchArguments }) must be an array of strings');
+  }
+  if (launchArguments.length > 0 && options.relaunch !== true) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      'device.openApp({ launchArguments }) needs `relaunch: true`: a foreground-only open leaves a running app with the arguments it was launched with',
+    );
   }
 }
 
@@ -788,6 +840,7 @@ export class AgentDeviceSurface {
    */
   async openApp(app: string, options: OpenAppOptions, signal: AbortSignal): Promise<void> {
     assertAppId(app);
+    assertOpenAppOptions(options);
     if (options.permissions !== undefined) assertPermissions('device.openApp({ permissions })', options.permissions, 'INVALID_ARGUMENT');
     const relaunch = options.relaunch === true;
     // The engine's own launch options belong to a fresh launch of the pinned
@@ -919,6 +972,7 @@ export class AgentDeviceSurface {
    * with no data; a plain install replaces the binary and keeps its data.
    */
   async installApp(appPath: string | undefined, options: InstallAppOptions, signal: AbortSignal): Promise<InstalledApp> {
+    assertInstallAppArguments(appPath, options);
     const build = appPath ?? this.app.appPath;
     if (build === undefined) throw invalidState("installApp needs a build: pass a path, or name one with the target's app.appPath");
     const resolved = path.resolve(this.projectRoot, build);
