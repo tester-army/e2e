@@ -56,7 +56,6 @@ describe('a node inside a hidden frame', () => {
     await page.close();
   });
 
-  // Missing in BiDi: a node inside a hidden frame does not read as hidden.
   it('reads as hidden when its frame, an ancestor of the frame, or an enclosing frame is hidden', async () => {
     for (const frames of [['#hidden'], ['#hidden-parent'], ['#outer', '#inner']]) {
       const matches = await locate(withinFrames(frames, BUTTON));
@@ -71,7 +70,6 @@ describe('a node inside a hidden frame', () => {
     expect(matches[0]!.states?.hidden).toBeUndefined();
   });
 
-  // Missing in BiDi: a visible or role query still matches inside a hidden frame.
   it('is no match of a visible or role query, indexed or not', async () => {
     const first: LocatorExpression = { kind: 'index', source: VISIBLE_BUTTON, index: 'first' };
     for (const expression of [VISIBLE_BUTTON, first, ROLE_BUTTON]) {

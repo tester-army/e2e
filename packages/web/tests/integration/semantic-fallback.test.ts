@@ -40,8 +40,7 @@ afterEach(async () => {
 });
 
 describe('masked fallback after a stalled semantic reader', () => {
-  // Missing in BiDi: no masked pixel fallback (pixelFallback, treeUnavailable) when the semantic reader stalls.
-  it.skip('reserves capture time and takes fresh masked pixels', async () => {
+  it('reserves capture time and takes fresh masked pixels', async () => {
     const page = await startWebSession({ timeoutMs: 2_000 });
     sessions.push(page);
     const operation = { ...page.op(2_000), origin: 'agent' as const };
@@ -64,8 +63,7 @@ describe('masked fallback after a stalled semantic reader', () => {
     await expect(page.engine.perform!(password!.ref, { kind: 'tap' }, operation)).rejects.toMatchObject({ code: 'NODE_STALE' });
   });
 
-  // Missing in BiDi: no masked pixel fallback (pixelFallback, treeUnavailable) when the semantic reader stalls.
-  it.skip('keeps abandoned reader IDs distinct from new nodes, frames, and located refs', async () => {
+  it('keeps abandoned reader IDs distinct from new nodes, frames, and located refs', async () => {
     const page = await startWebSession({ timeoutMs: 5_000 });
     sessions.push(page);
     const operation = { ...page.op(5_000), origin: 'agent' as const };

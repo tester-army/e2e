@@ -88,11 +88,19 @@ export interface PlaywrightAria {
 function createReaders(read: typeof readSemanticsFunction, builtins: Builtins) {
   const { Map, Set, Array, Object, JSON, Reflect, Symbol, String } = builtins;
 
+  /** Whether `fn` reads as the native `JSON.stringify`; false when the page broke `Function.prototype.toString`, so it cannot tell. */
+  const nativeStringify = (fn: unknown): boolean => {
+    if (typeof fn !== 'function') return false;
+    try {
+      return /^function stringify\(\)\s*\{\s*\[native code\]\s*\}$/.test(Reflect.apply(Function.prototype.toString, fn, []) as string);
+    } catch {
+      return false;
+    }
+  };
+
   /** Whether the page left `JSON.stringify` native and added no `toJSON` the metadata would go through. */
   const nativeJson = (): boolean =>
-    typeof JSON.stringify === 'function' &&
-    /^function stringify\(\)\s*\{\s*\[native code\]\s*\}$/.test(Function.prototype.toString.call(JSON.stringify)) &&
-    !('toJSON' in Object.prototype) && !('toJSON' in Array.prototype);
+    nativeStringify(JSON.stringify) && !('toJSON' in Object.prototype) && !('toJSON' in Array.prototype);
 
   /** `data` as `Encoded` carries it: itself when asked `structured`, else one JSON string, or null when the page's JSON cannot be trusted. */
   const encode = <T>(data: T, structured: boolean): T | string | null => {
@@ -177,7 +185,7 @@ function createReaders(read: typeof readSemanticsFunction, builtins: Builtins) {
       let expanded: boolean | null = null;
       if (element.nodeName === 'DETAILS') expanded = (element as HTMLDetailsElement).open;
       else if (expandedRoles.has(role) && element.getAttribute('aria-expanded') !== null) expanded = element.getAttribute('aria-expanded') === 'true';
-      const selected = element.nodeName === 'OPTION' ? (element as HTMLOptionElement).selected : selectedRoles.has(role) && element.getAttribute('aria-selected') === 'true';
+      const selected = element.nodeName === 'OPTION' ? (element as HTMLOptionElement).selected : selectedRoles.has(role) && (element.getAttribute('aria-selected') ?? '').toLowerCase() === 'true';
       return { text: normalize(textOf(element)), hidden: hiddenForAria(element), checked, pressed, expanded, selected };
     });
   };

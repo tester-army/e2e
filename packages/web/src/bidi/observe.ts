@@ -52,17 +52,63 @@ interface CapturedTree {
   readonly truncated: boolean;
 }
 
+/** Time a `pixelFallback` observation keeps for fresh masked pixels once the semantic read runs out; at most a quarter of what is left. */
+const PIXEL_FALLBACK_RESERVE_MS = 2_000;
+
 /**
  * One semantic observation, with masked pixels when asked, taken after the
  * tree so no screenshot mask is ever read into it. Pixels a capture could
- * not produce are left out, as the contract allows; the tree is never.
+ * not produce are left out, as the contract allows; the tree is never. With
+ * `pixelFallback`, a semantic read that outlives its share of the budget is
+ * abandoned for fresh masked pixels under the stable root alone
+ * (`treeUnavailable`), and every ref is retired; the ids the abandoned read
+ * was given stay reserved, so none is minted again.
  */
 export async function observe(session: BidiSession, timeoutMs: number, signal: AbortSignal, options?: EngineObserveOptions): Promise<EngineSnapshot> {
   const context = session.requireContext();
   const deadline = Date.now() + timeoutMs;
   await unlessStale(session.run(domReady, [Math.min(SETTLE_TIMEOUT_MS, timeoutMs / 2)]), undefined);
   const viewport = await session.viewportSize();
+  if (options?.pixelFallback !== true) return observeTree(session, context, viewport, deadline, signal, options);
+  const semanticDeadline = deadline - Math.min(PIXEL_FALLBACK_RESERVE_MS, (deadline - Date.now()) / 4);
+  const abandoned = new AbortController();
+  const read = observeTree(session, context, viewport, semanticDeadline, AbortSignal.any([signal, abandoned.signal]), options);
+  const timedOut = new EngineError('OPERATION_TIMEOUT', 'the semantic read timed out', { retryable: false });
+  try {
+    return await withTimeout(read, Math.max(0, semanticDeadline - Date.now()), () => timedOut);
+  } catch (cause) {
+    if (cause !== timedOut || signal.aborted) throw cause;
+    abandoned.abort();
+    read.catch(() => undefined);
+    session.refs.clear();
+    const remaining = AbortSignal.any([signal, AbortSignal.timeout(Math.max(0, deadline - Date.now()))]);
+    const fallbackViewport = await session.viewportSize();
+    const pixels = await maskedPixels(session, fallbackViewport, remaining).catch(() => {
+      throw cause;
+    });
+    return {
+      location: await session.currentUrl(),
+      root: { ref: { id: ROOT_NODE_ID, revision: '' } },
+      viewport: fallbackViewport,
+      truncated: true,
+      treeUnavailable: true,
+      pixels: pixels.pixels,
+      maskedRegionCount: pixels.maskedRegionCount,
+    };
+  }
+}
+
+/** The tree read by `deadline` and the masked pixels after it when asked, published unless `signal` ended the read first. */
+async function observeTree(
+  session: BidiSession,
+  context: string,
+  viewport: ViewportSize,
+  deadline: number,
+  signal: AbortSignal,
+  options: EngineObserveOptions | undefined,
+): Promise<EngineSnapshot> {
   const captured = await captureTree(session, context, [], MAX_OBSERVED_NODES, deadline);
+  if (signal.aborted) throw cancelled('observe cancelled');
   const pixels = options?.pixels === true ? await maskedPixels(session, viewport, signal).then((value) => value, () => undefined) : undefined;
   if (signal.aborted) throw cancelled('observe cancelled');
   session.refs.publish(captured.generation);

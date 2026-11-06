@@ -97,10 +97,13 @@ describe('routeEvents', () => {
     expect(log).toEqual([{ source: 'console', level: 'error', text: 'boom' }]);
   });
 
-  it('tells where the app went, never the driver’s own navigations, and visits every document it starts or lands at', async () => {
+  it('tells where the app went, never the driver’s own navigations, names each frame and tab once, and visits every document it starts or lands at', async () => {
     const fake = new FakeBidi();
     const owners = new ContextOwners();
     const { session, state, lines, visited } = attempt(owners, 'mine');
+    fake.on('script.callFunction', (params) => ({
+      result: { type: 'success', realm: 'r', result: { type: 'string', value: (params['target'] as { context: string }).context === 'frame' ? 'pay' : '' } },
+    }));
     routeEvents(fake.connection, owners, () => session);
     const created = (context: string, extra: Record<string, unknown> = {}) =>
       fake.emit('browsingContext.contextCreated', { context, userContext: 'mine', parent: null, url: 'about:blank', children: null, clientWindow: 'w', originalOpener: null, ...extra });
@@ -120,13 +123,16 @@ describe('routeEvents', () => {
     created('popup', { originalOpener: 'tab' });
     fake.emit('browsingContext.navigationCommitted', nav('popup', 'http://app.test/help'));
     fake.emit('browsingContext.navigationCommitted', nav('popup', 'http://app.test/help/2'));
+    created('blank', { originalOpener: 'tab' });
+    fake.emit('browsingContext.contextDestroyed', { context: 'blank', userContext: 'mine', parent: null, url: 'about:blank', children: null, clientWindow: 'w' });
     await settle();
     expect(lines).toEqual([
       'navigated to http://app.test/checkout',
       'navigated to http://app.test/checkout?step=2',
-      'frame loaded http://pay.test/embed',
-      'the app opened a new tab; the test stays on its page',
+      'the app opened a new tab at http://app.test/help; the test stays on its page',
       'the new tab navigated to http://app.test/help/2',
+      'the app opened a new tab; the test stays on its page',
+      'frame "pay" loaded http://pay.test/embed',
     ]);
     expect(new Set(visited)).toEqual(new Set(['http://app.test/', 'http://app.test/checkout', 'http://app.test/checkout?step=2', 'http://pay.test/embed', 'http://app.test/help', 'http://app.test/help/2']));
   });

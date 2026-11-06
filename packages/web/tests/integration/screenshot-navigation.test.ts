@@ -53,7 +53,6 @@ describe('screenshot while navigating', () => {
     await session.close();
   });
 
-  // Missing in BiDi: a screenshot whose masks were resolved in a document that navigated away fails instead of retaking.
   it('captures each screenshot, masked, while the page hops between documents', async () => {
     await session.open(`${origin}/hop?n=0`);
     for (let shot = 0; shot < 10; shot += 1) await expectMaskedShot(`hop-${shot}`);

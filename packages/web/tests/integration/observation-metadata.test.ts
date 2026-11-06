@@ -41,7 +41,4 @@ async function capturesLiveRefs(override: Override): Promise<void> {
   expect(await readClicked()).toBe('Clicked');
 }
 
-it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON'] as const)('captures live refs when the page overrides %s', capturesLiveRefs);
-
-// Missing in BiDi: an observation fails once the page overrides Function.prototype.toString.
-it.skip('captures live refs when the page overrides function-toString', () => capturesLiveRefs('function-toString'));
+it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON', 'function-toString'] as const)('captures live refs when the page overrides %s', capturesLiveRefs);

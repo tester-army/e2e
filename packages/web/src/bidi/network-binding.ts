@@ -268,6 +268,7 @@ export class NetworkBinding {
         status: event.response.status,
         headers: headerRecord(event.response.headers),
         body: async () => {
+          if (isRedirect(event.response)) throw new Error('Response body is unavailable for redirect responses');
           await loaded;
           const fulfilled = this.fulfilledBodies.get(request);
           if (fulfilled !== undefined) return fulfilled;
@@ -328,6 +329,14 @@ export function headerRecord(headers: readonly Network.Header[]): Record<string,
     out[name] = out[name] === undefined ? value : `${out[name]}, ${value}`;
   }
   return out;
+}
+
+/** The statuses Chromium follows as a redirect when the response names a `Location`. */
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/** Whether the browser followed `response` as a redirect, so it keeps no body for it: a redirect status with a `Location` header, Chromium's own rule. */
+function isRedirect(response: Network.ResponseData): boolean {
+  return REDIRECT_STATUSES.has(response.status) && response.headers.some((header) => header.name.toLowerCase() === 'location');
 }
 
 /** A BiDi bytes value as text. */

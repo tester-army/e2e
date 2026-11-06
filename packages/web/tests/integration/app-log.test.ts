@@ -127,8 +127,7 @@ describe('app log', () => {
     }
   });
 
-  // Missing in BiDi: console lines carry no source location suffix (" (at <url>:<line>)").
-  it.skip('names where each console line came from', async () => {
+  it('names where each console line came from', async () => {
     const entries: AppLogEntry[] = [];
     const session = await boot({ appLog: (entry) => entries.push(entry) });
     try {
@@ -144,8 +143,7 @@ describe('app log', () => {
     }
   });
 
-  // Missing in BiDi: navigation lines leave out the frame's name and the new tab's URL, and a tab is told twice.
-  it.skip('names the frame that loaded and the URL of the tab the app opened, once', async () => {
+  it('names the frame that loaded and the URL of the tab the app opened, once', async () => {
     const went: string[] = [];
     const session = await boot({ navigation: (line) => went.push(line) });
     const url = session.origin;
@@ -164,8 +162,7 @@ describe('app log', () => {
     }
   });
 
-  // Missing in BiDi: the headless shell's environment fact names a revision hash, not a version number.
-  it.skip('names the browser by its version number', async () => {
+  it('names the browser by its version number', async () => {
     const facts: Record<string, string>[] = [];
     const session = await boot({ environment: (told) => facts.push({ ...told }) });
     try {

@@ -201,7 +201,7 @@ export async function launchBidiBrowser(name: BidiBrowserName, options: BidiLaun
         ? await webSocketTransport(`${await endpointLine(child, FIREFOX_ENDPOINT, options.timeoutMs)}/session`, options.timeoutMs)
         : await chromiumMapper(endpointLine(child, CHROMIUM_ENDPOINT, options.timeoutMs), options.timeoutMs);
     const connection = new BidiConnection(transport);
-    const version = await openSession(connection, options.timeoutMs).catch((cause: unknown) => {
+    const version = await openSession(connection, name, options.timeoutMs).catch((cause: unknown) => {
       connection.close();
       throw cause;
     });
@@ -238,7 +238,7 @@ export async function connectBidiOverCdp(endpoint: string, timeoutMs: number): P
   try {
     connection = new BidiConnection(await chromiumMapper(webSocketDebuggerUrl(endpoint, timeoutMs), timeoutMs));
     const open = connection;
-    const version = await openSession(open, timeoutMs);
+    const version = await openSession(open, 'chromium', timeoutMs);
     return {
       name: 'chromium',
       version,
@@ -278,13 +278,22 @@ async function webSocketDebuggerUrl(endpoint: string, timeoutMs: number): Promis
  * its listener; certificate errors fail navigation, as Playwright's default
  * `ignoreHTTPSErrors: false` does.
  */
-async function openSession(connection: BidiConnection, timeoutMs: number): Promise<string> {
-  const session = await withTimeout(
-    connection.send('session.new', { capabilities: { alwaysMatch: { acceptInsecureCerts: false, unhandledPromptBehavior: { default: 'ignore' } } } }),
-    timeoutMs,
-    () => new EngineError('ENGINE_FAILURE', `the browser opened no BiDi session within ${timeoutMs}ms`, { retryable: false }),
-  );
-  return session.capabilities.browserVersion;
+async function openSession(connection: BidiConnection, name: BidiBrowserName, timeoutMs: number): Promise<string> {
+  const opened = async (): Promise<string> => {
+    const session = await connection.send('session.new', { capabilities: { alwaysMatch: { acceptInsecureCerts: false, unhandledPromptBehavior: { default: 'ignore' } } } });
+    return name === 'chromium' ? chromiumVersion(connection) : session.capabilities.browserVersion;
+  };
+  return withTimeout(opened(), timeoutMs, () => new EngineError('ENGINE_FAILURE', `the browser opened no BiDi session within ${timeoutMs}ms`, { retryable: false }));
+}
+
+/**
+ * Chromium's version number, from the product CDP's `Browser.getVersion`
+ * names (`HeadlessChrome/157.0.8103.38`): the mapper reports the build's
+ * revision hash as `browserVersion` for the headless shell.
+ */
+async function chromiumVersion(connection: BidiConnection): Promise<string> {
+  const { result } = (await connection.sendExtension('goog:cdp.sendCommand', { method: 'Browser.getVersion', params: {} })) as { result: { product: string } };
+  return result.product.slice(result.product.lastIndexOf('/') + 1);
 }
 
 const FIREFOX_ENDPOINT = /WebDriver BiDi listening on (ws:\/\/\S+)/;

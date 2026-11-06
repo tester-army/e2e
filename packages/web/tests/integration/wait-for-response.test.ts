@@ -170,8 +170,7 @@ describe('browser.waitForResponse bodies', () => {
     });
   });
 
-  // Missing in BiDi: reading a redirect response's body returns the followed response's body instead of rejecting.
-  it.skip('keeps the status of a redirect and rejects reading its body', async () => {
+  it('keeps the status of a redirect and rejects reading its body', async () => {
     const response = await observe('/api/redirect');
     expect(response.status).toBe(302);
     await expect(response.text()).rejects.toMatchObject({

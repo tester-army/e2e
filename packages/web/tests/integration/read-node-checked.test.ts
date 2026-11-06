@@ -86,8 +86,7 @@ describe('checked and selected', () => {
     expect(await page.locate(byRole('button', 'Pick Chosen'))).toHaveLength(1);
   });
 
-  // Missing in BiDi: a role query's `selected` state compares aria-selected case-sensitively.
-  it.skip('matches a role query on selected state without case sensitivity', async () => {
+  it('matches a role query on selected state without case sensitivity', async () => {
     await page.setContent(`
       <div role="tablist">
         <button role="tab" aria-selected="TRUE">All</button>

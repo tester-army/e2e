@@ -4,9 +4,11 @@
  * dialog router, and the console, errors, and failed requests of its app log.
  */
 
+import type { Script } from 'webdriver-bidi-protocol';
 import type { AppLogEntry } from 'e2e/engine';
 import type { NativeDialog } from '../dialogs.ts';
 import type { BidiConnection } from './connection.ts';
+import { callFunction } from './script.ts';
 import type { BidiSession, ContextOwners } from './session.ts';
 
 /** The events every session subscribes to for as long as the browser runs. */
@@ -60,14 +62,25 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
       return;
     }
   };
-  /** Tabs the app opened, and whether their first document, which the opening told, has loaded. */
-  const appTabs = new Map<string, { opened: boolean }>();
+  /**
+   * Tabs the app opened: whether the opening was told, and whether their
+   * first document, which the opening names, has committed. A tab opens on
+   * `about:blank` and starts its first navigation after, so the opening is
+   * told once the tab names where it goes, or when it closes without going
+   * anywhere.
+   */
+  const appTabs = new Map<string, { told: boolean; committed: boolean }>();
+  const tellOpened = (tab: { told: boolean }, url: string | undefined): void => {
+    if (tab.told) return;
+    tab.told = true;
+    went(`the app opened a new tab${url === undefined ? '' : ` at ${url}`}; the test stays on its page`);
+  };
   const navigated = (event: { readonly context: string; readonly url: string }): void => {
     const session = ours(event.context);
     if (session === undefined || NO_PLACE.has(event.url) || event.url.startsWith('data:')) return;
     void session.visit(event.url).catch((cause: unknown) => session.latch.latch(asError(cause)));
     if (owners.top(event.context) !== event.context) {
-      went(`frame loaded ${event.url}`);
+      void frameName(connection, event.context).then((name) => went(`frame${name === '' ? '' : ` "${name}"`} loaded ${event.url}`));
       return;
     }
     if (event.context === session.context) {
@@ -76,8 +89,9 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
     }
     const tab = appTabs.get(event.context);
     if (tab === undefined) return;
-    if (tab.opened) went(`the new tab navigated to ${event.url}`);
-    else tab.opened = true;
+    tellOpened(tab, event.url);
+    if (tab.committed) went(`the new tab navigated to ${event.url}`);
+    else tab.committed = true;
   };
   const offs = [
     connection.on('browsingContext.contextCreated', (info) => {
@@ -85,8 +99,9 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
       const session = ours(info.context);
       if (info.parent != null || info.originalOpener == null || session === undefined) return;
       void session.network.addContext(info.context).catch((cause: unknown) => session.latch.latch(asError(cause)));
-      appTabs.set(info.context, { opened: false });
-      went(`the app opened a new tab${NO_PLACE.has(info.url) ? '' : ` at ${info.url}`}; the test stays on its page`);
+      const tab = { told: false, committed: false };
+      appTabs.set(info.context, tab);
+      if (!NO_PLACE.has(info.url)) tellOpened(tab, info.url);
     }),
     connection.on('browsingContext.contextDestroyed', (info) => {
       const session = ours(info.context);
@@ -94,12 +109,17 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
         if (info.context === session.context) session.retireContext();
         void session.network.removeContext(info.context).catch((cause: unknown) => session.latch.latch(asError(cause)));
       }
+      const tab = appTabs.get(info.context);
+      if (tab !== undefined && session !== undefined) tellOpened(tab, undefined);
       appTabs.delete(info.context);
       owners.destroyed(info.context);
     }),
     connection.on('browsingContext.navigationStarted', (event) => {
       const session = ours(event.context);
-      if (session !== undefined) void session.visit(event.url).catch((cause: unknown) => session.latch.latch(asError(cause)));
+      if (session === undefined) return;
+      void session.visit(event.url).catch((cause: unknown) => session.latch.latch(asError(cause)));
+      const tab = appTabs.get(event.context);
+      if (tab !== undefined && !NO_PLACE.has(event.url)) tellOpened(tab, event.url);
     }),
     connection.on('browsingContext.navigationCommitted', navigated),
     connection.on('browsingContext.fragmentNavigated', navigated),
@@ -122,7 +142,7 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
       if (ours(entry.source.context) === undefined || entry.text === null) return;
       if (entry.type === 'javascript') report({ source: 'error', level: 'error', text: entry.text });
       else if (entry.level !== 'debug' && !entry.text.startsWith('Failed to load resource:')) {
-        report({ source: 'console', level: entry.level === 'warn' ? 'warning' : entry.level, text: entry.text });
+        report({ source: 'console', level: entry.level === 'warn' ? 'warning' : entry.level, text: consoleText(entry.text, entry.stackTrace) });
       }
     }),
     connection.on('network.responseCompleted', (event) => {
@@ -138,6 +158,22 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
   return () => {
     for (const off of offs) off();
   };
+}
+
+/** The frame's name (`window.name`, its iframe's `name` until the frame renames itself), as Playwright's `frame.name()` reads it; empty for a frame gone before it was read. */
+async function frameName(connection: BidiConnection, context: string): Promise<string> {
+  try {
+    const name = await callFunction(connection, context, () => window.name);
+    return typeof name === 'string' ? name : '';
+  } catch {
+    return '';
+  }
+}
+
+/** `message (at /app.js:12)`: the text, and the frame that logged it when the browser says, its line counted from one. */
+function consoleText(text: string, stackTrace: Script.StackTrace | undefined): string {
+  const frame = stackTrace?.callFrames[0];
+  return frame === undefined || frame.url === '' ? text : `${text} (at ${frame.url}:${frame.lineNumber + 1})`;
 }
 
 /** A browser's own request for a site icon the app never served, which the app log leaves out. */
