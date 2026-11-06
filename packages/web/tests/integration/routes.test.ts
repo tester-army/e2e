@@ -238,7 +238,7 @@ describe('browser.route decisions', () => {
         work.then(() => 'completed', (cause: unknown) => cause),
         new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
       ]);
-      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('finished within') });
+      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: expect.stringContaining('did not finish within') });
     } finally {
       clearTimeout(timer);
       server.closeAllConnections();
