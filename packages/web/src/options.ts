@@ -11,7 +11,6 @@ import type { BrowserProvider } from './provider.ts';
  * seam a hosted-browser engine plugs into: a per-run cloud session (its
  * endpoint provisioned only once the run starts) resolves through
  * `cdpEndpoint` at `init`, and again at an attempt start after a disconnect.
- * Supplying `reconnectEndpoint` opts into a persistent context instead.
  * CDP attach is chromium-only.
  */
 export interface WebConnectOptions {
@@ -20,21 +19,12 @@ export interface WebConnectOptions {
    * to attach to. Async because a hosted endpoint is not known at config load;
    * called once per worker in `init`, and again at the start of any attempt
    * that finds the session dropped, so a fresh per-run URL reconnects cleanly.
-   * With `reconnectEndpoint`, init defers provisioning and every attempt
-   * calls this resolver for a fresh, dedicated browser instead.
    * `signal` aborts when the init or attempt that needs the browser is
    * cancelled or exceeds its budget: a resolver that provisions a session
    * should stop and release it, since a browser that arrives late is detached.
    */
   readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
-  /**
-   * Opts into a dedicated persistent remote context. `cdpEndpoint` provisions
-   * a fresh browser at each attempt start; this resolver reconnects to that
-   * same browser after a transport drop. Called once before the next
-   * operation, within its budget. The original browser and page must survive.
-   * Dispatched operations are never retried. The host owns browser cleanup.
-   * Context replacement, headers, basicAuth, userAgent, locale, and timezoneId are unavailable in this mode.
-   */
+  /** A persistent remote context across a disconnect. Not supported right now: any value is `INVALID_CONFIG`. */
   readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
 
@@ -66,10 +56,10 @@ export interface WebScreencastOptions {
 export interface WebOptions {
   /**
    * Browser to launch, `chromium` (default) or `firefox`, driven over
-   * WebDriver BiDi. A `BrowserProvider` leases
-   * hosted browsers instead: one per worker slot at `prepare`, or one per
-   * attempt, each attached to over CDP and released when its scope ends. A
-   * provider implies chromium and excludes `connect`.
+   * WebDriver BiDi. A `BrowserProvider` leases hosted browsers instead, one
+   * per worker slot, each attached to over CDP and released when the run
+   * ends; `scope: 'attempt'` is not supported right now. A provider implies
+   * chromium and excludes `connect`.
    */
   readonly browser?: BrowserName | BrowserProvider;
   /**
@@ -121,23 +111,20 @@ export interface WebOptions {
    * The `User-Agent` every attempt's context sends and `navigator.userAgent`
    * reports: for an app that switches into a test mode on a marker in the agent string.
    * Defaults to the browser's own. A `user-agent` entry in `headers` beside
-   * it is `INVALID_CONFIG`, and so is a persistent context
-   * (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`).
+   * it is `INVALID_CONFIG`.
    */
   readonly userAgent?: string;
   /**
    * The locale every attempt's context runs in, a BCP 47 tag such as
    * `de-DE`: what `navigator.language`, `Intl` formatting, and the `Accept-Language` header
    * report. Defaults to the browser's own. An `accept-language` entry in
-   * `headers` beside it is `INVALID_CONFIG`, and so is a persistent context
-   * (`connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`).
+   * `headers` beside it is `INVALID_CONFIG`.
    */
   readonly locale?: string;
   /**
    * The IANA time zone every attempt's context runs in, such as
    * `Europe/Berlin`: what `Date` and `Intl` resolve local time against. Defaults to the
-   * machine's. A persistent context (`connect.reconnectEndpoint`, or a
-   * provider with `scope: 'attempt'`) is `INVALID_CONFIG`.
+   * machine's.
    */
   readonly timezoneId?: string;
   /**
