@@ -25,7 +25,7 @@ import { nearestPixel, swipeDistance, wheelDelta } from '../support.ts';
 import { chromiumDrag } from './drag.ts';
 import { unlessStale } from './errors.ts';
 import type { NodeTarget } from './frames.ts';
-import { clickSources, dragPath, dragSources, dragStepMs, moveSources, pressSource, typeSource, wheelSources, type ClickOptions } from './input.ts';
+import { clickSources, dragPath, dragSources, dragStepMs, moveSources, typeSource, wheelSources, type ClickOptions } from './input.ts';
 import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
@@ -72,7 +72,7 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
       return fill(session, target, '', deadline, signal);
     case 'press':
       await focusOn(session, target, signal);
-      return session.sendInput([pressSource(action.key)], signal);
+      return session.pressKey(action.key, signal);
     case 'focus':
       return focusOn(session, target, signal);
     case 'scrollIntoView':
@@ -140,8 +140,8 @@ export async function typeText(session: BidiSession, text: string, replace: bool
     );
   }
   if (replace) {
-    await session.sendInput([pressSource('ControlOrMeta+a')], signal);
-    await session.sendInput([pressSource('Delete')], signal);
+    await session.pressKey('ControlOrMeta+a', signal);
+    await session.pressKey('Delete', signal);
   }
   await typeInto(session, text, signal);
 }

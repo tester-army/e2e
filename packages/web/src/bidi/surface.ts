@@ -46,7 +46,8 @@ import { perform, performAt, typeInto, typeText } from './actions.ts';
 import { screenshot, startVideo, stopVideo } from './artifacts.ts';
 import { afterDispatch, classify, releaseQuietly } from './errors.ts';
 import { routeEvents, SESSION_EVENTS } from './events.ts';
-import { pressSource, SHIFT_KEY } from './input.ts';
+import { fixtureKeyStroke, strokeSource } from './input.ts';
+import type { KeyPhase } from './chromium-keys.ts';
 import { connectBidiOverCdp, launchBidiBrowser, type BidiBrowser, type BidiBrowserName } from './launch.ts';
 import type { NetworkRoute } from './network.ts';
 import type { ObservedResponse } from './network-binding.ts';
@@ -419,7 +420,15 @@ export class BidiSurface {
 
   /** Presses one key of the contract grammar. */
   pressKey(key: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.press', (session, budget) => session.sendInput([pressSource(key)], budget.signal), { input: true, traced: true });
+    return this.guard(operation, 'keyboard.press', (session, budget) => session.pressKey(key, budget.signal), { input: true, traced: true });
+  }
+
+  /** One `browser.keyboard` call (`fixtureKeyStroke`); a key it holds stays held until its `keyboard.up`. */
+  keyboard(label: string, key: string, phase: KeyPhase, operation: OperationContext): Promise<void> {
+    return this.guard(operation, label, (session, budget) => {
+      const stroke = fixtureKeyStroke(key, phase);
+      return session.sendKey(stroke, (shiftHeld) => strokeSource(stroke, shiftHeld), budget.signal);
+    }, { input: true });
   }
 
   /** Runs raw input sources from the `browser` fixture; a key or button they press without releasing stays held. */
@@ -475,11 +484,6 @@ export class BidiSurface {
   /** The headers a request to `url` carries for the app's site, which a route's own `fetch` sends too. */
   siteHeaders(url: string): Readonly<Record<string, string>> | undefined {
     return this.settings?.siteHeaders(url);
-  }
-
-  /** Whether Shift is held on the attempt's tab, which a key the fixture names by letter is typed in upper case under. */
-  shiftHeld(): boolean {
-    return this.session?.isHeld(SHIFT_KEY) ?? false;
   }
 
   /**

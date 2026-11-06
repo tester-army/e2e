@@ -1,7 +1,7 @@
 /** A BiDi session's own state: held keys through chords and modifier clicks until their `keyboard.up`, and a user context that opens after the attempt closed. */
 
 import { describe, expect, it } from 'vitest';
-import { clickSources, fixtureKeySource } from '../../src/bidi/input.ts';
+import { clickSources, fixtureKeySource, fixtureKeyStroke, strokeSource } from '../../src/bidi/input.ts';
 import { BidiSession, ContextOwners } from '../../src/bidi/session.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
@@ -44,6 +44,21 @@ describe('BidiSession.sendInput', () => {
     expect(sentKeys).toHaveLength(askedKeys.length);
     expect(sentKeys.filter((action) => action.value === SHIFT)).toEqual([]);
     expect(sentKeys.filter((action) => action.value === '\uE009').map((action) => action.type)).toEqual(['keyDown', 'keyUp']);
+  });
+
+  it('sends a key WebDriver has no value for as CDP key events that carry the modifiers BiDi holds', async () => {
+    const fake = new FakeBidi().on('input.performActions', { result: {} }).on('goog:cdp.getSession', { result: { session: 'cdp' } }).on('goog:cdp.sendCommand', { result: {} });
+    const held = session(fake);
+    const stroke = (key: string, phase: 'press' | 'keyDown' | 'keyUp') => {
+      const parsed = fixtureKeyStroke(key, phase);
+      return held.sendKey(parsed, (shiftHeld) => strokeSource(parsed, shiftHeld));
+    };
+    await stroke('Shift', 'keyDown');
+    await stroke('MediaPlayPause', 'press');
+    await stroke('Shift', 'keyUp');
+    expect(fake.commands('input.performActions')).toHaveLength(2);
+    const cdp = fake.commands('goog:cdp.sendCommand').map((command) => command.params as { method: string; session: string; params: { type: string; modifiers: number } });
+    expect(cdp.map((command) => [command.session, command.params.type, command.params.modifiers])).toEqual([['cdp', 'rawKeyDown', 8], ['cdp', 'keyUp', 8]]);
   });
 
   it('forgets held keys with the tab that held them', async () => {

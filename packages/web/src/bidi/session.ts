@@ -16,7 +16,8 @@ import { cancelled, ErrorLatch, invalidState, sanitizeFilename } from '../suppor
 import type { WebScreencastOptions } from '../options.ts';
 import { BidiError, type BidiConnection } from './connection.ts';
 import { AttemptDownloads } from './downloads.ts';
-import { MODIFIER_VALUES } from './input.ts';
+import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand, type KeyStroke } from './chromium-keys.ts';
+import { heldModifiers, MODIFIER_VALUES, pressSource, pressStroke, SHIFT_KEY } from './input.ts';
 import { releaseQuietly, unlessStale } from './errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser, BidiBrowserName } from './launch.ts';
@@ -181,6 +182,8 @@ export class BidiSession {
   providerVideo: ProviderVideo | undefined;
   /** The keys held down across calls, by WebDriver value. */
   private readonly heldKeys = new Set<string>();
+  /** The keys a CDP key event holds down across calls (`sendKey`), by `code`. */
+  private readonly cdpHeldKeys = new Set<string>();
   /** Where the mouse last moved, which a viewport swipe wheels at. */
   pointer: ViewportPoint = { x: 0, y: 0 };
   /** The mouse buttons held down across input calls, which a move carries as pressure. */
@@ -520,6 +523,46 @@ export class BidiSession {
     return { ...source, actions: kept };
   }
 
+  /**
+   * Presses, holds, or releases one key: as CDP key events on Chromium when
+   * a BiDi key action cannot carry it (`chromiumKeyCommands`), else as the
+   * key source `source` builds, given whether Shift is held. The CDP
+   * events carry the modifiers held by BiDi key actions, and a key CDP holds
+   * is released through CDP, so either path sees the other's keyboard.
+   */
+  async sendKey(stroke: KeyStroke, source: (shiftHeld: boolean) => Input.KeySourceActions, signal?: AbortSignal): Promise<void> {
+    if (this.settings.browser === 'chromium') {
+      const keyboard = { held: heldModifiers((value) => this.heldKeys.has(value)), pressed: this.cdpHeldKeys, mac: process.platform === 'darwin' };
+      const commands = chromiumKeyCommands(stroke, keyboard);
+      if (commands !== undefined) return this.sendCdpKeys(commands, signal);
+    }
+    return this.sendInput([source(this.heldKeys.has(SHIFT_KEY))], signal);
+  }
+
+  /** Presses one key of the contract grammar (`pressSource`). */
+  pressKey(key: string, signal?: AbortSignal): Promise<void> {
+    return this.sendKey(pressStroke(key), () => pressSource(key), signal);
+  }
+
+  /**
+   * Sends CDP key commands to the tab's target in order, recording the keys
+   * they leave held. Nothing is sent once `signal` aborted; once the first
+   * went out the rest follow, so a chord never leaves a modifier held.
+   */
+  private async sendCdpKeys(commands: readonly CdpKeyCommand[], signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const context = this.requireContext();
+    const { session } = (await this.connection.sendExtension('goog:cdp.getSession', { context })) as { session: string };
+    signal?.throwIfAborted();
+    this.dispatches += 1;
+    for (const command of commands) {
+      await this.connection.sendExtension('goog:cdp.sendCommand', { method: command.method, params: command.params, session });
+      const held = holdsAfter(command);
+      if (held?.down === true) this.cdpHeldKeys.add(held.code);
+      else if (held?.down === false) this.cdpHeldKeys.delete(held.code);
+    }
+  }
+
   /** Whether a key (by WebDriver value) is held down on the tab. */
   isHeld(value: string): boolean {
     return this.heldKeys.has(value);
@@ -534,6 +577,7 @@ export class BidiSession {
     this.refs.clear();
     this.frames.clear();
     this.heldKeys.clear();
+    this.cdpHeldKeys.clear();
     this.pointer = { x: 0, y: 0 };
     this.heldButtons.clear();
   }

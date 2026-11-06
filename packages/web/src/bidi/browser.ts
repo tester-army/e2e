@@ -23,7 +23,7 @@ import {
 import { evaluateInPage } from '../evaluation.ts';
 import { testInitScriptSource } from '../init-scripts.ts';
 import { routePatternMatches, routePatternsEqual } from '../route-pattern.ts';
-import { fixtureKeySource, moveSources, pressDownSources, releaseSources, wheelSources } from './input.ts';
+import { moveSources, pressDownSources, releaseSources, wheelSources } from './input.ts';
 import type { InterceptedRequest, NetworkRoute, RouteDecisions } from './network.ts';
 import type { PageArgument } from './script.ts';
 import type { AttemptScope, BidiSurface } from './surface.ts';
@@ -144,9 +144,9 @@ export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFi
     },
     waitForDownloads: (trigger, options) => downloads(surface, context, trigger, requireDownloadCount(options), options.timeout, 'browser.waitForDownloads'),
     keyboard: {
-      down: (key) => surface.input('keyboard.down', [fixtureKeySource(key, 'keyDown', surface.shiftHeld())], context.operation()),
-      up: (key) => surface.input('keyboard.up', [fixtureKeySource(key, 'keyUp', surface.shiftHeld())], context.operation()),
-      press: (key) => surface.input('keyboard.press', [fixtureKeySource(key, 'press', surface.shiftHeld())], context.operation()),
+      down: (key) => surface.keyboard('keyboard.down', key, 'keyDown', context.operation()),
+      up: (key) => surface.keyboard('keyboard.up', key, 'keyUp', context.operation()),
+      press: (key) => surface.keyboard('keyboard.press', key, 'press', context.operation()),
       type: (text) => surface.typeKeys(text, context.operation()),
     },
     mouse: {
