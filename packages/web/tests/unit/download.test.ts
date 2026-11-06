@@ -4,7 +4,7 @@ import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { downloadVerified, mirrorOrigin } from '../../src/install/download.ts';
+import { downloadVerified, globalDispatcher, mirrorOrigin } from '../../src/install/download.ts';
 import { sha256Of, startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
 
 const BODY = Buffer.from('a browser archive');
@@ -67,8 +67,19 @@ describe('downloadVerified', () => {
 
     beforeEach(async () => {
       proxied.length = 0;
-      // Node's proxy agent tunnels every request with CONNECT; the tunnel ends at the archive server whatever host it names.
-      proxy = createServer();
+      // Node 24's proxy agent tunnels every request with CONNECT, Node 26's forwards an http:// one as an absolute-URI request;
+      // either way the proxy records the host it was asked for and reaches the archive server whatever host that is.
+      proxy = createServer((request, response) => {
+        const target = new URL(request.url ?? '');
+        proxied.push(`${target.hostname}:${target.port === '' ? '80' : target.port}`);
+        const port = Number(new URL(server.origin).port);
+        const upstream = http.request({ host: '127.0.0.1', port, path: `${target.pathname}${target.search}`, method: request.method, headers: request.headers }, (reply) => {
+          response.writeHead(reply.statusCode ?? 502, reply.headers);
+          reply.pipe(response);
+        });
+        upstream.on('error', () => response.destroy());
+        request.pipe(upstream);
+      });
       proxy.on('connect', (request: IncomingMessage, client: Socket, head: Buffer) => {
         proxied.push(request.url ?? '');
         const upstream = connect(Number(new URL(server.origin).port), '127.0.0.1', () => {
@@ -92,14 +103,13 @@ describe('downloadVerified', () => {
     });
 
     it('routes the download through HTTP_PROXY, and leaves the process dispatcher alone', async () => {
-      const dispatcher = Symbol.for('undici.globalDispatcher.1');
-      const before = (globalThis as Record<symbol, unknown>)[dispatcher];
+      const before = globalDispatcher();
       server.route('/a.zip', BODY);
       const file = path.join(dir, 'a.zip');
       await downloadVerified('http://archive.example.test/a.zip', file, { sha256: sha256Of(BODY), env: { HTTP_PROXY: proxyOrigin } });
       expect(proxied).toEqual(['archive.example.test:80']);
       expect(readFileSync(file)).toEqual(BODY);
-      expect((globalThis as Record<symbol, unknown>)[dispatcher]).toBe(before);
+      expect(globalDispatcher()).toBe(before);
     });
 
     it('goes direct to a host NO_PROXY names', async () => {

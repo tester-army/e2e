@@ -20,8 +20,19 @@ export interface DownloadOptions {
   readonly signal?: AbortSignal | undefined;
 }
 
-/** The key undici keeps Node's global fetch dispatcher under. */
-const GLOBAL_DISPATCHER = Symbol.for('undici.globalDispatcher.1');
+/**
+ * The keys undici keeps Node's global fetch dispatcher under, newest first:
+ * undici 8 (Node 26) keeps it under `.2` and a fresh compatibility wrapper
+ * of it under `.1`; earlier undici keeps it under `.1` only.
+ */
+const GLOBAL_DISPATCHERS = [Symbol.for('undici.globalDispatcher.2'), Symbol.for('undici.globalDispatcher.1')];
+
+/** The global fetch dispatcher, under the newest key this Node's undici uses. */
+export function globalDispatcher(): unknown {
+  const slots = globalThis as Record<symbol, unknown>;
+  const key = GLOBAL_DISPATCHERS.find((candidate) => slots[candidate] !== undefined);
+  return key === undefined ? undefined : slots[key];
+}
 
 /** The proxy variables Node's built-in proxy support reads. */
 const PROXY_VARIABLES = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'] as const;
@@ -54,7 +65,7 @@ function proxyDispatcher(env: DownloadOptions['env']): unknown {
   if (!dispatchers.has(key)) {
     const restore = setGlobalProxyFromEnv(proxy);
     try {
-      dispatchers.set(key, (globalThis as Record<symbol, unknown>)[GLOBAL_DISPATCHER]);
+      dispatchers.set(key, globalDispatcher());
     } finally {
       restore();
     }
