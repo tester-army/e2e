@@ -35,11 +35,12 @@ or the element that shows the result.
 
 Tests tied to CSS classes or test IDs need edits when those identifiers
 change. Move a button or redesign a form, and the agent can still carry
-out the user's intention using what's on screen. This reduces
-time spent repairing selectors after UI changes.
+out the user's intention using what's on screen.
 
 Agentic tests enable monitoring with real data on staging or production
 without seeding deterministic data, because agents adapt to your app.
+Use a test account there: the model sees what's on screen. See
+[Security](/security).
 
 For a complex journey, write a sequence of goals in plain English. Keep
 each goal to one outcome and check it before continuing. See
@@ -100,9 +101,10 @@ await expect(screen.getByRole('status')).toHaveText('10% off');
 You can also use locators to fill and submit a form, then use
 `agent.assert` to check whether its validation message explains the problem.
 
-Adaptation follows the goal you write. If a specific path matters, name
-it in the goal or use locators for those actions. A vague instruction can
-allow a result you didn't intend.
+Adaptation follows the goal you write. A vague instruction can allow a
+result you didn't intend. If a specific path matters, name it in the goal
+or use locators for those actions. An `expect` after `agent.act` catches
+a goal that passed the wrong way.
 
 Model-driven actions and assertions add latency and cost, and can make
 mistakes. The [replay cache](/cache) can repeat recorded `agent.act`
