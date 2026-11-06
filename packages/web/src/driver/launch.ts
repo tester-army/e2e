@@ -3,7 +3,7 @@
  * WebDriver BiDi session on it. Firefox speaks BiDi natively over a
  * WebSocket; Chromium speaks CDP, so the `chromium-bidi` mapper translates,
  * in a child process (`mapper-process.ts`). Local launches run the pinned
- * builds `install.ts` keeps in the browsers cache.
+ * builds `install/provision.ts` keeps in the browsers cache.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -14,12 +14,12 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { EngineError, raceAbort, withTimeout } from 'e2e/engine';
 import { BROWSER_TRAITS, type BrowserName, type BrowserTraits } from '../browsers.ts';
-import { browserExecutable } from '../install.ts';
+import { browserExecutable } from '../install/provision.ts';
 import { cancelled } from '../support.ts';
 import { watchdogArgs } from './browser-watchdog.ts';
 import { ChromiumCdp } from './cdp.ts';
 import { BidiConnection, webSocketTransport, type BidiTransport } from './connection.ts';
-import { releaseQuietly } from './errors.ts';
+import { releaseQuietly } from '../errors.ts';
 import { MAPPER_READY } from './mapper-process.ts';
 
 /** One launched browser with its open BiDi session. */

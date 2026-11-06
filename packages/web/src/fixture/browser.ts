@@ -7,16 +7,16 @@
 import type { Network, Storage } from 'webdriver-bidi-protocol';
 import type { Expectable, JsonValue } from 'e2e';
 import { Deadline, rejectUnknownOptions, stepTimeout, TestError, toTextPattern, type EngineFixtureContext, type OperationContext } from 'e2e/engine';
-import { createBrowserExpectation, declareBrowserFixture, frameScreen, requireSelector, type Browser, type BrowserExpectation, type Cookie, type WebResponse } from '../browser.ts';
-import { evaluateInPage } from '../evaluation.ts';
+import { createBrowserExpectation, declareBrowserFixture, frameScreen, requireSelector, type Browser, type BrowserExpectation, type Cookie, type WebResponse } from './types.ts';
+import { evaluateInPage } from '../in-page/evaluation.ts';
 import { testInitScriptSource } from '../init-scripts.ts';
-import { routePatternMatches, routePatternsEqual } from '../route-pattern.ts';
-import { cookieTargets, requireCookieFilter, requireDownloadCount, requireMedia } from './fixture-arguments.ts';
-import { moveSources, pressDownSources, releaseSources, wheelSources } from './input.ts';
-import type { InterceptedRequest } from './network.ts';
-import { readResponseBody, runRouteHandler, waitedResponse, webResponse } from './route-handler.ts';
-import type { PageArgument } from './script.ts';
-import type { AttemptScope, BidiSurface } from './surface.ts';
+import { routePatternMatches, routePatternsEqual } from '../driver/route-pattern.ts';
+import { cookieTargets, requireCookieFilter, requireDownloadCount, requireMedia } from './arguments.ts';
+import { moveSources, pressDownSources, releaseSources, wheelSources } from '../driver/input-sources.ts';
+import type { InterceptedRequest } from '../driver/network.ts';
+import { readResponseBody, runRouteHandler, waitedResponse, webResponse } from './routes.ts';
+import type { PageArgument } from '../driver/script.ts';
+import type { AttemptScope, BidiSurface } from '../driver/surface.ts';
 
 /** Builds the attempt's `browser` fixture over the BiDi surface. */
 export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFixtureContext): Browser {

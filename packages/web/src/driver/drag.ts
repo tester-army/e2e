@@ -10,10 +10,10 @@
 
 import type { Protocol } from 'devtools-protocol';
 import { raceAbort } from 'e2e/engine';
-import type { BidiInput } from './bidi-input.ts';
+import type { BidiInput } from './input.ts';
 import type { BidiConnection } from './connection.ts';
-import { releaseQuietly, unlessStale } from './errors.ts';
-import { dragPath, mouse, moveActions } from './input.ts';
+import { releaseQuietly, unlessStale } from '../errors.ts';
+import { dragPath, mouse, moveActions } from './input-sources.ts';
 import { callFunction } from './script.ts';
 
 type Point = { readonly x: number; readonly y: number };

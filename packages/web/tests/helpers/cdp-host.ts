@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { browserExecutable } from '../../src/install.ts';
+import { browserExecutable } from '../../src/install/provision.ts';
 
 /** A live Chrome with a random remote-debugging port; the host the engine attaches to. */
 export interface RemoteChrome {

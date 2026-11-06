@@ -8,7 +8,7 @@
 
 import type { Network } from 'webdriver-bidi-protocol';
 import { EngineError, type EngineState } from 'e2e/engine';
-import { releaseQuietly } from './errors.ts';
+import { releaseQuietly } from '../errors.ts';
 import type { PageJson } from './script.ts';
 import { SCRATCH_PARAM, type BidiSession } from './session.ts';
 

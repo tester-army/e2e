@@ -27,7 +27,7 @@ import type { TargetApp } from 'e2e';
 import { web, type Browser, type WebOptions } from '../../src/index.ts';
 import { BROWSER_NAMES, isBrowserName, type BrowserName } from '../../src/browsers.ts';
 import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
-import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../../src/read-node.ts';
+import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../../src/in-page/read-node.ts';
 
 /** Answers one request the page server got for a path a test registered. */
 export type PageHandler = (request: IncomingMessage, response: ServerResponse) => void;

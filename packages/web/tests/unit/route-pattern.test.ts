@@ -1,6 +1,6 @@
 import { toTextPattern } from 'e2e/engine';
 import { describe, expect, it } from 'vitest';
-import { compileRoutePattern, routePatternMatches, routePatternsEqual } from '../../src/route-pattern.ts';
+import { compileRoutePattern, routePatternMatches, routePatternsEqual } from '../../src/driver/route-pattern.ts';
 
 function matches(pattern: string, url: string): boolean {
   return compileRoutePattern(pattern).test(url);

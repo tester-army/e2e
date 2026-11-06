@@ -8,8 +8,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
-import { BidiConnection } from '../../src/bidi/connection.ts';
-import { readerCall } from '../../src/bidi/readers.ts';
+import { BidiConnection } from '../../src/driver/connection.ts';
+import { readerCall } from '../../src/in-page/readers.ts';
 import { decodePng } from '../helpers/png.ts';
 import { byTestId, startWebSession, type WebSession } from '../helpers/web-session.ts';
 

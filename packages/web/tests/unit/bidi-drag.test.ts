@@ -1,9 +1,9 @@
 /** Chromium drags over the `goog:cdp` passthrough: whatever fails, interception ends and the mouse button comes up, and keys stay as the test holds them. */
 
 import { describe, expect, it } from 'vitest';
-import { BidiInput } from '../../src/bidi/bidi-input.ts';
+import { BidiInput } from '../../src/driver/input.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
-import { chromiumDrag } from '../../src/bidi/drag.ts';
+import { chromiumDrag } from '../../src/driver/drag.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 
 const FROM = { x: 1, y: 1 };

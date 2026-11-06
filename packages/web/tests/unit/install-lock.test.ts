@@ -4,7 +4,7 @@ import os, { tmpdir } from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { newOwner, removeAbandonedStaging, withCacheLock, writeOwner, type LockOwner } from '../../src/install-lock.ts';
+import { newOwner, removeAbandonedStaging, withCacheLock, writeOwner, type LockOwner } from '../../src/install/lock.ts';
 
 const FAST = { heartbeatMs: 20, staleMs: 300, pollMs: 10 };
 

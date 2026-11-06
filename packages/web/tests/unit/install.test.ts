@@ -2,8 +2,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { browserPlatform, downloadUrl } from '../../src/browser-builds.ts';
-import { browserCheck, browserExecutable, CHROMIUM_BUILD, ensureBrowsersInstalled, FIREFOX_BUILD, installBrowsers } from '../../src/install.ts';
+import { browserPlatform, downloadUrl } from '../../src/install/builds.ts';
+import { browserCheck, browserExecutable, CHROMIUM_BUILD, ensureBrowsersInstalled, FIREFOX_BUILD, installBrowsers } from '../../src/install/provision.ts';
 import { startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
 
 const platform = browserPlatform();

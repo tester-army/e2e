@@ -6,9 +6,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { EngineError, TestError } from 'e2e/engine';
-import { BidiError } from '../../src/bidi/connection.ts';
-import { classify, isStale, releaseQuietly, unlessStale } from '../../src/bidi/errors.ts';
-import { ScriptError } from '../../src/bidi/script.ts';
+import { BidiError } from '../../src/driver/connection.ts';
+import { classify, isStale, releaseQuietly, unlessStale } from '../../src/errors.ts';
+import { ScriptError } from '../../src/driver/script.ts';
 
 describe('classify', () => {
   it.each([

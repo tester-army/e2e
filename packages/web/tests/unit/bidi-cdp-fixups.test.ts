@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { cdpFixups } from '../../src/bidi/cdp-fixups.ts';
+import { cdpFixups } from '../../src/driver/cdp-fixups.ts';
 
 const willBeSent = (requestId: string, sessionId = 's'): string => JSON.stringify({ method: 'Network.requestWillBeSent', sessionId, params: { requestId } });
 const paused = (networkId: string, sessionId = 's', extra: Record<string, unknown> = {}): string => JSON.stringify({ method: 'Fetch.requestPaused', sessionId, params: { requestId: `fetch-${networkId}`, networkId, ...extra } });

@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { BidiConnection, BidiError } from '../../src/bidi/connection.ts';
+import { BidiConnection, BidiError } from '../../src/driver/connection.ts';
 import { decodePng } from '../helpers/png.ts';
 import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 

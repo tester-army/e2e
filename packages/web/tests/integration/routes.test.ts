@@ -15,7 +15,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TestError } from 'e2e/engine';
-import type { Browser, WebRoute } from '../../src/browser.ts';
+import type { Browser, WebRoute } from '../../src/fixture/types.ts';
 import { browserFixture, onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 interface Echo {

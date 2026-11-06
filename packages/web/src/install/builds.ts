@@ -14,7 +14,7 @@ import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import type { Entry, Options, ZipFile } from 'yauzl';
 import { downloadVerified } from './download.ts';
-import { removeAbandonedStaging, writeOwner, type LockOwner } from './install-lock.ts';
+import { removeAbandonedStaging, writeOwner, type LockOwner } from './lock.ts';
 
 /** A build the cache holds, by the directory it is kept under. */
 export type BuildName = 'chrome' | 'chrome-headless-shell' | 'firefox';

@@ -1,12 +1,12 @@
 /**
- * The in-page semantic reader. Playwright serializes it with `toString()` and
- * runs it inside the page (`read-node.ts` assembles the three page functions
+ * The in-page semantic reader. The driver serializes it with `toString()` and
+ * runs it inside the page (`readers.ts` builds the readers a document keeps
  * from its source), so it must stay one self-contained function: no imports
  * beyond types, no module-scope references, every constant inside the body.
  * That is why it has a file of its own.
  */
 
-import type { LocatorReads, RawNodeData, RawObservedNode, SemanticMode, SemanticResult } from '../read-node.ts';
+import type { LocatorReads, RawNodeData, RawObservedNode, SemanticMode, SemanticResult } from './read-node.ts';
 
 /**
  * Serialized into the page by Playwright. Must stay self-contained: no outer

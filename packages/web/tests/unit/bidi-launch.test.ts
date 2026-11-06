@@ -10,10 +10,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
-import { launchBidiBrowser } from '../../src/bidi/launch.ts';
-import { watchdogArgs } from '../../src/bidi/browser-watchdog.ts';
+import { launchBidiBrowser } from '../../src/driver/launch.ts';
+import { watchdogArgs } from '../../src/driver/browser-watchdog.ts';
 
-const WATCHDOG = fileURLToPath(new URL('../../src/bidi/browser-watchdog.ts', import.meta.url));
+const WATCHDOG = fileURLToPath(new URL('../../src/driver/browser-watchdog.ts', import.meta.url));
 
 /** Whether a process with `pid` still runs. */
 function alive(pid: number): boolean {

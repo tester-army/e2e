@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const ENTRY = fileURLToPath(new URL('../../src/bidi/mapper-process.ts', import.meta.url));
+const ENTRY = fileURLToPath(new URL('../../src/driver/mapper-process.ts', import.meta.url));
 
 /** Starts the mapper; resolves with its exit code and stderr once it exits. */
 function run(stdin: (write: (line: string) => void, end: () => void) => void): Promise<{ code: number | null; stderr: string }> {

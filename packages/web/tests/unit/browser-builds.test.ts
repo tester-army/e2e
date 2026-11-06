@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { crc32 } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { browserPlatform, downloadUrl, executablePath, extractZip, installBuild, type BrowserPlatform, type BuildInstall, type BuildName, type ExecRunner } from '../../src/browser-builds.ts';
-import { newOwner, withCacheLock, writeOwner } from '../../src/install-lock.ts';
+import { browserPlatform, downloadUrl, executablePath, extractZip, installBuild, type BrowserPlatform, type BuildInstall, type BuildName, type ExecRunner } from '../../src/install/builds.ts';
+import { newOwner, withCacheLock, writeOwner } from '../../src/install/lock.ts';
 import { sha256Of, startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
 
 /** One entry of a generated zip: its name, its unix mode with the file type bits, and its content (a symlink's target). */

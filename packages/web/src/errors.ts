@@ -1,9 +1,9 @@
 /** Error classification for the BiDi driver, and the one place it drops an error on purpose. */
 
 import { EngineError, TestError } from 'e2e/engine';
-import { isClassified, message } from '../support.ts';
-import { BidiError } from './connection.ts';
-import { ScriptError } from './script.ts';
+import { isClassified, message } from './support.ts';
+import { BidiError } from './driver/connection.ts';
+import { ScriptError } from './driver/script.ts';
 
 /** BiDi codes and browser words that mean the element, frame, or document is gone. */
 const STALE_PATTERN = /no such node|no such frame|stale element|no such element|detached|execution context was destroyed|cannot find context|context with specified id|document unloaded|target navigated or closed/i;

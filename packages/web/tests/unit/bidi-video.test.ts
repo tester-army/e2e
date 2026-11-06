@@ -8,7 +8,7 @@ import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { BidiVideo } from '../../src/bidi/video.ts';
+import { BidiVideo } from '../../src/driver/video.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 

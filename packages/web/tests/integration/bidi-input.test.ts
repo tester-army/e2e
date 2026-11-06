@@ -11,7 +11,7 @@
 import { existsSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
-import { browserExecutable } from '../../src/install.ts';
+import { browserExecutable } from '../../src/install/provision.ts';
 import { ROOT_NODE_ID } from '../../src/observation.ts';
 import { bySelector, startWebSession, type WebSession } from '../helpers/web-session.ts';
 

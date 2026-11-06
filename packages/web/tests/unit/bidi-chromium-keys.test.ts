@@ -1,8 +1,8 @@
 /** Which keys Chromium takes as CDP key events, and the events: media keys, Numpad5 with NumLock off, and macOS editing shortcuts with their commands. */
 
 import { describe, expect, it } from 'vitest';
-import { chromiumKeyCommands, MAC_EDITING_COMMANDS, macEditingCommands, type ChromiumKeyboard } from '../../src/bidi/chromium-keys.ts';
-import { fixtureKeyStroke, KEYS, keyValue, strokeSource, type KeyPhase, type Modifier } from '../../src/bidi/keyboard.ts';
+import { chromiumKeyCommands, MAC_EDITING_COMMANDS, macEditingCommands, type ChromiumKeyboard } from '../../src/driver/chromium-keys.ts';
+import { fixtureKeyStroke, KEYS, keyValue, strokeSource, type KeyPhase, type Modifier } from '../../src/driver/keyboard.ts';
 
 /** The BiDi key source of one `browser.keyboard` call, with Shift held before it or not. */
 function source(key: string, phase: KeyPhase, shiftHeld: boolean) {

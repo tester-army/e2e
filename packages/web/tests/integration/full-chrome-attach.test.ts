@@ -12,7 +12,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { EngineCleanupContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { attachBrowser, web } from '../../src/index.ts';
-import { browserExecutable } from '../../src/install.ts';
+import { browserExecutable } from '../../src/install/provision.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';

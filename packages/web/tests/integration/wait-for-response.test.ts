@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Browser } from '../../src/browser.ts';
+import type { Browser } from '../../src/fixture/types.ts';
 import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /**

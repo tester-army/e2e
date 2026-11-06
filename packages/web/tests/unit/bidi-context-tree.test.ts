@@ -6,9 +6,9 @@
 
 import type { BrowsingContext } from 'webdriver-bidi-protocol';
 import { describe, expect, it } from 'vitest';
-import { ContextTree } from '../../src/bidi/context-tree.ts';
-import { routeEvents } from '../../src/bidi/events.ts';
-import { BidiSession } from '../../src/bidi/session.ts';
+import { ContextTree } from '../../src/driver/context-tree.ts';
+import { routeEvents } from '../../src/driver/events.ts';
+import { BidiSession } from '../../src/driver/session.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 

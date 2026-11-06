@@ -5,8 +5,8 @@
  * The readers a document keeps live in `readers.ts`.
  */
 
-import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
-import { createDom } from '../in-page/dom.ts';
+import { CLOSED_SHADOW_ROOTS_KEY } from './closed-shadow.ts';
+import { createDom } from './dom.ts';
 
 /**
  * A page function that takes the shared DOM helpers' factory (`createDom`)

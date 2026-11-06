@@ -7,8 +7,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { web, type WebOptions } from '../../src/index.ts';
-import { clickSources, typeSource } from '../../src/bidi/input.ts';
-import { pressStroke, strokeSource } from '../../src/bidi/keyboard.ts';
+import { clickSources, typeSource } from '../../src/driver/input-sources.ts';
+import { pressStroke, strokeSource } from '../../src/driver/keyboard.ts';
 
 describe('web()', () => {
   it('refuses the removed driver option and webkit, naming why', () => {

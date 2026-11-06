@@ -18,7 +18,7 @@ import type {
   OperationContext,
   SemanticNode,
 } from 'e2e/engine';
-import { BidiConnection } from '../../src/bidi/connection.ts';
+import { BidiConnection } from '../../src/driver/connection.ts';
 import type { Browser } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';

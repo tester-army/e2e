@@ -10,15 +10,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineAttemptContext, EngineCleanupContext, EngineFinishInfo, EngineHandle, EngineInitInfo, EnginePrepareInfo, OperationContext, ProviderRecordContext, ProviderRecording } from 'e2e/engine';
-import { connectBidiOverCdp, type BidiBrowser } from '../../src/bidi/launch.ts';
+import { connectBidiOverCdp, type BidiBrowser } from '../../src/driver/launch.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { web } from '../../src/index.ts';
 import { LeasedBrowsers, type BrowserLease, type BrowserProvider, type BrowserReleaseContext, type BrowserRequest } from '../../src/provider.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
-vi.mock('../../src/bidi/launch.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/bidi/launch.ts')>()),
+vi.mock('../../src/driver/launch.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/driver/launch.ts')>()),
   connectBidiOverCdp: vi.fn(),
 }));
 

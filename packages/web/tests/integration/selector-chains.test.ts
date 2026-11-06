@@ -4,7 +4,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { selectElements } from '../../src/bidi/frames.ts';
+import { selectElements } from '../../src/driver/frames.ts';
 import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
 
 let page: BidiPage;

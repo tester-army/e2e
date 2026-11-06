@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EngineError } from 'e2e/engine';
-import { BidiVideo, type VideoOptions } from '../../src/bidi/video.ts';
+import { BidiVideo, type VideoOptions } from '../../src/driver/video.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi, type Reply } from '../helpers/bidi-fake.ts';
 

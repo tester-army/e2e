@@ -4,7 +4,7 @@ Experimental BiDi driver for `@e2e-dev/web` (`web({ driver: 'bidi' })` or `E2E_W
 
 ## Approach
 
-- **Client:** a thin BiDi client of our own (`src/bidi/connection.ts`) over Node's built-in `WebSocket`, typed with `webdriver-bidi-protocol`. No WebdriverIO: its `webdriver` package wants a driver binary per browser and adds a session layer the engine does not need.
+- **Client:** a thin BiDi client of our own (`src/driver/connection.ts`) over Node's built-in `WebSocket`, typed with `webdriver-bidi-protocol`. No WebdriverIO: its `webdriver` package wants a driver binary per browser and adds a session layer the engine does not need.
 - **Firefox:** native BiDi (`--remote-debugging-port=0`, `ws://…/session`). No geckodriver.
 - **Chromium:** the `chromium-bidi` mapper over CDP, in a child process (`mapper-process.ts`) as chromedriver hosts it. No chromedriver. It boots in parallel with Chrome. Remote endpoints (`connect`, worker-scoped providers) go through the same mapper.
 - **Binaries and flags:** both drivers launch what Playwright installed (Chromium headless shell 156, Playwright's Firefox 157 build). Chromium gets Playwright's switches and disabled features; Firefox gets the profile prefs Playwright's own BiDi launcher writes.

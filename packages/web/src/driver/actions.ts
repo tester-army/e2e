@@ -17,19 +17,19 @@ import {
   type ViewportPoint,
   type ViewportSize,
 } from 'e2e/engine';
-import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
-import { SECURE_FIELD_SELECTOR } from '../read-node.ts';
+import { CLOSED_SHADOW_ROOTS_KEY } from '../in-page/closed-shadow.ts';
+import { SECURE_FIELD_SELECTOR } from '../in-page/read-node.ts';
 import { ROOT_NODE_ID } from '../observation.ts';
 import { focusTakesKeys } from '../focus.ts';
 import { nearestPixel, swipeDistance, wheelDelta } from '../support.ts';
 import { chromiumDrag } from './drag.ts';
-import { releaseQuietly, unlessStale } from './errors.ts';
+import { releaseQuietly, unlessStale } from '../errors.ts';
 import type { NodeTarget } from './frames.ts';
 import { invert, project } from './projection.ts';
 import { stillLocated } from './observe.ts';
-import { clickSources, dragPath, dragStepMs, mouse, moveActions, moveSources, swipeSources, typeSource, type ClickOptions } from './input.ts';
+import { clickSources, dragPath, dragStepMs, mouse, moveActions, moveSources, swipeSources, typeSource, type ClickOptions } from './input-sources.ts';
 import { pressStroke } from './keyboard.ts';
-import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, elementShown, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
+import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, elementShown, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from '../in-page/page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
 

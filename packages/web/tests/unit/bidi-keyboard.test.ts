@@ -1,7 +1,7 @@
 /** The one US layout both key grammars read: every printable character, the WebDriver values a key sends with Shift held or not, and the code each value presses. */
 
 import { describe, expect, it } from 'vitest';
-import { codeOfValue, fixtureKeyStroke, KEYS, keyValue, pressStroke, strokeSource } from '../../src/bidi/keyboard.ts';
+import { codeOfValue, fixtureKeyStroke, KEYS, keyValue, pressStroke, strokeSource } from '../../src/driver/keyboard.ts';
 
 /** The value the key down of `source` sends. */
 function pressed(source: ReturnType<typeof strokeSource>): string | undefined {

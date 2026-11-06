@@ -11,10 +11,10 @@ import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e/engine';
-import { browserPlatform, executablePath, installArchive, installBuild, type BrowserPlatform, type BuildName } from './browser-builds.ts';
-import type { BrowserName } from './browsers.ts';
+import { browserPlatform, executablePath, installArchive, installBuild, type BrowserPlatform, type BuildName } from './builds.ts';
+import type { BrowserName } from '../browsers.ts';
 import { mirrorOrigin } from './download.ts';
-import { cancelledCheck, withCacheLock } from './install-lock.ts';
+import { cancelledCheck, withCacheLock } from './lock.ts';
 
 /** The Chrome for Testing build chromium runs: the headless shell headless, the full browser headed. */
 export const CHROMIUM_BUILD = '157.0.8103.38';

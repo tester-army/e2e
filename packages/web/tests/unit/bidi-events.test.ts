@@ -6,10 +6,10 @@
 
 import { describe, expect, it } from 'vitest';
 import type { AppLogEntry } from 'e2e/engine';
-import { DialogRouter } from '../../src/dialogs.ts';
-import { routeEvents } from '../../src/bidi/events.ts';
-import { ContextTree } from '../../src/bidi/context-tree.ts';
-import type { BidiSession } from '../../src/bidi/session.ts';
+import { DialogRouter } from '../../src/driver/dialogs.ts';
+import { routeEvents } from '../../src/driver/events.ts';
+import { ContextTree } from '../../src/driver/context-tree.ts';
+import type { BidiSession } from '../../src/driver/session.ts';
 import { ErrorLatch } from '../../src/support.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 

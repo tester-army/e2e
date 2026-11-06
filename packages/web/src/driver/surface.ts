@@ -33,7 +33,7 @@ import {
   type ViewportPoint,
   type ViewportSize,
 } from 'e2e/engine';
-import type { DialogHandler } from '../dialogs.ts';
+import type { DialogHandler } from './dialogs.ts';
 import type { ConfiguredInitScripts } from '../init-scripts.ts';
 import type { WebMedia } from '../media.ts';
 import { withDeadline } from '../operation-budget.ts';
@@ -42,14 +42,14 @@ import { cancelled, invalidState } from '../support.ts';
 import type { WebBasicAuth, WebScreencastOptions } from '../options.ts';
 import { perform, performAt, typeInto, typeText } from './actions.ts';
 import { screenshot, startVideo, stopVideo } from './artifacts.ts';
-import { DispatchScope } from './bidi-input.ts';
-import { afterDispatch, classify, releaseQuietly } from './errors.ts';
+import { DispatchScope } from './input.ts';
+import { afterDispatch, classify, releaseQuietly } from '../errors.ts';
 import { BROWSER_OPEN_TIMEOUT_MS, BrowserHandle, type BrowserSource } from './browser-source.ts';
 import { fixtureKeyStroke, type KeyPhase } from './keyboard.ts';
 import type { NetworkRoute } from './network.ts';
 import type { ObservedResponse } from './network-binding.ts';
 import { locate, observe, traceScreen } from './observe.ts';
-import { documentTitle } from './page.ts';
+import { documentTitle } from '../in-page/page.ts';
 import type { PageArgument, PageValue } from './script.ts';
 import { BidiSession, type SessionSettings } from './session.ts';
 import { captureState, restoreState } from './state.ts';

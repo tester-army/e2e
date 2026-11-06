@@ -5,7 +5,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { WebRoute } from '../../src/browser.ts';
+import type { WebRoute } from '../../src/fixture/types.ts';
 import { decodePng } from '../helpers/png.ts';
 import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 

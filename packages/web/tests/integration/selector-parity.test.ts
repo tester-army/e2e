@@ -8,7 +8,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { FrameRegistry, resolveFrames, selectElements } from '../../src/bidi/frames.ts';
+import { FrameRegistry, resolveFrames, selectElements } from '../../src/driver/frames.ts';
 import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
 
 const SHADOW = `<p class="x"><div id="host"></div></p><script>document.getElementById('host').attachShadow({ mode: 'open' }).innerHTML = '<section class="in"><span class="inner">S</span><button>Shadow</button></section>';</script>`;

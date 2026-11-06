@@ -1,7 +1,7 @@
 /** Projective maps of the plane: a rect onto any quad, their composition, and their inverse. */
 
 import { describe, expect, it } from 'vitest';
-import { compose, IDENTITY, invert, project, rectToQuad, scaleThenTranslate, type Point } from '../../src/bidi/projection.ts';
+import { compose, IDENTITY, invert, project, rectToQuad, scaleThenTranslate, type Point } from '../../src/driver/projection.ts';
 
 /** `point` with its coordinates rounded to 6 places, so float noise does not fail a comparison. */
 function rounded(point: Point): Point {

@@ -29,10 +29,10 @@ import {
   type FixtureOperations,
   type LocatorExpression,
 } from 'e2e/engine';
-import type { DialogHandler } from './dialogs.ts';
-import { initScriptLabel } from './init-scripts.ts';
-import { isTestErrorCode } from './support.ts';
-import { mediaLabel, type WebMedia } from './media.ts';
+import type { DialogHandler } from '../driver/dialogs.ts';
+import { initScriptLabel } from '../init-scripts.ts';
+import { isTestErrorCode } from '../support.ts';
+import { mediaLabel, type WebMedia } from '../media.ts';
 
 /**
  * One of `json`, `body`, or `path`, or none for an empty body. `path` names a

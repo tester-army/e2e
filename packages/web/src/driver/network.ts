@@ -19,8 +19,8 @@ import type { ContextTree } from './context-tree.ts';
 import type { BrowserTraits } from '../browsers.ts';
 import { lowercaseNames } from '../protected-app.ts';
 import type { ContinueDecision, FulfillDecision } from '../route-options.ts';
-import { routePatternMatches } from '../route-pattern.ts';
-import { releaseQuietly } from './errors.ts';
+import { routePatternMatches } from './route-pattern.ts';
+import { releaseQuietly } from '../errors.ts';
 import { NetworkBinding, alreadyGone, bytesText, headerRecord, stripHash, type NetworkWants, type ObservedResponse } from './network-binding.ts';
 
 /** A request the browser holds for a route to decide. */

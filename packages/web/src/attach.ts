@@ -1,8 +1,8 @@
 /** `attachBrowser`: the `browser` fixture and a `screen` on a Chromium that is already running, outside any test. */
 
 import type { Screen } from 'e2e';
-import type { Browser } from './browser.ts';
-import { cdpSource } from './bidi/browser-source.ts';
+import type { Browser } from './fixture/types.ts';
+import { cdpSource } from './driver/browser-source.ts';
 import { createWeb } from './engine.ts';
 
 export interface AttachBrowserOptions {

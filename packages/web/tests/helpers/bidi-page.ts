@@ -4,10 +4,10 @@
  * tree, axe's expectations) rather than drive the engine's contract.
  */
 
-import { launchBidiBrowser, type BidiBrowser } from '../../src/bidi/launch.ts';
+import { launchBidiBrowser, type BidiBrowser } from '../../src/driver/launch.ts';
 import type { BrowserName } from '../../src/browsers.ts';
-import type { BidiConnection } from '../../src/bidi/connection.ts';
-import { callFunction, type PageArgument, type PageFunction, type PageValue } from '../../src/bidi/script.ts';
+import type { BidiConnection } from '../../src/driver/connection.ts';
+import { callFunction, type PageArgument, type PageFunction, type PageValue } from '../../src/driver/script.ts';
 import { startPageServer, type PageServer } from './web-session.ts';
 
 /** How to open the tab. */

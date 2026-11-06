@@ -8,9 +8,9 @@ import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { launchBidiBrowser } from '../../src/bidi/launch.ts';
-import { browserPlatform, downloadUrl } from '../../src/browser-builds.ts';
-import { browserExecutable, CHROMIUM_BUILD, installBrowsers } from '../../src/install.ts';
+import { launchBidiBrowser } from '../../src/driver/launch.ts';
+import { browserPlatform, downloadUrl } from '../../src/install/builds.ts';
+import { browserExecutable, CHROMIUM_BUILD, installBrowsers } from '../../src/install/provision.ts';
 
 const platform = browserPlatform();
 

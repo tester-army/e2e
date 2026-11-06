@@ -6,7 +6,7 @@
  */
 
 import { test as base, type App } from 'e2e';
-import type { Browser } from './browser.ts';
+import type { Browser } from './fixture/types.ts';
 
 export { web } from './engine.ts';
 export { attachBrowser, type AttachBrowserOptions, type AttachedBrowser } from './attach.ts';
@@ -23,7 +23,7 @@ export type {
   BrowserRequest,
 } from './provider.ts';
 export type { BrowserName } from './browsers.ts';
-export type { Dialog, DialogHandler } from './dialogs.ts';
+export type { Dialog, DialogHandler } from './driver/dialogs.ts';
 export type {
   Browser,
   BrowserExpectation,
@@ -35,7 +35,7 @@ export type {
   RouteFulfillResponse,
   WebResponse,
   WebRoute,
-} from './browser.ts';
+} from './fixture/types.ts';
 
 /** `app` on a web target. A `web()` target always declares `app.url`, so `baseUrl` is always set. */
 export interface WebApp extends App {

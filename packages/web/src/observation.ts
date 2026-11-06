@@ -13,7 +13,7 @@ import {
 import {
   type RawNodeData,
   type RawObservedNode,
-} from './read-node.ts';
+} from './in-page/read-node.ts';
 
 /**
  * The id of every observation's root: the main document's element under one

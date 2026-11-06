@@ -10,7 +10,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/in-page/closed-shadow.ts';
 import { captureTagged, MARKER, type Disagreement } from '../crosscheck/crosscheck.ts';
 import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
 import { diffExpectations, keyOf, readExpectations, TODO_REASON, writeExpectations } from '../crosscheck/expectations.ts';

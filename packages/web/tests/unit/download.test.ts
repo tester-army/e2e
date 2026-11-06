@@ -4,7 +4,7 @@ import { connect, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { downloadVerified, mirrorOrigin } from '../../src/download.ts';
+import { downloadVerified, mirrorOrigin } from '../../src/install/download.ts';
 import { sha256Of, startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
 
 const BODY = Buffer.from('a browser archive');

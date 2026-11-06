@@ -11,7 +11,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
 import type { EngineCleanupContext, EngineHandle } from 'e2e/engine';
-import type { Browser } from '../../src/browser.ts';
+import type { Browser } from '../../src/fixture/types.ts';
 import { web, type WebOptions } from '../../src/index.ts';
 import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 

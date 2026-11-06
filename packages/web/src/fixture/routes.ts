@@ -4,10 +4,10 @@
  */
 
 import { raceAbort, TestError, withTimeout, type EngineFixtureContext } from 'e2e/engine';
-import type { Browser, WebResponse, WebRoute } from '../browser.ts';
+import type { Browser, WebResponse, WebRoute } from './types.ts';
 import { parseContinue, parseFulfill, requireNoArguments } from '../route-options.ts';
 import { message } from '../support.ts';
-import type { RouteDecisions } from './network.ts';
+import type { RouteDecisions } from '../driver/network.ts';
 
 /**
  * Runs one test route handler on a held request with Playwright's route contract:

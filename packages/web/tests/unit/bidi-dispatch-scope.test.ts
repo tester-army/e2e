@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BidiInput, DispatchScope } from '../../src/bidi/bidi-input.ts';
+import { BidiInput, DispatchScope } from '../../src/driver/input.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 

@@ -22,10 +22,10 @@ import {
 import { createRequire } from 'node:module';
 import { asBrowserProvider, LeasedBrowsers } from './provider.ts';
 import type { WebOptions } from './options.ts';
-import { BidiSurface } from './bidi/surface.ts';
-import { cdpSource, launchSource, leaseSource, type BrowserSource } from './bidi/browser-source.ts';
-import type { Browser } from './browser.ts';
-import { createBidiBrowserFixture } from './bidi/browser.ts';
+import { BidiSurface } from './driver/surface.ts';
+import { cdpSource, launchSource, leaseSource, type BrowserSource } from './driver/browser-source.ts';
+import type { Browser } from './fixture/types.ts';
+import { createBidiBrowserFixture } from './fixture/browser.ts';
 import { ConfiguredInitScripts, validateInitScripts } from './init-scripts.ts';
 import { DEFAULT_VIEWPORT } from './support.ts';
 import { MEDIA_KEYS, mediaProblem } from './media.ts';

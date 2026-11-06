@@ -1,8 +1,8 @@
 /** The BiDi `browser` fixture's own adapters: Playwright key names as WebDriver key sources, and `Set-Cookie` headers as cookies to store. */
 
 import { describe, expect, it } from 'vitest';
-import { setCookieOf } from '../../src/bidi/browser.ts';
-import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/bidi/keyboard.ts';
+import { setCookieOf } from '../../src/fixture/browser.ts';
+import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/driver/keyboard.ts';
 
 const SHIFT = '';
 

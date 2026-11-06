@@ -8,8 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineFixtureContext, LocatorExpression } from 'e2e/engine';
 import type { Locator, Screen } from 'e2e';
-import type { BidiSurface } from '../../src/bidi/surface.ts';
-import { createBidiBrowserFixture } from '../../src/bidi/browser.ts';
+import type { BidiSurface } from '../../src/driver/surface.ts';
+import { createBidiBrowserFixture } from '../../src/fixture/browser.ts';
 import { ErrorLatch } from '../../src/support.ts';
 
 function browserWithRecordingContext() {

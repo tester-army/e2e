@@ -14,7 +14,7 @@ import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand } from './chromium-
 import type { BidiConnection } from './connection.ts';
 import { codeOfValue, MODIFIER_CODES, pressStroke, strokeSource, type KeyStroke, type Modifier } from './keyboard.ts';
 import type { BrowserTraits } from '../browsers.ts';
-import { nextFrame, shownFrame } from './page.ts';
+import { nextFrame, shownFrame } from '../in-page/page.ts';
 import { callFunction } from './script.ts';
 
 /** A key held down, and how: a BiDi key action with its value, which its release repeats, or a CDP key event, which only CDP releases. */

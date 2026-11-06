@@ -1,13 +1,13 @@
 /** A BiDi session's own state: the input it sends (held keys through chords and modifier clicks until their `keyboard.up`, pressure, the viewport bound, what counts as dispatched), refs a locate just proved, and a user context that opens after the attempt closed. */
 
 import { describe, expect, it, vi } from 'vitest';
-import { ContextTree } from '../../src/bidi/context-tree.ts';
-import { clickSources, moveSources, pressDownSources, swipeSources, typeSource } from '../../src/bidi/input.ts';
-import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/bidi/keyboard.ts';
-import { BidiSession } from '../../src/bidi/session.ts';
+import { ContextTree } from '../../src/driver/context-tree.ts';
+import { clickSources, moveSources, pressDownSources, swipeSources, typeSource } from '../../src/driver/input-sources.ts';
+import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/driver/keyboard.ts';
+import { BidiSession } from '../../src/driver/session.ts';
 import { BROWSER_TRAITS, type BrowserName } from '../../src/browsers.ts';
 import type { NodeRef } from 'e2e/engine';
-import type { ElementRef } from '../../src/bidi/script.ts';
+import type { ElementRef } from '../../src/driver/script.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
 const SHIFT = '';

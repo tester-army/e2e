@@ -1,6 +1,6 @@
 /** Held keyboard input through the actual browser fixture and native DOM events. */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Browser } from '../../src/browser.ts';
+import type { Browser } from '../../src/fixture/types.ts';
 import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 describe('held keyboard input', () => {
   let session: WebSession;

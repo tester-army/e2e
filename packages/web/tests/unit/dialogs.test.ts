@@ -3,7 +3,7 @@
  * go, and how a failure on the unawaited dialog path reaches the next step.
  */
 
-import { DialogRouter, type NativeDialog } from '../../src/dialogs.ts';
+import { DialogRouter, type NativeDialog } from '../../src/driver/dialogs.ts';
 import { TestError } from 'e2e/engine';
 import { describe, expect, it, vi } from 'vitest';
 import { ErrorLatch } from '../../src/support.ts';

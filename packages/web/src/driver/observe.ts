@@ -18,14 +18,14 @@ import {
   type ViewportSize,
   withTimeout,
 } from 'e2e/engine';
-import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
+import { CLOSED_SHADOW_ROOTS_KEY } from '../in-page/closed-shadow.ts';
 import { assembleTree, frameContentInset, isOnSiteFrame, ROOT_NODE_ID, toSemanticNode } from '../observation.ts';
 import { readPngSize } from '../observe.ts';
-import { SECURE_FIELD_SELECTOR } from '../read-node.ts';
+import { SECURE_FIELD_SELECTOR } from '../in-page/read-node.ts';
 import { cancelled } from '../support.ts';
-import { isStale, releaseQuietly, unlessStale } from './errors.ts';
+import { isStale, releaseQuietly, unlessStale } from '../errors.ts';
 import { contentContext, inViewport, resolveFrames, selectElements, splitFrames, type NodeTarget } from './frames.ts';
-import { domReady, maskSecureFields, unmaskSecureFields } from './page.ts';
+import { domReady, maskSecureFields, unmaskSecureFields } from '../in-page/page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
 

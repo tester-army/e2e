@@ -6,9 +6,9 @@
 
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, SemanticNode } from 'e2e/engine';
-import { FrameRegistry, inViewport, pageParts, resolveFrames, splitFrames } from '../../src/bidi/frames.ts';
-import { project, type Projection } from '../../src/bidi/projection.ts';
-import { ElementRef } from '../../src/bidi/script.ts';
+import { FrameRegistry, inViewport, pageParts, resolveFrames, splitFrames } from '../../src/driver/frames.ts';
+import { project, type Projection } from '../../src/driver/projection.ts';
+import { ElementRef } from '../../src/driver/script.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 

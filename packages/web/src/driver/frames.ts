@@ -7,7 +7,7 @@
  */
 
 import { EngineError, TestError, type LocatorExpression, type SemanticNode } from 'e2e/engine';
-import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
+import { CLOSED_SHADOW_ROOTS_KEY } from '../in-page/closed-shadow.ts';
 import { frameContentInset } from '../observation.ts';
 import type { BidiConnection } from './connection.ts';
 import { ChromiumCdp } from './cdp.ts';

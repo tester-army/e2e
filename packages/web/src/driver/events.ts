@@ -6,7 +6,7 @@
 
 import type { Script } from 'webdriver-bidi-protocol';
 import type { AppLogEntry } from 'e2e/engine';
-import type { NativeDialog } from '../dialogs.ts';
+import type { NativeDialog } from './dialogs.ts';
 import type { BidiConnection } from './connection.ts';
 import { callFunction } from './script.ts';
 import type { ContextTree } from './context-tree.ts';

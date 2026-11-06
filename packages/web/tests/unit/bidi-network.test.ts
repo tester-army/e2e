@@ -6,8 +6,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ContextTree } from '../../src/bidi/context-tree.ts';
-import { AttemptNetwork, type NetworkRoute } from '../../src/bidi/network.ts';
+import { ContextTree } from '../../src/driver/context-tree.ts';
+import { AttemptNetwork, type NetworkRoute } from '../../src/driver/network.ts';
 import { BROWSER_TRAITS, type BrowserName } from '../../src/browsers.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 

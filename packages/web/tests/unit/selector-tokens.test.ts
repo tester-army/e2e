@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chainParts, cssChains, tokenizeSelector } from '../../src/bidi/selector-tokens.ts';
+import { chainParts, cssChains, tokenizeSelector } from '../../src/driver/selector-tokens.ts';
 
 const kinds = (source: string) => tokenizeSelector(source).map((token) => [token.kind, token.text]);
 

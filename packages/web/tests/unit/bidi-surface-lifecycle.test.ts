@@ -9,14 +9,14 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EngineAttemptContext, EngineCleanupContext, EngineInitInfo, OperationContext } from 'e2e/engine';
-import { connectBidiOverCdp, type BidiBrowser } from '../../src/bidi/launch.ts';
+import { connectBidiOverCdp, type BidiBrowser } from '../../src/driver/launch.ts';
 import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { web } from '../../src/index.ts';
 import type { BrowserProvider } from '../../src/provider.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
-vi.mock('../../src/bidi/launch.ts', async (importOriginal) => ({ ...(await importOriginal<object>()), connectBidiOverCdp: vi.fn() }));
+vi.mock('../../src/driver/launch.ts', async (importOriginal) => ({ ...(await importOriginal<object>()), connectBidiOverCdp: vi.fn() }));
 const connectCdp = vi.mocked(connectBidiOverCdp);
 
 afterEach(() => {

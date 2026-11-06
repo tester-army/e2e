@@ -7,7 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { ConfigurationError, TestError, validateJsonValue, type EngineDoctorCheck, type JsonValue } from 'e2e/engine';
-import { KEEP_NAMES_HELPER, pageFunctionSource } from './evaluation.ts';
+import { KEEP_NAMES_HELPER, pageFunctionSource } from './in-page/evaluation.ts';
 import { message } from './support.ts';
 
 /**

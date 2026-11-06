@@ -13,10 +13,10 @@ import { existsSync, mkdirSync, renameSync, copyFileSync, rmSync } from 'node:fs
 import path from 'node:path';
 import { EngineError, type VideoFile } from 'e2e/engine';
 import { message } from '../support.ts';
-import { ensureFfmpeg } from '../install.ts';
+import { ensureFfmpeg } from '../install/provision.ts';
 import { ChromiumCdp } from './cdp.ts';
 import type { BidiConnection } from './connection.ts';
-import { classify, isStale, releaseQuietly, unlessStale } from './errors.ts';
+import { classify, isStale, releaseQuietly, unlessStale } from '../errors.ts';
 import type { BrowserTraits } from '../browsers.ts';
 
 /** Frames a second of the encoded video. */

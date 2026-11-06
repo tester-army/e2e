@@ -131,7 +131,7 @@ suites that consume the built packages the way a user would.
   update the provider's SDK dev dependency to a published version and raise
   its peer minimum only if the provider needs new SDK behavior. Keep the
   image's Chromium close to the build `@e2e-dev/web` pins (`CHROMIUM_BUILD`
-  in `packages/web/src/install.ts`). Run
+  in `packages/web/src/install/provision.ts`). Run
   `pnpm --filter @e2e-dev/smol test:unit` and `pnpm check`, then verify live
   machines in worker scope with an app running in the VM.
 - `packages/limrun` — the Limrun hosted mobile device provider. Each worker

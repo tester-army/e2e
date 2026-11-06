@@ -6,7 +6,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { compileEvaluation, decodeEvaluation, pageFunctionSource, pageValueEncoder } from '../../src/evaluation.ts';
+import { compileEvaluation, decodeEvaluation, pageFunctionSource, pageValueEncoder } from '../../src/in-page/evaluation.ts';
 
 /** Runs the compiled boundary in this process and decodes its report like `browser.evaluate`. */
 async function run(source: string, hasArgument: boolean, arg?: unknown): Promise<unknown> {

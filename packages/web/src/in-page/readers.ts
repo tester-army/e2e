@@ -8,9 +8,9 @@
 
 import { createHash } from 'node:crypto';
 import { createResolver, MATCHES_TEXT_SOURCE, type LocatorExpression, type matchesText as matchText, type SemanticQuery } from 'e2e/engine';
-import { readSemanticsFunction } from '../in-page/read-semantics.ts';
-import type { RawNodeData, RawObservedNode, SemanticMode } from '../read-node.ts';
-import type { PageArgument, Wire } from './script.ts';
+import { readSemanticsFunction } from './read-semantics.ts';
+import type { RawNodeData, RawObservedNode, SemanticMode } from './read-node.ts';
+import type { PageArgument, Wire } from '../driver/script.ts';
 
 /** Where `BUILTINS_INIT_SCRIPT` keeps the builtins a page had before its own scripts ran. */
 const BUILTINS_KEY = 'e2e.builtins';

@@ -2,9 +2,9 @@
 
 import { writeFileSync } from 'node:fs';
 import type { VideoSegment } from 'e2e/engine';
-import { ProviderVideo } from '../provider-video.ts';
+import { ProviderVideo } from './provider-video.ts';
 import type { LeaseRecording } from '../provider.ts';
-import { releaseQuietly } from './errors.ts';
+import { releaseQuietly } from '../errors.ts';
 import { maskedPixels } from './observe.ts';
 import type { BidiSession } from './session.ts';
 import { BidiVideo } from './video.ts';

@@ -4,7 +4,7 @@
  * emits events on demand.
  */
 
-import { BidiConnection, type BidiTransport } from '../../src/bidi/connection.ts';
+import { BidiConnection, type BidiTransport } from '../../src/driver/connection.ts';
 
 /** One command the driver sent. */
 export interface SentCommand {

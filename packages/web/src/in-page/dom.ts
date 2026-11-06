@@ -3,7 +3,7 @@
  * walk, the turned-transform test, the hit test through shadow roots, the
  * pointer target an action retargets to, and focus through shadow roots.
  * Self-contained, so its source is spliced into each page function and
- * preload that needs it (`withDom` in `bidi/page.ts`), and each helper is
+ * preload that needs it (`withDom` in `page.ts`), and each helper is
  * written once.
  */
 

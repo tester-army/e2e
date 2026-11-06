@@ -5,7 +5,7 @@
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Browser, CookieFilter } from '../../src/browser.ts';
+import type { Browser, CookieFilter } from '../../src/fixture/types.ts';
 import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 describe('browser.clearCookies', () => {

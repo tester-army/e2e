@@ -1,7 +1,7 @@
 /** The closed-root record, run as page code against a scripted page global: the init script counts the closed roots it records. */
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from '../../src/closed-shadow.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from '../../src/in-page/closed-shadow.ts';
 
 const KEY = Symbol.for(CLOSED_SHADOW_ROOTS_KEY);
 

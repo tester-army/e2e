@@ -6,9 +6,9 @@
 
 import { describe, expect, it } from 'vitest';
 import type { EngineFixtureContext } from 'e2e/engine';
-import type { WebResponse } from '../../src/browser.ts';
-import type { RouteDecisions } from '../../src/bidi/network.ts';
-import { runRouteHandler } from '../../src/bidi/route-handler.ts';
+import type { WebResponse } from '../../src/fixture/types.ts';
+import type { RouteDecisions } from '../../src/driver/network.ts';
+import { runRouteHandler } from '../../src/fixture/routes.ts';
 
 const context = { app: { resolveUrl: (url: string) => new URL(url, 'http://app.test').href } } as EngineFixtureContext;
 

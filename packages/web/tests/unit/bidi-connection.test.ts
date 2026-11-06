@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BidiError } from '../../src/bidi/connection.ts';
+import { BidiError } from '../../src/driver/connection.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
 describe('BidiConnection', () => {
