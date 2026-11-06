@@ -110,10 +110,10 @@ describe('web({ locale, timezoneId })', () => {
 });
 
 describe('web({ colorScheme, reducedMotion })', () => {
-  it('accepts every value the browser emulates, on a persistent context too', () => {
+  it('accepts every value the browser emulates, on an attached browser too', () => {
     for (const colorScheme of ['light', 'dark', 'no-preference'] as const) expect(() => web({ colorScheme })).not.toThrow();
     for (const reducedMotion of ['reduce', 'no-preference'] as const) expect(() => web({ reducedMotion })).not.toThrow();
-    const connect = { cdpEndpoint: () => 'ws://127.0.0.1:9222', reconnectEndpoint: () => 'ws://127.0.0.1:9222' };
+    const connect = { cdpEndpoint: () => 'ws://127.0.0.1:9222' };
     expect(() => web({ connect, colorScheme: 'dark', reducedMotion: 'reduce' })).not.toThrow();
   });
 
@@ -190,7 +190,7 @@ describe('web() option keys', () => {
       refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
     expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts, driver'),
+      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
     );
   });
 
