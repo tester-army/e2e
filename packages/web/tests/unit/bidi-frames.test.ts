@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, SemanticNode } from 'e2e/engine';
 import { FrameRegistry, inViewport, resolveFrames, selectorLocator, withinFrame } from '../../src/bidi/frames.ts';
+import { project, type Projection } from '../../src/bidi/projection.ts';
 import { ElementRef } from '../../src/bidi/script.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 
@@ -79,6 +80,65 @@ describe('FrameRegistry.viewportBox', () => {
   it('scales an inner frame’s coordinates by the outer frame’s transform', async () => {
     const fake = measured({ outer: { content: { x: 0, y: 0, width: 200, height: 200 }, scale: { x: 0.5, y: 0.5 } }, inner: { content: { x: 100, y: 40, width: 100, height: 100 } } });
     await expect(nested().viewportBox(fake.connection, 'inner-doc')).resolves.toEqual({ origin: { x: 50, y: 20 }, scale: { x: 0.5, y: 0.5 }, clip: { x: 50, y: 20, width: 50, height: 50 } });
+  });
+});
+
+/** The corners of the axis-aligned quad at `x`, `y` sized `width` by `height`, flattened as CDP's `DOM.getContentQuads` reports them. */
+function flatQuad(x: number, y: number, width: number, height: number): number[] {
+  return [x, y, x + width, y, x + width, y + height, x, y + height];
+}
+
+/**
+ * A Chromium peer where both frames are turned: each reports its 100 by 100
+ * border box and no inset, CDP places `outer` at (100, 50) and `inner` at
+ * `innerQuad`, and `sessions` names each document's CDP session.
+ */
+function turnedChromium(innerQuad: number[], sessions: Record<string, string>): FakeBidi {
+  const number = (value: number) => ({ type: 'number', value });
+  const box = { type: 'object', value: [['width', number(100)], ['height', number(100)], ['inset', { type: 'object', value: [['x', number(0)], ['y', number(0)], ['width', number(100)], ['height', number(100)]] }], ['quad', { type: 'null' }]] };
+  return new FakeBidi()
+    .on('script.callFunction', (params) => {
+      const measuresBorder = String(params['functionDeclaration']).includes('getBoxQuads');
+      return { result: { type: 'success', realm: 'r', result: measuresBorder ? box : { type: 'string', value: 'turned' } } };
+    })
+    .on('goog:cdp.getSession', (params) => ({ result: { session: sessions[String(params['context'])] } }))
+    .on('goog:cdp.sendCommand', (params) => {
+      const { backendNodeId } = params['params'] as { backendNodeId: number };
+      return { result: { result: { quads: [backendNodeId === 11 ? flatQuad(100, 50, 100, 100) : innerQuad] }, session: params['session'] } };
+    });
+}
+
+/** `nested()` with element ids that carry CDP backend node ids, as chromium-bidi mints them. */
+function nestedChromium(): FrameRegistry {
+  const registry = new FrameRegistry();
+  registry.enter('outer-doc', { element: new ElementRef('f.A.d.B.e.11'), context: 'top' });
+  registry.enter('inner-doc', { element: new ElementRef('f.C.d.D.e.22'), context: 'outer-doc' });
+  return registry;
+}
+
+/** Where `maps`, innermost last, take `point` in the top-level viewport. */
+function toTop(maps: readonly Projection[], point: { x: number; y: number }): { x: number; y: number } {
+  return maps.reduceRight((at, map) => project(map, at), point);
+}
+
+describe('FrameRegistry.frameMaps', () => {
+  it('reads a turned frame’s quad in the viewport of its process’s outermost document', async () => {
+    const fake = turnedChromium(flatQuad(110, 70, 100, 100), { top: 'page', 'outer-doc': 'page' });
+    const maps = await nestedChromium().frameMaps(fake.connection, 'inner-doc', 'chromium');
+    expect(toTop(maps!, { x: 5, y: 5 })).toEqual({ x: 115, y: 75 });
+  });
+
+  it('reads it in the frame’s own document when another process renders that document', async () => {
+    const fake = turnedChromium(flatQuad(10, 20, 100, 100), { top: 'page', 'outer-doc': 'oopif' });
+    const maps = await nestedChromium().frameMaps(fake.connection, 'inner-doc', 'chromium');
+    expect(toTop(maps!, { x: 5, y: 5 })).toEqual({ x: 115, y: 75 });
+  });
+
+  it('maps an unturned chain by each frame’s content box and scale, without CDP', async () => {
+    const fake = measured({ outer: { content: { x: 100, y: 50, width: 200, height: 200 }, scale: { x: 0.5, y: 0.5 } }, inner: { content: { x: 10, y: 20, width: 100, height: 100 } } });
+    const maps = await nested().frameMaps(fake.connection, 'inner-doc', 'chromium');
+    expect(toTop(maps!, { x: 4, y: 4 })).toEqual({ x: 107, y: 62 });
+    expect(fake.commands('goog:cdp.getSession')).toEqual([]);
   });
 });
 

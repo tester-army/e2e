@@ -25,6 +25,7 @@ import { nearestPixel, swipeDistance, wheelDelta } from '../support.ts';
 import { chromiumDrag } from './drag.ts';
 import { unlessStale } from './errors.ts';
 import type { NodeTarget } from './frames.ts';
+import { invert, project } from './projection.ts';
 import { clickSources, dragPath, dragSources, dragStepMs, moveSources, typeSource, wheelSources, type ClickOptions } from './input.ts';
 import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
 import { ElementRef } from './script.ts';
@@ -265,19 +266,18 @@ async function pointerPoint(session: BidiSession, target: NodeTarget, deadline: 
     const align = SCROLL_ALIGNMENTS[retry % SCROLL_ALIGNMENTS.length];
     const local = await settledPoint(session, target, deadline, { enabled, scroll: true, ...(align === undefined ? {} : { align }) }, signal);
     const chain = session.frames.chain(target.context);
-    const steps = await session.frames.frameSteps(session.connection, target.context);
-    if (steps === null) throw new EngineError('NOT_ACTIONABLE', 'element is in a frame that lays out no box, or is rotated', { retryable: false });
-    let point = { x: local.x, y: local.y };
-    for (let index = steps.length - 1; index >= 0; index -= 1) {
-      const { content, scale } = steps[index]!;
-      point = { x: content.x + point.x * scale.x, y: content.y + point.y * scale.y };
+    const maps = await session.frames.frameMaps(session.connection, target.context, session.settings.browser);
+    const inverses = maps?.map(invert);
+    if (maps === null || inverses === undefined || inverses.includes(undefined)) {
+      throw new EngineError('NOT_ACTIONABLE', 'element is in a frame that lays out no box, or whose transform the browser maps no point through', { retryable: false });
     }
+    const point = maps.reduceRight((at, map) => project(map, at), { x: local.x, y: local.y });
     const top = { x: Math.round(point.x), y: Math.round(point.y) };
     const inDocuments: { x: number; y: number }[] = [];
     let projected = top;
-    for (const [index, { content, scale }] of steps.entries()) {
+    for (const [index, inverse] of inverses.entries()) {
       inDocuments[index] = projected;
-      projected = { x: (projected.x - content.x) / scale.x, y: (projected.y - content.y) / scale.y };
+      projected = project(inverse!, projected);
     }
     const checks = [
       session.run(hitBlocker, [target.element, projected.x, projected.y, CLOSED_SHADOW_ROOTS_KEY], target.context),

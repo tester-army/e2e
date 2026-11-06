@@ -103,7 +103,9 @@ const CHROMIUM_ARGS = [
  * The Firefox preferences an automated profile takes, Playwright 1.64's BiDi
  * launcher's set (beside the Remote Agent's recommended set, which it applies on
  * start): nothing reaches the network on its own, background windows keep
- * focus and full-rate timers, and startup opens no page of its own.
+ * focus and full-rate timers, and startup opens no page of its own. Beside
+ * it, `layout.css.getBoxQuads.enabled` gives pages `getBoxQuads`, which the
+ * driver maps a point through a frame a rotation or 3D transform turns with.
  */
 const FIREFOX_PREFS: Readonly<Record<string, string | number | boolean>> = {
   'app.normandy.api_url': '',
@@ -164,6 +166,7 @@ const FIREFOX_PREFS: Readonly<Record<string, string | number | boolean>> = {
   'geo.provider.testing': true,
   'geo.wifi.scan': false,
   'hangmonitor.timeout': 0,
+  'layout.css.getBoxQuads.enabled': true,
   'layout.testing.top-level-always-active': true,
   'media.gmp-manager.updateEnabled': false,
   'media.sanity-test.disabled': true,
