@@ -227,10 +227,10 @@ Four differences from Maestro's selectors cause most edits.
 
 ## What differs on purpose
 
-- Every call goes through `screen`, `app`, `device`, or the agent, so e2e
-  records and redacts it. `device.unstable_raw` hands a test agent-device's
-  client for what those don't cover, but its calls aren't steps and nothing
-  redacts their arguments.
+- e2e records and redacts the calls on `screen`, `app`, `device`, and the
+  agent. `device.unstable_raw` hands a test agent-device's client for what
+  those don't cover; its calls aren't steps and nothing redacts their
+  arguments.
 - A device has no `test.setup` or `{ session }`, see
   [what differs from the web](/mobile#what-differs-from-the-web).
 
