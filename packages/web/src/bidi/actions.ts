@@ -23,10 +23,11 @@ import { ROOT_NODE_ID } from '../observation.ts';
 import { focusTakesKeys } from '../focus.ts';
 import { nearestPixel, swipeDistance, wheelDelta } from '../support.ts';
 import { chromiumDrag } from './drag.ts';
-import { unlessStale } from './errors.ts';
+import { releaseQuietly, unlessStale } from './errors.ts';
 import type { NodeTarget } from './frames.ts';
 import { invert, project } from './projection.ts';
-import { clickSources, dragPath, dragSources, dragStepMs, moveSources, typeSource, wheelSources, type ClickOptions } from './input.ts';
+import { stillLocated } from './observe.ts';
+import { clickSources, dragPath, dragSources, dragStepMs, mouse, moveSources, pressSource, typeSource, wheelSources, type ClickOptions } from './input.ts';
 import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
@@ -45,14 +46,19 @@ const SCROLL_ALIGNMENTS = [
 /** What the page's `fill` and `selectOption` refuse for now but may take once the app catches up, polled until the deadline. */
 const NOT_YET = new Set(['element is not editable', 'element is not enabled', 'no option matches', 'option being selected is not enabled']);
 
-/** One action on a located or observed node; a `swipe` on the observation root is the viewport swipe at the pointer. */
+/**
+ * One action on a located or observed node; a `swipe` on the observation
+ * root is the viewport swipe at the pointer. A located node acts only while
+ * its locator still matches it alone (`stillLocated`).
+ */
 export async function perform(session: BidiSession, ref: NodeRef, action: LocatorAction, timeoutMs: number, signal: AbortSignal): Promise<void> {
   if (action.kind === 'swipe' && ref.id === ROOT_NODE_ID) {
     await wheel(session, session.pointer, await session.viewportSize(), action.direction, action.momentum ?? 'none', signal);
     return;
   }
-  const target = session.refs.lookup(ref);
   const deadline = new Deadline(timeoutMs);
+  const target = session.refs.lookup(ref);
+  await stillLocated(session, target);
   const held = 'modifiers' in action && action.modifiers !== undefined ? { modifiers: action.modifiers } : {};
   switch (action.kind) {
     case 'tap':
@@ -100,6 +106,7 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
       }
       const point = await pointerPoint(session, target, deadline, false, signal);
       const box = await session.run(boxSize, [target.element], target.context);
+      if (box === null) throw new EngineError('NOT_ACTIONABLE', 'element has no visible bounding box', { retryable: false });
       return wheel(session, point, box.width > 0 ? box : await session.viewportSize(), action.direction, action.momentum ?? 'none', signal);
     }
   }
@@ -345,6 +352,7 @@ async function mutateWhenReady(session: BidiSession, deadline: Deadline, signal:
  */
 async function setChecked(session: BidiSession, target: NodeTarget, checked: boolean, deadline: Deadline, signal: AbortSignal): Promise<void> {
   const before = await session.run(checkState, [target.element], target.context);
+  if (before === 'detached') throw new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });
   if (before.checked === null) throw new EngineError('NOT_ACTIONABLE', 'Not a checkbox or radio button', { retryable: false });
   if (before.checked === checked) return;
   if (!checked && before.radio === 'native') {
@@ -353,8 +361,8 @@ async function setChecked(session: BidiSession, target: NodeTarget, checked: boo
   const hint = !checked && before.radio === 'aria' ? '; a radio usually clears only when another radio in its group is selected' : '';
   await click(session, target, deadline, {}, signal);
   for (let first = true; ; first = false) {
-    const after = await unlessStale(session.run(checkState, [target.element], target.context), undefined);
-    if (after === undefined) {
+    const after = await unlessStale(session.run(checkState, [target.element], target.context), 'detached');
+    if (after === 'detached') {
       if (first) return;
       throw new EngineError('NOT_ACTIONABLE', `${checked ? 'check' : 'uncheck'} clicked the control but its checked state did not change before the control was replaced`, { retryable: false });
     }
@@ -443,9 +451,13 @@ async function setInputFiles(session: BidiSession, target: NodeTarget, paths: re
  * Drags the source onto the target: the target is brought into view first,
  * then the source, and the target is read again where the source's scroll
  * left it, so neither end is a stale point. A target the source's scroll
- * pushed out of view fails rather than dropping beside it.
+ * pushed out of view fails rather than dropping beside it. A located target
+ * must match its locator alone before the press and again after the drop,
+ * as Playwright resolves the target only once the source is pressed: one
+ * that turned ambiguous meanwhile leaves the drop uncertain.
  */
 async function dragTo(session: BidiSession, source: NodeTarget, target: NodeTarget, deadline: Deadline, signal: AbortSignal): Promise<void> {
+  await stillLocated(session, target);
   await pointerPoint(session, target, deadline, false, signal);
   const from = await pointerPoint(session, source, deadline, true, signal);
   const local = await session.run(readActionPoint, [target.element, { scroll: false, key: CLOSED_SHADOW_ROOTS_KEY }], target.context);
@@ -453,26 +465,37 @@ async function dragTo(session: BidiSession, source: NodeTarget, target: NodeTarg
   const box = await session.frames.viewportBox(session.connection, target.context);
   if (box === null) throw new EngineError('NOT_ACTIONABLE', 'dragTo: the target is in a frame that lays out no box, or is rotated', { retryable: false });
   const to = box === undefined ? local : { x: Math.round(box.origin.x + local.x * box.scale.x), y: Math.round(box.origin.y + local.y * box.scale.y) };
-  await drag(session, from, to, 0, signal);
+  await drag(session, from, to, 0, signal, () => stillLocated(session, target));
 }
 
 /**
- * Presses at `from`, moves to `to` over `durationMs`, and releases there.
- * On Chromium a drag the page starts carries its data to the drop
- * (`chromiumDrag`). Firefox's remote agent synthesizes no drop
+ * Presses at `from`, moves to `to` over `durationMs`, and releases there;
+ * `afterPress` runs between the press and the first move, and its failure
+ * releases the button where it was pressed. On Chromium a drag the page
+ * starts carries its data to the drop (`chromiumDrag`). Firefox's remote
+ * agent synthesizes no drop
  * (https://bugzilla.mozilla.org/show_bug.cgi?id=1515879), so there the
  * pointer moves alone.
  */
-async function drag(session: BidiSession, from: ViewportPoint, to: ViewportPoint, durationMs: number, signal: AbortSignal): Promise<void> {
+async function drag(session: BidiSession, from: ViewportPoint, to: ViewportPoint, durationMs: number, signal: AbortSignal, afterPress?: () => Promise<void>): Promise<void> {
   if (session.settings.browser !== 'chromium') {
-    await session.sendInput(dragSources(from, to, durationMs), signal);
+    const { press, release } = dragSources(from, to, durationMs);
+    await session.sendInput(press, signal);
+    let released = false;
+    try {
+      await afterPress?.();
+      await session.sendInput(release, signal);
+      released = true;
+    } finally {
+      if (!released) await releaseQuietly(session.sendInput([mouse([{ type: 'pointerUp', button: 0 }])]));
+    }
     return;
   }
   const context = session.requireContext();
   const documents = await session.documentContexts(context);
   signal.throwIfAborted();
   session.mutated();
-  await chromiumDrag(session.connection, context, documents, dragPath(from, to), dragStepMs(durationMs), signal);
+  await chromiumDrag(session.connection, context, documents, dragPath(from, to), dragStepMs(durationMs), signal, afterPress);
   session.pointer = { x: to.x, y: to.y };
 }
 

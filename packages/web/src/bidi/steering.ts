@@ -1,7 +1,8 @@
 /** Navigation on the BiDi driver: open, history, reload, and the attempt's restart and reset. */
 
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Deadline, EngineError, raceAbort } from 'e2e/engine';
+import { Deadline, EngineError, raceAbort, TestError } from 'e2e/engine';
+import { isClassified, message } from '../support.ts';
 import { isStale } from './errors.ts';
 import { historyEntry, readyState } from './page.ts';
 import type { BidiSession } from './session.ts';
@@ -150,12 +151,23 @@ export function traverse(session: BidiSession, delta: number, timeoutMs: number,
   });
 }
 
-/** Runs a navigation the driver makes itself, which the trace leaves to the step that asked for it. */
+/**
+ * Runs a navigation the driver makes itself, which the trace leaves to the
+ * step that asked for it. A navigation that fails after a test route aborted
+ * the tab's document request failed because the test aborted it: an action
+ * failure, not an engine fault.
+ */
 async function own<T>(session: BidiSession, work: () => Promise<T>): Promise<T> {
   session.ownNavigations += 1;
+  const watch: { url?: string } = {};
+  session.navigationAborts.add(watch);
   try {
     return await work();
+  } catch (cause) {
+    if (watch.url === undefined || isClassified(cause)) throw cause;
+    throw new TestError('ACTION_FAILED', `navigation failed: a route aborted the request for ${watch.url}: ${message(cause)}`, { cause });
   } finally {
+    session.navigationAborts.delete(watch);
     session.ownNavigations -= 1;
   }
 }

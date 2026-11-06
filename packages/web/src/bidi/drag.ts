@@ -47,7 +47,8 @@ function dragStarted(): Promise<boolean> | boolean {
 /**
  * Presses at the path's first point, moves through the rest, and releases
  * at the last; a drag the page starts on the first move carries its data to
- * the drop. `stepMs` paces each move. Once `signal` aborts, nothing more is
+ * the drop. `stepMs` paces each move; `afterPress` runs between the press
+ * and the first move, and its failure ends the drag. Once `signal` aborts, nothing more is
  * dispatched; however it ends, interception is off and the button is up
  * where the mouse last was, so a drag that failed midway drops nothing at
  * the target, and only the mouse is released, so keys the test holds stay
@@ -60,6 +61,7 @@ export async function chromiumDrag(
   path: readonly Point[],
   stepMs: number,
   signal: AbortSignal,
+  afterPress: () => Promise<void> = async () => undefined,
 ): Promise<void> {
   const [from, first, ...rest] = path;
   if (from === undefined || first === undefined) return;
@@ -86,6 +88,7 @@ export async function chromiumDrag(
     signal.throwIfAborted();
     pressed = true;
     await pointer([{ type: 'pointerMove', x: from.x, y: from.y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }]);
+    await afterPress();
     // Armed after the press: armed before, it latches onto the move to the press point and misses the drag.
     await Promise.all(documents.map((each) => unlessStale(callFunction(connection, each, watchDrag), undefined)));
     intercepting = true;

@@ -498,8 +498,7 @@ describe('browser.route decisions', () => {
     });
   });
 
-  // Missing in BiDi: a navigation its route aborted fails as ENGINE_FAILURE, not ACTION_FAILED.
-  it.skip('fails a navigation its route aborted as an action failure, not an engine fault', async () => {
+  it('fails a navigation its route aborted as an action failure, not an engine fault', async () => {
     await browser.route('**/aborted', (route) => route.abort());
     await expect(browser.goto(`${origin}/aborted`)).rejects.toMatchObject({
       code: 'ACTION_FAILED',
@@ -507,8 +506,7 @@ describe('browser.route decisions', () => {
     });
   });
 
-  // Missing in BiDi: a navigation a route handler error aborted fails as ENGINE_FAILURE, not with the latched route error.
-  it.skip('fails a navigation with the route error that aborted it', async () => {
+  it('fails a navigation with the route error that aborted it', async () => {
     await browser.route('**/refused', (route) => route.fulfill({ headers: { 'bad name': 'x' } }));
     await expect(browser.goto(`${origin}/refused`)).rejects.toMatchObject({
       code: 'INVALID_ARGUMENT',

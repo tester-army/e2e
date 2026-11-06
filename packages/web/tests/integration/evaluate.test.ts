@@ -40,8 +40,7 @@ describe('browser.evaluate error boundaries', () => {
     await expect(browser.evaluate('() => new Promise(() => {})')).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
   });
 
-  // Missing in BiDi: a tab closed during evaluation fails it as a retryable NODE_STALE, not ENGINE_FAILURE.
-  it.skip.each(['restart', 'reset'] as const)('keeps a tab closed by %s during evaluation as infrastructure', async (replace) => {
+  it.each(['restart', 'reset'] as const)('keeps a tab closed by %s during evaluation as infrastructure', async (replace) => {
     await page.setContent('<title>Pending</title>');
     const pending = browser.evaluate('() => new Promise(() => {})');
     const rejected = pending.catch((cause: unknown) => cause);
@@ -102,10 +101,18 @@ describe('browser.evaluate error boundaries', () => {
     await expect(browser.evaluate('() => 1')).resolves.toBe(1);
   });
 
-  // Missing in BiDi: a locate on a page that replaced Map fails as ENGINE_FAILURE, not the test's EVALUATE_FAILED.
-  it.skip('fails a locate as EVALUATE_FAILED once the page replaced Map', async () => {
+  it('keeps locating once the page replaced Map', async () => {
     await page.setContent('<div>cart</div><script>window.Map = 1;</script>');
-    await expect(session.locate({ kind: 'selector', selector: 'div' })).rejects.toMatchObject({ code: 'EVALUATE_FAILED', category: 'test' });
+    await expect(session.locate({ kind: 'selector', selector: 'div' })).resolves.toHaveLength(1);
+  });
+
+  it('fails a locate as EVALUATE_FAILED once the page broke a Map method', async () => {
+    await page.setContent('<div>cart</div><script>Map.prototype.set = 1;</script>');
+    await expect(session.locate({ kind: 'selector', selector: 'div' })).rejects.toMatchObject({
+      code: 'EVALUATE_FAILED',
+      category: 'test',
+      message: expect.stringContaining('the page deleted or replaced a JavaScript built-in'),
+    });
   });
 
   it('runs keepNames output after the code deleted Object', async () => {

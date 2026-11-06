@@ -29,6 +29,7 @@ function network(
     exclusive: options.exclusive ?? false,
     browser: 'chromium',
     onFailure: (error) => failures.push(error),
+    onNavigationAbort: () => undefined,
     holdAll: options.holdAll ?? false,
   });
   return { net, failures };

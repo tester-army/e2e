@@ -65,6 +65,8 @@ export interface AttemptNetworkOptions {
   readonly browser: 'chromium' | 'firefox';
   /** Takes a failure on a path no step awaits (deciding a held request, answering a challenge), for the next step to fail with. */
   readonly onFailure: (error: Error) => void;
+  /** Takes the URL of a document request a test route aborted in `context`, before the abort goes out. */
+  readonly onNavigationAbort: (context: string, url: string) => void;
 }
 
 const CONTENT_TYPES: Readonly<Record<string, string>> = {
@@ -373,7 +375,10 @@ export class AttemptNetwork {
       await route.handle(intercepted, {
         continue: (overrides) => unlessCancelled(this.continue(binding, intercepted, overrides)),
         fulfill: (response) => unlessCancelled(this.fulfill(binding, intercepted, response)),
-        abort: () => unlessCancelled(this.connection.send('network.failRequest', { request: intercepted.id })),
+        abort: () => {
+          if (event.navigation !== null && event.context !== null) this.options.onNavigationAbort(event.context, address);
+          return unlessCancelled(this.connection.send('network.failRequest', { request: intercepted.id }));
+        },
         fallback: async () => {
           passed = true;
         },

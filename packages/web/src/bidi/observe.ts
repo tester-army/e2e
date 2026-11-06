@@ -109,10 +109,36 @@ export async function traceScreen(session: BidiSession, signal: AbortSignal): Pr
  * (`playwrightMatches`), so both drivers answer one locator alike.
  */
 export async function locate(session: BidiSession, expression: LocatorExpression): Promise<SemanticNode[]> {
+  const { chain, context, matches } = await resolveLocator(session, expression);
+  const frameBox = chain.length === 0 ? undefined : await session.frames.viewportBox(session.connection, context);
+  // A sole match keeps its expression, so a ref that turns ambiguous before an action is stale instead of acting on one of them.
+  const locator = matches.length === 1 ? { locator: expression } : {};
+  return matches.map(({ node, element }) => {
+    session.refs.storeLocated(node.ref.id, { element, context, ...locator });
+    const { children: _children, ...rest } = node;
+    return inViewport(rest, frameBox, chain);
+  });
+}
+
+/**
+ * Fails as retryable `NODE_STALE` unless the expression that located
+ * `target` as its only match still matches that element alone: a second
+ * match, or none, means the ref no longer names one element. A target an
+ * observation or a many-match locate gave passes as it is.
+ */
+export async function stillLocated(session: BidiSession, target: NodeTarget): Promise<void> {
+  if (target.locator === undefined) return;
+  const { matches } = await resolveLocator(session, target.locator);
+  if (matches.length === 1 && matches[0]!.element.sharedId === target.element.sharedId) return;
+  const now = matches.length === 0 ? 'nothing' : matches.length === 1 ? 'another element' : `${matches.length} elements`;
+  throw new EngineError('NODE_STALE', `the located element is no longer its locator's only match: the locator now matches ${now}`, { retryable: true });
+}
+
+/** The nodes `expression` matches now, each with its element, and the document its frame chain leads to. */
+async function resolveLocator(session: BidiSession, expression: LocatorExpression): Promise<{ chain: string[]; context: string; matches: { node: SemanticNode; element: ElementRef }[] }> {
   const chain = frameSelectors(expression);
   const context = await resolveFrames(session.connection, session.requireContext(), chain, session.frames);
   const inner = chain.length === 0 ? expression : withinFrame(expression);
-  const frameBox = chain.length === 0 ? undefined : await session.frames.viewportBox(session.connection, context);
   const selected = await locateSelectors(session, inner, context);
   const options = { testIdAttribute: session.settings.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR };
   const frameHidden = await insideHiddenFrame(session, context, options);
@@ -141,11 +167,7 @@ export async function locate(session: BidiSession, expression: LocatorExpression
       return candidates.filter((node) => hits.has(sharedIds.get(node.ref.id) ?? ''));
     },
   });
-  return matches.map((node) => {
-    session.refs.storeLocated(node.ref.id, { element: new ElementRef(sharedIds.get(node.ref.id) ?? ''), context });
-    const { children: _children, ...rest } = node;
-    return inViewport(rest, frameBox, chain);
-  });
+  return { chain, context, matches: matches.map((node) => ({ node, element: new ElementRef(sharedIds.get(node.ref.id) ?? '') })) };
 }
 
 /**

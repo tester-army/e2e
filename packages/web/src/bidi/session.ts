@@ -7,7 +7,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { Emulation, Input, Storage } from 'webdriver-bidi-protocol';
-import { EngineError, obj, withTimeout, type AppLogEntry, type EngineSnapshot, type NodeRef, type ViewportPoint, type ViewportSize } from 'e2e/engine';
+import { EngineError, obj, TestError, withTimeout, type AppLogEntry, type EngineSnapshot, type NodeRef, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../closed-shadow.ts';
 import { DialogRouter } from '../dialogs.ts';
 import type { ConfiguredInitScripts } from '../init-scripts.ts';
@@ -24,7 +24,7 @@ import type { BidiBrowser, BidiBrowserName } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
 import { HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
 import { BUILTINS_INIT_SCRIPT, readerCall, readerInstallCall, READERS_INIT_SCRIPT, READERS_MISSING, type EncodedReaderArgs, type EncodedReaderName, type ReaderArgs, type ReaderMetadata, type ReaderName, type ReaderResult } from './readers.ts';
-import { callFunction, type CallOptions, type ElementRef, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
+import { callFunction, ScriptError, type CallOptions, type ElementRef, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 import type { BidiVideo } from './video.ts';
 import type { ProviderVideo } from '../provider-video.ts';
 import type { LeaseDownloads } from '../provider.ts';
@@ -78,6 +78,9 @@ export interface AttemptSettings {
 
 /** The browser's own user context, which a lease's `prepare` signed in and which outlives every attempt. */
 const DEFAULT_USER_CONTEXT = 'default';
+
+/** The sandbox realm a failed read runs again in, to tell a page that broke the readers from a fault of their own. */
+const READER_PROBE_SANDBOX = 'e2e-reader-probe';
 
 /** The user context and parent of each browsing context, as the session's events report them. */
 export class ContextOwners {
@@ -192,6 +195,8 @@ export class BidiSession {
   dispatches = 0;
   /** Navigations the driver itself has in flight, which the trace leaves to the step that started them. */
   ownNavigations = 0;
+  /** One entry per navigation the driver has in flight, given the URL of the tab's document request a test route aborted. */
+  readonly navigationAborts = new Set<{ url?: string }>();
   /** The viewport `browser.setViewport` set for the rest of the attempt; the configured one until then. */
   private viewport: ViewportSize | null;
   private creating: Promise<string> | undefined;
@@ -223,6 +228,10 @@ export class BidiSession {
       exclusive: browser.exclusive,
       browser: settings.browser,
       onFailure: (error) => this.latch.latch(error),
+      onNavigationAbort: (context, url) => {
+        if (context !== this.context) return;
+        for (const watch of this.navigationAborts) watch.url ??= url;
+      },
       holdAll: settings.holdRequests,
     });
     this.downloads = new AttemptDownloads(browser.connection, attempt.remoteDownloads);
@@ -461,9 +470,31 @@ export class BidiSession {
    * with the call, and keeps them.
    */
   private async callReader(name: ReaderName, args: readonly PageArgument[], options: CallOptions | undefined, context: string | undefined): Promise<unknown> {
-    const value = await this.call(readerCall(name), args, options, context);
-    if (value !== READERS_MISSING) return value;
-    return this.call(readerInstallCall(name), args, options, context);
+    try {
+      const value = await this.call(readerCall(name), args, options, context);
+      if (value !== READERS_MISSING) return value;
+      return await this.call(readerInstallCall(name), args, options, context);
+    } catch (cause) {
+      throw (await this.pageBrokeReader(name, cause, args, options, context)) ?? cause;
+    }
+  }
+
+  /**
+   * The failure of a reader the page's own scripts broke, as the test's
+   * `EVALUATE_FAILED`, or undefined when something else failed. A page that
+   * replaces a built-in method the readers call (`Map.prototype.set`) breaks
+   * them in its world. Told apart by reading again in a sandbox realm, whose
+   * built-ins and DOM bindings no page script reaches: a read that throws in
+   * the page's world and passes there failed because of the page.
+   */
+  private async pageBrokeReader(name: ReaderName, cause: unknown, args: readonly PageArgument[], options: CallOptions | undefined, context: string | undefined): Promise<TestError | undefined> {
+    if (!(cause instanceof ScriptError)) return undefined;
+    try {
+      await this.call(readerInstallCall(name), args, { ...options, sandbox: READER_PROBE_SANDBOX }, context);
+    } catch {
+      return undefined;
+    }
+    return new TestError('EVALUATE_FAILED', `the ${name} read failed: the page deleted or replaced a JavaScript built-in that in-page automation code needs: ${cause.message}`, { cause });
   }
 
   /**

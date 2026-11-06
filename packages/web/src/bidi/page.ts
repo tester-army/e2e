@@ -192,8 +192,9 @@ export function focus(element: Element, key: string): boolean {
   return active === element || ((element as HTMLElement).isContentEditable && active !== null && active.contains(element));
 }
 
-/** A checkable's state and kind, as Playwright reads it: a checkable role without `aria-checked` is unchecked; `checked` is null for an element with no checked state. */
-export function checkState(element: Element): { checked: boolean | null; radio: 'native' | 'aria' | null } {
+/** A checkable's state and kind, as Playwright reads it: a checkable role without `aria-checked` is unchecked; `checked` is null for an element with no checked state, and an element out of the document is `detached`. */
+export function checkState(element: Element): { checked: boolean | null; radio: 'native' | 'aria' | null } | 'detached' {
+  if (!element.isConnected) return 'detached';
   const role = (element.getAttribute('role') ?? '').trim().split(/\s+/)[0] ?? '';
   const input = element.nodeName === 'INPUT' ? (element as HTMLInputElement) : null;
   const radio = input?.type === 'radio' ? 'native' : role === 'radio' || role === 'menuitemradio' ? 'aria' : null;
@@ -301,8 +302,9 @@ export function directoryInput(element: Element): boolean {
   return (element as HTMLInputElement).webkitdirectory === true;
 }
 
-/** An element's box size, which a swipe on it spans. */
-export function boxSize(element: Element): { width: number; height: number } {
+/** An element's box size, which a swipe on it spans; null for one that lays out no box of its own (`display: contents`). */
+export function boxSize(element: Element): { width: number; height: number } | null {
+  if (element.getClientRects().length === 0) return null;
   const rect = element.getBoundingClientRect();
   return { width: rect.width, height: rect.height };
 }

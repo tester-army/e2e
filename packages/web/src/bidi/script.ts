@@ -50,12 +50,14 @@ export interface CallOptions {
   readonly awaitPromise?: boolean;
   /** Object depth serialized back, `null` for all of it; the default reads two levels, which an array of elements needs. */
   readonly maxObjectDepth?: number | null;
+  /** A sandbox realm of the document to run in instead of its main world, out of reach of the page's scripts. */
+  readonly sandbox?: string;
 }
 
 /**
- * Calls `fn` in the context's main world with `args` and resolves with its
- * return value. A page exception rejects as a `ScriptError` the caller
- * classifies.
+ * Calls `fn` in the context's main world (or the sandbox `options` names)
+ * with `args` and resolves with its return value. A page exception rejects
+ * as a `ScriptError` the caller classifies.
  */
 export async function callFunction(
   connection: BidiConnection,
@@ -66,7 +68,7 @@ export async function callFunction(
 ): Promise<PageValue> {
   const result = await connection.send('script.callFunction', {
     functionDeclaration: typeof fn === 'string' ? fn : fn.toString(),
-    target: { context },
+    target: options.sandbox === undefined ? { context } : { context, sandbox: options.sandbox },
     arguments: args.map(toLocalValue),
     awaitPromise: options.awaitPromise ?? false,
     resultOwnership: 'none',

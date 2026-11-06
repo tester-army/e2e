@@ -687,8 +687,7 @@ describe('web engine lifecycle', () => {
       });
     });
 
-    // Missing in BiDi: a located ref is acted on after a second element matches it, instead of reported stale.
-    it.skip('reports a located ref stale once a second element matches it, and acts on neither', async () => {
+    it('reports a located ref stale once a second element matches it, and acts on neither', async () => {
       await inAttempt('amb1', async () => {
         await engine.session!.open!(`${app.url}/`, operation('amb1'));
         const page = pageOf(engine);
@@ -704,8 +703,7 @@ describe('web engine lifecycle', () => {
       });
     });
 
-    // Missing in BiDi: a drag whose drop target turns ambiguous after the press completes instead of failing ACTION_MAY_HAVE_COMMITTED.
-    it.skip('reports a drag whose drop target turns ambiguous after the press as possibly committed', async () => {
+    it('reports a drag whose drop target turns ambiguous after the press as possibly committed', async () => {
       await inAttempt('amb2', async () => {
         await engine.session!.open!(`${app.url}/`, operation('amb2'));
         const page = pageOf(engine);
@@ -750,8 +748,7 @@ describe('web engine lifecycle', () => {
       });
     });
 
-    // Missing in BiDi: a swipe on a node with no box succeeds instead of failing NOT_ACTIONABLE.
-    it.skip('refuses to swipe a node with no box even when its child is under aim', async () => {
+    it('refuses to swipe a node with no box even when its child is under aim', async () => {
       await inAttempt('dc2', async () => {
         await engine.session!.open!(`${app.url}/`, operation('dc2'));
         const page = pageOf(engine);

@@ -15,11 +15,16 @@ function ownWords(cause: unknown): string | undefined {
   return undefined;
 }
 
-/** Maps a failure onto the engine error contract: classified errors pass, a gone node or document is retryable `NODE_STALE`. */
-export function classify(cause: unknown, label: string): Error {
+/**
+ * Maps a failure onto the engine error contract: classified errors pass, a
+ * gone node or document is retryable `NODE_STALE`. Not for a call that runs
+ * the test's own code (`testCode`): repeating it would run that code again,
+ * so a document gone under it is an engine fault.
+ */
+export function classify(cause: unknown, label: string, testCode = false): Error {
   if (isClassified(cause)) return cause;
   const text = message(cause);
-  if (STALE_PATTERN.test(ownWords(cause) ?? '')) {
+  if (!testCode && STALE_PATTERN.test(ownWords(cause) ?? '')) {
     return new EngineError('NODE_STALE', `${label}: ${text}`, { retryable: true, cause });
   }
   return new EngineError('ENGINE_FAILURE', `${label}: ${text}`, { retryable: false, cause });

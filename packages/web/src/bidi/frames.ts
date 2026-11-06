@@ -21,6 +21,8 @@ import { chainParts, cssChains, type CssStep } from './selector-tokens.ts';
 export interface NodeTarget {
   readonly element: ElementRef;
   readonly context: string;
+  /** The expression that located the element as its only match, which an action checks still matches it alone. */
+  readonly locator?: LocatorExpression;
 }
 
 type Rect = NonNullable<SemanticNode['rect']>;

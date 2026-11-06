@@ -97,8 +97,12 @@ export class BidiSurface {
   private headed = false;
   private readonly owners = new ContextOwners();
   private unrouteEvents: () => void = () => undefined;
-  /** The launch or attach in flight, which a caller that gave up leaves running and `dispose` waits out. */
-  private acquiring: Promise<BidiBrowser> | undefined;
+  /**
+   * The launch or attach in flight, which `dispose` waits out. A launch
+   * outlives a caller that gave up; an attach is bound to its caller's
+   * `signal` and never publishes a browser once that aborted.
+   */
+  private acquiring: { readonly browser: Promise<BidiBrowser>; readonly signal: AbortSignal | undefined } | undefined;
   /** Set by `dispose`: a launch that finishes after it closes its browser instead of publishing it. */
   private disposed = false;
 
@@ -166,20 +170,43 @@ export class BidiSurface {
    */
   private async acquireBrowser(signal: AbortSignal): Promise<BidiBrowser> {
     if (this.browser !== undefined && !this.browser.connection.isClosed) return this.browser;
-    if (signal.aborted) throw cancelled('browser launch cancelled');
-    this.acquiring ??= this.launch().finally(() => {
-      this.acquiring = undefined;
-    });
-    return raceAbort(this.acquiring, signal, 'browser launch');
+    const verb = this.attaches ? 'connect' : 'launch';
+    if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
+    // An attach its caller gave up never publishes; it settles before the next one starts.
+    if (this.acquiring?.signal?.aborted === true) await releaseQuietly(this.acquiring.browser);
+    if (this.acquiring === undefined) {
+      const bound = this.attaches ? signal : undefined;
+      this.acquiring = {
+        signal: bound,
+        browser: this.launch(bound).finally(() => {
+          this.acquiring = undefined;
+        }),
+      };
+    }
+    try {
+      return await raceAbort(this.acquiring.browser, signal, `browser ${verb}`);
+    } catch (cause) {
+      throw classify(cause, `browser ${verb} failed`);
+    }
   }
 
-  /** Closes a browser that went away, opens the next, subscribes it, and publishes it unless the surface was disposed meanwhile. */
-  private async launch(): Promise<BidiBrowser> {
+  /** Whether the browser is attached to over CDP rather than launched here. */
+  private get attaches(): boolean {
+    return this.options.cdpEndpoint !== undefined || this.options.leases !== undefined;
+  }
+
+  /**
+   * Closes a browser that went away, opens the next, subscribes it, and
+   * publishes it unless the surface was disposed or the attach's `signal`
+   * aborted meanwhile.
+   */
+  private async launch(signal: AbortSignal | undefined): Promise<BidiBrowser> {
     const stale = this.browser;
     this.browser = undefined;
     this.unrouteEvents();
     if (stale !== undefined) await releaseQuietly(stale.close());
-    const browser = await this.openBrowser(AbortSignal.timeout(BROWSER_LAUNCH_TIMEOUT_MS));
+    const timeout = AbortSignal.timeout(BROWSER_LAUNCH_TIMEOUT_MS);
+    const browser = await this.openBrowser(signal === undefined ? timeout : AbortSignal.any([signal, timeout]));
     try {
       await withTimeout(
         browser.connection.send('session.subscribe', { events: [...SESSION_EVENTS] }),
@@ -187,6 +214,7 @@ export class BidiSurface {
         () => new EngineError('OPERATION_TIMEOUT', `the browser did not take its event subscription within ${BROWSER_LAUNCH_TIMEOUT_MS}ms`, { retryable: false }),
       );
       if (this.disposed) throw cancelled('the engine was disposed while its browser launched');
+      if (signal?.aborted === true) throw cancelled('browser connect cancelled');
     } catch (cause) {
       await releaseQuietly(browser.close());
       throw cause;
@@ -205,9 +233,9 @@ export class BidiSurface {
   /** A local launch, or an attach over CDP to the `connect` endpoint, the attempt's lease, or the worker's. */
   private async openBrowser(signal: AbortSignal): Promise<BidiBrowser> {
     const { cdpEndpoint, leases } = this.options;
-    if (cdpEndpoint !== undefined) return connectBidiOverCdp(await cdpEndpoint(signal), BROWSER_LAUNCH_TIMEOUT_MS);
-    if (this.attemptEndpoint !== undefined) return connectBidiOverCdp(this.attemptEndpoint, BROWSER_LAUNCH_TIMEOUT_MS);
-    if (leases !== undefined) return connectBidiOverCdp(await leases.endpoint(signal), BROWSER_LAUNCH_TIMEOUT_MS);
+    if (cdpEndpoint !== undefined) return attach('connect.cdpEndpoint', await cdpEndpoint(signal), signal);
+    if (this.attemptEndpoint !== undefined) return attach('the browser provider', this.attemptEndpoint, signal);
+    if (leases !== undefined) return attach('the browser provider', await leases.endpoint(signal), signal);
     return launchBidiBrowser(this.options.browser, { headed: this.headed, timeoutMs: BROWSER_LAUNCH_TIMEOUT_MS, firefoxPrefs: firefoxMediaPrefs(this.options.media) });
   }
 
@@ -229,13 +257,8 @@ export class BidiSurface {
       const lease = await this.options.leases!.startAttempt(context);
       this.attemptEndpoint = lease.cdpEndpoint;
     }
-    let browser: BidiBrowser;
-    try {
-      browser = await this.acquireBrowser(context.signal);
-    } catch (cause) {
-      // The lease stays the attempt's: `endAttempt` gives it back.
-      throw this.perAttempt ? classify(cause, 'attaching to the leased browser') : cause;
-    }
+    // On failure the lease stays the attempt's: `endAttempt` gives it back.
+    const browser = await this.acquireBrowser(context.signal);
     const session = new BidiSession(
       browser,
       this.settings,
@@ -310,7 +333,7 @@ export class BidiSurface {
   async dispose(context: EngineCleanupContext): Promise<void> {
     this.disposed = true;
     const results = await Promise.allSettled([this.endAttempt(context)]);
-    if (this.acquiring !== undefined) await releaseQuietly(withinCleanupBudget(this.acquiring, context));
+    if (this.acquiring !== undefined) await releaseQuietly(withinCleanupBudget(this.acquiring.browser, context));
     const browser = this.browser;
     this.browser = undefined;
     if (browser !== undefined) results.push(...(await Promise.allSettled([boundedCleanup(browser.close(), context, 'browser close')])));
@@ -338,7 +361,7 @@ export class BidiSurface {
     operation: OperationContext,
     label: string,
     work: (session: BidiSession, budget: { readonly signal: AbortSignal; readonly timeoutMs: number }) => Promise<T>,
-    kind: { readonly input?: boolean; readonly sensitive?: string; readonly traced?: boolean } = {},
+    kind: { readonly input?: boolean; readonly sensitive?: string; readonly traced?: boolean; readonly testCode?: boolean } = {},
   ): Promise<T> {
     this.session?.latch.throwPending();
     const session = this.session;
@@ -347,8 +370,10 @@ export class BidiSurface {
     try {
       result = await withOperationDeadline(operation, label, (remaining) => work(this.requireSession(), remaining()));
     } catch (cause) {
+      // A handler error latched while the operation ran is its cause: a route that refused its own arguments aborts the request the step waited on.
+      session?.latch.throwPending();
       const dispatched = kind.input === true && session !== undefined && session.dispatches !== dispatches;
-      throw afterDispatch(classify(cause, label), label, dispatched, kind.sensitive);
+      throw afterDispatch(classify(cause, label, kind.testCode), label, dispatched, kind.sensitive);
     }
     if (kind.traced === true && session !== undefined) await traceScreen(session, operation.signal);
     return result;
@@ -458,7 +483,7 @@ export class BidiSurface {
 
   /** Calls a compiled page function (`compileEvaluation`) with `arg` and returns its whole result. */
   evaluate(declaration: string, arg: PageArgument | undefined, operation: OperationContext): Promise<PageValue> {
-    return this.guard(operation, 'evaluate', (session) => session.call(declaration, arg === undefined ? [] : [arg], { awaitPromise: true, maxObjectDepth: null }));
+    return this.guard(operation, 'evaluate', (session) => session.call(declaration, arg === undefined ? [] : [arg], { awaitPromise: true, maxObjectDepth: null }), { testCode: true });
   }
 
   /** Runs `source` in every document the attempt opens from now on. */
@@ -631,6 +656,19 @@ function boundedCleanup(work: Promise<unknown>, budget: EngineCleanupContext, la
     budget.timeoutMs,
     () => new EngineError('OPERATION_TIMEOUT', `${label} did not finish within ${budget.timeoutMs}ms`, { retryable: false }),
   );
+}
+
+/**
+ * Attaches over CDP to the endpoint `source` resolved, unless `signal`
+ * aborted while it resolved; an empty endpoint is refused by the name of
+ * its source.
+ */
+function attach(source: string, endpoint: unknown, signal: AbortSignal): Promise<BidiBrowser> {
+  if (signal.aborted) throw cancelled('browser connect cancelled');
+  if (typeof endpoint !== 'string' || endpoint.trim() === '') {
+    throw new EngineError('ENGINE_FAILURE', `${source} resolved to an empty CDP endpoint`, { retryable: false });
+  }
+  return connectBidiOverCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS);
 }
 
 /** Firefox preferences that set the configured media features for every page, since Firefox before 159 has no BiDi media override. */

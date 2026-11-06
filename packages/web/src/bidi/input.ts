@@ -291,17 +291,17 @@ export function dragStepMs(durationMs: number): number {
   return Math.round(durationMs / DRAG_STEPS);
 }
 
-/** The source that presses at `from`, moves to `to` over `durationMs`, and releases there. */
-export function dragSources(from: { x: number; y: number }, to: { x: number; y: number }, durationMs = 0): Input.SourceActions[] {
+/** The sources of a drag: `press` presses at `from`; `release` then moves to `to` over `durationMs` and releases there. */
+export function dragSources(from: { x: number; y: number }, to: { x: number; y: number }, durationMs = 0): { press: Input.SourceActions[]; release: Input.SourceActions[] } {
   const step = dragStepMs(durationMs);
   const [start, ...steps] = dragPath(from, to);
-  const pointer: Input.PointerSourceAction[] = [
-    { type: 'pointerMove', x: start!.x, y: start!.y, origin: 'viewport' },
-    { type: 'pointerDown', button: 0 },
-    ...steps.map((point) => ({ type: 'pointerMove' as const, x: point.x, y: point.y, origin: 'viewport' as const, ...(step > 0 ? { duration: step } : {}) })),
-    { type: 'pointerUp', button: 0 },
-  ];
-  return [mouse(pointer)];
+  return {
+    press: [mouse([{ type: 'pointerMove', x: start!.x, y: start!.y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }])],
+    release: [mouse([
+      ...steps.map((point) => ({ type: 'pointerMove' as const, x: point.x, y: point.y, origin: 'viewport' as const, ...(step > 0 ? { duration: step } : {}) })),
+      { type: 'pointerUp', button: 0 },
+    ])],
+  };
 }
 
 /** The source of one wheel gesture at a viewport point. */

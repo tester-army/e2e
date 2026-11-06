@@ -139,8 +139,7 @@ describe.each(KINDS)('for the %s', (kind) => {
     expect(await page.getAttribute('#toggle', 'aria-checked')).toBe('false');
   });
 
-  // Missing in BiDi: the failure does not say the control was replaced before its state changed.
-  it.skip('fails a rejected click on a control a later re-render replaces', async () => {
+  it('fails a rejected click on a control a later re-render replaces', async () => {
     await page.setContent(`
       <div id="terms"><label><input type="checkbox" id="box" onclick="event.preventDefault();
         setTimeout(() => { document.getElementById('terms').innerHTML = '<label><input type=checkbox id=box>Agree</label>'; }, 300)">Agree</label></div>`);
@@ -164,7 +163,6 @@ describe.each(KINDS)('for the %s', (kind) => {
     expect(await clicks()).toBe(0);
   });
 
-  // Missing in BiDi: uncheck refuses an ARIA radio instead of clicking it.
   it('unchecks an ARIA radio by clicking it, leaving the radio behavior to its script', async () => {
     await page.setContent(`
       <div role="radio" id="pro" aria-checked="true" tabindex="0"

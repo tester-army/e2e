@@ -55,8 +55,7 @@ describe('web({ connect })', () => {
 });
 
 describe('CDP attach at init', () => {
-  // Missing in BiDi: an empty cdpEndpoint is attached to instead of refused by name.
-  it.skip('fails init with ENGINE_FAILURE when the endpoint resolves empty, without touching a browser', async () => {
+  it('fails init with ENGINE_FAILURE when the endpoint resolves empty, without touching a browser', async () => {
     const empty = web({ connect: { cdpEndpoint: () => '   ' } });
     await expect(empty.init!(initInfo())).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
@@ -65,8 +64,7 @@ describe('CDP attach at init', () => {
     });
   });
 
-  // Missing in BiDi: a throwing cdpEndpoint resolver escapes init unclassified instead of as ENGINE_FAILURE.
-  it.skip('fails init with ENGINE_FAILURE when the resolver throws, naming its failure', async () => {
+  it('fails init with ENGINE_FAILURE when the resolver throws, naming its failure', async () => {
     const throwing = web({
       connect: {
         cdpEndpoint: () => {
@@ -80,8 +78,7 @@ describe('CDP attach at init', () => {
     });
   });
 
-  // Missing in BiDi: init cancels as CANCELLED but never aborts the signal it handed the resolver.
-  it.skip('hands the init signal to the resolver and cancels promptly while it is still pending', async () => {
+  it('hands the init signal to the resolver and cancels promptly while it is still pending', async () => {
     const controller = new AbortController();
     let seen: AbortSignal | undefined;
     const engine = web({
