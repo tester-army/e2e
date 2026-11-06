@@ -57,6 +57,10 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/e2e/browsers
+          key: e2e-browsers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Install browsers
         run: pnpm exec e2e-web install chromium --with-deps
@@ -91,7 +95,8 @@ jobs:
 
 `npx e2e` runs the version the lockfile installs. The
 [install command](/reference/web#installing-browsers) downloads the browser
-builds the engine pins, with their system libraries. A
+builds the engine pins, with their system libraries; the cache step skips the
+download until the lockfile changes. A
 test that passed on retry keeps its failed attempt's evidence in the upload.
 
 ## iOS and Android

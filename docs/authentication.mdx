@@ -1,5 +1,5 @@
 ---
-title: Signing in
+title: Authentication
 description: Sign in once, reuse the session across tests, and pass secrets without exposing them to the model.
 "og:image": "https://e2e.com/docs/images/og/authentication.png?v=6e061842b8"
 "twitter:image": "https://e2e.com/docs/images/og/authentication.png?v=6e061842b8"
@@ -11,7 +11,9 @@ handles: the runner types the value and shows `<secret:name>` in its place
 in model input and reports, with
 [some limits](/reference/security#where-redaction-stops).
 
-## Sign in once in a setup test
+<a id="sign-in-once-in-a-setup-test" />
+
+## Reuse authenticated sessions
 
 Save the session in a `test.setup` body. Restore it with the `session`
 option. The runner runs the setup a test needs, even when you select only

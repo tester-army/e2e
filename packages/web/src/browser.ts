@@ -325,6 +325,20 @@ export interface ExpectationDeps {
   readonly context: EngineFixtureContext;
 }
 
+/**
+ * The expected URL as `toHaveURL` compares it: a string resolved against the
+ * base, the way `urlMatches` resolves it, so it reads beside the absolute
+ * observed URL. A string that does not parse, and a RegExp, print as written.
+ */
+function describeExpectedUrl(expected: string | RegExp, baseHref: string): string {
+  if (typeof expected !== 'string') return String(expected);
+  try {
+    return new URL(expected, baseHref).href;
+  } catch {
+    return expected;
+  }
+}
+
 /** One read of a browser matcher poll: whether the condition holds (undefined: not evaluable yet), and what was seen. */
 interface BrowserSample {
   readonly matches: boolean | undefined;
@@ -375,11 +389,10 @@ export function createBrowserExpectation(deps: ExpectationDeps, negated = false)
       if (ignoreCase !== undefined && typeof ignoreCase !== 'boolean') {
         throw new TestError('INVALID_ARGUMENT', `expect.${negated ? 'not.' : ''}toHaveURL option ignoreCase must be a boolean`);
       }
-      const label = typeof expected === 'string' ? expected : String(expected);
       const target = deps.baseHref();
       return poll(
         'toHaveURL',
-        `URL ${label}${ignoreCase === true ? ' (ignoring case)' : ''}`,
+        `URL ${describeExpectedUrl(expected, target)}${ignoreCase === true ? ' (ignoring case)' : ''}`,
         async (deadline) => {
           const url = await deps.currentUrl(deadline);
           return { matches: urlMatches(url, expected, target, ignoreCase), observed: `URL ${url}` };
