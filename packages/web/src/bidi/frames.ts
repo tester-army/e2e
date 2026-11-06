@@ -88,7 +88,7 @@ export interface SelectedElement {
  * children and `my-host .inner` reaches into it. A selector the page cannot
  * parse is `INVALID_LOCATOR`. Runs in the page.
  */
-function cssSelectAll(selector: string): { element: Element; localName: string }[] | string {
+function cssSelectAll(selector: string, scopes?: Element[]): { element: Element; localName: string }[] | string {
   type Step = { compound: string; combinator: ' ' | '>' | '+' | '~' | null };
   const split = (text: string, at: (char: string) => boolean): { parts: string[]; separators: string[] } => {
     const parts: string[] = [];
@@ -158,13 +158,21 @@ function cssSelectAll(selector: string): { element: Element; localName: string }
     document.querySelector(selector);
     const chains = split(selector, (char) => char === ',').parts.map(steps);
     const out: { element: Element; localName: string }[] = [];
-    const visit = (root: Document | ShadowRoot): void => {
+    const seen = new Set<Element>();
+    const visit = (root: Document | ShadowRoot | Element): void => {
       for (const element of root.querySelectorAll('*')) {
-        if (chains.some((chain) => matchesFrom(element, chain, chain.length - 1))) out.push({ element, localName: element.localName });
+        if (!seen.has(element) && chains.some((chain) => matchesFrom(element, chain, chain.length - 1))) {
+          seen.add(element);
+          out.push({ element, localName: element.localName });
+        }
         if (element.shadowRoot !== null) visit(element.shadowRoot);
       }
     };
-    visit(document);
+    if (scopes === undefined) visit(document);
+    else for (const scope of scopes) {
+      visit(scope);
+      if (scope.shadowRoot !== null) visit(scope.shadowRoot);
+    }
     return out;
   } catch (cause) {
     return cause instanceof Error ? cause.message : String(cause);
@@ -178,15 +186,60 @@ function cssSelectAll(selector: string): { element: Element; localName: string }
  * as Playwright's XPath does.
  */
 export async function selectElements(connection: BidiConnection, context: string, selector: string): Promise<SelectedElement[]> {
-  const locator = selectorLocator(selector);
+  const parts = chainParts(selector);
+  if (parts.slice(0, -1).some((part) => part.startsWith('*'))) {
+    throw new TestError('INVALID_LOCATOR', 'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead');
+  }
+  let selected: SelectedElement[] | undefined;
+  for (const part of parts) {
+    selected = await selectWithin(connection, context, part.replace(/^\*/, ''), selected?.map((each) => each.element), selector);
+  }
+  return selected ?? [];
+}
+
+/**
+ * The parts of a `>>` chain, each resolved inside the elements the one before
+ * it matched; a `>>` inside quotes or brackets belongs to its part.
+ */
+function chainParts(selector: string): string[] {
+  const parts: string[] = [];
+  let quote: string | null = null;
+  let depth = 0;
+  let start = 0;
+  for (let index = 0; index < selector.length; index += 1) {
+    const char = selector[index]!;
+    if (quote !== null) {
+      if (char === '\\') index += 1;
+      else if (char === quote) quote = null;
+    } else if (char === '"' || char === "'") quote = char;
+    else if (char === '[' || char === '(') depth += 1;
+    else if (char === ']' || char === ')') depth -= 1;
+    else if (depth === 0 && selector.startsWith('>>', index)) {
+      parts.push(selector.slice(start, index).trim());
+      start = index + 2;
+      index += 1;
+    }
+  }
+  parts.push(selector.slice(start).trim());
+  return parts;
+}
+
+/** The elements one chain part matches: in the document, or inside `scopes` (descendants, open shadow roots included). */
+async function selectWithin(connection: BidiConnection, context: string, part: string, scopes: readonly ElementRef[] | undefined, selector: string): Promise<SelectedElement[]> {
+  if (scopes !== undefined && scopes.length === 0) return [];
+  const locator = selectorLocator(part);
   if (locator.type === 'css') {
-    const found = await callFunction(connection, context, cssSelectAll, [locator.value], { maxObjectDepth: null });
+    const found = await callFunction(connection, context, cssSelectAll, scopes === undefined ? [locator.value] : [locator.value, [...scopes]], { maxObjectDepth: null });
     if (typeof found === 'string') throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: ${found}`);
     if (!isSelection(found)) throw new EngineError('ENGINE_FAILURE', `selector ${selector} read an unexpected value`, { retryable: false });
     return found;
   }
   try {
-    const { nodes } = await connection.send('browsingContext.locateNodes', { context, locator });
+    const { nodes } = await connection.send('browsingContext.locateNodes', {
+      context,
+      locator,
+      ...(scopes === undefined ? {} : { startNodes: scopes.map((scope) => ({ sharedId: scope.sharedId })) as [{ sharedId: string }, ...{ sharedId: string }[]] }),
+    });
     return nodes.flatMap((node) => (node.sharedId === undefined ? [] : [{ element: new ElementRef(node.sharedId), localName: node.value?.localName ?? '' }]));
   } catch (cause) {
     if (cause instanceof BidiError && cause.error === 'invalid selector') {

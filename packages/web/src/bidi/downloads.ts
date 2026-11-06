@@ -80,11 +80,19 @@ export class AttemptDownloads {
       check();
     });
     const deadline = AbortSignal.timeout(timeoutMs);
+    const startedAt = Date.now();
+    let triggerMs: number | undefined;
+    const triggered = trigger().then(() => {
+      triggerMs = Date.now() - startedAt;
+    });
     try {
-      await raceAbort(Promise.all([trigger(), done]), AbortSignal.any([signal, deadline]), 'download');
+      await raceAbort(Promise.all([triggered, done]), AbortSignal.any([signal, deadline]), 'download');
     } catch (cause) {
       if (deadline.aborted && !signal.aborted) {
-        throw new TestError('ACTION_FAILED', `${count === 1 ? 'no download' : `fewer than ${count} downloads`} finished within ${timeoutMs}ms`);
+        if (triggerMs === undefined) throw new TestError('ACTION_FAILED', `the download trigger did not resolve within ${timeoutMs}ms`);
+        throw new TestError('ACTION_FAILED', started.length < count
+          ? `${count === 1 ? 'no download' : `${started.length} of ${count} downloads`} started within ${timeoutMs}ms; the trigger resolved after ${triggerMs}ms`
+          : `${count === 1 ? 'the download' : `${count} downloads`} did not finish within ${timeoutMs}ms`);
       }
       throw cause;
     } finally {

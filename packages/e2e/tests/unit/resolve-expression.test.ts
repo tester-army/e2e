@@ -80,6 +80,13 @@ describe('resolveExpression', () => {
     expect(resolveExpression(filtered, SETTINGS, { hasText: () => false })).toEqual([]);
   });
 
+  it('orders matches, and counts nth, by the engine\'s order when it gives one', () => {
+    const items = query('role', 'listitem');
+    const reversed = (a: SemanticNode, b: SemanticNode): number => (a.ref.id < b.ref.id ? 1 : -1);
+    expect(resolveExpression(items, SETTINGS, { order: reversed }).map((match) => match.ref.id)).toEqual(['scroller', 'about']);
+    expect(resolveExpression({ kind: 'index', source: items, index: 0 }, SETTINGS, { order: reversed }).map((match) => match.ref.id)).toEqual(['scroller']);
+  });
+
   it('answers role queries with name filters and skips hidden nodes', () => {
     expect(ids(query('role', 'button'))).toEqual(['back']);
     expect(ids(query('role', 'button', { name: exact('Back') }))).toEqual(['back']);

@@ -158,10 +158,25 @@ export const LOCATE_READ = `(options, wants, key, structured) => {
     }
   });
   const nodes = read(document.documentElement, { ...base, mode: { kind: 'nodes', elements } });
+  // Playwright's engines list a root's light-DOM elements before the content of its shadow roots, each root in turn.
+  const rank = new Map();
+  const rankRoot = (children) => {
+    const shadows = [];
+    const walk = (element) => {
+      rank.set(element, rank.size);
+      const shadow = element.shadowRoot ?? recorded?.get(element);
+      if (shadow) shadows.push(shadow);
+      for (const child of element.children) walk(child);
+    };
+    for (const child of children) walk(child);
+    for (const shadow of shadows) rankRoot(shadow.children);
+  };
+  rankRoot([document.documentElement]);
+  const order = elements.map((element) => rank.get(element) ?? 0);
   const valued = elements.map((element) => element.matches('input:not([type="checkbox" i]):not([type="radio" i]), textarea, select'));
   const aria = (${playwrightAria.toString()})(elements, nodes.map((node) => node.role));
-  if (structured) return [{ nodes, parents, valued, aria }, elements];
-  return [${NATIVE_JSON} ? JSON.stringify({ nodes, parents, valued, aria }) : null, elements];
+  if (structured) return [{ nodes, parents, valued, aria, order }, elements];
+  return [${NATIVE_JSON} ? JSON.stringify({ nodes, parents, valued, aria, order }) : null, elements];
 }`;
 
 
@@ -195,6 +210,8 @@ export interface LocateMetadata {
   readonly parents: number[];
   readonly valued: boolean[];
   readonly aria: PlaywrightAria[];
+  /** Each element's place in Playwright's match order (a root's light DOM before its shadow roots). */
+  readonly order: number[];
 }
 
 /**

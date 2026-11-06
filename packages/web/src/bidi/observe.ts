@@ -120,8 +120,8 @@ export async function locate(session: BidiSession, expression: LocatorExpression
   let [metadata, elements] = await readLocated(false);
   if (metadata === null) [metadata, elements] = await readLocated(true);
   // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported reads; the alignment below is checked
-  const { nodes, parents, valued, aria } = typeof metadata === 'string' ? (JSON.parse(metadata) as LocateMetadata) : (metadata as LocateMetadata);
-  if (!Array.isArray(nodes) || !Array.isArray(parents) || !Array.isArray(valued) || !Array.isArray(aria) || [parents, valued, aria, elements].some((list) => list.length !== nodes.length)) {
+  const { nodes, parents, valued, aria, order } = typeof metadata === 'string' ? (JSON.parse(metadata) as LocateMetadata) : (metadata as LocateMetadata);
+  if (!Array.isArray(nodes) || !Array.isArray(parents) || !Array.isArray(valued) || !Array.isArray(aria) || !Array.isArray(order) || [parents, valued, aria, order, elements].some((list) => list.length !== nodes.length)) {
     throw new EngineError('ENGINE_FAILURE', 'located reads do not align with their elements', { retryable: false });
   }
   if (frameHidden) {
@@ -134,9 +134,11 @@ export async function locate(session: BidiSession, expression: LocatorExpression
   const ids = nodes.map((_node, index) => `n${first + index}`);
   const sharedIds = new Map(ids.map((id, index) => [id, elements[index]!.sharedId]));
   const reads = new Map(ids.map((id, index) => [id, { labels: nodes[index]!.labels ?? [], valued: valued[index]!, aria: aria[index]! }]));
+  const ranks = new Map(ids.map((id, index) => [id, order[index]!]));
   const matches = resolveExpression(inner, buildForest(nodes, parents, ids), {
     matches: (node, query) => playwrightMatches(node, query, reads.get(node.ref.id)),
     hasText: (node, pattern) => matchesText(reads.get(node.ref.id)?.aria.text ?? '', pattern),
+    order: (a, b) => (ranks.get(a.ref.id) ?? 0) - (ranks.get(b.ref.id) ?? 0),
     selector: (selector, candidates) => {
       const hits = selected.get(selector) ?? new Set<string>();
       return candidates.filter((node) => hits.has(sharedIds.get(node.ref.id) ?? ''));
@@ -188,7 +190,7 @@ function playwrightMatches(node: SemanticNode, query: SemanticQuery, read: Locat
       return read.valued && node.value !== undefined && matchesText(node.value, query.value);
     case 'role': {
       if (query.value.kind !== 'string' || (node.role ?? '') !== query.value.value || read.aria.hidden) return false;
-      if (query.name !== undefined && !matchesText(node.name ?? '', query.name)) return false;
+      if (query.name !== undefined && !matchesText(roleQueryName(node, read), query.name)) return false;
       const states = query.states ?? {};
       if (states.checked !== undefined && read.aria.checked !== states.checked) return false;
       if (states.pressed !== undefined && read.aria.pressed !== states.pressed) return false;
@@ -200,6 +202,22 @@ function playwrightMatches(node: SemanticNode, query: SemanticQuery, read: Locat
     default:
       return undefined;
   }
+}
+
+/** Roles the tree names from their content so a row reads as one line, which Playwright's accessible name leaves unnamed. */
+const TREE_CONTENT_NAMED = new Set(['listitem', 'status', 'alert']);
+
+/**
+ * The name a role query compares: the reader's, except the content name the
+ * tree gives a role accname does not name from content (a name equal to the
+ * element's own text, with no authored label), which Playwright leaves empty.
+ */
+function roleQueryName(node: SemanticNode, read: LocatedRead | undefined): string {
+  const name = node.name ?? '';
+  if (!TREE_CONTENT_NAMED.has(node.role ?? '') || read === undefined) return name;
+  const authored = ['aria-label', 'aria-labelledby', 'title'].some((attribute) => (node.attributes?.[attribute] ?? '').trim() !== '');
+  const squash = (text: string): string => text.replace(/\s+/g, ' ').trim();
+  return !authored && squash(name) === squash(read.aria.text) ? '' : name;
 }
 
 /** The shared ids every `selector` in the expression matches in `context`, read before the elements so one pass answers them all. */

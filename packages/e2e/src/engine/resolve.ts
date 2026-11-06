@@ -34,6 +34,12 @@ export interface ResolveExpressionOptions {
   readonly matches?: (node: SemanticNode, query: SemanticQuery) => boolean | undefined;
   /** Whether a `filter({ hasText })` keeps `node`, for the same kind of platform; without it, any text of the node or a descendant counts. */
   readonly hasText?: (node: SemanticNode, pattern: TextPattern) => boolean;
+  /**
+   * The order matches come in, and `nth` counts by, for a platform whose own
+   * engine orders them otherwise than the tree (a browser lists light-DOM
+   * matches before shadow-root ones); without it, tree order.
+   */
+  readonly order?: (a: SemanticNode, b: SemanticNode) => number;
 }
 
 /**
@@ -58,7 +64,7 @@ export function resolveExpression(
   options: ResolveExpressionOptions = {},
 ): SemanticNode[] {
   const tree = indexTree(nodes);
-  return resolve(expression, tree.all, tree, options);
+  return resolve(expression, options.order === undefined ? tree.all : tree.all.toSorted(options.order), tree, options);
 }
 
 /** Every node of a tree in document order, with the parent of each. */

@@ -356,7 +356,7 @@ export class BidiSession {
 
   /** The attempt's tab; `INVALID_STATE` before the first open. */
   requireContext(): string {
-    if (this.context === undefined) throw invalidState('no page is open yet: open the app first');
+    if (this.context === undefined) throw invalidState('no app page is open; call app.open() or browser.goto() first');
     return this.context;
   }
 
@@ -397,8 +397,10 @@ export class BidiSession {
 
   /** Resizes the tab, and every tab the attempt opens after it, to `size`. */
   async setViewport(size: ViewportSize): Promise<void> {
-    this.viewport = size;
-    await this.connection.send('browsingContext.setViewport', { context: await this.ensureContext(), viewport: size });
+    this.viewport = { width: size.width, height: size.height };
+    // Before the first page the size is only kept: the tab opens at it, and no page opens early.
+    if (this.context === undefined) return;
+    await this.connection.send('browsingContext.setViewport', { context: this.context, viewport: this.viewport });
   }
 
   /** Closes the tab and every tab the app opened, keeping the user context's storage, as a restart closes every page. */

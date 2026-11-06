@@ -1607,6 +1607,9 @@ async locate(expression) {
 - The `hasText` option `(node, pattern) => boolean` decides a
   `filter({ hasText })`. Without it, the text of the node or any descendant
   counts.
+- The `order` option `(a, b) => number` sorts the matches, and the position
+  `nth` counts by, by the platform's own order, such as a browser listing
+  light-DOM matches before shadow-root ones. Without it, tree order.
 - A `frame` expression is `FRAME_NOT_FOUND`.
 - A `union` expression matches either branch in document order, without duplicate nodes.
 

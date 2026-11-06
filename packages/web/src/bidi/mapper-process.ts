@@ -78,7 +78,7 @@ function installDisposableStack(): void {
       if (this.#disposed) return;
       this.#disposed = true;
       const errors: unknown[] = [];
-      for (const cleanup of this.#cleanups.reverse()) {
+      for (const cleanup of this.#cleanups.toReversed()) {
         try {
           cleanup();
         } catch (error) {
