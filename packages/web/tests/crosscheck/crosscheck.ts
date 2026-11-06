@@ -37,9 +37,6 @@ export interface CrossCheckResult {
 /** Engine roles never compared: structure and text the tree keeps for the model, with no ARIA counterpart. */
 const STRUCTURAL_ROLES = new Set(['document', 'text', 'generic', 'none', 'presentation']);
 
-/** The vocabulary spells a few ARIA roles its own way. */
-const ARIA_ROLE: Readonly<Record<string, string>> = { image: 'img' };
-
 /*
  * Deliberate differences. Each is a choice the tree makes for the model, kept
  * here with its reason rather than repeated per page in `expected.txt`, so

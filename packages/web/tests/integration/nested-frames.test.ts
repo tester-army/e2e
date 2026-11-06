@@ -99,8 +99,8 @@ describe('nested frame locators', () => {
         y += box.y + frame.clientTop + Number.parseFloat(style.paddingTop);
         doc = frame.contentDocument!;
       }
-      const button = doc.querySelector('button')!.getBoundingClientRect();
-      return { x: x + button.x, y: y + button.y, width: button.width, height: button.height };
+      const box = doc.querySelector('button')!.getBoundingClientRect();
+      return { x: x + box.x, y: y + box.y, width: box.width, height: box.height };
     }))!;
     for (const key of ['x', 'y', 'width', 'height'] as const) expect(node!.rect![key]).toBeCloseTo(expected[key], 3);
   });
