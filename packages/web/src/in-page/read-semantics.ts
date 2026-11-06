@@ -1114,8 +1114,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const isDrawnByLabel = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
     if (!(el instanceof HTMLInputElement) || (el.type !== 'checkbox' && el.type !== 'radio')) return false;
-    if (style?.visibility !== 'visible' || isInClosedDetails(el) || isSkippedContent(el)) return false;
-    return [...(el.labels ?? [])].some((label) => !isHidden(label));
+    if (style?.visibility !== 'visible' || isSkippedContent(el)) return false;
+    return associatedLabels(el).some((label) => !isHidden(label));
   };
 
   /**
