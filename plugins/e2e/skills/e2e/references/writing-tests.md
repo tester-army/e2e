@@ -520,9 +520,11 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `alert`, `confirm`, `prompt`, or `beforeunload`, `accept` taking the prompt
   text; no handler, or one that neither accepts nor dismisses, fails the
   next step with `INVALID_STATE`. A throwing handler's unanswered dialog is
-  dismissed too, and its error fails the next step. A dialog an agent step's
-  own action opens is answered for the agent instead (accepted, a prompt
-  dismissed); scripted steps still need the handler.
+  dismissed too, and its error fails the next step. With no handler, a
+  dialog an agent step's own action opens is answered for the agent
+  instead: a prompt is dismissed, the rest accepted unseen, so a destructive
+  confirm goes through. Register `onDialog('dismiss')` first to stop that;
+  scripted steps still need a handler.
 - `waitForDownload(() => trigger, { timeout? })`: returns
   `{ path, absolutePath, suggestedFilename }`; `absolutePath` names the saved
   runner-side file for reading its contents, including with a hosted browser.

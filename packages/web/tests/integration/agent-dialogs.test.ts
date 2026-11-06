@@ -33,6 +33,15 @@ const PAGES: Readonly<Record<string, string>> = {
     <button onclick="setTimeout(() => { document.querySelector('#status').textContent = confirm('Submit the report?') ? 'submitted' : 'kept'; }, 300)">Submit later</button>
     <button onclick="fetch('/api/save').then(() => { alert('Saved'); document.querySelector('#status').textContent = 'saved'; })">Save</button>
   </body></html>`,
+  '/sync': `<!doctype html><html><body><h1>Sync</h1><p id="status" role="status">idle</p>
+    <button onclick="document.querySelector('#status').textContent = 'marked'">Mark</button>
+    <button onclick="fetch('/api/fail').catch(() => setTimeout(() => { alert('Synced'); document.querySelector('#status').textContent = 'synced'; }, 500))">Sync</button>
+    <script>
+      addEventListener('resize', () => setTimeout(() => {
+        document.querySelector('#status').textContent = confirm('Keep the narrow layout?') ? 'kept narrow' : 'reverted';
+      }, 0), { once: true });
+    </script>
+  </body></html>`,
   '/next': '<!doctype html><html><body><h1>Next</h1></body></html>',
   '/api/save': 'ok',
 };
@@ -82,6 +91,7 @@ describe('native dialogs no handler takes', () => {
         timeouts: { test: 30_000, assertion: 5_000 },
         expectable: (target: object) => target,
         fixture: (_name: string, target: object) => target,
+        attachViewport: () => undefined,
       } as unknown as EngineFixtureContext));
     } finally {
       await surface.endAttempt(cleanup()).catch(() => undefined);
@@ -150,6 +160,40 @@ describe('native dialogs no handler takes', () => {
       await surface.perform((await find('agent', button('Save'))).ref, { kind: 'tap' }, operation('agent'));
       await expect.poll(() => status('agent'), { timeout: 5_000 }).toBe('saved');
       expect(log.map((entry) => entry.text)).toEqual(['alert dialog "Saved" accepted for the agent']);
+    });
+  });
+
+  it("fails a test's next step on a dialog its viewport change opened, though an agent acted before it", async () => {
+    await attempt(async (browser) => {
+      await surface.open(`${url}/sync`, operation('agent'));
+      await surface.perform((await find('agent', button('Mark'))).ref, { kind: 'tap' }, operation('agent'));
+      await browser.setViewport({ width: 500, height: 600 });
+      await expect
+        .poll(() => surface.observe(operation('agent')).then(() => 'read', (error: { code?: string }) => error.code), { timeout: 5_000 })
+        .toBe('INVALID_STATE');
+      expect(await status('test')).toBe('reverted');
+      expect(log).toEqual([]);
+    });
+  });
+
+  it('leaves a dialog with the agent when the next operation is refused before it runs', async () => {
+    await attempt(async (browser) => {
+      let failed!: () => void;
+      const routed = new Promise<void>((resolve) => {
+        failed = resolve;
+      });
+      await browser.route('**/api/fail', () => {
+        failed();
+        throw new Error('route handler failed on purpose');
+      });
+      await surface.open(`${url}/sync`, operation('agent'));
+      await surface.perform((await find('agent', button('Sync'))).ref, { kind: 'tap' }, operation('agent'));
+      await routed;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // The handler's failure is pending, so this test action is refused before it runs and takes no dialog.
+      await expect(browser.evaluate('1')).rejects.toThrow(/route handler failed on purpose/);
+      await expect.poll(() => status('agent'), { timeout: 5_000 }).toBe('synced');
+      expect(log.filter((entry) => entry.source === 'system').map((entry) => entry.text)).toEqual(['alert dialog "Synced" accepted for the agent']);
     });
   });
 

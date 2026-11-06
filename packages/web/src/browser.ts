@@ -743,7 +743,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       return surface.guard(context.operation(), 'clearCookies', () => surface.requireContext().clearCookies(options));
     },
     setViewport: (size) =>
-      surface.guard(context.operation(), 'setViewport', async () => {
+      surface.guardAction(context.operation(), 'setViewport', async () => {
         await surface.setViewport(size);
         context.attachViewport({ width: size.width, height: size.height, scale: 1 });
       }),
@@ -758,7 +758,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       }
       // Read once, so a test that changes its object later changes nothing here.
       const requested = obj({ colorScheme: media.colorScheme, reducedMotion: media.reducedMotion });
-      await surface.guard(context.operation(), 'emulateMedia', () => surface.emulateMedia(requested));
+      await surface.guardAction(context.operation(), 'emulateMedia', () => surface.emulateMedia(requested));
     },
     // Async so the harness records the registration as a `browser.onDialog` step.
     async onDialog(handler: DialogHandler) {

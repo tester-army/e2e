@@ -718,10 +718,12 @@ export class PlaywrightSurface {
   }
 
   /**
-   * `guard` for an operation that acts on the page (a navigation, input, or
-   * a script) rather than reading it. Its author owns the dialogs that open
-   * after it until the next action: one no handler takes is answered when
-   * the author is an agent step, the step replayed from the cache included.
+   * `guard` for an operation that acts on the page (a navigation, input, a
+   * script, or a viewport or media change) rather than reading it. Once it
+   * runs, its author owns the dialogs that open after it until the next
+   * action: one no handler takes is answered when the author is an agent
+   * step, the step replayed from the cache included. An operation `guard`
+   * refuses before it runs takes nothing.
    */
   guardAction<T>(
     operation: OperationContext,
@@ -729,8 +731,11 @@ export class PlaywrightSurface {
     fn: (operation: OperationContext) => Promise<T>,
     translate?: (cause: unknown, label: string) => Error,
   ): Promise<T> {
-    this.actor = (operation.agentStep ?? operation.origin === 'agent') ? 'agent' : 'test';
-    return this.guard(operation, label, fn, translate);
+    const actor = (operation.agentStep ?? operation.origin === 'agent') ? 'agent' : 'test';
+    return this.guard(operation, label, (current) => {
+      this.actor = actor;
+      return fn(current);
+    }, translate);
   }
 
   // --- steering: the session hooks ---

@@ -278,7 +278,8 @@ changed on screen.
   confirm, and a leave-page dialog are accepted, and a prompt is dismissed.
   The result doesn't say so, and the test line registers no handler, so a
   test of that flow needs `browser.onDialog` first. `run_code` runs test
-  statements, so a dialog it opens fails the next call.
+  statements, so a dialog one opens fails the next statement, or the next
+  call when none follows.
 
 #### `dismiss_keyboard`
 

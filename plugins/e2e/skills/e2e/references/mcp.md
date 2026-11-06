@@ -97,8 +97,9 @@ The catalog, per session:
 
 A native dialog a grammar verb opens is answered as in `agent.act` (accepted,
 a prompt dismissed), silently: its test line registers no handler, so a test
-of that flow needs `browser.onDialog` before the action. A dialog `run_code`
-opens fails the next call.
+of that flow needs `browser.onDialog` before the action. A dialog a
+`run_code` statement opens fails the next statement, or the next call when
+none follows.
 
 Project tools use their `toModelOutput` renderer for strings as well as
 structured results. Its `error-text` and `error-json` outputs set the MCP

@@ -857,8 +857,9 @@ await off();
   `Dialog`.
 - A function handler must call `accept` or `dismiss`. One that does neither
   has the dialog dismissed, as an unhandled dialog does.
-- A dialog no handler takes is dismissed and fails the next step, unless an
-  agent step's own action opened it, replayed from the cache or not. Then
+- A dialog no handler takes is dismissed and fails the next step, or the
+  attempt at its end when no step follows, unless an agent step's own action
+  opened it, replayed from the cache or not. Then
   it's answered for the agent: an alert, a confirm, and a leave-page dialog
   are accepted, and a prompt is dismissed. The app log names each one. A
   dialog belongs to the newest action before it, never to a read.
