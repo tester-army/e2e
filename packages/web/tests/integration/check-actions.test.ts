@@ -165,7 +165,7 @@ describe.each(KINDS)('for the %s', (kind) => {
   });
 
   // Missing in BiDi: uncheck refuses an ARIA radio instead of clicking it.
-  it.skip('unchecks an ARIA radio by clicking it, leaving the radio behavior to its script', async () => {
+  it('unchecks an ARIA radio by clicking it, leaving the radio behavior to its script', async () => {
     await page.setContent(`
       <div role="radio" id="pro" aria-checked="true" tabindex="0"
         onclick="this.setAttribute('aria-checked', 'false')">Pro</div>`);

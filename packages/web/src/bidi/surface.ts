@@ -231,8 +231,8 @@ export class BidiSurface {
     try {
       browser = await this.acquireBrowser(context.signal);
     } catch (cause) {
-      if (this.perAttempt) await this.releaseAttemptBrowser({ signal: AbortSignal.timeout(SETUP_CLEANUP_MS), timeoutMs: SETUP_CLEANUP_MS });
-      throw cause;
+      // The lease stays the attempt's: `endAttempt` gives it back.
+      throw this.perAttempt ? classify(cause, 'attaching to the leased browser') : cause;
     }
     const session = new BidiSession(
       browser,
@@ -274,7 +274,11 @@ export class BidiSurface {
   async endAttempt(context: EngineCleanupContext): Promise<void> {
     const session = this.session;
     this.session = undefined;
-    if (session === undefined) return;
+    if (session === undefined) {
+      // A per-attempt lease granted, or still pending, for an attempt that never opened is given back.
+      if (this.perAttempt) await this.releaseAttemptBrowser(context);
+      return;
+    }
     try {
       await boundedCleanup(session.close(), context, 'attempt cleanup');
     } catch (cause) {
@@ -519,11 +523,13 @@ export class BidiSurface {
     if (this.options.leases !== undefined && session.attempt.remoteDownloads === undefined) {
       throw new EngineError('UNSUPPORTED_CAPABILITY', `browser provider "${this.options.leases.name}" serves no downloads, so a file its remote browser saves cannot be read back`, { retryable: false });
     }
+    const endsAt = Date.now() + timeoutMs;
     const finished = await session.downloads.collect(count, trigger, signal, timeoutMs, (context) => session.onPage(context));
+    const reading = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, endsAt - Date.now()))]);
     const saved: { path: string; absolutePath: string; suggestedFilename: string }[] = [];
     for (const download of finished) {
       const { relative, absolute } = session.artifactPath('downloads', download.suggestedFilename, '');
-      await session.downloads.save(download, absolute, signal);
+      await session.downloads.save(download, absolute, reading);
       saved.push({ path: relative, absolutePath: absolute, suggestedFilename: download.suggestedFilename });
     }
     return saved;

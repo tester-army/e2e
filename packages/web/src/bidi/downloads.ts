@@ -25,19 +25,26 @@ export class AttemptDownloads {
 
   constructor(
     private readonly connection: BidiConnection,
-    attemptId: string,
     private readonly remote: LeaseDownloads | undefined,
   ) {
-    this.dir = remote === undefined ? mkdtempSync(path.join(os.tmpdir(), 'e2e-bidi-downloads-')) : path.posix.join(remote.dir, attemptId);
+    this.dir = remote === undefined ? mkdtempSync(path.join(os.tmpdir(), 'e2e-bidi-downloads-')) : remote.dir;
   }
 
-  /** Copies one finished download to `file`: from this machine, or read off the remote browser's disk through its provider. */
+  /**
+   * Copies one finished download to `file`: from this machine, or read off
+   * the remote browser's disk through its provider, a read `signal` bounds:
+   * one that does not finish fails the wait.
+   */
   async save(download: FinishedDownload, file: string, signal: AbortSignal): Promise<void> {
     if (this.remote === undefined) {
       copyFileSync(download.filepath, file);
       return;
     }
-    writeFileSync(file, await this.remote.read(download.filepath, signal));
+    const bytes = await raceAbort(this.remote.read(download.filepath, signal), signal, 'download read').catch((cause: unknown) => {
+      if (!signal.aborted) throw cause;
+      throw new TestError('ACTION_FAILED', `download ${download.suggestedFilename} did not finish: ${this.remote!.provider} read it back too slowly`);
+    });
+    writeFileSync(file, bytes);
   }
 
   /** Points the user context's downloads at this attempt's directory. */

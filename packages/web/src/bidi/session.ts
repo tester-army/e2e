@@ -221,7 +221,7 @@ export class BidiSession {
       onFailure: (error) => this.latch.latch(error),
       holdAll: settings.holdRequests,
     });
-    this.downloads = new AttemptDownloads(browser.connection, attempt.attemptId, attempt.remoteDownloads);
+    this.downloads = new AttemptDownloads(browser.connection, attempt.remoteDownloads);
   }
 
   /** Aborts when the attempt closes, ending work it started that nothing awaits any more. */

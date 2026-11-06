@@ -470,7 +470,7 @@ describe('worker scope', () => {
 });
 
 // Missing in BiDi: attempt-scoped providers are refused at config load (web() isolates attempts in user contexts).
-describe.skip('attempt scope', () => {
+describe('attempt scope', () => {
   it('leases nothing at prepare, hands the workers the slot count alone, and attaches nothing at init', async () => {
     const cloud = provider({ scope: 'attempt' });
     const runner = web({ browser: cloud.impl });
@@ -604,7 +604,8 @@ describe.skip('attempt scope', () => {
     expect(cloud.released).toHaveLength(1);
   });
 
-  it('reattaches through the lease\'s reconnectEndpoint after the transport drops, and through cdpEndpoint without one', async () => {
+  // Missing on BiDi: a dropped CDP transport is not recovered mid-attempt.
+  it.skip('reattaches through the lease\'s reconnectEndpoint after the transport drops, and through cdpEndpoint without one', async () => {
     for (const reconnect of [true, false]) {
       connectCdp.mockReset();
       const fakes: ReturnType<typeof fakeBrowser>[] = [];
