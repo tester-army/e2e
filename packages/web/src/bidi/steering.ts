@@ -1,7 +1,7 @@
 /** Navigation on the BiDi driver: open, history, reload, and the attempt's restart and reset. */
 
 import { setTimeout as sleep } from 'node:timers/promises';
-import { Deadline, EngineError } from 'e2e/engine';
+import { Deadline, EngineError, raceAbort } from 'e2e/engine';
 import { isStale } from './errors.ts';
 import { historyEntry, readyState } from './page.ts';
 import type { BidiSession } from './session.ts';
@@ -34,24 +34,70 @@ export function goto(session: BidiSession, url: string, waitUntil: WaitUntil, si
  * Sends one navigation and fails it as Playwright's `goto` does when the
  * response turns into a download. Firefox announces the download before
  * the navigation settles on the old document, so its start in this tab
- * decides. Chromium rejects with `net::ERR_ABORTED` before announcing it,
- * and that error stands.
+ * decides. Chromium hands the response to its download manager and rejects
+ * the navigation with `net::ERR_ABORTED` first, announcing the download for
+ * that navigation (`browsingContext.downloadWillBegin` with its id) right
+ * after; so an abort of a navigation that got a response a download can come
+ * from waits for that announcement, up to `DOWNLOAD_HANDOFF_MS`, and an
+ * abort that gets none stands.
  */
 async function navigateOrDownload(session: BidiSession, context: string, url: string, wait: 'complete' | 'interactive' | 'none', signal: AbortSignal): Promise<void> {
+  const connection = session.connection;
+  const target = URL.canParse(url) ? new URL(url).href : url;
+  let navigation: string | undefined;
+  let responded = false;
   let downloading = false;
-  const off = session.connection.on('browsingContext.downloadWillBegin', (event) => {
-    if (event.context === context) downloading = true;
-  });
+  let announced: () => void = () => undefined;
+  const announcement = new Promise<void>((resolve) => (announced = resolve));
+  const offs = [
+    connection.on('browsingContext.navigationStarted', (event) => {
+      if (event.context === context && navigation === undefined && event.url === target) navigation = event.navigation ?? undefined;
+    }),
+    connection.on('network.responseStarted', (event) => {
+      if (navigation !== undefined && event.navigation === navigation && !NO_CONTENT.has(event.response.status)) responded = true;
+    }),
+    connection.on('browsingContext.downloadWillBegin', (event) => {
+      if (event.context !== context || (navigation !== undefined && event.navigation != null && event.navigation !== navigation)) return;
+      downloading = true;
+      announced();
+    }),
+  ];
   try {
-    await session.connection.send('browsingContext.navigate', { context, url, wait });
+    await connection.send('browsingContext.navigate', { context, url, wait });
   } catch (cause) {
-    if (!SUPERSEDED.test(cause instanceof Error ? cause.message : '')) throw cause;
+    const reason = cause instanceof Error ? cause.message : '';
+    if (ABORTED.test(reason) && responded) await downloadAnnounced(announcement, signal);
+    if (downloading) throw new EngineError('ENGINE_FAILURE', `navigation to ${url} failed: Download is starting`, { retryable: false });
+    if (!SUPERSEDED.test(reason)) throw cause;
     await documentReady(session, context, wait, signal);
   } finally {
-    off();
+    for (const off of offs) off();
   }
   if (downloading) throw new EngineError('ENGINE_FAILURE', `navigation to ${url} failed: Download is starting`, { retryable: false });
 }
+
+/**
+ * How long an aborted navigation's download announcement may trail the
+ * abort. Both come from one browser-side handoff of the response to the
+ * download manager, so the announcement trails by a hop between browser
+ * threads (the same millisecond on an idle machine), not by network or page
+ * work; a second leaves a loaded machine ample room.
+ */
+const DOWNLOAD_HANDOFF_MS = 1_000;
+
+/** Waits for `announcement` up to `DOWNLOAD_HANDOFF_MS`; only `signal` aborting fails the wait. */
+async function downloadAnnounced(announcement: Promise<void>, signal: AbortSignal): Promise<void> {
+  const window = AbortSignal.timeout(DOWNLOAD_HANDOFF_MS);
+  await raceAbort(announcement, AbortSignal.any([signal, window]), 'download announcement').catch((cause: unknown) => {
+    if (signal.aborted || !window.aborted) throw cause;
+  });
+}
+
+/** Chromium's answer to a navigation it stopped, which a response handed to the download manager also gets. */
+const ABORTED = /net::ERR_ABORTED/;
+
+/** The statuses whose response Chromium neither shows nor downloads, aborting the navigation. */
+const NO_CONTENT: ReadonlySet<number> = new Set([204, 205]);
 
 /** Chromium's answer to a navigation another one replaced, as a page script redirecting the tab does mid-load. */
 const SUPERSEDED = /navigation canceled by concurrent navigation/i;
