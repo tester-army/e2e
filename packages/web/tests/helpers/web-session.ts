@@ -15,11 +15,14 @@ import type {
   EngineHandle,
   EngineObserveOptions,
   EngineSnapshot,
+  LocatorAction,
   LocatorExpression,
   OperationContext,
   SemanticNode,
 } from 'e2e/engine';
 import { web, type Browser, type WebOptions } from '../../src/index.ts';
+import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
+import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../../src/read-node.ts';
 import { ignoreTrace, noSecrets } from './secrets.ts';
 
 /** Answers one request the page server got for a path a test registered. */
@@ -65,6 +68,12 @@ export interface WebSession {
   nodes(options?: EngineObserveOptions): Promise<SemanticNode[]>;
   /** The nodes `expression` resolves to. */
   locate(expression: LocatorExpression): Promise<readonly SemanticNode[]>;
+  /** Locates exactly one node for `expression` and performs `action` on it. */
+  act(expression: LocatorExpression, action: LocatorAction): Promise<void>;
+  /** The in-page reader's node read of the first element `selector` matches. */
+  readNode(selector: string): Promise<RawNodeData>;
+  /** Resolves once every iframe of the top document finished loading. */
+  waitForFrames(): Promise<void>;
   /** Starts a new attempt, ending the current one first if it is open. */
   startAttempt(attemptId?: string): Promise<void>;
   /** Ends the current attempt. */
@@ -190,6 +199,20 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
     observe: (observeOptions) => engine.observe!(op(), observeOptions),
     nodes: async (observeOptions) => flatten((await engine.observe!(op(), observeOptions)).root),
     locate: (expression) => engine.locate!(expression, op()),
+    async act(expression, action) {
+      const located = await engine.locate!(expression, op());
+      if (located.length !== 1) throw new Error(`expected one node for ${JSON.stringify(expression)}, located ${String(located.length)}`);
+      await engine.perform!(located[0]!.ref, action, op());
+    },
+    readNode: (selector) => session.browser.evaluate(
+      `({ selector, options }) => (${readSemanticsFunction.toString()})(document.querySelector(selector), options)`,
+      { selector, options: { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR, mode: { kind: 'node' } } },
+    ) as Promise<RawNodeData>,
+    waitForFrames: () => session.browser.evaluate(async () => {
+      const loaded = (frame: HTMLIFrameElement) => frame.contentDocument === null || frame.contentDocument.readyState === 'complete';
+      while (![...document.querySelectorAll('iframe')].every(loaded)) await new Promise((resolve) => setTimeout(resolve, 20));
+      return null;
+    }).then(() => undefined),
     async startAttempt(id = `attempt-${String(Number(attemptId.split('-').at(-1) ?? '0') + 1)}`) {
       if (attemptOpen) await session.endAttempt();
       attemptId = id;

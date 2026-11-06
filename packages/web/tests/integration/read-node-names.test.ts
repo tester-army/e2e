@@ -1,48 +1,37 @@
 /** The real reader names unlabeled text controls by placeholder, controls by their descendants, and reports a cut walk. */
 
-import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
-import { captureDocument } from '../../src/observation.ts';
-import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
-import { SECURE_FIELD_SELECTOR } from '../../src/read-node.ts';
-import { Published } from '../helpers/published.ts';
+import { byRole, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
-let browser: Browser;
-let page: Page;
+let page: WebSession;
 
 beforeAll(async () => {
-  browser = await chromium.launch();
-  page = await browser.newPage();
+  page = await startWebSession();
 });
 
 afterAll(async () => {
-  await browser.close();
+  await page.close();
 });
 
-/** One observation of the page through the same capture the engine uses. */
-async function capture(budget = 100) {
-  let nextId = 1;
-  const published = new Published();
-  const captured = await captureDocument(
-    {
-      testIdAttribute: 'data-testid',
-      site: undefined,
-      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: published.commit,
-    },
-    page,
-    { framePath: [], budget, deadline: Date.now() + 10_000, signal: new AbortController().signal },
-  );
-  published.dispose();
-  return captured;
+/** The engine's observation node budget, shared by the top document and every frame read. */
+const BUDGET = 3_000;
+
+/** One observation of the page: its root and whether the walk was cut. */
+async function capture(): Promise<{ tree: SemanticNode; truncated: boolean; nodeCount: number }> {
+  const snapshot = await page.observe();
+  return { tree: snapshot.root, truncated: snapshot.truncated === true, nodeCount: flatten(snapshot.root).length };
 }
 
 function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
   out.push(node);
   for (const child of node.children ?? []) flatten(child, out);
   return out;
+}
+
+/** `count` buttons, each one node. */
+function buttons(count: number): string {
+  return Array.from({ length: count }, (_, index) => `<button>Button ${String(index)}</button>`).join('');
 }
 
 describe('placeholder names', () => {
@@ -76,16 +65,15 @@ describe('placeholder names', () => {
 
 describe('truncated flag', () => {
   it('reports a walk the node budget stopped, and a whole read as not truncated', async () => {
-    const buttons = Array.from({ length: 20 }, (_, index) => `<button>Button ${String(index)}</button>`).join('');
-    await page.setContent(`<main>${buttons}</main>`);
-
-    const whole = await capture(100);
+    await page.setContent(`<main>${buttons(20)}</main>`);
+    const whole = await capture();
     expect(whole.truncated).toBe(false);
     expect(whole.nodeCount).toBe(22);
 
-    const cut = await capture(5);
+    await page.setContent(`<main>${buttons(BUDGET + 10)}</main>`);
+    const cut = await capture();
     expect(cut.truncated).toBe(true);
-    expect(cut.nodeCount).toBe(5);
+    expect(cut.nodeCount).toBe(BUDGET);
   });
 
   it('reports a child frame the budget could not enter', async () => {
@@ -93,26 +81,25 @@ describe('truncated flag', () => {
       <button>One</button>
       <iframe srcdoc="<button>Inside</button>"></iframe>
     `);
-    await page.frames()[1]?.waitForLoadState('domcontentloaded');
-    const whole = await capture(100);
+    await page.waitForFrames();
+    const whole = await capture();
     expect(whole.truncated).toBe(false);
     expect(flatten(whole.tree).some((node) => node.name === 'Inside')).toBe(true);
 
-    // Root, button, iframe: exactly the budget, nothing left for the frame's document.
-    const cut = await capture(3);
+    // Root, the buttons, iframe: exactly the budget, nothing left for the frame's document.
+    await page.setContent(`${buttons(BUDGET - 2)}<iframe srcdoc="<button>Inside</button>"></iframe>`);
+    await page.waitForFrames();
+    const cut = await capture();
     expect(cut.truncated).toBe(true);
     expect(flatten(cut.tree).some((node) => node.name === 'Inside')).toBe(false);
   });
 
   it('does not count an off-site frame it leaves out by design, even with no budget left', async () => {
-    // With no site every non-blank URL is off-site; a data: document is never entered.
-    await page.setContent(`
-      <button>One</button>
-      <iframe src="data:text/html,<button>Ad</button>"></iframe>
-    `);
-    await page.frames()[1]?.waitForLoadState('domcontentloaded');
-    const cut = await capture(3);
-    expect(cut.nodeCount).toBe(3);
+    // A data: document is never on the app's site, so it is never entered.
+    await page.setContent(`${buttons(BUDGET - 2)}<iframe src="data:text/html,<button>Ad</button>"></iframe>`);
+    await page.waitForFrames();
+    const cut = await capture();
+    expect(cut.nodeCount).toBe(BUDGET);
     expect(cut.truncated).toBe(false);
   });
 
@@ -120,7 +107,7 @@ describe('truncated flag', () => {
     await page.setContent('<button>Top</button>');
     // Nest same-origin srcdoc frames one deeper than the capture follows.
     const nest = async (depth: number): Promise<void> => {
-      await page.evaluate(async (levels) => {
+      await page.browser.evaluate(async (levels: number) => {
         let doc = document;
         for (let level = 0; level < levels; level += 1) {
           const iframe = doc.createElement('iframe');
@@ -129,16 +116,17 @@ describe('truncated flag', () => {
           await new Promise<void>((resolve) => { iframe.addEventListener('load', () => resolve(), { once: true }); });
           doc = iframe.contentDocument!;
         }
+        return null;
       }, depth);
     };
     await nest(4);
-    const within = await capture(1_000);
+    const within = await capture();
     expect(within.truncated).toBe(false);
     expect(flatten(within.tree).some((node) => node.name === 'Level 4')).toBe(true);
 
     await page.setContent('<button>Top</button>');
     await nest(5);
-    const beyond = await capture(1_000);
+    const beyond = await capture();
     expect(beyond.truncated).toBe(true);
     expect(flatten(beyond.tree).some((node) => node.name === 'Level 5')).toBe(false);
   });
@@ -147,9 +135,11 @@ describe('truncated flag', () => {
 const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7';
 
 describe('names from content and precedence', () => {
-  /** The test id of the one element Playwright's role selector resolves for this role and exact name. */
+  /** The test id of the one element the engine's role query resolves for this role and exact name. */
   async function locatedTestId(role: string, name: string): Promise<string | null> {
-    return page.getByRole(role as Parameters<Page['getByRole']>[0], { name, exact: true }).getAttribute('data-testid');
+    const located = await page.locate(byRole(role, name));
+    expect(located, `${role} "${name}"`).toHaveLength(1);
+    return located[0]?.testId ?? null;
   }
 
   it('names a control from its descendants the way the role selector does: aria-label, alt, content, then title', async () => {
@@ -248,14 +238,12 @@ describe('names from content and precedence', () => {
       <button data-testid="secure">Unlock <input type="password" value="hunter2"> now</button>
       <label for="pin">PIN <input type="password" value="hunter2"> field</label><input id="pin" data-testid="secure-label">
     `);
-    const options = { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR, mode: { kind: 'node' as const } };
-    const reads = await Promise.all(
-      (await page.locator('[data-testid]').all()).map((locator) => locator.evaluate(readSemanticsFunction<typeof options.mode>, options)),
-    );
+    const reads = await Promise.all(['label-for', 'secure', 'secure-label'].map((id) => page.readNode(`[data-testid="${id}"]`)));
     const byTestId = new Map(reads.map((raw) => [raw.testId, raw] as const));
-    // Label text is what Playwright's getByLabel matches, which reads no control value.
+    // Label text is what a label query matches, which reads no control value.
     expect(byTestId.get('label-for')?.labels).toEqual(['Qty items']);
-    expect(await page.getByLabel('Qty items', { exact: true }).getAttribute('data-testid')).toBe('label-for');
+    const labelled = await page.locate({ kind: 'query', query: { kind: 'label', value: { kind: 'string', value: 'Qty items', exact: true } } });
+    expect(labelled.map((node) => node.testId)).toEqual(['label-for']);
     expect(byTestId.get('secure')?.name).toBe('Unlock now');
     expect(byTestId.get('secure-label')?.name).toBe('PIN field');
     expect(JSON.stringify(reads)).not.toContain('hunter2');
@@ -277,7 +265,7 @@ describe('names from content and precedence', () => {
     expect(await locatedTestId('textbox', 'Shipping address')).toBe('referenced');
     expect(await locatedTestId('textbox', 'Aria text')).toBe('labelled');
     expect(await locatedTestId('button', 'First Pic')).toBe('two-references');
-    expect(await page.getByRole('textbox', { name: 'Address', exact: true }).count()).toBe(0);
+    expect(await page.locate(byRole('textbox', 'Address'))).toHaveLength(0);
   });
 
   it('reads a referenced target whole when it is hidden, by its own aria-label, and drops hidden parts of a shown one', async () => {
@@ -360,9 +348,6 @@ describe('names from content and precedence', () => {
   });
 
   it('names every role accname allows from content, a shadow tree included, and a reset input by its value or default', async () => {
-    // The init script that records closed roots runs on a navigation; setContent alone is none.
-    await page.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-    await page.goto('about:blank');
     await page.setContent(`
       <div role="checkbox" aria-checked="false" data-testid="checkbox">Remember me</div>
       <span role="radio" aria-checked="true" data-testid="radio">Monthly</span>
@@ -410,8 +395,7 @@ describe('names from content and precedence', () => {
     }
     // A closed root's slot lists its assigned nodes while the light child's
     // `assignedSlot` reads null from outside, so the slotted text is read once,
-    // at the slot. Playwright's role selector cannot see a closed root and
-    // names the host "Save", so there is no locator to compare against.
+    // at the slot.
     expect(byTestId.get('closed-slotted-button')).toMatchObject({ role: 'button', name: '[ Save ]' });
   });
 });
