@@ -149,7 +149,7 @@ export interface EngineAppInfo {
    * The origin of the app's `url` on the run's port (`scheme://host:port`, as
    * `URL.origin` serializes it): where credentials an engine injects into
    * requests (headers, basic auth) go by default. Absent for an app without
-   * a URL.
+   * a URL, and for a free port the run has not assigned (`e2e doctor`).
    */
   readonly origin?: string;
   /**

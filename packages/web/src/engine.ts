@@ -83,8 +83,8 @@ export function web(options: WebOptions = {}): EngineHandle {
     );
   }
   if (options.headers !== undefined) validateHeaders(options.headers);
-  if (options.headerOrigins !== undefined) validateHeaderOrigins(options.headerOrigins, options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
+  if (options.credentialOrigins !== undefined) validateCredentialOrigins(options);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   if (options.locale !== undefined) validateLocale(options.locale, options.headers);
@@ -169,8 +169,8 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   screencast: true,
   connect: true,
   headers: true,
-  headerOrigins: true,
   basicAuth: true,
+  credentialOrigins: true,
   testIdAttribute: true,
   userAgent: true,
   locale: true,
@@ -259,8 +259,8 @@ function validateBasicAuth(basicAuth: unknown): void {
   if (!isRecord(basicAuth)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) must be an object with username and password');
   }
-  rejectUnknownKeys('web({ basicAuth })', basicAuth, ['username', 'password', 'origins']);
-  const { username, password, origins } = basicAuth;
+  rejectUnknownKeys('web({ basicAuth })', basicAuth, ['username', 'password']);
+  const { username, password } = basicAuth;
   if (typeof username !== 'string' || username === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) requires a non-empty username string');
   }
@@ -270,25 +270,23 @@ function validateBasicAuth(basicAuth: unknown): void {
   if (typeof password !== 'string' && !isSecret(password)) {
     throw new ConfigurationError('INVALID_CONFIG', 'web({ basicAuth }) requires a password string or secrets.get(name)');
   }
-  if (origins !== undefined) validateOrigins('web({ basicAuth: { origins } })', origins);
 }
 
-/** Refuses extra header origins without headers to send them, and any entry that is not an exact origin. */
-function validateHeaderOrigins(headerOrigins: unknown, headers: Readonly<Record<string, string>> | undefined): void {
-  if (headers === undefined) {
-    throw new ConfigurationError('INVALID_CONFIG', 'web({ headerOrigins }) requires headers: it lists more origins that receive them');
+/**
+ * Refuses extra credential origins without headers or basic auth to send
+ * them, a list that is not an array, and any entry that is not an exact
+ * `http:` or `https:` origin, naming the entry.
+ */
+function validateCredentialOrigins({ credentialOrigins, headers, basicAuth }: WebOptions): void {
+  if (headers === undefined && basicAuth === undefined) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ credentialOrigins }) requires headers or basicAuth: it lists more origins that receive them');
   }
-  validateOrigins('web({ headerOrigins })', headerOrigins);
-}
-
-/** Refuses a list of credential origins that is not an array of exact `http:` or `https:` origins, naming the entry. */
-function validateOrigins(label: string, origins: unknown): void {
-  if (!Array.isArray(origins)) {
-    throw new ConfigurationError('INVALID_CONFIG', `${label} must be an array of origins such as "https://preview.example.com"`);
+  if (!Array.isArray(credentialOrigins)) {
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ credentialOrigins }) must be an array of origins such as "https://preview.example.com"');
   }
-  for (const [index, origin] of origins.entries()) {
+  for (const [index, origin] of credentialOrigins.entries()) {
     const problem = originProblem(origin);
-    if (problem !== undefined) throw new ConfigurationError('INVALID_CONFIG', `${label}[${index}] ${problem}`);
+    if (problem !== undefined) throw new ConfigurationError('INVALID_CONFIG', `web({ credentialOrigins })[${index}] ${problem}`);
   }
 }
 

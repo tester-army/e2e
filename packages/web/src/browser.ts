@@ -577,7 +577,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           fetch: async (...args: unknown[]) => {
             requireNoArguments('route.fetch', args);
             return surface.guard(context.operation(), 'route.fetch', async currentOperation => {
-              const configured = surface.originHeaders(request.url());
+              const configured = surface.configuredHeaders(request.url());
               const response = await route.fetch({
                 headers: { ...lowercaseNames(request.headers()), ...configured },
                 timeout: currentOperation.timeoutMs,
@@ -602,8 +602,8 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           continue: async (overrides) => {
             const { headers, ...decision } = parseContinue(overrides, request.url(), context.app.resolveUrl);
             // `continue` skips every route registered before this one, the
-            // origin-header route included, so it merges those headers itself.
-            const configured = surface.originHeaders(decision.url ?? request.url());
+            // configured-headers route included, so it merges those headers itself.
+            const configured = surface.configuredHeaders(decision.url ?? request.url());
             await decideWith('continue', () => route.continue({
               ...decision,
               ...(headers === undefined && configured === undefined

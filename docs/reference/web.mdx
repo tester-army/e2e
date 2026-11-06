@@ -52,8 +52,8 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`screencast`](#screencast) | `WebScreencastOptions` | the viewport's size |
 | [`connect`](#connect) | `WebConnectOptions` | launches locally |
 | [`headers`](#headers) | `Record<string, string>` | - |
-| [`headerOrigins`](#headerorigins) | `string[]` | - |
 | [`basicAuth`](#basicauth) | `WebBasicAuth` | - |
+| [`credentialOrigins`](#credentialorigins) | `string[]` | - |
 | [`testIdAttribute`](#testidattribute) | `string` | `'data-testid'` |
 | [`userAgent`](#useragent) | `string` | the browser's own |
 | [`locale`](#locale) | `string` | the browser's own |
@@ -241,8 +241,10 @@ session state capture and restore. `app.clearState` fails with
 
 #### `headers`
 
-Headers added to every request to the app's origin: the scheme, host, and
-port of `app.url`. Another port, a subdomain, and any other host get none.
+Headers added to every request that starts at the app's origin: the scheme,
+host, and port of `app.url`. A request that starts at another port, a
+subdomain, or any other host gets none. A redirect keeps the headers its
+request started with, to any origin.
 
 ```ts
 web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
@@ -263,33 +265,16 @@ web({ headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' } });
 blocks service workers.
 </Note>
 
-#### `headerOrigins`
-
-More origins that receive [`headers`](#headers), beyond the app's own, such
-as an API on another host behind the same gate.
-
-```ts
-web({
-  headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' },
-  headerOrigins: ['https://api.staging.example.com'],
-});
-```
-
-| Throws | When |
-| --- | --- |
-| `INVALID_CONFIG` | No `headers`, or an entry that is not an `http:` or `https:` origin with no path, query, or fragment. |
-
 #### `basicAuth`
 
 HTTP basic authentication. The browser answers a `401` challenge from the
 app's origin with these credentials. A challenge from any other origin goes
-unanswered unless `origins` lists it.
+unanswered unless [`credentialOrigins`](#credentialorigins) lists it.
 
 ```ts
 import { secrets } from 'e2e';
 
 web({ basicAuth: { username: 'staging', password: secrets.get('staging-password') } });
-web({ basicAuth: { username: 'staging', password: secrets.get('staging-password'), origins: ['https://api.staging.example.com'] } });
 ```
 
 A `secrets.get(name)` password resolves when each attempt starts and is
@@ -303,20 +288,44 @@ export interface WebBasicAuth {
   readonly username: string;
   /** The password, or `secrets.get(name)` for one in `config.secrets`. */
   readonly password: string | Secret;
-  /** More origins whose challenge the browser answers, such as `https://api.example.com`. */
-  readonly origins?: readonly string[];
 }
 ```
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | A `:` in the user name, an unknown key, or an `origins` entry that is not an `http:` or `https:` origin with no path, query, or fragment. |
+| `INVALID_CONFIG` | A `:` in the user name, or an unknown key. |
+
+<Note>
+WebKit can't scope a credential to an origin on its scheme's default port
+(`https://staging.example.com`) or with an IPv6 host. When the app's origin
+or one in `credentialOrigins` is such an origin, WebKit answers a `401` from
+any origin, as Playwright does by default.
+</Note>
 
 <Warning>
 The secret protection is text only. A page that renders the password on
 screen is not masked in screenshots or model pixels
 ([Security rules](/reference/security#secrets-in-engine-options)).
 </Warning>
+
+#### `credentialOrigins`
+
+More origins that receive [`headers`](#headers) and
+[`basicAuth`](#basicauth), beyond the app's own, such as an API on another
+host behind the same gate.
+
+```ts
+web({
+  headers: { 'x-preview-token': process.env.PREVIEW_TOKEN ?? '' },
+  credentialOrigins: ['https://api.staging.example.com'],
+});
+```
+
+List each origin exactly. A `*` in the host and port `0` match no request.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | No `headers` or `basicAuth`, an entry that is not an `http:` or `https:` origin with no path, query, or fragment, a `*` in the host, or port `0`. |
 
 #### `testIdAttribute`
 
@@ -1104,21 +1113,25 @@ export interface WebOptions {
    */
   readonly connect?: WebConnectOptions;
   /**
-   * Headers added to every request to the app's origin (the scheme, host,
-   * and port of `app.url`) or one in `headerOrigins`. Useful for
-   * preview-protection tokens. Other origins never receive them.
+   * Headers added to every request that starts at the app's origin (the
+   * scheme, host, and port of `app.url`) or one in `credentialOrigins`.
+   * Useful for preview-protection tokens. A request that starts at another
+   * origin goes without them; a redirect keeps them, to any origin.
    * Names are case-insensitive and replace existing headers of the same name.
    * This enables request routing, disables the browser's HTTP cache, and
    * blocks service workers.
    */
   readonly headers?: Readonly<Record<string, string>>;
-  /** More origins that receive `headers`, such as `https://api.example.com`; requires `headers`. */
-  readonly headerOrigins?: readonly string[];
   /**
    * HTTP basic authentication. The browser answers a `401` challenge from the
-   * app's origin, or one in `basicAuth.origins`, with these credentials.
+   * app's origin, or one in `credentialOrigins`, with these credentials.
    */
   readonly basicAuth?: WebBasicAuth;
+  /**
+   * More origins that receive `headers` and `basicAuth`, such as
+   * `https://api.example.com`; requires `headers` or `basicAuth`.
+   */
+  readonly credentialOrigins?: readonly string[];
   /**
    * The attribute that carries an element's test id: what the `testId` query
    * (`screen.getByTestId`) resolves and what `SemanticNode.testId` reports.
