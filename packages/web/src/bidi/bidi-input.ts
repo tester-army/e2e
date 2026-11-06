@@ -5,6 +5,7 @@
  * buttons held, where the mouse is) and of how much input went out.
  */
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Protocol } from 'devtools-protocol';
 import type { Input } from 'webdriver-bidi-protocol';
 import { TestError, type ViewportPoint, type ViewportSize } from 'e2e/engine';
@@ -54,19 +55,44 @@ class InputState {
   }
 }
 
+/** Input sends and page mutations: those read back (`counted`) and suppressible sends whose verdict is still out (`undecided`), which count until it says otherwise. */
+interface DispatchCount {
+  counted: number;
+  undecided: number;
+}
+
+const operationDispatches = new AsyncLocalStorage<DispatchCount>();
+
+/**
+ * One operation's own dispatch count, so whether it sent input that may have
+ * reached the app is read off its own sends: input or an evaluate another
+ * operation runs meanwhile does not count.
+ */
+export class DispatchScope {
+  private readonly count: DispatchCount = { counted: 0, undecided: 0 };
+
+  /** Runs `work` with every input send and page mutation it makes counted here too. */
+  run<T>(work: () => Promise<T>): Promise<T> {
+    return operationDispatches.run(this.count, work);
+  }
+
+  /** Whether `run`'s work sent input or changed the page, or has a send whose verdict is still out. */
+  get dispatched(): boolean {
+    return this.count.counted + this.count.undecided > 0;
+  }
+}
+
 /** The keyboard and mouse of one attempt's tab. */
 export class BidiInput {
   private state = new InputState();
-  private counted = 0;
-  /** Suppressible sends whose verdict is not read yet, which count as dispatched until it says otherwise. */
-  private undecided = 0;
+  private readonly total: DispatchCount = { counted: 0, undecided: 0 };
   private cdpSession: { readonly context: string; readonly cdp: Promise<ChromiumCdp> } | undefined;
 
   constructor(private readonly target: InputTarget) {}
 
   /** Input sends and page mutations so far: an action that fails after this moved may have reached the app. */
   get dispatches(): number {
-    return this.counted + this.undecided;
+    return this.total.counted + this.total.undecided;
   }
 
   /** Where the mouse last moved, which a viewport swipe wheels at. */
@@ -76,7 +102,14 @@ export class BidiInput {
 
   /** Counts a change the driver or the test's code made in the page (a fill, a select, an evaluate), which may have reached the app. */
   mutated(): void {
-    this.counted += 1;
+    this.count('counted', 1);
+  }
+
+  /** Adds `delta` to the attempt's count and to the count of the operation running it (`dispatchScope`). */
+  private count(kind: keyof DispatchCount, delta: number): void {
+    this.total[kind] += delta;
+    const scope = operationDispatches.getStore();
+    if (scope !== undefined) scope[kind] += delta;
   }
 
   /** Forgets everything held and where the mouse was, with the tab that held them. */
@@ -95,7 +128,7 @@ export class BidiInput {
    */
   async send(actions: readonly Input.SourceActions[], signal?: AbortSignal): Promise<void> {
     const { sent, after } = await this.prepare(actions, signal);
-    this.counted += 1;
+    this.count('counted', 1);
     await this.perform(sent);
     this.state = after;
   }
@@ -110,7 +143,7 @@ export class BidiInput {
    */
   async sendSuppressible<V>(actions: readonly Input.SourceActions[], signal: AbortSignal, verdict: () => Promise<V>, suppressed: (verdict: V) => boolean): Promise<V> {
     const { sent, after } = await this.prepare(actions, signal);
-    this.undecided += 1;
+    this.count('undecided', 1);
     let swallowed = false;
     try {
       let failure: { cause: unknown } | undefined;
@@ -130,8 +163,8 @@ export class BidiInput {
       swallowed = suppressed(read);
       return read;
     } finally {
-      this.undecided -= 1;
-      if (!swallowed) this.counted += 1;
+      this.count('undecided', -1);
+      if (!swallowed) this.count('counted', 1);
     }
   }
 
@@ -171,7 +204,7 @@ export class BidiInput {
     signal.throwIfAborted();
     await this.checkInViewport([point]);
     const cdp = await this.cdp();
-    this.counted += 1;
+    this.count('counted', 1);
     await cdp.send('Input.dispatchDragEvent', { type, x: point.x, y: point.y, data });
     this.state.pointer = { x: point.x, y: point.y };
   }
@@ -185,7 +218,7 @@ export class BidiInput {
     signal?.throwIfAborted();
     const cdp = await this.cdp();
     signal?.throwIfAborted();
-    this.counted += 1;
+    this.count('counted', 1);
     for (const command of commands) {
       await cdp.send(command.method, command.params);
       const held = holdsAfter(command);

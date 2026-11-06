@@ -42,6 +42,7 @@ import { cancelled, invalidState } from '../support.ts';
 import type { WebBasicAuth, WebScreencastOptions } from '../options.ts';
 import { perform, performAt, typeInto, typeText } from './actions.ts';
 import { screenshot, startVideo, stopVideo } from './artifacts.ts';
+import { DispatchScope } from './bidi-input.ts';
 import { afterDispatch, classify, releaseQuietly } from './errors.ts';
 import { BROWSER_OPEN_TIMEOUT_MS, BrowserHandle, type BrowserSource } from './browser-source.ts';
 import { fixtureKeyStroke, type KeyPhase } from './keyboard.ts';
@@ -346,14 +347,14 @@ export class BidiSurface {
   ): Promise<T> {
     this.session?.latch.throwPending();
     const session = this.session;
-    const dispatches = session?.dispatches ?? 0;
+    const dispatches = new DispatchScope();
     let result: T;
     try {
-      result = await withDeadline(operation, label, (budget) => work(this.requireSession(), budget));
+      result = await withDeadline(operation, label, (budget) => dispatches.run(() => work(this.requireSession(), budget)));
     } catch (cause) {
       // A handler error latched while the operation ran is its cause: a route that refused its own arguments aborts the request the step waited on.
       session?.latch.throwPending();
-      const dispatched = kind.input === true && session !== undefined && session.dispatches !== dispatches;
+      const dispatched = kind.input === true && dispatches.dispatched;
       throw afterDispatch(classify(cause, label, kind.testCode), label, dispatched, kind.sensitive);
     }
     if (kind.traced === true && session !== undefined) await traceScreen(session, operation.signal);
