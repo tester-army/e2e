@@ -11,10 +11,10 @@ function pixel(data: Uint8Array, x: number, y: number): number[] {
   const offset = (y * png.width + x) * 4;
   return [...png.data.subarray(offset, offset + 3)];
 }
-/** A 4 by 4 screenshot whose every pixel has the same `samples`, written as the color type and bit depth say. */
-function filled(depth: number, colorType: number, samples: readonly number[]) {
+/** A 4 by 4 screenshot whose every pixel has the same `samples`, written as the color type and bit depth say; an indexed one names its `palette`. */
+function filled(depth: number, colorType: number, samples: readonly number[], palette?: readonly (readonly number[])[]) {
   const row = Array.from({ length: 4 }, () => samples).flat();
-  return { mediaType: 'image/png' as const, data: rawPng(4, 4, depth, colorType, Array.from({ length: 4 }, () => row)), width: 4, height: 4, scale: 1 };
+  return { mediaType: 'image/png' as const, data: rawPng(4, 4, depth, colorType, Array.from({ length: 4 }, () => row), palette), width: 4, height: 4, scale: 1 };
 }
 describe('gridFor', () => {
   it('fits at most ten columns and rows near the target cell size', () => {
@@ -50,6 +50,7 @@ describe('withGrid', () => {
 describe('every PNG color type', () => {
   const shots = [
     ['RGB', filled(8, 2, [10, 20, 30]), [10, 20, 30]],
+    ['palette', filled(8, 3, [1], [[255, 0, 0], [10, 20, 30]]), [10, 20, 30]],
     ['gray', filled(8, 0, [200]), [200, 200, 200]],
     ['gray with alpha', filled(8, 4, [200, 128]), [200, 200, 200]],
     ['16-bit RGB', filled(16, 2, [255, 255, 128, 0, 1, 1]), [255, 128, 1]],

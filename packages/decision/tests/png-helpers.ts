@@ -11,7 +11,8 @@ export function whitePng(width: number, height: number): Uint8Array {
 /** The size and RGBA pixels of a PNG the package wrote, which is always 8-bit RGBA. */
 export function rgbaOf(bytes: Uint8Array): { width: number; height: number; data: Uint8Array } {
   const image = new Transformer(bytes);
-  const { width, height, colorType } = image.metadataSync();
+  const { width, height, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`expected a PNG, got ${format}`);
   if (colorType !== JsColorType.Rgba8) throw new Error(`expected an 8-bit RGBA PNG, got color type ${colorType}`);
   return { width, height, data: image.rawPixelsSync() };
 }
@@ -27,9 +28,10 @@ function chunk(type: string, data: Uint8Array = new Uint8Array()): Buffer {
 /**
  * A PNG written straight from the format, so a test can hand the package a
  * color type no encoder of its own would write: `rows` hold each scanline's
- * sample bytes as the color type and `depth` pack them, with no filter.
+ * sample bytes as the color type and `depth` pack them, with no filter; an
+ * indexed one names its `palette`.
  */
-export function rawPng(width: number, height: number, depth: number, colorType: number, rows: readonly (readonly number[])[]): Uint8Array {
+export function rawPng(width: number, height: number, depth: number, colorType: number, rows: readonly (readonly number[])[], palette?: readonly (readonly number[])[]): Uint8Array {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
@@ -38,6 +40,7 @@ export function rawPng(width: number, height: number, depth: number, colorType: 
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
     chunk('IHDR', header),
+    ...(palette === undefined ? [] : [chunk('PLTE', Buffer.from(palette.flat()))]),
     chunk('IDAT', deflateSync(Buffer.concat(rows.map((row) => Buffer.from([0, ...row]))))),
     chunk('IEND'),
   ]);

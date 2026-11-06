@@ -22,7 +22,8 @@ function picture(width: number, height: number, box: { x: number; y: number; w: 
 /** The color of one pixel of a downscaled screenshot, which the runner writes as RGBA. */
 function pixelAt(pixels: ObservationPixels, x: number, y: number): number[] {
   const image = new Transformer(pixels.data);
-  const { width, colorType } = image.metadataSync();
+  const { width, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`expected a PNG, got ${format}`);
   if (colorType !== JsColorType.Rgba8) throw new Error(`expected an 8-bit RGBA PNG, got color type ${colorType}`);
   const at = (y * width + x) * 4;
   return [...image.rawPixelsSync().subarray(at, at + 3)];

@@ -100,7 +100,8 @@ function attemptOf(outcome: RunOutcome, title: string) {
 /** The PNG at `file` as RGBA, which is how the runner writes every screenshot it stores. */
 function readPng(file: string): { width: number; height: number; data: Uint8Array } {
   const image = new Transformer(readFileSync(file));
-  const { width, height, colorType } = image.metadataSync();
+  const { width, height, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`${file} is not a PNG: the bytes are ${format}`);
   if (colorType !== JsColorType.Rgba8) throw new Error(`${file} is not an 8-bit RGBA PNG: color type ${colorType}`);
   return { width, height, data: image.rawPixelsSync() };
 }

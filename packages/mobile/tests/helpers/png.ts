@@ -11,7 +11,8 @@ export interface DecodedPng {
 /** Reads assertion pixels through the library, independently of the masking policy: RGB and RGBA PNGs, both as RGBA. */
 export function decodePng(bytes: Uint8Array): DecodedPng {
   const image = new Transformer(bytes);
-  const { width, height, colorType } = image.metadataSync();
+  const { width, height, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`expected a PNG, got ${format}`);
   const raw = image.rawPixelsSync();
   if (colorType === JsColorType.Rgba8) return { width, height, channels: 4, pixels: raw };
   if (colorType !== JsColorType.Rgb8) throw new Error(`expected an RGB or RGBA PNG, got color type ${colorType}`);

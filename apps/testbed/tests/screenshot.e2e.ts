@@ -73,7 +73,8 @@ interface Rgba {
 /** The RGB or RGBA PNG at `file`, decoded to RGBA. */
 function readPng(file: string): Rgba {
   const image = new Transformer(readFileSync(file));
-  const { width, height, colorType } = image.metadataSync();
+  const { width, height, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`${file} is not a PNG: the bytes are ${format}`);
   const raw = image.rawPixelsSync();
   if (colorType === JsColorType.Rgba8) return { width, height, data: raw };
   if (colorType !== JsColorType.Rgb8) throw new Error(`${file} is neither an RGB nor an RGBA PNG: color type ${colorType}`);
