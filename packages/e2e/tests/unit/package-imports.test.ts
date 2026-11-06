@@ -192,8 +192,8 @@ const STARTUP: readonly { readonly dir: string; readonly entry: string; readonly
   // A config imports these in every process, and only a worker that runs an ACP step or leases a Limrun device calls them.
   { dir: 'acp', entry: 'index.ts', lazy: ['@agentclientprotocol/sdk', '@modelcontextprotocol/server'] },
   { dir: 'limrun', entry: 'index.ts', lazy: ['@limrun/api'] },
-  // `e2e list`, and a run whose browsers a provider hosts, read the config without ever launching a browser.
-  { dir: 'web', entry: 'index.ts', lazy: ['playwright-core'] },
+  // `e2e list`, and a run whose browsers a provider hosts, read the config without ever installing a browser or starting the BiDi mapper.
+  { dir: 'web', entry: 'index.ts', lazy: ['@puppeteer/browsers', 'chromium-bidi'] },
 ];
 
 describe.each(STARTUP)('importing packages/$dir/src/$entry', ({ dir, entry, lazy }) => {
@@ -229,8 +229,8 @@ describe('the scan', () => {
   it('counts a list of type specifiers as a runtime import, since the output keeps `import {} from`', () => {
     expect(specifiers("import { type Tool, type ToolSet } from 'ai';")).toEqual(['ai']);
     expect(specifiers("import { type Tool } from 'ai';")).toEqual(['ai']);
-    expect(staticImports("import { type Browser } from 'playwright-core';")).toEqual(['playwright-core']);
-    expect(staticImports("import type { Browser } from 'playwright-core';")).toEqual([]);
+    expect(staticImports("import { type Browser } from 'webdriver-bidi-protocol';")).toEqual(['webdriver-bidi-protocol']);
+    expect(staticImports("import type { Browser } from 'webdriver-bidi-protocol';")).toEqual([]);
   });
 
   it('objects to a devDependency, a bare builtin, and an optional peer outside its home', () => {
