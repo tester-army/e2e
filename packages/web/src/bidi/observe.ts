@@ -30,7 +30,7 @@ import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../read-node.ts';
 import { cancelled } from '../support.ts';
 import { isStale, releaseQuietly, unlessStale } from './errors.ts';
 import { contentContext, inViewport, resolveFrames, selectElements, withinFrame, type NodeTarget } from './frames.ts';
-import { domReady, ELEMENT_HIDDEN, LOCATE_READ, type PlaywrightAria, maskSecureFields, READ_TREE, unmaskSecureFields, type LocateMetadata, type TreeMetadata } from './page.ts';
+import { domReady, type PlaywrightAria, maskSecureFields, unmaskSecureFields, type LocateMetadata, type TreeMetadata } from './page.ts';
 import { ElementRef, type PageArgument } from './script.ts';
 import type { BidiSession } from './session.ts';
 
@@ -116,7 +116,7 @@ export async function locate(session: BidiSession, expression: LocatorExpression
   const options = { testIdAttribute: session.settings.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR };
   const frameHidden = await insideHiddenFrame(session, context, options);
   const readLocated = (structured: boolean): Promise<[LocateMetadata | string | null, ElementRef[]]> =>
-    session.read(LOCATE_READ, [options, wantedQueries(inner), CLOSED_SHADOW_ROOTS_KEY, structured], structured ? { maxObjectDepth: null } : undefined, context);
+    session.reader('locate', [options, wantedQueries(inner), CLOSED_SHADOW_ROOTS_KEY, structured], structured ? { maxObjectDepth: null } : undefined, context);
   let [metadata, elements] = await readLocated(false);
   if (metadata === null) [metadata, elements] = await readLocated(true);
   // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported reads; the alignment below is checked
@@ -159,7 +159,7 @@ export async function locate(session: BidiSession, expression: LocatorExpression
  */
 async function insideHiddenFrame(session: BidiSession, context: string, options: { readonly testIdAttribute: string; readonly secureFieldSelector: string }): Promise<boolean> {
   for (const frame of session.frames.chain(context)) {
-    if (await session.read<boolean>(ELEMENT_HIDDEN, [frame.element, options], undefined, frame.context)) return true;
+    if (await session.reader<boolean>('hidden', [frame.element, options], undefined, frame.context)) return true;
   }
   return false;
 }
@@ -274,7 +274,7 @@ async function captureTree(session: BidiSession, context: string, framePath: rea
       secureFieldSelector: SECURE_FIELD_SELECTOR,
       mode: { kind: 'tree', maxNodes: budget, idSeed: session.refs.reserveIds(budget), nameLimit: OBSERVED_NAME_LIMIT, textLimit: OBSERVED_TEXT_LIMIT },
     };
-    return session.read(READ_TREE, [options, structured], structured ? { maxObjectDepth: null } : undefined, context);
+    return session.reader('tree', [options, structured], structured ? { maxObjectDepth: null } : undefined, context);
   };
   let [metadata, elements] = await readTree(false);
   if (metadata === null) [metadata, elements] = await readTree(true);
@@ -413,7 +413,7 @@ function patternArgument(pattern: TextPattern): PageArgument {
 }
 
 /**
- * What a locate must read, as `LOCATE_READ` takes it: each query of the
+ * What a locate must read, as the locate reader takes it: each query of the
  * expression, and whether a text filter needs every element with text. A
  * selector, or a role query whose role is a pattern, reads every element.
  */

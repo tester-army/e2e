@@ -9,7 +9,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { BidiConnection } from '../../src/bidi/connection.ts';
-import { READ_TREE } from '../../src/bidi/page.ts';
+import { readerCall } from '../../src/bidi/page.ts';
 import { decodePng } from '../helpers/png.ts';
 import { byTestId, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
@@ -26,7 +26,7 @@ function stallTreeReads(): { release: () => void } {
   vi.spyOn(BidiConnection.prototype, 'send').mockImplementation(function (this: BidiConnection, method, params) {
     const reply = send.call(this, method, params);
     const declaration = (params as { functionDeclaration?: unknown }).functionDeclaration;
-    if (method !== 'script.callFunction' || declaration !== READ_TREE) return reply;
+    if (method !== 'script.callFunction' || declaration !== readerCall('tree')) return reply;
     return released.then(() => reply);
   });
   return { release };

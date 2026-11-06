@@ -21,7 +21,7 @@ import { releaseQuietly, unlessStale } from './errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser, BidiBrowserName } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
-import { BUILTINS_INIT_SCRIPT, HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
+import { BUILTINS_INIT_SCRIPT, HIT_INTERCEPTOR_INIT_SCRIPT, readerCall, readerInstallCall, type ReaderName, READERS_INIT_SCRIPT, READERS_MISSING, viewportSize } from './page.ts';
 import { callFunction, type CallOptions, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 import type { BidiVideo } from './video.ts';
 import type { ProviderVideo } from '../provider-video.ts';
@@ -265,6 +265,7 @@ export class BidiSession {
     const scoped = { userContexts: [userContext] as [string] };
     const sources = [
       wrapScript(BUILTINS_INIT_SCRIPT),
+      wrapScript(READERS_INIT_SCRIPT),
       wrapScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT),
       wrapScript(HIT_INTERCEPTOR_INIT_SCRIPT),
       ...(this.settings.holdRequests ? [wrapScript(BLOCK_SERVICE_WORKERS)] : []),
@@ -428,6 +429,17 @@ export class BidiSession {
   async run<F extends TypedPageFunction>(fn: F, args: Wire<Parameters<F>> & readonly PageArgument[], context?: string): Promise<Wire<Awaited<ReturnType<F>>>> {
     const value = await callFunction(this.connection, context ?? this.requireContext(), fn, args, { awaitPromise: true, maxObjectDepth: null });
     return value as Wire<Awaited<ReturnType<F>>>;
+  }
+
+  /**
+   * Calls one of the document's readers in `context` (the tab by default)
+   * through the copy its preload installed; a document without one (open
+   * before the preload) gets them with the call, and keeps them.
+   */
+  async reader<T>(name: ReaderName, args: readonly PageArgument[], options?: CallOptions, context?: string): Promise<T> {
+    const value = await this.call(readerCall(name), args, options, context);
+    if (value !== READERS_MISSING) return value as T;
+    return (await this.call(readerInstallCall(name), args, options, context)) as T;
   }
 
   /** `call` for a page function of this driver whose return shape the caller names; the page is not checked against it. */

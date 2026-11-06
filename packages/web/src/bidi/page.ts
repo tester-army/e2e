@@ -4,6 +4,7 @@
  * module scope; the tree reader is embedded from its own source.
  */
 
+import { createHash } from 'node:crypto';
 import { readSemanticsFunction } from '../in-page/read-semantics.ts';
 import type { RawNodeData, RawObservedNode } from '../read-node.ts';
 
@@ -38,16 +39,12 @@ const NATIVE_JSON = `typeof JSON.stringify === 'function' &&
     !('toJSON' in Object.prototype) && !('toJSON' in Array.prototype)`;
 
 /** Whether `element` reads as hidden to the semantic reader, its `states.hidden`: for an iframe, whether everything inside it is hidden. */
-export const ELEMENT_HIDDEN = `(element, options) => {
-  ${PRISTINE}
-  const read = (${readSemanticsFunction.toString()});
+const ELEMENT_HIDDEN = `(element, options) => {
   return element.isConnected ? read(element, { ...options, mode: { kind: 'hidden' } }) : true;
 }`;
 
 /** Reads the document's semantic tree: the walk's metadata (see `NATIVE_JSON`), and the walked elements. */
-export const READ_TREE = `(options, structured) => {
-  ${PRISTINE}
-  const read = (${readSemanticsFunction.toString()});
+const READ_TREE = `(options, structured) => {
   const observation = read(document.documentElement, options);
   const data = { nodes: observation.nodes, ids: observation.ids, truncated: observation.truncated };
   if (structured) return [data, observation.elements];
@@ -67,9 +64,12 @@ export const READ_TREE = `(options, structured) => {
  * the nearest read ancestor, which keeps every containment a scope or
  * filter asks about. Iframe documents are not entered.
  */
-export const LOCATE_READ = `(options, wants, key, structured) => {
-  ${PRISTINE}
-  const read = (${readSemanticsFunction.toString()});
+const LOCATE_READ = `(options, wants, key, structured) => {
+  // A document a navigation just opened has no root yet: nothing in it can match.
+  if (document.documentElement === null) {
+    const none = { nodes: [], parents: [], valued: [], aria: [], order: [] };
+    return [structured ? none : JSON.stringify(none), []];
+  }
   const recorded = Reflect.get(globalThis, Symbol.for(key));
   const labelable = 'input, select, textarea, button, meter, output, progress, [aria-label], [aria-labelledby], [contenteditable], [role]';
   const squash = (text) => text.replace(/\\s+/g, '').toLowerCase();
@@ -188,7 +188,7 @@ export const LOCATE_READ = `(options, wants, key, structured) => {
  * button, checkbox, or radio that holds it, or the control its label names.
  * Null for a detached element, which a locate must find again.
  */
-export const ELEMENT_DISABLED = `(target, options) => {
+const ELEMENT_DISABLED = `(target, options) => {
   if (!target.isConnected) return null;
   let element = target;
   if (!element.matches('input, textarea, select') && !element.isContentEditable) {
@@ -198,11 +198,59 @@ export const ELEMENT_DISABLED = `(target, options) => {
       if (control) element = control;
     }
   }
-  ${PRISTINE}
-  const read = (${readSemanticsFunction.toString()});
   const [node] = read(document.documentElement, { ...options, mode: { kind: 'nodes', elements: [element] } });
   return node === undefined ? false : node.states.disabled === true;
 }`;
+
+/** The readers a document keeps: each is called by name (`readerCall`). */
+export type ReaderName = 'hidden' | 'tree' | 'locate' | 'disabled';
+
+/** The readers over one shared semantic reader, with the builtins the document had before its own scripts ran. */
+const READERS = `(() => {
+  ${PRISTINE}
+  const read = (${readSemanticsFunction.toString()});
+  return Object.freeze({ hidden: ${ELEMENT_HIDDEN}, tree: ${READ_TREE}, locate: ${LOCATE_READ}, disabled: ${ELEMENT_DISABLED} });
+})()`;
+
+/** Where a document keeps its readers: named by their source, so another driver version attached to the same browser keeps its own. */
+const READERS_KEY = `e2e.readers.${createHash('sha256').update(READERS).digest('hex').slice(0, 16)}`;
+
+/** Defines the document's readers once, out of reach of the page's own assignments. */
+const DEFINE_READERS = `const key = globalThis.Symbol.for(${JSON.stringify(READERS_KEY)});
+  if (!Object.prototype.hasOwnProperty.call(globalThis, key)) {
+    Object.defineProperty(globalThis, key, { value: ${READERS}, enumerable: false, configurable: false, writable: false });
+  }`;
+
+/**
+ * Installs the readers in every document before its scripts run, so a read
+ * sends only `readerCall`: the readers are about 90 KB of source, and a
+ * call that sends them is compiled again every time, which costs a read
+ * about 2 ms against a fraction of one.
+ */
+export const READERS_INIT_SCRIPT = `(() => {
+  ${DEFINE_READERS}
+})();`;
+
+/** What `readerCall` answers in a document the preload never ran in (one open before it, or an extension page). */
+export const READERS_MISSING = 'e2e:readers-missing';
+
+/** Calls the reader `name` that the document keeps, or answers `READERS_MISSING` when it keeps none. */
+export function readerCall(name: ReaderName): string {
+  return `(...args) => {
+  const readers = globalThis[globalThis.Symbol.for(${JSON.stringify(READERS_KEY)})];
+  return readers === undefined ? ${JSON.stringify(READERS_MISSING)} : readers.${name}(...args);
+}`;
+}
+
+/** Calls the reader `name` in a document that keeps none, defining the readers there first; one that cannot keep them (a frozen global) is still read. */
+export function readerInstallCall(name: ReaderName): string {
+  return `(...args) => {
+  try {
+    ${DEFINE_READERS}
+  } catch {}
+  return (globalThis[globalThis.Symbol.for(${JSON.stringify(READERS_KEY)})] ?? ${READERS}).${name}(...args);
+}`;
+}
 
 /** What `LOCATE_READ` reports beside the elements: each read, the index of its nearest read ancestor, and whether it displays its value (an input but a checkbox or radio, a textarea, a select). */
 export interface LocateMetadata {
@@ -470,6 +518,26 @@ export function domReady(timeoutMs: number): Promise<boolean> {
 }
 
 /** Resolves after the next rendered frame, or at once in a hidden document. */
+/** Where a wheel reaches an element, with the box it read when nothing blocked it. */
+export type WheelAim =
+  | { readonly aim: 'pointer' | 'centre'; readonly box: { x: number; y: number; width: number; height: number } }
+  | { readonly aim: 'blocked' };
+
+/**
+ * Where a wheel reaches `element` in a top-level document, whose box is the
+ * viewport's: at the pointer when it already hovers the element, at its
+ * centre when the hit target there is the element or inside it, else
+ * `blocked`, which the full actionability checks answer.
+ */
+export function wheelAim(element: Element): WheelAim {
+  if (window !== window.top || !element.isConnected || element.getClientRects().length === 0) return { aim: 'blocked' };
+  const rect = element.getBoundingClientRect();
+  const box = { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+  if (element.matches(':hover')) return { aim: 'pointer', box };
+  const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  return hit !== null && element.contains(hit) ? { aim: 'centre', box } : { aim: 'blocked' };
+}
+
 export function nextFrame(): Promise<void> | undefined {
   if (document.visibilityState === 'hidden') return undefined;
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));

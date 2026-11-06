@@ -26,7 +26,7 @@ import { chromiumDrag } from './drag.ts';
 import { unlessStale } from './errors.ts';
 import type { NodeTarget } from './frames.ts';
 import { clickSources, dragPath, dragSources, dragStepMs, moveSources, pressSource, typeSource, wheelSources, type ClickOptions } from './input.ts';
-import { actionPoint as readActionPoint, armHitInterceptor, ELEMENT_DISABLED, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, type ActionPoint } from './page.ts';
+import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
 
@@ -90,6 +90,13 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
     case 'dragTo':
       return dragTo(session, target, session.refs.lookup(action.target), deadline, signal);
     case 'swipe': {
+      // A wheel the element already takes goes at once; only one something blocks waits for it to become actionable.
+      const aimed = await session.run(wheelAim, [target.element], target.context);
+      if (aimed.aim !== 'blocked') {
+        const { box } = aimed;
+        const at = aimed.aim === 'pointer' ? session.pointer : { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+        return wheel(session, at, box.width > 0 ? box : await session.viewportSize(), action.direction, action.momentum ?? 'none', signal);
+      }
       const point = await pointerPoint(session, target, deadline, false, signal);
       const box = await session.run(boxSize, [target.element], target.context);
       return wheel(session, point, box.width > 0 ? box : await session.viewportSize(), action.direction, action.momentum ?? 'none', signal);
@@ -235,7 +242,7 @@ async function settledPoint(
   for (;;) {
     signal.throwIfAborted();
     const { enabled, ...placing } = checks;
-    const disabled = enabled ? await session.read<boolean | null>(ELEMENT_DISABLED, [target.element, readerOptions(session)], undefined, target.context) : false;
+    const disabled = enabled ? await session.reader<boolean | null>('disabled', [target.element, readerOptions(session)], undefined, target.context) : false;
     const point: ActionPoint = disabled === null ? { state: 'detached' } : disabled ? { state: 'disabled' } : await session.run(readActionPoint, [target.element, { ...placing, key: CLOSED_SHADOW_ROOTS_KEY }], target.context);
     if (point.state === 'ok') return point;
     if (point.state === 'detached') throw new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });
