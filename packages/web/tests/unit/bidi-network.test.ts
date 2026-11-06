@@ -184,6 +184,23 @@ describe('AttemptNetwork', () => {
     expect(fake.commands('network.addIntercept')).toEqual([]);
   });
 
+  it('refuses a URL rewrite on Firefox before the request goes, and fails the request', async () => {
+    const fake = new FakeBidi();
+    const { net, open } = network(fake, { browser: 'firefox' });
+    const errors: unknown[] = [];
+    await net.bind('user-1');
+    await net.addRoute(route(`${SITE}/a`, (_request, decisions) => decisions.continue({ url: `${SITE}/other` }).catch((cause: unknown) => {
+      errors.push(cause);
+      throw cause;
+    })));
+    await open('tab');
+    fake.emit('network.beforeRequestSent', request('r1', `${SITE}/a`));
+    await settle();
+    expect(errors).toEqual([expect.objectContaining({ code: 'UNSUPPORTED_CAPABILITY' })]);
+    expect(fake.commands('network.continueRequest')).toEqual([]);
+    expect(fake.commands('network.failRequest').map((command) => command.params)).toEqual([{ request: 'r1' }]);
+  });
+
   it('waits for 500 ms with no request in flight before calling the network idle', async () => {
     const fake = new FakeBidi();
     const { net } = network(fake);

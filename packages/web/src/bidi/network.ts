@@ -13,7 +13,7 @@ import { readFile } from 'node:fs/promises';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import type { Network } from 'webdriver-bidi-protocol';
-import type { TextPattern } from 'e2e/engine';
+import { EngineError, type TextPattern } from 'e2e/engine';
 import { BidiError, type BidiConnection, type BidiEventParams } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
 import { lowercaseNames } from '../protected-app.ts';
@@ -412,9 +412,12 @@ export class AttemptNetwork {
    * `content-length` on a browser that would keep the old one. The route's
    * header overrides and the site headers added are kept apart for the
    * request's redirect hops (`redirectHeaders`), so a hop that leaves the
-   * site never carries the site's headers.
+   * site never carries the site's headers. Firefox cannot rewrite the URL
+   * (`firefoxUrlRewrite`), so there a rewrite is refused before the
+   * request goes.
    */
   private async continue(binding: NetworkBinding, request: InterceptedRequest, overrides: ContinueDecision = {}): Promise<void> {
+    if (overrides.url !== undefined && this.options.browser === 'firefox') throw firefoxUrlRewrite(request.url);
     const site = this.options.siteHeaders(overrides.url ?? request.url);
     const routeHeaders = overrides.headers === undefined ? undefined : lowercaseNames(overrides.headers);
     let headers = routeHeaders === undefined ? undefined : applyHeaderOverrides(request.headers, routeHeaders, this.options.browser === 'chromium');
@@ -585,6 +588,22 @@ function applyHeaderOverrides(original: Readonly<Record<string, string>>, overri
 /** Whether a decision failed because the page already cancelled the request it decides: no failure, as Playwright sends such decisions "may fail". */
 function cancelledRequest(cause: unknown): boolean {
   return cause instanceof BidiError && (cause.error === 'no such request' || /Invalid InterceptionId/i.test(cause.message));
+}
+
+/**
+ * Why Firefox cannot continue a request to another URL: it rewrites the URL
+ * with a transparent internal redirect that breaks the load. A fetch, XHR,
+ * image, or script reaches the new URL, but the page's load of it fails with
+ * an `AbortError` (https://bugzilla.mozilla.org/show_bug.cgi?id=2014825); a
+ * navigation goes without the headers the continue sets, and one to another
+ * site crashes the tab.
+ */
+function firefoxUrlRewrite(url: string): EngineError {
+  return new EngineError(
+    'UNSUPPORTED_CAPABILITY',
+    `route.continue({ url }) for ${url} is not supported on Firefox, whose URL rewrite fails the page's fetch of it (https://bugzilla.mozilla.org/show_bug.cgi?id=2014825), drops the headers of a navigation, and crashes the tab on one to another site; answer the request with route.fulfill, or run on chromium`,
+    { retryable: false },
+  );
 }
 
 /** Waits for a decision on a held request, taking one the page already cancelled as made. */

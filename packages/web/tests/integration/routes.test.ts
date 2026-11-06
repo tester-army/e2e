@@ -16,7 +16,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TestError } from 'e2e/engine';
 import type { Browser, WebRoute } from '../../src/browser.ts';
-import { browserFixture, itFailsOnFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { browserFixture, onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 interface Echo {
   readonly path: string;
@@ -359,8 +359,8 @@ describe('browser.route decisions', () => {
     expect(echo.headers['x-gate']).toBe('open-sesame');
   });
 
-  // Firefox bug: after route.continue({ url }) the request reaches the new URL and BiDi reports responseCompleted, but the page's fetch never resolves.
-  itFailsOnFirefox('continue sends a rewritten url, method, and body without touching the original', async () => {
+  // Firefox fails the page's fetch of a rewritten URL (https://bugzilla.mozilla.org/show_bug.cgi?id=2014825), so the driver refuses it there.
+  it.skipIf(onFirefox)('continue sends a rewritten url, method, and body without touching the original', async () => {
     await browser.route('**/api/quote', (route) =>
       route.continue({ url: '/echo', method: 'PUT', postData: 'payload' }));
     const echo = await fetchEcho(`${origin}/api/quote`, { method: 'POST', body: 'original' });
@@ -370,13 +370,40 @@ describe('browser.route decisions', () => {
     expect(hits.get('/echo')).toBe(1);
   });
 
-  // Firefox bug: after route.continue({ url }) the request reaches the new URL and BiDi reports responseCompleted, but the page's fetch never resolves.
-  itFailsOnFirefox('continue to another site leaves the site header behind', async () => {
+  // Firefox fails the page's fetch of a rewritten URL (https://bugzilla.mozilla.org/show_bug.cgi?id=2014825), so the driver refuses it there.
+  it.skipIf(onFirefox)('continue to another site leaves the site header behind', async () => {
     await browser.route('**/api/quote', (route) => route.continue({ url: `${otherSite}/echo` }));
     const echo = await fetchEcho(`${origin}/api/quote`);
     expect(echo.headers.host).toBe(`localhost:${new URL(origin).port}`);
     expect(echo.headers['x-gate']).toBeUndefined();
     expect(hits.get('/api/quote')).toBeUndefined();
+  });
+
+  // Firefox breaks a rewritten URL's load (https://bugzilla.mozilla.org/show_bug.cgi?id=2014825), so the driver refuses it there.
+  it.skipIf(onFirefox)('continue sends a navigation to a rewritten url with the site header', async () => {
+    await browser.route('**/api/quote', (route) => route.continue({ url: '/echo' }));
+    await browser.goto(`${origin}/api/quote`);
+    const echo = JSON.parse(await browser.evaluate(() => document.body.textContent ?? '')) as Echo;
+    expect([echo.path, echo.method, echo.headers['x-gate']]).toEqual(['/echo', 'GET', 'open-sesame']);
+    expect(hits.get('/api/quote')).toBeUndefined();
+  });
+
+  // Firefox breaks a rewritten URL's load (https://bugzilla.mozilla.org/show_bug.cgi?id=2014825), so the driver refuses it there.
+  it.skipIf(onFirefox)('continue sends a navigation to another site without the site header', async () => {
+    await browser.route('**/api/quote', (route) => route.continue({ url: `${otherSite}/echo`, method: 'PUT' }));
+    await browser.goto(`${origin}/api/quote`);
+    const echo = JSON.parse(await browser.evaluate(() => document.body.textContent ?? '')) as Echo;
+    expect([echo.path, echo.method, echo.headers.host, echo.headers['x-gate']]).toEqual(['/echo', 'PUT', `localhost:${new URL(origin).port}`, undefined]);
+    expect(hits.get('/api/quote')).toBeUndefined();
+  });
+
+  it.runIf(onFirefox)('continue to another url fails fast on Firefox, for a fetch and a navigation', async () => {
+    const unsupported = { code: 'UNSUPPORTED_CAPABILITY', message: expect.stringContaining('show_bug.cgi?id=2014825') };
+    await browser.route('**/api/quote', (route) => route.continue({ url: '/echo' }));
+    expect(await fetchText(`${origin}/api/quote`)).toBe('failed');
+    expect(await nextStepFailure()).toMatchObject(unsupported);
+    await expect(browser.goto(`${origin}/api/quote`)).rejects.toMatchObject(unsupported);
+    expect([hits.get('/api/quote'), hits.get('/echo')]).toEqual([undefined, undefined]);
   });
 
   it.each([

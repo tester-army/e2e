@@ -327,6 +327,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | Pointer actions in a rotated, skewed, or mirrored iframe throw `NOT_ACTIONABLE` | Points are mapped through a frame's scale only. |
 | Selectors are CSS or XPath only, with no `>>` chains or `text=` and `nth=` engines | The browser runs the selector itself. |
 | HTML5 drag and drop drops no data on Firefox | [Firefox bug 1515879](https://bugzilla.mozilla.org/show_bug.cgi?id=1515879). Pointer drags work. |
+| `route.continue({ url })` throws `UNSUPPORTED_CAPABILITY` on Firefox | [Firefox bug 2014825](https://bugzilla.mozilla.org/show_bug.cgi?id=2014825): the page's load of a rewritten URL fails. Use `route.fulfill`. |
 | `setInputFiles` throws `UNSUPPORTED_CAPABILITY` with a browser provider, and so do downloads when the provider serves none | The files are on another machine. |
 | A saved session throws `UNSUPPORTED_CAPABILITY` for an IndexedDB value that is not JSON or a `Date` | A `Blob` or class instance can't be restored. |
 
