@@ -52,6 +52,7 @@ describe('an app URL on a free port', () => {
     expect(app.readyUrl).toBe('http://127.0.0.1:4321/shop/');
     // Engines scope injected credentials to the origin on the assigned port, never the declared :0.
     expect(engineAppInfo(app).origin).toBe('http://127.0.0.1:4321');
+    expect(engineAppInfo(pending.targets[0]!.app).origin).toBeUndefined();
     expect(app.identity).toBe(pending.targets[0]!.app.identity);
     expect(app.identity).toBe('http://127.0.0.1:0/shop/');
     expect(assigned.configDigest).toBe(pending.configDigest);

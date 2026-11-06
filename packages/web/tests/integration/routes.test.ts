@@ -1,11 +1,12 @@
 /**
  * Route decisions against a server that counts what reaches it: `continue`
  * goes to the network past every other route and carries the configured
- * headers itself, `fallback` hands the request to the route before it,
- * the overrides each decision implements reach the wire, and an option it
- * does not implement fails the next step instead of being dropped. Also the
- * one call beside routing that takes a URL the same way: a relative cookie
- * URL.
+ * headers itself (to the app's origin and the one `credentialOrigins` lists,
+ * not another port on the same host), `fallback` hands the request to the
+ * route before it, the overrides each decision implements reach the wire,
+ * and an option it does not implement fails the next step instead of being
+ * dropped. Also the one call beside routing that takes a URL the same way: a
+ * relative cookie URL.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -81,14 +82,20 @@ function startCountingServer(hits: Map<string, number>): Promise<{ server: Serve
 }
 
 describe('browser.route decisions', () => {
-  const surface = new PlaywrightSurface({ headers: { 'X-Gate': 'open-sesame' } });
+  let surface: PlaywrightSurface;
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-routes-'));
   const signal = new AbortController().signal;
   const hits = new Map<string, number>();
   const attached: string[] = [];
+  /** The app's server, then the unlisted and listed ports. */
   let server: Server;
+  let servers: Server[];
   let origin: string;
   let otherOrigin: string;
+  /** Another port on the app's host: the same site, another origin, not listed. */
+  let unlistedOrigin: string;
+  /** A third port on the app's host, in `credentialOrigins`. */
+  let listedOrigin: string;
   let page: Page;
   let browser: Browser;
 
@@ -102,11 +109,15 @@ describe('browser.route decisions', () => {
   };
 
   beforeAll(async () => {
-    const started = await startCountingServer(hits);
+    const [started, unlisted, listed] = await Promise.all([startCountingServer(hits), startCountingServer(hits), startCountingServer(hits)]);
     server = started.server;
+    servers = [server, unlisted.server, listed.server];
     origin = `http://127.0.0.1:${started.port}`;
     // The same server under another host name: another origin.
     otherOrigin = `http://localhost:${started.port}`;
+    unlistedOrigin = `http://127.0.0.1:${unlisted.port}`;
+    listedOrigin = `http://127.0.0.1:${listed.port}`;
+    surface = new PlaywrightSurface({ headers: { 'X-Gate': 'open-sesame' }, credentialOrigins: [listedOrigin] });
     writeFileSync(path.join(projectRoot, 'quote.json'), '{"cents":4200}\n');
     await surface.init({ runId: 'routes', targetName: 'web', projectRoot, app: { origin, site: '127.0.0.1' },
       env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
@@ -134,7 +145,7 @@ describe('browser.route decisions', () => {
 
   afterAll(async () => {
     await surface.dispose({ signal, timeoutMs: 5_000 });
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await Promise.all(servers.map((each) => new Promise<void>((resolve) => each.close(() => resolve()))));
     rmSync(projectRoot, { recursive: true, force: true });
   });
 
@@ -438,6 +449,27 @@ describe('browser.route decisions', () => {
     expect(echo.headers['x-gate']).toBe('open-sesame');
     expect(hits.get('/api/quote')).toBeUndefined();
     expect(hits.get('/echo')).toBe(1);
+  });
+
+  it('continue to another port on the same host leaves the configured header behind, and to a listed origin keeps it', async () => {
+    await browser.route('**/api/unlisted', (route) => route.continue({ url: `${unlistedOrigin}/echo` }));
+    await browser.route('**/api/listed', (route) => route.continue({ url: `${listedOrigin}/echo` }));
+    expect((await fetchEcho(`${origin}/api/unlisted`)).headers['x-gate']).toBeUndefined();
+    expect((await fetchEcho(`${origin}/api/listed`)).headers['x-gate']).toBe('open-sesame');
+  });
+
+  it('fetch sends the configured header to a listed origin, not another port on the same host', async () => {
+    const sent = new Map<string, string | undefined>();
+    await browser.route('**/echo', async (route) => {
+      const echo = await (await route.fetch()).json<Echo>();
+      sent.set(new URL(route.request.url).origin, echo.headers['x-gate']);
+      await route.fulfill({ body: '' });
+    });
+    // Cross-origin from the page, so the fulfilled reply fails CORS; the route has already read the echo.
+    for (const target of [unlistedOrigin, listedOrigin]) {
+      await page.evaluate((url) => fetch(url).then(() => undefined, () => undefined), `${target}/echo`);
+    }
+    expect(Object.fromEntries(sent)).toEqual({ [unlistedOrigin]: undefined, [listedOrigin]: 'open-sesame' });
   });
 
   it('continue to another origin leaves the configured header behind', async () => {

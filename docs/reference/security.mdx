@@ -104,12 +104,13 @@ and use the step's secrets there.
 ### Request credentials
 
 The browser engine sends configured request credentials only to exact
-origins: the scheme, host, and port of `app.url`, plus the extras you list.
+origins: the scheme, host, and port of `app.url`, plus the extras
+`credentialOrigins` lists.
 
-| Option | Goes to | Extra origins |
-| --- | --- | --- |
-| `headers` | Every request to an allowed origin | `headerOrigins` |
-| `basicAuth` | The answer to a `401` challenge from an allowed origin | `basicAuth.origins` |
+| Option | Goes to |
+| --- | --- |
+| `headers` | Every request that starts at an allowed origin |
+| `basicAuth` | The answer to a `401` challenge from an allowed origin |
 
 - Another port on the same host, a subdomain, and a sibling host under a
   shared domain such as `vercel.app` are other origins. They get no
@@ -120,9 +121,12 @@ origins: the scheme, host, and port of `app.url`, plus the extras you list.
 - `basicAuth` answers the origin that sends the `401`. A redirect to another
   origin, such as `http:` to `https:` or the apex to `www`, gets no answer
   unless you list the origin it lands on.
+- On WebKit, `basicAuth` answers a `401` from any origin when an allowed
+  origin is on its scheme's default port (`https://staging.example.com`) or
+  has an IPv6 host. WebKit can't scope a credential to such an origin.
 - An extra is an `http:` or `https:` origin with no path, query, or
-  fragment, such as `https://api.example.com`. Anything else is
-  `INVALID_CONFIG` at config load.
+  fragment, such as `https://api.example.com`. Anything else, a `*` in the
+  host, and port `0` are `INVALID_CONFIG` at config load.
 
 ### Site check
 

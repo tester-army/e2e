@@ -241,10 +241,16 @@ export function resolveTargetApp(targetName: string, app: TargetAppDeclaration, 
   };
 }
 
-/** What `prepare` and `init` receive about the target's app: its origin and site policy, and what a device launches. */
+/**
+ * What `prepare` and `init` receive about the target's app: its origin and
+ * site policy, and what a device launches. A free port the run has not
+ * assigned yet (`e2e doctor` assigns none) leaves the origin out rather than
+ * report it on port `0`.
+ */
 export function engineAppInfo(app: ResolvedApp): EngineAppInfo {
-  const { base, site, bundleId, appPath, launchArguments, permissions } = app;
-  return obj({ origin: base?.origin, site, bundleId, appPath, launchArguments, permissions });
+  const { base, portRequest, site, bundleId, appPath, launchArguments, permissions } = app;
+  const unassigned = portRequest !== undefined && portRequest.port === undefined;
+  return obj({ origin: unassigned ? undefined : base?.origin, site, bundleId, appPath, launchArguments, permissions });
 }
 
 /**

@@ -1,11 +1,12 @@
 /**
- * Reaching an app behind a gate: configured request headers reach the app's
- * origin on every context the attempt opens, and basic-auth credentials
- * answer only its challenge; neither reaches another origin unless the
- * options list it. Driven through the engine hooks, as the attempt executor
- * drives them; a second fixture instance stands in for another origin, on
- * the same host under another port, and as `localhost` rather than
- * `127.0.0.1` for a third-party site.
+ * Reaching an app behind a gate: configured request headers ride requests
+ * that start at the app's origin, on every context the attempt opens, and
+ * basic-auth credentials answer only its challenge. A request that starts at
+ * another origin gets neither unless `credentialOrigins` lists it; a
+ * redirect keeps the headers its request started with. Driven through the
+ * engine hooks, as the attempt executor drives them; a second fixture
+ * instance stands in for another origin, on the same host under another
+ * port, and as `localhost` rather than `127.0.0.1` for a third-party site.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -99,8 +100,8 @@ describe('web({ headers, basicAuth })', () => {
     }
   });
 
-  it('sends the headers to an origin headerOrigins lists, and no other', async () => {
-    const engine = web({ headers: { 'x-fixture-header': 'listed' }, headerOrigins: [`${otherPort}/`] });
+  it('sends the headers to an origin credentialOrigins lists, and no other', async () => {
+    const engine = web({ headers: { 'x-fixture-header': 'listed' }, credentialOrigins: [`${otherPort}/`] });
     try {
       await boot(engine, app, artifactsDir, 'h3');
       expect(await headingAt(engine, 'h3', `${otherPort}/headers`)).toBe('listed');
@@ -190,8 +191,8 @@ describe('web({ headers, basicAuth })', () => {
     }
   });
 
-  it('answers a challenge from an origin basicAuth.origins lists, and no other', async () => {
-    const engine = web({ basicAuth: { ...PROTECTED_CREDENTIAL, origins: [otherPort] } });
+  it('answers a challenge from an origin credentialOrigins lists, and no other', async () => {
+    const engine = web({ basicAuth: PROTECTED_CREDENTIAL, credentialOrigins: [otherPort] });
     try {
       await boot(engine, app, artifactsDir, 'b2');
       expect(await headingAt(engine, 'b2', `${app.url}/protected`)).toBe('Protected');

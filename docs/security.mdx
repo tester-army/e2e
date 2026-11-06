@@ -35,9 +35,11 @@ Redaction matches strings, and screenshots mask secure fields only:
   pass through. Assert the outcome, not the secret.
 - **Values not filled as a secret.** Only a configured secret's value is
   redacted. A value a sign-in sets in a cookie is not.
-- **Request credentials.** `headers` and `basicAuth` go on every request to
-  the app's origin and each origin you list, even one a third-party page
-  starts. `headers` also stay on that request's redirects to any origin.
+- **Request credentials.** `headers` go on every request that starts at the
+  app's origin or one you list, even one a third-party page starts, and stay
+  on its redirects to any origin. `basicAuth` answers a `401` from those
+  origins, and from any origin on WebKit when one of those is on a default
+  port.
 - **Committed recordings.** Cache entries store typed values verbatim, except
   secret fills. They aren't signed and replay with your permissions, so
   review them as you would test code.
