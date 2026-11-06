@@ -1,6 +1,6 @@
 /** Separates exceptions thrown by trusted page code from failures of the evaluation transport. */
 import type { JsonValue } from 'e2e';
-import { TestError } from 'e2e/engine';
+import { TestError, validateJsonValue } from 'e2e/engine';
 import { message } from './support.ts';
 
 /** The `__name` helper tsx's `keepNames` output calls, declared beside test code serialized into the page; it takes `defineProperty` before that code runs. */
@@ -168,4 +168,22 @@ export function decodeEvaluation(text: string): JsonValue | undefined {
   if (report.ok) return report.value;
   if ('invalid' in report) throw new TestError('INVALID_ARGUMENT', `evaluate result ${report.invalid}`);
   throw new TestError('EVALUATE_FAILED', report.message);
+}
+
+/**
+ * `browser.evaluate` on any driver: `fn` serialized and compiled behind the
+ * page-side boundary, `run` executing it with `arg` in the page, and the
+ * JSON text it resolves to decoded. A page exception is `EVALUATE_FAILED`
+ * with the page's message; argument and result must be JSON.
+ */
+export async function evaluateInPage<T extends JsonValue>(
+  fn: string | ((arg?: never) => T | Promise<T>),
+  arg: JsonValue | undefined,
+  run: (compiled: (arg: unknown) => Promise<string>, arg: JsonValue | undefined) => Promise<unknown>,
+): Promise<T> {
+  const source = typeof fn === 'string' ? fn : pageFunctionSource(fn);
+  validateJsonValue(arg, 'evaluate argument');
+  const text = await run(compileEvaluation(source, arg !== undefined), arg);
+  if (typeof text !== 'string') throw new TestError('EVALUATE_FAILED', 'page evaluation returned an unreadable result');
+  return decodeEvaluation(text) as T;
 }

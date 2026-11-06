@@ -1601,6 +1601,12 @@ async locate(expression) {
 - An engine whose tree is the whole truth (a device) calls it; a browser
   engine reproduces it.
 - A `selector` expression needs the `selector` option.
+- The `matches` option `(node, query) => boolean | undefined` decides a
+  query by the platform's own rules, such as a browser's text and hidden
+  rules. Return `undefined` to keep the reference rules for that query.
+- The `hasText` option `(node, pattern) => boolean` decides a
+  `filter({ hasText })`. Without it, the text of the node or any descendant
+  counts.
 - A `frame` expression is `FRAME_NOT_FOUND`.
 - A `union` expression matches either branch in document order, without duplicate nodes.
 

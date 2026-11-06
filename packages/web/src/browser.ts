@@ -7,28 +7,23 @@
  *
  * Layering rule: validation (`resolveUrl`, JSON checks, cookie URLs, the
  * download trigger) runs outside `surface.guard`, so a runner error keeps its
- * classification and only Playwright faults are translated. The URL rule is
+ * classification and only driver faults are translated. The URL rule is
  * never re-implemented here: `context.app.resolveUrl` is the one place that
  * says which URLs a test may open.
  */
 
-import type { Download, Route } from 'playwright-core';
 import type { ActionOptions, Expectable, JsonValue, Locator, Screen, TextMatch } from 'e2e';
 import {
-  ConfigurationError,
   Deadline,
   describePattern,
   EngineError,
   matchesText,
-  obj,
   pollCondition,
   raceAbort,
-  stepTimeout,
   rejectUnknownOptions,
   TestError,
   toTextPattern,
   urlMatches,
-  validateJsonValue,
   withTimeout,
   type EngineFixtureContext,
   type FixtureOperation,
@@ -37,17 +32,10 @@ import {
   type OperationContext,
   type TextPattern,
 } from 'e2e/engine';
-import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
-import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
-import { isTestErrorCode, message as causeMessage, pageScriptFailure, translatePwError } from './support.ts';
-import { compileEvaluation, decodeEvaluation, pageFunctionSource } from './evaluation.ts';
-import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
-import { MEDIA_KEYS, mediaLabel, mediaProblem, type WebMedia } from './media.ts';
-import { lowercaseNames } from './protected-app.ts';
-import { parseContinue, parseFulfill, requireNoArguments } from './route-options.ts';
-import { routePatternMatches, routePatternsEqual } from './route-pattern.ts';
-import type { PlaywrightSurface } from './surface.ts';
+import { initScriptLabel } from './init-scripts.ts';
+import { isTestErrorCode } from './support.ts';
+import { mediaLabel, type WebMedia } from './media.ts';
 
 /**
  * One of `json`, `body`, or `path`, or none for an empty body. `path` names a
@@ -112,51 +100,6 @@ export interface WebResponse {
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text; rejects with `ACTION_FAILED` when the body could not be read. */
   text(): Promise<string>;
-}
-
-/**
- * Reads the body once the response is known and keeps the outcome: a body
- * that arrived returns a copy of its bytes on every call, a body the browser could not
- * read rejects every call with `ACTION_FAILED` naming the cause. Swallowing
- * that failure would hand the test an empty string the server never sent,
- * indistinguishable from a real empty body. `failure` names the reason the
- * browser reported on a page request (`net::ERR_CONTENT_LENGTH_MISMATCH` for
- * a connection cut short of the declared length, `net::ERR_ABORTED` for a
- * request the page aborted), and the error behind the read is the fallback,
- * as for a redirect, whose body the browser never keeps.
- */
-async function readResponseBody(
-  api: 'waitForResponse' | 'route.fetch',
-  body: () => Promise<Buffer>,
-  failure: () => string | undefined = () => undefined,
-): Promise<() => Promise<Buffer>> {
-  try {
-    const bytes = await body();
-    return () => Promise.resolve(Buffer.from(bytes));
-  } catch (cause) {
-    const error = new TestError(
-      'ACTION_FAILED',
-      `${api}: response body could not be read: ${failure() ?? causeMessage(cause)}`,
-    );
-    return () => Promise.reject(error);
-  }
-}
-
-/** The `WebResponse` over a Playwright response's metadata and a reader for its body bytes. */
-function webResponse(
-  response: { url(): string; status(): number; headers(): Record<string, string> },
-  body: () => Promise<Buffer>,
-): WebResponse {
-  const text = async (): Promise<string> => new TextDecoder().decode(await body());
-  return {
-    url: response.url(),
-    status: response.status(),
-    headers: response.headers(),
-    body,
-    // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
-    json: async <T = unknown>() => JSON.parse(await text()) as T,
-    text,
-  };
 }
 
 export interface CookieFields {
@@ -332,471 +275,16 @@ export interface Browser extends Expectable<BrowserExpectation> {
   };
 }
 
-interface StoredRoute {
-  readonly pattern: TextPattern;
-  readonly pwHandler: (route: Route) => Promise<void>;
-  readonly predicate: (url: URL) => boolean;
-}
-
-/** A saved download as `waitForDownload` and `waitForDownloads` return it. */
-type DownloadedFile = { path: string; absolutePath: string; suggestedFilename: string };
-
 /**
- * Runs `trigger` once and saves the first `count` downloads it starts, in
- * start order, each attached as a `download` artifact. One budget bounds the
- * start, completion and save of every file; on failure the unfinished
- * downloads are canceled and nothing is attached after it.
+ * Declares a built `browser` object as the fixture: each method's step kind,
+ * label, and timeout, and `expect(browser)` wired to `expectation`. Shared by
+ * both drivers, so the fixture records the same steps whichever drives it.
  */
-async function collectDownloads(
-  surface: PlaywrightSurface,
+export function declareBrowserFixture(
   context: EngineFixtureContext,
-  trigger: () => Promise<void>,
-  count: number,
-  timeout: number | undefined,
-  api: 'browser.waitForDownload' | 'browser.waitForDownloads',
-): Promise<DownloadedFile[]> {
-  const operation = context.operation(stepTimeout(timeout, api));
-  const waitMs = operation.timeoutMs;
-  const deadline = new Deadline(waitMs);
-  const scope = new AbortController();
-  const signal = AbortSignal.any([operation.signal, scope.signal]);
-  const started: Download[] = [];
-  let triggerFailure: { cause: unknown } | undefined;
-  let triggerMs: number | undefined;
-  let finished = false;
-  let stopListening = (): void => {};
-  const timedOut = (): TestError => new TestError(
-    'ACTION_FAILED',
-    triggerMs === undefined
-      ? `${api} exceeded its timeout of ${waitMs}ms`
-      : started.length < count
-        ? `${count === 1 ? 'no download' : `${started.length} of ${count} downloads`} started within ${waitMs}ms; the trigger resolved after ${triggerMs}ms`
-        : `${count === 1 ? 'the download' : `${count} downloads`} did not finish within ${waitMs}ms`,
-  );
-  const requireOpen = (): void => {
-    if (scope.signal.aborted || deadline.expired()) throw timedOut();
-  };
-  try {
-    return await withTimeout(surface.guard({ ...operation, signal }, 'download', async (currentOperation) => {
-      requireOpen();
-      const page = surface.requirePage();
-      const remote = surface.remoteDownloads();
-      if (remote !== undefined) await saveDownloadsTo(page, remote.dir, currentOperation.signal);
-      requireOpen();
-      let allStarted!: () => void;
-      const received = new Promise<void>((resolve) => { allStarted = resolve; });
-      const onDownload = (download: Download): void => {
-        if (scope.signal.aborted || started.length === count) return;
-        started.push(download);
-        if (started.length === count) allStarted();
-      };
-      stopListening = () => { page.off('download', onDownload); };
-      page.on('download', onDownload);
-      const triggerStart = Date.now();
-      try {
-        await trigger();
-      } catch (cause) {
-        triggerFailure = { cause };
-        throw cause;
-      }
-      triggerMs = Date.now() - triggerStart;
-      await raceAbort(received, currentOperation.signal, 'download');
-      const files: DownloadedFile[] = [];
-      for (const download of started) {
-        const suggestedFilename = download.suggestedFilename();
-        const { relative, absolute } = surface.artifactPath('downloads', suggestedFilename, '');
-        if (remote === undefined) await saveLocally(download, absolute, surface.unservedDownloads());
-        else await saveFromBrowser(download, remote, absolute, currentOperation.signal);
-        if (currentOperation.signal.aborted) throw timedOut();
-        context.attachArtifact('download', relative);
-        files.push({ path: relative, absolutePath: absolute, suggestedFilename });
-      }
-      finished = true;
-      return files;
-    }, (cause, label) => {
-      // The trigger is test code, so its errors keep their original classification.
-      if (triggerFailure !== undefined && Object.is(cause, triggerFailure.cause)) throw cause;
-      return translatePwError(cause, label);
-    }, 'test-code'), deadline.remaining(), timedOut);
-  } finally {
-    // The owner closes even when a trigger never settles; late work cannot attach artifacts.
-    scope.abort();
-    stopListening();
-    if (!finished) {
-      for (const download of started) void download.cancel().catch(() => undefined);
-    }
-  }
-}
-
-/** Builds the `browser` fixture for one attempt over the shared surface. */
-export function createBrowserFixture(surface: PlaywrightSurface, context: EngineFixtureContext): Browser {
-  const latch = surface.latch;
-  const routes: StoredRoute[] = [];
-
-  /** Unregisters the stored routes `match` selects, newest first. */
-  const removeRoutes = async (match: (stored: StoredRoute) => boolean): Promise<void> => {
-    for (let i = routes.length - 1; i >= 0; i -= 1) {
-      const stored = routes[i]!;
-      if (!match(stored)) continue;
-      await surface.unroute(stored.predicate, stored.pwHandler);
-      routes.splice(i, 1);
-    }
-  };
-
-  /**
-   * Relative URLs and URL matching need the configured base. Resolving the
-   * empty reference yields the base itself, and lets the harness raise
-   * `APP_URL_REQUIRED` when there is none.
-   */
-  const baseHref = (): string => context.app.resolveUrl('');
-
-  /**
-   * A navigation's budget: the call's own timeout, else the test timeout the
-   * harness gives `app.open` - a document load is not an action and must not
-   * be cut at the action timeout.
-   */
-  const navigation = (
-    api: string,
-    options: { timeout?: number } | undefined,
-    run: (operation: OperationContext) => Promise<void>,
-  ): Promise<void> => {
-    const operation = context.operation(stepTimeout(options?.timeout, api) ?? context.timeouts.test);
-    return surface.guard(operation, 'navigation', run);
-  };
-
-  /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
-  const deadlineFor = (timeout: number | undefined, api: string): Deadline =>
-    new Deadline(context.operation(stepTimeout(timeout, api) ?? context.timeouts.assertion).timeoutMs);
-
-  /** The page URL, read within the action timeout or, for a matcher poll, within the poll's deadline. */
-  const currentUrl = (deadline?: Deadline) =>
-    surface.guard(context.operation(deadline?.remaining()), 'url', async () => surface.requirePage().url());
-  /** The page title, read within the action timeout or, for a matcher poll, within the poll's deadline. */
-  const currentTitle = (deadline?: Deadline) =>
-    surface.guard(context.operation(deadline?.remaining()), 'title', () => surface.requirePage().title());
-  const expectation = createBrowserExpectation({ currentUrl, currentTitle, baseHref, deadlineFor, context });
-
-  const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
-    goto(url, options) {
-      const resolved = context.app.resolveUrl(url);
-      return navigation('browser.goto', options, (operation) => surface.navigating(async () => {
-        const page = await surface.ensurePage();
-        await page.goto(resolved, {
-          waitUntil: options?.waitUntil ?? 'load',
-          timeout: operation.timeoutMs,
-        });
-      }));
-    },
-    reload: (options) =>
-      navigation('browser.reload', options, (operation) => surface.navigating(async () => {
-        await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
-      })),
-    back: (options) =>
-      navigation('browser.back', options, (operation) => surface.navigating(async () => {
-        await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
-      })),
-    forward: (options) =>
-      navigation('browser.forward', options, (operation) => surface.navigating(async () => {
-        await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
-      })),
-    url: () => currentUrl(),
-    title: () => currentTitle(),
-    // The same poll as `expect(browser).toHaveURL`, exposed as a wait.
-    waitForURL: (url, options) => {
-      rejectUnknownOptions('browser.waitForURL', options, ['timeout']);
-      return expectation.toHaveURL(url, options);
-    },
-    locator: (selector) => context.locator({ kind: 'selector', selector: requireSelector('browser.locator', selector) }),
-    frameLocator: (selector) => frameScreen(context, [requireSelector('browser.frameLocator', selector)]),
-    async evaluate<T extends JsonValue>(
-      fn: string | ((arg?: never) => T | Promise<T>),
-      arg?: JsonValue,
-    ): Promise<T> {
-      const source = typeof fn === 'string' ? fn : pageFunctionSource(fn);
-      validateJsonValue(arg, 'evaluate argument');
-      const evaluate = compileEvaluation(source, arg !== undefined);
-      // JSON safety is checked above; Playwright's recursive argument type cannot expand JsonValue.
-      const input: unknown = arg;
-      // A handle, not a value: the boundary resolves to a string, which Playwright
-      // keeps out of its in-page serializer when it is taken back from a handle.
-      const report = await surface.guard(context.operation(), 'evaluate', async (operation) => {
-        const page = surface.requirePage();
-        try {
-          const handle = await page.evaluateHandle(evaluate, input);
-          return await handle.jsonValue();
-        } catch (cause) {
-          throw (await pageScriptFailure(page, cause, 'evaluate', operation.timeoutMs)) ?? cause;
-        }
-      });
-      return decodeEvaluation(report) as T;
-    },
-    async addInitScript(script: unknown, ...rest: unknown[]) {
-      const source = await testInitScriptSource(script, rest.length === 0 ? undefined : { arg: rest[0] }, (file) => surface.projectPath(file));
-      await surface.guard(context.operation(), 'addInitScript', () => surface.addInitScript(source));
-    },
-    route(pattern, handler) {
-      const wirePattern = toTextPattern(pattern);
-      const predicate = (url: URL) => routePatternMatches(wirePattern, url.href);
-      // Playwright never surfaces a throwing route handler to the test, so a
-      // contract violation (no decision, two decisions) or a failing handler
-      // is latched on the surface and fails the next step with its real cause.
-      const handleRoute = async (route: Route): Promise<void> => {
-        let decided = false;
-        const request = route.request();
-        // Noted before the abort, so a navigation it fails reads as aborted by the test.
-        const abort = async (): Promise<void> => {
-          surface.noteRouteAbort(request);
-          await route.abort();
-        };
-        const decide = (name: string) => {
-          if (decided) {
-            throw new TestError('ACTION_FAILED', `route handler already decided; ${name} called twice`);
-          }
-          decided = true;
-        };
-        // Validation runs before `decide`, so a rejected option leaves the
-        // request to the abort below. A Playwright call that fails after the
-        // decision aborts too, rather than leaving the page's request pending.
-        const decideWith = async (name: string, act: () => Promise<void>): Promise<void> => {
-          decide(name);
-          try {
-            await act();
-          } catch (cause) {
-            await abort().catch(() => undefined);
-            throw cause;
-          }
-        };
-        const postData = request.postData();
-        const publicRoute: WebRoute = {
-          request: {
-            url: request.url(),
-            method: request.method(),
-            headers: request.headers(),
-            ...(postData === null ? {} : { postData }),
-          },
-          fetch: async (...args: unknown[]) => {
-            requireNoArguments('route.fetch', args);
-            return surface.guard(context.operation(), 'route.fetch', async currentOperation => {
-              const site = surface.siteHeaders(request.url());
-              const response = await route.fetch({
-                headers: { ...lowercaseNames(request.headers()), ...site },
-                timeout: currentOperation.timeoutMs,
-                maxRedirects: 0,
-              });
-              try {
-                return webResponse(response, await readResponseBody('route.fetch', () => response.body()));
-              } finally {
-                await response.dispose();
-              }
-            });
-          },
-          fulfill: async (response) => {
-            const decision = parseFulfill(response, (file) => surface.projectPath(file));
-            await decideWith('fulfill', () => route.fulfill({
-              ...decision,
-              ...(decision.json === undefined && decision.path === undefined && decision.body === undefined
-                ? { body: '' }
-                : {}),
-            }));
-          },
-          continue: async (overrides) => {
-            const { headers, ...decision } = parseContinue(overrides, request.url(), context.app.resolveUrl);
-            // `continue` skips every route registered before this one, the
-            // site-header route included, so it merges those headers itself.
-            const site = surface.siteHeaders(decision.url ?? request.url());
-            await decideWith('continue', () => route.continue({
-              ...decision,
-              ...(headers === undefined && site === undefined
-                ? {}
-                : { headers: { ...lowercaseNames(headers ?? request.headers()), ...site } }),
-            }));
-          },
-          fallback: async (...args: unknown[]) => {
-            requireNoArguments('route.fallback', args);
-            await decideWith('fallback', () => route.fallback());
-          },
-          abort: async (...args: unknown[]) => {
-            requireNoArguments('route.abort', args);
-            await decideWith('abort', abort);
-          },
-        };
-        try {
-          await handler(publicRoute);
-          if (!decided) {
-            throw new TestError(
-              'ACTION_FAILED',
-              'route handler returned without calling fulfill, continue, fallback, or abort',
-            );
-          }
-        } catch (cause) {
-          latch.latch(
-            cause instanceof Error
-              ? cause
-              : new TestError('ACTION_FAILED', `route handler failed: ${causeMessage(cause)}`),
-          );
-          if (!decided) await abort().catch(() => undefined);
-        }
-      };
-      // Tracked so the attempt end waits for a handler still running and
-      // collects what it latched.
-      const pwHandler = (route: Route): Promise<void> => {
-        const work = handleRoute(route);
-        latch.track('route', work);
-        return work;
-      };
-      return surface.guard(context.operation(), 'route', async () => {
-        routes.push({ pattern: wirePattern, pwHandler, predicate });
-        await surface.route(predicate, pwHandler);
-      });
-    },
-    unroute(pattern) {
-      const wirePattern = toTextPattern(pattern);
-      return surface.guard(context.operation(), 'unroute', () =>
-        removeRoutes(stored => routePatternsEqual(stored.pattern, wirePattern)));
-    },
-    unrouteAll() {
-      return surface.guard(context.operation(), 'unrouteAll', () => removeRoutes(() => true));
-    },
-    waitForResponse(pattern, options) {
-      const wirePattern = toTextPattern(pattern);
-      const operation = context.operation(stepTimeout(options?.timeout, 'browser.waitForResponse'));
-      return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
-        const page = await surface.ensurePage();
-        const response = await page.waitForResponse(
-          (candidate) => routePatternMatches(wirePattern, candidate.url()),
-          { timeout: currentOperation.timeoutMs },
-        );
-        // Started now, while the browser still holds the body, and awaited
-        // only by the body readers on a budget of their own: the timeout
-        // bounds the match, never a body still streaming in behind headers
-        // that already arrived.
-        const body = readResponseBody('waitForResponse', () => response.body(), () => response.request().failure()?.errorText);
-        const read = async (): Promise<Buffer> => {
-          const { signal, timeoutMs } = context.operation();
-          const bytes = await raceAbort(
-            withTimeout(body, timeoutMs, () =>
-              new TestError('ACTION_FAILED', `waitForResponse: response body did not finish within ${timeoutMs}ms`)),
-            signal,
-            'waitForResponse body',
-          );
-          return bytes();
-        };
-        return webResponse(response, read);
-      });
-    },
-    cookies: () =>
-      surface.guard(context.operation(), 'cookies', async () => {
-        const cookies = await surface.requireContext().cookies();
-        return cookies.map(
-          (cookie): Cookie => ({
-            name: cookie.name,
-            value: cookie.value,
-            domain: cookie.domain,
-            path: cookie.path,
-            ...(cookie.expires >= 0 ? { expires: Math.floor(cookie.expires) } : {}),
-            httpOnly: cookie.httpOnly,
-            secure: cookie.secure,
-            ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
-          }),
-        );
-      }),
-    setCookies(cookies) {
-      const scheme = new URL(baseHref()).protocol === 'https:' ? 'https' : 'http';
-      // The harness's URL rule decides which cookie targets are admitted; a
-      // domain cookie is checked as the origin it would be sent to. The rule
-      // admits `about:blank` for navigation, which holds no cookie. A `url`
-      // cookie is set on the URL the rule resolved, so a relative one lands
-      // on the base URL the way `goto` would.
-      const targets = cookies.map((cookie) => {
-        const target = context.app.resolveUrl(
-          cookie.url === undefined ? `${scheme}://${cookie.domain.replace(/^\./, '')}` : cookie.url,
-        );
-        if (!/^https?:/.test(target)) {
-          throw new ConfigurationError('POLICY_DENIED', `cookie URL must be http(s): ${target}`);
-        }
-        return cookie.url === undefined
-          ? { domain: cookie.domain, path: cookie.path ?? '/' }
-          : { url: target };
-      });
-      return surface.guard(context.operation(), 'setCookies', async () => {
-        await surface.requireContext().addCookies(
-          cookies.map((cookie, index) => ({
-            name: cookie.name,
-            value: cookie.value,
-            ...targets[index]!,
-            ...(cookie.expires !== undefined ? { expires: cookie.expires } : {}),
-            ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
-            ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
-            ...(cookie.sameSite !== undefined ? { sameSite: cookie.sameSite } : {}),
-          })),
-        );
-      });
-    },
-    clearCookies(options) {
-      rejectUnknownOptions('browser.clearCookies', options, ['name', 'domain', 'path']);
-      for (const field of ['name', 'domain', 'path'] as const) {
-        const value = options?.[field];
-        if (value !== undefined && typeof value !== 'string' && !(value instanceof RegExp)) {
-          throw new TestError('INVALID_ARGUMENT', `browser.clearCookies ${field} must be a string or RegExp`);
-        }
-      }
-      return surface.guard(context.operation(), 'clearCookies', () => surface.requireContext().clearCookies(options));
-    },
-    setViewport: (size) =>
-      surface.guard(context.operation(), 'setViewport', async () => {
-        await surface.setViewport(size);
-        context.attachViewport({ width: size.width, height: size.height, scale: 1 });
-      }),
-    async emulateMedia(media) {
-      if (typeof media !== 'object' || media === null) {
-        throw new TestError('INVALID_ARGUMENT', 'browser.emulateMedia takes { colorScheme?, reducedMotion? }');
-      }
-      rejectUnknownOptions('browser.emulateMedia', media, MEDIA_KEYS);
-      for (const key of MEDIA_KEYS) {
-        const problem = mediaProblem((name) => `browser.emulateMedia({ ${name} })`, key, media[key]);
-        if (problem !== undefined) throw new TestError('INVALID_ARGUMENT', problem);
-      }
-      // Read once, so a test that changes its object later changes nothing here.
-      const requested = obj({ colorScheme: media.colorScheme, reducedMotion: media.reducedMotion });
-      await surface.guard(context.operation(), 'emulateMedia', () => surface.emulateMedia(requested));
-    },
-    // Async so the harness records the registration as a `browser.onDialog` step.
-    async onDialog(handler: DialogHandler) {
-      const unsubscribe = surface.dialogs.add(handler);
-      return async () => unsubscribe();
-    },
-    async waitForDownload(trigger, options) {
-      const [file] = await collectDownloads(surface, context, trigger, 1, options?.timeout, 'browser.waitForDownload');
-      return file!;
-    },
-    async waitForDownloads(trigger, options) {
-      rejectUnknownOptions('browser.waitForDownloads', options, ['count', 'timeout']);
-      const count = options?.count;
-      if (!Number.isSafeInteger(count) || count < 1) {
-        throw new TestError('INVALID_ARGUMENT', 'waitForDownloads: count must be a positive safe integer');
-      }
-      return collectDownloads(surface, context, trigger, count, options.timeout, 'browser.waitForDownloads');
-    },
-    keyboard: {
-      down: (key) =>
-        surface.guard(context.operation(), 'keyboard.down', () => surface.requirePage().keyboard.down(key), classifyInputError),
-      up: (key) =>
-        surface.guard(context.operation(), 'keyboard.up', () => surface.requirePage().keyboard.up(key), classifyInputError),
-      press: (key) =>
-        surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key), classifyInputError),
-      type: (text) =>
-        surface.guard(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text), classifyInputError),
-    },
-    mouse: {
-      move: (x, y) =>
-        surface.guard(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y), classifyInputError),
-      wheel: (deltaX, deltaY) =>
-        surface.guard(context.operation(), 'mouse.wheel', () => surface.requirePage().mouse.wheel(deltaX, deltaY), classifyInputError),
-      down: () => surface.guard(context.operation(), 'mouse.down', () => surface.requirePage().mouse.down(), classifyInputError),
-      up: () => surface.guard(context.operation(), 'mouse.up', () => surface.requirePage().mouse.up(), classifyInputError),
-    },
-  };
-
+  browser: Omit<Browser, keyof Expectable<BrowserExpectation>>,
+  expectation: BrowserExpectation,
+): Browser {
   const action: FixtureOperation = { kind: 'resource' };
   const navigationCall = { kind: 'resource', timeout: false } as const;
   const matchers: FixtureOperations<BrowserExpectation> = {
@@ -832,7 +320,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   });
 }
 
-interface ExpectationDeps {
+export interface ExpectationDeps {
   currentUrl(deadline: Deadline): Promise<string>;
   currentTitle(deadline: Deadline): Promise<string>;
   baseHref(): string;
@@ -852,7 +340,7 @@ interface BrowserSample {
  * that stops answering ends the assertion at its own timeout, and the
  * failure reports the last read instead of reading a hung page again.
  */
-function createBrowserExpectation(deps: ExpectationDeps, negated = false): BrowserExpectation {
+export function createBrowserExpectation(deps: ExpectationDeps, negated = false): BrowserExpectation {
   const poll = async (
     api: string,
     label: string,
@@ -957,7 +445,8 @@ async function readClass(target: Locator): Promise<string | null | undefined> {
   return target.getAttribute('class');
 }
 
-function requireSelector(method: string, selector: unknown): string {
+/** The selector a locator method was given, refused unless it is a nonempty string. */
+export function requireSelector(method: string, selector: unknown): string {
   if (typeof selector !== 'string' || selector.length === 0) {
     throw new TestError('INVALID_LOCATOR', `${method}() requires a nonempty selector`);
   }
@@ -974,7 +463,7 @@ function patternLabel(pattern: string | RegExp): string {
  * both escape hatches compile through the same `frame` chain, so a `locator`
  * inside it resolves against the innermost document.
  */
-function frameScreen(context: EngineFixtureContext, frames: readonly string[]): FrameScreen {
+export function frameScreen(context: EngineFixtureContext, frames: readonly string[]): FrameScreen {
   const scope = (expression: LocatorExpression): LocatorExpression =>
     frames.reduceRight<LocatorExpression>((source, selector) => ({ kind: 'frame', selector, source }), expression);
   return Object.assign(context.screen(scope), {

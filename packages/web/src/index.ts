@@ -8,9 +8,8 @@
 import { test as base, type App } from 'e2e';
 import type { Browser } from './browser.ts';
 
-export { web, surfaceOf } from './engine.ts';
-export type { PlaywrightLiveSurface } from './engine.ts';
-export type { WebBasicAuth, WebConnectOptions, WebOptions, WebScreencastOptions } from './surface.ts';
+export { web } from './engine.ts';
+export type { WebBasicAuth, WebConnectOptions, WebOptions, WebScreencastOptions } from './options.ts';
 export type { WebInitScript } from './init-scripts.ts';
 export type { WebMedia } from './media.ts';
 export type {
@@ -22,7 +21,7 @@ export type {
   BrowserReleaseContext,
   BrowserRequest,
 } from './provider.ts';
-export type { BrowserName } from './browser-connection.ts';
+export type { BrowserName } from './browser-names.ts';
 export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Browser,

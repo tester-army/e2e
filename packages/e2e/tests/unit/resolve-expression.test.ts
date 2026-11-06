@@ -65,6 +65,21 @@ function ids(expression: LocatorExpression, nodes: readonly SemanticNode[] = SET
 }
 
 describe('resolveExpression', () => {
+  it('lets the engine decide a query, and leaves it to the reference rules when the engine has no answer', () => {
+    const labels: Record<string, string[]> = { search: ['Find', 'Search'] };
+    const matches = (candidate: SemanticNode, asked: SemanticQuery): boolean | undefined =>
+      asked.kind === 'label' ? (labels[candidate.ref.id] ?? []).some((label) => asked.value.kind === 'string' && label === asked.value.value) : undefined;
+    expect(resolveExpression(query('label', 'Find'), SETTINGS, { matches }).map((match) => match.ref.id)).toEqual(['search']);
+    expect(ids(query('label', 'Find'))).toEqual([]);
+    expect(resolveExpression(query('role', 'switch'), SETTINGS, { matches }).map((match) => match.ref.id)).toEqual(['airplane']);
+  });
+
+  it('lets the engine decide a hasText filter', () => {
+    const filtered: LocatorExpression = { kind: 'filter', source: { kind: 'query', query: { kind: 'role', value: exact('listitem') } }, hasText: exact('About') };
+    expect(resolveExpression(filtered, SETTINGS).map((match) => match.ref.id)).toEqual(['about']);
+    expect(resolveExpression(filtered, SETTINGS, { hasText: () => false })).toEqual([]);
+  });
+
   it('answers role queries with name filters and skips hidden nodes', () => {
     expect(ids(query('role', 'button'))).toEqual(['back']);
     expect(ids(query('role', 'button', { name: exact('Back') }))).toEqual(['back']);

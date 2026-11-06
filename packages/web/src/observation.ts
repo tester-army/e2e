@@ -1,9 +1,8 @@
 /**
- * Semantic tree capture for one observation: the in-page walk, nested-document
- * stitching, and element-handle bookkeeping the surface keeps per generation.
+ * Assembling one observation's semantic tree: nested-document stitching, frame
+ * placement, and the node shape the contract reports.
  */
 
-import type { Frame } from 'playwright-core';
 import {
   EngineError,
   sameSite,
@@ -19,10 +18,6 @@ import {
   type RawNodeData,
   type RawObservedNode,
 } from './read-node.ts';
-import { CaptureScope } from './capture-scope.ts';
-import { ElementList } from './element-list.ts';
-import { hasReadableDocument } from './frame-document.ts';
-import type { ListedTarget } from './refs.ts';
 
 /**
  * The id of every observation's root: the main document's element under one
@@ -31,214 +26,6 @@ import type { ListedTarget } from './refs.ts';
  * observation. Outside the `n<number>` space stamped ids and located ids share.
  */
 export const ROOT_NODE_ID = 'root';
-
-/** Nested iframe capture depth; deeper frames stay boundary nodes. */
-const MAX_FRAME_DEPTH = 4;
-
-/** Budget for capturing the main document, still capped by the observation deadline. */
-const DOCUMENT_CAPTURE_TIMEOUT_MS = 15_000;
-
-/**
- * Budget for capturing one child document. A stalled frame (ads, trackers)
- * must cost an observation a moment, not the context default timeout.
- */
-const FRAME_CAPTURE_TIMEOUT_MS = 3_000;
-
-/** A page or frame: anything one document's reader can be evaluated on. */
-export type DocumentHost = Pick<Frame, 'evaluateHandle'>;
-
-/** What one capture needs from the surface that owns the generation. */
-export interface CaptureDeps {
-  readonly testIdAttribute: string;
-  /** The app's site; a child frame off it stays a boundary node. Undefined admits no child frame. */
-  readonly site: string | undefined;
-  /** Reserves a disjoint range before the reader can stamp any element, including on timeout. */
-  reserveIds(count: number): number;
-  /** Publishes one observed node under its id in the generation being built. */
-  commit(id: string, target: ListedTarget): void;
-}
-
-export interface CaptureOptions {
-  /** Enclosing frame selectors, outermost first; empty for the main document. */
-  readonly framePath: readonly string[];
-  /** Remaining node budget shared across every document of the observation. */
-  readonly budget: number;
-  /**
-   * Absolute time (epoch ms) by which the whole observation must be done.
-   * Every document's budget is derived from what remains of it, so the
-   * documents of one observation can never sum past the operation's budget.
-   */
-  readonly deadline: number;
-  readonly signal: AbortSignal;
-}
-
-/** One document's tree with what the capture knows about its completeness. */
-export interface CapturedDocument {
-  readonly tree: SemanticNode;
-  /** Nodes captured across this document and every child document stitched in. */
-  readonly nodeCount: number;
-  /**
-   * True when nodes on screen are missing from `tree`: the node budget cut
-   * the walk short in this document or a child, or an on-site child frame's
-   * document was not read (no budget or time left, past the depth limit, or
-   * its capture failed). Off-site frames are left out by design and never
-   * count.
-   */
-  readonly truncated: boolean;
-}
-
-/** One observed node awaiting publication once its document captured successfully. */
-type StagedRef = readonly [id: string, target: ListedTarget];
-
-/**
- * Captures one document's semantic tree, then descends into each observed
- * iframe boundary node via its content frame and stitches the child
- * document under it. Frame capture is best-effort: a detached or unloaded
- * frame leaves its boundary node childless rather than failing the
- * observation. The node budget is shared across all documents.
- */
-export async function captureDocument(
-  deps: CaptureDeps,
-  host: DocumentHost,
-  options: CaptureOptions,
-): Promise<CapturedDocument> {
-  const { framePath, budget, signal } = options;
-  const cap = framePath.length === 0 ? DOCUMENT_CAPTURE_TIMEOUT_MS : FRAME_CAPTURE_TIMEOUT_MS;
-  const deadline = Math.min(options.deadline, Date.now() + cap);
-  const scope = new CaptureScope(deadline, signal);
-  // A child document's handles are published only once it captured whole; a
-  // frame that fails midway leaves no reachable ids behind.
-  const staged: StagedRef[] = [];
-  const accepted = new Map<ElementList, boolean>();
-  const stage = (id: string, target: ListedTarget): void => {
-    let owned = accepted.get(target.list);
-    if (owned === undefined) {
-      owned = scope.own(target.list.handle);
-      accepted.set(target.list, owned);
-    }
-    if (owned) staged.push([id, target]);
-  };
-  return scope.run(async () => {
-    const captured = await captureInto(deps, scope, stage, host, framePath, budget, signal);
-    scope.check();
-    for (const [id, target] of staged) {
-      deps.commit(id, target);
-      scope.release(target.list.handle);
-    }
-    return captured;
-  });
-}
-
-/** Reads one document and stages its child documents under the same capture owner. */
-async function captureInto(
-  deps: CaptureDeps,
-  scope: CaptureScope,
-  stage: (id: string, target: ListedTarget) => void,
-  host: DocumentHost,
-  framePath: readonly string[],
-  budget: number,
-  signal: AbortSignal,
-): Promise<CapturedDocument> {
-  const captured = await scope.read(() => host.evaluateHandle(readDocumentSemanticsFunction, {
-    testIdAttribute: deps.testIdAttribute,
-    secureFieldSelector: SECURE_FIELD_SELECTOR,
-    mode: {
-      kind: 'tree' as const,
-      maxNodes: budget,
-      idSeed: deps.reserveIds(budget),
-      nameLimit: OBSERVED_NAME_LIMIT,
-      textLimit: OBSERVED_TEXT_LIMIT,
-    },
-  }), (handle) => scope.own(handle));
-  // Property handles would keep earlier captures alive after their parent is disposed.
-  // The metadata is JSON data. Sending one string avoids Playwright recursively
-  // encoding every field of every node across the protocol.
-  const metadata = await scope.read(() => captured.evaluate((observation) => {
-    const data = { nodes: observation.nodes, ids: observation.ids, truncated: observation.truncated };
-    // Application serializers may transform valid metadata as well as throw.
-    // Keep Playwright's structured transfer when the page changes JSON behavior.
-    try {
-      if (
-        typeof JSON.stringify === 'function' &&
-        /^function stringify\(\)\s*\{\s*\[native code\]\s*\}$/.test(Function.prototype.toString.call(JSON.stringify)) &&
-        !('toJSON' in Object.prototype) &&
-        !('toJSON' in Array.prototype)
-      ) return JSON.stringify(data);
-    } catch {
-      // A page can also replace the intrinsics used to detect its serializer.
-    }
-    return data;
-  }));
-  const decoded = typeof metadata === 'string'
-    // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported metadata, as unchecked as the structured branch; only the ids and nodes alignment below is checked
-    ? JSON.parse(metadata) as Omit<ReturnType<typeof readDocumentSemanticsFunction>, 'elements'>
-    : metadata;
-  const { nodes, ids, truncated: walkTruncated } = decoded;
-  if (!Array.isArray(ids) || ids.length !== nodes.length) {
-    throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', {
-      retryable: false,
-    });
-  }
-  // The main document's element is the observation root, under the minted
-  // id rather than the one stamped on it: a new document stamps a new
-  // number, the root's id must not change with it.
-  if (framePath.length === 0 && ids.length > 0) ids[0] = ROOT_NODE_ID;
-  const elementsHandle = await scope.read(() => captured.getProperty('elements'), (handle) => scope.own(handle));
-  const list = new ElementList(elementsHandle);
-  ids.forEach((id, index) => stage(id as string, { kind: 'listed', list, index }));
-  let nodeCount = nodes.length;
-  let truncated = walkTruncated === true;
-  const frameChildren = new Map<number, FrameChild>();
-  for (let index = 0; index < nodes.length; index += 1) {
-    const selector = nodes[index]!.frameSelector;
-    if (selector === undefined) continue;
-    // A frame with no document (detached, never loaded) shows nothing, so
-    // nothing is missing from the tree.
-    // Owned by the scope and released with it: the frame's element is read
-    // here, and an action reaches it later through the list like any node.
-    const element = await scope.read(() => list.fetch(index), (handle) => scope.own(handle));
-    const frame = await scope.read(() => element.contentFrame().catch(() => null));
-    if (frame === null) continue;
-    // Only frames on the app's site enter observations. Third-party
-    // frames (ads, trackers, embeds) are not the agent's to read or act
-    // on - and a stalled ad frame must not tax the capture. They stay
-    // boundary nodes by design, so leaving them out is not truncation.
-    if (!isOnSiteFrame(frame.url(), deps.site)) continue;
-    // A frame whose navigation has not committed shows nothing yet.
-    if (!(await scope.read(() => hasReadableDocument(frame, element)))) continue;
-    // From here the frame's document is content the model should see: any
-    // reason it is not read (depth, budget, deadline, a failed or timed-out
-    // capture) leaves the tree incomplete, and the snapshot must say so.
-    if (framePath.length >= MAX_FRAME_DEPTH) {
-      truncated = true;
-      continue;
-    }
-    const remaining = budget - nodeCount;
-    if (remaining <= 0 || Date.now() >= scope.deadline) {
-      truncated = true;
-      continue;
-    }
-    const inset = await scope.read(() => element.evaluate(frameContentInset).catch(() => undefined));
-    if (inset === undefined) {
-      truncated = true;
-      continue;
-    }
-    const child = await scope.read(() => captureDocument({ ...deps, commit: stage }, frame, {
-      framePath: [...framePath, selector],
-      budget: remaining,
-      deadline: scope.deadline,
-      signal,
-    }).catch(() => undefined));
-    if (child === undefined) {
-      truncated = true;
-      continue;
-    }
-    frameChildren.set(index, { tree: child.tree, inset });
-    nodeCount += child.nodeCount;
-    truncated ||= child.truncated;
-  }
-  return { tree: assembleTree(nodes, ids, framePath, frameChildren), nodeCount, truncated };
-}
 
 /**
  * True when a frame document is on the app's site.
@@ -251,7 +38,7 @@ async function captureInto(
  * page that embeds it. It has an opaque origin rather than an inherited one, and
  * navigation admits only http(s) and `about:blank`.
  */
-function isOnSiteFrame(url: string, site: string | undefined): boolean {
+export function isOnSiteFrame(url: string, site: string | undefined): boolean {
   if (url === '' || url === 'about:blank' || url === 'about:srcdoc') return true;
   if (site === undefined) return false;
   const protocol = URL.canParse(url) ? new URL(url).protocol : undefined;
@@ -263,7 +50,7 @@ function isOnSiteFrame(url: string, site: string | undefined): boolean {
  * always follow their parent, so children are complete before a parent is
  * built. Captured child documents attach under their iframe boundary nodes.
  */
-function assembleTree(
+export function assembleTree(
   nodes: readonly RawObservedNode[],
   ids: readonly string[],
   framePath: readonly string[],

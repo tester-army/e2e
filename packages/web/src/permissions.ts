@@ -4,9 +4,9 @@
  */
 
 import { ConfigurationError, rejectUnknownKeys, type AppPermissionState } from 'e2e/engine';
-import type { BrowserName } from './browser-connection.ts';
+import type { BrowserName } from './browser-names.ts';
 
-/** The permission names Playwright grants on each browser (playwright-core 1.64). */
+/** The permission names the engine grants on each browser. */
 const BROWSER_PERMISSIONS = {
   chromium: [
     'accelerometer', 'ambient-light-sensor', 'background-sync', 'camera', 'clipboard-read', 'clipboard-write',
@@ -14,12 +14,11 @@ const BROWSER_PERMISSIONS = {
     'midi-sysex', 'notifications', 'payment-handler', 'screen-wake-lock', 'storage-access',
   ],
   firefox: ['geolocation', 'local-network-access', 'notifications', 'persistent-storage', 'push', 'screen-wake-lock'],
-  webkit: ['camera', 'clipboard-read', 'geolocation', 'microphone', 'notifications', 'screen-wake-lock'],
 } as const satisfies Record<BrowserName, readonly string[]>;
 
 /**
  * Refuses a permission `browser` cannot grant, and any state but `grant`:
- * Playwright only grants, and Chromium denies every permission a grant
+ * the engine only grants, and Chromium denies every permission a grant
  * leaves out, so neither `deny` nor `reset` can mean what it does on a
  * device. The harness has checked the map's shape and states already.
  */

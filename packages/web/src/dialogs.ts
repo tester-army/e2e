@@ -4,7 +4,6 @@
  * ever touches `web` is still accounted for instead of silently dismissed.
  */
 
-import type { Dialog as PwDialog } from 'playwright-core';
 import { EngineError } from 'e2e/engine';
 import { ErrorLatch, isClassified, message } from './support.ts';
 
@@ -21,6 +20,14 @@ export interface Dialog {
 }
 
 export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>);
+
+/** A driver's native dialog as the router answers it: Playwright's `Dialog`, or the BiDi driver's user prompt. */
+export interface NativeDialog {
+  type(): string;
+  message(): string;
+  accept(text?: string): Promise<void>;
+  dismiss(): Promise<void>;
+}
 
 interface Registration {
   readonly handler: DialogHandler;
@@ -54,13 +61,13 @@ export class DialogRouter {
   }
 
   /** Routes one native dialog to the newest registered handler; the attempt end waits for it. */
-  dispatch(dialog: PwDialog): Promise<void> {
+  dispatch(dialog: NativeDialog): Promise<void> {
     const work = this.route(dialog);
     this.latch.track('dialog', work);
     return work;
   }
 
-  private async route(dialog: PwDialog): Promise<void> {
+  private async route(dialog: NativeDialog): Promise<void> {
     const handler = this.registrations.at(-1)?.handler;
     if (handler === undefined) {
       this.latch.latch(

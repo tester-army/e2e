@@ -55,7 +55,10 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "playwright-core": "1.64.1"
+    "@puppeteer/browsers": "3.2.6",
+    "chromium-bidi": "159.0.8135-0",
+    "webdriver-bidi-protocol": "1.0.2",
+    "yauzl": "3.4.0"
   },
   "peerDependencies": {
     "e2e": ">=0.22.1 <1"

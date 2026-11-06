@@ -1,16 +1,16 @@
 /**
- * The Playwright engine for e2e: a browser body built with the
- * public `defineEngine`, validated by the same rules and graded by the same
- * capabilities as any other engine. Core imports nothing from here; this
+ * The web engine for e2e: a browser driven over WebDriver BiDi, built with
+ * the public `defineEngine`, validated by the same rules and graded by the
+ * same capabilities as any other engine. Core imports nothing from here; this
  * package imports the contract from `e2e/engine` and contributes the `browser`
  * fixture the way a device engine contributes `device`.
  */
 
-import type { BrowserContext, Page } from 'playwright-core';
 import {
   ConfigurationError,
   defineEngine,
   isSecret,
+  obj,
   LOCATOR_ACTION_KINDS,
   POINTER_ACTION_KINDS,
   rejectUnknownKeys,
@@ -19,40 +19,19 @@ import {
   type EngineHandle,
 } from 'e2e/engine';
 import { createRequire } from 'node:module';
-import { asBrowserProvider } from './provider.ts';
-import { PlaywrightSurface, type WebOptions } from './surface.ts';
-import { createBrowserFixture } from './browser.ts';
-import { validateInitScripts } from './init-scripts.ts';
+import { asBrowserProvider, LeasedBrowsers } from './provider.ts';
+import type { WebOptions } from './options.ts';
+import { BidiSurface } from './bidi/surface.ts';
+import { createBidiBrowserFixture } from './bidi/browser.ts';
+import { ConfiguredInitScripts, validateInitScripts } from './init-scripts.ts';
+import { DEFAULT_VIEWPORT } from './support.ts';
 import { MEDIA_KEYS, mediaProblem } from './media.ts';
 import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
 import { validatePermissions } from './permissions.ts';
-import type { BrowserName } from './browser-connection.ts';
+import type { BrowserName } from './browser-names.ts';
 
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments'] as const;
-
-/** Creates one Playwright engine: one browser per worker, one context per attempt. */
-const surfaces = new WeakMap<EngineHandle, PlaywrightSurface>();
-
-/**
- * The live browser objects behind a `web()` handle, for agent-side code
- * that replaces the toolset wholesale (spec chapter 16) and drives the page with
- * its own Playwright tooling. Both accessors read the current attempt: the
- * context exists from `startAttempt`, the page from the first `app.open()` or
- * `browser.goto()`, and either throws `INVALID_STATE` before that. The harness
- * remains the notary for what it witnesses; a caller here acts out of band.
- */
-export interface PlaywrightLiveSurface {
-  readonly page: () => Page;
-  readonly context: () => BrowserContext;
-}
-
-/** The live surface of a handle this module created, or undefined for any other engine. */
-export function surfaceOf(engine: EngineHandle): PlaywrightLiveSurface | undefined {
-  const surface = surfaces.get(engine);
-  if (surface === undefined) return undefined;
-  return { page: () => surface.requirePage(), context: () => surface.requireContext() };
-}
 
 export function web(options: WebOptions = {}): EngineHandle {
   if ('allowedOrigins' in options) {
@@ -91,19 +70,33 @@ export function web(options: WebOptions = {}): EngineHandle {
   validateMedia(options);
   if (options.initScripts !== undefined) validateInitScripts(options.initScripts);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
-  const reconnecting = options.connect?.reconnectEndpoint !== undefined;
-  // A per-attempt lease rides the same persistent context as `reconnectEndpoint`, with the same limits.
-  const recoverable = reconnecting || provider?.scope === 'attempt';
-  const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
-  const creationOptions = CREATION_OPTION_KEYS.filter((key) => options[key] !== undefined);
-  if (recoverable && creationOptions.length > 0) {
+  const browser = provider === undefined ? options.browser ?? 'chromium' : 'chromium';
+  if (browser !== 'chromium' && browser !== 'firefox') {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ browser }) drives chromium or firefox over WebDriver BiDi, got ${JSON.stringify(browser)}`);
+  }
+  if (options.connect?.reconnectEndpoint !== undefined || provider?.scope === 'attempt') {
+    const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `${mode} uses a persistent context; ${creationOptions.join(', ')} ${creationOptions.length === 1 ? 'requires' : 'require'} a newly created context`,
+      `web() does not ride a persistent remote context (${mode}): it isolates each attempt in a user context of its own; use connect.cdpEndpoint or scope "worker"`,
     );
   }
-  const surface = new PlaywrightSurface(options);
-  const handle = defineEngine({
+  const surface = new BidiSurface({
+    browser,
+    viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
+    testIdAttribute: options.testIdAttribute ?? 'data-testid',
+    initScripts: new ConfiguredInitScripts(options.initScripts ?? []),
+    screencast: options.screencast ?? {},
+    headers: options.headers,
+    basicAuth: options.basicAuth,
+    userAgent: options.userAgent,
+    locale: options.locale,
+    timezoneId: options.timezoneId,
+    media: obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion }),
+    cdpEndpoint: options.connect?.cdpEndpoint,
+    leases: provider === undefined ? undefined : new LeasedBrowsers(provider),
+  });
+  return defineEngine({
     name: 'web',
     version: ownVersion(),
     spiVersion: 1,
@@ -119,9 +112,9 @@ export function web(options: WebOptions = {}): EngineHandle {
     observe: (operation, observeOptions) => surface.observe(operation, observeOptions),
     locate: (expression, operation) => surface.locate(expression, operation),
     perform: (ref, action, operation) => surface.perform(ref, action, operation),
-    // A browser honors every action kind of the contract; `actions.ts` dispatches each.
+    // A browser honors every action kind of the contract.
     actions: LOCATOR_ACTION_KINDS,
-    // Playwright holds each modifier for the click.
+    // The click holds each modifier.
     tapModifiers: true,
     // A page takes every pointer action of the contract at a bare point too.
     performAt: (point, action, operation) => surface.performAt(point, action, operation),
@@ -130,35 +123,28 @@ export function web(options: WebOptions = {}): EngineHandle {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressKey(key, operation),
     },
-    // A provider or a CDP attach speaks CDP, so it takes Chromium's names.
-    validateApp: (app, info) => validateApp(app, info, typeof options.browser === 'string' ? options.browser : 'chromium'),
+    validateApp: (app, info) => validateApp(app, info, browser),
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {
       open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
       resize: (size, operation) => surface.resize(size, operation),
       restart: (operation) => surface.restart(operation),
-      reset: recoverable ? () => Promise.reject(persistentContextLimit('app.clearState()', mode, provider !== undefined)) : (operation) => surface.reset(operation),
+      reset: (operation) => surface.reset(operation),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
-    ...(recoverable
-      ? {}
-      : {
-          state: {
-            capture: (operation) => surface.captureState(operation),
-            restore: (state, operation) => surface.restoreState(state, operation),
-          },
-        }),
+    state: {
+      capture: (operation) => surface.captureState(operation),
+      restore: (state, operation) => surface.restoreState(state, operation),
+    },
     fixtures: {
-      browser: (context) => createBrowserFixture(surface, context),
+      browser: (context) => createBidiBrowserFixture(surface, context),
     },
   });
-  surfaces.set(handle, surface);
-  return handle;
 }
 
 /** Every option `web()` takes, kept equal to `WebOptions` by the compiler. */
@@ -177,22 +163,6 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   reducedMotion: true,
   initScripts: true,
 } satisfies Record<keyof WebOptions, true>);
-
-/** The options applied when the engine creates a browser context, which a persistent context never is. */
-const CREATION_OPTION_KEYS = ['headers', 'basicAuth', 'userAgent', 'locale', 'timezoneId'] as const satisfies readonly (keyof WebOptions)[];
-
-/**
- * What a persistent context rules out, named with its cause: `what` replaces
- * the browser context, which `mode` never does. A per-attempt lease starts
- * every attempt on a fresh browser already, and worker scope has the reset.
- */
-function persistentContextLimit(what: string, mode: string, leased: boolean): ConfigurationError {
-  const remedy = leased ? '; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test' : '';
-  return new ConfigurationError(
-    'UNSUPPORTED_CAPABILITY',
-    `${what} is unavailable with ${mode}: it replaces the browser context, and the attempt rides one persistent context${remedy}`,
-  );
-}
 
 /** True for a plain object; the shape both options take. Config runs as JavaScript, so the types alone are no guard. */
 function isRecord(value: unknown): value is Record<string, unknown> {

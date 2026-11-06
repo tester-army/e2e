@@ -220,6 +220,7 @@ start a script that brings them up and serves the app.
 | `colorScheme`, `reducedMotion` | The `prefers-color-scheme` (`'light'`, `'dark'`, `'no-preference'`) and `prefers-reduced-motion` (`'reduce'`, `'no-preference'`) every page reports to its `@media` rules and `matchMedia`, from first paint. |
 | `initScripts` | Scripts every document runs before the page's own: source, `{ path }`, or a function with no closures. |
 | `testIdAttribute` | What `getByTestId` reads; default `data-testid`. |
+| `driver` | `'playwright'` (default) or `'bidi'`, WebDriver BiDi for chromium and firefox, experimental; `E2E_WEB_DRIVER` sets it when unset. Limits: [web reference](https://e2e.tester.army/docs/reference/web#driver). |
 | `screencast` | `{ size?, quality? }` for the engine's own video: frame size (default the viewport's), JPEG quality 0 to 100. |
 
 - `basicAuth` via `secrets.get()` masks text, not screenshots or model pixels

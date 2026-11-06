@@ -1,16 +1,14 @@
 /**
  * Protected-preview access, scoped to the app's site: the configured headers
  * ride only requests bound for the site, and basic-auth credentials answer
- * a challenge wherever one is issued. The surface calls these on every
- * context it creates; nothing here holds state.
+ * a challenge wherever one is issued. Nothing here holds state.
  */
 
-import type { BrowserContext } from 'playwright-core';
 import { sameSite, type ResolveSecretOptions, type Secret } from 'e2e/engine';
-import type { WebBasicAuth } from './surface.ts';
+import type { WebBasicAuth } from './options.ts';
 
-/** The credentials Playwright answers an HTTP authentication challenge with. */
-export interface PlaywrightHttpCredential {
+/** The credentials the browser answers an HTTP authentication challenge with. */
+export interface HttpCredential {
   readonly username: string;
   readonly password: string;
 }
@@ -35,7 +33,7 @@ export function headerProblem(name: string, value: unknown): string | undefined 
   return undefined;
 }
 
-/** Header names lowercased, as Playwright reports a request's own headers. */
+/** Header names lowercased, as the browser reports a request's own headers. */
 export function lowercaseNames(headers: Readonly<Record<string, string>>): Readonly<Record<string, string>> {
   return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name.toLowerCase(), value]));
 }
@@ -54,42 +52,16 @@ export function siteHeadersFor(
 }
 
 /**
- * Adds the configured headers to every request bound for the app's site,
- * via a context route that falls back to the network. A request for any
- * other site is not routed at all; without a site there is no policy and
- * nothing is routed. Registered before any test route, so it runs last: a
- * test route's `fallback` reaches it, and a `continue`, which skips it,
- * merges the same headers itself (`siteHeadersFor`). Nothing awaits a route
- * handler, so a fallback that fails (the page closed under the request) is
- * dropped rather than left to surface as an unhandled rejection.
- */
-export async function installSiteHeaders(
-  context: BrowserContext,
-  site: string | undefined,
-  headers: Readonly<Record<string, string>> | undefined,
-): Promise<void> {
-  if (headers === undefined || site === undefined) return;
-  await context.route(
-    (url) => siteHeadersFor(url, site, headers) !== undefined,
-    async (route) => {
-      await route.fallback({ headers: { ...route.request().headers(), ...headers } }).catch(() => undefined);
-    },
-  );
-}
-
-/**
- * The basic-auth credentials a context answers a challenge with, as
- * Playwright's own `httpCredentials` does: on a 401 from any origin. A site
- * cannot be enumerated into the exact origins Playwright scopes by, and a
- * challenge is answered only where one is issued. A `Secret` password
- * resolves through the attempt, which registers the value for redaction, and
- * the `Authorization` credential Playwright sends with it too: a page that
- * echoes its request headers shows that, not the password.
+ * The basic-auth credentials an attempt answers a challenge with: on a 401
+ * from any origin, since a challenge is answered only where one is issued. A
+ * `Secret` password resolves through the attempt, which registers the value
+ * for redaction, and the `Authorization` credential the browser sends with it
+ * too: a page that echoes its request headers shows that, not the password.
  */
 export async function httpCredentials(
   basicAuth: WebBasicAuth,
   resolveSecret: (secret: Secret, options?: ResolveSecretOptions) => Promise<string>,
-): Promise<PlaywrightHttpCredential> {
+): Promise<HttpCredential> {
   const { username, password } = basicAuth;
   if (typeof password === 'string') return { username, password };
   return { username, password: await resolveSecret(password, { derived: (plaintext) => basicCredentials(username, plaintext) }) };
@@ -97,7 +69,7 @@ export async function httpCredentials(
 
 /**
  * The credential an `Authorization: Basic` header carries for `username` and
- * `password`, base64 of `username:password` as Playwright encodes it, with
+ * `password`, base64 of `username:password` as the browser encodes it, with
  * and without its `=` padding: an echo may drop or escape the padding.
  */
 function basicCredentials(username: string, password: string): string[] {

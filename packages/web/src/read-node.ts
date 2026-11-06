@@ -88,6 +88,12 @@ export type SemanticMode =
   | { kind: 'node' }
   /** The element's `states.hidden` alone, for the `visible` narrowing a selector engine applies. */
   | { kind: 'hidden' }
+  /** Each listed element's role alone, under one reader: what a locate narrows a role query by before reading nodes. */
+  | { kind: 'roles'; elements: Element[] }
+  /** Each listed element's accessible name alone, under one reader: what a locate narrows a role query's name by. */
+  | { kind: 'names'; elements: Element[] }
+  /** Each listed element as `node` reads it, under one reader, so a batch pays for the reader's setup once. */
+  | { kind: 'nodes'; elements: Element[] }
   | {
       kind: 'tree';
       maxNodes: number;
@@ -108,7 +114,11 @@ export type SemanticResult<Mode extends SemanticMode> = Mode extends { kind: 'no
   ? RawNodeData
   : Mode extends { kind: 'hidden' }
     ? boolean
-    : RawObservation;
+    : Mode extends { kind: 'roles' | 'names' }
+      ? (string | null)[]
+      : Mode extends { kind: 'nodes' }
+        ? RawNodeData[]
+        : RawObservation;
 
 /** Options for one document's tree walk. */
 interface TreeReadOptions {

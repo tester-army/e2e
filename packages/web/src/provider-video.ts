@@ -5,18 +5,14 @@
  * its `video` directory or a link.
  */
 
-import type { Page } from 'playwright-core';
 import { stopProviderRecording, type VideoSegment } from 'e2e/engine';
 import { connectionAbort } from './operation-budget.ts';
 import type { LeaseRecording } from './provider.ts';
-import type { AttemptVideo } from './video.ts';
 
 /** How long a recording that started after its attempt gave up gets to stop. */
 const LATE_STOP_MS = 10_000;
 
-export class ProviderVideo implements AttemptVideo {
-  /** The recording covers the browser, so no page starts a segment of its own. */
-  readonly isArmed = false;
+export class ProviderVideo {
   private started: LeaseRecording | undefined;
   /** The stop in flight, shared: a close that retries while a timed-out stop is still running waits for it instead of stopping twice. */
   private stopping: Promise<readonly VideoSegment[]> | undefined;
@@ -31,7 +27,7 @@ export class ProviderVideo implements AttemptVideo {
    * (a start that outlived its budget) is stopped at once and never kept, and
    * never replaces the handle of a recording started after it.
    */
-  async arm(_page: Page, signal: AbortSignal): Promise<void> {
+  async arm(signal: AbortSignal): Promise<void> {
     const started = await this.record(signal);
     if (!signal.aborted) {
       this.started = started;
@@ -41,11 +37,7 @@ export class ProviderVideo implements AttemptVideo {
     throw connectionAbort(signal, 'video');
   }
 
-  /** Pages come and go under one recording of the browser. */
-  async pageOpened(): Promise<void> {}
 
-  /** Pages come and go under one recording of the browser. */
-  async pageClosing(): Promise<void> {}
 
   /**
    * Stops the recording as the attempt's one segment; nothing when none was

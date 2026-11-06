@@ -1,88 +1,81 @@
-/** First-run browser provisioning for the Playwright engine. */
+/**
+ * Browser provisioning for the web engine: pinned Chrome for Testing and
+ * Firefox builds in a per-user cache, downloaded on first use, and the
+ * ffmpeg that encodes Chromium's screencast.
+ */
 
-import { spawn } from 'node:child_process';
-import { existsSync, readdirSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import { gunzipSync } from 'node:zlib';
 import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e/engine';
-import { browserType, type BrowserName } from './browser-connection.ts';
+import type { BrowserName } from './browser-names.ts';
 
-/** Whether `chromium_headless_shell-<revision>` under `browsersPath` finished installing and holds its executable. */
-function headlessShellInstalled(browsersPath: string, revision: string): boolean {
-  const shellRoot = path.join(browsersPath, `chromium_headless_shell-${revision}`);
-  if (!existsSync(path.join(shellRoot, 'INSTALLATION_COMPLETE'))) return false;
-  const executable = process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell';
-  return readdirSync(shellRoot, { withFileTypes: true }).some(
-    (entry) => entry.isDirectory() && existsSync(path.join(shellRoot, entry.name, executable)),
-  );
+/** The Chrome for Testing build chromium runs: the headless shell headless, the full browser headed. */
+export const CHROMIUM_BUILD = '157.0.8103.38';
+
+/** The Firefox release firefox runs. */
+export const FIREFOX_BUILD = 'stable_159.0.1';
+
+/** The ffmpeg release that encodes Chromium's screencast when the system has none with VP9. */
+const FFMPEG_RELEASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1';
+
+/** The SHA-256 of each platform's gzipped ffmpeg in `FFMPEG_RELEASE`, checked before it is kept. */
+const FFMPEG_SHA256: Readonly<Record<string, string>> = {
+  'darwin-arm64': '8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa',
+  'darwin-x64': '929b375c1182d956c51f7ac25e0b2b0411fb01f6f407aa15c9758efeb4242106',
+  'linux-x64': 'bfe8a8fc511530457b528c48d77b5737527b504a3797a9bc4866aeca69c2dffa',
+  'linux-arm64': '754a678672298bc68156adff58aa7385a592c2b30b1d0ae8750c45c915c4bac0',
+  'win32-x64': '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
+};
+
+/** How long an install waits for another process's install of the same cache to finish. */
+const LOCK_WAIT_MS = 10 * 60_000;
+
+/** A lock older than this was left by a process that died mid-install. */
+const STALE_LOCK_MS = 15 * 60_000;
+
+/** The `@puppeteer/browsers` module, loaded the first time a browser is installed or looked up. */
+const loadBrowsers = () => import('@puppeteer/browsers');
+
+/** The puppeteer browser name of the build `name` runs in this mode. */
+function buildOf(name: BrowserName, headed: boolean): { readonly browser: 'chrome' | 'chrome-headless-shell' | 'firefox'; readonly buildId: string } {
+  if (name === 'firefox') return { browser: 'firefox', buildId: FIREFOX_BUILD };
+  return { browser: headed ? 'chrome' : 'chrome-headless-shell', buildId: CHROMIUM_BUILD };
 }
 
 /**
- * Whether the build the run launches (headless shell for headless chromium, else the full build)
- * is on disk, or undefined when `env` points at another cache than this process loaded.
+ * Where browsers are kept: `E2E_BROWSERS_PATH` when set, else the user's
+ * cache directory, shared by every project on the machine.
  */
-async function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): Promise<boolean | undefined> {
-  if (env['PLAYWRIGHT_BROWSERS_PATH'] !== process.env['PLAYWRIGHT_BROWSERS_PATH']) return undefined;
+export function browsersPath(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env['E2E_BROWSERS_PATH'];
+  if (configured !== undefined && configured !== '') return path.resolve(configured);
+  if (process.platform === 'win32') return path.join(env['LOCALAPPDATA'] ?? path.join(os.homedir(), 'AppData', 'Local'), 'e2e', 'browsers');
+  if (process.platform === 'darwin') return path.join(os.homedir(), 'Library', 'Caches', 'e2e', 'browsers');
+  return path.join(env['XDG_CACHE_HOME'] ?? path.join(os.homedir(), '.cache'), 'e2e', 'browsers');
+}
+
+/** The executable of the build `name` runs in this mode, whether or not it is installed yet. */
+export async function browserExecutable(name: BrowserName, headed: boolean, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  const { computeExecutablePath } = await loadBrowsers();
+  const { browser, buildId } = buildOf(name, headed);
+  return computeExecutablePath({ browser: browser as never, buildId, cacheDir: browsersPath(env) });
+}
+
+/** Whether the build `name` runs in this mode is on disk. */
+async function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): Promise<boolean> {
   try {
-    const executable = (await browserType(name)).executablePath();
-    if (headed || name !== 'chromium') return existsSync(executable);
-    return headlessShellAt(executable);
+    return existsSync(await browserExecutable(name, headed, env));
   } catch {
     return false;
   }
 }
 
-/** Whether the shell beside `executable`'s full build is installed. */
-function headlessShellAt(executable: string): boolean {
-  const marker = `${path.sep}chromium-`;
-  const at = executable.lastIndexOf(marker);
-  if (at === -1) return false;
-  const revision = executable.slice(at + marker.length).split(path.sep)[0] ?? '';
-  return revision !== '' && headlessShellInstalled(executable.slice(0, at), revision);
-}
-
-/** The `node` arguments that run the pinned `playwright-core` CLI with `args`. */
-function playwrightCliArgs(args: readonly string[]): string[] {
-  const require = createRequire(import.meta.url);
-  return [path.join(path.dirname(require.resolve('playwright-core/package.json')), 'cli.js'), ...args];
-}
-
-/**
- * Runs the pinned Playwright CLI with `args`, sharing this process's terminal,
- * and resolves to its exit code, 128 plus the signal number when a signal
- * ended it. SIGINT and SIGTERM sent to this process reach the child, so a
- * cancelled CI job does not leave a download running. Backs the `e2e-web` command.
- */
-export function runPlaywrightCli(args: readonly string[]): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, playwrightCliArgs(args), {
-      stdio: 'inherit',
-      env: installEnvironment(),
-    });
-    const forward = (signal: NodeJS.Signals) => child.kill(signal);
-    process.on('SIGINT', forward);
-    process.on('SIGTERM', forward);
-    const settle = () => {
-      process.off('SIGINT', forward);
-      process.off('SIGTERM', forward);
-    };
-    child.on('error', (error) => {
-      settle();
-      reject(error);
-    });
-    child.on('exit', (code, signal) => {
-      settle();
-      resolve(code ?? (signal === null ? 1 : 128 + os.constants.signals[signal]));
-    });
-  });
-}
-
-/**
- * The `browser` check of `e2e doctor`: whether the build a run launches is on
- * disk, a `warn` when the first run will download it, or none when `env`
- * points at another browser cache than this process loaded.
- */
+/** The `browser` check of `e2e doctor`: whether the build the run launches is installed. */
 export async function browserCheck(
   name: BrowserName,
   env: NodeJS.ProcessEnv,
@@ -103,7 +96,7 @@ export async function browserCheck(
 
 /** What an installer receives besides the browser names. */
 export interface InstallContext {
-  /** Receives every line the installer prints: the download URL, progress, warnings. */
+  /** Receives every line the installer prints: what it downloads, and where. */
   readonly log: (line: string) => void;
   /** Aborts a download in progress. */
   readonly signal?: AbortSignal | undefined;
@@ -111,6 +104,8 @@ export interface InstallContext {
   readonly env: NodeJS.ProcessEnv;
   /** Whether the run launches a window, which decides the chromium build it needs. */
   readonly headed: boolean;
+  /** Also installs the system libraries the browsers need on Linux (apt). */
+  readonly withDeps?: boolean;
 }
 
 export interface EnsureBrowsersOptions {
@@ -120,12 +115,9 @@ export interface EnsureBrowsersOptions {
    * the reporter rather than underneath it.
    */
   readonly log?: (line: string) => void;
-  /**
-   * Injected detection for tests; defaults to an executable existence check.
-   * Undefined means "cannot tell here": the installer runs and decides.
-   */
+  /** Injected detection for tests; defaults to an executable existence check. */
   readonly isInstalled?: (name: BrowserName) => boolean | undefined | Promise<boolean | undefined>;
-  /** Injected installer for tests; defaults to spawning the Playwright CLI. */
+  /** Injected installer for tests; defaults to `installBrowsers`. */
   readonly install?: (names: readonly BrowserName[], context: InstallContext) => Promise<void>;
   /** Aborts a download in progress; the run's interrupt owns it. */
   readonly signal?: AbortSignal;
@@ -135,24 +127,13 @@ export interface EnsureBrowsersOptions {
   readonly headed?: boolean;
 }
 
-/** The `playwright install` arguments for `names`: `--only-shell` on a headless chromium run. */
-export function installArgs(names: readonly BrowserName[], headed: boolean): string[] {
-  if (headed || !names.includes('chromium')) return [...names];
-  return ['--only-shell', ...names];
-}
-
-/** `env` with `PLAYWRIGHT_SKIP_BROWSER_GC=1` unless already set, so an install keeps other tools' browsers. */
-function installEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return { ...env, PLAYWRIGHT_SKIP_BROWSER_GC: env['PLAYWRIGHT_SKIP_BROWSER_GC'] ?? '1' };
-}
-
 /**
- * Ensures the given Playwright browsers are installed, downloading any
- * missing ones via `playwright-core install`. Called from the engine's `prepare`,
- * once per run before any worker starts, so a download is never charged
- * against a launch timeout and never runs once per worker. Concurrent
- * installs (two runs at once) are still safe: the Playwright CLI serializes
- * them with a registry lock.
+ * Ensures the given browsers are installed, downloading any missing ones,
+ * and for chromium the ffmpeg that encodes its screencast.
+ * Called from the engine's `prepare`, once per run before any worker starts,
+ * so a download is never charged against a launch timeout and never runs
+ * once per worker. Concurrent installs (two runs at once) are serialized by
+ * a lock in the cache.
  */
 export async function ensureBrowsersInstalled(
   names: readonly BrowserName[],
@@ -163,83 +144,157 @@ export async function ensureBrowsersInstalled(
   const isInstalled = options.isInstalled ?? ((name: BrowserName) => isBrowserInstalled(name, env, headed));
   const verdicts = new Map(await Promise.all([...new Set(names)].map(async (name) => [name, await isInstalled(name)] as const)));
   const missing = [...verdicts.keys()].filter((name) => verdicts.get(name) !== true);
+  if (options.install === undefined && names.includes('chromium') && ffmpegExecutable(env) === undefined) {
+    await installFfmpeg({ log: options.log ?? ((line: string) => process.stderr.write(`${line}\n`)), signal: options.signal, env });
+  }
   if (missing.length === 0) return;
-  // The headline is only honest when every listed browser is known to be
-  // absent; when the verdict is the CLI's, its own output tells the story
-  // and says nothing when there is nothing to fetch.
   const knownMissing = missing.every((name) => verdicts.get(name) === false);
   const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-  if (knownMissing) log(`Downloading missing Playwright browsers (first run): ${missing.join(', ')}...`);
-  const install = options.install ?? runPlaywrightInstall;
-  await install(missing, { log, signal: options.signal, env: installEnvironment(env), headed });
+  if (knownMissing) log(`Downloading missing browsers (first run): ${missing.join(', ')}...`);
+  const install = options.install ?? installBrowsers;
+  await install(missing, { log, signal: options.signal, env, headed });
   if (knownMissing) log('Browser download complete.');
 }
 
 /**
- * Forwards a child's stdout or stderr to `log` one complete line at a time.
- * The Playwright CLI redraws its progress bar with carriage returns when it
- * has a terminal; with a pipe it prints whole lines, but the splitter accepts
- * both so no partial redraw ever reaches the reporter.
+ * Downloads and unpacks `names` into the browsers cache, skipping any build
+ * already there. Holds the cache's lock for the whole install, so two runs
+ * that start at once download each build once.
  */
-function forwardLines(stream: NodeJS.ReadableStream, log: (line: string) => void): void {
-  let pending = '';
-  const flush = (text: string) => {
-    for (const line of text.split(/\r\n|\n|\r/)) {
-      const trimmed = line.trimEnd();
-      if (trimmed !== '') log(trimmed);
+export async function installBrowsers(names: readonly BrowserName[], context: InstallContext): Promise<void> {
+  const { install, detectBrowserPlatform } = await loadBrowsers();
+  const cacheDir = browsersPath(context.env);
+  const platform = detectBrowserPlatform();
+  if (platform === undefined) {
+    throw new InfrastructureError('BROWSER_INSTALL_FAILED', `no browser builds for ${process.platform} ${process.arch}`);
+  }
+  await withCacheLock(cacheDir, context.signal, async () => {
+    for (const name of new Set(names)) {
+      const { browser, buildId } = buildOf(name, context.headed);
+      if (existsSync(await browserExecutable(name, context.headed, context.env))) continue;
+      cancelledCheck(context.signal);
+      context.log(`Downloading ${browser} ${buildId} into ${cacheDir}`);
+      try {
+        await install({ browser: browser as never, buildId, cacheDir, platform, installDeps: context.withDeps === true });
+      } catch (cause) {
+        throw new InfrastructureError(
+          'BROWSER_INSTALL_FAILED',
+          `could not install ${browser} ${buildId}: ${cause instanceof Error ? cause.message : String(cause)}; run "npx @e2e-dev/web install ${name}" (pnpm: "pnpm exec e2e-web install ${name}") manually`,
+          { cause },
+        );
+      }
     }
-  };
-  stream.setEncoding('utf8');
-  stream.on('data', (chunk: string) => {
-    pending += chunk;
-    const cut = Math.max(pending.lastIndexOf('\n'), pending.lastIndexOf('\r'));
-    if (cut === -1) return;
-    flush(pending.slice(0, cut + 1));
-    pending = pending.slice(cut + 1);
+    if (context.withDeps === true && names.includes('firefox')) installFirefoxDeps(context.log);
   });
-  stream.on('end', () => flush(pending));
 }
 
-/** Spawns `node <playwright-core>/cli.js install <names>`, narrating its output through `log`. */
-function runPlaywrightInstall(
-  names: readonly BrowserName[],
-  { log, signal, env, headed }: InstallContext,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted === true) {
-      reject(new EngineError('CANCELLED', 'browser install cancelled', { retryable: false }));
-      return;
-    }
-    const child = spawn(process.execPath, playwrightCliArgs(['install', ...installArgs(names, headed)]), {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env,
-    });
-    forwardLines(child.stdout, log);
-    forwardLines(child.stderr, log);
-    const onAbort = () => {
-      child.kill();
-      reject(new EngineError('CANCELLED', 'browser install cancelled', { retryable: false }));
-    };
-    signal?.addEventListener('abort', onAbort, { once: true });
-    child.on('exit', () => signal?.removeEventListener('abort', onAbort));
-    child.on('error', (cause) => {
-      reject(
-        new InfrastructureError('BROWSER_INSTALL_FAILED', `failed to run playwright-core install: ${cause.message}`, {
-          cause,
-        }),
-      );
-    });
-    child.on('exit', (code) => {
-      if (code === 0) {
-        resolve();
-        return;
+/** The Debian packages Firefox needs beyond a minimal Linux image. */
+const FIREFOX_APT_PACKAGES = [
+  'libasound2t64', 'libatk1.0-0t64', 'libcairo-gobject2', 'libcairo2', 'libdbus-1-3', 'libfontconfig1', 'libfreetype6',
+  'libgdk-pixbuf-2.0-0', 'libglib2.0-0t64', 'libgtk-3-0t64', 'libpango-1.0-0', 'libpangocairo-1.0-0', 'libx11-6',
+  'libx11-xcb1', 'libxcb-shm0', 'libxcb1', 'libxcomposite1', 'libxcursor1', 'libxdamage1', 'libxext6', 'libxfixes3',
+  'libxi6', 'libxrandr2', 'libxrender1', 'libxtst6',
+];
+
+/** Installs Firefox's system libraries with apt on Debian and Ubuntu; elsewhere there is nothing to do. */
+function installFirefoxDeps(log: (line: string) => void): void {
+  if (process.platform !== 'linux' || !existsSync('/usr/bin/apt-get')) return;
+  log(`Installing Firefox system libraries: ${FIREFOX_APT_PACKAGES.join(' ')}`);
+  const root = process.getuid?.() === 0;
+  const run = (args: string[]) => spawnSync(root ? args[0]! : 'sudo', root ? args.slice(1) : args, { stdio: 'inherit' });
+  run(['apt-get', 'update']);
+  const result = run(['apt-get', 'install', '-y', '--no-install-recommends', ...FIREFOX_APT_PACKAGES]);
+  if (result.status !== 0) throw new InfrastructureError('BROWSER_INSTALL_FAILED', 'apt-get could not install the Firefox system libraries');
+}
+
+/** Rejects with `CANCELLED` once `signal` aborted. */
+function cancelledCheck(signal: AbortSignal | undefined): void {
+  if (signal?.aborted === true) throw new EngineError('CANCELLED', 'browser install cancelled', { retryable: false });
+}
+
+/**
+ * Runs `work` holding the cache's install lock, a directory only one process
+ * can create. A lock older than `STALE_LOCK_MS` was left by a process that
+ * died mid-install and is taken over.
+ */
+async function withCacheLock<T>(cacheDir: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
+  mkdirSync(cacheDir, { recursive: true });
+  const lock = path.join(cacheDir, '.install.lock');
+  const giveUp = Date.now() + LOCK_WAIT_MS;
+  for (;;) {
+    cancelledCheck(signal);
+    try {
+      mkdirSync(lock);
+      break;
+    } catch {
+      if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs > STALE_LOCK_MS) {
+        rmSync(lock, { recursive: true, force: true });
+        continue;
       }
-      reject(
-        new InfrastructureError(
-          'BROWSER_INSTALL_FAILED',
-          `playwright-core install ${names.join(' ')} exited with code ${String(code)}; run "npx @e2e-dev/web install ${names.join(' ')}" (pnpm: "pnpm exec e2e-web install ${names.join(' ')}") manually`,
-        ),
-      );
-    });
+      if (Date.now() > giveUp) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `another install still holds ${lock}`);
+      await sleep(500);
+    }
+  }
+  try {
+    return await work();
+  } finally {
+    rmSync(lock, { recursive: true, force: true });
+  }
+}
+
+/** Whether `executable` runs and lists the VP9 encoder the screencast needs. */
+function encodesVp9(executable: string): boolean {
+  const result = spawnSync(executable, ['-hide_banner', '-encoders'], { encoding: 'utf8', timeout: 10_000 });
+  return result.status === 0 && result.stdout.includes('libvpx-vp9');
+}
+
+/** The cached ffmpeg's path for this platform. */
+function cachedFfmpeg(env: NodeJS.ProcessEnv): string {
+  return path.join(browsersPath(env), 'ffmpeg-b6.1.1', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+}
+
+/** The ffmpeg found on the system, memoized: `E2E_FFMPEG_PATH`, else `ffmpeg` on the PATH, when it encodes VP9. */
+let systemFfmpeg: string | null | undefined;
+
+/**
+ * The ffmpeg that encodes Chromium's screencast: `E2E_FFMPEG_PATH`, else a
+ * system `ffmpeg` with VP9, else the one `installFfmpeg` cached; undefined
+ * when there is none yet.
+ */
+export function ffmpegExecutable(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  const configured = env['E2E_FFMPEG_PATH'];
+  if (configured !== undefined && configured !== '') return configured;
+  const cached = cachedFfmpeg(env);
+  if (existsSync(cached)) return cached;
+  systemFfmpeg ??= encodesVp9('ffmpeg') ? 'ffmpeg' : null;
+  return systemFfmpeg ?? undefined;
+}
+
+/**
+ * Downloads the pinned ffmpeg for this platform into the browsers cache,
+ * checking its SHA-256, unless one is already there or on the system.
+ */
+export async function installFfmpeg(context: Pick<InstallContext, 'log' | 'signal' | 'env'>): Promise<string> {
+  const existing = ffmpegExecutable(context.env);
+  if (existing !== undefined) return existing;
+  const key = `${process.platform}-${process.arch}`;
+  const sha256 = FFMPEG_SHA256[key];
+  if (sha256 === undefined) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `no ffmpeg build for ${key}; set E2E_FFMPEG_PATH to an ffmpeg with libvpx-vp9`);
+  const target = cachedFfmpeg(context.env);
+  return withCacheLock(browsersPath(context.env), context.signal, async () => {
+    if (existsSync(target)) return target;
+    const url = `${FFMPEG_RELEASE}/ffmpeg-${key}.gz`;
+    context.log(`Downloading ffmpeg from ${url}`);
+    const response = await fetch(url, context.signal === undefined ? {} : { signal: context.signal });
+    if (!response.ok) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `ffmpeg download failed: ${response.status} ${url}`);
+    const archive = Buffer.from(await response.arrayBuffer());
+    const digest = createHash('sha256').update(archive).digest('hex');
+    if (digest !== sha256) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `ffmpeg download from ${url} has SHA-256 ${digest}, expected ${sha256}`);
+    mkdirSync(path.dirname(target), { recursive: true });
+    const partial = `${target}.partial`;
+    writeFileSync(partial, gunzipSync(archive));
+    chmodSync(partial, 0o755);
+    renameSync(partial, target);
+    return target;
   });
 }
