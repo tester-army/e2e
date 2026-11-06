@@ -50,7 +50,6 @@ async function addDownloadLinks(engine: EngineHandle, baseUrl: string, count: nu
   }, { total: count, text: body, file: name ?? null });
 }
 
-// Missing in BiDi: downloads through a browser provider are refused (UNSUPPORTED_CAPABILITY), and attempt-scoped providers at config load.
 describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a provider, %s scope', (scope) => {
   let app: FixtureApp;
   let artifactsDir: string | undefined;
