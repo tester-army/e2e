@@ -911,6 +911,25 @@ describe('scheduler gating and dispatch', () => {
       new Set(['web', 'firefox']),
     );
   });
+
+  it('dispatches the targets, and each target\'s files, in the order its plans hold them, whatever their names', async () => {
+    const web = makeTarget('web', 0);
+    const firefox = makeTarget('firefox', 1);
+    const files = ['tests/c.e2e.ts', 'tests/a.e2e.ts', 'tests/b.e2e.ts'];
+    // The plans arrive ordered by relevance: firefox before web, its files not in name order.
+    const perTarget = [firefox, web].map((target) => ({
+      target,
+      pairs: files.map((file) => makePair(makeTest(file, file), target)),
+    }));
+    const fleet = new FakeFleet();
+
+    await run(makeSelection(perTarget), makeCollection(files, perTarget[0]!.pairs), fleet, { workers: 1 });
+
+    expect(fleet.unitsByWorker.flat().map((unit) => unit.unitId)).toEqual([
+      ...files.map((file) => `file::firefox::${file}`),
+      ...files.map((file) => `file::web::${file}`),
+    ]);
+  });
 });
 
 /** Two members of one serial group in `tests/a.e2e.ts`. */

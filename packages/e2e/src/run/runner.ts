@@ -54,7 +54,7 @@ import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultR
 import { runUnits } from './scheduler.ts';
 import type { BeforeStep, HeldStep, StepPrompt } from './step-hold.ts';
 import { stepPromptLine } from '../report/list-steps.ts';
-import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
+import { buildWorkPlans, nonRunResult, orderWorkPlans, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
@@ -73,7 +73,7 @@ import { detectVcs, type VcsInfo } from '../internal/vcs.ts';
 import type { EnginePrepareResult } from '../engine/index.ts';
 import type { AppProcesses } from './managed-process.ts';
 import { PreparedEngines, recordingNotices, startDeclaredProcesses, validateEngine, type EngineGrade, type PrepareScope } from './provision.ts';
-import { filterSelection } from './test-filters.ts';
+import { filterSelection, rankingNotice } from './test-filters.ts';
 
 export interface RunOptions {
   cwd?: string | undefined;
@@ -920,6 +920,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // The filters decide before any engine prepares or app starts, so a run
     // they leave empty boots nothing. An interrupt records nothing: the run
     // ends interrupted, like one cut short in `prepare`.
+    let relevance: ReadonlyMap<string, number> = new Map();
     if (options.changedSince !== undefined) {
       try {
         const filtered = await filterSelection(selection, {
@@ -933,8 +934,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           timeoutMs: options.filterTimeout,
         });
         selection = filtered.selection;
+        relevance = filtered.relevance;
         filterReport = filtered.records;
         changesReport = filtered.changes;
+        const ranking = rankingNotice(selection, relevance);
+        if (ranking !== undefined) notice('filter', ranking);
       } catch (cause) {
         if (!interrupted.aborted) recordFailure(cause, 'filter');
         return;
@@ -971,11 +975,12 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const workerConfigPath = options.tests === undefined ? config.configPath : undefined;
     const inProcess = workerConfigPath === undefined;
     const runWorkers = inProcess ? 1 : config.workers;
-    if (runWorkers > 1) {
-      const layout = outputLayout(config.output);
-      const previous = await loadTimings(timingsPath(config), layout.report);
-      plans = longestFirst(plans, (targetName, file) => previous.get(fileDurationKey(targetName, file)));
-    }
+    // Starting long files early only pays when other workers take the rest, so only such a run reads the timings history.
+    const previous = runWorkers > 1 ? await loadTimings(timingsPath(config), outputLayout(config.output).report) : undefined;
+    plans = orderWorkPlans(plans, {
+      relevanceOf: (testId) => relevance.get(testId) ?? 0,
+      durationOf: (targetName, file) => previous?.get(fileDurationKey(targetName, file)),
+    });
     const timeLimit: TimeLimit | undefined =
       options.maxDuration !== undefined
         ? { ms: options.maxDuration, source: '--max-duration' }

@@ -206,9 +206,13 @@ To keep the checks predictable:
 ## Run only affected tests
 
 On a pull request, pass `--changed-since` so a [test filter](/filters) can
-leave out the tests the change is unlikely to affect. Without the flag, as
-on `main`, the whole suite runs. See
-[Add the decision filter](/filters#add-the-decision-filter).
+leave out the tests the change is unlikely to affect, and each target starts
+the likeliest to fail first. Without the flag, as on `main`, the whole suite
+runs. See [Add the decision filter](/filters#add-the-decision-filter).
+
+With the CI default of one worker, only the scores order files: e2e reads the
+previous run's times only with more than one worker. See
+[Start the likeliest first](/filters#start-the-likeliest-first).
 
 ## Cache the timings history
 

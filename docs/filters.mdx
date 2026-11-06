@@ -6,9 +6,9 @@ description: Run only the tests a pull request can affect.
 ---
 
 With `--changed-since <ref>`, a test filter leaves out the tests the change
-since that ref can't affect. The decision filter asks a
-[decision model](/decision-models), such as Jev, about each test. Without
-the flag, as on `main` and locally, every test runs.
+since that ref can't affect, and starts the likeliest to fail first. The
+decision filter asks a [decision model](/decision-models), such as Jev, about
+each test. Without the flag, as on `main` and locally, every test runs.
 
 ## Add the decision filter
 
@@ -123,23 +123,52 @@ The decision filter also runs:
   `Cargo.lock`. The model judges any other file, and those of a sibling
   project.
 
-A filter that throws, returns something other than `{ exclude, note? }`,
-or runs past 5 minutes leaves nothing out, and a warning says so. The next
-filter still judges every test it was given.
+A filter that throws, returns something other than
+`{ exclude, relevance?, note? }`, or runs past 5 minutes leaves nothing out
+and scores nothing, and a warning says so. The next filter still judges every
+test it was given.
 
 On another CI service, pass `--changed-since origin/main` on pull request
 builds only, and fetch enough history for the merge base. On GitLab, see
 [Run only affected tests](/ci/gitlab#run-only-affected-tests). With
 `--shard`, the filters on each machine judge only its slice.
 
+## Start the likeliest first
+
+The decision filter scores each test it keeps, and each target starts the
+files of the likeliest tests first. A failure then shows early, which saves
+the most with `--max-failures` and with one worker, the default in CI.
+
+| Test | Score |
+| --- | --- |
+| Its test file, setup file, or stored screenshots changed | 100% |
+| The model judged it | The higher of its rating and its setup's |
+| The model didn't judge it | 50% |
+
+- Files start in four bands: 75% and up, 50% to 74%, 25% to 49%, and below
+  25%. A file takes the band of its likeliest test.
+- With more than one worker, the file the previous run spent longest in
+  starts first inside a band, read from `report.json` in the output
+  directory. A file with no time starts before the timed ones.
+- The target with the likeliest file goes first, and each target starts its
+  own files in that order. A target's setup tests still finish before its
+  first test file starts.
+- A short likely file can start before a long unlikely one, so with several
+  workers a run that finishes whole can end later. The report keeps its
+  order, and `e2e list` shows none.
+
+A filter you write scores tests with `relevance`, as in
+[Write your own](#write-your-own).
+
 ## What you see
 
 - **Terminal**: one line per filter, such as
   `decision kept 7 of 77 tests, left out 70 (1 call, 17.6k tokens, $0.0007)`.
   The decision filter's note ends with its spend: model calls, tokens, and
-  the cost when the provider reports it, as the AI Gateway does. A
-  `Left out` row follows in the summary. When the filters leave nothing to
-  run, the run passes and starts no app.
+  the cost when the provider reports it, as the AI Gateway does. A line such
+  as `ranked 7 of 7 tests by relevance, likeliest first` follows when
+  the scores change the order. A `Left out` row follows in the summary. When the
+  filters leave nothing to run, the run passes and starts no app.
 - **[Pull request comment](/github) and `summary.md`**: the headline
   `7 passed, 70 left out by filters`, and a folded table of the tests with
   their reasons.
@@ -188,8 +217,9 @@ on:
 ## Write your own
 
 A filter is `{ name, filter }`: `filter` gets the tests and the change, and
-returns the tests to leave out with a reason for each. This one maps
-changed paths to test tags:
+returns the tests to leave out with a reason for each. It can also score the
+rest from 0 to 1 with `relevance`. This one maps changed paths to test tags,
+and starts the tests whose area the change reaches first:
 
 ```ts title="areas-filter.ts"
 import type { TestFilter } from 'e2e';
@@ -213,11 +243,14 @@ export const areas = {
       for (const tag of AREAS[area] ?? []) reached.add(tag);
     }
     const exclude: Record<string, string> = {};
+    const relevance: Record<string, number> = {};
     for (const test of tests) {
       const tags = test.tags.filter((tag) => AREA_TAGS.has(tag));
-      if (tags.length > 0 && !tags.some((tag) => reached.has(tag))) exclude[test.id] = 'the change reaches none of its areas';
+      if (tags.length === 0) continue;
+      if (tags.some((tag) => reached.has(tag))) relevance[test.id] = 1;
+      else exclude[test.id] = 'the change reaches none of its areas';
     }
-    return { exclude };
+    return { exclude, relevance };
   },
 } satisfies TestFilter;
 ```
@@ -240,6 +273,9 @@ export default {
 
 - Every test you don't name runs, and so does a test you name in a serial
   group another of its tests runs in.
+- `relevance` takes test ids and numbers from 0 to 1, a test no filter names
+  counts as 0, and a test several filters name keeps its highest. Anything
+  else fails the filter, as for `exclude`.
 - Each filter judges only the tests the one before it kept, and is not
   called when none are left.
 - Pass `signal` to every call, and `redact` what you send to a model. It

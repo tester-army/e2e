@@ -6,7 +6,16 @@ import type {
   TestTargetPair,
 } from '../../src/collect/select.ts';
 import type { ResolvedTarget } from '../../src/config/resolve.ts';
-import { buildWorkPlans, failureLimitSkip, longestFirst, interruptedInPhase, nonRunResult, timeLimitSkip, unstartedResult } from '../../src/run/units.ts';
+import {
+  buildWorkPlans,
+  failureLimitSkip,
+  interruptedInPhase,
+  nonRunResult,
+  orderWorkPlans,
+  timeLimitSkip,
+  unstartedResult,
+  type TargetWorkPlan,
+} from '../../src/run/units.ts';
 import { decodeResult } from '../../src/run/worker/protocol.ts';
 import { encodeResult, type ResultRecord } from '../../src/run/records.ts';
 
@@ -167,34 +176,128 @@ describe('buildWorkPlans', () => {
   });
 });
 
-describe('longestFirst', () => {
-  it('dispatches the files the previous run spent longest in first, untimed ones before them, ties in collection order', () => {
-    const files = ['tests/a.e2e.ts', 'tests/b.e2e.ts', 'tests/c.e2e.ts', 'tests/d.e2e.ts', 'tests/e.e2e.ts'];
-    const tests = files.map((file) => makeTest(file, file, 0));
-    const pairs = tests.map((test) => makePair(test));
-    const selection: Selection = { pairs, perTarget: [{ target, pairs }] };
+describe('orderWorkPlans', () => {
+  /** The id of test `index` of `file`, as `plansFor` makes them. */
+  const idOf = (file: string, index = 0): string => `test::${file}::${file}#${index}`;
+
+  /**
+   * Work plans for the targets named by the keys of `files`, in that order,
+   * each running the files it maps to, `testsPerFile` tests of each.
+   */
+  function plansFor(files: Readonly<Record<string, readonly string[]>>, testsPerFile = 1): TargetWorkPlan[] {
+    const all = [...new Set(Object.values(files).flat())];
+    const tests = new Map(all.map((file) => [file, Array.from({ length: testsPerFile }, (_, index) => makeTest(file, `${file}#${index}`, index))]));
+    const perTarget = Object.entries(files).map(([name, names], index) => {
+      const named: ResolvedTarget = { ...target, name, index };
+      return { target: named, pairs: names.flatMap((file) => tests.get(file)!.map((test) => makePair(test, { target: named }))) };
+    });
     const collection: Collection = {
-      files: files.map((file, index) => makeFile(file, [tests[index]!])),
-      tests,
+      files: all.map((file) => makeFile(file, tests.get(file)!)),
+      tests: [...tests.values()].flat(),
       nearMisses: [],
       unmatchedPositionals: [],
       uncollected: [],
     };
+    return buildWorkPlans({ pairs: perTarget.flatMap((entry) => entry.pairs), perTarget }, collection, '/project');
+  }
+
+  /** The files of each plan in dispatch order, keyed by target. */
+  const dispatched = (plans: readonly TargetWorkPlan[]): [string, string[]][] => plans.map((plan) => [plan.target.name, plan.fileUnits.map((unit) => unit.file)]);
+
+  const FILES = ['tests/a.e2e.ts', 'tests/b.e2e.ts', 'tests/c.e2e.ts', 'tests/d.e2e.ts', 'tests/e.e2e.ts'];
+  const none = (): number => 0;
+  const untimed = (): undefined => undefined;
+
+  it('dispatches the files the previous run spent longest in first, untimed ones before them, ties in collection order', () => {
     const previous = new Map([
       ['tests/a.e2e.ts', 100],
       ['tests/b.e2e.ts', 900],
       ['tests/d.e2e.ts', 100],
     ]);
-    const [plan] = longestFirst(buildWorkPlans(selection, collection, '/project'), (targetName, file) =>
-      targetName === 'web' ? previous.get(file) : undefined,
+    const plans = orderWorkPlans(plansFor({ web: FILES }), {
+      relevanceOf: none,
+      durationOf: (targetName, file) => (targetName === 'web' ? previous.get(file) : undefined),
+    });
+    expect(dispatched(plans)).toEqual([['web', ['tests/c.e2e.ts', 'tests/e.e2e.ts', 'tests/b.e2e.ts', 'tests/a.e2e.ts', 'tests/d.e2e.ts']]]);
+  });
+
+  it('keeps collection order when no file has a score or a timing', () => {
+    const plans = plansFor({ web: FILES });
+    expect(dispatched(orderWorkPlans(plans, { relevanceOf: none, durationOf: untimed }))).toEqual([['web', FILES]]);
+  });
+
+  it('starts the likeliest band first whatever the timings say, the longest file first inside a band, and an untimed file before the timed ones', () => {
+    const files = ['tests/a.e2e.ts', 'tests/b.e2e.ts', 'tests/c.e2e.ts', 'tests/d.e2e.ts', 'tests/e.e2e.ts', 'tests/f.e2e.ts'];
+    const scores: Record<string, number> = {
+      [idOf('tests/a.e2e.ts')]: 0.9,
+      [idOf('tests/b.e2e.ts')]: 0.8,
+      // Each edge opens its own band: 0.5 is in the one above 0.49, and 0.24 is under the last.
+      [idOf('tests/c.e2e.ts')]: 0.5,
+      [idOf('tests/d.e2e.ts')]: 0.49,
+      [idOf('tests/e.e2e.ts')]: 0.24,
+    };
+    const durations: Record<string, number> = { 'tests/a.e2e.ts': 100, 'tests/b.e2e.ts': 900, 'tests/c.e2e.ts': 10, 'tests/d.e2e.ts': 5000, 'tests/e.e2e.ts': 700 };
+    const plans = orderWorkPlans(plansFor({ web: files }), {
+      relevanceOf: (testId) => scores[testId] ?? 0,
+      durationOf: (_targetName, file) => durations[file],
+    });
+    // d ran longest and is not first: its band is under c's. f has no timing, so it is ahead of e in the last band.
+    expect(dispatched(plans)).toEqual([['web', ['tests/b.e2e.ts', 'tests/a.e2e.ts', 'tests/c.e2e.ts', 'tests/d.e2e.ts', 'tests/f.e2e.ts', 'tests/e.e2e.ts']]]);
+  });
+
+  it('ranks a file by the likeliest of its tests, and a test no one scored as 0', () => {
+    const files = ['tests/a.e2e.ts', 'tests/b.e2e.ts', 'tests/c.e2e.ts'];
+    const scores: Record<string, number> = {
+      [idOf('tests/a.e2e.ts', 0)]: 0.3,
+      [idOf('tests/a.e2e.ts', 1)]: 0.4,
+      [idOf('tests/b.e2e.ts', 1)]: 0.8,
+    };
+    const plans = orderWorkPlans(plansFor({ web: files }, 2), { relevanceOf: (testId) => scores[testId] ?? 0, durationOf: untimed });
+    expect(dispatched(plans)).toEqual([['web', ['tests/b.e2e.ts', 'tests/a.e2e.ts', 'tests/c.e2e.ts']]]);
+  });
+
+  it('ranks a file by its tests on every repeat', () => {
+    const [plan] = plansFor({ web: ['tests/a.e2e.ts', 'tests/b.e2e.ts'] });
+    const [unit] = plan!.fileUnits;
+    const repeated: TargetWorkPlan = { ...plan!, fileUnits: [unit!, { ...plan!.fileUnits[1]!, pairs: [0, 1, 2].map((repeat) => ({ ...plan!.fileUnits[1]!.pairs[0]!, repeat })) }] };
+    const ordered = orderWorkPlans([repeated], { relevanceOf: (testId) => (testId === idOf('tests/b.e2e.ts') ? 0.6 : 0), durationOf: untimed });
+    expect(dispatched(ordered)).toEqual([['web', ['tests/b.e2e.ts', 'tests/a.e2e.ts']]]);
+  });
+
+  it('starts the target with the likeliest file first, ties keeping config order, and orders the files inside each', () => {
+    const scores: Record<string, number> = {
+      [idOf('tests/c.e2e.ts')]: 0.3,
+      [idOf('tests/d.e2e.ts')]: 0.9,
+      [idOf('tests/g.e2e.ts')]: 0.3,
+    };
+    const plans = orderWorkPlans(
+      plansFor({
+        web: ['tests/a.e2e.ts', 'tests/b.e2e.ts'],
+        ios: ['tests/c.e2e.ts', 'tests/e.e2e.ts'],
+        android: ['tests/f.e2e.ts', 'tests/d.e2e.ts'],
+        tablet: ['tests/g.e2e.ts', 'tests/h.e2e.ts'],
+      }),
+      { relevanceOf: (testId) => scores[testId] ?? 0, durationOf: untimed },
     );
-    expect(plan!.fileUnits.map((unit) => unit.file)).toEqual([
-      'tests/c.e2e.ts',
-      'tests/e.e2e.ts',
-      'tests/b.e2e.ts',
-      'tests/a.e2e.ts',
-      'tests/d.e2e.ts',
+    expect(dispatched(plans)).toEqual([
+      ['android', ['tests/d.e2e.ts', 'tests/f.e2e.ts']],
+      ['ios', ['tests/c.e2e.ts', 'tests/e.e2e.ts']],
+      ['tablet', ['tests/g.e2e.ts', 'tests/h.e2e.ts']],
+      ['web', ['tests/a.e2e.ts', 'tests/b.e2e.ts']],
     ]);
+  });
+
+  it('leaves the plans in config order when nothing is scored, and a target with no file to run last among equals', () => {
+    const plans = plansFor({ web: ['tests/a.e2e.ts'], ios: [], android: ['tests/b.e2e.ts'] });
+    expect(dispatched(orderWorkPlans(plans, { relevanceOf: none, durationOf: untimed })).map(([name]) => name)).toEqual(['web', 'ios', 'android']);
+  });
+
+  it('keeps each plan\'s setup units, immediate pairs, and everything else it carries', () => {
+    const [plan] = plansFor({ web: ['tests/a.e2e.ts', 'tests/b.e2e.ts'] });
+    const withExtras: TargetWorkPlan = { ...plan!, workers: 2, env: { A: '1' } };
+    const [ordered] = orderWorkPlans([withExtras], { relevanceOf: (testId) => (testId === idOf('tests/b.e2e.ts') ? 1 : 0), durationOf: untimed });
+    expect(ordered).toMatchObject({ target: withExtras.target, setupUnits: withExtras.setupUnits, immediate: withExtras.immediate, workers: 2, env: { A: '1' } });
+    expect(ordered!.fileUnits.map((unit) => unit.file)).toEqual(['tests/b.e2e.ts', 'tests/a.e2e.ts']);
   });
 });
 

@@ -6,9 +6,11 @@ import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import {
   resultByTitle,
+  runExistingWithConfigFile,
   runProjectWithConfigFile,
   workerConfigSource,
   workerFakeConfigSource,
+  type RunOutcome,
 } from '../helpers/run-project.ts';
 
 describe('parallel worker execution', () => {
@@ -1053,6 +1055,41 @@ test('runs on the next worker', async ({ app }) => {
       expect(skipped.skip?.cause).toBe('infrastructure-unavailable');
       expect(resultByTitle(outcome, 'runs on the next worker').status).toBe('passed');
       expect(outcome.exitCode).toBe(3);
+      project.cleanup();
+    },
+    120_000,
+  );
+
+  it(
+    'starts the file the previous run spent longest in first with more than one worker, and in collection order with one',
+    async () => {
+      const sleeping = (title: string, ms: number) => `import { test } from 'e2e';
+
+test('${title}', async () => {
+  await new Promise((resolve) => setTimeout(resolve, ${ms}));
+});
+`;
+      /** The titles of the tests that ran, in the order their first attempts started. */
+      const startOrder = (outcome: RunOutcome) =>
+        outcome.report.run.results
+          .filter((result) => result.attempts.length > 0)
+          .toSorted((a, b) => Date.parse(a.attempts[0]!.startedAt) - Date.parse(b.attempts[0]!.startedAt))
+          .map((result) => result.titlePath.at(-1));
+      const { outcome: first, project } = await runProjectWithConfigFile(
+        { 'tests/alpha.e2e.ts': sleeping('alpha', 0), 'tests/beta.e2e.ts': sleeping('beta', 900), 'tests/gamma.e2e.ts': sleeping('gamma', 700) },
+        { configSource: workerFakeConfigSource(1) },
+      );
+      // No report to learn from yet.
+      expect(startOrder(first)).toEqual(['alpha', 'beta', 'gamma']);
+
+      // Two workers take beta and gamma, the files that run spent longest in, and alpha waits for one of them.
+      const parallel = await runExistingWithConfigFile(project, { runOptions: { workers: 2 } });
+      expect(parallel.exitCode).toBe(0);
+      expect(startOrder(parallel).at(-1)).toBe('alpha');
+
+      // One worker reads no timings, though the last report holds them.
+      const serial = await runExistingWithConfigFile(project, { runOptions: { workers: 1 } });
+      expect(startOrder(serial)).toEqual(['alpha', 'beta', 'gamma']);
       project.cleanup();
     },
     120_000,

@@ -42,8 +42,9 @@ for setup, vision, gates, provider options, and limits.
 ## Test filter
 
 With `e2e run --changed-since <ref>`, `decisionFilter()` asks a decision
-model whether the change since that ref can affect each test, and leaves
-out the unlikely ones:
+model whether the change since that ref can affect each test, leaves out
+the unlikely ones, and scores the rest so each target starts the
+likeliest first:
 
 ```ts
 import type { E2EConfig } from 'e2e';
