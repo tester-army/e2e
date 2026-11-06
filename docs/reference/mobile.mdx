@@ -317,8 +317,9 @@ export default {
 - iOS hands the arguments to the app process
   (`ProcessInfo.processInfo.arguments`). Android appends them to `am start`,
   so `['--ez', 'e2e', 'true']` is a boolean intent extra.
-- e2e sets no environment variables on the app process, and `app.environment`
-  is a report label. `device.installApp` takes no launch option.
+- e2e sets no environment variables on the app process, and
+  [`app.environment`](/reference/config#environment) is not one.
+  [`device.installApp`](#installapp) takes no launch option.
 - Each permission is `grant`, `deny`, or `reset`. `deny` is a recorded
   refusal on iOS, where the app is told no without a prompt, and a revocation
   on Android, where the OS asks again when the app requests the permission.
@@ -332,7 +333,7 @@ export default {
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | In `app.permissions`: a permission name outside `DevicePermission` (naming the nearest one when it is a likely typo), or a state other than `grant`, `deny`, or `reset`. Fails before any device command. |
-| `INVALID_ARGUMENT` | The same, in `device.openApp`; `launchArguments` passed to `device.installApp`, or to `device.openApp` without `relaunch: true`. |
+| `INVALID_ARGUMENT` | The same, in `device.openApp`. |
 
 #### Boot and prepare
 
@@ -685,7 +686,7 @@ await device.openApp(app);
 /**
  * Brings an app to the foreground by bundle id, package, or display name;
  * `relaunch` restarts it fresh. `launchArguments` and `permissions` apply
- * to this launch alone, and `launchArguments` needs `relaunch`; the
+ * to this launch alone; pass `launchArguments` with `relaunch`. The
  * target's configured ones apply to a `relaunch`
  * of the pinned app, and to no foreground-only open. A link is
  * `INVALID_ARGUMENT` (`file:`, `data:`, `javascript:`, `view-source:`,
@@ -701,13 +702,14 @@ await device.openApp('com.example.app', { relaunch: true, launchArguments: ['-e2
 
 - A link is refused before the device sees it, since agent-device opens any
   `scheme:rest` string as a URL.
-- `launchArguments` needs `relaunch: true`: a running app keeps the
-  arguments it started with.
+- Pass `launchArguments` with `relaunch: true`: a running app keeps the
+  arguments it started with. Without `relaunch` they still go out, with a
+  `DeprecationWarning` once per worker. A later release will refuse them.
 
 | Throws | When |
 | --- | --- |
 | `POLICY_DENIED` | A `file:`, `data:`, `javascript:`, `view-source:`, `blob:`, or `filesystem:` link. |
-| `INVALID_ARGUMENT` | Any other link, with a message pointing at `openLink`; an invalid permission name or state (see [Launch arguments and permissions](#launch-arguments-and-permissions)); an unknown option; `launchArguments` that is not a list of strings, or is not empty without `relaunch: true`. |
+| `INVALID_ARGUMENT` | Any other link, with a message pointing at `openLink`; an invalid permission name or state (see [Launch arguments and permissions](#launch-arguments-and-permissions)); an unknown option (`launchArgs` names `launchArguments`); `launchArguments` that is not a list of strings. |
 
 #### `openLink`
 
@@ -1006,8 +1008,9 @@ export interface OpenAppOptions {
   readonly relaunch?: boolean;
   /**
    * Arguments this launch hands the app: its process arguments on iOS,
-   * `am start` arguments on Android. Needs `relaunch: true`, since a running
-   * app keeps the arguments it was launched with. Replaces the target's
+   * `am start` arguments on Android. Pass them with `relaunch: true`: a
+   * running app keeps the arguments it started with, and passing them
+   * without `relaunch` is deprecated. Replaces the target's
    * `app.launchArguments` for a relaunch of the pinned app.
    */
   readonly launchArguments?: readonly string[];
