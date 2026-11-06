@@ -431,7 +431,7 @@ npx e2e run tests/signup.e2e.ts --tag smoke
 npx e2e run tests/signup.e2e.ts:12
 npx e2e run tests/agent
 npx e2e run 'tests/**/*.smoke.e2e.ts'
-npx e2e run --target web,webkit --tag smoke,billing --tag-mode all
+npx e2e run --target web,firefox --tag smoke,billing --tag-mode all
 npx e2e run --tag smoke --exclude-tag slow
 npx e2e run --grep checkout --grep-invert '/refund/i'
 npx e2e run --last-failed
@@ -449,7 +449,7 @@ pnpm exec e2e run tests/signup.e2e.ts --tag smoke
 pnpm exec e2e run tests/signup.e2e.ts:12
 pnpm exec e2e run tests/agent
 pnpm exec e2e run 'tests/**/*.smoke.e2e.ts'
-pnpm exec e2e run --target web,webkit --tag smoke,billing --tag-mode all
+pnpm exec e2e run --target web,firefox --tag smoke,billing --tag-mode all
 pnpm exec e2e run --tag smoke --exclude-tag slow
 pnpm exec e2e run --grep checkout --grep-invert '/refund/i'
 pnpm exec e2e run --last-failed
@@ -467,7 +467,7 @@ bunx e2e run tests/signup.e2e.ts --tag smoke
 bunx e2e run tests/signup.e2e.ts:12
 bunx e2e run tests/agent
 bunx e2e run 'tests/**/*.smoke.e2e.ts'
-bunx e2e run --target web,webkit --tag smoke,billing --tag-mode all
+bunx e2e run --target web,firefox --tag smoke,billing --tag-mode all
 bunx e2e run --tag smoke --exclude-tag slow
 bunx e2e run --grep checkout --grep-invert '/refund/i'
 bunx e2e run --last-failed

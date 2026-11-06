@@ -191,7 +191,7 @@ export default {
   targets: [
     { name: 'desktop', engine: web(), app },
     { name: 'tablet', engine: web({ viewport: { width: 820, height: 1180 } }), app },
-    { name: 'phone', engine: web({ browser: 'webkit', viewport: { width: 390, height: 844 } }), app },
+    { name: 'phone', engine: web({ browser: 'firefox', viewport: { width: 390, height: 844 } }), app },
   ],
 } satisfies E2EConfig;
 ```
