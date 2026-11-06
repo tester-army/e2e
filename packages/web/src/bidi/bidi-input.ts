@@ -14,6 +14,8 @@ import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand } from './chromium-
 import type { BidiConnection } from './connection.ts';
 import { codeOfValue, MODIFIER_CODES, pressStroke, strokeSource, type KeyStroke, type Modifier } from './keyboard.ts';
 import type { BidiBrowserName } from './launch.ts';
+import { nextFrame } from './page.ts';
+import { callFunction } from './script.ts';
 
 /** A key held down, and how: a BiDi key action with its value, which its release repeats, or a CDP key event, which only CDP releases. */
 type HeldKey = { readonly via: 'bidi'; readonly value: string } | { readonly via: 'cdp' };
@@ -245,10 +247,22 @@ export class BidiInput {
     signal?.throwIfAborted();
     this.target.context();
     await this.checkInViewport(actions.flatMap(targets));
+    if (this.target.browser === 'firefox' && actions.some((source) => source.type === 'wheel')) await this.framePresented();
     signal?.throwIfAborted();
     const after = this.state.copy();
     const sent = actions.map((source) => (source.type === 'key' ? keepHeld(source, after) : source.type === 'pointer' ? withPressure(source, after) : source));
     return { sent, after };
+  }
+
+  /**
+   * Resolves once the tab's document has rendered a frame. Firefox turns a
+   * wheel action into a native event the parent process hit-tests against
+   * what the compositor shows (`remote.events.async.wheel.enabled`), and a
+   * document a navigation just moved into a new content process has shown
+   * nothing yet, so a wheel sent before its first frame reaches no page.
+   */
+  private async framePresented(): Promise<void> {
+    await callFunction(this.target.connection, this.target.context(), nextFrame, [], { awaitPromise: true });
   }
 
   /** Sends sources to the tab. */

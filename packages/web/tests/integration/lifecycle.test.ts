@@ -23,7 +23,7 @@ import type { Browser } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
-import { browserFixture, onFirefox, startPageServer, testWeb as web, type PageServer } from '../helpers/web-session.ts';
+import { browserFixture, startPageServer, testWeb as web, type PageServer } from '../helpers/web-session.ts';
 
 /** The segments as files: a local recording never links, so a link here is a failure. */
 function videoFiles(segments: readonly VideoSegment[]): VideoFile[] {
@@ -727,8 +727,7 @@ describe('web engine lifecycle', () => {
       });
     });
 
-    it('mints one root id that survives navigation, and swipes the viewport when it is the target', async ({ skip }) => {
-      skip(onFirefox, 'Firefox bug: the viewport swipe on the root sometimes leaves scrollY at 0; it always does when the test runs alone, as the browser\'s first input');
+    it('mints one root id that survives navigation, and swipes the viewport when it is the target', async () => {
       await inAttempt('r1', async () => {
         await engine.session!.open!(`${app.url}/form`, operation('r1'));
         const first = await engine.observe!(operation('r1'));
