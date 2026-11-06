@@ -1,5 +1,6 @@
 /** Suite realm lifecycle: module re-import, beforeAll/afterAll scope tracking. */
 
+import type { UnitAttemptPolicy } from './unit-source.ts';
 import { importModule } from '../config/load.ts';
 import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
 import {
@@ -50,6 +51,8 @@ export interface Realm {
    * leaves the map when its afterAll has run.
    */
   entered: Map<Scope, { failed: SerializedError | undefined }>;
+  /** Set when the registration was built in memory: how its attempts run. */
+  attempts?: UnitAttemptPolicy | undefined;
 }
 
 /** Finds a registered test in a re-imported realm by its exact title path. */
@@ -128,10 +131,10 @@ export class RealmManager {
    * realm. The worker imports every unit's file once to resolve its pairs;
    * adopting that import saves the second, identical one per unit.
    */
-  adopt(registration: ModuleRegistration, file: FileRef): Realm {
+  adopt(registration: ModuleRegistration, file: FileRef, attempts?: UnitAttemptPolicy): Realm {
     const testsByKey = new Map<string, RegisteredTest>();
     for (const test of registration.tests) testsByKey.set(titlePathKey(test.titlePath), test);
-    return { file: file.file, registration, testsByKey, entered: new Map() };
+    return { file: file.file, registration, testsByKey, entered: new Map(), ...(attempts === undefined ? {} : { attempts }) };
   }
 
   /**

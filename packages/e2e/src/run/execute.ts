@@ -43,6 +43,7 @@ import { publishAttempt } from '../expect/attempt.ts';
 import { PollScope, runInPollScope } from '../expect/poll-scope.ts';
 import { SoftFailures } from '../expect/soft.ts';
 import { findRegistered, RealmManager, runHook, type FileRef, type Realm } from './realm.ts';
+import type { UnitAttemptPolicy } from './unit-source.ts';
 import type {
   AttemptRecord,
   ResultRecord,
@@ -123,20 +124,8 @@ export interface TargetExecutorOptions {
   readonly interruptSignal: AbortSignal;
   readonly debug?: DebugTrace;
   readonly events?: ExecutionEvents;
-  /** The virtual file of tests registered in memory, and the agents they run as; see `InMemoryAttempts`. */
-  readonly inMemory?: InMemoryAttempts | undefined;
 }
 
-/**
- * How the attempts of tests registered in memory (`e2e explore`) differ from
- * the rest of the run: they run as `agents` in place of the config's, when
- * given, and with the trace cache off, since nothing replays a test that has
- * no source. The setup tests they need run with the config's own.
- */
-export interface InMemoryAttempts {
-  readonly file: string;
-  readonly agents?: ResolvedConfig['agents'] | undefined;
-}
 
 type AttemptPhase = 'launch' | 'beforeEach' | 'body' | 'afterEach';
 
@@ -382,11 +371,12 @@ export class TargetExecutor implements SerialHost {
     file: FileRef,
     filePairs: readonly TestTargetPair[],
     freshRegistration?: ModuleRegistration,
+    attempts?: UnitAttemptPolicy,
   ): Promise<void> {
     const executedSerialUnits = new Set<string>();
     const ordered = filePairs.toSorted((a, b) => a.test.declarationIndex - b.test.declarationIndex);
     let realm: Realm | null =
-      freshRegistration === undefined ? null : this.realms.adopt(freshRegistration, file);
+      freshRegistration === undefined ? null : this.realms.adopt(freshRegistration, file, attempts);
     for (const [index, pair] of ordered.entries()) {
       // One serial unit per agent the group runs as: its members are the
       // group's pairs under that agent, in declaration order. The unit
@@ -979,9 +969,9 @@ export class TargetExecutor implements SerialHost {
       }).catch(() => undefined);
       if (evidence !== undefined) record.failure = evidence;
     };
-    const inMemory = this.options.inMemory?.file === pair.test.file ? this.options.inMemory : undefined;
+    const built = realm.attempts;
     const cache =
-      inMemory === undefined
+      built === undefined
         ? createAgentCacheContext({
             cache: this.config.cache,
             projectRoot: this.config.projectRoot,
@@ -1048,7 +1038,7 @@ export class TargetExecutor implements SerialHost {
               );
             };
       const { fixtures } = createFixtures({
-        config: inMemory?.agents === undefined ? this.config : { ...this.config, agents: inMemory.agents },
+        config: built?.agents === undefined ? this.config : { ...this.config, agents: built.agents },
         target: this.target,
         session,
         steps,

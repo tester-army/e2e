@@ -427,22 +427,21 @@ export function collectFromRegistration(
 }
 
 /**
- * A collection made of one registration supplied in memory instead of
- * discovered files: what `e2e explore` runs, whose one test has no file. The
+ * A collection made of registrations supplied in memory instead of
+ * discovered files: what `e2e explore` runs, whose tests have no file. Each
  * virtual file name is what the report and the reporters show for it. With
  * `setups` (from `collectSetups`), the project's files come first, none of
- * them selected, so the setup test producing a session the registration
+ * them selected, so the setup test producing a session a registration
  * consumes runs as it would for `e2e run`. No positional is involved, so no
  * near miss or unmatched positional can exist.
  */
 export function collectInMemory(
   projectRoot: string,
-  file: string,
-  registration: ModuleRegistration,
+  registrations: readonly { readonly file: string; readonly registration: ModuleRegistration }[],
   setups?: Collection,
 ): Collection {
-  const collected = collectFromRegistration(projectRoot, path.join(projectRoot, file), registration);
-  const files = [...(setups?.files ?? []), collected];
+  const collected = registrations.map(({ file, registration }) => collectFromRegistration(projectRoot, path.join(projectRoot, file), registration));
+  const files = [...(setups?.files ?? []), ...collected];
   return {
     files,
     tests: files.flatMap((entry) => entry.tests),

@@ -113,7 +113,7 @@ reaches the model. See
 
 ## If the run stops too early
 
-A run stops after 8 steps or 10 minutes. To reach further into the flow,
+An explorer stops after 8 steps or 10 minutes. To reach further into the flow,
 raise `--max-steps <n>` (up to 100) or `--timeout <ms>` (up to `7200000`, 2
 hours).
 
@@ -121,6 +121,41 @@ A run with time left after the main flows returns to them with edge-case
 inputs, combined filters, reloads, and, with more than one account configured
 and no `--session`, another account. It finishes early only when nothing new
 is reachable.
+
+## Run several explorers
+
+One explorer finds the easy bugs. Add `--parallel <n>` (up to 5) to run
+several at once on the same goal, each with a different focus:
+
+<CodeGroup>
+```bash npm
+npx e2e explore --parallel 3 'Explore the issue tracker and find bugs'
+```
+
+```bash pnpm
+pnpm exec e2e explore --parallel 3 'Explore the issue tracker and find bugs'
+```
+
+```bash bun
+bunx e2e explore --parallel 3 'Explore the issue tracker and find bugs'
+```
+</CodeGroup>
+
+Explorer 1 takes the first focus, explorer 2 the second, and so on:
+
+1. Core flows: create, edit, and delete, then the counts and states on every screen.
+2. Edge-case input and validation.
+3. State across controls and screens: filters, sorting, paging, reloads.
+4. Layouts at narrow widths when the engine can resize the viewport, and other roles when several accounts are configured and no `--session` is set.
+5. Every toolbar button, shortcut, link, upload, and download.
+
+Each explorer has its own step and time budget, and its own browser or
+device. When the engine provides fewer, the other explorers wait for a free
+one. The app command and a `--session` setup run once, and all explorers
+share that app and its data. After the run, one model call (up to 2 minutes)
+merges the findings that describe the same failure, and each finding names
+the explorer that reported it. If that call fails, the report keeps every
+finding.
 
 ## Choose the target and agent
 

@@ -74,6 +74,9 @@ export function describeTarget(target: ResolvedTarget): TargetProvenance {
   };
 }
 
+/** The fields a run's unit source adds to the report (`UnitSource.report`): an exploration's record. */
+export type UnitReportFields = Pick<BuildReportOptions, 'explore'>;
+
 export interface BuildReportOptions {
   runId: string;
   config: ResolvedConfig | undefined;
@@ -157,6 +160,19 @@ export interface ReportExploreFinding {
   reportedAt: string;
   /** The attempt's `screenshot` artifact holding the evidence, by id, when pixels were granted. */
   artifactId?: string | undefined;
+  /** The parallel explorer that reported it, one-based (`explorers[].index`); absent with one explorer. */
+  explorer?: number | undefined;
+  /** The findings merged into this one as the same failure; absent when none was. */
+  merged?: readonly ReportMergedFinding[] | undefined;
+}
+
+/** A finding merged into another as the same failure: enough to find its explorer, step, and screenshot. */
+export interface ReportMergedFinding {
+  id: string;
+  title: string;
+  explorer?: number | undefined;
+  step?: number | undefined;
+  artifactId?: string | undefined;
 }
 
 /** One exploration step: a charter the agent planned and then executed as an `agent.act` step. */
@@ -170,18 +186,46 @@ export interface ReportExploreStep {
   errorCode?: string | undefined;
   startedAt: string;
   durationMs: number;
+  /** The parallel explorer that ran it, one-based; `index` counts within that explorer. Absent with one explorer. */
+  explorer?: number | undefined;
+}
+
+/** One of several parallel explorers: the focus it explored the goal with, and how it ended. */
+export interface ReportExplorer {
+  index: number;
+  focus: string;
+  ended: ReportExplore['ended'];
+  /** The explorer's closing assessment, when it gave one. */
+  summary?: string | undefined;
+}
+
+/**
+ * The merge of parallel explorers' findings: `merged` when the model grouped
+ * them, `failed` when its call failed or its grouping was invalid, and
+ * `interrupted` when the run was interrupted during the call; every finding
+ * is kept unless `merged`. `reported` counts the findings before the merge;
+ * `model` is the call's provenance and usage, once it answered.
+ */
+export interface ReportExploreMerge {
+  status: 'merged' | 'failed' | 'interrupted';
+  reported: number;
+  model?: StepModelInfo | undefined;
 }
 
 /** The `run.explore` block: what `e2e explore` was asked, did, and found. */
 export interface ReportExplore {
   goal: string;
   budgets: { maxSteps: number; timeoutMs: number };
-  /** Why exploration stopped. */
+  /** Why exploration stopped; with parallel explorers, the least complete of their endings. */
   ended: 'finished' | 'step-limit' | 'time' | 'stuck' | 'aborted';
-  /** The agent's closing assessment, when it gave one. */
+  /** The agent's closing assessment, when it gave one; with parallel explorers each explorer's is under `explorers`. */
   summary?: string | undefined;
   steps: readonly ReportExploreStep[];
   findings: readonly ReportExploreFinding[];
+  /** The parallel explorers, in order; absent with one. */
+  explorers?: readonly ReportExplorer[] | undefined;
+  /** The merge of the explorers' findings, when it was attempted. */
+  merge?: ReportExploreMerge | undefined;
 }
 
 // --- report-1 wire shapes (schema/report-v1.schema.json) ---
@@ -749,6 +793,8 @@ function computeUsage(options: {
   results: readonly ResultRecord[];
   serialGroups: readonly SerialGroupRecord[];
   discovered: number;
+  /** The merge of parallel explorers' findings, a model call outside any test. */
+  merge?: ReportExploreMerge | undefined;
 }): ReportUsage {
   const usage: ReportUsage = {
     discoveredResults: options.discovered,
@@ -766,6 +812,17 @@ function computeUsage(options: {
   let costSeen = false;
   let cachedTokens: number | undefined;
 
+  const countModel = (model: StepModelInfo): void => {
+    usage.modelTokens = Math.min(Number.MAX_SAFE_INTEGER, usage.modelTokens + model.inputTokens + model.outputTokens);
+    if (model.cacheReadTokens !== undefined) {
+      cachedTokens = Math.min(Number.MAX_SAFE_INTEGER, (cachedTokens ?? 0) + model.cacheReadTokens);
+    }
+    if (model.estimatedCostUsd !== undefined) {
+      cost += model.estimatedCostUsd;
+      costSeen = true;
+    }
+  };
+
   const countStep = (step: StepRecord): void => {
     usage.events += step.events.length;
     const metrics = step.metrics;
@@ -776,17 +833,7 @@ function computeUsage(options: {
       usage.maxModelCallsInStep = Math.max(usage.maxModelCallsInStep, metrics.modelCalls);
       usage.maxActionStepsInStep = Math.max(usage.maxActionStepsInStep, metrics.actionSteps);
     }
-    const model = step.model;
-    if (model !== undefined) {
-      usage.modelTokens = Math.min(Number.MAX_SAFE_INTEGER, usage.modelTokens + model.inputTokens + model.outputTokens);
-      if (model.cacheReadTokens !== undefined) {
-        cachedTokens = Math.min(Number.MAX_SAFE_INTEGER, (cachedTokens ?? 0) + model.cacheReadTokens);
-      }
-      if (model.estimatedCostUsd !== undefined) {
-        cost += model.estimatedCostUsd;
-        costSeen = true;
-      }
-    }
+    if (step.model !== undefined) countModel(step.model);
   };
 
   const countArtifacts = (artifacts: readonly ArtifactRecord[]): void => {
@@ -810,6 +857,7 @@ function computeUsage(options: {
       }
     }
   }
+  if (options.merge?.model !== undefined) countModel(options.merge.model);
 
   return {
     ...usage,
@@ -876,6 +924,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         results: options.results,
         serialGroups: options.serialGroups,
         discovered: summary.discovered,
+        merge: options.explore?.merge,
       }),
       ...(options.changes === undefined ? {} : { changes: options.changes }),
       ...(options.filters === undefined || options.filters.length === 0 ? {} : { filters: options.filters }),

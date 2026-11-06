@@ -332,7 +332,7 @@ type RunEventFact =
   | { type: 'step'; testId; agent; repeat; target; progress: StepProgress }
   | { type: 'test-finished'; result: RunEventResult }
   | { type: 'serial-group'; group: SerialGroupRecord }
-  | { type: 'explore'; progress: ExploreProgress }
+  | { type: 'explore'; progress: ExploreProgress; explorer? }
   | { type: 'run-error'; error: SerializedError }
   | { type: 'run-interrupted'; mode: 'graceful' | 'forced' }
   | { type: 'run-stopped'; failures; limit }
@@ -358,7 +358,11 @@ type RunEventFact =
   artifacts.
 - `explore` appears only in an `e2e explore` run: `started`, `planning`,
   `step-started`, `step-finished`, `finding`, and `finished`. The record of
-  all of it is `run.explore` in the report.
+  all of it is `run.explore` in the report. With `--parallel` above 1, `explorer`
+  names the explorer (from 1). When a merge call was made, a last `explore`
+  event with progress phase `merge` carries its outcome, the findings the
+  report keeps, and the call's usage in `merge.model` once it answered; a
+  skipped merge sends none.
 - New event types are added over time. Handle the types you know and ignore
   the rest; leave the `default` branch of a `switch` empty.
 

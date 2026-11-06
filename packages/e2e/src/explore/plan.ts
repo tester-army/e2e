@@ -8,6 +8,7 @@
 import { z } from 'zod';
 import type { ReportExploreStep } from '../report/build.ts';
 import type { Agent } from '../types.ts';
+import { focusContext } from './focus.ts';
 import { MAX_TITLE_CHARS, type ExploreState } from './state.ts';
 
 const MIN_SUMMARY_CHARS = 10;
@@ -171,6 +172,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
       : 'Plan the next step of an exploratory test run, or finish it.',
     '',
     `Goal: ${state.goal}`,
+    ...(state.focus === undefined ? [] : [focusContext(state.focus)]),
     `Budget: ${used} of ${state.budgets.maxSteps} steps used, about ${minutesLeft} minute(s) left.`,
     '',
     'Steps so far:',
@@ -221,6 +223,7 @@ export function planInstruction(state: ExploreState, request: PlanRequest): stri
     '  it stopped or move on. When a step summary mentions something odd that is not among the findings, spend the next',
     '  step confirming it. When a finding names a control or behavior that other screens offer too (the same sort,',
     '  filter, form, or count elsewhere), plan a step that checks those screens for it.',
+    ...(state.focus === undefined ? [] : ['  Plan every step for the focus on the Focus: line: the flows, the breadth, and the lenses above all serve it.']),
     '- "finish": nothing new is reachable, or every flow the goal names has been through every lens above that applies',
     '  to it. While time is left, a flow that passed without findings is worth another lens, not a finish. "summary" is',
     '  the closing assessment.',

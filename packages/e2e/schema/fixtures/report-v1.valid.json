@@ -598,6 +598,72 @@
         "outcome": "failed"
       }
     ],
+    "explore": {
+      "goal": "Explore the issue tracker and find bugs",
+      "budgets": { "maxSteps": 8, "timeoutMs": 600000 },
+      "ended": "step-limit",
+      "steps": [
+        {
+          "index": 1,
+          "title": "Create an issue",
+          "instruction": "Create an issue and check every list that shows it",
+          "status": "passed",
+          "summary": "Created and listed",
+          "startedAt": "2026-07-24T12:00:01.000Z",
+          "durationMs": 42000,
+          "explorer": 1
+        },
+        {
+          "index": 1,
+          "title": "Long titles",
+          "instruction": "Create an issue with a very long unbroken title",
+          "status": "exhausted",
+          "startedAt": "2026-07-24T12:00:01.000Z",
+          "durationMs": 240000,
+          "explorer": 2
+        }
+      ],
+      "findings": [
+        {
+          "id": "018f0f5c-7b2a-7abc-8abc-0123456789f1",
+          "index": 0,
+          "step": 1,
+          "kind": "issue",
+          "severity": 3,
+          "title": "Issue count stays at 0 after creating an issue",
+          "expected": "The count reads 1",
+          "actual": "The count reads 0",
+          "reproduction": ["Open Issues", "Create an issue", "Look at the count"],
+          "path": "/issues",
+          "reportedAt": "2026-07-24T12:00:30.000Z",
+          "explorer": 1,
+          "merged": [
+            { "id": "018f0f5c-7b2a-7abc-8abc-0123456789f2", "title": "Count shows 0 issues", "explorer": 2, "step": 1 }
+          ]
+        }
+      ],
+      "explorers": [
+        { "index": 1, "focus": "core flows", "ended": "finished", "summary": "Creating issues works; the count is wrong." },
+        { "index": 2, "focus": "edge-case input", "ended": "step-limit" }
+      ],
+      "merge": {
+        "status": "merged",
+        "reported": 2,
+        "model": {
+          "provider": "example",
+          "model": "model-A",
+          "endpoint": "provider-default",
+          "adapterVersion": "ai-sdk/6.0.0",
+          "policyVersion": "explore-merge/1",
+          "calls": 1,
+          "tokenAccounting": "provider",
+          "peakTokensPerCall": 1200,
+          "inputTokens": 1100,
+          "outputTokens": 100,
+          "estimatedCostUsd": 0.002
+        }
+      }
+    },
     "carried": {
       "results": [
         {

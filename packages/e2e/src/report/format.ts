@@ -207,17 +207,25 @@ export function addUsage(into: AiUsage, usage: AiUsage): void {
   if (usage.costUsd !== undefined) into.costUsd = (into.costUsd ?? 0) + usage.costUsd;
 }
 
+/**
+ * Accumulates one model record into a running total: a step's, or a model
+ * call the run made outside any step (the merge of parallel explorers'
+ * findings), so both count the same way.
+ */
+export function addModelUsage(usage: AiUsage, model: StepModelInfo): void {
+  usage.calls += model.calls;
+  usage.tokens += model.inputTokens + model.outputTokens;
+  usage.inputTokens += model.inputTokens;
+  usage.cachedTokens += model.cacheReadTokens ?? 0;
+  if (model.estimatedCostUsd !== undefined) {
+    usage.costUsd = (usage.costUsd ?? 0) + model.estimatedCostUsd;
+  }
+}
+
 /** Accumulates the model usage of one step list into a running total. */
 function addStepsUsage(usage: AiUsage, steps: readonly StepRecord[]): void {
   for (const step of steps) {
-    if (step.model === undefined) continue;
-    usage.calls += step.model.calls;
-    usage.tokens += step.model.inputTokens + step.model.outputTokens;
-    usage.inputTokens += step.model.inputTokens;
-    usage.cachedTokens += step.model.cacheReadTokens ?? 0;
-    if (step.model.estimatedCostUsd !== undefined) {
-      usage.costUsd = (usage.costUsd ?? 0) + step.model.estimatedCostUsd;
-    }
+    if (step.model !== undefined) addModelUsage(usage, step.model);
   }
 }
 

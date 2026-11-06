@@ -43,16 +43,27 @@ type PlanAnswer = { decision: 'step'; title: string; instruction: string } | { d
 function installExploreModel(options: {
   plan: (call: FakeCall) => PlanAnswer;
   loop: (call: LoopCall) => readonly LoopToolCall[];
+  /** The merge of parallel explorers' findings: `{ groups }`. */
+  merge?: (call: FakeCall) => unknown;
+  /** Awaited before the merge call answers, with the call's abort signal, so a test can act while it is pending. */
+  mergeGate?: (signal: AbortSignal | undefined) => Promise<void>;
 }): ModelInstance {
   const loop = installFakeLoopModel(options.loop) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
   // Strict providers want every planner field present; the scripts name only the ones they use.
-  const single = installFakeModel((call) => extracted({ title: '', instruction: '', summary: '', ...options.plan(call) })) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
+  const single = installFakeModel((call) =>
+    call.schemaName === 'explore-merge'
+      ? (options.merge?.(call) ?? { groups: [] })
+      : extracted({ title: '', instruction: '', summary: '', ...options.plan(call) }),
+  ) as ModelInstance & { doGenerate: (request: unknown) => Promise<unknown> };
   return {
     ...single,
     provider: 'fake',
     modelId: 'scripted-explore',
-    doGenerate: (request: { tools?: readonly { name: string }[] }) =>
-      request.tools?.some((tool) => tool.name === 'complete_step') === true ? loop.doGenerate(request) : single.doGenerate(request),
+    doGenerate: async (request: { tools?: readonly { name: string }[]; responseFormat?: { name?: string }; abortSignal?: AbortSignal }) => {
+      if (request.tools?.some((tool) => tool.name === 'complete_step') === true) return loop.doGenerate(request);
+      if (request.responseFormat?.name === 'explore-merge') await options.mergeGate?.(request.abortSignal);
+      return single.doGenerate(request);
+    },
   } as ModelInstance;
 }
 
@@ -71,7 +82,7 @@ async function runExplore(
   app: FixtureApp,
   model: ModelInstance,
   options: Partial<ExploreOptions> = {},
-): Promise<ExploreOutcome> {
+): Promise<ExploreOutcome & { readonly notices: readonly string[] }> {
   const notices: string[] = [];
   const outcome = await explore({
     cwd: project.dir,
@@ -131,6 +142,134 @@ describe('e2e explore', () => {
     expect(new Set(paths).size).toBe(2);
     expect(paths.map((entry) => entry!.split('/').at(-1)).toSorted()).toEqual(['finding-1.png', 'finding-2.png']);
   });
+
+  it('runs parallel explorers from a config value one after another, each with its focus, and merges the same finding', async () => {
+    const planPrompts: string[] = [];
+    const model = installExploreModel({
+      plan: (call) => {
+        planPrompts.push(call.instruction);
+        return call.instruction.includes('(none yet')
+          ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' }
+          : { decision: 'finish', summary: 'One defect on the home page.' };
+      },
+      loop: (call) =>
+        call.turn % 2 === 1
+          ? [{ toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING }]
+          : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+      merge: () => ({ groups: [[0, 1]] }),
+    });
+    const events: RunEvent[] = [];
+    const outcome = await runExplore(project, app, model, { parallel: 2, maxSteps: 1, onEvent: (event) => { events.push(event); } });
+
+    expect(outcome.report.run.errors).toEqual([]);
+    assertValidReport(outcome.report);
+    expect(outcome.notices).toContain('the config is a value, not a file, so the 2 explorers run one after another in this process');
+    // One test per explorer, each in its own virtual file, both with the goal as the title.
+    expect(outcome.report.run.results.map((result) => [result.file, result.titlePath])).toEqual([
+      ['explore/1', ['Explore the home page and find bugs']],
+      ['explore/2', ['Explore the home page and find bugs']],
+    ]);
+    // The planner and the explorer of each read its own focus.
+    expect(planPrompts.filter((prompt) => prompt.includes('Focus: the core flows end to end'))).toHaveLength(2);
+    expect(planPrompts.filter((prompt) => prompt.includes('Focus: edge-case input and validation'))).toHaveLength(2);
+    expect(loopCalls.some((call) => call.system.includes('Focus: edge-case input and validation'))).toBe(true);
+    const record = outcome.explore;
+    expect(record).toEqual(outcome.report.run.explore);
+    expect(record.explorers).toEqual([
+      { index: 1, focus: 'core flows', ended: 'step-limit', summary: 'One defect on the home page.' },
+      { index: 2, focus: 'edge-case input', ended: 'step-limit', summary: 'One defect on the home page.' },
+    ]);
+    expect(record.steps.map((step) => [step.explorer, step.index])).toEqual([[1, 1], [2, 1]]);
+    // Both explorers reported the counter: the merge keeps one, naming the other.
+    expect(record.findings).toHaveLength(1);
+    // The absorbed finding keeps its explorer, step, and screenshot, which is an artifact of explorer 2's test.
+    expect(record.findings[0]).toMatchObject({ title: COUNTER_FINDING.title, explorer: 1, merged: [{ title: COUNTER_FINDING.title, explorer: 2, step: 1 }] });
+    const absorbed = record.findings[0]!.merged![0]!;
+    expect(outcome.report.run.results[1]!.attempts[0]!.artifacts.find((artifact) => artifact.id === absorbed.artifactId)).toMatchObject({ kind: 'screenshot' });
+    // Every scripted call reports 100 input and 20 output tokens: the merge is one call, and the run's total is the steps' plus it.
+    expect(record.merge).toMatchObject({ status: 'merged', reported: 2, model: { provider: 'fake', model: 'scripted-explore', calls: 1, inputTokens: 100, outputTokens: 20 } });
+    const stepTokens = outcome.report.run.results
+      .flatMap((result) => result.attempts.flatMap((attempt) => attempt.steps))
+      .reduce((total, step) => total + (step.model === undefined ? 0 : step.model.inputTokens + step.model.outputTokens), 0);
+    expect(outcome.report.run.usage.modelTokens).toBe(stepTokens + 120);
+    const tags = events.flatMap((event) => (event.type === 'explore' ? [[event.explorer, event.progress.phase]] : []));
+    expect(tags).toContainEqual([1, 'started']);
+    expect(tags).toContainEqual([2, 'finding']);
+    expect(tags.at(-1)).toEqual([undefined, 'merge']);
+  }, 120_000);
+
+  /** Two explorers that each report the counter, then a merge call that `mergeGate` holds while the run is interrupted. */
+  const interruptedMerge = (mergeGate: (signal: AbortSignal | undefined, interrupt: () => void) => Promise<void>) => {
+    const controller = new AbortController();
+    const model = installExploreModel({
+      plan: (call) =>
+        call.instruction.includes('(none yet')
+          ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' }
+          : { decision: 'finish', summary: 'One defect on the home page.' },
+      loop: (call) =>
+        call.turn % 2 === 1
+          ? [{ toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING }]
+          : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+      merge: () => ({ groups: [[0, 1]] }),
+      mergeGate: (signal) => mergeGate(signal, () => controller.abort()),
+    });
+    return runExplore(project, app, model, { parallel: 2, maxSteps: 1, interruptSignal: controller.signal });
+  };
+
+  /** The tokens every agent step of the run reported. */
+  const stepTokens = (outcome: ExploreOutcome): number =>
+    outcome.report.run.results
+      .flatMap((result) => result.attempts.flatMap((attempt) => attempt.steps))
+      .reduce((total, step) => total + (step.model === undefined ? 0 : step.model.inputTokens + step.model.outputTokens), 0);
+
+  it('keeps every finding, and counts the call exactly, when its answer races the interrupt', async () => {
+    // The interrupt lands while the call is in flight; the provider answers anyway.
+    const outcome = await interruptedMerge(async (_signal, interrupt) => {
+      interrupt();
+    });
+
+    expect(outcome.exitCode).toBe(130);
+    expect(outcome.explore.findings.map((finding) => [finding.explorer, finding.merged])).toEqual([[1, undefined], [2, undefined]]);
+    expect(outcome.explore.merge).toMatchObject({ status: 'interrupted', reported: 2, model: { calls: 1, inputTokens: 100, outputTokens: 20 } });
+    expect(outcome.report.run.usage.modelTokens).toBe(stepTokens(outcome) + 120);
+    assertValidReport(outcome.report);
+  }, 120_000);
+
+  it('keeps every finding with no merge usage when the provider honors the interrupt and rejects', async () => {
+    const outcome = await interruptedMerge(async (signal, interrupt) => {
+      interrupt();
+      if (signal?.aborted !== true) await new Promise((resolve) => signal?.addEventListener('abort', resolve, { once: true }));
+      throw new DOMException('The operation was aborted', 'AbortError');
+    });
+
+    expect(outcome.exitCode).toBe(130);
+    expect(outcome.explore.findings).toHaveLength(2);
+    expect(outcome.explore.merge).toEqual({ status: 'interrupted', reported: 2 });
+    expect(outcome.report.run.usage.modelTokens).toBe(stepTokens(outcome));
+    assertValidReport(outcome.report);
+  }, 120_000);
+
+  it('keeps every finding of parallel explorers when the merge answers an invalid grouping, counting the call', async () => {
+    const model = installExploreModel({
+      plan: (call) =>
+        call.instruction.includes('(none yet')
+          ? { decision: 'step', title: 'Counter', instruction: 'Look at the counter' }
+          : { decision: 'finish', summary: 'One defect on the home page.' },
+      loop: (call) =>
+        call.turn % 2 === 1
+          ? [{ toolName: FINDING_TOOL_NAME, input: COUNTER_FINDING }]
+          : [{ toolName: 'complete_step', input: { status: 'passed', summary: 'Looked' } }],
+      merge: () => ({ groups: [[0, 1, 1]] }),
+    });
+    const outcome = await runExplore(project, app, model, { parallel: 2, maxSteps: 1 });
+
+    expect(outcome.explore.findings.map((finding) => finding.explorer)).toEqual([1, 2]);
+    expect(outcome.explore.merge).toMatchObject({ status: 'failed', reported: 2, model: { calls: 1, inputTokens: 100, outputTokens: 20 } });
+    expect(outcome.report.run.errors).toEqual([]);
+    expect(outcome.exitCode).toBe(1);
+    assertValidReport(outcome.report);
+    await expect(runExplore(project, app, model, { parallel: 6 })).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: 'parallel must be an integer from 1 through 5, got 6' });
+  }, 120_000);
 
   it('keeps its own timeout and ignores the config\'s maxDuration', async () => {
     const model = installExploreModel({

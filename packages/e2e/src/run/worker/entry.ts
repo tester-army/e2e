@@ -10,6 +10,8 @@ import { collectModule } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import { importModule, loadConfigModule } from '../../config/load.ts';
 import { assignPorts, resolveConfig } from '../../config/resolve.ts';
+import type { ModuleRegistration } from '../../collect/registry.ts';
+import { loadUnitSource } from '../unit-source.ts';
 import { setSecretRegistry } from '../../secrets.ts';
 import { loadAiSdk } from '../../agent/ai-sdk.ts';
 import { AiTraceRecorder, registerAiTraceRecorder } from '../../internal/ai-trace.ts';
@@ -153,11 +155,11 @@ async function bootstrap(
   if (aiTrace !== undefined) await registerAiTraceRecorder(aiTrace, loadAiSdk);
   // What the config's top-level code prints is held until its secrets are
   // registered, so it is redacted like a test's output.
-  const { config, target } = await configLoad.during(
+  const { config, target, raw } = await configLoad.during(
     async () => {
-      const raw = await loadConfigModule(message.configPath);
+      const loaded = await loadConfigModule(message.configPath);
       const resolved = assignPorts(
-        resolveConfig(raw, { projectRoot: message.projectRoot, configPath: message.configPath, env: process.env, cli: message.cli }),
+        resolveConfig(loaded, { projectRoot: message.projectRoot, configPath: message.configPath, env: process.env, cli: message.cli }),
         message.ports,
       );
       if (resolved.configDigest !== message.configDigest) {
@@ -172,20 +174,23 @@ async function bootstrap(
       }
       setSecretRegistry(resolved);
       registerStaticSecrets(resolved.allSecrets);
-      return { config: resolved, target: named };
+      return { config: resolved, target: named, raw: loaded };
     },
     (stream, chunk) => process[stream].write(chunk),
     (line) => process.stderr.write(`e2e: [warning] ${line}\n`),
   );
 
+  const unitSource = message.unitSource === undefined ? undefined : await loadUnitSource(message.unitSource, { raw, config });
   let collectCounter = 0;
-  const resolvePairs = async (unit: RunUnitMessage): Promise<ResolvedUnitPairs> => {
+  const resolvePairs = async (unit: RunUnitMessage, built: ModuleRegistration | undefined): Promise<ResolvedUnitPairs> => {
     collectCounter += 1;
-    const registration = await collectModule(
-      () => importModule(unit.absolutePath, `worker-collect-${collectCounter}`),
-      unit.absolutePath,
-      staticSecretLedger(config.allSecrets).redact,
-    );
+    const registration =
+      built ??
+      (await collectModule(
+        () => importModule(unit.absolutePath, `worker-collect-${collectCounter}`),
+        unit.absolutePath,
+        staticSecretLedger(config.allSecrets).redact,
+      ));
     const collected = collectFromRegistration(config.projectRoot, unit.absolutePath, registration);
     const byId = new Map(collected.tests.map((test) => [test.id, test]));
     const pairs: TestTargetPair[] = [];
@@ -218,6 +223,7 @@ async function bootstrap(
     isolated: true,
     resolvePairs,
     debug,
+    unitSource,
   };
 }
 

@@ -519,10 +519,29 @@ function exploreHeadline(run: ReportRun, results: readonly ReportResult[], explo
   return `### ${runIcon(run, results)} ${pageName(options)} explore: ${summary}`;
 }
 
-/** `3 of 8 steps · 2 passed · 1 failed · the agent covered the goal`. */
+/** `3 of 8 steps · 2 passed · 1 failed · the agent covered the goal`; with parallel explorers, their count instead of why they ended. */
 function exploreSteps(explore: ReportExplore): string {
   const counts = stepCountParts(explore.steps).map((part) => part.text);
-  return [`${explore.steps.length} of ${explore.budgets.maxSteps} steps`, ...counts, ENDED_TEXT[explore.ended]].join(' · ');
+  const explorers = explore.explorers?.length ?? 1;
+  const ended = explorers > 1 ? `${String(explorers)} explorers` : ENDED_TEXT[explore.ended];
+  return [`${explore.steps.length} of ${explore.budgets.maxSteps * explorers} steps`, ...counts, ended].join(' · ');
+}
+
+/** Parallel explorers: each one's focus, how it ended, and its assessment. */
+function explorersSection(explore: ReportExplore): string[] {
+  if (explore.explorers === undefined) return [];
+  const merged = explore.merge?.status === 'merged' && explore.merge.reported > explore.findings.length
+    ? [`${String(explore.merge.reported)} findings reported, ${String(explore.merge.reported - explore.findings.length)} merged as the same failure.`, '']
+    : [];
+  return [
+    '**Explorers**',
+    '',
+    ...merged,
+    ...explore.explorers.map(
+      (explorer) =>
+        `${String(explorer.index)}. **${cell(explorer.focus)}** · ${ENDED_TEXT[explorer.ended]}${explorer.summary === undefined ? '' : `  \n   ${cell(explorer.summary, MAX_ASSESSMENT_CHARS)}`}`,
+    ),
+  ];
 }
 
 /**
@@ -531,7 +550,12 @@ function exploreSteps(explore: ReportExplore): string {
  * its screenshot.
  */
 function findingBlock(finding: ReportExploreFinding, position: number, artifacts: ReadonlyMap<string, ReportArtifact>, options: MarkdownReportOptions): string {
-  const where = [...(finding.path === undefined ? [] : [code(finding.path, MAX_TITLE_CHARS)]), ...(finding.step === undefined ? [] : [`step ${finding.step}`])];
+  const where = [
+    ...(finding.path === undefined ? [] : [code(finding.path, MAX_TITLE_CHARS)]),
+    ...(finding.explorer === undefined ? [] : [`explorer ${String(finding.explorer)}`]),
+    ...(finding.step === undefined ? [] : [`step ${finding.step}`]),
+    ...(finding.merged === undefined ? [] : [`${String(finding.merged.length + 1)} reports merged`]),
+  ];
   const lines = [
     `${position}. **${SEVERITY_WORDS[finding.severity]} ${finding.kind}** ${cell(finding.title)}${where.length === 0 ? '' : ` · ${where.join(' · ')}`}`,
     `   Expected: ${cell(finding.expected, MAX_DETAIL_CHARS)}`,
@@ -619,6 +643,7 @@ export function renderMarkdownReport(report: Report1Document, options: MarkdownR
           flaky,
           findingsSection(run, explore, options),
           explore.summary === undefined ? [] : ['**Assessment**', '', cell(explore.summary, MAX_ASSESSMENT_CHARS)],
+          explorersSection(explore),
         ];
   const body = joinSections(sections);
   return fit(head, body.length === 0 ? [] : [...body, ''], footer(run, targets, options));

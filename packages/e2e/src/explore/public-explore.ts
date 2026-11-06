@@ -29,6 +29,13 @@ export interface ExplorationOptions {
   readonly maxSteps?: number | undefined;
   /** The exploration's time limit in milliseconds, from 180000 through 7200000; default: 600000. */
   readonly timeoutMs?: number | undefined;
+  /**
+   * Explorers to run at once, from 1 through 5; default: 1. Each gets the
+   * whole goal with its own focus and the step and time budgets to itself,
+   * and their findings are merged. With a config value instead of a file
+   * they run one after another.
+   */
+  readonly parallel?: number | undefined;
   /** Abort to interrupt the exploration; its teardown runs before the call resolves. */
   readonly interruptSignal?: AbortSignal | undefined;
   /**
@@ -69,6 +76,7 @@ export async function runExploration(options: ExplorationOptions = {}): Promise<
       session: options.session,
       maxSteps: options.maxSteps,
       timeoutMs: options.timeoutMs,
+      parallel: options.parallel,
       ...owned,
     });
   });

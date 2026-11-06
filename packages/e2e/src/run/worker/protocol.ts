@@ -16,6 +16,7 @@ import type { SerializedError } from '../../internal/errors.ts';
 import type { AttemptRecord, ResultRecord, RunError, SerialAttemptRecord, SerialGroupRecord, SerialMemberRecord, WireResultRecord } from '../records.ts';
 import type { SerialAttemptStart } from '../serial.ts';
 import type { StepProgress } from '../steps.ts';
+import type { UnitSourceModule } from '../unit-source.ts';
 
 /** One runnable pair on the wire; the worker resolves the test function. */
 export interface WirePair {
@@ -72,6 +73,11 @@ export interface WorkerBootstrap {
   readonly debug: boolean;
   /** Whether the worker should record model calls for `--ai-trace`. */
   readonly aiTrace: boolean;
+  /**
+   * Where the worker loads the source of the run's virtual files, whose units
+   * it builds in memory instead of importing (`UnitSource`).
+   */
+  readonly unitSource?: UnitSourceModule | undefined;
 }
 
 export interface RunUnitMessage {
@@ -303,6 +309,13 @@ export interface ShutdownDoneMessage {
   readonly aiTrace?: AiTraceSnapshot;
 }
 
+/** An event a unit built in memory reported, as plain JSON, with the virtual file of its unit. */
+export interface UnitEventMessage {
+  readonly type: 'unit-event';
+  readonly file: string;
+  readonly event: unknown;
+}
+
 export interface FatalMessage {
   readonly type: 'fatal';
   readonly error: SerializedError;
@@ -336,7 +349,8 @@ export type WorkerToMain =
   | UnitDoneMessage
   | ShutdownDoneMessage
   | FatalMessage
-  | RunAbortMessage;
+  | RunAbortMessage
+  | UnitEventMessage;
 
 /** Reattaches the scheduler's resolved target to a wire result. */
 export function decodeResult(wire: WireResultRecord, target: ResolvedTarget): ResultRecord {

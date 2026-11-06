@@ -79,6 +79,22 @@ export interface ModelAdapter {
   generate<Value>(call: ModelCall<Value>): Promise<ModelResult<Value>>;
 }
 
+/** The usage of model calls that answered and then failed, by the error each threw. */
+const answeredFailures = new WeakMap<object, ModelUsage>();
+
+/** Records what a call cost when it answered but the answer failed, such as one outside the grammar. */
+export function attachFailureUsage(error: Error, usage: ModelUsage): void {
+  answeredFailures.set(error, usage);
+}
+
+/**
+ * The usage of a model call that failed after the provider answered (a
+ * response outside the grammar, a refusal); undefined when it never answered.
+ */
+export function failureUsage(error: unknown): ModelUsage | undefined {
+  return typeof error === 'object' && error !== null ? answeredFailures.get(error) : undefined;
+}
+
 /**
  * Raised when a provider response cannot be parsed or fails the closed
  * grammar. The raw text is carried so the caller may spend remaining budget on

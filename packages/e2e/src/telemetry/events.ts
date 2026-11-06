@@ -416,12 +416,14 @@ function exploreProperties(explore: ReportExplore): Record<string, JsonValue> {
     ...Object.fromEntries(
       EXPLORE_STEP_STATUSES.map((status): [string, number] => [`explore_steps_${status}`, explore.steps.filter((step) => step.status === status).length]),
     ),
-    explore_assessed: explore.summary !== undefined,
+    explore_assessed: explore.summary !== undefined || explore.explorers?.some((explorer) => explorer.summary !== undefined) === true,
     explore_issues: explore.findings.filter((finding) => finding.kind === 'issue').length,
     explore_warnings: explore.findings.filter((finding) => finding.kind === 'warning').length,
     explore_findings_by_severity: Object.fromEntries(
       SEVERITIES.map((severity): [string, number] => [String(severity), explore.findings.filter((finding) => finding.severity === severity).length]),
     ),
+    explore_parallel: explore.explorers?.length ?? 1,
+    ...(explore.merge === undefined ? {} : { explore_merge: explore.merge.status, explore_findings_reported: explore.merge.reported }),
   };
 }
 

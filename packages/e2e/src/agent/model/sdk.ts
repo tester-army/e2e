@@ -19,6 +19,7 @@ import { isContextOverflow } from './overflow.ts';
 import { providerHints, type ProviderModelRef } from './provider-hints.ts';
 import { withStallGuard } from './stall.ts';
 import {
+  attachFailureUsage,
   imageTokenUpperBound,
   ModelOutputInvalidError,
   tokenUpperBound,
@@ -99,10 +100,13 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
         timeout: call.timeoutMs,
       } as const;
       let finished: FinishedCall | undefined;
+      // The answer's usage, kept so a call whose answer fails still reports what it cost.
+      let answered: UsageCarrier | undefined;
       try {
         if (schema === undefined) {
           const result = await generateText(settings);
           finished = result;
+          answered = result;
           if (result.finishReason === 'error') throw errorFinish(result);
           const parsed = parseJsonObject(result.text);
           const validation = call.validate(parsed);
@@ -126,6 +130,7 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
           }),
         });
         finished = result;
+        answered = result;
         // The SDK only parses `result.output` on a `stop` finish, or on a
         // non-`tool-calls` finish with text. Otherwise the getter throws a bare
         // `NoOutputGeneratedError` carrying no finish reason, text, or cause,
@@ -148,7 +153,10 @@ export function createModelAdapter(model: ResolvedModel | undefined, agentName =
         const output = result.output;
         return { value: output, usage: readUsage(result, inputBound), reasoning: result.finalStep.reasoningText };
       } catch (cause) {
-        throw translateModelError(cause, issue, call.signal, model, finished);
+        const failure = translateModelError(cause, issue, call.signal, model, finished);
+        const carrier = answered ?? answerOf(cause);
+        if (carrier !== undefined) attachFailureUsage(failure, readUsage(carrier, inputBound));
+        throw failure;
       }
     },
   };
@@ -286,6 +294,15 @@ function parseCost(raw: unknown): number | undefined {
 }
 
 /** The finish reasons of a model call that returned a result. */
+/** The answer an AI SDK `NoObjectGeneratedError` carries when the provider responded but no object parsed. */
+function answerOf(cause: unknown): UsageCarrier | undefined {
+  const { NoObjectGeneratedError } = aiSdk();
+  const unwrapped = unwrapRetry(cause);
+  if (!NoObjectGeneratedError.isInstance(unwrapped)) return undefined;
+  // The text bounds the usage from above when the provider reported no token counts.
+  return { usage: unwrapped.usage, text: unwrapped.text };
+}
+
 interface FinishedCall {
   readonly finishReason: string;
   readonly rawFinishReason?: string | undefined;

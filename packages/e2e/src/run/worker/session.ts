@@ -10,7 +10,8 @@ import type { ModuleRegistration } from '../../collect/registry.ts';
 import type { TestTargetPair } from '../../collect/select.ts';
 import type { ResolvedConfig, ResolvedTarget } from '../../config/resolve.ts';
 import { DebugTrace } from '../../internal/debug.ts';
-import { TargetExecutor, type InMemoryAttempts } from '../execute.ts';
+import { TargetExecutor } from '../execute.ts';
+import type { UnitSource } from '../unit-source.ts';
 import { encodeResult, type RunError } from '../records.ts';
 import type { SessionStore } from '../sessions.ts';
 import { countsTowardFailureLimit, disappearedResult, failureLimitSkip } from '../units.ts';
@@ -31,10 +32,11 @@ export interface ResolvedUnitPairs {
 
 /**
  * Turns a unit's wire pairs into executable pairs. A child-process worker
- * re-imports the file; an in-process worker looks the pairs up in the
+ * re-imports the file, or reads `built`, the registration the unit source
+ * built for a virtual file; an in-process worker looks the pairs up in the
  * selection the runner already collected.
  */
-export type ResolveUnitPairs = (unit: RunUnitMessage) => Promise<ResolvedUnitPairs>;
+export type ResolveUnitPairs = (unit: RunUnitMessage, built: ModuleRegistration | undefined) => Promise<ResolvedUnitPairs>;
 
 export interface TargetWorkerDeps {
   readonly config: ResolvedConfig;
@@ -53,8 +55,8 @@ export interface TargetWorkerDeps {
   readonly isolated: boolean;
   readonly resolvePairs: ResolveUnitPairs;
   readonly debug?: DebugTrace;
-  /** See `TargetExecutorOptions.inMemory`; only an in-process worker has tests registered in memory. */
-  readonly inMemory?: InMemoryAttempts | undefined;
+  /** Builds the units of virtual files, which no import resolves. */
+  readonly unitSource?: UnitSource | undefined;
 }
 
 /** Transport callbacks a target worker needs. */
@@ -114,7 +116,6 @@ export class TargetWorker {
         isolated: deps.isolated,
         interruptSignal: this.interruptController.signal,
         ...(deps.debug !== undefined ? { debug: deps.debug } : {}),
-        inMemory: deps.inMemory,
         events: {
           onResult: (result) => {
             // Teardown after the result (an afterAll) belongs to no pair.
@@ -254,7 +255,12 @@ export class TargetWorker {
     // failed results for every pair it never heard about. Reporting the unit
     // done first would clear that bookkeeping and drop those tests silently.
     this.failureLimit = message.failureLimit;
-    const { pairs, missing, registration } = await deps.resolvePairs(message);
+    // A virtual file is built afresh for its unit, the same way on both
+    // transports; its tests' own events leave as `unit-event` messages.
+    const sourced = deps.unitSource?.files.includes(message.file) === true
+      ? deps.unitSource.build(message.file, (event) => this.host.emit({ type: 'unit-event', file: message.file, event }))
+      : undefined;
+    const { pairs, missing, registration } = await deps.resolvePairs(message, sourced?.registration);
     for (const wire of missing) {
       executor.recordDisappeared(
         `test ${wire.test.id} disappeared before execution; registration must be deterministic`,
@@ -272,6 +278,7 @@ export class TargetWorker {
         { file: message.file, absolutePath: message.absolutePath },
         pairs,
         registration,
+        sourced?.attempts,
       );
     }
     this.inFlight = undefined;

@@ -5,7 +5,18 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import type { ExploreProgress } from '../../src/explore/progress.ts';
+import { ExploreRecord } from '../../src/explore/record.ts';
 import { clip, ExploreState } from '../../src/explore/state.ts';
+
+/** The record the runner keeps of a single explorer, fed by `state` from here on. */
+function recorded(state: ExploreState): ExploreRecord {
+  const record = new ExploreRecord(
+    { goal: state.goal, budgets: state.budgets, agentName: 'default', accounts: [], session: undefined, openApp: true, focuses: [] },
+    () => Promise.reject(new Error('one explorer merges nothing')),
+  );
+  state.subscribe((progress) => record.relay('explore', progress));
+  return record;
+}
 
 const SCHEMA_PATH = path.resolve(fileURLToPath(import.meta.url), '..', '..', '..', 'schema', 'report-v1.schema.json');
 
@@ -99,13 +110,14 @@ describe('ExploreState', () => {
     expect(state.consecutiveFailures()).toBe(1);
   });
 
-  it('snapshots a schema-valid explore block with bounded text', () => {
+  it('records a schema-valid explore block with bounded text', () => {
     const state = new ExploreState('goal', { maxSteps: 2, timeoutMs: 300_000 });
+    const record = recorded(state);
     state.beginStep('x'.repeat(400), 'y'.repeat(5_000));
     state.endStep('passed', 'z'.repeat(9_000));
     finding(state, { title: 't'.repeat(300), reproduction: Array.from({ length: 30 }, () => 'r'.repeat(900)) });
     state.end('finished', 's'.repeat(9_000));
-    const snapshot = state.snapshot();
+    const snapshot = record.snapshot();
     assertValidExplore(snapshot);
     expect(snapshot.steps[0]!.title).toHaveLength(200);
     expect(snapshot.steps[0]!.instruction).toHaveLength(2_000);
@@ -115,11 +127,12 @@ describe('ExploreState', () => {
 
   it('is aborted with no assessment until ended, and drops a blank assessment', () => {
     const state = new ExploreState('goal', { maxSteps: 2, timeoutMs: 300_000 });
+    const record = recorded(state);
     expect(state.ended).toBe('aborted');
     expect(state.summary).toBeUndefined();
     state.end('time', '   ');
     expect(state.ended).toBe('time');
-    expect(state.snapshot().summary).toBeUndefined();
+    expect(record.snapshot().summary).toBeUndefined();
   });
 
   it('clip trims and marks truncation, counting code points so no surrogate pair is split', () => {

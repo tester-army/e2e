@@ -1930,6 +1930,21 @@ describe('ListReporter goldens', () => {
 });
 
 describe('explore runs', () => {
+  /** The merge call's model record: 1.2k tokens, half of the input cached. */
+  const MERGE_MODEL = {
+    provider: 'fake',
+    model: 'merge',
+    endpoint: 'local',
+    adapterVersion: 'test',
+    policyVersion: 'explore-merge/1',
+    calls: 1,
+    tokenAccounting: 'provider' as const,
+    peakTokensPerCall: 1200,
+    inputTokens: 1000,
+    outputTokens: 200,
+    cacheReadTokens: 500,
+    estimatedCostUsd: 0.002,
+  };
   const GOAL = 'Explore checkout like a first-time buyer';
   const FINDING = {
     id: 'f-1',
@@ -2117,6 +2132,88 @@ describe('explore runs', () => {
     expect(lines).toContain('   ✓ 1  Cart 32.00s · 2 actions · 1 finding');
     expect(lines).toContain('   × 2  Checkout 91.00s · 1 finding failed');
     expect(lines.join('\n')).not.toContain('Failed Tests');
+  });
+
+  it('tags parallel explorers\' steps and findings, then prints each focus, the merged findings, and each assessment', () => {
+    const lines: string[] = [];
+    const frames: string[] = [];
+    const output = {
+      write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')),
+      raw: (text: string) => frames.push(text.replace(ANSI_PATTERN, '')),
+    };
+    const reporter = plainReporter(output, true);
+    const tagged = (explorer: number | undefined, progress: Extract<RunEventFact, { type: 'explore' }>['progress']): RunEventFact => ({ type: 'explore', progress, ...(explorer === undefined ? {} : { explorer }) });
+    const budgets = { maxSteps: 4, timeoutMs: 300_000 };
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle(plan([1, 2, 3].map((index) => ({ file: `explore/${String(index)}`, target: 'web', tests: 1 }))));
+    reporter.handle(testStarted('t1', GOAL, 'web', 'explore/1'));
+    reporter.handle(testStarted('t2', GOAL, 'web', 'explore/2'));
+    reporter.handle(tagged(1, { phase: 'started', goal: GOAL, budgets, focus: 'core flows', focuses: ['core flows', 'edge-case input', 'state across screens'] }));
+    reporter.handle(tagged(1, { phase: 'step-started', step: STEP_1 }));
+    // Explorers that have not started yet still count: the run is not over, and their budget is in the total.
+    expect(frames.at(-1)).toContain('Steps  0 done of 12 · 1 explorer running · 2 waiting');
+    reporter.handle(tagged(2, { phase: 'started', goal: GOAL, budgets, focus: 'edge-case input', focuses: ['core flows', 'edge-case input', 'state across screens'] }));
+    reporter.handle(tagged(3, { phase: 'started', goal: GOAL, budgets, focus: 'state across screens', focuses: ['core flows', 'edge-case input', 'state across screens'] }));
+    reporter.handle(tagged(3, { phase: 'finished', ended: 'stuck' }));
+    reporter.handle(tagged(2, { phase: 'planning', closing: false }));
+    expect(frames.at(-1)).toContain('[1] core flows 0 of 4 steps done');
+    expect(frames.at(-1)).toContain('↳ 1  Cart (step 1 of 4)');
+    expect(frames.at(-1)).toContain('[2] edge-case input 0 of 4 steps done');
+    expect(frames.at(-1)).toContain('Steps  0 done of 12 · 2 explorers running');
+    reporter.handle(tagged(1, { phase: 'finding', finding: FINDING }));
+    reporter.handle(tagged(1, { phase: 'step-finished', step: { ...STEP_1, status: 'passed', startedAt: '2026-09-11T10:00:01.000Z', durationMs: 32_000 } }));
+    reporter.handle(tagged(2, { phase: 'step-started', step: STEP_1 }));
+    reporter.handle(tagged(2, { phase: 'finding', finding: { ...FINDING, id: 'f-dup', actual: 'Total: $0.00' } }));
+    reporter.handle(tagged(2, { phase: 'step-finished', step: { ...STEP_1, status: 'exhausted', summary: 'Ran out of actions', startedAt: '2026-09-11T10:00:01.000Z', durationMs: 240_000 } }));
+    reporter.handle(tagged(1, { phase: 'finished', ended: 'finished', summary: 'Checkout cannot be completed.' }));
+    reporter.handle(tagged(2, { phase: 'finished', ended: 'step-limit', summary: 'Long names break the cart.' }));
+    reporter.handle(tagged(undefined, { phase: 'merge', merge: { status: 'merged', reported: 2, model: MERGE_MODEL }, findings: [{ ...FINDING, explorer: 1, merged: [{ id: 'f-dup', title: FINDING.title, explorer: 2, step: 1 }] }] }));
+    for (const id of ['t1', 't2']) {
+      reporter.handle(finished(result({ status: 'failed', id, file: id === 't1' ? 'explore/1' : 'explore/2', title: [GOAL], target: 'web', attempts: [attempt({ status: 'failed', error: { category: 'test', code: 'ASSERTION_FAILED', message: 'exploration found 1 issue(s)', retryable: false } })] })));
+    }
+    reporter.handle(runFinished({ status: 'failed', exitCode: 1, reportPath: '/project/.e2e/report.json' }));
+    const text = lines.join('\n');
+    expect(text).toContain('[1] core flows');
+    expect(text).toMatch(/✓ \[1\] 1 {2}Cart/);
+    expect(text).toContain('[2] edge-case input');
+    expect(text).toMatch(/× \[2\] 1 {2}Cart .* ended at its limit/);
+    expect(text).toContain('2 findings reported, 1 merged as the same failure');
+    expect(text).toContain('Findings 1');
+    expect(text).toContain('/cart · explorer 1 (core flows) · step 1 · 2 reports merged');
+    expect(text).toContain('Assessment [1] core flows');
+    expect(text).toContain('Checkout cannot be completed.');
+    expect(text).toContain('Assessment [2] edge-case input');
+    expect(text).toContain('Steps  2 of 12 · 1 passed · 1 ended at their limit · 3 explorers');
+    // The merge is a model call outside any test: the AI row counts it, as report.json does.
+    expect(text).toContain('AI  1.2k tokens · 50% cached · $0.0020 · 1 model calls · fake/merge');
+    expect(text).not.toContain('Failed Tests');
+  });
+
+  it('shows every parallel explorer from the first start, and ends the ones an interrupt kept from finishing or starting', () => {
+    const lines: string[] = [];
+    const frames: string[] = [];
+    const output = {
+      write: (line: string) => lines.push(line.replace(ANSI_PATTERN, '')),
+      raw: (text: string) => frames.push(text.replace(ANSI_PATTERN, '')),
+    };
+    const reporter = plainReporter(output, true);
+    const focuses = ['core flows', 'edge-case input', 'state across screens'];
+    reporter.handle(runStarted({ targets: ['web'] }));
+    reporter.handle(plan([1, 2, 3].map((index) => ({ file: `explore/${String(index)}`, target: 'web', tests: 1 }))));
+    reporter.handle(testStarted('t1', GOAL, 'web', 'explore/1'));
+    reporter.handle({ type: 'explore', explorer: 1, progress: { phase: 'started', goal: GOAL, budgets: { maxSteps: 4, timeoutMs: 300_000 }, focus: 'core flows', focuses } });
+    reporter.handle({ type: 'explore', explorer: 1, progress: { phase: 'step-started', step: STEP_1 } });
+    expect(frames.at(-1)).toContain('[2] edge-case input waiting for a worker');
+    expect(frames.at(-1)).toContain('[3] state across screens waiting for a worker');
+    expect(frames.at(-1)).toContain('Steps  0 done of 12 · 1 explorer running · 2 waiting');
+    reporter.handle(finished(result({ status: 'interrupted', id: 't1', file: 'explore/1', title: [GOAL], target: 'web', attempts: [attempt({ status: 'interrupted' })] })));
+    reporter.handle(runFinished({ status: 'interrupted', exitCode: 130, reportPath: '/project/.e2e/report.json' }));
+    const text = lines.join('\n');
+    expect(text).not.toContain('waiting');
+    expect(text).toContain('[2] edge-case input');
+    expect(text).toContain('[3] state across screens');
+    expect(text.match(/ended: the run was cut short/g)).toHaveLength(3);
+    expect(text).toContain('Steps  0 of 12 · 3 explorers');
   });
 
   it('keeps a failure that is not the findings verdict, such as a run that explored nothing', () => {

@@ -69,6 +69,8 @@ export interface SchedulerEvents {
   onOutput?(output: Omit<OutputMessage, 'type'>, targetName: string): void;
   /** One line a worker's engine `init` reported. */
   onNotice?(message: string, targetName: string): void;
+  /** An event a unit built in memory reported, with its virtual file. */
+  onUnitEvent?(file: string, event: unknown): void;
   /** Phase timings a child-process worker drained after one unit. */
   onDebug?(snapshot: DebugSnapshot): void;
   /** Model calls a child-process worker drained after one unit. */
@@ -855,6 +857,10 @@ class Scheduler {
       }
       case 'run-abort': {
         this.options.events.onRunAbort({ error: message.error });
+        break;
+      }
+      case 'unit-event': {
+        this.options.events.onUnitEvent?.(message.file, message.event);
         break;
       }
     }

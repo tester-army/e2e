@@ -68,13 +68,13 @@ export function validateEngine(target: ResolvedTarget, pairs?: readonly TestTarg
  * one naming every target whose engine cannot record the video a run-wide
  * mode asked of it, and one per kind when tests that would capture it run
  * under a retry mode with no retries, so no attempt of theirs does.
- * `explore` is a run of one attempt no config can retry, so its notice says
- * to pass the flag instead of setting retries.
+ * Tests built in memory (`e2e explore`) run one attempt no config can
+ * retry, so their notice says to pass the flag instead of setting retries.
  */
 export function recordingNotices(
   perTarget: readonly { readonly target: ResolvedTarget; readonly pairs: readonly TestTargetPair[] }[],
   grades: ReadonlyMap<string, EngineGrade>,
-  options: { readonly explore?: boolean } = {},
+  options: { readonly inMemory?: boolean } = {},
 ): string[] {
   const notices: string[] = [];
   const skipped = perTarget.filter(({ target }) => grades.get(target.name)?.videoSkipped === true);
@@ -85,8 +85,8 @@ export function recordingNotices(
     );
   }
   const recordsVideo = (target: ResolvedTarget): boolean => grades.get(target.name)?.provenance.artifactCapabilities.includes('video') === true;
-  const trace = retryOnlyNotice('trace', perTarget, () => true, options.explore === true);
-  const video = retryOnlyNotice('video', perTarget, recordsVideo, options.explore === true);
+  const trace = retryOnlyNotice('trace', perTarget, () => true, options.inMemory === true);
+  const video = retryOnlyNotice('video', perTarget, recordsVideo, options.inMemory === true);
   return [...notices, ...(trace === undefined ? [] : [trace]), ...(video === undefined ? [] : [video])];
 }
 

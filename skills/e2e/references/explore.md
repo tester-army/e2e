@@ -13,12 +13,14 @@ npx e2e explore 'Explore checkout like a first-time buyer and report anything of
 npx e2e explore --target web --max-steps 4 --headed
 npx e2e explore 'Hunt for broken forms' --video
 npx e2e explore --session admin 'Explore the admin settings'
+npx e2e explore --parallel 3 'Explore the issue tracker and find bugs'
 ```
 
 ## Contents
 
 - What a run does
 - Start signed in
+- Parallel explorers
 - Flags
 - Reading the result
 - When it does not fit
@@ -64,6 +66,35 @@ the declared sessions.
 Findings keep their screenshots after a setup that filled a secret. Only
 configured secrets are redacted (topic `writing-tests`).
 
+## Parallel explorers
+
+`--parallel <n>` (1 to 5) runs n explorers at once, each with the whole goal
+and its own focus, in order: core flows (create, edit, delete, and the counts
+and states afterwards); edge-case input and validation; state across controls
+and screens; layouts at narrow widths, plus another account when more than one
+is configured and no `--session` is set; every toolbar button, shortcut, link,
+upload, and download. Several explorers with different focuses find more
+distinct defects than one; give each the whole goal rather than splitting it
+by area.
+
+Each explorer is one test (`explore/1` to `explore/<n>`) in its own worker.
+`--max-steps` and `--timeout` are each explorer's own budget, not the run's:
+the run also spends time on setup, explorers waiting for a free worker, the
+merge (up to 2 minutes), and cleanup, and cost grows with n. The app command
+and the `--session` setup run once; the explorers share that app and its
+data, and are told so. A device target needs a device per explorer; with
+fewer, the run says so and the rest wait. With a config value instead of a file
+(`explore` on `e2e/runner`), the explorers run one after another.
+
+After the run, when at least two findings were reported and the run was not
+interrupted, one model call merges findings that describe the same failure
+(the same symptom on the same kind of screen with other data); the kept
+finding is the most detailed and lists the others in `merged`. If the
+call fails or answers an invalid grouping, every finding is kept and a notice
+says so; an interrupt during the call keeps every finding too. `merge` is in
+the report only when that call was made, with the call's usage once it
+answered, and the run's AI totals include it.
+
 ## Flags
 
 | Flag | Default | Effect |
@@ -73,7 +104,8 @@ configured secrets are redacted (topic `writing-tests`).
 | `--agent <name>` | `default` | Build the explorer from another configured agent (`agents.<name>`). |
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
 | `--max-steps <n>` | 8 (1 to 100) | Exploration steps at most. |
-| `--timeout <ms>` | 600000 (180000 to 7200000) | Wall clock; the last minute is for the assessment. |
+| `--timeout <ms>` | 600000 (180000 to 7200000) | Each explorer's time budget; the last minute is for the assessment. |
+| `--parallel <n>` | 1 (1 to 5) | Explorers at once, each with its own focus and the budgets above; findings merged. |
 | `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. The exploration is one attempt, so a retry mode (`on-first-retry`, `on-all-retries`) records nothing (the run's notice says to pass `--trace on`); put the goal before a bare `--trace` or `--video`. |
 
 Per-step action and model-call budgets default to 40 each;
@@ -112,6 +144,13 @@ medium 3, low 2, trivial 1. `.e2e/report.json` has the record under
   "findings": [{ "id": "<uuid>", "index": 0, "step": 1, "kind": "issue", "severity": 4, "title": "...", "expected": "...", "actual": "...", "reproduction": ["..."], "path": "/cart", "observationRevision": "...", "artifactId": "<attempt id>:artifact:2", "reportedAt": "..." }]
 }
 ```
+
+With `--parallel`, the record adds `explorers` (`index`, `focus`, `ended`,
+`summary`) and `merge` (`status: merged | failed | interrupted`, `reported`,
+`model`: the call's usage), each step and
+finding has `explorer`, a merged finding has `merged` (`id`, `title`,
+`explorer`, `step`, `artifactId` of each absorbed finding), the top-level
+`summary` is absent, and `ended` is the least complete explorer's.
 
 A step carries `errorCode` only when it did not pass; a finding carries
 `step`, `path`, `observationRevision`, and `artifactId` only when known.
