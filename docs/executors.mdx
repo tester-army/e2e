@@ -166,9 +166,11 @@ pointer kind. Without it, an engine with the `dragTo` action drags by id when
 the points land on two different listed controls. Any other `dragAt` fails
 with `UNSUPPORTED_CAPABILITY`. `hitTest(point)` finds the control at a point
 without acting. Engines with a keyboard add `typeText`, `pressKey`, and
-`dismissKeyboard` for the focused control. `upload(target, paths)` refuses a
-path outside the project root or a hidden one with `POLICY_DENIED`, and a
-missing file with `INVALID_ARGUMENT`.
+`dismissKeyboard` for the focused control. `upload(target, paths)` takes
+project-relative paths and the `sample:` files listed under
+[the upload policy](/reference/agent#action-tools), refuses a path outside the project
+root or a hidden one with `POLICY_DENIED`, and a missing file with
+`INVALID_ARGUMENT`.
 
 The observation's `keyboardVisible` says whether an on-screen keyboard is
 showing, and is absent when the engine can't tell.

@@ -22,6 +22,7 @@ import { z } from 'zod';
 import type { ExecutorNode, ExecutorObservation, ExecutorObserveOptions, StepExecutorContext } from '../agent/executor.ts';
 import { isFailedResult } from '../agent/loop-guards.ts';
 import { typedThroughKeyboard } from '../agent/primitives.ts';
+import { SAMPLE_PREFIX } from '../agent/sample-files.ts';
 import type { ScreenOutput } from '../agent/screen-update.ts';
 import type { LocatorExpression, NodeRef, SemanticNode } from '../engine/surface.ts';
 import { codedMessage, InfrastructureError } from '../internal/errors.ts';
@@ -307,6 +308,7 @@ export class SessionTestLines {
         return this.onTarget(target, (locator) => `${locator}.${input['checked'] === false ? 'uncheck' : 'check'}()`);
       case 'upload': {
         const files = Array.isArray(input['files']) ? input['files'].filter((file): file is string => typeof file === 'string') : [];
+        if (files.some((file) => file.startsWith(SAMPLE_PREFIX))) return { reason: 'a sample file exists only for the agent; save a file in the project and upload its path for a line' };
         return this.onTarget(target, (locator) => `${locator}.setInputFiles(${JSON.stringify(files.length === 1 ? files[0] : files)})`);
       }
       case 'drag':
