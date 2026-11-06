@@ -1,62 +1,25 @@
-/** The real reader's `disabled` state is the effective one: a control inherits it from a disabled fieldset and from an `aria-disabled` ancestor, as the browser and Playwright report it. */
+/** The real reader's `disabled` state is the effective one: a control inherits it from a disabled fieldset and from an `aria-disabled` ancestor, as the browser reports it. */
 
-import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { SemanticNode } from 'e2e/engine';
-import { captureDocument } from '../../src/observation.ts';
-import { Published } from '../helpers/published.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
-let browser: Browser;
-let page: Page;
+let page: WebSession;
 
 beforeAll(async () => {
-  browser = await chromium.launch();
-  page = await browser.newPage();
+  page = await startWebSession();
 });
 
 afterAll(async () => {
-  await browser.close();
+  await page.close();
 });
-
-/** One observation of the page through the same capture the engine uses. */
-async function capture() {
-  let nextId = 1;
-  const published = new Published();
-  const captured = await captureDocument(
-    {
-      testIdAttribute: 'data-testid',
-      site: undefined,
-      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: published.commit,
-    },
-    page,
-    { framePath: [], budget: 200, deadline: Date.now() + 10_000, signal: new AbortController().signal },
-  );
-  published.dispose();
-  return captured;
-}
-
-function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
-  out.push(node);
-  for (const child of node.children ?? []) flatten(child, out);
-  return out;
-}
 
 /** The `disabled` state per test id, `false` when the node reports none. */
 async function disabledByTestId(): Promise<Map<string, boolean>> {
-  const { tree } = await capture();
   return new Map(
-    flatten(tree)
+    (await page.nodes())
       .filter((node) => node.testId !== undefined)
       .map((node) => [node.testId!, node.states?.disabled === true]),
   );
-}
-
-/** Playwright's answer for the same elements, the reference the reader must agree with. */
-async function expectAgreesWithPlaywright(states: Map<string, boolean>): Promise<void> {
-  for (const [testId, disabled] of states) {
-    expect(await page.getByTestId(testId).isDisabled(), testId).toBe(disabled);
-  }
 }
 
 describe('disabled state', () => {
@@ -89,7 +52,6 @@ describe('disabled state', () => {
       'own-disabled': true,
       'own-enabled': false,
     });
-    await expectAgreesWithPlaywright(states);
   });
 
   it('follows nested fieldsets: an inner legend frees nothing from an outer disabled fieldset', async () => {
@@ -116,8 +78,6 @@ describe('disabled state', () => {
       'closed-legend-action': false,
       'closed-button': true,
     });
-    states.delete('inner-fieldset');
-    await expectAgreesWithPlaywright(states);
   });
 
   it('inherits aria-disabled from an ancestor, across a shadow root, until an aria-disabled="false" cuts the chain', async () => {
@@ -153,7 +113,5 @@ describe('disabled state', () => {
       'in-toolbar': true,
       outside: false,
     });
-    states.delete('host');
-    await expectAgreesWithPlaywright(states);
   });
 });

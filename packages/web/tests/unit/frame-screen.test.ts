@@ -8,12 +8,14 @@
 import { describe, expect, it } from 'vitest';
 import type { EngineFixtureContext, LocatorExpression } from 'e2e/engine';
 import type { Locator, Screen } from 'e2e';
-import type { PlaywrightSurface } from '../../src/surface.ts';
-import { createBrowserFixture } from '../../src/browser.ts';
+import type { BidiSurface } from '../../src/driver/surface.ts';
+import { createBrowserFixture } from '../../src/fixture/browser.ts';
+import { ErrorLatch } from '../../src/errors.ts';
 
 function browserWithRecordingContext() {
   const minted: LocatorExpression[] = [];
   const context = {
+    timeouts: { test: 30_000, action: 1_000, assertion: 1_000 },
     operation: () => ({ signal: new AbortController().signal, timeoutMs: 1_000, runId: 'r', attemptId: 'a', origin: 'test' }),
     expectable: (target: object) => target,
     fixture: (_name: string, target: object) => target,
@@ -33,7 +35,9 @@ function browserWithRecordingContext() {
       } as unknown as Screen;
     },
   } as unknown as EngineFixtureContext;
-  const browser = createBrowserFixture({} as PlaywrightSurface, context);
+    // The frame scopes mint locators only; the surface is never driven.
+  const surface = { attemptScope: () => ({ latch: new ErrorLatch() }) } as unknown as BidiSurface;
+  const browser = createBrowserFixture(surface, context);
   return { browser, minted };
 }
 

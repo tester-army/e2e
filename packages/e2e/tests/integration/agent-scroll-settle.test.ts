@@ -109,4 +109,44 @@ describe('the look after scrolling to text', () => {
       project.cleanup();
     }
   });
+
+  it('keeps paging a list that holds still while it loads its next page, until the row arrives', async () => {
+    let found = false;
+    const fake = createFakeEngine({
+      actions: ['tap', 'swipe'],
+      scene: (stage) => {
+        const ticket: ScriptedNode = { id: 'ticket', role: 'button', name: 'Golden Ticket', appearsAfterSwipes: Number.POSITIVE_INFINITY, rect: { x: 0, y: 20, width: 100, height: 40 } };
+        // The next page lands on a timer, longer than three quick unchanged pages take.
+        stage.after(700, () => { ticket.appearsAfterSwipes = 0; });
+        return [{ id: 'loading', role: 'status', name: 'Loading more' }, ticket];
+      },
+    });
+    const executor: StepExecutor = {
+      name: 'scroll-loads', version: '1',
+      async runStep(context) {
+        await context.observe();
+        await context.actions.scrollUntil('Golden Ticket', 'down');
+        found = true;
+        return { status: 'passed', summary: 'reached the ticket' };
+      },
+    };
+    const project = createProject({
+      'tests/scroll.e2e.ts': `import { test } from 'e2e';
+test('reaches the ticket', async ({ app, agent }) => {
+  await app.open();
+  await agent.act('scroll to the golden ticket');
+});`,
+    });
+    try {
+      const result = await runExisting(project, {
+        appUrl: FAKE_APP_URL,
+        config: { tests: 'tests/**/*.e2e.ts', targets: [{ name: 'device', platform: 'ios' as const, engine: fake.engine, app: FAKE_APP }], agents: { default: { executor } }, cache: 'off' as const },
+      });
+      const attempt = resultByTitle(result, 'reaches the ticket').attempts[0];
+      expect(result.exitCode, JSON.stringify(attempt?.error ?? result.report.run.errors)).toBe(0);
+      expect(found).toBe(true);
+    } finally {
+      project.cleanup();
+    }
+  });
 });

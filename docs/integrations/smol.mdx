@@ -1,7 +1,7 @@
 ---
 title: smol machines browsers
 sidebarTitle: smol machines
-description: Run each web test attempt in its own branch of a warm Chromium microVM on your computer with the smol() browser provider from @e2e-dev/smol.
+description: Run web tests in warm Chromium microVMs on your computer with the smol() browser provider from @e2e-dev/smol.
 "og:image": "https://e2e.com/docs/images/og/integrations/smol.png?v=93b61e0399"
 "twitter:image": "https://e2e.com/docs/images/og/integrations/smol.png?v=93b61e0399"
 ---
@@ -9,18 +9,17 @@ description: Run each web test attempt in its own branch of a warm Chromium micr
 `smol()` from `@e2e-dev/smol` is a
 [browser provider](/browser#hosted-browsers) that runs Chromium in
 [smol machines](https://smolmachines.com) microVMs on your computer. Each
-worker slot boots one browser machine. By default, each test attempt runs in
-a copy-on-write branch of it, ready in about a second, so every retry starts
-from the same browser state. The app's data resets only when the app
-[runs in the machine](#run-the-app-in-the-machine). State on your computer
-or in external services stays shared.
+worker slot boots one browser machine, and each test attempt gets a branch
+of it or a new browser context on it, depending on the
+[scope](#choose-a-scope). State on your computer or in external services
+stays shared.
 
 ## Set up the provider
 
 <Note>
 smol machines run on macOS on Apple Silicon, or on Linux with KVM
 (`/dev/kvm`). They need no account or API key. The first boot pulls the
-Playwright Ubuntu image, so it takes longer.
+Playwright Ubuntu image, which carries Chromium, so it takes longer.
 </Note>
 
 Install the provider and the smol machines SDK:
@@ -79,48 +78,27 @@ it. Every attempt on that slot starts with the cookies, storage, and pages
 it left. It replaces [sessions](/authentication), which `'attempt'` scope
 can't use.
 
-`prepare` gets the browser's DevTools endpoint. Work in the default context,
-where attempts run. Disconnect before `prepare` resolves, and leave the
-browser running.
+`prepare` gets the browser's DevTools endpoint, and a `browser` and
+`screen` on its open tab, the same ones a test gets. Pass `browser.goto` a
+full URL. smol detaches them once `prepare` resolves; the browser keeps
+running, with its cookies, storage, and pages. Another CDP client must
+disconnect before `prepare` resolves and leave the browser running.
+The `browser` and `screen` calls of one `prepare` may take 120 seconds in
+all; raise that with `prepareTimeout`.
 
-<Accordion title="Sign in with Playwright">
-Install the `playwright-core` version that `@e2e-dev/web` pins, 1.64.1
-today, and match it when you upgrade. pnpm doesn't let your config import
-a dependency's dependency.
-
-<CodeGroup>
-```bash npm
-npm install --save-dev playwright-core@1.64.1
-```
-
-```bash pnpm
-pnpm add -D playwright-core@1.64.1
-```
-
-```bash bun
-bun add -d playwright-core@1.64.1
-```
-</CodeGroup>
-
+<Accordion title="Sign in in prepare">
 ```ts title="Provider options"
-import { chromium } from 'playwright-core';
-
 smol({
   hostPorts: [3000],
-  prepare: async (cdpEndpoint) => {
-    const browser = await chromium.connectOverCDP(cdpEndpoint);
-    const page = browser.contexts()[0]!.pages()[0]!;
-    await page.goto('http://localhost:3000/login');
-    await page.getByLabel('Email').fill('qa@example.com');
-    await page.getByLabel('Password').fill(process.env.QA_PASSWORD!);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL('**/dashboard');
-    await browser.close();
+  prepare: async (_cdpEndpoint, { browser, screen }) => {
+    await browser.goto('http://localhost:3000/login');
+    await screen.getByLabel('Email').fill('qa@example.com');
+    await screen.getByLabel('Password').fill(process.env.QA_PASSWORD!);
+    await screen.getByRole('button', 'Sign in').tap();
+    await browser.waitForURL('http://localhost:3000/dashboard');
   },
 })
 ```
-
-On a browser from `connectOverCDP`, `browser.close()` only disconnects.
 </Accordion>
 
 ## Run the app in the machine
@@ -158,13 +136,16 @@ Set `app.url` to `http://localhost:<port>` and declare no `app.command`.
 ## Choose a scope
 
 `scope: 'attempt'`, the default, gives every attempt its own branch of the
-slot's warm browser, with the limits of a
-[per-attempt lease](/browser#hosted-browsers).
+slot's warm machine, so one test's changes to the machine, such as an app's
+local database, never reach another. The attempt runs in the branched
+browser's own context, with what `prepare` left. `app.clearState()` and
+[sessions](/authentication) throw `UNSUPPORTED_CAPABILITY` here. Options
+such as `headers` and `locale` work.
 
 `scope: 'worker'` keeps one machine per worker slot for the run. Each
 attempt gets a new browser context on it, as in a local run, so sessions
-and options such as `headers` and `locale` work. Nothing is branched, and
-`prepare` is an `INVALID_CONFIG`.
+and `app.clearState()` work. Nothing is branched, and `prepare` is an
+`INVALID_CONFIG`.
 
 ## Options
 
@@ -172,6 +153,7 @@ and options such as `headers` and `locale` work. Nothing is branched, and
 | ----------- | ----------- | ------- |
 | `scope`     | `'attempt'` | See [Choose a scope](#choose-a-scope). |
 | `prepare`   | none        | See [Start every test signed in](#start-every-test-signed-in). |
+| `prepareTimeout` | `120000` | Milliseconds the `browser` and `screen` calls of one `prepare` may take in all. |
 | `hostPorts` | `[]`        | See [Set up the provider](#set-up-the-provider). Not 80 or 9229. |
 | `app`       | none        | See [Run the app in the machine](#run-the-app-in-the-machine). |
 | `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apt-get update && apt-get install -y fonts-noto-cjk` for more fonts. |
@@ -181,7 +163,9 @@ and options such as `headers` and `locale` work. Nothing is branched, and
 ## What differs from a local browser
 
 The browser's back/forward cache is off, so going back reloads the page.
-`browser.waitForDownload` works as it does locally.
+`browser.waitForDownload` works as it does locally: the provider reads each
+file off the machine's disk. `setInputFiles` throws
+`UNSUPPORTED_CAPABILITY`.
 
 ## Clean up leftover machines
 
@@ -198,6 +182,6 @@ for example `smol machine ls`.
     What runs on your computer, and what can still leak.
   </Card>
   <Card title="Hosted browsers" icon="globe" href="/browser#hosted-browsers">
-    How a browser provider leases browsers, and the limits of `'attempt'` scope.
+    How a browser provider leases browsers.
   </Card>
 </CardGroup>

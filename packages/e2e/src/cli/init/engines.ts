@@ -33,7 +33,7 @@ export function getEnginePresets() {
     {
       id: 'web',
       label: 'Web',
-      hint: 'Playwright',
+      hint: 'Chromium, Firefox',
       dependencies: siblingDependency('@e2e-dev/web'),
       imports: ["import { web } from '@e2e-dev/web';"],
       target: `{

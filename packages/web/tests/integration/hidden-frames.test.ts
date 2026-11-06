@@ -5,14 +5,9 @@
  * there matches nothing, under an index too, as neither matches a hidden node.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
-import { surfaceOf, web } from '../../src/index.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /** Wraps `source` in `frame` scopes, outermost first, as a `browser.frameLocator` chain does. */
 function withinFrames(selectors: readonly string[], source: LocatorExpression): LocatorExpression {
@@ -42,38 +37,35 @@ const DOCUMENT = `
 `;
 
 describe('a node inside a hidden frame', () => {
-  const engine = web({});
-  const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-hidden-frames-'));
-  const signal = new AbortController().signal;
-  const operation = { signal, timeoutMs: 5_000, runId: 'frames', attemptId: 'attempt', origin: 'test' as const };
-  const cleanup = { signal, timeoutMs: 30_000 };
-  let page: Page;
+  let page: WebSession;
+  const locate = (expression: LocatorExpression) => page.locate(expression);
 
   beforeAll(async () => {
-    await engine.init!({ runId: 'frames', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
-    await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
-    await engine.session!.open!('about:blank', operation);
-    page = surfaceOf(engine)!.page();
+    page = await startWebSession();
     await page.setContent(DOCUMENT);
-    await page.frameLocator('#outer').frameLocator('#inner').getByRole('button').waitFor({ state: 'attached' });
+    await page.browser.evaluate(async () => {
+      const nested = () => document.querySelector<HTMLIFrameElement>('#outer')?.contentDocument
+        ?.querySelector<HTMLIFrameElement>('#inner')?.contentDocument?.querySelector('button');
+      while (nested() == null) await new Promise((resolve) => setTimeout(resolve, 20));
+      return null;
+    });
+    await page.waitForFrames();
   });
 
   afterAll(async () => {
-    await engine.endAttempt!(cleanup);
-    await engine.dispose!(cleanup);
-    rmSync(artifactsDir, { recursive: true, force: true });
+    await page.close();
   });
 
   it('reads as hidden when its frame, an ancestor of the frame, or an enclosing frame is hidden', async () => {
     for (const frames of [['#hidden'], ['#hidden-parent'], ['#outer', '#inner']]) {
-      const matches = await engine.locate!(withinFrames(frames, BUTTON), operation);
+      const matches = await locate(withinFrames(frames, BUTTON));
       expect(matches).toHaveLength(1);
       expect(matches[0]!.states?.hidden).toBe(true);
     }
   });
 
   it('reads as shown in a frame that shows itself again under a hidden ancestor', async () => {
-    const matches = await engine.locate!(withinFrames(['#override'], BUTTON), operation);
+    const matches = await locate(withinFrames(['#override'], BUTTON));
     expect(matches).toHaveLength(1);
     expect(matches[0]!.states?.hidden).toBeUndefined();
   });
@@ -81,14 +73,17 @@ describe('a node inside a hidden frame', () => {
   it('is no match of a visible or role query, indexed or not', async () => {
     const first: LocatorExpression = { kind: 'index', source: VISIBLE_BUTTON, index: 'first' };
     for (const expression of [VISIBLE_BUTTON, first, ROLE_BUTTON]) {
-      expect(await engine.locate!(withinFrames(['#hidden'], expression), operation)).toEqual([]);
-      expect(await engine.locate!(withinFrames(['#override'], expression), operation)).toHaveLength(1);
+      expect(await locate(withinFrames(['#hidden'], expression))).toEqual([]);
+      expect(await locate(withinFrames(['#override'], expression))).toHaveLength(1);
     }
   });
 
   it('reads as shown once the frame shows again', async () => {
-    await page.locator('#hidden').evaluate((frame: HTMLElement) => { frame.style.visibility = 'visible'; });
-    const matches = await engine.locate!(withinFrames(['#hidden'], BUTTON), operation);
+    await page.browser.evaluate(() => {
+      document.querySelector<HTMLElement>('#hidden')!.style.visibility = 'visible';
+      return null;
+    });
+    const matches = await locate(withinFrames(['#hidden'], BUTTON));
     expect(matches).toHaveLength(1);
     expect(matches[0]!.states?.hidden).toBeUndefined();
   });

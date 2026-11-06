@@ -32,8 +32,8 @@ import { engineBrand } from '../internal/brands.ts';
 export { ConfigurationError, InfrastructureError, TestError } from '../internal/errors.ts';
 export { rejectUnknownKeys, rejectUnknownOptions } from '../internal/options.ts';
 export { validateJsonValue, type JsonValueRules } from '../internal/json-value.ts';
-export { describePattern, matchesText, toTextPattern } from '../internal/text.ts';
-export { resolveExpression, type ResolveExpressionOptions } from './resolve.ts';
+export { describePattern, matchesText, MATCHES_TEXT_SOURCE, toTextPattern } from '../internal/text.ts';
+export { createResolver, resolveExpression, type ResolveExpressionOptions, type ResolverPlatform } from './resolve.ts';
 export type { TextMatch } from '../types.ts';
 export { raceAbort } from './timing.ts';
 export { isProviderRecording, stopProviderRecording } from './recording.ts';
@@ -202,7 +202,7 @@ export interface EngineFixtureContext {
   readonly app: EngineAppInfo & {
     /**
      * Resolves a navigation target against the base URL. Throws
-     * `APP_URL_REQUIRED` when the target declares no URL and `POLICY_DENIED`
+     * `APP_URL_REQUIRED` for a relative URL when the target declares no URL and `POLICY_DENIED`
      * for any scheme but `http:` and `https:` (`about:blank` aside), so a
      * fixture never re-implements the rule the harness owns.
      */
@@ -897,10 +897,21 @@ export interface Engine {
   dispose?(context: EngineDisposeContext): Promise<void>;
 }
 
-/** A validated engine: branded, frozen, capabilities computed. */
-export interface EngineHandle extends Engine {
+/** Type-only key carrying the fixtures an engine contributes; no handle has it at runtime. */
+declare const contributedFixtures: unique symbol;
+
+/** The factories of an engine's contributed fixtures, one per fixture of `Fixtures`. */
+export type EngineFixtureFactories<Fixtures extends object> = { readonly [K in keyof Fixtures]: (context: EngineFixtureContext) => Fixtures[K] };
+
+/**
+ * A validated engine: branded, frozen, capabilities computed. `Fixtures` is
+ * what its `fixtures` contribute, as `defineEngine` read them from its spec,
+ * so code handed the engine (`openEngine`) gets them typed.
+ */
+export interface EngineHandle<Fixtures extends object = object> extends Engine {
   readonly [engineBrand]: true;
   readonly capabilities: ReadonlySet<EngineCapability>;
+  readonly [contributedFixtures]?: Fixtures;
 }
 
 export { defineEngine, isEngineHandle } from './manifest.ts';

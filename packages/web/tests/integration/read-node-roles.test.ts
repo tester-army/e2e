@@ -1,46 +1,33 @@
 /** The real reader maps explicit ARIA roles, implicit HTML semantics, and contenteditable hosts onto the vocabulary. */
 
-import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
-import { captureDocument } from '../../src/observation.ts';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
-import { Published } from '../helpers/published.ts';
+import { byRole, byTestId, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
-let browser: Browser;
-let page: Page;
+let page: WebSession;
 
 beforeAll(async () => {
-  browser = await chromium.launch();
-  page = await browser.newPage();
+  page = await startWebSession();
 });
 
 afterAll(async () => {
-  await browser.close();
+  await page.close();
 });
 
-/** One observation of the page through the same capture the engine uses. */
-async function capture() {
-  let nextId = 1;
-  const published = new Published();
-  const captured = await captureDocument(
-    {
-      testIdAttribute: 'data-testid',
-      site: undefined,
-      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: published.commit,
-    },
-    page,
-    { framePath: [], budget: 200, deadline: Date.now() + 10_000, signal: new AbortController().signal },
-  );
-  published.dispose();
-  return captured;
+/** One observation of the page. */
+async function capture(): Promise<{ tree: SemanticNode }> {
+  return { tree: (await page.observe()).root };
 }
 
 function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
   out.push(node);
   for (const child of node.children ?? []) flatten(child, out);
   return out;
+}
+
+/** The test ids of the nodes the engine's role query resolves, in order. */
+async function testIdsOf(role: string, name?: string): Promise<(string | undefined)[]> {
+  return (await page.locate(byRole(role, name))).map((node) => node.testId);
 }
 
 /** Roles by test id, for a page whose every element of interest carries one. */
@@ -53,7 +40,7 @@ const PIXEL = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAA
 
 /**
  * An empty block lays out to no height and is hidden, to the reader as to
- * Playwright; the role fixtures below are about roles, so their empty
+ * the browser; the role fixtures below are about roles, so their empty
  * elements get a box.
  */
 const EMPTY_BOXES = '[data-testid]:empty { min-width: 1px; min-height: 1px }';
@@ -76,20 +63,20 @@ describe('role mapping', () => {
     expect(nodes.get('grid-cell')).toMatchObject({ role: 'gridcell', name: 'Cell' });
     expect(nodes.has('nbsp')).toBe(true);
     expect(nodes.get('nbsp')?.role).toBeUndefined();
-    expect(await page.getByRole('button').allTextContents()).toEqual(['Save', 'Submit', 'Continue']);
-    expect(await page.getByRole('gridcell').allTextContents()).toEqual(['Cell']);
+    expect(await testIdsOf('button')).toEqual(['fallback', 'native', 'first']);
+    expect(await testIdsOf('gridcell')).toEqual(['grid-cell']);
   });
 
   it.each(['open', 'closed'] as const)('scopes nested shadow landmarks to their outer article (%s)', async (mode) => {
     await page.setContent('<article><div id="card"></div></article><div id="page"></div>');
-    await page.evaluate(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-    await page.evaluate((shadowMode) => {
+    await page.browser.evaluate((shadowMode: ShadowRootMode) => {
       const card = document.querySelector('#card')!.attachShadow({ mode: shadowMode });
       card.innerHTML = '<div id="nested"></div>';
       card.querySelector('#nested')!.attachShadow({ mode: shadowMode }).innerHTML =
         '<header aria-label="Card" data-testid="card-header">Card</header><footer aria-label="Card footer" data-testid="card-footer">Foot</footer>';
       document.querySelector('#page')!.attachShadow({ mode: shadowMode }).innerHTML =
         '<header aria-label="Page" data-testid="page-header">Page</header><footer aria-label="Page footer" data-testid="page-footer">Legal</footer>';
+      return null;
     }, mode);
     const nodes = await rolesByTestId();
     expect(nodes.get('card-header')).toBeDefined();
@@ -98,10 +85,8 @@ describe('role mapping', () => {
     expect(nodes.get('card-footer')?.role).toBeUndefined();
     expect(nodes.get('page-header')?.role).toBe('banner');
     expect(nodes.get('page-footer')?.role).toBe('contentinfo');
-    if (mode === 'open') {
-      expect(await page.getByRole('banner').count()).toBe(1);
-      expect(await page.getByRole('contentinfo').count()).toBe(1);
-    }
+    expect(await testIdsOf('banner')).toEqual(['page-header']);
+    expect(await testIdsOf('contentinfo')).toEqual(['page-footer']);
   });
 
   it('reports ARIA img as image, alongside the img element', async () => {
@@ -140,11 +125,10 @@ describe('role mapping', () => {
       'scoped-column': 'columnheader', 'scoped-row': 'rowheader', 'empty-data': 'columnheader',
       'child-data': 'rowheader', single: undefined, 'single-column': 'columnheader',
     });
-    expect(await page.getByRole('rowheader').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid'))))
-      .toEqual(['row', 'last-row', 'scoped-row', 'child-data']);
+    expect(await testIdsOf('rowheader')).toEqual(['row', 'last-row', 'scoped-row', 'child-data']);
   });
 
-  it('reports an inline svg as an image, named by its title child, as Playwright does', async () => {
+  it('reports an inline svg as an image, named by its title child', async () => {
     await page.setContent(`
       <input aria-label="Message">
       <div class="send-btn"><svg viewBox="0 0 24 24" width="24" height="24" data-testid="bare"><path d="M2 3 L22 12 L2 21 Z"/></svg></div>
@@ -163,12 +147,11 @@ describe('role mapping', () => {
     expect(nodes.get('home')).toMatchObject({ role: 'link', name: 'Home' });
     const { tree } = await capture();
     expect(flatten(tree).filter((node) => node.role === 'presentation' || node.role === 'none')).toEqual([]);
-    expect(await page.getByRole('img').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid'))))
-      .toEqual(['bare', 'titled', 'labelled']);
-    expect(await page.getByRole('img', { name: 'Close', exact: true }).getAttribute('data-testid')).toBe('titled');
+    expect(await testIdsOf('image')).toEqual(['bare', 'titled', 'labelled']);
+    expect(await testIdsOf('image', 'Close')).toEqual(['titled']);
   });
 
-  it('ignores a presentational role a focusable control or a global ARIA attribute contradicts, as getByRole does', async () => {
+  it('ignores a presentational role a focusable control or a global ARIA attribute contradicts', async () => {
     await page.setContent(`
       <style>${EMPTY_BOXES}</style>
       <button role="none" data-testid="button">Delete</button>
@@ -203,11 +186,9 @@ describe('role mapping', () => {
     expect(nodes.get('negative')?.role).toBe('heading');
     expect(nodes.get('disabled')?.role).toBe('none');
     expect(nodes.get('in-fieldset')?.role).toBe('none');
-    const testIds = (role: 'button' | 'heading' | 'img') =>
-      page.getByRole(role).evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
-    expect(await testIds('heading')).toEqual(['nbsp', 'negative']);
-    expect(await testIds('img')).toEqual(['focusable', 'aria', 'titled']);
-    expect(await testIds('button')).toEqual(['button']);
+    expect(await testIdsOf('heading')).toEqual(['nbsp', 'negative']);
+    expect(await testIdsOf('image')).toEqual(['focusable', 'aria', 'titled']);
+    expect(await testIdsOf('button')).toEqual(['button']);
   });
 
   it('applies a presentational role inside an editing host, where only the host is focusable', async () => {
@@ -221,7 +202,7 @@ describe('role mapping', () => {
     expect(nodes.get('editor')).toMatchObject({ role: 'textbox', name: 'Editor' });
     expect(nodes.get('editor-heading')?.role).toBe('presentation');
     expect(nodes.get('editor-image')?.role).toBe('presentation');
-    expect(await page.getByRole('heading').count()).toBe(0);
+    expect(await testIdsOf('heading')).toEqual([]);
   });
 
   it('passes the composite widget roles through from role attributes and names their items from content', async () => {
@@ -391,8 +372,7 @@ describe('contenteditable editing hosts', () => {
     expect(nodes.get('outer')).toMatchObject({ role: 'textbox', name: 'Outer' });
     expect(nodes.get('island')?.role).toBeUndefined();
     expect(nodes.get('nested')).toMatchObject({ role: 'textbox', name: 'Nested', value: 'Inner' });
-    // Playwright's role selector knows a textbox only through an explicit role; where it has a rule, the two agree.
-    expect(await page.getByRole('textbox', { name: 'Message' }).getAttribute('data-testid')).toBe('explicit');
+    expect(await testIdsOf('textbox', 'Message')).toEqual(['explicit']);
   });
 
   it('keeps the whitespace an editor renders as its value, and reads an empty editor as an empty value', async () => {
@@ -456,7 +436,7 @@ describe('contenteditable editing hosts', () => {
       <iframe contenteditable srcdoc="<p>Framed</p>" data-testid="frame"></iframe>
       <div contenteditable data-testid="host"><canvas width="20" height="20"></canvas><p>Caption</p></div>
     `);
-    await page.frames()[1]?.waitForLoadState('domcontentloaded');
+    await page.waitForFrames();
     const { tree } = await capture();
     const roles = Object.fromEntries(flatten(tree).filter((node) => node.testId !== undefined).map((node) => [node.testId, node.role]));
     // A canvas, with no role, name, or text, is not a node at all; an svg has the image role, so it is listed.
@@ -482,15 +462,16 @@ describe('contenteditable editing hosts', () => {
     expect(before.get('labelled')).toMatchObject({ role: 'textbox', name: 'Notes', value: '' });
 
     for (const testId of ['tiptap', 'quill', 'aria-placeholder', 'labelled']) {
-      await page.getByTestId(testId).fill('Hello');
+      await page.act(byTestId(testId), { kind: 'fill', value: 'Hello', sensitive: false });
     }
     // TipTap's Placeholder extension paints the hint as a decoration on the
     // empty block and removes it, class and attribute, once the block has text.
-    await page.evaluate(() => {
+    await page.browser.evaluate(() => {
       for (const block of document.querySelectorAll('.tiptap [data-placeholder]')) {
         block.removeAttribute('data-placeholder');
         block.classList.remove('is-empty', 'is-editor-empty');
       }
+      return null;
     });
     const after = await rolesByTestId();
     expect(after.get('tiptap')).toMatchObject({ role: 'textbox', value: 'Hello' });
@@ -505,8 +486,8 @@ describe('contenteditable editing hosts', () => {
       <div contenteditable aria-label="Notes" data-testid="editor"><p><br></p></div>
       <textarea aria-label="Plain" data-testid="plain"></textarea>
     `);
-    await page.getByTestId('plain').fill('Typed');
-    await page.getByTestId('editor').fill('Typed');
+    await page.act(byTestId('plain'), { kind: 'fill', value: 'Typed', sensitive: false });
+    await page.act(byTestId('editor'), { kind: 'fill', value: 'Typed', sensitive: false });
     const nodes = await rolesByTestId();
     expect(nodes.get('editor')).toMatchObject({ role: 'textbox', name: 'Notes', value: 'Typed', states: { focused: true } });
     expect(nodes.get('plain')).toMatchObject({ role: 'textbox', name: 'Plain', value: 'Typed' });

@@ -4,45 +4,28 @@
  * radio's value apart from its checked state.
  */
 
-import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { SemanticNode } from 'e2e/engine';
-import { captureDocument } from '../../src/observation.ts';
-import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
-import { SECURE_FIELD_SELECTOR } from '../../src/read-node.ts';
-import { Published } from '../helpers/published.ts';
+import type { LocatorExpression, SemanticNode } from 'e2e/engine';
+import { byRole, byTestId, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
-let browser: Browser;
-let page: Page;
+let page: WebSession;
 
 beforeAll(async () => {
-  browser = await chromium.launch();
-  page = await browser.newPage();
+  page = await startWebSession();
 });
 
 afterAll(async () => {
-  await browser.close();
+  await page.close();
 });
 
-/** One observation of the page through the same capture the engine uses, keyed by test id. */
+/** One observation of the page, keyed by test id. */
 async function captureByTestId(): Promise<Map<string | undefined, SemanticNode>> {
-  let nextId = 1;
-  const published = new Published();
-  const { tree } = await captureDocument(
-    {
-      testIdAttribute: 'data-testid',
-      site: undefined,
-      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: published.commit,
-    },
-    page,
-    { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
-  );
-  published.dispose();
-  const nodes: SemanticNode[] = [];
-  const walk = (node: SemanticNode) => { nodes.push(node); for (const child of node.children ?? []) walk(child); };
-  walk(tree);
-  return new Map(nodes.map((node) => [node.testId, node]));
+  return new Map((await page.nodes()).map((node) => [node.testId, node]));
+}
+
+/** The names of the nodes a locate finds. */
+async function namesOf(expression: LocatorExpression): Promise<(string | undefined)[]> {
+  return (await page.locate(expression)).map((node) => node.name);
 }
 
 describe('checked and selected', () => {
@@ -67,7 +50,7 @@ describe('checked and selected', () => {
     expect(nodes.has('restored')).toBe(true);
     expect(nodes.has('visibility')).toBe(true);
     for (const id of ['hidden', 'display', 'aria', 'group']) expect(nodes.has(id)).toBe(false);
-    expect(await page.getByRole('option').allTextContents()).toEqual(['Visible', 'Disabled', 'No visibility', 'Restored']);
+    expect((await page.locate(byRole('option'))).map((node) => node.testId)).toEqual(['visible', 'disabled', 'visibility', 'restored']);
   });
 
   it('applies the option limit to offered choices after hidden options are excluded', async () => {
@@ -77,7 +60,7 @@ describe('checked and selected', () => {
     expect(nodes.get('choice-59')?.name).toBe('Choice 59');
     expect(nodes.has('choice-60')).toBe(false);
     expect([...nodes.values()].filter((node) => node.role === 'option')).toHaveLength(60);
-    expect(await page.getByRole('option').count()).toBe(61);
+    expect(await page.locate(byRole('option'))).toHaveLength(61);
   });
 
   it('reads selected boolean values without case sensitivity while native option state wins', async () => {
@@ -100,8 +83,19 @@ describe('checked and selected', () => {
     expect(nodes.get('native-on')?.states?.selected).toBe(true);
     expect(nodes.get('native-off')?.states?.selected).toBe(false);
     expect(nodes.get('embedded')?.name).toBe('Pick Chosen');
-    expect(await page.getByRole('tab', { selected: true }).allTextContents()).toEqual(['All', 'Recent']);
-    expect(await page.getByRole('button', { name: 'Pick Chosen', exact: true }).count()).toBe(1);
+    expect(await page.locate(byRole('button', 'Pick Chosen'))).toHaveLength(1);
+  });
+
+  it('matches a role query on selected state without case sensitivity', async () => {
+    await page.setContent(`
+      <div role="tablist">
+        <button role="tab" aria-selected="TRUE">All</button>
+        <button role="tab" aria-selected="TrUe">Recent</button>
+        <button role="tab" aria-selected="FALSE">Archived</button>
+      </div>
+    `);
+    const selectedTabs: LocatorExpression = { kind: 'query', query: { kind: 'role', value: { kind: 'string', value: 'tab', exact: true }, states: { selected: true } } };
+    expect(await namesOf(selectedTabs)).toEqual(['All', 'Recent']);
   });
 
   it('excludes uppercase hidden subtrees from observations and names but reads hidden references whole', async () => {
@@ -117,12 +111,12 @@ describe('checked and selected', () => {
     expect(nodes.get('save')?.name).toBe('Save');
     expect(nodes.get('shown')?.name).toBe('Shown');
     expect(nodes.get('referenced')?.name).toBe('Label whole');
-    expect(await page.getByRole('button', { name: 'Save', exact: true }).count()).toBe(1);
-    expect(await page.getByRole('button', { name: 'Hidden action', exact: true }).count()).toBe(0);
-    expect(await page.getByRole('button', { name: 'Label whole', exact: true }).count()).toBe(1);
+    expect(await page.locate(byRole('button', 'Save'))).toHaveLength(1);
+    expect(await page.locate(byRole('button', 'Hidden action'))).toHaveLength(0);
+    expect(await page.locate(byRole('button', 'Label whole'))).toHaveLength(1);
   });
 
-  it('reads a native checkbox, radio, and option from the control even when a stale aria attribute disagrees, as Playwright does', async () => {
+  it('reads a native checkbox, radio, and option from the control even when a stale aria attribute disagrees', async () => {
     await page.setContent(`
       <input type="checkbox" data-testid="stale-off" aria-checked="false" checked aria-label="Stale off">
       <input type="checkbox" data-testid="stale-on" aria-checked="true" aria-label="Stale on">
@@ -155,13 +149,13 @@ describe('checked and selected', () => {
     expect(selected('tab')).toBe(true);
 
     for (const testId of ['stale-off', 'stale-on', 'radio-stale-off', 'radio-stale-on', 'plain-on', 'plain-off', 'aria-on', 'aria-off']) {
-      expect(await page.getByTestId(testId).isChecked(), testId).toBe(checked(testId));
+      expect((await page.locate(byTestId(testId)))[0]?.states?.checked, testId).toBe(checked(testId));
     }
   });
 });
 
 describe('a checkable control\'s value', () => {
-  it('reads the value attribute, `on` by default, whatever the checked state, as Playwright\'s inputValue does', async () => {
+  it('reads the value attribute, `on` by default, whatever the checked state, as the control\'s own value reads', async () => {
     await page.setContent(`
       <input type="checkbox" data-testid="default-on" checked aria-label="Default on">
       <input type="checkbox" data-testid="default-off" aria-label="Default off">
@@ -170,14 +164,13 @@ describe('a checkable control\'s value', () => {
       <input type="radio" name="plan" data-testid="radio-default" aria-label="Default radio">
     `);
     const testIds = ['default-on', 'default-off', 'custom', 'radio', 'radio-default'];
-    const options = { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR, mode: { kind: 'node' as const } };
-    const values = await Promise.all(
-      testIds.map(async (id) => (await page.getByTestId(id).evaluate(readSemanticsFunction<typeof options.mode>, options)).value),
-    );
+    const values = await Promise.all(testIds.map(async (id) => (await page.readNode(`[data-testid="${id}"]`)).value));
     expect(values).toEqual(['on', 'on', 'yes', 'monthly', 'on']);
-    for (const [index, testId] of testIds.entries()) {
-      expect(await page.getByTestId(testId).inputValue(), testId).toBe(values[index]);
-    }
+    const inputValues = await page.browser.evaluate(
+      (ids: string[]) => ids.map((id) => document.querySelector<HTMLInputElement>(`[data-testid="${id}"]`)!.value),
+      testIds,
+    );
+    expect(inputValues).toEqual(values);
     // The tree drops the token, as it drops an option's value; the checked state says what matters.
     const nodes = await captureByTestId();
     expect(testIds.map((testId) => nodes.get(testId)?.value)).toEqual([undefined, undefined, undefined, undefined, undefined]);

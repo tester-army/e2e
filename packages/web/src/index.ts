@@ -1,18 +1,17 @@
 /**
- * `@e2e-dev/web` public surface: the `web()` engine factory, the `browser`
+ * `@e2e-dev/web` public surface: the `web()` engine factory, `attachBrowser`, the `browser`
  * fixture types, and `test`, `describe`, and the hooks typed with that
  * fixture, so a test file registers from one import. `expect`,
  * `credentials`, and `secrets` come from `e2e` itself.
  */
 
 import { test as base, type App } from 'e2e';
-import type { Browser } from './browser.ts';
+import type { Browser } from './fixture/types.ts';
 
-export { web, surfaceOf } from './engine.ts';
-export type { PlaywrightLiveSurface } from './engine.ts';
-export type { WebBasicAuth, WebConnectOptions, WebOptions, WebScreencastOptions } from './surface.ts';
+export { web } from './engine.ts';
+export { attachBrowser, type AttachBrowserOptions, type AttachedBrowser } from './attach.ts';
+export type { WebBasicAuth, WebConnectOptions, WebMedia, WebOptions, WebScreencastOptions } from './options.ts';
 export type { WebInitScript } from './init-scripts.ts';
-export type { WebMedia } from './media.ts';
 export type {
   BrowserDownloadContext,
   BrowserLease,
@@ -22,8 +21,8 @@ export type {
   BrowserReleaseContext,
   BrowserRequest,
 } from './provider.ts';
-export type { BrowserName } from './browser-connection.ts';
-export type { Dialog, DialogHandler } from './dialogs.ts';
+export type { BrowserName } from './browsers.ts';
+export type { Dialog, DialogHandler } from './driver/dialogs.ts';
 export type {
   Browser,
   BrowserExpectation,
@@ -35,7 +34,7 @@ export type {
   RouteFulfillResponse,
   WebResponse,
   WebRoute,
-} from './browser.ts';
+} from './fixture/types.ts';
 
 /** `app` on a web target. A `web()` target always declares `app.url`, so `baseUrl` is always set. */
 export interface WebApp extends App {

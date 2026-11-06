@@ -1,7 +1,7 @@
 {
   "name": "@e2e-dev/web",
   "version": "0.15.5",
-  "description": "Web engine for e2e agentic end-to-end testing, built on Playwright",
+  "description": "Web engine for e2e agentic end-to-end testing: Chromium and Firefox over WebDriver BiDi",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -10,8 +10,9 @@
     "web-testing",
     "browser-testing",
     "browser-automation",
-    "playwright",
-    "chromium"
+    "webdriver-bidi",
+    "chromium",
+    "firefox"
   ],
   "license": "Apache-2.0",
   "contributors": [
@@ -55,17 +56,21 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "playwright-core": "1.64.1"
+    "chromium-bidi": "159.0.8147-0",
+    "yauzl": "3.4.0"
   },
   "peerDependencies": {
-    "e2e": ">=0.22.1 <1"
+    "e2e": ">=0.23.1 <1"
   },
   "devDependencies": {
     "@napi-rs/image": "1.16.0",
     "@types/node": "26.6.6",
+    "@types/yauzl": "3.4.0",
+    "devtools-protocol": "0.0.1734725",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "webdriver-bidi-protocol": "1.0.2"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

@@ -327,7 +327,7 @@ after download redaction, with the `redaction` label the report records.
 | Your model provider | Agent steps that call a model. Deterministic tests and fully replayed steps make no model call. |
 | A subscription provider's sign-in and model-list endpoints | `e2e login` and `e2e models` ([Subscriptions](/subscriptions)). |
 | The app's `readyUrl` | Readiness probes for an app the runner starts. |
-| Playwright's browser download | One time, when the browser is missing. |
+| `storage.googleapis.com` (Chrome for Testing), `archive.mozilla.org` (Firefox), and GitHub releases (ffmpeg) | One time, when the browser or ffmpeg is missing. |
 | The DevTools endpoint in `web({ connect })` | Every run of that target. |
 | The GitHub API | Only from the `@e2e-dev/github` reporter. |
 | The provider of the `model` you pass | Only from [`decisionFilter()`](/filters): the diff of what the commits change (a file only the working tree changes, by name alone), the test files, and the setup files that save their sessions, redacted as a [text download](#downloads) is, except a value a secret provider returns. |
@@ -336,7 +336,7 @@ after download redaction, with the `redaction` label the report records.
 | The Kernel API and its hosted browsers | Only from [`kernel()`](/integrations/kernel). |
 | TestMu AI's CDP hub and its hosted browsers | Only from [`testmuBrowsers()`](/integrations/testmu#run-web-targets-in-browsers). The username and access key travel only in the CDP URL, never in a log line. |
 | The Expo API and the simulators' agent-device daemons | Only from [`expoSimulators()`](/integrations/eas), or its deprecated alias `easSimulators()`. It signs in with `EXPO_TOKEN`, else with the eas-cli login in `~/.expo/state.json`. On a CI runner, set `EXPO_TOKEN` or keep that login out of the runner's home. |
-| `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright image. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |
+| `mcr.microsoft.com` | Only from [`smol()`](/integrations/smol), to pull the Playwright Ubuntu image the machines run. The machines then have unrestricted network access, and reach every port on your computer's loopback through `host.smolvm.internal`, not only `hostPorts` ([Set up the provider](/integrations/smol#set-up-the-provider)). |
 | The package registry | When `e2e init` installs dependencies. |
 | The app under test | Every run, plus whatever the app itself loads. |
 

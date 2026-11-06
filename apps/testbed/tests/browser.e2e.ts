@@ -1,5 +1,6 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
+import { browserName } from './helpers.ts';
 
 test.describe('browser fixture', { requires: ['browser'], tags: ['browser'] }, () => {
   test.beforeEach(async ({ app }) => {
@@ -56,6 +57,7 @@ test('emulated media reaches the page\'s own @media rules, from the first paint 
   await browser.emulateMedia({ colorScheme: 'dark' });
   await app.open('/browser');
   await expect(screen.getByLabel('Media')).toHaveText('dark, full motion');
+  test.skip(await browserName(browser) === 'firefox', 'Firefox overrides only prefers-color-scheme over WebDriver BiDi, so emulateMedia({ reducedMotion }) refuses there');
   await browser.emulateMedia({ reducedMotion: 'reduce' });
   await expect(screen.getByLabel('Media')).toHaveText('dark, reduced motion');
   await app.restart();

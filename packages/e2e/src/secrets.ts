@@ -42,41 +42,64 @@ export function withConfigSecretReferences<T>(load: () => T): T {
   return scope.run(true, load);
 }
 
-/** Installed by the runner once config resolution completes. */
-export function setSecretRegistry(registry: SecretRegistry | undefined): void {
+/**
+ * The registries secrets resolve against, in layers: the base a run worker
+ * installs, and the holds standalone workers and attempts stack on it, oldest
+ * first. Realm-shared like the installed registry, so every copy of e2e
+ * stacks on the same layers.
+ */
+interface RegistryLayers {
+  base: SecretRegistry | undefined;
+  readonly holds: { readonly registry: SecretRegistry; readonly live: boolean }[];
+}
+
+const layersSlot = realmSlot<RegistryLayers>('e2e.secrets.layers.v1');
+
+/** The realm's registry layers, created on first use. */
+function registryLayers(): RegistryLayers {
+  let layers = layersSlot.get(globalThis);
+  if (layers === undefined) {
+    layers = { base: undefined, holds: [] };
+    layersSlot.set(globalThis, layers);
+  }
+  return layers;
+}
+
+/** Installs the registry lookups resolve against: the newest live hold's, else the newest hold's, else the base. */
+function installTop(layers: RegistryLayers): void {
+  const registry = (layers.holds.findLast((hold) => hold.live) ?? layers.holds.at(-1))?.registry ?? layers.base;
   if (registry === undefined) registrySlot.delete(globalThis);
   else registrySlot.set(globalThis, registry);
 }
 
-/** The registries standalone attempts hold, oldest first; the newest is the one installed. */
-const holds: { readonly registry: SecretRegistry; readonly live: boolean }[] = [];
-
-/** The newest live hold's registry, else the newest hold's, else none. */
-function installHeld(): void {
-  const newest = holds.findLast((hold) => hold.live) ?? holds.at(-1);
-  if (newest === undefined) registrySlot.delete(globalThis);
-  else registrySlot.set(globalThis, newest.registry);
+/** Installed by the runner once config resolution completes: the base layer, under any hold still open. */
+export function setSecretRegistry(registry: SecretRegistry | undefined): void {
+  const layers = registryLayers();
+  layers.base = registry;
+  installTop(layers);
 }
 
 /**
- * Installs `registry` for a standalone worker or attempt until the returned
- * release runs. Several may hold one at once, as live sessions do: releasing
- * one installs the newest registry still held, and releasing the last clears
- * the slot, so closing one session never leaves another resolving against
- * none. A `live` hold is an attempt's: it outranks a worker that opens while
- * the attempt runs, whose config would otherwise capture the attempt's handles.
+ * Stacks `registry` on the installed ones for a standalone worker or attempt
+ * until the returned release runs. Lookups resolve against the newest live
+ * hold, else the newest hold, else the base a run worker installed, so
+ * closing one session never leaves another resolving against none. A `live`
+ * hold is an attempt's: it outranks a worker that opens while the attempt
+ * runs, whose config would otherwise capture the attempt's handles. A
+ * registry with no secrets and no credentials (an engine opened with no
+ * config, as `attachBrowser` does) holds nothing, so it hides nothing.
  */
 export function holdSecretRegistry(registry: SecretRegistry, options: { readonly live?: boolean } = {}): () => void {
+  if (registry.secrets.size === 0 && registry.credentials.size === 0) return () => undefined;
+  const layers = registryLayers();
   const hold = { registry, live: options.live === true };
-  holds.push(hold);
-  installHeld();
+  layers.holds.push(hold);
+  installTop(layers);
   return () => {
-    const index = holds.indexOf(hold);
+    const index = layers.holds.indexOf(hold);
     if (index === -1) return;
-    holds.splice(index, 1);
-    // A registry a run installed since stays installed.
-    if (registrySlot.get(globalThis) !== registry) return;
-    installHeld();
+    layers.holds.splice(index, 1);
+    installTop(layers);
   };
 }
 

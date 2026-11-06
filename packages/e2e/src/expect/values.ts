@@ -3,9 +3,8 @@
 import { types } from 'node:util';
 import { equals, isAsymmetric, iterableEquality, subsetEquality } from '@vitest/expect';
 import { TestError } from '../internal/errors.ts';
-import { testPattern } from '../internal/regexp.ts';
 import { describeIssue, requireStandardSchema } from '../internal/standard-schema.ts';
-import { toTextPattern } from '../internal/text.ts';
+import { testPattern, toTextPattern } from '../internal/text.ts';
 import type { AsymmetricMatcher, NegatedValueExpectation, PropertyPath, StandardSchemaV1, ValueExpectation } from '../types.ts';
 
 function fail(message: string): never {

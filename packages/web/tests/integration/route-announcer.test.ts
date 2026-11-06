@@ -1,8 +1,7 @@
 /** Next.js App Router's route announcer is never observed; an app's own alert still is. */
 
-import { chromium } from 'playwright-core';
 import { expect, it } from 'vitest';
-import { captureTagged } from '../crosscheck/crosscheck.ts';
+import { startWebSession } from '../helpers/web-session.ts';
 
 const PAGE = `<!doctype html><html lang="en"><head><title>Acme Notes</title></head><body>
   <div role="alert" data-testid="app-alert">Acme Notes</div>
@@ -14,24 +13,20 @@ const PAGE = `<!doctype html><html lang="en"><head><title>Acme Notes</title></he
 </body></html>`;
 
 it('omits the announcer empty or populated and keeps the app alert', async () => {
-  const browser = await chromium.launch();
+  const page = await startWebSession();
   try {
-    const page = await browser.newPage();
     await page.setContent(PAGE);
-    const announcer = page.locator('next-route-announcer').locator('#__next-route-announcer__');
+    const announce = (text: string) => page.browser.evaluate((value: string) => {
+      document.querySelector('next-route-announcer')!.shadowRoot!.querySelector('#__next-route-announcer__')!.textContent = value;
+      return null;
+    }, text);
     for (const text of ['', 'Acme Notes']) {
-      await announcer.evaluate((el, value) => {
-        el.textContent = value;
-      }, text);
-      const { nodes, published } = await captureTagged(page);
-      try {
-        expect(nodes.filter((node) => node.role === 'alert')).toMatchObject([{ name: 'Acme Notes', testId: 'app-alert' }]);
-      } finally {
-        published.dispose();
-      }
+      await announce(text);
+      expect((await page.nodes()).filter((node) => node.role === 'alert')).toMatchObject([{ name: 'Acme Notes', testId: 'app-alert' }]);
     }
-    expect(await announcer.innerText()).toBe('Acme Notes');
+    expect(await page.browser.evaluate(() =>
+      (document.querySelector('next-route-announcer')!.shadowRoot!.querySelector('#__next-route-announcer__') as HTMLElement).innerText)).toBe('Acme Notes');
   } finally {
-    await browser.close();
+    await page.close();
   }
 });

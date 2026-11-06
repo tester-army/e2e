@@ -11,7 +11,7 @@ import { obj } from '../internal/objects.ts';
 import { isSecret } from '../secrets.ts';
 import { ENGINE_SPI_VERSION, LOCATOR_ACTION_KINDS, POINTER_ACTION_KINDS } from './contract.ts';
 import type { Secret } from '../types.ts';
-import type { Engine, EngineCapability, EngineHandle } from './index.ts';
+import type { Engine, EngineCapability, EngineFixtureFactories, EngineHandle } from './index.ts';
 
 /** Every key an engine may declare; anything else is rejected at config load. */
 const KNOWN_KEYS = [
@@ -165,7 +165,9 @@ function declaredKinds<Kind extends string>(
  * through the prototype chain and binding every function to the spec, so a
  * class instance (own state fields included) is as valid a body as a literal.
  */
-export function defineEngine(spec: Engine): EngineHandle {
+export function defineEngine<Fixtures extends object = Record<string, unknown>>(
+  spec: Engine & { readonly fixtures?: EngineFixtureFactories<Fixtures> },
+): EngineHandle<Fixtures> {
   if (typeof spec !== 'object' || spec === null) {
     throw new ConfigurationError('INVALID_CONFIG', 'defineEngine requires an engine object');
   }
@@ -309,7 +311,7 @@ export function defineEngine(spec: Engine): EngineHandle {
     ...handle,
     [engineBrand]: true as const,
     capabilities,
-  }) as unknown as EngineHandle;
+  }) as unknown as EngineHandle<Fixtures>;
 }
 
 /** True for a defineEngine-branded handle, across realms. */

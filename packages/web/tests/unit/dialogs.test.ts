@@ -3,16 +3,15 @@
  * go, and how a failure on the unawaited dialog path reaches the next step.
  */
 
-import type { Dialog as PwDialog } from 'playwright-core';
+import { DialogRouter, type NativeDialog } from '../../src/driver/dialogs.ts';
 import { TestError } from 'e2e/engine';
 import { describe, expect, it, vi } from 'vitest';
-import { DialogRouter } from '../../src/dialogs.ts';
-import { ErrorLatch } from '../../src/support.ts';
+import { ErrorLatch } from '../../src/errors.ts';
 
 function fakeDialog(text = 'are you sure?') {
   const accept = vi.fn(async (_text?: string) => undefined);
   const dismiss = vi.fn(async () => undefined);
-  const dialog = { type: () => 'confirm', message: () => text, accept, dismiss } as unknown as PwDialog;
+  const dialog = { type: () => 'confirm', message: () => text, accept, dismiss } as unknown as NativeDialog;
   return { dialog, accept, dismiss };
 }
 

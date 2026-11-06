@@ -13,7 +13,7 @@ diagrams and code carry the detail.
 ## Title
 
 - Conventional Commits, matching `git log`:
-  `fix(playwright): provision the browser in a runner-side prepare hook`.
+  `fix(web): provision the browser in a runner-side prepare hook`.
   PRs squash-merge with the number appended, so the title is the commit.
 - Mark spec or API breaks with `!` (`feat(config)!: ...`), same as the commit.
 - Name the outcome, not the activity. "install builds with the appPath

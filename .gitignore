@@ -26,3 +26,5 @@ packages/e2e/docs/
 .env*
 # `pnpm run canary` writes this changeset and consumes it in the same run.
 .changeset/canary.md
+# `node packages/web/bench/bidi.ts` writes its raw numbers here; bidi-benchmark.md is the report.
+packages/web/bench/bidi-results.json

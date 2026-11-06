@@ -114,11 +114,9 @@ jobs:
         uses: ./.github/actions/example-packages
         with:
           working-directory: ${{ matrix.tests }}
-      # The runner downloads its own Chromium on first use; the system
-      # libraries it links against need root.
-      - name: Chromium system dependencies
+      - name: Chromium and its system dependencies
         working-directory: ${{ matrix.tests }}
-        run: npx playwright-core install-deps chromium
+        run: npx --no-install e2e-web install chromium --with-deps
       - name: Run the tests
         id: test
         working-directory: ${{ matrix.tests }}

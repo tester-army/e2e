@@ -20,8 +20,9 @@
   Imports follow TypeScript: `./x.js` or `./x` loads `x.ts`, and the nearest
   `tsconfig.json` `paths` and `baseUrl` apply. Decorators need
   `experimentalDecorators`; CommonJS TypeScript goes in `.cts`.
-- Browser tests: `@e2e-dev/web`, pinning `playwright-core` exactly; do not
-  add `playwright` for it. Missing browsers download on first boot; in CI run
+- Browser tests: `@e2e-dev/web`, Chromium and Firefox over WebDriver BiDi,
+  no Playwright; do not add `playwright` for it. Missing browsers download
+  on first boot into `E2E_BROWSERS_PATH`, else the user cache; in CI run
   `npx @e2e-dev/web install chromium --with-deps` (pnpm: `pnpm exec e2e-web
   install chromium --with-deps`). Mobile tests: `@e2e-dev/mobile`, pinning
   `agent-device` exactly; each pin moves with its engine release.
@@ -40,7 +41,7 @@ e2e init`; `npx e2e init my-app` scaffolds into a new directory.
 
 The wizard picks the engines (web, mobile, or both) and a model provider (None for tests without AI)
 and offers to install this skill, register the MCP server for your coding
-agent, and install dependencies. `--yes` picks the web engine (Playwright) and Vercel AI
+agent, and install dependencies. `--yes` picks the web engine and Vercel AI
 Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
 symlinks to it), registers MCP in `.mcp.json`, `.cursor/mcp.json`, and `.codex/config.toml`, skips
 installing dependencies. A flag per question overrides one default:
@@ -210,9 +211,9 @@ start a script that brings them up and serves the app.
 
 | Option | Meaning |
 | --- | --- |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
+| `browser` | `'chromium'` (default), `'firefox'` (no WebKit), or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: a fresh browser per attempt (`smol()`'s default), run in that browser's own context, so `app.clearState()` and saved sessions are `UNSUPPORTED_CAPABILITY`. Downloads work when the provider has `downloads` (`kernel()`, `smol()`), else `UNSUPPORTED_CAPABILITY`; `setInputFiles` on a provider's browser is always `UNSUPPORTED_CAPABILITY`. |
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (hosted live view, headed run). On a headed hosted browser (Kernel) use `null` and size the service's screen; a fixed size gives a smaller, unmaximized window. |
-| `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; `cdpEndpoint` is required, and both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings, else `INVALID_CONFIG` at load. With `reconnectEndpoint` it rides one persistent default context, needs a fresh browser from `cdpEndpoint` every attempt, and reconnects only to the original browser and page. |
+| `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; `cdpEndpoint` is a resolver `(signal) => url`, not a string, else `INVALID_CONFIG` at load. A dropped connection fails the attempt and is reacquired at the next one. |
 | `headers` | Sent to the app's site only (Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; disables the browser HTTP cache and service workers. |
 | `basicAuth` | `{ username, password }` for a `401` challenge; `password` may be `secrets.get('name')`, resolved per attempt and redacted like any secret, the base64 `Authorization` credential too. |
 | `userAgent` | The `User-Agent` every attempt sends and `navigator.userAgent` reports. |
@@ -226,11 +227,8 @@ start a script that brings them up and serves the app.
   showing the password. An undeclared name is `INVALID_CONFIG` at load, as is
   the handle (a reference, not the value) in `app.command.env`, a template
   literal, or `context`; read those from `process.env`.
-- `reconnectEndpoint` or an attempt-scoped provider rides one persistent
-  context without `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, `app.clearState()`, or
-  session state. Recovery never repeats a dispatched operation; exhausting
-  the budget is `OPERATION_TIMEOUT`. Without `reconnectEndpoint` a dropped
-  connection is reacquired at the next attempt.
+- `browser.locator` takes CSS or XPath only (no `>>` chains, `text=`, or
+  `nth=`). Limits: [web reference](https://e2e.com/docs/reference/web#limits).
 
 Two browsers, one app declaration:
 
@@ -239,7 +237,7 @@ const app = { url: 'http://127.0.0.1:3000' };
 export default {
   targets: [
     { name: 'chromium', engine: web(), app },
-    { name: 'mobile-webkit', engine: web({ browser: 'webkit', viewport: { width: 390, height: 844 } }), app },
+    { name: 'mobile-firefox', engine: web({ browser: 'firefox', viewport: { width: 390, height: 844 } }), app },
   ],
 } satisfies E2EConfig;
 ```

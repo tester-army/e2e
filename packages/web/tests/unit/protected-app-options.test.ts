@@ -110,10 +110,10 @@ describe('web({ locale, timezoneId })', () => {
 });
 
 describe('web({ colorScheme, reducedMotion })', () => {
-  it('accepts every value the browser emulates, on a persistent context too', () => {
+  it('accepts every value the browser emulates, on an attached browser too', () => {
     for (const colorScheme of ['light', 'dark', 'no-preference'] as const) expect(() => web({ colorScheme })).not.toThrow();
     for (const reducedMotion of ['reduce', 'no-preference'] as const) expect(() => web({ reducedMotion })).not.toThrow();
-    const connect = { cdpEndpoint: () => 'ws://127.0.0.1:9222', reconnectEndpoint: () => 'ws://127.0.0.1:9222' };
+    const connect = { cdpEndpoint: () => 'ws://127.0.0.1:9222' };
     expect(() => web({ connect, colorScheme: 'dark', reducedMotion: 'reduce' })).not.toThrow();
   });
 
@@ -196,8 +196,8 @@ describe('web() option keys', () => {
 
   it('rejects an unknown key inside connect and basicAuth', () => {
     const cdpEndpoint = () => 'ws://127.0.0.1:9222';
-    expect(() => web({ connect: { cdpEndpoint, reconectEndpoint: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web({ connect }) has unknown key "reconectEndpoint"; did you mean "reconnectEndpoint"?'),
+    expect(() => web({ connect: { cdpEndpoint, cdpEndpont: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web({ connect }) has unknown key "cdpEndpont"; did you mean "cdpEndpoint"?'),
     );
     expect(() => web({ basicAuth: { username: 'u', password: 'p', usernme: 'u' } } as unknown as Parameters<typeof web>[0])).toThrow(
       refused('web({ basicAuth }) has unknown key "usernme"; did you mean "username"?'),

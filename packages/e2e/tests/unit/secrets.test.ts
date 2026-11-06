@@ -155,10 +155,47 @@ describe('holdSecretRegistry', () => {
     expect(resolves('admin-token')).toBe(false);
   });
 
+  it('puts back the registry a run worker installed before the first hold', () => {
+    setSecretRegistry(withAdmin);
+    const release = holdSecretRegistry(withKey);
+    expect(resolves('api-key')).toBe(true);
+    release();
+    expect(resolves('admin-token')).toBe(true);
+    setSecretRegistry(undefined);
+  });
+
   it('leaves a registry a run installed since in place', () => {
     const release = holdSecretRegistry(withKey);
     setSecretRegistry(withAdmin);
     release();
     expect(resolves('admin-token')).toBe(true);
+  });
+
+  it('hides nothing behind a hold with no secrets or credentials, as attachBrowser opens inside a worker', () => {
+    setSecretRegistry(withAdmin);
+    const release = holdSecretRegistry(registry([], []), { live: true });
+    expect(resolves('admin-token')).toBe(true);
+    release();
+    expect(resolves('admin-token')).toBe(true);
+  });
+
+  it('never puts back a finished run registry once overlapping holds are released', () => {
+    setSecretRegistry(withAdmin);
+    const releaseKey = holdSecretRegistry(withKey);
+    setSecretRegistry(undefined);
+    const releaseOther = holdSecretRegistry(registry([], [adminToken]));
+    releaseKey();
+    releaseOther();
+    expect(resolves('admin-token')).toBe(false);
+    expect(throws('never-configured')).toBe(false);
+  });
+
+  it('keeps open holds resolving when a run clears its registry', () => {
+    setSecretRegistry(withAdmin);
+    const release = holdSecretRegistry(withKey);
+    setSecretRegistry(undefined);
+    expect(resolves('api-key')).toBe(true);
+    release();
+    expect(throws('never-configured')).toBe(false);
   });
 });

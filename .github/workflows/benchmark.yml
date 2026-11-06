@@ -69,10 +69,10 @@ jobs:
           node-version: 26
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - name: Install browsers
-        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
+      - name: Install browsers
+        uses: ./.github/actions/chromium
       - name: Run test
         env:
           # The reporter posts the comment with the job's token.
@@ -134,10 +134,10 @@ jobs:
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
-      - name: Install browsers
-        uses: ./.github/actions/chromium
       - name: Build
         run: pnpm run build
+      - name: Install browsers
+        uses: ./.github/actions/chromium
       - name: Run test:agent
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

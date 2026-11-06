@@ -53,6 +53,19 @@ const LOGIN = `<!doctype html>
 </body>
 </html>`;
 
+/** Signing in sets a `session` cookie in the page and goes to `/`. */
+const SIGN_IN = `<!doctype html>
+<html>
+<head><title>Fixture Sign In</title></head>
+<body>
+<form onsubmit="event.preventDefault(); document.cookie = 'session=' + encodeURIComponent(this.email.value) + '; path=/; max-age=3600'; location.href = '/';">
+<label>Email <input name="email"></label>
+<label>Password <input type="password" name="password"></label>
+<button>Sign in</button>
+</form>
+</body>
+</html>`;
+
 /**
  * A checkout control rendered the way third-party storefront widgets render
  * theirs: inside a closed shadow root, invisible to `shadowRoot` and to
@@ -223,13 +236,18 @@ const TWINS = `<!doctype html>
 </body>
 </html>`;
 
-/** Shows the `x-fixture-header` request header, or `none`; see `headersPage`. */
-function headersPage(value: string | undefined): string {
+/** Shows the `x-fixture-header` request header, or `none`, after what each `/bounce` hop on the way saw. */
+/** `text` with the characters HTML gives meaning escaped, so a reflected header or query value stays text. */
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (character) => `&#${character.charCodeAt(0)};`);
+}
+
+function headersPage(value: string | undefined, seen: readonly string[]): string {
   return `<!doctype html>
 <html>
 <head><title>Fixture Headers</title></head>
 <body>
-<h1>${value ?? 'none'}</h1>
+<h1>${escapeHtml([...seen, value ?? 'none'].join(' > '))}</h1>
 </body>
 </html>`;
 }
@@ -385,6 +403,7 @@ const PAGES: Readonly<Record<string, string>> = {
   '/form': FORM,
   '/values': VALUES,
   '/login': LOGIN,
+  '/sign-in': SIGN_IN,
   '/state': STATE,
   '/twins': TWINS,
   '/rows': ROWS,
@@ -419,7 +438,16 @@ export function startFixtureApp(): Promise<FixtureApp> {
     if (url.pathname === '/headers') {
       const value = request.headers['x-fixture-header'];
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      response.end(headersPage(Array.isArray(value) ? value.join(',') : value));
+      response.end(headersPage(Array.isArray(value) ? value.join(',') : value, url.searchParams.getAll('seen')));
+      return;
+    }
+    if (url.pathname === '/bounce') {
+      const value = request.headers['x-fixture-header'];
+      const next = new URL(url.searchParams.get('to') ?? '/headers', 'http://fixture.test');
+      for (const seen of url.searchParams.getAll('seen')) next.searchParams.append('seen', seen);
+      next.searchParams.append('seen', (Array.isArray(value) ? value.join(',') : value) ?? 'none');
+      response.writeHead(302, { location: next.href });
+      response.end();
       return;
     }
     if (url.pathname === '/protected') {

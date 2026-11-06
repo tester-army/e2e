@@ -1,8 +1,7 @@
 /** URL normalization and origin policy helpers. */
 
 import { ConfigurationError } from './errors.ts';
-import { testPattern } from './regexp.ts';
-import { toTextPattern, withIgnoreCase } from './text.ts';
+import { testPattern, toTextPattern, withIgnoreCase } from './text.ts';
 
 export interface NormalizedBaseUrl {
   /** Serialized base URL without trailing artifacts beyond the normalized path. */
@@ -192,7 +191,8 @@ export function sameSite(url: string | URL, site: string): boolean {
 
 /**
  * Compares a current URL to an expected string/regexp.
- * Relative expected strings resolve against the base URL; string comparison is
+ * Relative expected strings resolve against the base URL, and match nothing
+ * without one; string comparison is
  * exact after WHATWG serialization; regexps test the complete serialized URL.
  * Anything else is `INVALID_ARGUMENT`, the `toTextPattern` rule.
  * `ignoreCase` is Playwright's: `true` compares a string case-insensitively
@@ -201,7 +201,7 @@ export function sameSite(url: string | URL, site: string): boolean {
 export function urlMatches(
   current: string,
   expected: string | RegExp,
-  baseHref: string,
+  baseHref: string | undefined,
   ignoreCase?: boolean,
 ): boolean {
   const pattern = withIgnoreCase(toTextPattern(expected), ignoreCase);

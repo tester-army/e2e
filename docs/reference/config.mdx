@@ -474,7 +474,6 @@ Each is `'grant'`, `'deny'`, or `'reset'`.
 | --- | --- |
 | `chromium` | `accelerometer`, `ambient-light-sensor`, `background-sync`, `camera`, `clipboard-read`, `clipboard-write`, `geolocation`, `gyroscope`, `local-fonts`, `local-network-access`, `magnetometer`, `microphone`, `midi`, `midi-sysex`, `notifications`, `payment-handler`, `screen-wake-lock`, `storage-access` |
 | `firefox` | `geolocation`, `local-network-access`, `notifications`, `persistent-storage`, `push`, `screen-wake-lock` |
-| `webkit` | `camera`, `clipboard-read`, `geolocation`, `microphone`, `notifications`, `screen-wake-lock` |
 
 A browser provider or `connect` takes the `chromium` names: the engine drives
 it over CDP, Lightpanda included.
@@ -842,7 +841,7 @@ engine.
 
 | Recorder | Files under the attempt's artifact directory |
 | --- | --- |
-| Browser engine, Playwright screencast | `video/video.webm`, one segment per page the attempt showed, later ones as `video/video-part<n>.webm`. [`web({ screencast })`](/reference/web#options) sets the frame size and quality |
+| Browser engine screencast | `video/video.webm`, one segment per page the attempt showed, later ones as `video/video-part<n>.webm`. [`web({ screencast })`](/reference/web#options) sets the frame size and quality |
 | Mobile engine, agent-device | `video/video.mp4` |
 | A provider's own recording ([`BrowserProvider.record`](/browser#recording-on-the-provider), [`DeviceProvider.record`](/mobile#hosted-devices)) | the file the provider wrote, as `video/<file>`: Kernel's is `video/replay.mp4`. Or a link to a recording the service keeps, recorded with `url` in place of `path`; the runner never downloads it |
 

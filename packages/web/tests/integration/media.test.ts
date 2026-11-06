@@ -6,22 +6,10 @@
  * the `browser` fixture, as the attempt executor drives them.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { EngineCleanupContext, EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
-import { web, surfaceOf, type Browser, type WebMedia, type WebOptions } from '../../src/index.ts';
+import type { WebMedia, WebOptions } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
-
-function cleanup(): EngineCleanupContext {
-  return { signal: new AbortController().signal, timeoutMs: 30_000 };
-}
-
-function operation(): OperationContext {
-  return { signal: new AbortController().signal, timeoutMs: 30_000, runId: 'run-media', attemptId: 'm1', origin: 'test' };
-}
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /** What the media page shows: its paragraph's computed style, what `matchMedia` reports now, and what its head script read before first paint. */
 interface MediaReading {
@@ -37,53 +25,31 @@ const DARK = 'rgb(255, 255, 255)';
 
 describe('media emulation', () => {
   let app: FixtureApp;
-  let artifactsDir: string;
 
   beforeAll(async () => {
     app = await startFixtureApp();
-    artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-media-'));
   });
 
   afterAll(async () => {
     await app.close();
-    rmSync(artifactsDir, { recursive: true, force: true });
   });
 
   /** Boots one engine into a running attempt, with no page open yet. */
-  async function boot(options: WebOptions): Promise<EngineHandle> {
-    const engine = web(options);
-    await engine.init!({
-      runId: 'run-media', targetName: 'web', projectRoot: process.cwd(),
-      app: { site: new URL(app.url).hostname }, env: {}, headed: false,
-      workerSlot: 0, log: () => undefined, signal: new AbortController().signal,
-    });
-    await engine.startAttempt!({ attemptId: 'm1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
-    return engine;
+  function boot(options: WebOptions): Promise<WebSession> {
+    return startWebSession({ web: options });
   }
 
-  async function shutdown(engine: EngineHandle): Promise<void> {
-    await engine.endAttempt!(cleanup());
-    await engine.dispose!(cleanup());
+  async function shutdown(engine: WebSession): Promise<void> {
+    await engine.close();
   }
 
-  /** The engine's `browser` fixture, with the harness parts it reaches stubbed. */
-  function fixtureOf(engine: EngineHandle): Browser {
-    return engine.fixtures!['browser']!({
-      operation,
-      app: { resolveUrl: (url: string) => new URL(url, app.url).href },
-      expectable: (target: object) => target,
-      fixture: (_name: string, target: object) => target,
-      attachArtifact: () => undefined,
-    } as unknown as EngineFixtureContext) as Browser;
-  }
-
-  async function openMedia(engine: EngineHandle): Promise<MediaReading> {
-    await engine.session!.open!(`${app.url}/media`, operation());
+  async function openMedia(engine: WebSession): Promise<MediaReading> {
+    await engine.open(`${app.url}/media`);
     return read(engine);
   }
 
-  function read(engine: EngineHandle): Promise<MediaReading> {
-    return surfaceOf(engine)!.page().evaluate(() => {
+  async function read(engine: WebSession): Promise<MediaReading> {
+    return (await engine.browser.evaluate(() => {
       const style = getComputedStyle(document.querySelector('p')!);
       return {
         color: style.color,
@@ -92,7 +58,7 @@ describe('media emulation', () => {
         reduce: matchMedia('(prefers-reduced-motion: reduce)').matches,
         atLoad: (window as unknown as { atLoad: MediaReading['atLoad'] }).atLoad,
       };
-    });
+    })) as unknown as MediaReading;
   }
 
   /** The reading of a page that loaded with `media` in force. */
@@ -105,16 +71,17 @@ describe('media emulation', () => {
     const expected = loadedWith({ dark: true, reduce: true });
     try {
       expect(await openMedia(engine)).toEqual(expected);
-      await engine.session!.restart!(operation());
+      await engine.engine.session!.restart!(engine.op());
       expect(await openMedia(engine)).toEqual(expected);
-      await engine.session!.reset!(operation());
+      await engine.engine.session!.reset!(engine.op());
       expect(await openMedia(engine)).toEqual(expected);
     } finally {
       await shutdown(engine);
     }
   });
 
-  it('leaves the browser\'s own media when none is configured', async () => {
+  it('leaves the browser\'s own media when none is configured', async ({ skip }) => {
+    skip(onFirefox && process.platform === 'darwin', 'Firefox limit: headless Firefox follows the host\'s color scheme, which macOS may set to dark');
     const engine = await boot({});
     try {
       expect(await openMedia(engine)).toEqual(loadedWith({ dark: false, reduce: false }));
@@ -123,9 +90,10 @@ describe('media emulation', () => {
     }
   });
 
-  it('emulates media set before the first navigation from first paint, and holds a change for the rest of the attempt', async () => {
+  it('emulates media set before the first navigation from first paint, and holds a change for the rest of the attempt', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: browser.emulateMedia({ reducedMotion }) is UNSUPPORTED_CAPABILITY, BiDi overrides only the color scheme');
     const engine = await boot({ colorScheme: 'dark' });
-    const browser = fixtureOf(engine);
+    const { browser } = engine;
     try {
       await browser.emulateMedia({ reducedMotion: 'reduce' });
       expect(await openMedia(engine)).toEqual(loadedWith({ dark: true, reduce: true }));
@@ -133,9 +101,9 @@ describe('media emulation', () => {
       await browser.emulateMedia({ colorScheme: 'light' });
       expect(await read(engine)).toEqual({ ...loadedWith({ dark: false, reduce: true }), atLoad: { dark: true, reduce: true } });
       const expected = loadedWith({ dark: false, reduce: true });
-      await engine.session!.restart!(operation());
+      await engine.engine.session!.restart!(engine.op());
       expect(await openMedia(engine)).toEqual(expected);
-      await engine.session!.reset!(operation());
+      await engine.engine.session!.reset!(engine.op());
       expect(await openMedia(engine)).toEqual(expected);
       await browser.emulateMedia({ colorScheme: 'no-preference', reducedMotion: 'no-preference' });
       expect(await read(engine)).toMatchObject({ color: LIGHT, transition: '0.3s', dark: false, reduce: false });
@@ -144,23 +112,28 @@ describe('media emulation', () => {
     }
   });
 
-  it('gives a tab the app opens itself a test\'s change as it appears and later', async () => {
+  it('gives a tab the app opens itself a test\'s change as it appears and later', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: browser.emulateMedia({ reducedMotion }) is UNSUPPORTED_CAPABILITY, BiDi overrides only the color scheme');
     const engine = await boot({ colorScheme: 'dark' });
     try {
-      await fixtureOf(engine).emulateMedia({ colorScheme: 'light' });
+      await engine.browser.emulateMedia({ colorScheme: 'light' });
       expect(await openMedia(engine)).toEqual(loadedWith({ dark: false, reduce: false }));
-      const live = surfaceOf(engine)!;
-      const [popup] = await Promise.all([
-        live.context().waitForEvent('page'),
-        live.page().evaluate(() => { window.open('/media'); }),
-      ]);
-      await popup.waitForLoadState('load');
-      const now = () => popup.evaluate(() => ({
-        dark: matchMedia('(prefers-color-scheme: dark)').matches,
-        reduce: matchMedia('(prefers-reduced-motion: reduce)').matches,
-      }));
+      // The opener reads the popup's own media through the handle window.open returned: both share one origin.
+      await engine.browser.evaluate(async () => {
+        const popup = window.open('/media')!;
+        Reflect.set(window, 'popup', popup);
+        while (popup.document.readyState !== 'complete' || popup.location.pathname !== '/media') await new Promise((resolve) => setTimeout(resolve, 20));
+        return null;
+      });
+      const now = () => engine.browser.evaluate(() => {
+        const popup = Reflect.get(window, 'popup') as Window;
+        return {
+          dark: popup.matchMedia('(prefers-color-scheme: dark)').matches,
+          reduce: popup.matchMedia('(prefers-reduced-motion: reduce)').matches,
+        };
+      });
       expect(await now()).toEqual({ dark: false, reduce: false });
-      await fixtureOf(engine).emulateMedia({ reducedMotion: 'reduce' });
+      await engine.browser.emulateMedia({ reducedMotion: 'reduce' });
       expect(await now()).toEqual({ dark: false, reduce: true });
       expect(await read(engine)).toMatchObject({ dark: false, reduce: true });
     } finally {
@@ -170,16 +143,17 @@ describe('media emulation', () => {
 
   it('refuses a feature it does not emulate and a value outside the ones it takes, changing nothing', async () => {
     const engine = await boot({ colorScheme: 'dark' });
-    const browser = fixtureOf(engine);
+    const { browser } = engine;
     const refused = (message: string) => expect.objectContaining({ code: 'INVALID_ARGUMENT', message });
+    const emulate = (media: WebMedia) => browser.emulateMedia(media);
     try {
-      await expect(browser.emulateMedia({ colorScheme: 'sepia' } as unknown as WebMedia)).rejects.toThrow(
+      await expect(emulate({ colorScheme: 'sepia' } as unknown as WebMedia)).rejects.toThrow(
         refused('browser.emulateMedia({ colorScheme }) must be "light", "dark", or "no-preference", got "sepia"'),
       );
-      await expect(browser.emulateMedia({ forcedColors: 'active' } as unknown as WebMedia)).rejects.toThrow(
+      await expect(emulate({ forcedColors: 'active' } as unknown as WebMedia)).rejects.toThrow(
         refused('browser.emulateMedia options has no key "forcedColors"; it takes colorScheme, reducedMotion'),
       );
-      await expect(browser.emulateMedia(undefined as unknown as WebMedia)).rejects.toThrow(
+      await expect(emulate(undefined as unknown as WebMedia)).rejects.toThrow(
         refused('browser.emulateMedia takes { colorScheme?, reducedMotion? }'),
       );
       expect(await openMedia(engine)).toEqual(loadedWith({ dark: true, reduce: false }));

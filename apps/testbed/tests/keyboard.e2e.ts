@@ -16,7 +16,7 @@
 
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { content, CROSS } from './helpers.ts';
+import { browserName, content, CROSS } from './helpers.ts';
 
 /** Records the last keydown in `window.lastEvent`, Playwright's `captureLastKeydown`. */
 const captureLastKeydown = `() => {
@@ -353,6 +353,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
 
   test('should press audio and media control keys', async ({ browser }) => {
     await browser.goto(content('<input autofocus>'));
+    test.skip(await browserName(browser) === 'firefox', 'WebDriver defines no key values for the media keys (https://w3c.github.io/webdriver/#keyboard-actions), and Firefox takes key input over WebDriver BiDi only');
     await browser.locator('input').focus();
     await browser.evaluate(captureLastKeydown);
     const mediaKeys = [
@@ -440,6 +441,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
   test('should support MacOS shortcuts', async ({ browser }) => {
     test.skip(!isMac);
     await browser.goto('/input/textarea.html');
+    test.skip(await browserName(browser) === 'firefox', 'Firefox on macOS runs no editing key binding for Control+Alt+B on synthesized key events; Playwright marks it fixme on Firefox and macOS too (microsoft/playwright#5721)');
     await browser.locator('textarea').pressSequentially('some text');
     await browser.keyboard.press('Shift+Control+Alt+KeyB');
     await browser.keyboard.press('Backspace');

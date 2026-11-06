@@ -9,10 +9,10 @@
 
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/in-page/closed-shadow.ts';
 import { captureTagged, MARKER, type Disagreement } from '../crosscheck/crosscheck.ts';
+import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
 import { diffExpectations, keyOf, readExpectations, TODO_REASON, writeExpectations } from '../crosscheck/expectations.ts';
 
 interface AxeCase {
@@ -42,7 +42,7 @@ const UPDATE = process.env['E2E_CROSSCHECK_UPDATE'] === '1';
  */
 const EMPTY_BOXES = '<style>:empty { min-width: 1px; min-height: 1px }</style>';
 
-/** axe spells an open shadow root as `<template shadow>`; this attaches each one, as Playwright's runner of these cases does. */
+/** axe spells an open shadow root as `<template shadow>`; this attaches each one, as axe's own runner of these cases does. */
 const SHADOW_TEMPLATES = `<script>
   for (const template of document.querySelectorAll('template[shadow]')) {
     template.parentElement.attachShadow({ mode: 'open' }).appendChild(template.content);
@@ -54,21 +54,38 @@ const SHADOW_TEMPLATES = `<script>
 const AS_ARIA: Readonly<Record<string, string>> = { image: 'img' };
 const NO_ROLE = new Set(['generic', 'none', 'presentation', 'text']);
 
-let browser: Browser;
-let page: Page;
+let page: BidiPage;
 const seen = new Set<string>();
 const pages = new Set<string>();
 
 beforeAll(async () => {
-  browser = await chromium.launch();
-  const context = await browser.newContext();
-  await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
-  page = await context.newPage();
+  page = await openBidiPage({ preloadScripts: [CLOSED_SHADOW_ROOTS_INIT_SCRIPT] });
 });
 
 afterAll(async () => {
-  await browser?.close();
+  await page?.close();
 });
+
+/** Whether `selector` matches an element in the page, open shadow trees included, and the marker the first match carries. */
+async function markerOf(selector: string): Promise<{ count: number; id: string | null }> {
+  return (await page.evaluate(
+    (target: string, marker: string) => {
+      const find = (root: Document | ShadowRoot): Element | null => {
+        const own = root.querySelector(target);
+        if (own !== null) return own;
+        for (const element of root.querySelectorAll('*')) {
+          const inner = element.shadowRoot === null ? null : find(element.shadowRoot);
+          if (inner !== null) return inner;
+        }
+        return null;
+      };
+      const match = find(document);
+      return { count: match === null ? 0 : 1, id: match?.getAttribute(marker) ?? null };
+    },
+    selector,
+    MARKER,
+  )) as { count: number; id: string | null };
+}
 
 const asList = <T,>(value: T | readonly T[]): readonly T[] => (Array.isArray(value) ? value : [value as T]);
 
@@ -81,38 +98,33 @@ describe('axe-core conformance', () => {
       let targets = 0;
       for (const [index, entry] of cases.entries()) {
         await page.setContent(`<!doctype html><html lang="en"><head>${EMPTY_BOXES}</head><body>${entry.html}${SHADOW_TEMPLATES}</body></html>`);
-        const { nodes, published } = await captureTagged(page);
-        try {
-          const byId = new Map(nodes.map((node) => [node.ref.id, node]));
-          const selectors = asList(entry.target);
-          const texts = entry.accessibleText === undefined ? undefined : asList(entry.accessibleText);
-          for (const [position, selector] of selectors.entries()) {
-            targets += 1;
-            const target = page.locator(selector).first();
-            expect(await target.count(), `${table} #${index}: ${selector} matches nothing`).toBe(1);
-            const id = await target.getAttribute(MARKER);
-            const node = id === null ? undefined : byId.get(id);
-            const label = `#${index} ${selector}`;
-            const push = (field: string, ours: string, theirs: string) => {
-              const disagreement: Disagreement = { oracle: 'axe', field, ours, theirs, node: label };
-              seen.add(keyOf(name, disagreement));
-            };
-            if (entry.role !== undefined) {
-              // A node the tree does not list has no role to the model either.
-              const ours = node?.role === undefined || NO_ROLE.has(node.role) ? 'none' : (AS_ARIA[node.role] ?? node.role);
-              const theirs = entry.role === null || entry.role === undefined || NO_ROLE.has(entry.role) ? 'none' : entry.role;
-              if (ours !== theirs) push('role', ours, theirs);
-              checked += 1;
-            }
-            if (texts !== undefined) {
-              const ours = node === undefined ? '(not in tree)' : (node.name ?? '').replace(/\s+/g, ' ').trim();
-              const theirs = (texts[position] ?? '').replace(/\s+/g, ' ').trim();
-              if (ours !== theirs) push('name', ours, theirs);
-              checked += 1;
-            }
+        const { nodes } = await captureTagged(page);
+        const byId = new Map(nodes.map((node) => [node.ref.id, node]));
+        const selectors = asList(entry.target);
+        const texts = entry.accessibleText === undefined ? undefined : asList(entry.accessibleText);
+        for (const [position, selector] of selectors.entries()) {
+          targets += 1;
+          const { count, id } = await markerOf(selector);
+          expect(count, `${table} #${index}: ${selector} matches nothing`).toBe(1);
+          const node = id === null ? undefined : byId.get(id);
+          const label = `#${index} ${selector}`;
+          const push = (field: string, ours: string, theirs: string) => {
+            const disagreement: Disagreement = { oracle: 'axe', field, ours, theirs, node: label };
+            seen.add(keyOf(name, disagreement));
+          };
+          if (entry.role !== undefined) {
+            // A node the tree does not list has no role to the model either.
+            const ours = node?.role === undefined || NO_ROLE.has(node.role) ? 'none' : (AS_ARIA[node.role] ?? node.role);
+            const theirs = entry.role === null || entry.role === undefined || NO_ROLE.has(entry.role) ? 'none' : entry.role;
+            if (ours !== theirs) push('role', ours, theirs);
+            checked += 1;
           }
-        } finally {
-          published.dispose();
+          if (texts !== undefined) {
+            const ours = node === undefined ? '(not in tree)' : (node.name ?? '').replace(/\s+/g, ' ').trim();
+            const theirs = (texts[position] ?? '').replace(/\s+/g, ' ').trim();
+            if (ours !== theirs) push('name', ours, theirs);
+            checked += 1;
+          }
         }
       }
       expect(checked, `${table} checked nothing`).toBeGreaterThan(0);

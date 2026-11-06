@@ -1,10 +1,10 @@
 /**
  * Reaching an app behind a gate: configured request headers reach the app's
  * site on every context the attempt opens, and never another site; basic-auth
- * credentials answer a challenge wherever one is issued, as Playwright's own
- * do. Driven through the engine hooks, as the attempt executor drives them; a
- * second fixture instance reached as `localhost` rather than `127.0.0.1`
- * stands in for a third-party site.
+ * credentials answer a challenge wherever one is issued. Driven through the
+ * engine hooks, as the attempt executor drives them; a second fixture
+ * instance reached as `localhost` rather than `127.0.0.1` stands in for a
+ * third-party site.
  */
 
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -13,9 +13,10 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
 import type { EngineCleanupContext, EngineHandle, OperationContext, Secret } from 'e2e/engine';
-import { web, surfaceOf } from '../../src/index.ts';
+import type { Browser } from '../../src/index.ts';
 import { PROTECTED_CREDENTIAL, startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+import { browserFixture, testWeb as web } from '../helpers/web-session.ts';
 
 function cleanup(): EngineCleanupContext {
   return { signal: new AbortController().signal, timeoutMs: 30_000 };
@@ -44,6 +45,11 @@ async function boot(
     signal: new AbortController().signal,
   });
   await engine.startAttempt!({ attemptId, artifactsDir, signal: new AbortController().signal, resolveSecret, ...ignoreTrace });
+}
+
+/** The engine's `browser` fixture for the open attempt. */
+function browserOf(engine: EngineHandle, app: FixtureApp): Browser {
+  return browserFixture(engine, { baseUrl: app.url, site: new URL(app.url).hostname });
 }
 
 async function shutdown(engine: EngineHandle): Promise<void> {
@@ -99,13 +105,31 @@ describe('web({ headers, basicAuth })', () => {
     try {
       await boot(engine, app, artifactsDir, 'h2');
       let routed = 0;
-      // Registered after the header route, so it runs first, as a `browser.route` handler does.
-      await surfaceOf(engine)!.context().route('**/headers', async (route) => {
+      // Registered after the header route, so it runs first.
+      await browserOf(engine, app).route('**/headers', async (route) => {
         routed += 1;
         await route.fallback();
       });
       expect(await headingAt(engine, 'h2', `${app.url}/headers`)).toBe('through-the-route');
       expect(routed).toBe(1);
+    } finally {
+      await shutdown(engine);
+    }
+  });
+
+  it('sends the headers to every redirect hop on the app\'s site and to none off it, routed or not', async () => {
+    const engine = web({ headers: { 'x-fixture-header': 'let-me-in' } });
+    try {
+      await boot(engine, app, artifactsDir, 'h3');
+      const bounce = (from: string, to: string): string => `${from}/bounce?to=${encodeURIComponent(to)}`;
+      expect(await headingAt(engine, 'h3', bounce(app.url, `${app.url}/headers`))).toBe('let-me-in > let-me-in');
+      expect(await headingAt(engine, 'h3', bounce(app.url, `${other.url}/headers`))).toBe('let-me-in > none');
+      expect(await headingAt(engine, 'h3', bounce(app.url, bounce(other.url, `${app.url}/headers`)))).toBe('let-me-in > none > let-me-in');
+      // A route's own header overrides reach every hop; the site's stay on the site.
+      await browserOf(engine, app).route('**/bounce?*', async (route) => {
+        await route.continue({ headers: { ...route.request.headers, 'x-fixture-header': 'from-route' } });
+      });
+      expect(await headingAt(engine, 'h3', bounce(app.url, bounce(other.url, `${app.url}/headers`)))).toBe('let-me-in > from-route > let-me-in');
     } finally {
       await shutdown(engine);
     }
@@ -118,12 +142,13 @@ describe('web({ headers, basicAuth })', () => {
       await navigator.serviceWorker.register('/sw.js').catch(() => undefined);
       return (await navigator.serviceWorker.getRegistrations()).length;
     };
+    const registered = (engine: EngineHandle) => browserOf(engine, app).evaluate(registrations);
     const plain = web();
     try {
       await boot(plain, app, artifactsDir, 's0');
       await headingAt(plain, 's0', `${app.url}/`);
       // The fixture itself can register one: 127.0.0.1 is a secure context.
-      expect(await surfaceOf(plain)!.page().evaluate(registrations)).toBe(1);
+      expect(await registered(plain)).toBe(1);
     } finally {
       await shutdown(plain);
     }
@@ -131,7 +156,7 @@ describe('web({ headers, basicAuth })', () => {
     try {
       await boot(engine, app, artifactsDir, 's1');
       await headingAt(engine, 's1', `${app.url}/`);
-      expect(await surfaceOf(engine)!.page().evaluate(registrations)).toBe(0);
+      expect(await registered(engine)).toBe(0);
     } finally {
       await shutdown(engine);
     }
@@ -171,15 +196,15 @@ describe('web({ headers, basicAuth })', () => {
   });
 
   it('reports the configured user agent to the page, after a context reset too', async () => {
-    const engine = web({ userAgent: 'Mozilla/5.0 e2e-probe playwright' });
+    const engine = web({ userAgent: 'Mozilla/5.0 e2e-probe' });
     try {
       await boot(engine, app, artifactsDir, 'u0');
       await engine.session!.open!(app.url, operation('u0'));
-      const page = () => surfaceOf(engine)!.page();
-      expect(await page().evaluate(() => navigator.userAgent)).toBe('Mozilla/5.0 e2e-probe playwright');
+      const userAgent = () => browserOf(engine, app).evaluate(() => navigator.userAgent);
+      expect(await userAgent()).toBe('Mozilla/5.0 e2e-probe');
       await engine.session!.reset!(operation('u0'));
       await engine.session!.open!(app.url, operation('u0'));
-      expect(await page().evaluate(() => navigator.userAgent)).toBe('Mozilla/5.0 e2e-probe playwright');
+      expect(await userAgent()).toBe('Mozilla/5.0 e2e-probe');
     } finally {
       await shutdown(engine);
     }
@@ -188,7 +213,7 @@ describe('web({ headers, basicAuth })', () => {
   it('runs the page in the configured locale and time zone, after a context reset too', async () => {
     const engine = web({ locale: 'de-DE', timezoneId: 'Asia/Tokyo' });
     const read = () =>
-      surfaceOf(engine)!.page().evaluate(() => ({
+      browserOf(engine, app).evaluate(() => ({
         language: navigator.language,
         timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         offset: new Date('2026-01-01T00:00:00Z').getTimezoneOffset(),

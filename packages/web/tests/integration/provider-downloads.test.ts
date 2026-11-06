@@ -1,7 +1,7 @@
 /**
  * A provider that serves downloads, against a real Chrome over CDP: the
  * browser saves the file to the provider's directory on its own disk, not
- * Playwright's on the runner's, and `waitForDownload` gets it back through
+ * the engine's on the runner's, and `waitForDownload` gets it back through
  * the provider's `read`. A hosted browser needs exactly this, since the
  * runner's directory does not exist on its machine; here the "remote" disk
  * is a local directory the provider reads.
@@ -12,11 +12,12 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeAll, afterAll, describe, expect, it } from 'vitest';
-import type { EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
-import { web as webEngine, surfaceOf, type BrowserProvider, type BrowserProviderScope, type Browser } from '../../src/index.ts';
+import type { EngineHandle, OperationContext } from 'e2e/engine';
+import { web as webEngine, type BrowserProvider, type BrowserProviderScope } from '../../src/index.ts';
 import { closeRemoteChrome, launchRemoteChrome, type RemoteChrome } from '../helpers/cdp-host.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+import { browserFixture, bySelector } from '../helpers/web-session.ts';
 
 function operation(): OperationContext {
   return { timeoutMs: 15_000, signal: new AbortController().signal, runId: 'run-downloads', attemptId: 'a1', origin: 'test' };
@@ -27,6 +28,27 @@ function cleanup() {
 }
 
 const signal = () => new AbortController().signal;
+
+/** Taps the one node `selector` locates in `engine`'s page. */
+async function tap(engine: EngineHandle, selector: string): Promise<void> {
+  const [node] = await engine.locate!(bySelector(selector), operation());
+  await engine.perform!(node!.ref, { kind: 'tap' }, operation());
+}
+
+/** Adds `count` links to the page, each downloading `report-<n>.txt` with `body` and its index, or `name` when given. */
+async function addDownloadLinks(engine: EngineHandle, baseUrl: string, count: number, body: string, name?: string): Promise<void> {
+  await browserFixture(engine, { baseUrl }).evaluate(({ total, text, file }: { total: number; text: string; file: string | null }) => {
+    for (let index = 0; index < total; index += 1) {
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(new Blob([file === null ? `${text} ${index}` : text]));
+      link.download = file ?? `report-${index}.txt`;
+      link.id = file === null ? `download-${index}` : 'download';
+      link.textContent = 'Download';
+      document.body.append(link);
+    }
+    return null;
+  }, { total: count, text: body, file: name ?? null });
+}
 
 describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a provider, %s scope', (scope) => {
   let app: FixtureApp;
@@ -79,30 +101,14 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
     });
     await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: signal(), resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!(`${app.url}/login`, operation());
-    const page = surfaceOf(engine)!.page();
-    await page.evaluate((downloadCount) => {
-      for (let index = 0; index < downloadCount; index += 1) {
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(new Blob([`report body ${index}`]));
-        link.download = `report-${index}.txt`;
-        link.id = `download-${index}`;
-        link.textContent = 'Download';
-        document.body.append(link);
-      }
-    }, count);
+    await addDownloadLinks(engine, app.url, count, 'report body');
     const attached: string[] = [];
-    const browser = engine.fixtures!['browser']!({
-      operation: () => operation(),
-      app: { resolveUrl: (url: string) => new URL(url, app.url).href },
-      expectable: (target: object) => target,
-      fixture: (_name: string, target: object) => target,
-      attachArtifact: (_kind: string, relative: string) => attached.push(relative),
-    } as unknown as EngineFixtureContext) as Browser;
+    const browser = browserFixture(engine, { baseUrl: app.url, operation: () => operation(), attach: (relative) => attached.push(relative) });
 
     let triggers = 0;
     const trigger = async (): Promise<void> => {
       triggers += 1;
-      for (let index = 0; index < count; index += 1) await page.locator(`#download-${index}`).click();
+      for (let index = 0; index < count; index += 1) await tap(engine!, `#download-${index}`);
     };
     const files = count === 1
       ? [await browser.waitForDownload(trigger)]
@@ -149,23 +155,14 @@ describe.each<BrowserProviderScope>(['worker', 'attempt'])('downloads through a 
     await engine.init!({ runId: 'run-downloads', targetName: 'web', projectRoot: process.cwd(), app: { site: new URL(app.url).hostname }, env: { ...prepared?.env }, headed: false, workerSlot: 0, signal: signal(), log: () => undefined });
     await engine.startAttempt!({ attemptId: 'a1', artifactsDir, signal: signal(), resolveSecret: noSecrets, ...ignoreTrace });
     await engine.session!.open!(app.url, operation());
-    const page = surfaceOf(engine)!.page();
-    await page.evaluate(() => {
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(new Blob(['stalled provider body']));
-      link.download = 'report.txt';
-      link.id = 'download';
-      link.textContent = 'Download';
-      document.body.append(link);
-    });
+    await addDownloadLinks(engine, app.url, 1, 'stalled provider body', 'report.txt');
     const attached: string[] = [];
-    const browser = engine.fixtures!['browser']!({
+    const browser = browserFixture(engine, {
+      baseUrl: app.url,
       operation: (timeout?: number) => ({ ...operation(), timeoutMs: timeout ?? 15000 }),
-      app: { resolveUrl: (url: string) => new URL(url, app.url).href },
-      expectable: (target: object) => target, fixture: (_name: string, target: object) => target,
-      attachArtifact: (_kind: string, relative: string) => attached.push(relative),
-    } as unknown as EngineFixtureContext) as Browser;
-    const trigger = () => page.locator('#download').click();
+      attach: (relative) => attached.push(relative),
+    });
+    const trigger = () => tap(engine!, '#download');
     const work = method === 'waitForDownload'
       ? browser.waitForDownload(trigger, { timeout: 500 })
       : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });

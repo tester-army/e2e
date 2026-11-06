@@ -7,8 +7,10 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  createResolver,
   resolveExpression,
   type LocatorExpression,
+  type ResolverPlatform,
   type SemanticNode,
   type SemanticQuery,
   type TextPattern,
@@ -200,5 +202,64 @@ describe('resolveExpression', () => {
     expect(() => ids({ kind: 'frame', selector: 'iframe', source: query('role', 'button') })).toThrowError(
       expect.objectContaining({ code: 'FRAME_NOT_FOUND', retryable: false }),
     );
+  });
+});
+
+describe('createResolver', () => {
+  /** A platform over numbered nodes, each one's parent at its index in `parents`, where a query's regexp value tests the node's number. */
+  function numbered(parents: readonly (number | undefined)[], order?: readonly number[]): ResolverPlatform<number> {
+    return {
+      nodes: order ?? parents.map((_parent, index) => index),
+      parent: (at) => parents[at],
+      matches: (at, asked) => asked.value.kind === 'regexp' && new RegExp(asked.value.source).test(String(at)),
+      hasText: () => false,
+      selector: () => [],
+      fail: (code, message) => {
+        throw new Error(`${code}: ${message}`);
+      },
+    };
+  }
+
+  /** A query of `kind` whose value is the regexp `source`. */
+  function digits(source: string, kind: SemanticQuery['kind'] = 'role'): LocatorExpression {
+    return { kind: 'query', query: { kind, value: { kind: 'regexp', source, flags: '' } } };
+  }
+
+  it('orders matches, and counts nth, by the platform order', () => {
+    const resolve = createResolver(numbered([undefined, 0, 0], [0, 2, 1]));
+    expect(resolve(digits('^[12]$'))).toEqual([2, 1]);
+    expect(resolve({ kind: 'index', source: digits('^[12]$'), index: 0 })).toEqual([2]);
+  });
+
+  it("resolves has among each match's own descendants, so a position counts inside it", () => {
+    // 0 holds 1 (holding 2 and 3) and 4 (holding 5).
+    const resolve = createResolver(numbered([undefined, 0, 1, 1, 0, 4]));
+    const firstLeaf: LocatorExpression = { kind: 'index', source: digits('^[235]$'), index: 'first' };
+    expect(resolve({ kind: 'filter', source: digits('^[14]$'), has: firstLeaf })).toEqual([1, 4]);
+    expect(resolve({ kind: 'filter', source: digits('^[14]$'), has: digits('^5$') })).toEqual([4]);
+    expect(resolve({ kind: 'filter', source: digits('^[14]$'), hasNot: digits('^5$') })).toEqual([1]);
+  });
+
+  it('keeps innermost text matches and scopes to strict descendants of a deep, wide tree in linear time', () => {
+    // A chain 400 deep, then 20000 leaves under its last node.
+    const depth = 400;
+    const parents: (number | undefined)[] = [undefined];
+    for (let index = 1; index < depth; index += 1) parents.push(index - 1);
+    for (let index = 0; index < 20_000; index += 1) parents.push(depth - 1);
+    const resolve = createResolver(numbered(parents));
+    const started = performance.now();
+    expect(resolve(digits('.', 'text'))).toHaveLength(20_000);
+    expect(resolve({ kind: 'query', query: { kind: 'role', value: { kind: 'regexp', source: '.', flags: '' } }, scope: digits('^0$') })).toHaveLength(parents.length - 1);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  it('fails a frame through the platform', () => {
+    expect(() => createResolver(numbered([undefined]))({ kind: 'frame', selector: 'iframe', source: digits('0') })).toThrowError(/^FRAME_NOT_FOUND: /);
+  });
+
+  it('runs serialized, closing over nothing of its module', () => {
+    // oxlint-disable-next-line no-new-func -- the page revives the resolver from its source the same way
+    const revived = new Function(`return (${createResolver.toString()})`)() as typeof createResolver;
+    expect(revived(numbered([undefined, 0, 1]))(digits('.', 'label'))).toEqual([2]);
   });
 });

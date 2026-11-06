@@ -4,7 +4,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright-core';
+import { browserExecutable } from '../../src/install/provision.ts';
 
 /** A live Chrome with a random remote-debugging port; the host the engine attaches to. */
 export interface RemoteChrome {
@@ -21,22 +21,32 @@ export async function closeRemoteChrome(chrome: Omit<RemoteChrome, 'endpoint'>):
   rmSync(chrome.userDataDir, { recursive: true, force: true });
 }
 
+/** What the remote host runs. */
+export interface RemoteChromeOptions {
+  /**
+   * A full Chrome build, run in new headless mode with its component
+   * extensions and browser UI targets, as a user's own Chrome has them. The
+   * pinned headless shell when unset.
+   */
+  readonly fullChrome?: string;
+}
+
 /** Launches the remote host and releases its resources if it never becomes ready. */
-export async function launchRemoteChrome(): Promise<RemoteChrome> {
+export async function launchRemoteChrome(options: RemoteChromeOptions = {}): Promise<RemoteChrome> {
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'e2e-cdp-host-'));
   // The sandbox flags are what a containerized CI runner needs to start Chrome
   // at all; they change nothing about the attach under test.
-  const proc = spawn(chromium.executablePath(), [
-    '--headless=new',
+  // The pinned headless shell is always headless, the build a headless launch
+  // runs, and as a blank host needs no extension workers.
+  const proc = spawn(options.fullChrome ?? (await browserExecutable('chromium', false)), [
+    ...(options.fullChrome === undefined ? ['--disable-extensions', '--disable-component-extensions-with-background-pages'] : ['--headless=new']),
     '--remote-debugging-port=0',
     '--no-first-run',
     '--no-default-browser-check',
     '--password-store=basic',
+    // Without it, Chrome on macOS can wait on a Keychain prompt and load no page.
     '--use-mock-keychain',
     '--disable-gpu',
-    // Match Playwright's extension defaults: this blank host needs no extension workers.
-    '--disable-extensions',
-    '--disable-component-extensions-with-background-pages',
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',

@@ -23,7 +23,6 @@ describe('web() and the target app', () => {
     const url = 'http://localhost:3000';
     const refused = (message: string) => expect.objectContaining({ code: 'INVALID_CONFIG', message });
     expect(() => web().validateApp!({ url, permissions: { 'clipboard-read': 'grant', 'clipboard-write': 'grant' } }, info)).not.toThrow();
-    expect(() => web({ browser: 'webkit' }).validateApp!({ url, permissions: { 'clipboard-read': 'grant' } }, info)).not.toThrow();
     expect(() => web({ browser: 'firefox' }).validateApp!({ url, permissions: { 'clipboard-read': 'grant' } }, info)).toThrowError(
       refused(expect.stringContaining('target "web" app.permissions on firefox has unknown key "clipboard-read"')),
     );

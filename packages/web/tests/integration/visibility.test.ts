@@ -1,43 +1,29 @@
 /**
  * The reader's `hidden` state, which `isVisible()`, `toBeVisible()`, and
- * `toBeHidden()` read, agrees with Playwright's own visibility on the cases
- * a rect count alone gets wrong: a hidden SVG, a zero-size box, closed
+ * `toBeHidden()` read, is right on the cases a rect count alone gets wrong: a hidden SVG, a zero-size box, closed
  * `<details>` content, an empty `display: contents` element, skipped
  * `content-visibility` content, and an `aria-hidden` node that still paints.
  * The tree walk keeps `aria-hidden` subtrees out while it walks into a
  * `visibility: hidden` one a child shows again.
  */
 
-import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
-import { captureDocument } from '../../src/observation.ts';
-import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
-import { SECURE_FIELD_SELECTOR } from '../../src/read-node.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
-let browser: Browser;
-let page: Page;
+let page: WebSession;
 
 beforeAll(async () => {
-  browser = await chromium.launch();
-  page = await browser.newPage();
+  page = await startWebSession();
 });
 
 afterAll(async () => {
-  await browser.close();
+  await page.close();
 });
 
-const READ_OPTIONS = {
-  testIdAttribute: 'data-testid',
-  secureFieldSelector: SECURE_FIELD_SELECTOR,
-  mode: { kind: 'node' as const },
-};
-
-/** The reader's `hidden` state for one element next to what Playwright says of the same element. */
-async function hiddenOf(selector: string): Promise<{ reader: boolean; playwright: boolean }> {
-  const locator = page.locator(selector);
-  const raw = await locator.evaluate(readSemanticsFunction<typeof READ_OPTIONS.mode>, READ_OPTIONS);
-  return { reader: raw.states.hidden, playwright: await locator.isHidden() };
+/** The reader's `hidden` state for one element. */
+async function hiddenOf(selector: string): Promise<boolean> {
+  return (await page.readNode(selector)).states.hidden;
 }
 
 const PAGE = `
@@ -66,7 +52,7 @@ const PAGE = `
   </script>
 `;
 
-describe('visibility agrees with Playwright', () => {
+describe('visibility', () => {
   beforeAll(async () => {
     await page.setContent(PAGE);
   });
@@ -97,23 +83,28 @@ describe('visibility agrees with Playwright', () => {
     ['a visibility: hidden parent', '#vis-parent', true],
     ['a child that sets visibility: visible under a hidden parent', '#vis-child', false],
   ])('%s', async (_case, selector, hidden) => {
-    expect(await hiddenOf(selector)).toEqual({ reader: hidden, playwright: hidden });
+    expect(await hiddenOf(selector)).toBe(hidden);
   });
 });
 
-describe('visibility where Playwright reads a range box alone', () => {
-  it('hides text under a display: contents element whose visibility is hidden, which Playwright calls visible', async () => {
+describe('visibility beyond a range box', () => {
+  it('hides text under a display: contents element whose visibility is hidden', async () => {
     await page.setContent('<div id="contents-hidden-text" style="display:contents;visibility:hidden">Invisible text</div>');
-    expect(await hiddenOf('#contents-hidden-text')).toEqual({ reader: true, playwright: false });
+    expect(await hiddenOf('#contents-hidden-text')).toBe(true);
   });
 });
 
 describe('the bounding box', () => {
-  /** The reader's rect for one element next to Playwright's `boundingBox()`. */
+  /** The reader's rect for one element next to its laid-out box, null when it has no layout box. */
   async function boxOf(selector: string) {
-    const locator = page.locator(selector);
-    const raw = await locator.evaluate(readSemanticsFunction<typeof READ_OPTIONS.mode>, READ_OPTIONS);
-    return { reader: raw.rect, playwright: await locator.boundingBox() };
+    const raw = await page.readNode(selector);
+    const layout = await page.browser.evaluate((target: string) => {
+      const element = document.querySelector(target)!;
+      if (element.getClientRects().length === 0) return null;
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    }, selector);
+    return { reader: raw.rect, layout };
   }
 
   it.each([
@@ -125,8 +116,8 @@ describe('the bounding box', () => {
     ['a zero-size box', '<div id="box" style="width:0;height:0"></div>', { width: 0, height: 0 }],
   ])('%s', async (_case, html, size) => {
     await page.setContent(`<body style="margin:0">${html}</body>`);
-    const { reader, playwright } = await boxOf('#box');
-    expect(reader).toEqual(playwright);
+    const { reader, layout } = await boxOf('#box');
+    expect(reader).toEqual(layout);
     expect(reader === null ? null : { width: reader.width, height: reader.height }).toEqual(size);
   });
 });
@@ -137,20 +128,9 @@ function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
   return out;
 }
 
-/** One observation of the page through the same capture the engine uses, frames included. */
+/** One observation of the page, frames included. */
 async function captureTree(): Promise<SemanticNode[]> {
-  let nextId = 1;
-  const { tree } = await captureDocument(
-    {
-      testIdAttribute: 'data-testid',
-      site: undefined,
-      reserveIds: (count) => { const first = nextId; nextId += count; return first; },
-      commit: () => undefined,
-    },
-    page,
-    { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
-  );
-  return flatten(tree);
+  return flatten((await page.observe()).root);
 }
 
 describe('the tree walk through a box with no size', () => {
@@ -173,7 +153,7 @@ describe('the tree walk through a box with no size', () => {
       <select aria-label="Folded" style="width:0;height:0;padding:0;border:0"><option>plain</option><option>warm</option></select>
       <select aria-label="Shown"><option>cool</option></select>
     `);
-    await Promise.all(page.frames().slice(1).map((frame) => frame.waitForLoadState()));
+    await page.waitForFrames();
     const nodes = await captureTree();
     const buttons = nodes.filter((node) => node.role === 'button').map((node) => node.name);
     const options = nodes.filter((node) => node.role === 'option').map((node) => node.name);
@@ -184,17 +164,28 @@ describe('the tree walk through a box with no size', () => {
 });
 
 describe('a frame\'s document', () => {
-  it('places its boxes past the frame\'s border and padding, where Playwright measures them', async () => {
+  it('places its boxes past the frame\'s border and padding, in the top viewport', async () => {
     await page.setContent('<iframe style="margin:13px;border:7px solid;padding:5px;width:200px;height:100px" srcdoc="<button>Framed</button>"></iframe>');
-    await Promise.all(page.frames().slice(1).map((frame) => frame.waitForLoadState()));
+    await page.waitForFrames();
     const node = (await captureTree()).find((candidate) => candidate.name === 'Framed')!;
-    const expected = (await page.frameLocator('iframe').getByRole('button').boundingBox())!;
+    const expected = await page.browser.evaluate(() => {
+      const frame = document.querySelector('iframe')!;
+      const style = getComputedStyle(frame);
+      const outer = frame.getBoundingClientRect();
+      const inner = frame.contentDocument!.querySelector('button')!.getBoundingClientRect();
+      return {
+        x: outer.x + frame.clientLeft + Number.parseFloat(style.paddingLeft) + inner.x,
+        y: outer.y + frame.clientTop + Number.parseFloat(style.paddingTop) + inner.y,
+        width: inner.width,
+        height: inner.height,
+      };
+    });
     for (const key of ['x', 'y', 'width', 'height'] as const) expect(node.rect![key]).toBeCloseTo(expected[key], 3);
   });
 });
 
 describe('an inert subtree', () => {
-  it('leaves the tree, as Chrome drops it, while Playwright still calls it visible', async () => {
+  it('leaves the tree, as Chrome drops it, while its node still reads visible', async () => {
     await page.setContent(`
       <main inert><h2>Behind the drawer</h2><button id="inert-save">Save</button></main>
       <button>Close drawer</button>
@@ -203,7 +194,7 @@ describe('an inert subtree', () => {
     expect(names).toContain('Close drawer');
     expect(names).not.toContain('Save');
     expect(names).not.toContain('Behind the drawer');
-    expect(await hiddenOf('#inert-save')).toEqual({ reader: false, playwright: false });
+    expect(await hiddenOf('#inert-save')).toBe(false);
   });
 
   it('lists nothing under an inert document root, and nothing slotted into an inert slot of a closed root', async () => {
@@ -238,6 +229,6 @@ describe('the tree walk through hidden content', () => {
     expect(skipping?.states?.hidden).toBeUndefined();
     // The container keeps its box and paints none of its text, which innerText reads empty too.
     expect(skipping?.text).toBe('');
-    expect(await page.getByTestId('skipping').innerText()).toBe('');
+    expect(await page.browser.evaluate(() => document.querySelector<HTMLElement>('[data-testid="skipping"]')!.innerText)).toBe('');
   });
 });

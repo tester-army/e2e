@@ -1,24 +1,27 @@
 /**
- * Differential check of the engine's semantic tree against two oracles on
- * the same live page: Chrome's own accessibility tree over CDP, and
- * Playwright's `getByRole` resolution. Every node the engine reports is
- * tagged in the DOM, then looked up in both; every interactive node Chrome
- * exposes that the engine left out is reported too.
+ * Differential check of the engine's semantic tree against Chrome's own
+ * accessibility tree on the same live page, read over CDP through the BiDi
+ * mapper. Every node the engine's reader reports is tagged in the DOM, then
+ * looked up in Chrome's tree; every interactive node Chrome exposes that the
+ * engine left out is reported too. A second oracle is the engine's own
+ * locate: a role and name read off the tree must locate the element.
  *
  * The result is a list of disagreements keyed without node ids, so a list
  * can be committed as the expected state of a page and diffed on the next
  * run (`expectations.ts`).
  */
 
-import type { Browser, Page } from 'playwright-core';
-import type { SemanticNode } from 'e2e/engine';
-import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
-import { captureDocument } from '../../src/observation.ts';
-import { Published } from '../helpers/published.ts';
+import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT, type SemanticNode } from 'e2e/engine';
+import { readerInstallCall } from '../../src/in-page/readers.ts';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from '../../src/in-page/closed-shadow.ts';
+import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
+import { SECURE_FIELD_SELECTOR, type RawObservedNode } from '../../src/in-page/read-node.ts';
+import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
+import { assembleTree } from '../../src/driver/observe.ts';
 
 /** One field on which the engine and an oracle read a node differently. */
 export interface Disagreement {
-  readonly oracle: 'chrome' | 'playwright' | 'axe';
+  readonly oracle: 'chrome' | 'axe' | 'engine';
   /** `role`, `name`, a state name, `level`, `missing` (Chrome has the node, the engine does not), or `unknown` (the other way). */
   readonly field: string;
   readonly ours: string;
@@ -36,9 +39,6 @@ export interface CrossCheckResult {
 /** Engine roles never compared: structure and text the tree keeps for the model, with no ARIA counterpart. */
 const STRUCTURAL_ROLES = new Set(['document', 'text', 'generic', 'none', 'presentation']);
 
-/** The vocabulary spells a few ARIA roles its own way. */
-const ARIA_ROLE: Readonly<Record<string, string>> = { image: 'img' };
-
 /*
  * Deliberate differences. Each is a choice the tree makes for the model, kept
  * here with its reason rather than repeated per page in `expected.txt`, so
@@ -46,23 +46,22 @@ const ARIA_ROLE: Readonly<Record<string, string>> = { image: 'img' };
  */
 
 /**
- * Roles the tree names from content where accname, Chrome, and Playwright
- * leave them unnamed (`NAME_FROM_CONTENT_ROLES` in `src/in-page/read-semantics.ts`):
- * a list row or a status message is read by what it says.
+ * Roles the tree names from content where accname, Chrome, and Playwright's
+ * getByRole leave them unnamed (`ROW_CONTENT_ROLES` in
+ * `src/in-page/read-semantics.ts`): a list row or a status message is read
+ * by what it says, and located by its text rather than that name.
  */
 const ENGINE_NAMED_ROLES = new Set(['listitem', 'status', 'alert']);
 
 /**
  * Roles accname or HTML-AAM names (a row from content, a figure by its
- * figcaption) where Chrome's tree leaves the name empty. Playwright agrees
- * with the engine on these.
+ * figcaption) where Chrome's tree leaves the name empty.
  */
 const CHROME_UNNAMED_ROLES = new Set(['row', 'figure']);
 
 /**
  * Chrome's own role names where the vocabulary uses ARIA's, or where ARIA
- * has none: a date or colour input reads as `textbox` to the engine and to
- * Playwright.
+ * has none: a date or colour input reads as `textbox` to the engine.
  */
 const CHROME_ROLES: Readonly<Record<string, readonly string[]>> = {
   image: ['image'],
@@ -81,16 +80,12 @@ const ENGINE_ONLY_ROLES = new Set(['box']);
 
 /**
  * An unnamed inline svg: Chrome's tree ignores it or leaves it out, while
- * Playwright reads it as `img` and its aria snapshot lists it. The tree
- * lists it as Playwright does, so an icon-only control a person sees reaches
- * the model even when nothing names it.
+ * the tree lists it as an image, so an icon-only control a person sees
+ * reaches the model even when nothing names it.
  */
 function isUnnamedSvg(node: SemanticNode, facts: ElementFacts): boolean {
   return facts.svgRoot && node.role === 'image' && (node.name ?? '') === '';
 }
-
-/** Engine roles ARIA does not define, so `getByRole` cannot be asked for them. */
-const NON_ARIA_ROLES = new Set(['box', 'iframe']);
 
 /** Chrome roles the engine is expected to report whenever Chrome exposes them. */
 const INTERACTIVE_CHROME_ROLES = new Set([
@@ -100,18 +95,10 @@ const INTERACTIVE_CHROME_ROLES = new Set([
 
 /**
  * Icon-font glyphs, private-use code points, which the tree drops from a
- * name (`ICON_GLYPHS` in `src/in-page/read-semantics.ts`) and the engine's
- * role locator tolerates (`glyphTolerantName` in `src/locators.ts`). Removed
- * from Chrome's name before it is compared, and allowed around the words of
- * the name `getByRole` is asked for.
+ * name (`ICON_GLYPHS` in `src/in-page/read-semantics.ts`). Removed from
+ * Chrome's name before it is compared.
  */
 const ICON_GLYPHS = /\p{Co}/gu;
-
-/** A name as `getByRole` is asked for it: exact, with icon-font glyphs allowed wherever it has a space or begins or ends. */
-function glyphTolerant(name: string): RegExp {
-  const words = normalize(name).split(' ').map((word) => word.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
-  return new RegExp(`^[\\s\\p{Co}]*${words.join('[\\s\\p{Co}]+')}[\\s\\p{Co}]*$`, 'u');
-}
 
 /** The ARIA states compared, as Chrome's AX property names. */
 const STATES = ['checked', 'disabled', 'expanded', 'selected', 'pressed'] as const;
@@ -134,66 +121,84 @@ function describe(role: string, name: string): string {
 }
 
 /**
- * A page to cross-check, in its own context: closed shadow roots are recorded
- * at creation, and the clock is paused before any document loads. The engine
- * and both oracles read the live page one after another, so a timer that
- * replaced an element between those reads would compare them on different
- * documents; with the clock stopped, a page reads as its load and its network
- * left it, the same for every reader.
+ * Stops the page's clock before any of its scripts runs: `Date` reads the
+ * moment the document started and no timer or animation frame ever fires.
  */
-export async function openCheckPage(browser: Browser): Promise<Page> {
-  const context = await browser.newContext();
-  await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+const PAUSED_CLOCK_SCRIPT = `
   const start = Date.now();
-  await context.clock.install({ time: start });
-  await context.clock.pauseAt(start);
-  return context.newPage();
+  const NativeDate = Date;
+  globalThis.Date = class extends NativeDate {
+    constructor(...args) { super(...(args.length === 0 ? [start] : args)); }
+    static now() { return start; }
+  };
+  let nextTimer = 1;
+  const never = () => nextTimer++;
+  globalThis.setTimeout = never;
+  globalThis.setInterval = never;
+  globalThis.requestAnimationFrame = never;
+  globalThis.requestIdleCallback = never;
+`;
+
+/**
+ * A page to cross-check, in a browser of its own: closed shadow roots are
+ * recorded at creation, and the clock is paused before any document loads.
+ * The engine and the oracle read the live page one after another, so a timer
+ * that replaced an element between those reads would compare them on
+ * different documents; with the clock stopped, a page reads as its load and
+ * its network left it, the same for every reader.
+ */
+export function openCheckPage(): Promise<BidiPage> {
+  return openBidiPage({ preloadScripts: [CLOSED_SHADOW_ROOTS_INIT_SCRIPT, PAUSED_CLOCK_SCRIPT] });
 }
 
-/** One capture through the engine's own reader, with the element behind each node id. */
-export async function captureTagged(page: Page): Promise<{
+/** What the in-page capture hands back: the reader's walk, and where each walked element sits. */
+interface TaggedRead {
+  readonly nodes: RawObservedNode[];
+  readonly ids: string[];
+  readonly facts: ElementFacts[];
+}
+
+/**
+ * Walks the document with the engine's reader, tags each walked element
+ * with its node id under `MARKER`, and reads where it sits. Runs in the page.
+ */
+const TAG_DOCUMENT = `(options, marker) => {
+  const observation = (${readSemanticsFunction.toString()})(document.documentElement, options);
+  const facts = observation.elements.map((element, index) => {
+    element.setAttribute(marker, observation.ids[index]);
+    const root = element.getRootNode();
+    const view = element.ownerDocument.defaultView;
+    return {
+      inChildFrame: view !== null && view !== view.top,
+      inClosedShadow: root instanceof ShadowRoot && root.mode === 'closed',
+      editingHost: element instanceof HTMLElement && element.isContentEditable,
+      svgRoot: element instanceof SVGSVGElement,
+    };
+  });
+  return JSON.stringify({ nodes: observation.nodes, ids: observation.ids, facts });
+}`;
+
+/** One capture through the engine's own reader, each node's element tagged with its id. */
+export async function captureTagged(page: BidiPage): Promise<{
   nodes: SemanticNode[];
-  published: Published;
   facts: Map<string, ElementFacts>;
 }> {
-  let nextId = 1;
-  const published = new Published();
-  const { tree } = await captureDocument(
-    {
-      testIdAttribute: 'data-testid',
-      site: undefined,
-      reserveIds: (count) => {
-        const first = nextId;
-        nextId += count;
-        return first;
-      },
-      commit: published.commit,
-    },
-    page,
-    { framePath: [], budget: 5000, deadline: Date.now() + 30_000, signal: new AbortController().signal },
-  );
-  const facts = new Map<string, ElementFacts>();
-  for (const id of published.ids()) {
-    facts.set(id, await (await published.element(id)).evaluate((el, [attribute, value]) => {
-      el.setAttribute(attribute!, value!);
-      const root = el.getRootNode();
-      const view = el.ownerDocument.defaultView;
-      return {
-        inChildFrame: view !== null && view !== view.top,
-        inClosedShadow: root instanceof ShadowRoot && root.mode === 'closed',
-        editingHost: el instanceof HTMLElement && el.isContentEditable,
-        svgRoot: el instanceof SVGSVGElement,
-      };
-    }, [MARKER, id]));
-  }
-  return { nodes: flatten(tree), published, facts };
+  const options = {
+    testIdAttribute: 'data-testid',
+    secureFieldSelector: SECURE_FIELD_SELECTOR,
+    mode: { kind: 'tree', maxNodes: 5000, idSeed: 1, nameLimit: OBSERVED_NAME_LIMIT, textLimit: OBSERVED_TEXT_LIMIT },
+  };
+  // oxlint-disable-next-line e2e/no-unchecked-json -- the reader's own output in a page the test wrote
+  const read = JSON.parse(String(await page.evaluate(TAG_DOCUMENT, options, MARKER))) as TaggedRead;
+  const tree = assembleTree(read.nodes, read.ids, [], new Map());
+  return { nodes: flatten(tree), facts: new Map(read.ids.map((id, index) => [id, read.facts[index]!])) };
 }
 
 /** Where an element sits, for the policies above and the oracles' reach. */
 interface ElementFacts {
-  /** Neither oracle reads a child frame from the top page. */
+  /** The oracle reads no child frame from the top page. */
   readonly inChildFrame: boolean;
-  /** Playwright cannot pierce a closed root; the engine records them at creation. */
+  /** Inside a closed root, which the engine records at creation. */
   readonly inClosedShadow: boolean;
   /** An editor's host, which the tree reads as the `textbox` it is. Chrome calls it `generic`. */
   readonly editingHost: boolean;
@@ -211,38 +216,33 @@ interface AXNode {
 }
 
 /** Chrome's AX node for every tagged element, and the AX nodes whose element carries no tag. */
-async function chromeTree(page: Page): Promise<{ byId: Map<string, AXNode>; untagged: AXNode[] }> {
-  const cdp = await page.context().newCDPSession(page);
-  try {
-    await cdp.send('DOM.enable');
-    await cdp.send('Accessibility.enable');
-    const { nodes } = await cdp.send('Accessibility.getFullAXTree');
-    const byId = new Map<string, AXNode>();
-    const untagged: AXNode[] = [];
-    for (const node of nodes as readonly AXNode[]) {
-      if (node.backendDOMNodeId === undefined) continue;
-      const { object } = await cdp.send('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId });
-      if (object.objectId === undefined) continue;
-      const { result } = await cdp.send('Runtime.callFunctionOn', {
-        objectId: object.objectId,
-        // A node inside a form control's own shadow tree (a date input's
-        // day field) is the browser's, not the page's: reported as tagged
-        // with no id so it never counts as missing.
-        functionDeclaration: `function () {
-          let node = this;
-          while (node !== null && !(node instanceof ShadowRoot)) node = node.parentNode;
-          if (node !== null && node.host.matches('input, select, textarea, video, audio')) return '';
-          return this.nodeType === 1 ? this.getAttribute(${JSON.stringify(MARKER)}) : null;
-        }`,
-        returnByValue: true,
-      });
-      if (typeof result.value !== 'string') untagged.push(node);
-      else if (result.value !== '') byId.set(result.value, node);
-    }
-    return { byId, untagged };
-  } finally {
-    await cdp.detach();
+async function chromeTree(page: BidiPage): Promise<{ byId: Map<string, AXNode>; untagged: AXNode[] }> {
+  await page.cdp('DOM.enable');
+  await page.cdp('Accessibility.enable');
+  const { nodes } = (await page.cdp('Accessibility.getFullAXTree')) as { nodes: readonly AXNode[] };
+  const byId = new Map<string, AXNode>();
+  const untagged: AXNode[] = [];
+  for (const node of nodes) {
+    if (node.backendDOMNodeId === undefined) continue;
+    const { object } = (await page.cdp('DOM.resolveNode', { backendNodeId: node.backendDOMNodeId })) as { object: { objectId?: string } };
+    if (object.objectId === undefined) continue;
+    const { result } = (await page.cdp('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      // A node inside a form control's own shadow tree (a date input's
+      // day field) is the browser's, not the page's: reported as tagged
+      // with no id so it never counts as missing.
+      functionDeclaration: `function () {
+        let node = this;
+        while (node !== null && !(node instanceof ShadowRoot)) node = node.parentNode;
+        if (node !== null && node.host.matches('input, select, textarea, video, audio')) return '';
+        return this.nodeType === 1 ? this.getAttribute(${JSON.stringify(MARKER)}) : null;
+      }`,
+      returnByValue: true,
+    })) as { result: { value?: unknown } };
+    if (typeof result.value !== 'string') untagged.push(node);
+    else if (result.value !== '') byId.set(result.value, node);
   }
+  return { byId, untagged };
 }
 
 function property(node: AXNode, name: string): unknown {
@@ -283,49 +283,53 @@ function compareWithChrome(node: SemanticNode, ax: AXNode, facts: ElementFacts, 
   }
 }
 
-/** Whether `getByRole(role, { name, exact })` finds the engine's element among its matches. */
-async function compareWithPlaywright(page: Page, node: SemanticNode, into: Disagreement[]): Promise<void> {
-  const name = node.name ?? '';
-  const role = ARIA_ROLE[node.role!] ?? node.role!;
-  const label = describe(node.role!, name);
-  try {
-    const found = await page
-      // `includeHidden` also changes how Playwright computes names, so it is
-      // set only for a node the tree itself reports hidden.
-      .getByRole(role as Parameters<Page['getByRole']>[0], { name: glyphTolerant(name), includeHidden: node.states?.hidden === true })
-      .evaluateAll((elements, [attribute, id]) => elements.some((element) => element.getAttribute(attribute!) === id), [MARKER, node.ref.id]);
-    if (!found) into.push({ oracle: 'playwright', field: 'getByRole', ours: 'match', theirs: 'no match', node: label });
-  } catch (error) {
-    into.push({ oracle: 'playwright', field: 'getByRole', ours: 'match', theirs: `error: ${(error as Error).message.split('\n')[0]}`, node: label });
-  }
+/**
+ * Locates each `[id, expression]` with the engine's `locate` reader and
+ * answers the ids whose tagged element is not among the matches. Runs in
+ * the page.
+ */
+const UNLOCATED = `(checks, options, key, marker) => {
+  const locate = ${readerInstallCall('locate')};
+  return checks.filter(([id, expression]) => !locate(options, expression, [], false, key)[1].some((element) => element.getAttribute(marker) === id)).map(([id]) => id);
+}`;
+
+/**
+ * The engine oracle: every named node a role query could name, located by
+ * `getByRole(role, { name, exact: true })` with what the tree reads. The
+ * roles the tree names from content and Playwright's getByRole leaves
+ * unnamed (`ENGINE_NAMED_ROLES`) are left out, as is a name the tree cut.
+ */
+async function unlocated(page: BidiPage, nodes: readonly SemanticNode[], facts: ReadonlyMap<string, ElementFacts>): Promise<Disagreement[]> {
+  const named = nodes.filter((node) => {
+    const fact = facts.get(node.ref.id);
+    return node.role !== undefined && !STRUCTURAL_ROLES.has(node.role) && !ENGINE_NAMED_ROLES.has(node.role) && !ENGINE_ONLY_ROLES.has(node.role) &&
+      (node.name ?? '') !== '' && node.name!.length < OBSERVED_NAME_LIMIT && node.states?.hidden !== true && fact !== undefined && !fact.inChildFrame;
+  });
+  const checks = named.map((node) => [node.ref.id, JSON.stringify({ kind: 'query', query: { kind: 'role', value: { kind: 'string', value: node.role, exact: true }, name: { kind: 'string', value: node.name, exact: true } } })]);
+  const options = { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR };
+  const missed = new Set(await page.evaluate(UNLOCATED, checks, options, CLOSED_SHADOW_ROOTS_KEY, MARKER) as string[]);
+  return named.filter((node) => missed.has(node.ref.id)).map((node) => ({ oracle: 'engine', field: 'getByRole', ours: node.name!, theirs: 'no match', node: describe(node.role!, node.name!) }));
 }
 
 /** Cross-checks the page as it is now, on a page from `openCheckPage`; the page keeps the marker attributes afterwards. */
-export async function crossCheck(page: Page): Promise<CrossCheckResult> {
-  const { nodes, published, facts } = await captureTagged(page);
-  try {
-    const chrome = await chromeTree(page);
-    const disagreements: Disagreement[] = [];
-    let compared = 0;
-    for (const node of nodes) {
-      const fact = facts.get(node.ref.id);
-      if (node.role === undefined || STRUCTURAL_ROLES.has(node.role) || fact === undefined || fact.inChildFrame) continue;
-      if (isUnnamedSvg(node, fact)) continue;
-      compared += 1;
-      const ax = chrome.byId.get(node.ref.id);
-      if (ax === undefined) disagreements.push({ oracle: 'chrome', field: 'unknown', ours: node.role, theirs: 'no AX node', node: describe(node.role, node.name ?? '') });
-      else compareWithChrome(node, ax, fact, disagreements);
-      const playwrightReads = !fact.inClosedShadow && !ENGINE_NAMED_ROLES.has(node.role) && !NON_ARIA_ROLES.has(node.role) &&
-        !(node.role === 'textbox' && fact.editingHost);
-      if (node.name !== undefined && node.name !== '' && playwrightReads) await compareWithPlaywright(page, node, disagreements);
-    }
-    for (const ax of chrome.untagged) {
-      const role = String(ax.role?.value ?? '');
-      if (ax.ignored || !INTERACTIVE_CHROME_ROLES.has(role)) continue;
-      disagreements.push({ oracle: 'chrome', field: 'missing', ours: 'no node', theirs: role, node: describe(role, normalize(String(ax.name?.value ?? ''))) });
-    }
-    return { compared, disagreements };
-  } finally {
-    published.dispose();
+export async function crossCheck(page: BidiPage): Promise<CrossCheckResult> {
+  const { nodes, facts } = await captureTagged(page);
+  const chrome = await chromeTree(page);
+  const disagreements: Disagreement[] = await unlocated(page, nodes, facts);
+  let compared = 0;
+  for (const node of nodes) {
+    const fact = facts.get(node.ref.id);
+    if (node.role === undefined || STRUCTURAL_ROLES.has(node.role) || fact === undefined || fact.inChildFrame) continue;
+    if (isUnnamedSvg(node, fact)) continue;
+    compared += 1;
+    const ax = chrome.byId.get(node.ref.id);
+    if (ax === undefined) disagreements.push({ oracle: 'chrome', field: 'unknown', ours: node.role, theirs: 'no AX node', node: describe(node.role, node.name ?? '') });
+    else compareWithChrome(node, ax, fact, disagreements);
   }
+  for (const ax of chrome.untagged) {
+    const role = String(ax.role?.value ?? '');
+    if (ax.ignored || !INTERACTIVE_CHROME_ROLES.has(role)) continue;
+    disagreements.push({ oracle: 'chrome', field: 'missing', ours: 'no node', theirs: role, node: describe(role, normalize(String(ax.name?.value ?? ''))) });
+  }
+  return { compared, disagreements };
 }

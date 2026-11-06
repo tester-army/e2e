@@ -145,7 +145,8 @@ full list, integrations and reporters included, is under
   only; deterministic suites make no model calls, and cached steps replay
   without one)
 - `readyUrl` probes against the app the runner starts
-- Playwright browser downloads, once, when Chromium is missing
+- browser downloads (Chrome for Testing, Firefox) and ffmpeg, once, when
+  missing
 - the app under test, and whatever that app itself loads
 
 `e2e run --ai-trace` writes every model call to a local file. Nothing uploads

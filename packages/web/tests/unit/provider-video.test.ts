@@ -3,13 +3,10 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { Page } from 'playwright-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ProviderRecording } from 'e2e/engine';
-import { ProviderVideo } from '../../src/provider-video.ts';
+import { ProviderVideo } from '../../src/driver/provider-video.ts';
 import type { LeaseRecording } from '../../src/provider.ts';
-
-const PAGE = {} as Page;
 
 describe('ProviderVideo', () => {
   const dirs: string[] = [];
@@ -46,9 +43,9 @@ describe('ProviderVideo', () => {
     ];
     const video = new ProviderVideo(async () => starts.shift()!(), artifactsDir());
     const timedOut = new AbortController();
-    const first = video.arm(PAGE, timedOut.signal);
+    const first = video.arm(timedOut.signal);
     timedOut.abort();
-    await video.arm(PAGE, new AbortController().signal);
+    await video.arm(new AbortController().signal);
     land(recording('first', stopped));
     await expect(first).rejects.toMatchObject({ code: 'CANCELLED' });
     expect(stopped).toEqual(['first']);
@@ -58,7 +55,7 @@ describe('ProviderVideo', () => {
   it('keeps the handle of a recording whose stop failed on abandon, so a later stop still ends it', async () => {
     const stopped: string[] = [];
     const video = new ProviderVideo(async () => recording('clip', stopped, 1), artifactsDir());
-    await video.arm(PAGE, new AbortController().signal);
+    await video.arm(new AbortController().signal);
     await video.abandon(new AbortController().signal);
     expect(stopped).toEqual(['clip']);
     expect(await video.stop(new AbortController().signal)).toHaveLength(1);

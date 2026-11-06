@@ -362,10 +362,7 @@ function fixtureContext(
     fixture: (name, surface, operations) => recorder.fixture(name, surface, operations),
     app: {
       ...engineAppInfo(app),
-      resolveUrl: (url) => {
-        requireAppUrl(environment.target);
-        return resolveNavigationUrl(url, app.base).url;
-      },
+      resolveUrl: (url) => resolveNavigationUrl(url, app.base).url,
     },
     timeouts: {
       test: config.timeout,

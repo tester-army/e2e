@@ -1,14 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
-import { withTimeout, type EngineFixtureContext } from 'e2e/engine';
-import { PlaywrightSurface } from '../../src/surface.ts';
-import { createBrowserFixture, type Browser } from '../../src/browser.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+import type { Browser } from '../../src/fixture/types.ts';
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /**
  * One origin with a body for every outcome `waitForResponse` reports: a full
@@ -71,41 +65,29 @@ function startBodyServer(): Promise<{ server: Server; url: string }> {
 }
 
 describe('browser.waitForResponse bodies', () => {
-  const surface = new PlaywrightSurface({});
-  const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-wait-for-response-'));
-  const signal = new AbortController().signal;
+  let session: WebSession;
   let server: Server;
   let origin: string;
-  let page: Page;
   let browser: Browser;
-  let operationBudgetMs: number;
 
   beforeAll(async () => {
     ({ server, url: origin } = await startBodyServer());
-    await surface.init({ runId: 'responses', targetName: 'web', projectRoot: process.cwd(),
-      app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+    session = await startWebSession({ appUrl: origin, timeoutMs: 2_000, startAttempt: false });
   });
 
   beforeEach(async () => {
-    await surface.startAttempt({ attemptId: 'responses', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
-    operationBudgetMs = 2_000;
-    browser = createBrowserFixture(surface, {
-      app: { resolveUrl: (url: string) => new URL(url, `${origin}/`).href },
-      timeouts: { test: 5_000 },
-      operation: (timeoutMs = operationBudgetMs) => ({ signal, timeoutMs, runId: 'responses', attemptId: 'responses', origin: 'test' }),
-      expectable: (target: object) => target,
-      fixture: (_name: string, target: object) => target,
-    } as unknown as EngineFixtureContext);
+    await session.startAttempt();
+    browser = session.browser;
   });
 
   afterEach(async () => {
-    await surface.endAttempt({ signal, timeoutMs: 5_000 });
+    await session.endAttempt();
   });
 
   afterAll(async () => {
-    await surface.dispose({ signal, timeoutMs: 5_000 });
+    await session.close();
+    server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(artifactsDir, { recursive: true, force: true });
   });
 
   /**
@@ -113,14 +95,11 @@ describe('browser.waitForResponse bodies', () => {
    * returns the response `waitForResponse` observed for it.
    */
   async function observe(pathname: string, options?: { timeout: number }) {
-    page = await surface.ensurePage();
-    await page.goto(`${origin}/`);
-    // The harness's step bound, as the fixture recorder applies it to every `browser` call.
-    const bound = options?.timeout ?? 2_000;
+    await session.open(`${origin}/`);
     const [response] = await Promise.all([
-      withTimeout(browser.waitForResponse(`**${pathname}`, options), bound, () => new Error(`step exceeded ${bound}ms`)),
-      page.evaluate(
-        (url) => { void fetch(url).then((reply) => reply.text()).catch(() => undefined); },
+      browser.waitForResponse(`**${pathname}`, options),
+      browser.evaluate(
+        (url: string) => { void fetch(url).then((reply) => reply.text()).catch(() => undefined); return null; },
         `${origin}${pathname}`,
       ),
     ]);
@@ -136,7 +115,6 @@ describe('browser.waitForResponse bodies', () => {
     expect(response.status).toBe(200);
     expect(response.headers['content-type']).toBe('text/html');
     await expect(response.text()).resolves.toContain('<h1>Bodies</h1>');
-    expect(surface.requireContext().pages()).toEqual([surface.requirePage()]);
   });
 
   it('reads a full body as text and JSON', async () => {
@@ -162,12 +140,13 @@ describe('browser.waitForResponse bodies', () => {
     expect(response.headers['content-length']).toBe('1000');
     await expect(response.text()).rejects.toMatchObject({
       code: 'ACTION_FAILED',
-      message: 'waitForResponse: response body could not be read: net::ERR_CONTENT_LENGTH_MISMATCH',
+      message: expect.stringContaining('waitForResponse: response body could not be read'),
     });
     await expect(response.json()).rejects.toMatchObject({ code: 'ACTION_FAILED' });
   });
 
-  it('matches on headers inside its timeout and lets text() wait for a slower body', async () => {
+  it('matches on headers inside its timeout and lets text() wait for a slower body', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: Firefox sends network.responseStarted only once the body starts, not when the headers arrive');
     const response = await observe('/api/slow', { timeout: 500 });
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('slow-body');
@@ -176,10 +155,9 @@ describe('browser.waitForResponse bodies', () => {
   it('rejects reading a body that never finishes once the action budget runs out', async () => {
     const response = await observe('/api/endless', { timeout: 500 });
     expect(response.status).toBe(200);
-    operationBudgetMs = 300;
     await expect(response.text()).rejects.toMatchObject({
       code: 'ACTION_FAILED',
-      message: 'waitForResponse: response body did not finish within 300ms',
+      message: 'waitForResponse: response body did not finish within 2000ms',
     });
   });
 

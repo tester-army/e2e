@@ -238,8 +238,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
+          path: ~/.cache/e2e/browsers
+          key: e2e-browsers-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec e2e-web install chromium --with-deps
       - run: npx e2e run --reporter list,junit
         env:

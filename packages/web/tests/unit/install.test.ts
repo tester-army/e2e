@@ -1,268 +1,111 @@
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { chromium } from 'playwright-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { browserCheck, ensureBrowsersInstalled, installArgs } from '../../src/install.ts';
-import type { BrowserName } from '../../src/browser-connection.ts';
+import { browserPlatform, downloadUrl } from '../../src/install/builds.ts';
+import { startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
+import { browserCheck, browserExecutable, CHROMIUM_BUILD, ensureBrowsersInstalled, FIREFOX_BUILD, installBrowsers } from '../../src/install/provision.ts';
 
-describe('browserCheck', () => {
-  const firstRun = [
-    { id: 'browser', status: 'warn', message: 'firefox is not installed; the first run downloads it, or run "npx @e2e-dev/web install firefox" now' },
-  ];
+const platform = browserPlatform();
 
-  it('passes an installed browser, warns of a first-run download, and reports nothing it cannot tell', async () => {
-    expect(await browserCheck('chromium', {}, false, () => true)).toEqual([{ id: 'browser', status: 'pass', message: 'chromium is installed' }]);
-    expect(await browserCheck('firefox', {}, false, () => false)).toEqual(firstRun);
-    expect(await browserCheck('chromium', {}, false, () => undefined)).toEqual([]);
-  });
+let cache = '';
+let server: ArchiveServer;
+let env: NodeJS.ProcessEnv = {};
 
-  it('reads the verdict of a detection that answers later, not the promise', async () => {
-    expect(await browserCheck('chromium', {}, false, async () => true)).toEqual([{ id: 'browser', status: 'pass', message: 'chromium is installed' }]);
-    expect(await browserCheck('firefox', {}, false, async () => false)).toEqual(firstRun);
-    expect(await browserCheck('chromium', {}, false, async () => undefined)).toEqual([]);
-  });
+beforeEach(async () => {
+  cache = mkdtempSync(path.join(tmpdir(), 'e2e-browsers-'));
+  server = await startArchiveServer();
+  env = { E2E_BROWSERS_PATH: cache, E2E_BROWSERS_DOWNLOAD_HOST: server.origin };
 });
 
-describe('ensureBrowsersInstalled', () => {
-  it('does nothing when every browser is installed', async () => {
-    const installed: BrowserName[][] = [];
-    const logs: string[] = [];
-    await ensureBrowsersInstalled(['chromium', 'firefox'], {
-      log: (line) => logs.push(line),
-      isInstalled: () => true,
-      install: async (names) => {
-        installed.push([...names]);
-      },
-    });
-    expect(installed).toEqual([]);
-    expect(logs).toEqual([]);
-  });
+afterEach(async () => {
+  await server.close();
+  rmSync(cache, { recursive: true, force: true });
+});
 
-  it('installs missing browsers once, deduplicated', async () => {
-    const installed: BrowserName[][] = [];
-    const logs: string[] = [];
-    await ensureBrowsersInstalled(['chromium', 'firefox', 'chromium'], {
-      log: (line) => logs.push(line),
-      isInstalled: (name) => name === 'firefox',
-      install: async (names) => {
-        installed.push([...names]);
-      },
-    });
-    expect(installed).toEqual([['chromium']]);
-    expect(logs[0]).toContain('chromium');
-    expect(logs[0]).not.toContain('firefox');
-  });
+/** Lays out the chromium builds named in the cache: the headless shell, the full browser, or both. */
+async function lay(...builds: readonly ('shell' | 'full')[]): Promise<void> {
+  for (const build of builds) {
+    const executable = await browserExecutable('chromium', build === 'full', env);
+    mkdirSync(path.dirname(executable), { recursive: true });
+    writeFileSync(executable, '');
+  }
+}
 
-  it('hands the progress log and the signal to the installer', async () => {
-    const logs: string[] = [];
-    const controller = new AbortController();
-    await ensureBrowsersInstalled(['chromium'], {
-      log: (line) => logs.push(line),
-      isInstalled: () => false,
-      signal: controller.signal,
-      install: async (_names, context) => {
-        expect(context.signal).toBe(controller.signal);
-        context.log('|■■■■    |  50% of 171 MiB');
-      },
-    });
-    expect(logs).toEqual([
-      'Downloading missing Playwright browsers (first run): chromium...',
-      '|■■■■    |  50% of 171 MiB',
-      'Browser download complete.',
+/** The mirror path the pinned archive of `build` is requested at. */
+function served(build: 'chrome' | 'chrome-headless-shell' | 'firefox'): string {
+  const buildId = build === 'firefox' ? FIREFOX_BUILD : CHROMIUM_BUILD;
+  return decodeURIComponent(downloadUrl(build, buildId, platform!, server.origin).slice(server.origin.length));
+}
+
+describe.skipIf(platform === undefined)('browserCheck', () => {
+  it('passes an installed browser and warns of a first-run download', async () => {
+    await lay('shell');
+    expect(await browserCheck('chromium', env, false)).toEqual([{ id: 'browser', status: 'pass', message: 'chromium is installed' }]);
+    expect(await browserCheck('firefox', env, false)).toEqual([
+      { id: 'browser', status: 'warn', message: 'firefox is not installed; the first run downloads it, or run "npx @e2e-dev/web install firefox" now' },
     ]);
   });
-
-  it('installs against the run environment, not the process environment', async () => {
-    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/run-specific/browsers' };
-    const contexts: { env: NodeJS.ProcessEnv }[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: () => {},
-      isInstalled: () => false,
-      env,
-      install: async (_names, context) => {
-        contexts.push({ env: context.env });
-      },
-    });
-    expect(contexts).toHaveLength(1);
-    expect(contexts[0]?.env['PLAYWRIGHT_BROWSERS_PATH']).toBe('/run-specific/browsers');
-  });
-
-  it('defers to the installer when the run points at another browser cache', async () => {
-    // The default detection cannot see a cache this process was not started
-    // with, so it declines a verdict: the CLI runs with the run's environment
-    // and is a no-op when the cache is already complete, and the headline is
-    // not printed because nothing is known to be missing.
-    const env = { ...process.env, PLAYWRIGHT_BROWSERS_PATH: '/elsewhere/browsers' };
-    const installed: BrowserName[][] = [];
-    const logs: string[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: (line) => logs.push(line),
-      env,
-      install: async (names, context) => {
-        installed.push([...names]);
-        expect(context.env['PLAYWRIGHT_BROWSERS_PATH']).toBe('/elsewhere/browsers');
-      },
-    });
-    expect(installed).toEqual([['chromium']]);
-    expect(logs).toEqual([]);
-  });
-
-  it('does not collect the browsers the declared cache holds', async () => {
-    // The run spawns the install with the cache it was pointed at, and that
-    // command removes every revision no installed Playwright declares. Those
-    // revisions belong to the other tools sharing that cache.
-    const contexts: { env: NodeJS.ProcessEnv }[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: () => {},
-      isInstalled: () => false,
-      install: async (_names, context) => {
-        contexts.push({ env: context.env });
-      },
-    });
-    expect(contexts[0]?.env['PLAYWRIGHT_SKIP_BROWSER_GC']).toBe('1');
-  });
-
-  it('keeps a browser collection the caller asked for', async () => {
-    const contexts: { env: NodeJS.ProcessEnv }[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: () => {},
-      isInstalled: () => false,
-      env: { ...process.env, PLAYWRIGHT_SKIP_BROWSER_GC: '0' },
-      install: async (_names, context) => {
-        contexts.push({ env: context.env });
-      },
-    });
-    expect(contexts[0]?.env['PLAYWRIGHT_SKIP_BROWSER_GC']).toBe('0');
-  });
-
-  it('asks for the shell only on a headless chromium run', () => {
-    // The assertion the install runs on: a headless chromium run launches the
-    // shell, so `--only-shell` keeps the full build out of its download. A headed
-    // run launches the full build, and so does a browser that has no shell.
-    expect(installArgs(['chromium'], false)).toEqual(['--only-shell', 'chromium']);
-    expect(installArgs(['chromium'], true)).toEqual(['chromium']);
-    expect(installArgs(['firefox'], false)).toEqual(['firefox']);
-    expect(installArgs(['chromium', 'firefox'], false)).toEqual(['--only-shell', 'chromium', 'firefox']);
-  });
-
-  it('passes the run mode to the installer', async () => {
-    const contexts: { headed: boolean }[] = [];
-    await ensureBrowsersInstalled(['chromium'], {
-      log: () => {},
-      isInstalled: () => false,
-      headed: true,
-      install: async (_names, context) => {
-        contexts.push({ headed: context.headed });
-      },
-    });
-    expect(contexts[0]?.headed).toBe(true);
-  });
-
-  // The bug lived in the built-in detection, so it is exercised against a real
-  // browser cache rather than an injected verdict. Playwright resolves its cache
-  // when it is first loaded and this file has already loaded it, so the real
-  // function runs in a child process started with the environment set up here.
-  describe('the built-in detection', () => {
-    // The revision the installed Playwright declares: the reported executable
-    // names it, and a cache under another revision is not the one a run reads.
-    const reported = chromium.executablePath();
-    const revision = reported.slice(reported.lastIndexOf('chromium-') + 'chromium-'.length).split(path.sep)[0] ?? '';
-    // The child runs the built package, the same one a user gets, so the check it
-    // exercises is the one that ships.
-    const built = createRequire(import.meta.url).resolve('../../dist/install.js');
-    const packageDir = path.dirname(createRequire(import.meta.url).resolve('playwright-core/package.json'));
-    let cache = '';
-    let previous: string | undefined;
-
-    /** Runs the built-in check in a process that loaded Playwright with this cache; true when nothing would install. */
-    const verdict = (headed: boolean): boolean => {
-      const probe = path.join(cache, 'probe.mjs');
-      writeFileSync(
-        probe,
-        `import { ensureBrowsersInstalled } from ${JSON.stringify(built)};
-let value = true;
-const logs = [];
-await ensureBrowsersInstalled(['chromium'], {
-  headed: ${String(headed)},
-  log: (line) => logs.push(line),
-  install: async () => { value = logs.length > 0 ? false : undefined; },
 });
-console.log(String(value));
-`,
-      );
-      const child = spawnSync(process.execPath, [probe], {
-        encoding: 'utf8',
-        cwd: path.dirname(path.dirname(packageDir)),
-        env: { ...process.env, PLAYWRIGHT_BROWSERS_PATH: cache },
-      });
-      if (child.status !== 0) throw new Error(`the detection probe failed: ${child.stderr}`);
-      expect(child.stdout.trim()).not.toBe('undefined');
-      return child.stdout.trim() === 'true';
-    };
 
-    // This platform's paths inside each build's directory, e.g. `chrome-linux64/chrome`
-    // and `chrome-headless-shell-linux64/chrome-headless-shell`.
-    const buildDir = `${path.sep}chromium-${revision}${path.sep}`;
-    const fullRelative = reported.slice(reported.lastIndexOf(buildDir) + buildDir.length);
-    const platformDir = fullRelative.split(path.sep)[0] ?? '';
-    const shellRelative = path.join(
-      platformDir.replace(/^chrome-/, 'chrome-headless-shell-'),
-      process.platform === 'win32' ? 'chrome-headless-shell.exe' : 'chrome-headless-shell',
-    );
+describe.skipIf(platform === undefined)('ensureBrowsersInstalled', () => {
+  it('downloads nothing when every browser is installed', async () => {
+    await lay('shell');
+    const logs: string[] = [];
+    await ensureBrowsersInstalled(['chromium', 'chromium'], { env, log: (line) => logs.push(line) });
+    expect(logs).toEqual([]);
+    expect(server.requests).toEqual([]);
+  });
 
-    /** Lays out the builds named, each with its completion marker. */
-    const lay = (...builds: readonly ('shell' | 'full')[]): void => {
-      for (const build of builds) {
-        const dir = build === 'shell' ? `chromium_headless_shell-${revision}` : `chromium-${revision}`;
-        const exe = path.join(cache, dir, build === 'shell' ? shellRelative : fullRelative);
-        mkdirSync(path.dirname(exe), { recursive: true });
-        writeFileSync(exe, '');
-        writeFileSync(path.join(cache, dir, 'INSTALLATION_COMPLETE'), '');
-      }
-    };
+  it('downloads only the missing browsers, deduplicated, and nothing else', async () => {
+    await lay('shell');
+    const logs: string[] = [];
+    await expect(ensureBrowsersInstalled(['chromium', 'firefox', 'firefox'], { env, log: (line) => logs.push(line) })).rejects.toMatchObject({ code: 'BROWSER_INSTALL_FAILED' });
+    expect(server.requests).toEqual([served('firefox')]);
+    expect(logs[0]).toBe('Downloading missing browsers (first run): firefox...');
+  });
 
-    beforeEach(() => {
-      cache = mkdtempSync(path.join(tmpdir(), 'e2e-browsers-'));
-      previous = process.env['PLAYWRIGHT_BROWSERS_PATH'];
+  it('reads the build the run mode launches: a headed run needs full Chrome', async () => {
+    await lay('shell');
+    await expect(ensureBrowsersInstalled(['chromium'], { env, headed: true, log: () => {} })).rejects.toMatchObject({ code: 'BROWSER_INSTALL_FAILED' });
+    expect(server.requests).toEqual([served('chrome')]);
+  });
+
+  it("installs into the run environment's cache, not the process's", async () => {
+    await expect(ensureBrowsersInstalled(['chromium'], { env, log: () => {} })).rejects.toThrow();
+    expect(server.requests).toEqual([served('chrome-headless-shell')]);
+    expect(readdirSync(cache)).toEqual(['chrome-headless-shell']);
+  });
+});
+
+describe.skipIf(platform === undefined)('installBrowsers', () => {
+  it('refuses a mirror archive that is not the pinned build, naming both digests', async () => {
+    server.route(served('chrome-headless-shell'), Buffer.from('not chrome'));
+    const failure = installBrowsers(['chromium'], { env, headed: false, log: () => {} });
+    await expect(failure).rejects.toMatchObject({ code: 'BROWSER_INSTALL_FAILED', message: expect.stringMatching(/has SHA-256 [0-9a-f]{64}, expected [0-9a-f]{64}; refusing it/) });
+    expect(existsSync(await browserExecutable('chromium', false, env))).toBe(false);
+    expect(readdirSync(path.join(cache, 'chrome-headless-shell'))).toEqual([]);
+  });
+
+  it('names the manual install command when a download fails', async () => {
+    await expect(installBrowsers(['firefox'], { env, headed: false, log: () => {} })).rejects.toMatchObject({
+      code: 'BROWSER_INSTALL_FAILED',
+      message: expect.stringMatching(/^could not install firefox stable_159\.0\.1: download of .* failed: 404 Not Found; run "npx @e2e-dev\/web install firefox"/),
     });
+  });
 
-    afterEach(() => {
-      if (previous === undefined) delete process.env['PLAYWRIGHT_BROWSERS_PATH'];
-      else process.env['PLAYWRIGHT_BROWSERS_PATH'] = previous;
-      rmSync(cache, { recursive: true, force: true });
-    });
+  it('refuses a plain http mirror that is not on loopback before downloading', async () => {
+    await expect(installBrowsers(['chromium'], { env: { ...env, E2E_BROWSERS_DOWNLOAD_HOST: 'http://mirror.example.com' }, headed: false, log: () => {} }))
+      .rejects.toMatchObject({ code: 'BROWSER_INSTALL_FAILED', message: expect.stringContaining('must be an https URL') });
+  });
 
-    it('reads a shell-only cache as installed for a headless run', () => {
-      // The full build executablePath() names is absent, which is what a run with
-      // only the shell installed looks like.
-      lay('shell');
-      expect(verdict(false)).toBe(true);
+  it('fails with CANCELLED when aborted mid-download, leaving no partial files or lock', async () => {
+    const controller = new AbortController();
+    server.route(served('chrome-headless-shell'), (_request, response) => {
+      response.writeHead(200, { 'content-length': '1000000' });
+      response.write(Buffer.alloc(1000), () => controller.abort());
     });
-
-    it('reads a shell-only cache as missing for a headed run', () => {
-      // A headed run launches the full build, and the shell is not that build.
-      lay('shell');
-      expect(verdict(true)).toBe(false);
-    });
-
-    it('reads a full-build-only cache as installed for a headed run', () => {
-      lay('full');
-      expect(verdict(true)).toBe(true);
-    });
-
-    it('reads a full-build-only cache as missing for a headless run', () => {
-      // `playwright install --no-shell` leaves exactly this, and the headless
-      // launch would then fail on the shell it never got.
-      lay('full');
-      expect(verdict(false)).toBe(false);
-    });
-
-    it('reads an empty cache as missing either way', () => {
-      expect(verdict(false)).toBe(false);
-      expect(verdict(true)).toBe(false);
-    });
+    await expect(installBrowsers(['chromium'], { env, headed: false, log: () => {}, signal: controller.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(readdirSync(cache, { recursive: true })).toEqual(['chrome-headless-shell']);
   });
 });

@@ -22,7 +22,7 @@ export const migrationPrompt = `Migrate this project's Playwright tests to e2e, 
 11. Summarize which tests moved, which stayed in Playwright, and why.`;
 
 e2e can run beside Playwright in one project while you move tests one file
-at a time. `@e2e-dev/web` brings its own pinned `playwright-core`, so your
+at a time. `@e2e-dev/web` does not use Playwright, so your
 `@playwright/test` version stays yours. e2e reads `e2e.config.ts` and finds
 `tests/**/*.e2e.ts` by default, so keep the two file patterns apart.
 
@@ -66,7 +66,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 
 | Playwright | e2e | Status |
 | --- | --- | --- |
-| `use.viewport`, `use.browserName` | `web({ viewport, browser })` | renamed |
+| `use.viewport`, `use.browserName` | `web({ viewport, browser })`, `chromium` or `firefox`; no `webkit` | renamed |
 | `use.testIdAttribute` | `web({ testIdAttribute })` | renamed |
 | `use.httpCredentials` | `web({ basicAuth })` | renamed |
 | `use.extraHTTPHeaders` | `web({ headers })`, sent to the app's site only | renamed |
@@ -145,7 +145,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `locator.or(other)` | the same; web branches need identical literal frame-selector chains. A locator is strict, so add `first()` when both match | same |
 | `locator.and(other)` | not yet | missing |
 | `locator.all()`, `allTextContents()` | the same; `allInnerTexts()` is `allTextContents()` | same |
-| `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: the string is a Playwright selector, so `xpath=` (or a leading `//`) and `>>` chains work too | web only |
+| `page.locator('css')`, `page.locator('xpath=...')` | `browser.locator('css')`: CSS, or XPath with `xpath=` or a leading `//`. No `>>` chains or `text=` and `nth=` engines: chain `nth()` and screen queries | web only |
 | `page.waitForSelector(selector)` | `browser.locator(selector).waitFor()`; a locator is strict, see [What differs on purpose](#what-differs-on-purpose) | renamed |
 | `page.click(selector)`, `page.fill(selector, value)`, `page.getAttribute(selector, name)`, and the other `page` methods that take a selector | `browser.locator(selector).tap()`, `.fill(value)`, `.getAttribute(name)`. Playwright acts on the first match; a locator is strict, so add `first()` for the old behavior, see [What differs on purpose](#what-differs-on-purpose) | renamed |
 | `locator.locator('css')` | a semantic query inside the scope (`cell.getByRole('textbox')` for `cell.locator('input')`), `browser.locator('css').getByRole(...)` the other way round, or one `browser.locator` selector for the whole path | missing |
@@ -330,7 +330,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `npx playwright codegen` | `npx e2e explore` walks the app from a goal and reports what it found; `npx e2e mcp` lets a coding agent drive the app while it writes the test, see [MCP server](/mcp-server) | renamed |
 | `npx playwright show-trace` | no viewer; open the `trace.md` under `.e2e/results/` that the terminal names | by design |
 | `npx playwright show-report` | `.e2e/summary.md` from the `markdown` reporter | missing |
-| `npx playwright install` | `npx @e2e-dev/web install`, for the Playwright version the engine pins; a run also installs a missing browser on its own | renamed |
+| `npx playwright install` | `npx @e2e-dev/web install`, for the browser builds the engine pins; a run also installs a missing browser on its own | renamed |
 
 </Accordion>
 </AccordionGroup>
@@ -428,8 +428,7 @@ context.
   control passes too, where Playwright fails. Assert on what replaced it.
 - One match or `LOCATOR_AMBIGUOUS`, `isVisible()` included, where Playwright
   reads the first match silently. Narrow with `filter`, `first()`, or
-  `{ visible: true }`, or add a `>> visible=true` step to a
-  `browser.locator` selector. See [screen](/reference/screen).
+  `{ visible: true }`. See [screen](/reference/screen).
 - Navigation opens `http`, `https`, and `about:blank` only. `data:`, `file:`,
   and every other scheme are `POLICY_DENIED`, whether from `app.open`,
   `browser.goto`, or `route.continue({ url })`.
@@ -440,9 +439,8 @@ context.
 - Sessions are per run. `test.setup` saves state under a name, one time per
   run and target, and `{ session }` restores it. The file is encrypted and
   deleted at cleanup, so there is no `.auth/user.json` to reuse across runs.
-- No raw `Page` in tests. Nothing on a raw page is recorded, redacted, or
-  masked. `surfaceOf(engine)` is for
-  [custom executors](/executors#driving-the-page-yourself), not test code.
+- No raw `Page`. The engine drives the browser over WebDriver BiDi, not
+  Playwright, so there is no Playwright object to reach for.
 
 ## Defaults that differ
 

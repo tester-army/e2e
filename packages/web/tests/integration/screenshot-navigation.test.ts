@@ -4,111 +4,71 @@
  * masks were resolved in went away.
  */
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
+import { readFileSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Page } from 'playwright-core';
-import type { OperationContext } from 'e2e/engine';
-import { PlaywrightSurface } from '../../src/surface.ts';
 import { decodePng } from '../helpers/png.ts';
-import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
-
-/** The race Playwright reports when the document a capture's masks were resolved in is replaced. */
-const RACE = 'page.screenshot: Execution context was destroyed, most likely because of a navigation';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { BidiConnection } from '../../src/driver/connection.ts';
+import { BidiError } from '../../src/errors.ts';
 
 /** `/hop?n=<n>` holds a white password field on a white page and moves on to the next hop a moment after it loads, up to 40. */
-function startHoppingServer(): Promise<{ server: Server; origin: string }> {
-  const server = createServer((request, response) => {
-    const hop = Number(new URL(request.url ?? '/', 'http://host').searchParams.get('n') ?? '0');
-    response.writeHead(200, { 'content-type': 'text/html' });
-    response.end(`<!doctype html><title>Hop ${hop}</title>
-      <style>body { margin: 0; background: #fff; } input { position: absolute; left: 20px; top: 20px; width: 120px; height: 40px; border: 0; background: #fff; color: #fff; }</style>
-      <input type="password" value="hunter22">
-      <script>if (${hop} < 40) setTimeout(() => { location.href = '/hop?n=${hop + 1}'; }, 1);</script>`);
-  });
-  return new Promise((resolve) => {
-    server.listen(0, '127.0.0.1', () => resolve({ server, origin: `http://127.0.0.1:${(server.address() as AddressInfo).port}` }));
-  });
+function hop(request: IncomingMessage, response: ServerResponse): void {
+  const n = Number(new URL(request.url ?? '/', 'http://host').searchParams.get('n') ?? '0');
+  response.writeHead(200, { 'content-type': 'text/html' });
+  response.end(`<!doctype html><title>Hop ${n}</title>
+    <style>body { margin: 0; background: #fff; } input { position: absolute; left: 20px; top: 20px; width: 120px; height: 40px; border: 0; background: #fff; color: #fff; }</style>
+    <input type="password" value="hunter22">
+    <script>if (${n} < 40) setTimeout(() => { location.href = '/hop?n=${n + 1}'; }, 1);</script>`);
 }
 
-describe('surface.screenshot while navigating', () => {
-  const surface = new PlaywrightSurface({ viewport: { width: 320, height: 200 } });
-  const projectRoot = mkdtempSync(path.join(tmpdir(), 'e2e-screenshot-navigation-'));
-  const signal = new AbortController().signal;
-  const operation = (timeoutMs = 10_000): OperationContext => ({ signal, timeoutMs, runId: 'shots', attemptId: 'shots', origin: 'test' });
-  let server: Server;
+describe('screenshot while navigating', () => {
+  let session: WebSession;
   let origin: string;
-  let page: Page;
 
   /** Takes a screenshot and asserts the password field is covered by the opaque mask, not left white. */
   const expectMaskedShot = async (label: string): Promise<void> => {
-    const relative = await surface.screenshot(label, operation());
-    const image = decodePng(readFileSync(path.join(projectRoot, relative)));
+    const relative = await session.engine.artifacts!.screenshot!(label, session.op(10_000));
+    const image = decodePng(readFileSync(path.join(session.artifactsDir, relative)));
     expect(image.pixelAt(80, 40)).toEqual([0, 0, 0, 255]);
     expect(image.pixelAt(200, 150)).toEqual([255, 255, 255, 255]);
   };
 
   beforeAll(async () => {
-    ({ server, origin } = await startHoppingServer());
-    await surface.init({ runId: 'shots', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-      env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+    session = await startWebSession({ web: { viewport: { width: 320, height: 200 } }, startAttempt: false });
+    origin = session.origin;
+    session.serve('/hop', hop);
   });
 
   beforeEach(async () => {
-    await surface.startAttempt({ attemptId: 'shots', artifactsDir: projectRoot, signal, resolveSecret: noSecrets, ...ignoreTrace });
-    page = await surface.ensurePage();
+    await session.startAttempt();
   });
 
   afterEach(async () => {
     vi.restoreAllMocks();
-    await surface.endAttempt({ signal, timeoutMs: 5_000 });
+    await session.endAttempt();
   });
 
   afterAll(async () => {
-    await surface.dispose({ signal, timeoutMs: 5_000 });
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    rmSync(projectRoot, { recursive: true, force: true });
+    await session.close();
   });
 
   it('captures each screenshot, masked, while the page hops between documents', async () => {
-    await page.goto(`${origin}/hop?n=0`);
+    await session.open(`${origin}/hop?n=0`);
     for (let shot = 0; shot < 10; shot += 1) await expectMaskedShot(`hop-${shot}`);
   });
 
-  it('takes the capture again, masked, of the document that replaced the one its masks were resolved in', async () => {
-    await page.goto(`${origin}/hop?n=40`);
-    const capture = vi.spyOn(page, 'screenshot').mockImplementationOnce(async () => {
-      await page.goto(`${origin}/hop?n=40`);
-      throw new Error(RACE);
-    });
-    await expectMaskedShot('replaced');
-    expect(capture).toHaveBeenCalledTimes(2);
-  });
-
-  it('fails with the race itself when no document was replaced, tried once', async () => {
-    await page.goto(`${origin}/hop?n=40`);
-    const capture = vi.spyOn(page, 'screenshot').mockRejectedValueOnce(new Error(RACE));
-    await expect(surface.screenshot('unreplaced', operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
-    expect(capture).toHaveBeenCalledTimes(1);
-  });
-
-  it('times out when the page replaces its document during every capture until the step deadline', async () => {
-    await page.goto(`${origin}/hop?n=40`);
-    vi.spyOn(page, 'screenshot').mockImplementation(async () => {
-      await page.goto(`${origin}/hop?n=40`);
-      throw new Error(RACE);
-    });
-    await expect(surface.screenshot('restless', operation(1_000))).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
-  });
-
   it('keeps any other capture failure an engine failure, tried once', async () => {
-    await page.goto(`${origin}/hop?n=40`);
-    const capture = vi.spyOn(page, 'screenshot')
-      .mockRejectedValueOnce(new Error('Target page, context or browser has been closed'));
-    await expect(surface.screenshot('closed', operation())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
-    expect(capture).toHaveBeenCalledTimes(1);
+    await session.open(`${origin}/hop?n=40`);
+    const send = BidiConnection.prototype.send;
+    let captures = 0;
+    vi.spyOn(BidiConnection.prototype, 'send').mockImplementation(function (this: BidiConnection, method, params) {
+      if (method !== 'browsingContext.captureScreenshot') return send.call(this, method, params);
+      captures += 1;
+      return Promise.reject(new BidiError(method, 'unknown error', 'the capture failed'));
+    });
+    await expect(session.engine.artifacts!.screenshot!('closed', session.op())).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
+    expect(captures).toBe(1);
   });
 });

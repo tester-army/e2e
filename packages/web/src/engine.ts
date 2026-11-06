@@ -1,16 +1,17 @@
 /**
- * The Playwright engine for e2e: a browser body built with the
- * public `defineEngine`, validated by the same rules and graded by the same
- * capabilities as any other engine. Core imports nothing from here; this
+ * The web engine for e2e: a browser driven over WebDriver BiDi, built with
+ * the public `defineEngine`, validated by the same rules and graded by the
+ * same capabilities as any other engine. Core imports nothing from here; this
  * package imports the contract from `e2e/engine` and contributes the `browser`
  * fixture the way a device engine contributes `device`.
  */
 
-import type { BrowserContext, Page } from 'playwright-core';
 import {
   ConfigurationError,
   defineEngine,
+  type AppPermissionState,
   isSecret,
+  obj,
   LOCATOR_ACTION_KINDS,
   POINTER_ACTION_KINDS,
   rejectUnknownKeys,
@@ -19,42 +20,35 @@ import {
   type EngineHandle,
 } from 'e2e/engine';
 import { createRequire } from 'node:module';
-import { asBrowserProvider } from './provider.ts';
-import { PlaywrightSurface, type WebOptions } from './surface.ts';
-import { createBrowserFixture } from './browser.ts';
-import { validateInitScripts } from './init-scripts.ts';
-import { MEDIA_KEYS, mediaProblem } from './media.ts';
+import { asBrowserProvider, LeasedBrowsers } from './provider.ts';
+import { DEFAULT_VIEWPORT, MEDIA_KEYS, mediaProblem, type WebOptions } from './options.ts';
+import { perform, performAt, typeText } from './driver/actions.ts';
+import { screenshot, startVideo, stopVideo } from './driver/artifacts.ts';
+import { locate, observe } from './driver/observe.ts';
+import { captureState, restoreState } from './driver/state.ts';
+import { reset, restart } from './driver/steering.ts';
+import { BidiSurface } from './driver/surface.ts';
+import { cdpSource, launchSource, leaseSource, type BrowserSource } from './driver/browser-source.ts';
+import type { Browser } from './fixture/types.ts';
+import { createBrowserFixture } from './fixture/browser.ts';
+import { ConfiguredInitScripts, validateInitScripts } from './init-scripts.ts';
 import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
-import { validatePermissions } from './permissions.ts';
-import type { BrowserName } from './browser-connection.ts';
+import { BROWSER_TRAITS, isBrowserName, type BrowserName } from './browsers.ts';
 
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments'] as const;
 
-/** Creates one Playwright engine: one browser per worker, one context per attempt. */
-const surfaces = new WeakMap<EngineHandle, PlaywrightSurface>();
+export function web(options: WebOptions = {}): EngineHandle<{ browser: Browser }> {
+  return createWeb(options);
+}
 
 /**
- * The live browser objects behind a `web()` handle, for agent-side code
- * that replaces the toolset wholesale (spec chapter 16) and drives the page with
- * its own Playwright tooling. Both accessors read the current attempt: the
- * context exists from `startAttempt`, the page from the first `app.open()` or
- * `browser.goto()`, and either throws `INVALID_STATE` before that. The harness
- * remains the notary for what it witnesses; a caller here acts out of band.
+ * The web engine for `options`, its browser from `attachTo` when given:
+ * `attachBrowser`'s source, whose attempt drives the tab already open in the
+ * browser's own user context and leaves both behind, so the target needs no
+ * `app.url`. Otherwise the browser comes from what `options` name.
  */
-export interface PlaywrightLiveSurface {
-  readonly page: () => Page;
-  readonly context: () => BrowserContext;
-}
-
-/** The live surface of a handle this module created, or undefined for any other engine. */
-export function surfaceOf(engine: EngineHandle): PlaywrightLiveSurface | undefined {
-  const surface = surfaces.get(engine);
-  if (surface === undefined) return undefined;
-  return { page: () => surface.requirePage(), context: () => surface.requireContext() };
-}
-
-export function web(options: WebOptions = {}): EngineHandle {
+export function createWeb(options: WebOptions, attachTo?: BrowserSource): EngineHandle<{ browser: Browser }> {
   if ('allowedOrigins' in options) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -76,7 +70,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     );
   }
   if (options.connect !== undefined) validateConnect(options.connect);
-  if (options.connect !== undefined && typeof options.browser === 'string' && options.browser !== 'chromium') {
+  if (options.connect !== undefined && typeof options.browser === 'string' && !(isBrowserName(options.browser) && BROWSER_TRAITS[options.browser].cdp)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `web({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
@@ -91,19 +85,29 @@ export function web(options: WebOptions = {}): EngineHandle {
   validateMedia(options);
   if (options.initScripts !== undefined) validateInitScripts(options.initScripts);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
-  const reconnecting = options.connect?.reconnectEndpoint !== undefined;
-  // A per-attempt lease rides the same persistent context as `reconnectEndpoint`, with the same limits.
-  const recoverable = reconnecting || provider?.scope === 'attempt';
-  const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
-  const creationOptions = CREATION_OPTION_KEYS.filter((key) => options[key] !== undefined);
-  if (recoverable && creationOptions.length > 0) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `${mode} uses a persistent context; ${creationOptions.join(', ')} ${creationOptions.length === 1 ? 'requires' : 'require'} a newly created context`,
-    );
+  const browser: unknown = provider === undefined ? options.browser ?? 'chromium' : 'chromium';
+  if (typeof browser !== 'string' || !isBrowserName(browser)) {
+    throw new ConfigurationError('INVALID_CONFIG', `web({ browser }) drives chromium or firefox over WebDriver BiDi, got ${JSON.stringify(browser)}`);
   }
-  const surface = new PlaywrightSurface(options);
-  const handle = defineEngine({
+  const media = obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion });
+  const source = attachTo
+    ?? (provider !== undefined ? leaseSource(new LeasedBrowsers(provider)) : options.connect !== undefined ? cdpSource('connect', options.connect.cdpEndpoint) : launchSource(browser, media));
+  // Clearing state and saved sessions replace the user context, which only an attempt in a fresh one may do.
+  const ownsContext = source.userContext === 'fresh';
+  const surface = new BidiSurface({
+    viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
+    testIdAttribute: options.testIdAttribute ?? 'data-testid',
+    initScripts: new ConfiguredInitScripts(options.initScripts ?? []),
+    screencast: options.screencast ?? {},
+    headers: options.headers,
+    basicAuth: options.basicAuth,
+    userAgent: options.userAgent,
+    locale: options.locale,
+    timezoneId: options.timezoneId,
+    media,
+    source,
+  });
+  return defineEngine({
     name: 'web',
     version: ownVersion(),
     spiVersion: 1,
@@ -116,49 +120,60 @@ export function web(options: WebOptions = {}): EngineHandle {
     settleAttempt: (context) => surface.settleAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
     dispose: (context) => surface.dispose(context),
-    observe: (operation, observeOptions) => surface.observe(operation, observeOptions),
-    locate: (expression, operation) => surface.locate(expression, operation),
-    perform: (ref, action, operation) => surface.perform(ref, action, operation),
-    // A browser honors every action kind of the contract; `actions.ts` dispatches each.
+    observe: (operation, observeOptions) => surface.guard(operation, 'observe', (session, { timeoutMs, signal }) => observe(session, timeoutMs, signal, observeOptions)),
+    locate: (expression, operation) => surface.guard(operation, 'locate', (session) => locate(session, expression)),
+    // An input operation that fails once its input went out may have reached the app; a sensitive value never leaves in its error.
+    perform: (ref, action, operation) =>
+      surface.guard(operation, action.kind, (session, { timeoutMs, signal }) => perform(session, ref, action, timeoutMs, signal), {
+        input: true,
+        traced: true,
+        ...(action.kind === 'fill' && action.sensitive ? { sensitive: action.value } : {}),
+      }),
+    // A browser honors every action kind of the contract.
     actions: LOCATOR_ACTION_KINDS,
-    // Playwright holds each modifier for the click.
+    // The click holds each modifier.
     tapModifiers: true,
     // A page takes every pointer action of the contract at a bare point too.
-    performAt: (point, action, operation) => surface.performAt(point, action, operation),
+    performAt: (point, action, operation) =>
+      surface.guard(operation, `${action.kind} at point`, (session, { signal }) => performAt(session, point, action, signal), { input: true, traced: true }),
     pointerActions: POINTER_ACTION_KINDS,
     keyboard: {
-      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
-      press: (key, operation) => surface.pressKey(key, operation),
+      type: (text, keyboardOptions, operation) =>
+        surface.guard(operation, 'keyboard.type', (session, { signal }) => typeText(session, text, keyboardOptions.replace, signal), { input: true, traced: true }),
+      press: (key, operation) => surface.guard(operation, 'keyboard.press', (session, { signal }) => session.input.press(key, signal), { input: true, traced: true }),
     },
-    // A provider or a CDP attach speaks CDP, so it takes Chromium's names.
-    validateApp: (app, info) => validateApp(app, info, typeof options.browser === 'string' ? options.browser : 'chromium'),
+    validateApp: (app, info) => validateApp(app, info, browser, source.userContext !== 'adopt-tab'),
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {
-      open: (url, operation) => surface.open(url, operation),
+      open: (url, operation) => surface.goto(url, 'load', operation),
       back: (operation) => surface.back(operation),
-      resize: (size, operation) => surface.resize(size, operation),
-      restart: (operation) => surface.restart(operation),
-      reset: recoverable ? () => Promise.reject(persistentContextLimit('app.clearState()', mode, provider !== undefined)) : (operation) => surface.reset(operation),
+      // The agent's `resize` verb sets the viewport as `browser.setViewport` does, and shows the screen after it.
+      resize: (size, operation) => surface.guard(operation, 'resize', (session) => session.setViewport(size), { traced: true }),
+      // Replaces the tab with a blank one, keeping the attempt's storage.
+      restart: (operation) => surface.guard(operation, 'restart', (session, { signal }) => restart(session, signal)),
+      // Starts the attempt over in a clean user context.
+      reset: ownsContext
+        ? (operation) => surface.guard(operation, 'state reset', (session, { signal }) => reset(session, signal))
+        : () => Promise.reject(defaultContextLimit('app.clearState()', source)),
     },
     artifacts: {
-      screenshot: (label, operation) => surface.screenshot(label, operation),
-      startVideo: (operation) => surface.startVideo(operation),
-      stopVideo: (operation) => surface.stopVideo(operation),
+      screenshot: (label, operation) => surface.guard(operation, 'screenshot', (session, { signal }) => screenshot(session, label, signal)),
+      // The provider's recording when it records, else the driver's own.
+      startVideo: (operation) => surface.guard(operation, 'video', (session, { signal }) => startVideo(session, source.recorder(session.attempt.attemptId), signal)),
+      stopVideo: (operation) => surface.guard(operation, 'video', (session, { signal }) => stopVideo(session, signal)),
     },
-    ...(recoverable
-      ? {}
-      : {
+    ...(ownsContext
+      ? {
           state: {
-            capture: (operation) => surface.captureState(operation),
-            restore: (state, operation) => surface.restoreState(state, operation),
+            capture: (operation) => surface.guard(operation, 'state capture', (session) => captureState(session)),
+            restore: (state, operation) => surface.guard(operation, 'state restore', (session, { signal }) => restoreState(session, state, signal)),
           },
-        }),
+        }
+      : {}),
     fixtures: {
       browser: (context) => createBrowserFixture(surface, context),
     },
   });
-  surfaces.set(handle, surface);
-  return handle;
 }
 
 /** Every option `web()` takes, kept equal to `WebOptions` by the compiler. */
@@ -178,19 +193,18 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   initScripts: true,
 } satisfies Record<keyof WebOptions, true>);
 
-/** The options applied when the engine creates a browser context, which a persistent context never is. */
-const CREATION_OPTION_KEYS = ['headers', 'basicAuth', 'userAgent', 'locale', 'timezoneId'] as const satisfies readonly (keyof WebOptions)[];
-
 /**
- * What a persistent context rules out, named with its cause: `what` replaces
- * the browser context, which `mode` never does. A per-attempt lease starts
- * every attempt on a fresh browser already, and worker scope has the reset.
+ * What riding the browser's own context rules out, named with its cause:
+ * `what` replaces the browser context, which a per-attempt lease and
+ * `attachBrowser` both ride.
  */
-function persistentContextLimit(what: string, mode: string, leased: boolean): ConfigurationError {
-  const remedy = leased ? '; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test' : '';
+function defaultContextLimit(what: string, source: BrowserSource): ConfigurationError {
+  if (source.kind !== 'lease') {
+    return new ConfigurationError('UNSUPPORTED_CAPABILITY', `${what} is unavailable on an attached browser: it replaces the browser context, and the attach drives the browser's own`);
+  }
   return new ConfigurationError(
     'UNSUPPORTED_CAPABILITY',
-    `${what} is unavailable with ${mode}: it replaces the browser context, and the attempt rides one persistent context${remedy}`,
+    `${what} is unavailable with browser provider "${source.leases.name}" with scope "attempt": it replaces the browser context, and the attempt rides the leased browser's own; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test`,
   );
 }
 
@@ -208,31 +222,23 @@ function kindOf(value: unknown): string {
 }
 
 /**
- * `cdpEndpoint` is the one resolver every connect mode needs: the shared
- * browser's source at init, and the fresh browser each persistent attempt
- * provisions. Without it the attach would call an undefined resolver, so a
- * config missing it fails here, at load, instead of at worker init or on
- * every attempt with `ENGINE_FAILURE: ... resolve is not a function`.
+ * `cdpEndpoint` is the resolver `connect` attaches through. Without it the
+ * attach would call an undefined resolver, so a config missing it fails
+ * here, at load, instead of at worker init with `ENGINE_FAILURE: ... resolve
+ * is not a function`. Any other key, a removed `reconnectEndpoint` included,
+ * is refused.
  */
 function validateConnect(connect: unknown): void {
   if (!isRecord(connect)) {
-    throw new ConfigurationError('INVALID_CONFIG', `web({ connect }) must be a plain object: { cdpEndpoint, reconnectEndpoint? }, got ${kindOf(connect)}`);
+    throw new ConfigurationError('INVALID_CONFIG', `web({ connect }) must be a plain object: { cdpEndpoint }, got ${kindOf(connect)}`);
   }
-  rejectUnknownKeys('web({ connect })', connect, ['cdpEndpoint', 'reconnectEndpoint']);
-  const { cdpEndpoint, reconnectEndpoint } = connect;
+  rejectUnknownKeys('web({ connect })', connect, ['cdpEndpoint']);
+  const { cdpEndpoint } = connect;
   if (cdpEndpoint === undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `web({ connect }) requires cdpEndpoint, the resolver that provisions the browser: (signal) => url${
-        reconnectEndpoint === undefined ? '' : '; reconnectEndpoint only reconnects to the browser cdpEndpoint provisioned'
-      }`,
-    );
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ connect }) requires cdpEndpoint, the resolver that provisions the browser: (signal) => url');
   }
   if (typeof cdpEndpoint !== 'function') {
     throw new ConfigurationError('INVALID_CONFIG', `web({ connect: { cdpEndpoint } }) must be a resolver function (signal) => url, got ${kindOf(cdpEndpoint)}`);
-  }
-  if (reconnectEndpoint !== undefined && typeof reconnectEndpoint !== 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', `web({ connect: { reconnectEndpoint } }) must be a resolver function (signal) => url, got ${kindOf(reconnectEndpoint)}`);
   }
 }
 
@@ -411,7 +417,7 @@ function validateTestIdAttribute(attribute: unknown): void {
  * `app.open()` to open, and the fields that describe an installed device app
  * have nothing to act on here. `permissions` must be ones `browser` grants.
  */
-function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckInfo, browser: BrowserName): void {
+function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckInfo, browser: BrowserName, urlRequired: boolean): void {
   for (const key of NATIVE_APP_KEYS) {
     if (app[key] !== undefined) {
       throw new ConfigurationError(
@@ -420,13 +426,32 @@ function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckIn
       );
     }
   }
-  if (app.url === undefined) {
+  if (urlRequired && app.url === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `target "${targetName}" needs app.url: a web() target opens the app at a URL, targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }]`,
     );
   }
   if (app.permissions !== undefined) validatePermissions(targetName, browser, app.permissions);
+}
+
+/**
+ * Refuses a permission `browser` cannot grant, and any state but `grant`:
+ * the engine only grants, and Chromium denies every permission a grant
+ * leaves out, so neither `deny` nor `reset` can mean what it does on a
+ * device. The harness has checked the map's shape and states already.
+ */
+function validatePermissions(targetName: string, browser: BrowserName, permissions: Readonly<Record<string, AppPermissionState>>): void {
+  const where = `target "${targetName}" app.permissions`;
+  rejectUnknownKeys(`${where} on ${browser}`, permissions, BROWSER_TRAITS[browser].permissions);
+  for (const [name, state] of Object.entries(permissions)) {
+    if (state !== 'grant') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${where}.${name} is ${state}, but a web() target only grants; leave the permission out instead`,
+      );
+    }
+  }
 }
 
 /** This package's published version, read through require resolution. */

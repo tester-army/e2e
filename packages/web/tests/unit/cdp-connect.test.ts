@@ -7,7 +7,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { EngineInitInfo } from 'e2e/engine';
 import { web, type WebConnectOptions } from '../../src/index.ts';
-import { PlaywrightSurface } from '../../src/surface.ts';
 
 function initInfo(signal = new AbortController().signal): EngineInitInfo {
   return {
@@ -24,31 +23,16 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
 }
 
 describe('web({ connect })', () => {
-  it('declares persistent recovery without context replacement capabilities, and names why a reset is refused', async () => {
-    const engine = web({ connect: { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' } });
-    expect(engine.state).toBeUndefined();
-    await expect(engine.session!.reset!({ timeoutMs: 1_000, signal: new AbortController().signal, runId: 'run-connect', attemptId: 'a1', origin: 'test' })).rejects.toMatchObject({
-      code: 'UNSUPPORTED_CAPABILITY',
-      message: 'app.clearState() is unavailable with connect.reconnectEndpoint: it replaces the browser context, and the attempt rides one persistent context',
-    });
-    expect(engine.session?.restart).toBeTypeOf('function');
-  });
-
-  it('rejects creation-time credentials, headers, user agent, locale, and time zone with persistent recovery', () => {
-    const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' };
-    expect(() => web({ connect, headers: { 'x-preview': 'synthetic' } })).toThrow(/persistent context/);
-    expect(() => web({ connect, basicAuth: { username: 'user', password: 'synthetic' } })).toThrow(/persistent context/);
-    expect(() => web({ connect, userAgent: 'synthetic playwright' })).toThrow(/persistent context/);
-    expect(() => web({ connect, locale: 'de-DE' })).toThrow(/persistent context; locale requires/);
-    expect(() => web({ connect, timezoneId: 'Europe/Berlin' })).toThrow(/persistent context; timezoneId requires/);
+  it('refuses the removed reconnectEndpoint as an unknown key', () => {
+    const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' } as WebConnectOptions;
+    expect(() => web({ connect })).toThrow(expect.objectContaining({
+      code: 'INVALID_CONFIG',
+      message: expect.stringContaining('web({ connect }) has unknown key "reconnectEndpoint"'),
+    }));
   });
 
   it('rejects connect with a non-chromium browser as INVALID_CONFIG', () => {
-    for (const browser of ['firefox', 'webkit'] as const) {
-      expect(() => web({ browser, connect: { cdpEndpoint: () => 'ws://x' } })).toThrowError(
-        /chromium-only/,
-      );
-    }
+    expect(() => web({ browser: 'firefox', connect: { cdpEndpoint: () => 'ws://x' } })).toThrowError(/chromium-only/);
   });
 
   it('rejects connect without a cdpEndpoint resolver as INVALID_CONFIG at config load, never echoing an endpoint', () => {
@@ -56,57 +40,59 @@ describe('web({ connect })', () => {
     const resolver = () => 'ws://localhost:0';
     const url = 'ws://host/devtools/browser/session-token';
     const connect = (value: unknown) => () => web({ connect: value as WebConnectOptions });
-    // reconnectEndpoint alone used to pass load and fail every attempt with "resolve is not a function".
-    expect(connect({ reconnectEndpoint: resolver })).toThrow(refused(/requires cdpEndpoint.*reconnectEndpoint only reconnects/));
     expect(connect({})).toThrow(refused(/requires cdpEndpoint, the resolver that provisions the browser/));
     expect(connect({ cdpEndpoint: url })).toThrow(refused(/cdpEndpoint.*must be a resolver function.*got a string$/));
-    expect(connect({ cdpEndpoint: resolver, reconnectEndpoint: url })).toThrow(refused(/reconnectEndpoint.*must be a resolver function.*got a string$/));
     expect(connect(url)).toThrow(refused(/connect.*must be a plain object.*got a string$/));
     expect(connect(null)).toThrow(refused(/must be a plain object.*got null$/));
     expect(connect([resolver])).toThrow(refused(/must be a plain object.*got an array$/));
-    for (const value of [{ cdpEndpoint: url }, { cdpEndpoint: resolver, reconnectEndpoint: url }, url]) {
+    for (const value of [{ cdpEndpoint: url }, url]) {
       expect(connect(value)).toThrow(expect.objectContaining({ message: expect.not.stringContaining('session-token') }));
     }
   });
 });
 
-describe('PlaywrightSurface CDP attach', () => {
-  it('fails init with ENGINE_FAILURE when the endpoint resolves empty or the resolver throws, without touching a browser', async () => {
-    const empty = new PlaywrightSurface({ connect: { cdpEndpoint: () => '   ' } });
-    await expect(empty.init(initInfo())).rejects.toMatchObject({
+describe('CDP attach at init', () => {
+  it('fails init with ENGINE_FAILURE when the endpoint resolves empty, without touching a browser', async () => {
+    const empty = web({ connect: { cdpEndpoint: () => '   ' } });
+    await expect(empty.init!(initInfo())).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       retryable: false,
       message: expect.stringContaining('connect.cdpEndpoint resolved to an empty CDP endpoint'),
     });
-    const throwing = new PlaywrightSurface({
+  });
+
+  it('fails init with ENGINE_FAILURE when the resolver throws, naming its failure', async () => {
+    const throwing = web({
       connect: {
         cdpEndpoint: () => {
           throw new Error('vault down');
         },
       },
     });
-    await expect(throwing.init(initInfo())).rejects.toMatchObject({
+    await expect(throwing.init!(initInfo())).rejects.toMatchObject({
       code: 'ENGINE_FAILURE',
       message: expect.stringContaining('vault down'),
     });
   });
 
-  it('hands the init signal to the resolver and cancels promptly while it is still pending', async () => {
+  it('cancels an init promptly while the resolver is pending, and aborts the resolver once the engine is disposed', async () => {
     const controller = new AbortController();
     let seen: AbortSignal | undefined;
-    const surface = new PlaywrightSurface({
+    const engine = web({
       connect: {
-        cdpEndpoint: (signal) => {
+        cdpEndpoint: (signal: AbortSignal) => {
           seen = signal;
           return new Promise<string>(() => undefined);
         },
       },
     });
-    const pending = surface.init(initInfo(controller.signal));
+    const pending = engine.init!(initInfo(controller.signal));
     await vi.waitFor(() => expect(seen).toBeDefined());
     expect(seen!.aborted).toBe(false);
     controller.abort();
     await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(seen!.aborted).toBe(false);
+    await engine.dispose!({ signal: new AbortController().signal, timeoutMs: 1_000 });
     expect(seen!.aborted).toBe(true);
   });
 
@@ -114,7 +100,7 @@ describe('PlaywrightSurface CDP attach', () => {
     const controller = new AbortController();
     controller.abort();
     let resolved = 0;
-    const surface = new PlaywrightSurface({
+    const engine = web({
       connect: {
         cdpEndpoint: () => {
           resolved += 1;
@@ -122,7 +108,7 @@ describe('PlaywrightSurface CDP attach', () => {
         },
       },
     });
-    await expect(surface.init(initInfo(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
+    await expect(engine.init!(initInfo(controller.signal))).rejects.toMatchObject({ code: 'CANCELLED' });
     expect(resolved).toBe(0);
   });
 });
