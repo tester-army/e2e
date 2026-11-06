@@ -30,8 +30,9 @@ import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../read-node.ts';
 import { cancelled } from '../support.ts';
 import { isStale, releaseQuietly, unlessStale } from './errors.ts';
 import { contentContext, inViewport, resolveFrames, selectElements, withinFrame, type NodeTarget } from './frames.ts';
-import { domReady, type PlaywrightAria, maskSecureFields, unmaskSecureFields, type LocateMetadata, type TreeMetadata } from './page.ts';
-import { ElementRef, type PageArgument } from './script.ts';
+import { domReady, maskSecureFields, unmaskSecureFields } from './page.ts';
+import type { EncodedReaderArgs, LocateWants, PlaywrightAria, WantedQuery } from './readers.ts';
+import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
 
 /** Shared node budget of one observation. */
@@ -115,12 +116,8 @@ export async function locate(session: BidiSession, expression: LocatorExpression
   const selected = await locateSelectors(session, inner, context);
   const options = { testIdAttribute: session.settings.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR };
   const frameHidden = await insideHiddenFrame(session, context, options);
-  const readLocated = (structured: boolean): Promise<[LocateMetadata | string | null, ElementRef[]]> =>
-    session.reader('locate', [options, wantedQueries(inner), CLOSED_SHADOW_ROOTS_KEY, structured], structured ? { maxObjectDepth: null } : undefined, context);
-  let [metadata, elements] = await readLocated(false);
-  if (metadata === null) [metadata, elements] = await readLocated(true);
-  // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported reads; the alignment below is checked
-  const { nodes, parents, valued, aria, order } = typeof metadata === 'string' ? (JSON.parse(metadata) as LocateMetadata) : (metadata as LocateMetadata);
+  const { metadata, elements } = await session.readEncoded('locate', (): EncodedReaderArgs<'locate'> => [options, wantedQueries(inner), CLOSED_SHADOW_ROOTS_KEY], context);
+  const { nodes, parents, valued, aria, order } = metadata;
   if (!Array.isArray(nodes) || !Array.isArray(parents) || !Array.isArray(valued) || !Array.isArray(aria) || !Array.isArray(order) || [parents, valued, aria, order, elements].some((list) => list.length !== nodes.length)) {
     throw new EngineError('ENGINE_FAILURE', 'located reads do not align with their elements', { retryable: false });
   }
@@ -159,7 +156,7 @@ export async function locate(session: BidiSession, expression: LocatorExpression
  */
 async function insideHiddenFrame(session: BidiSession, context: string, options: { readonly testIdAttribute: string; readonly secureFieldSelector: string }): Promise<boolean> {
   for (const frame of session.frames.chain(context)) {
-    if (await session.reader<boolean>('hidden', [frame.element, options], undefined, frame.context)) return true;
+    if (await session.reader('hidden', [frame.element, options], frame.context)) return true;
   }
   return false;
 }
@@ -268,18 +265,11 @@ function selectorsOf(expression: LocatorExpression): Set<string> {
  * truncation; an off-site one stays a boundary node by design.
  */
 async function captureTree(session: BidiSession, context: string, framePath: readonly string[], budget: number, deadline: number): Promise<CapturedTree> {
-  const readTree = (structured: boolean): Promise<[TreeMetadata | string | null, ElementRef[]]> => {
-    const options = {
-      testIdAttribute: session.settings.testIdAttribute,
-      secureFieldSelector: SECURE_FIELD_SELECTOR,
-      mode: { kind: 'tree', maxNodes: budget, idSeed: session.refs.reserveIds(budget), nameLimit: OBSERVED_NAME_LIMIT, textLimit: OBSERVED_TEXT_LIMIT },
-    };
-    return session.reader('tree', [options, structured], structured ? { maxObjectDepth: null } : undefined, context);
-  };
-  let [metadata, elements] = await readTree(false);
-  if (metadata === null) [metadata, elements] = await readTree(true);
-  // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported metadata; the ids and nodes alignment below is checked
-  const decoded = typeof metadata === 'string' ? (JSON.parse(metadata) as TreeMetadata) : (metadata as TreeMetadata);
+  const { metadata: decoded, elements } = await session.readEncoded('tree', (): EncodedReaderArgs<'tree'> => [{
+    testIdAttribute: session.settings.testIdAttribute,
+    secureFieldSelector: SECURE_FIELD_SELECTOR,
+    mode: { kind: 'tree', maxNodes: budget, idSeed: session.refs.reserveIds(budget), nameLimit: OBSERVED_NAME_LIMIT, textLimit: OBSERVED_TEXT_LIMIT },
+  }], context);
   const { nodes, ids } = decoded;
   if (!Array.isArray(ids) || ids.length !== nodes.length || elements.length !== nodes.length) {
     throw new EngineError('ENGINE_FAILURE', 'observation ids do not align with its nodes', { retryable: false });
@@ -406,7 +396,7 @@ async function captureUnlessNavigated(session: BidiSession, context: string, doc
 }
 
 /** A text pattern as a page function argument. */
-function patternArgument(pattern: TextPattern): PageArgument {
+function patternArgument(pattern: TextPattern): TextPattern {
   return pattern.kind === 'string'
     ? { kind: 'string', value: pattern.value, exact: pattern.exact }
     : { kind: 'regexp', source: pattern.source, flags: pattern.flags };
@@ -417,8 +407,8 @@ function patternArgument(pattern: TextPattern): PageArgument {
  * expression, and whether a text filter needs every element with text. A
  * selector, or a role query whose role is a pattern, reads every element.
  */
-export function wantedQueries(expression: LocatorExpression): PageArgument {
-  const queries: PageArgument[] = [];
+export function wantedQueries(expression: LocatorExpression): LocateWants {
+  const queries: WantedQuery[] = [];
   let hasText = false;
   let all = false;
   const walk = (node: LocatorExpression): void => {

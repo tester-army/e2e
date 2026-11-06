@@ -3,7 +3,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Deadline, EngineError } from 'e2e/engine';
 import { isStale } from './errors.ts';
-import { historyEntry } from './page.ts';
+import { historyEntry, readyState } from './page.ts';
 import type { BidiSession } from './session.ts';
 
 /** How a navigation waits: the `waitUntil` the `browser` fixture takes. */
@@ -65,7 +65,7 @@ async function documentReady(session: BidiSession, context: string, wait: 'compl
   if (wait === 'none') return;
   for (;;) {
     signal.throwIfAborted();
-    const state = await session.read<string>('() => document.readyState', [], undefined, context).catch((cause: unknown) => {
+    const state = await session.run(readyState, [], context).catch((cause: unknown) => {
       if (isStale(cause)) return 'loading';
       throw cause;
     });

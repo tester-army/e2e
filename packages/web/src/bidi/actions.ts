@@ -242,7 +242,7 @@ async function settledPoint(
   for (;;) {
     signal.throwIfAborted();
     const { enabled, ...placing } = checks;
-    const disabled = enabled ? await session.reader<boolean | null>('disabled', [target.element, readerOptions(session)], undefined, target.context) : false;
+    const disabled = enabled ? await session.reader('disabled', [target.element, readerOptions(session)], target.context) : false;
     const point: ActionPoint = disabled === null ? { state: 'detached' } : disabled ? { state: 'disabled' } : await session.run(readActionPoint, [target.element, { ...placing, key: CLOSED_SHADOW_ROOTS_KEY }], target.context);
     if (point.state === 'ok') return point;
     if (point.state === 'detached') throw new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });

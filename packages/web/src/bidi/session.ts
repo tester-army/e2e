@@ -21,8 +21,9 @@ import { releaseQuietly, unlessStale } from './errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser, BidiBrowserName } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
-import { BUILTINS_INIT_SCRIPT, HIT_INTERCEPTOR_INIT_SCRIPT, readerCall, readerInstallCall, type ReaderName, READERS_INIT_SCRIPT, READERS_MISSING, viewportSize } from './page.ts';
-import { callFunction, type CallOptions, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
+import { HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
+import { BUILTINS_INIT_SCRIPT, readerCall, readerInstallCall, READERS_INIT_SCRIPT, READERS_MISSING, type EncodedReaderArgs, type EncodedReaderName, type ReaderArgs, type ReaderMetadata, type ReaderName, type ReaderResult } from './readers.ts';
+import { callFunction, type CallOptions, type ElementRef, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 import type { BidiVideo } from './video.ts';
 import type { ProviderVideo } from '../provider-video.ts';
 import type { LeaseDownloads } from '../provider.ts';
@@ -431,20 +432,35 @@ export class BidiSession {
     return value as Wire<Awaited<ReturnType<F>>>;
   }
 
-  /**
-   * Calls one of the document's readers in `context` (the tab by default)
-   * through the copy its preload installed; a document without one (open
-   * before the preload) gets them with the call, and keeps them.
-   */
-  async reader<T>(name: ReaderName, args: readonly PageArgument[], options?: CallOptions, context?: string): Promise<T> {
-    const value = await this.call(readerCall(name), args, options, context);
-    if (value !== READERS_MISSING) return value as T;
-    return (await this.call(readerInstallCall(name), args, options, context)) as T;
+  /** Calls the document's reader `name` in `context` (the tab by default). */
+  async reader<K extends ReaderName>(name: K, args: ReaderArgs<K>, context?: string): Promise<ReaderResult<K>> {
+    return (await this.callReader(name, args, undefined, context)) as ReaderResult<K>;
   }
 
-  /** `call` for a page function of this driver whose return shape the caller names; the page is not checked against it. */
-  async read<T>(declaration: string, args: readonly PageArgument[] = [], options?: CallOptions, context?: string): Promise<T> {
-    return (await this.call(declaration, args, options, context)) as T;
+  /**
+   * Calls the document's encoded reader `name` in `context` (the tab by
+   * default) and decodes its metadata: one JSON string, or, when the page's
+   * JSON cannot be trusted, a structured value it asks for again. `args`
+   * makes each call's arguments, as a tree read reserves its ids per call.
+   */
+  async readEncoded<K extends EncodedReaderName>(name: K, args: () => EncodedReaderArgs<K>, context?: string): Promise<{ metadata: ReaderMetadata<K>; elements: ElementRef[] }> {
+    type Answer = readonly [metadata: ReaderMetadata<K> | string | null, elements: ElementRef[]];
+    let [metadata, elements] = (await this.callReader(name, [...args(), false], undefined, context)) as Answer;
+    if (metadata === null) [metadata, elements] = (await this.callReader(name, [...args(), true], { maxObjectDepth: null }, context)) as Answer;
+    if (metadata === null) throw new EngineError('ENGINE_FAILURE', `the ${name} reader reported no metadata`, { retryable: false });
+    // oxlint-disable-next-line e2e/no-unchecked-json -- page-reported metadata; each caller checks its alignment
+    return { metadata: typeof metadata === 'string' ? JSON.parse(metadata) : metadata, elements };
+  }
+
+  /**
+   * Calls one of the document's readers through the copy its preload
+   * installed; a document without one (open before the preload) gets them
+   * with the call, and keeps them.
+   */
+  private async callReader(name: ReaderName, args: readonly PageArgument[], options: CallOptions | undefined, context: string | undefined): Promise<unknown> {
+    const value = await this.call(readerCall(name), args, options, context);
+    if (value !== READERS_MISSING) return value;
+    return this.call(readerInstallCall(name), args, options, context);
   }
 
   /**
