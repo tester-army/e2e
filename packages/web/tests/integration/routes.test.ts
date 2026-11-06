@@ -239,7 +239,8 @@ describe('browser.route decisions', () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const trigger = async (): Promise<void> => {
-      await browser.evaluate(() => { document.querySelector<HTMLAnchorElement>('a')!.click(); return null; }, null);
+      // The click is scheduled past the evaluate, so a download navigation racing it cannot fail the trigger: the trigger stays pending.
+      await browser.evaluate(() => { setTimeout(() => document.querySelector<HTMLAnchorElement>('a')!.click(), 0); return null; }, null);
       await pending;
     };
     const work = method === 'waitForDownload'
@@ -252,7 +253,7 @@ describe('browser.route decisions', () => {
         new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
       ]);
       // BiDi has no command that cancels a download, so the one the link started keeps streaming until the server closes it.
-      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: 'the download trigger did not resolve within 500ms' });
+      expect([(result as { code?: unknown }).code, (result as { message?: unknown }).message]).toEqual(['ACTION_FAILED', 'the download trigger did not resolve within 500ms']);
       release();
       await work.catch(() => undefined);
       expect(session.artifacts()).toEqual([]);

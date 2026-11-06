@@ -1,5 +1,5 @@
 /**
- * Fixes for two faults of the chromium-bidi mapper (159.0.8135), applied to
+ * Fixes for two faults of the chromium-bidi mapper (still present in 159.0.8147), applied to
  * the CDP stream it reads.
  *
  * Redirect pauses: Chrome sends a redirect hop's `Fetch.requestPaused` and

@@ -698,8 +698,8 @@ importers:
   packages/web:
     dependencies:
       chromium-bidi:
-        specifier: 159.0.8135-0
-        version: 159.0.8135-0(devtools-protocol@0.0.1734725)
+        specifier: 159.0.8147-0
+        version: 159.0.8147-0(devtools-protocol@0.0.1734725)
       yauzl:
         specifier: 3.4.0
         version: 3.4.0
@@ -3091,8 +3091,8 @@ packages:
     engines: {node: '>=12.13.0'}
     hasBin: true
 
-  chromium-bidi@159.0.8135-0:
-    resolution: {integrity: sha512-WRyQrnJDZkSPQDl/al7XuPEKj1RhXu1MSxkTYbGGMet8v4XzrX+zcf+gCJ32pzYiuOBpk3W1ylwxABCGq8JwUQ==}
+  chromium-bidi@159.0.8147-0:
+    resolution: {integrity: sha512-qd7BvVbWOOqB8iawFcZSs7KyR3iihPkN4XOiJzJrJNw2CUn9j2oQqz23dvkBrynF30FWdJQM9SYwTYzIAFp5fA==}
     engines: {node: '>=20.19.0 <22.0.0 || >=22.12.0'}
     peerDependencies:
       devtools-protocol: '*'
@@ -7539,7 +7539,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  chromium-bidi@159.0.8135-0(devtools-protocol@0.0.1734725):
+  chromium-bidi@159.0.8147-0(devtools-protocol@0.0.1734725):
     dependencies:
       devtools-protocol: 0.0.1734725
       mitt: 3.0.1

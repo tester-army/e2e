@@ -56,7 +56,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "chromium-bidi": "159.0.8135-0",
+    "chromium-bidi": "159.0.8147-0",
     "yauzl": "3.4.0"
   },
   "peerDependencies": {
