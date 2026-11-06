@@ -9,7 +9,6 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { it } from 'vitest';
 import type {
   EngineAttemptContext,
   EngineFixtureContext,
@@ -48,8 +47,6 @@ export function testBrowser(): BrowserName {
 /** Whether the suite runs on Firefox, for a test that names a Firefox limit in its skip. */
 export const onFirefox = testBrowser() === 'firefox';
 
-/** `it`, or `it.fails` on Firefox: for a test a named Firefox bug fails today, so the run says when the bug is fixed. */
-export const itFailsOnFirefox = onFirefox ? it.fails : it;
 
 /** `web(options)` on the suite's browser, for a test that drives the engine contract by hand. */
 export function testWeb(options: WebOptions = {}): EngineHandle {
