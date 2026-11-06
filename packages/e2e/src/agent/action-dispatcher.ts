@@ -10,6 +10,7 @@
  * and queue as `runTool`.
  */
 
+import { setTimeout as delay } from 'node:timers/promises';
 import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contract.ts';
 import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
@@ -38,7 +39,7 @@ import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
-import { nodeReading, normalizeReading, readingShape } from './reading.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
 import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { HELD_STILL_MS, SETTLE_AFTER } from './settle-policy.ts';
@@ -83,9 +84,10 @@ const MAX_SCROLL_UNTIL_TEXT_CHARS = 200;
 const SCROLL_UNTIL_STILL_PAGES = 3;
 /**
  * How long the screen must also have stayed unchanged before the list counts
- * as ended: a list that loads its next page on a timer holds still while it
- * waits, and an engine that pages fast would otherwise read that pause as the
- * end where a slower one would not.
+ * as ended, the rest waited out without paging once the still pages are in:
+ * a list that loads its next page on a timer holds still while it waits, and
+ * an engine that pages fast would otherwise read that pause as the end where
+ * a slower one would not.
  */
 const SCROLL_UNTIL_STILL_MS = HELD_STILL_MS;
 const SCROLL_UNTIL_WRONG_LIST_PAGES = 2;
@@ -555,7 +557,7 @@ export class ActionDispatcher {
     await this.runAction('scrollUntil', async () => {
       let observation = this.feed.requireLatest();
       let paged: Pick<Extract<RecordableAction, { name: 'scrollUntil' }>, 'node' | 'spans'> = {};
-      let previous: string | undefined;
+      let previous: PageReading | undefined;
       let still = 0;
       let changedAt = Date.now();
       let within = list;
@@ -576,23 +578,46 @@ export class ActionDispatcher {
           if (isInViewport(found.rect, observation.viewport)) return { name: 'scrollUntil', text, direction, screens, ...paged };
         }
         if (screens >= MAX_SCROLL_UNTIL_SCREENS) throw notFound(`within ${String(MAX_SCROLL_UNTIL_SCREENS)} screens ${direction}`);
-        const shape = observation.kind === 'semantic' ? readingShape(observation) : undefined;
-        still = shape !== undefined && shape === previous ? still + 1 : 0;
+        const reading = observation.kind === 'semantic' ? readPage(observation) : undefined;
+        still = reading !== undefined && previous !== undefined && !pageMoved(previous, reading) ? still + 1 : 0;
         if (still === 0) changedAt = Date.now();
-        if (still >= SCROLL_UNTIL_STILL_PAGES && Date.now() - changedAt >= SCROLL_UNTIL_STILL_MS) {
+        if (still >= SCROLL_UNTIL_STILL_PAGES) {
+          // A list that loads its next page on a timer holds still while it
+          // waits: the rest of the stillness window is waited out with no
+          // more paging, and a screen that moved meanwhile goes on paging.
+          const rest = SCROLL_UNTIL_STILL_MS - (Date.now() - changedAt);
+          if (rest > 0) {
+            await delay(rest);
+            const later = await this.feed.look('held-still');
+            const again = later.kind === 'semantic' ? readPage(later) : undefined;
+            if (reading !== undefined && again !== undefined && pageMoved(reading, again)) {
+              observation = later;
+              previous = undefined;
+              still = 0;
+              continue;
+            }
+          }
           throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
         }
         if (still >= SCROLL_UNTIL_WRONG_LIST_PAGES && within !== undefined) {
           within = undefined;
           still = 0;
         }
-        previous = shape;
+        previous = reading;
         const turned = await this.page(direction, within);
         paged = turned.paged;
         within = turned.within;
         // A settled look: a browser scrolls on a later frame than the wheel
-        // event, and a raw read right after it sees the page as it was.
-        observation = await this.feed.look('held-still');
+        // event, and a raw read right after it sees the page as it was. A page
+        // at least a third (two lines at least) of whose lines are new and
+        // that is no sparser has landed, so it is read once; one that reads
+        // the same (not rendered yet, or the end), differs by a line or two
+        // (a counter), or is thinner (rows still drawing) is read until it
+        // holds.
+        observation = await this.feed.look(
+          'held-still',
+          (seen) => previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen)),
+        );
       }
     });
   }

@@ -49,6 +49,7 @@ cd apps/web-benchmark && pnpm run build     # the Next.js app, once per scenario
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run tests/<scenario>.e2e.ts
 cd apps/web-benchmark && node node_modules/e2e/dist/cli/bin.js run --config e2e.agent.config.ts
 pnpm test:testbed && pnpm test:web-benchmark          # the whole gate, as CI runs it
+pnpm --filter @e2e-dev/testbed test:scroll            # scroll_to by text, scripted; its own CI step
 ```
 
 Add a deterministic test next to the behavior when it must stay proven: a
