@@ -207,7 +207,7 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
     readNode: (selector) => session.browser.evaluate(
       `({ selector, options }) => (${readSemanticsFunction.toString()})(document.querySelector(selector), options)`,
       { selector, options: { testIdAttribute: 'data-testid', secureFieldSelector: SECURE_FIELD_SELECTOR, mode: { kind: 'node' } } },
-    ) as Promise<RawNodeData>,
+    ) as unknown as Promise<RawNodeData>,
     waitForFrames: () => session.browser.evaluate(async () => {
       const loaded = (frame: HTMLIFrameElement) => frame.contentDocument === null || frame.contentDocument.readyState === 'complete';
       while (![...document.querySelectorAll('iframe')].every(loaded)) await new Promise((resolve) => setTimeout(resolve, 20));

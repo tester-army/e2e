@@ -69,7 +69,7 @@ describe('role mapping', () => {
 
   it.each(['open', 'closed'] as const)('scopes nested shadow landmarks to their outer article (%s)', async (mode) => {
     await page.setContent('<article><div id="card"></div></article><div id="page"></div>');
-    await page.browser.evaluate((shadowMode: string) => {
+    await page.browser.evaluate((shadowMode: ShadowRootMode) => {
       const card = document.querySelector('#card')!.attachShadow({ mode: shadowMode });
       card.innerHTML = '<div id="nested"></div>';
       card.querySelector('#nested')!.attachShadow({ mode: shadowMode }).innerHTML =
