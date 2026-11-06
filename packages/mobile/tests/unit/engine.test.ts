@@ -2320,6 +2320,28 @@ describe('device fixture', () => {
     expect(h.fake.calls.length).toBe(before);
   });
 
+  it('refuses a setPermission name or state it does not know before any device command, and still sends a valid one', async () => {
+    const h = harness();
+    await openAttempt(h);
+    const device = fixture(h);
+    const before = h.fake.calls.length;
+    await expect(device.setPermission('camra' as never, 'grant')).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: 'device.setPermission has unknown key "camra"; did you mean "camera"?',
+    });
+    await expect(device.setPermission('camera', 'allow' as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: 'device.setPermission.camera must be one of grant, deny, reset, got "allow"',
+    });
+    await expect(device.setPermission('camera', undefined as never)).rejects.toMatchObject({
+      code: 'INVALID_ARGUMENT',
+      message: 'device.setPermission.camera must be one of grant, deny, reset, got undefined',
+    });
+    expect(h.fake.calls.length).toBe(before);
+    await device.setPermission('camera', 'deny');
+    expect(h.fake.calls.slice(before).map((call) => call.method)).toEqual(['settings.update']);
+  });
+
   it('switches Wi-Fi and airplane mode on Android; on iOS, where simctl only repaints the status bar, refuses going offline and restores with no device command', async () => {
     const ios = harness();
     await openAttempt(ios);
