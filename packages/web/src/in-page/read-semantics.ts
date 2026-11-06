@@ -1105,17 +1105,15 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
-   * True for a checkbox or radio hidden only by having no box, with a label of
-   * its own that renders. Element Plus shrinks its native input to 0x0 under
-   * the box its label draws, so a person sees the control as that label, and a
-   * click on the label sets it. Chrome's accessibility tree keeps such an
-   * input, so the walk lists it too: otherwise the model reads the label text
-   * with no checkbox and no checked state.
+   * True for a checkbox or radio hidden only by having no box, under a shown
+   * label of its own that has a box, as Element Plus draws one. A tap clicks
+   * that label (`pickStandIn` in `actions.ts`), so a `display: contents`
+   * label, which has no box to click, does not count.
    */
   const isDrawnByLabel = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
     if (!(el instanceof HTMLInputElement) || (el.type !== 'checkbox' && el.type !== 'radio')) return false;
     if (style?.visibility !== 'visible' || isSkippedContent(el)) return false;
-    return associatedLabels(el).some((label) => !isHidden(label));
+    return associatedLabels(el).some((label) => styleOf(label)?.display !== 'contents' && !isHidden(label));
   };
 
   /**

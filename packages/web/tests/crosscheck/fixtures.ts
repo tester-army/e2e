@@ -138,6 +138,8 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <label><input class="shrunk" type="radio" name="size">Large</label>
       <input class="shrunk" type="checkbox" id="unlabelled-shrunk" aria-label="Unlabelled">
       <input class="shrunk" type="checkbox" id="hidden-label"><label for="hidden-label" style="display: none">Hidden label</label>
+      <label><input class="shrunk" type="checkbox" style="visibility: hidden">Invisible</label>
+      <label style="display: contents"><input class="shrunk" type="checkbox"><span class="box"></span>Contents</label>
     `,
   },
   {

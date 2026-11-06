@@ -11,10 +11,12 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import type { LocatorAction } from 'e2e/engine';
+import type { LocatorAction, SemanticNode } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from '../../src/actions.ts';
 import { ElementList } from '../../src/element-list.ts';
+import { captureDocument } from '../../src/observation.ts';
 import type { ActionTarget } from '../../src/support.ts';
+import { Published } from '../helpers/published.ts';
 
 let browser: Browser;
 let page: Page;
@@ -363,6 +365,47 @@ describe.each(KINDS)('a control its own label covers, through the %s target', (k
     </script>`);
     expect(await perform(await targetOf(kind, '#install'), { kind: 'check' })).toBeUndefined();
     expect(await page.isChecked('#install')).toBe(true);
+  });
+});
+
+describe('a checkbox or radio an observation lists over no box', () => {
+  it('takes a tap on its listed node, so the walk lists none a tap cannot reach', async () => {
+    await page.setContent(`<style>${ELEMENT_PLUS_CSS}</style>${ELEMENT_PLUS_CONTROLS}
+      <label style="display:contents"><input class="el-checkbox__original" type="checkbox" id="contents"><span class="el-checkbox__inner"></span>Contents</label>`);
+    let nextId = 1;
+    const published = new Published();
+    try {
+      const { tree } = await captureDocument(
+        {
+          testIdAttribute: 'data-testid',
+          site: undefined,
+          reserveIds: (count) => { const first = nextId; nextId += count; return first; },
+          commit: published.commit,
+        },
+        page,
+        { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal },
+      );
+      const nodes: SemanticNode[] = [];
+      const walk = (node: SemanticNode): void => {
+        nodes.push(node);
+        for (const child of node.children ?? []) walk(child);
+      };
+      walk(tree);
+      const listed = nodes.filter((node) => node.role === 'checkbox' || node.role === 'radio');
+      expect(listed.map((node) => node.name)).toEqual(['安装', '卸载', 'Agree', 'Large']);
+      for (const node of listed) {
+        const element = await published.element(node.ref.id);
+        expect(await perform({ kind: 'element', element }, { kind: 'tap' }), node.name ?? '').toBeUndefined();
+        expect(await element.evaluate((input) => (input as HTMLInputElement).checked), node.name ?? '').toBe(true);
+      }
+      // The one a `display: contents` label holds is left out; a tap on the label text sets it.
+      const text = nodes.find((node) => node.text === 'Contents');
+      expect(text).toBeDefined();
+      expect(await perform({ kind: 'element', element: await published.element(text!.ref.id) }, { kind: 'tap' })).toBeUndefined();
+      expect(await page.isChecked('#contents')).toBe(true);
+    } finally {
+      published.dispose();
+    }
   });
 });
 
