@@ -1,8 +1,26 @@
 /**
  * Page functions the BiDi surface calls with `script.callFunction`. Each is a
  * self-contained function serialized with `toString()`, so none closes over
- * module scope. The readers a document keeps live in `readers.ts`.
+ * module scope; those that share DOM helpers take them through `withDom`.
+ * The readers a document keeps live in `readers.ts`.
  */
+
+import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
+import { createDom } from '../in-page/dom.ts';
+
+/**
+ * A page function that takes the shared DOM helpers' factory (`createDom`)
+ * before the arguments the driver passes. Its source hands it the factory's
+ * own source, so it stays self-contained and the driver calls it with its
+ * arguments alone; it only runs in a page.
+ */
+function withDom<A extends unknown[], R>(fn: (domOf: typeof createDom, ...args: A) => R): (...args: A) => R {
+  const source = `(...args) => (${fn.toString()})((${createDom.toString()}), ...args)`;
+  const inPageOnly = (..._args: A): R => {
+    throw new Error('a page function runs only in the page');
+  };
+  return Object.assign(inPageOnly, { toString: () => source });
+}
 
 /** Where an action can land on an element, or why it cannot yet. */
 export type ActionPoint =
@@ -119,23 +137,12 @@ export async function actionPoint(element: Element, options: ActionPointOptions)
  * label inside a button lets the button take the event), and the hit
  * element's ancestors are walked through the slots it is assigned to.
  */
-export function hitBlocker(element: Element, x: number, y: number, key: string): string | null {
-  const recorded = Reflect.get(globalThis, Symbol.for(key)) as WeakMap<Element, ShadowRoot> | undefined;
-  const target = element.matches('input, textarea, select') || (element as HTMLElement).isContentEditable
-    ? element
-    : (element.closest('button, [role=button], a, [role=link]') ?? element);
-  let hit = document.elementFromPoint(x, y);
-  for (let root = hit?.shadowRoot ?? recorded?.get(hit!); hit !== null && root !== undefined && root !== null; root = hit.shadowRoot ?? recorded?.get(hit)) {
-    const inner = root.elementFromPoint(x, y);
-    if (inner === null || inner === hit) break;
-    hit = inner;
-  }
+export const hitBlocker = withDom((domOf, element: Element, x: number, y: number, key: string): string | null => {
+  const dom = domOf(key);
+  const hit = dom.hitAt(x, y);
   if (hit === null) return 'no element receives pointer events at the action point';
-  for (let at: Element | null = hit; at !== null; at = at.assignedSlot ?? at.parentElement ?? (at.parentNode instanceof ShadowRoot ? at.parentNode.host : null)) {
-    if (at === target) return null;
-  }
-  return `<${hit.localName}${hit.id === '' ? '' : `#${hit.id}`}> intercepts pointer events`;
-}
+  return dom.reaches(hit, dom.pointerTarget(element)) ? null : `<${hit.localName}${hit.id === '' ? '' : `#${hit.id}`}> intercepts pointer events`;
+});
 
 /** The viewport's size in CSS pixels. */
 export function viewportSize(): { width: number; height: number } {
@@ -184,13 +191,7 @@ export function nextFrame(): Promise<void> | undefined {
  * Focuses an element; returns whether focus landed on it, or on the editing
  * host that holds it, followed through open and recorded closed shadow roots.
  */
-export function focus(element: Element, key: string): boolean {
-  const recorded = Reflect.get(globalThis, Symbol.for(key)) as WeakMap<Element, ShadowRoot> | undefined;
-  (element as HTMLElement).focus();
-  let active = document.activeElement;
-  for (let inner = active && (active.shadowRoot ?? recorded?.get(active))?.activeElement; inner; inner = (inner.shadowRoot ?? recorded?.get(inner))?.activeElement) active = inner;
-  return active === element || ((element as HTMLElement).isContentEditable && active !== null && active.contains(element));
-}
+export const focus = withDom((domOf, element: Element, key: string): boolean => domOf(key).focus(element));
 
 /** A checkable's state and kind, as Playwright reads it: a checkable role without `aria-checked` is unchecked; `checked` is null for an element with no checked state, and an element out of the document is `detached`. */
 export function checkState(element: Element): { checked: boolean | null; radio: 'native' | 'aria' | null } | 'detached' {
@@ -212,19 +213,13 @@ export function checkState(element: Element): { checked: boolean | null; radio: 
  * `change`. Nothing changes until the element proved editable and took
  * focus. Returns null once filled, else why the element cannot be.
  */
-export function fill(element: Element, value: string, key: string): string | null {
+export const fill = withDom((domOf, element: Element, value: string, key: string): string | null => {
   const typed = ['', 'text', 'password', 'search', 'email', 'tel', 'url', 'number'];
-  const recorded = Reflect.get(globalThis, Symbol.for(key)) as WeakMap<Element, ShadowRoot> | undefined;
+  const dom = domOf(key);
   const EventClass = (Reflect.get(globalThis, Symbol.for('e2e.bidi.Event')) as typeof Event | undefined) ?? Event;
   const fire = (target: Element): void => {
     target.dispatchEvent(new EventClass('input', { bubbles: true, composed: true }));
     target.dispatchEvent(new EventClass('change', { bubbles: true }));
-  };
-  const focused = (): boolean => {
-    (element as HTMLElement).focus();
-    let active = document.activeElement;
-    for (let inner = active && (active.shadowRoot ?? recorded?.get(active))?.activeElement; inner; inner = (inner.shadowRoot ?? recorded?.get(inner))?.activeElement) active = inner;
-    return active === element || ((element as HTMLElement).isContentEditable && active !== null && active.contains(element));
   };
   const field = element.nodeName === 'INPUT' || element.nodeName === 'TEXTAREA' ? (element as HTMLInputElement | HTMLTextAreaElement) : null;
   if (field !== null) {
@@ -232,7 +227,7 @@ export function fill(element: Element, value: string, key: string): string | nul
     if (['checkbox', 'radio', 'file', 'button', 'submit', 'reset', 'image'].includes(type)) return `Input of type "${type}" cannot be filled`;
     if (field.disabled || field.readOnly) return 'element is not editable';
     if (type === 'number' && Number.isNaN(Number(value.trim()))) return 'Cannot type text into input[type=number]';
-    if (!focused()) return 'element could not be focused';
+    if (!dom.focus(element)) return 'element could not be focused';
     if (type !== 'textarea' && !typed.includes(type)) {
       const wanted = value.trim();
       field.value = wanted;
@@ -242,7 +237,7 @@ export function fill(element: Element, value: string, key: string): string | nul
     }
     field.select();
   } else if ((element as HTMLElement).isContentEditable) {
-    if (!focused()) return 'element could not be focused';
+    if (!dom.focus(element)) return 'element could not be focused';
     const range = document.createRange();
     range.selectNodeContents(element);
     const selection = getSelection();
@@ -259,7 +254,7 @@ export function fill(element: Element, value: string, key: string): string | nul
   }
   if (number && field.value !== value) return 'Malformed value';
   return null;
-}
+});
 
 /** Which option `selectOption` picks: by its label, value, or index. */
 export interface OptionChoice {
@@ -324,41 +319,25 @@ export function boxSize(element: Element): { width: number; height: number } | n
  * names this masking for `unmaskSecureFields`; captures that overlap each
  * keep their own.
  */
-export function maskSecureFields(selector: string, key: string, token: string): number {
-  const recorded = Reflect.get(globalThis, Symbol.for(key)) as WeakMap<Element, ShadowRoot> | undefined;
+export const maskSecureFields = withDom((domOf, selector: string, key: string, token: string): number => {
+  const dom = domOf(key);
   const fields: Element[] = [];
   const roots: ParentNode[] = [document];
   for (let index = 0; index < roots.length; index += 1) {
     const root = roots[index]!;
     fields.push(...root.querySelectorAll(selector));
     for (const element of root.querySelectorAll('*')) {
-      const shadow = element.shadowRoot ?? recorded?.get(element);
-      if (shadow) roots.push(shadow);
+      const shadow = dom.shadowOf(element);
+      if (shadow !== null) roots.push(shadow);
     }
   }
   const pin = (element: HTMLElement, styles: Record<string, string>): void => {
     element.style.setProperty('all', 'initial', 'important');
     for (const [name, value] of Object.entries(styles)) element.style.setProperty(name, value, 'important');
   };
-  const parentOf = (at: Element): Element | null => {
-    if (at.assignedSlot !== null) return at.assignedSlot;
-    const closed = at.parentElement === null ? undefined : recorded?.get(at.parentElement);
-    for (const slot of closed?.querySelectorAll('slot') ?? []) if (slot.assignedElements({ flatten: true }).includes(at)) return slot;
-    return at.parentElement ?? (at.getRootNode() instanceof ShadowRoot ? (at.getRootNode() as ShadowRoot).host : null);
-  };
-  const scalesOnly = (from: Element): boolean => {
-    for (let at: Element | null = from; at !== null; at = parentOf(at)) {
-      const style = getComputedStyle(at);
-      if (style.rotate !== 'none' || style.scale.includes('-')) return false;
-      if (style.transform === 'none') continue;
-      const matrix = new DOMMatrixReadOnly(style.transform);
-      if (!matrix.is2D || matrix.b !== 0 || matrix.c !== 0 || matrix.a <= 0 || matrix.d <= 0) return false;
-    }
-    return true;
-  };
   const layerOf = (field: Element): Element | null => {
-    for (let at: Element | null = field; at !== null; at = parentOf(at)) {
-      if (at.matches(':modal, :popover-open, :fullscreen')) return scalesOnly(at) ? at : null;
+    for (let at: Element | null = field; at !== null; at = dom.parentOf(at)) {
+      if (at.matches(':modal, :popover-open, :fullscreen')) return dom.turned(at) ? null : at;
     }
     return null;
   };
@@ -408,7 +387,7 @@ export function maskSecureFields(selector: string, key: string, token: string): 
   masks.set(token, { hosts: [...hosts].map(([container, { host }]) => ({ container, host })), caret, sheeted, boxes, selector, key });
   Reflect.set(globalThis, Symbol.for('e2e.bidi.mask'), masks);
   return boxes.length;
-}
+});
 
 /**
  * Removes what `maskSecureFields` added. Returns whether the screenshot taken
@@ -498,16 +477,10 @@ export function documentTitle(): string {
 export const HIT_INTERCEPTOR_INIT_SCRIPT = `(() => {
   Reflect.set(globalThis, Symbol.for('e2e.bidi.Event'), Event);
   const active = Symbol.for('e2e.bidi.hit.active');
-  const recorded = () => Reflect.get(globalThis, Symbol.for('e2e.closedShadowRoots'));
+  const dom = (${createDom.toString()})(${JSON.stringify(CLOSED_SHADOW_ROOTS_KEY)});
   const contains = (target, x, y) => {
-    let hit = document.elementFromPoint(x, y);
-    for (let root = hit && (hit.shadowRoot ?? recorded()?.get(hit)); hit && root; root = hit.shadowRoot ?? recorded()?.get(hit)) {
-      const inner = root.elementFromPoint(x, y);
-      if (!inner || inner === hit) break;
-      hit = inner;
-    }
-    for (let at = hit; at; at = at.assignedSlot ?? at.parentElement ?? (at.parentNode && at.parentNode.nodeType === 11 ? at.parentNode.host : null)) if (at === target) return true;
-    return false;
+    const hit = dom.hitAt(x, y);
+    return hit !== null && dom.reaches(hit, target);
   };
   const listener = (event) => {
     const watch = globalThis[active];
@@ -534,12 +507,9 @@ export const HIT_INTERCEPTOR_INIT_SCRIPT = `(() => {
  * recorded closed roots), and every later one is suppressed when it did not.
  * `hitInterceptorResult` reads the decision.
  */
-export function armHitInterceptor(element: Element): void {
-  const target = element.matches('input, textarea, select') || (element as HTMLElement).isContentEditable
-    ? element
-    : (element.closest('button, [role=button], a, [role=link]') ?? element);
-  Reflect.set(globalThis, Symbol.for('e2e.bidi.hit.active'), { target, verdict: undefined });
-}
+export const armHitInterceptor = withDom((domOf, element: Element): void => {
+  Reflect.set(globalThis, Symbol.for('e2e.bidi.hit.active'), { target: domOf().pointerTarget(element), verdict: undefined });
+});
 
 /**
  * Ends the click watch: null when the input reached the element, or when
@@ -619,10 +589,9 @@ export async function scrollIntoViewIfNeeded(element: Element): Promise<'detache
  * Returns false when this document does not hold focus, or its focus is an
  * iframe whose own document does.
  */
-export function insertFocusedText(text: string): boolean {
+export const insertFocusedText = withDom((domOf, text: string): boolean => {
   if (!document.hasFocus()) return false;
-  let active = document.activeElement;
-  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  const active = domOf().activeElement();
   if (active === null || active.nodeName === 'IFRAME' || active.nodeName === 'FRAME') return false;
   return document.execCommand('insertText', false, text);
-}
+});
