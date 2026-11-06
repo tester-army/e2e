@@ -27,8 +27,8 @@ Reply with the one fact that disproves it, then resolve. Common shapes:
 
 - **Pre-existing.** `git blame` or `git log -L` shows the flagged lines
   predate the branch. A real, cheap issue gets a follow-up, not scope creep.
-- **Misread library semantics.** Cite the library source or docs (Playwright,
-  the AI SDK, agent-device, node).
+- **Misread library semantics.** Cite the library source or docs (the
+  WebDriver BiDi spec, chromium-bidi, the AI SDK, agent-device, node).
 - **Already guaranteed.** Name the shared helper, type, closed schema, or
   `e2e/engine` contract that makes it impossible.
 - **Intentional tradeoff.** Link the PR body line, the commit body, or the
@@ -83,11 +83,11 @@ before any reviewer does.
     symlinks on Windows.
 12. A new build input or benchmark dependency missing from
     `.github/filters.yml`, so the benchmark suites skip a change they cover.
-13. Core naming an engine noun (`Web`, `browser`, `page`, `route`,
-    `playwright`) outside the `init` presets.
+13. Core naming an engine noun (`Web`, `browser`, `page`, `route`, `bidi`)
+    outside the `init` presets.
 14. A scripted rename of our API spelling (a fixture name, a call shape)
     that also rewrote another library's code: a Playwright `page.getByRole`
-    in a migration sample, a raw `Page` from `surfaceOf`. Grep the diff for
+    in a migration sample. Grep the diff for
     the old spelling on receivers that are not ours.
 
 ## Keeping this file useful

@@ -126,10 +126,10 @@ pnpm check   # lint -> check:dead-code -> typecheck -> docs:check
 pnpm test    # unit + integration
 ```
 
-Integration tests need Chromium:
+Integration tests need Chromium. After `pnpm build`:
 
 ```sh
-pnpm --filter @e2e-dev/web exec playwright-core install chromium
+node packages/web/dist/bin.js install chromium
 ```
 
 Docs are part of the change, not a follow-up. A behavior change updates its
