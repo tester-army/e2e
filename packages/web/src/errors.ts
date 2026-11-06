@@ -89,8 +89,13 @@ export function isTestErrorCode(cause: unknown, code: string): cause is Error & 
   return cause instanceof Error && cause.name === 'TestError' && (cause as { code?: unknown }).code === code;
 }
 
-/** BiDi codes and browser words that mean the element, frame, or document is gone. */
-const STALE_PATTERN = /no such node|no such frame|stale element|no such element|detached|execution context was destroyed|cannot find context|context with specified id|document unloaded|target navigated or closed/i;
+/**
+ * BiDi codes and browser words that mean the element, frame, or document is
+ * gone. `does not belong to the document` is CDP's word for a node of the
+ * document a navigation just replaced, which `chromium-bidi` passes on as
+ * `unknown error` until it learns the new document.
+ */
+const STALE_PATTERN = /no such node|no such frame|stale element|no such element|detached|execution context was destroyed|cannot find context|context with specified id|document unloaded|target navigated or closed|does not belong to the document/i;
 
 /** What a failure says about itself, the BiDi method name left out: a navigation command's failure is no stale node. */
 function ownWords(cause: unknown): string | undefined {

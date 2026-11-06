@@ -10,7 +10,8 @@ import { BidiError, classify, isStale, releaseQuietly, ScriptError, unlessStale 
 
 describe('classify', () => {
   it.each([
-    new BidiError('script.callFunction', 'no such node', 'Node with given id does not belong to the document'),
+    new BidiError('script.callFunction', 'no such node', 'SharedId "f.1.d_2" was not found.'),
+    new BidiError('script.callFunction', 'unknown error', 'Node with given id does not belong to the document'),
     new BidiError('browsingContext.getTree', 'no such frame', 'Context abc not found'),
     new ScriptError('Execution context was destroyed, most likely because of a navigation'),
     new ScriptError('element is detached'),
