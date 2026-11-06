@@ -82,43 +82,35 @@ can't use.
 where attempts run. Disconnect before `prepare` resolves, and leave the
 browser running.
 
-<Accordion title="Sign in with Playwright">
-Drive the browser with any CDP client. This example uses `playwright-core`,
-which `@e2e-dev/web` does not install, so add it to your project:
-
-<CodeGroup>
-```bash npm
-npm install --save-dev playwright-core
-```
-
-```bash pnpm
-pnpm add -D playwright-core
-```
-
-```bash bun
-bun add -d playwright-core
-```
-</CodeGroup>
+<Accordion title="Sign in with a session cookie">
+Any CDP client works. This example signs in over HTTP and hands the session
+cookie to the browser with `Storage.setCookies`, using only Node's `fetch`
+and `WebSocket`:
 
 ```ts title="Provider options"
-import { chromium } from 'playwright-core';
-
 smol({
   hostPorts: [3000],
   prepare: async (cdpEndpoint) => {
-    const browser = await chromium.connectOverCDP(cdpEndpoint);
-    const page = browser.contexts()[0]!.pages()[0]!;
-    await page.goto('http://localhost:3000/login');
-    await page.getByLabel('Email').fill('qa@example.com');
-    await page.getByLabel('Password').fill(process.env.QA_PASSWORD!);
-    await page.getByRole('button', { name: 'Sign in' }).click();
-    await page.waitForURL('**/dashboard');
-    await browser.close();
+    const login = await fetch('http://localhost:3000/api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'qa@example.com', password: process.env.QA_PASSWORD }),
+    });
+    const [name, value] = login.headers.getSetCookie()[0]!.split(';')[0]!.split('=');
+    const version = await (await fetch(`${cdpEndpoint}/json/version`)).json();
+    const socket = new WebSocket(version.webSocketDebuggerUrl);
+    await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
+    const done = new Promise((resolve) => socket.addEventListener('message', resolve, { once: true }));
+    socket.send(JSON.stringify({
+      id: 1,
+      method: 'Storage.setCookies',
+      params: { cookies: [{ name, value, domain: 'localhost', path: '/', httpOnly: true }] },
+    }));
+    await done;
+    socket.close();
   },
 })
 ```
-
-On a browser from `connectOverCDP`, `browser.close()` only disconnects.
 </Accordion>
 
 ## Run the app in the machine
