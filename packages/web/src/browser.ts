@@ -328,9 +328,10 @@ export interface ExpectationDeps {
 /**
  * The expected URL as `toHaveURL` compares it: a string resolved against the
  * base, the way `urlMatches` resolves it, so it reads beside the absolute
- * observed URL. A string that does not parse, and a RegExp, print as written.
+ * observed URL. A string that does not parse (a relative one with no base),
+ * and a RegExp, print as written.
  */
-function describeExpectedUrl(expected: string | RegExp, baseHref: string): string {
+function describeExpectedUrl(expected: string | RegExp, baseHref: string | undefined): string {
   if (typeof expected !== 'string') return String(expected);
   try {
     return new URL(expected, baseHref).href;
