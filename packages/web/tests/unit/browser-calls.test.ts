@@ -15,7 +15,7 @@ function adapter() {
   const calls: string[] = [];
   const held: RouteAdapter = {
     request: { url: 'http://app.test/api/users', method: 'GET', headers: {} },
-    fetch: async () => ({ url: '', status: 200, headers: {}, json: async () => null as never, text: async () => '' }),
+    fetch: async () => ({ url: '', status: 200, headers: {}, body: async () => Buffer.alloc(0), json: async () => null as never, text: async () => '' }),
     fulfill: async (decision) => void calls.push(`fulfill ${decision.status}`),
     continue: async (decision) => void calls.push(`continue ${decision.url ?? ''}`),
     fallback: async () => void calls.push('fallback'),
