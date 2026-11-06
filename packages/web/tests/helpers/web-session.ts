@@ -157,6 +157,40 @@ export async function startPageServer(): Promise<PageServer> {
   };
 }
 
+/** What a `browser` fixture built outside the harness reads of it. */
+export interface FixtureOptions {
+  /** The base URL relative navigations resolve against. */
+  readonly baseUrl: string;
+  readonly site?: string;
+  /** The per-operation budget; defaults to 30 s. */
+  readonly timeoutMs?: number;
+  /** The signal each operation carries; read per call. */
+  readonly signal?: () => AbortSignal;
+  /** Receives each artifact path the fixture attaches. */
+  readonly attach?: (relative: string) => void;
+}
+
+/** Builds `engine`'s `browser` fixture for the open attempt, with a harness context that records no steps. */
+export function browserFixture(engine: EngineHandle, options: FixtureOptions): Browser {
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const signal = options.signal ?? (() => new AbortController().signal);
+  const context = {
+    targetName: 'web',
+    app: {
+      ...(options.site === undefined ? {} : { site: options.site }),
+      resolveUrl: (url: string) => new URL(url, `${options.baseUrl}/`).href,
+    },
+    timeouts: { test: timeoutMs, action: timeoutMs, assertion: 5_000 },
+    get signal() { return signal(); },
+    operation: (budget?: number): OperationContext => ({ signal: signal(), timeoutMs: budget ?? timeoutMs, runId: 'run-web-session', attemptId: 'attempt', origin: 'test' }),
+    attachArtifact: (_kind: string, relative: string) => options.attach?.(relative),
+    attachViewport: () => undefined,
+    expectable: (target: object) => target,
+    fixture: (_name: string, target: object) => target,
+  } as unknown as EngineFixtureContext;
+  return engine.fixtures!['browser']!(context) as Browser;
+}
+
 /**
  * Boots a web engine, starts one attempt, and builds the `browser` fixture
  * over it with a context that records no steps.
@@ -184,21 +218,6 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
     attemptId,
     origin: 'test',
   });
-
-  const fixtureContext = {
-    targetName: 'web',
-    app: {
-      ...(site === null ? {} : { site }),
-      resolveUrl: (url: string) => new URL(url, `${origin}/`).href,
-    },
-    timeouts: { test: timeoutMs, action: timeoutMs, assertion: 5_000 },
-    get signal() { return attemptController.signal; },
-    operation: (budget?: number) => op(budget),
-    attachArtifact: (_kind: string, relative: string) => { attached.push(relative); },
-    attachViewport: () => undefined,
-    expectable: (target: object) => target,
-    fixture: (_name: string, target: object) => target,
-  } as unknown as EngineFixtureContext;
 
   const cleanup = () => ({ signal: new AbortController().signal, timeoutMs });
 
@@ -249,7 +268,13 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
         ...options.attempt,
       });
       attemptOpen = true;
-      browser = engine.fixtures!['browser']!(fixtureContext) as Browser;
+      browser = browserFixture(engine, {
+        baseUrl: origin,
+        ...(site === null ? {} : { site }),
+        timeoutMs,
+        signal: () => attemptController.signal,
+        attach: (relative) => attached.push(relative),
+      });
     },
     async endAttempt() {
       if (!attemptOpen) return;
