@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   EngineError,
   matchesText,
@@ -27,9 +28,9 @@ import { assembleTree, frameContentInset, isOnSiteFrame, ROOT_NODE_ID, toSemanti
 import { readPngSize } from '../observe.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../read-node.ts';
 import { cancelled } from '../support.ts';
-import { releaseQuietly, unlessStale } from './errors.ts';
+import { isStale, releaseQuietly, unlessStale } from './errors.ts';
 import { contentContext, inViewport, resolveFrames, selectElements, withinFrame, type NodeTarget } from './frames.ts';
-import { domReady, LOCATE_READ, type PlaywrightAria, maskSecureFields, READ_TREE, unmaskSecureFields, type LocateMetadata, type TreeMetadata } from './page.ts';
+import { domReady, ELEMENT_HIDDEN, LOCATE_READ, type PlaywrightAria, maskSecureFields, READ_TREE, unmaskSecureFields, type LocateMetadata, type TreeMetadata } from './page.ts';
 import { ElementRef, type PageArgument } from './script.ts';
 import type { BidiSession } from './session.ts';
 
@@ -62,7 +63,7 @@ export async function observe(session: BidiSession, timeoutMs: number, signal: A
   await unlessStale(session.run(domReady, [Math.min(SETTLE_TIMEOUT_MS, timeoutMs / 2)]), undefined);
   const viewport = await session.viewportSize();
   const captured = await captureTree(session, context, [], MAX_OBSERVED_NODES, deadline);
-  const pixels = options?.pixels === true ? await maskedPixels(session, viewport).then((value) => value, () => undefined) : undefined;
+  const pixels = options?.pixels === true ? await maskedPixels(session, viewport, signal).then((value) => value, () => undefined) : undefined;
   if (signal.aborted) throw cancelled('observe cancelled');
   session.refs.publish(captured.generation);
   return {
@@ -114,6 +115,7 @@ export async function locate(session: BidiSession, expression: LocatorExpression
   const frameBox = chain.length === 0 ? undefined : await session.frames.viewportBox(session.connection, context);
   const selected = await locateSelectors(session, inner, context);
   const options = { testIdAttribute: session.settings.testIdAttribute, secureFieldSelector: SECURE_FIELD_SELECTOR };
+  const frameHidden = await insideHiddenFrame(session, context, options);
   const readLocated = (structured: boolean): Promise<[LocateMetadata | string | null, ElementRef[]]> =>
     session.read(LOCATE_READ, [options, wantedQueries(inner), CLOSED_SHADOW_ROOTS_KEY, structured], structured ? { maxObjectDepth: null } : undefined, context);
   let [metadata, elements] = await readLocated(false);
@@ -122,6 +124,12 @@ export async function locate(session: BidiSession, expression: LocatorExpression
   const { nodes, parents, valued, aria } = typeof metadata === 'string' ? (JSON.parse(metadata) as LocateMetadata) : (metadata as LocateMetadata);
   if (!Array.isArray(nodes) || !Array.isArray(parents) || !Array.isArray(valued) || !Array.isArray(aria) || [parents, valued, aria, elements].some((list) => list.length !== nodes.length)) {
     throw new EngineError('ENGINE_FAILURE', 'located reads do not align with their elements', { retryable: false });
+  }
+  if (frameHidden) {
+    for (const [index, node] of nodes.entries()) {
+      nodes[index] = { ...node, states: { ...node.states, hidden: true } };
+      aria[index] = { ...aria[index]!, hidden: true };
+    }
   }
   const first = session.refs.reserveIds(nodes.length);
   const ids = nodes.map((_node, index) => `n${first + index}`);
@@ -140,6 +148,19 @@ export async function locate(session: BidiSession, expression: LocatorExpression
     const { children: _children, ...rest } = node;
     return inViewport(rest, frameBox, chain);
   });
+}
+
+/**
+ * Whether a frame along the chain to `context` is hidden: each frame element's
+ * own `hidden` state, read in the document around it, so a cross-origin
+ * frame reads too. Everything inside a hidden frame is hidden, and so are the
+ * frames under it.
+ */
+async function insideHiddenFrame(session: BidiSession, context: string, options: { readonly testIdAttribute: string; readonly secureFieldSelector: string }): Promise<boolean> {
+  for (const frame of session.frames.chain(context)) {
+    if (await session.read<boolean>(ELEMENT_HIDDEN, [frame.element, options], undefined, frame.context)) return true;
+  }
+  return false;
 }
 
 /** What `playwrightMatches` reads of one located element. */
@@ -297,7 +318,23 @@ async function readFrame(
  * moved while the screenshot was taken fails it as `NODE_STALE`, retried on
  * a settled page, and any other masking failure fails it outright.
  */
-export async function maskedPixels(session: BidiSession, viewport: ViewportSize): Promise<{ pixels: ObservationPixels; maskedRegionCount: number }> {
+export async function maskedPixels(session: BidiSession, viewport: ViewportSize, signal: AbortSignal): Promise<{ pixels: ObservationPixels; maskedRegionCount: number }> {
+  for (;;) {
+    try {
+      return await maskedCapture(session, viewport);
+    } catch (cause) {
+      if (!isStale(cause) && !(cause instanceof EngineError && cause.code === 'NODE_STALE')) throw cause;
+      if (signal.aborted) throw cause;
+      await sleep(RECAPTURE_MS, undefined, { signal });
+    }
+  }
+}
+
+/** Pause before a capture the page's navigation spoiled is taken again. */
+const RECAPTURE_MS = 50;
+
+/** One masked capture; stale when a document went away under the masks. */
+async function maskedCapture(session: BidiSession, viewport: ViewportSize): Promise<{ pixels: ObservationPixels; maskedRegionCount: number }> {
   const context = session.requireContext();
   const documents = await session.documentContexts(context);
   const masked: string[] = [];
@@ -309,7 +346,7 @@ export async function maskedPixels(session: BidiSession, viewport: ViewportSize)
       count += await session.run(maskSecureFields, [SECURE_FIELD_SELECTOR, CLOSED_SHADOW_ROOTS_KEY, token], each);
       masked.push(each);
     }
-    const { data } = await session.connection.send('browsingContext.captureScreenshot', { context, origin: 'viewport', format: { type: 'image/png' } });
+    const { data } = await captureUnlessNavigated(session, context, documents);
     held = (await Promise.all(masked.map((each) => session.run(unmaskSecureFields, [token], each)))).every(Boolean);
     masked.length = 0;
     const after = await session.documentContexts(context);
@@ -324,6 +361,30 @@ export async function maskedPixels(session: BidiSession, viewport: ViewportSize)
     };
   } finally {
     await Promise.all(masked.map((each) => releaseQuietly(session.run(unmaskSecureFields, [token], each))));
+  }
+}
+
+/**
+ * Captures the tab's viewport, abandoning the capture as stale the moment a
+ * document of `documents` starts navigating: the masks were drawn in the
+ * document it replaces, so its pixels could show a field unmasked, and
+ * Chromium may never answer a capture whose frame navigated under it.
+ */
+async function captureUnlessNavigated(session: BidiSession, context: string, documents: readonly string[]): Promise<{ data: string }> {
+  const watched = new Set(documents);
+  let off: () => void = () => undefined;
+  const navigated = new Promise<never>((_resolve, reject) => {
+    off = session.connection.on('browsingContext.navigationStarted', (event) => {
+      if (watched.has(event.context)) reject(new EngineError('NODE_STALE', 'the page navigated while its screenshot was taken', { retryable: true }));
+    });
+  });
+  const capture = session.connection.send('browsingContext.captureScreenshot', { context, origin: 'viewport', format: { type: 'image/png' } });
+  try {
+    return await Promise.race([capture, navigated]);
+  } finally {
+    off();
+    capture.catch(() => undefined);
+    navigated.catch(() => undefined);
   }
 }
 

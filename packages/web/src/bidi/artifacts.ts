@@ -13,9 +13,9 @@ import { BidiVideo } from './video.ts';
 const DEFAULT_VIDEO_SIZE = { width: 1280, height: 720 };
 
 /** Writes a masked viewport screenshot under the attempt directory and returns its relative path. */
-export async function screenshot(session: BidiSession, label: string | undefined): Promise<string> {
+export async function screenshot(session: BidiSession, label: string | undefined, signal: AbortSignal): Promise<string> {
   const { relative, absolute } = session.artifactPath('screenshots', label, '.png');
-  const { pixels } = await maskedPixels(session, await session.viewportSize());
+  const { pixels } = await maskedPixels(session, await session.viewportSize(), signal);
   writeFileSync(absolute, pixels.data);
   return relative;
 }

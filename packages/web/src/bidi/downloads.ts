@@ -1,14 +1,16 @@
 /**
  * Downloads on the BiDi driver: the attempt's user context saves every
- * download into a directory of its own (`browser.setDownloadBehavior`), and a
- * wait pairs `browsingContext.downloadWillBegin` with `downloadEnd` by the
- * download's id.
+ * download into a directory of its own (`browser.setDownloadBehavior`), on
+ * this machine or, for a provider that serves downloads, on the browser's,
+ * and a wait pairs `browsingContext.downloadWillBegin` with `downloadEnd` by
+ * the download's id.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { raceAbort, TestError } from 'e2e/engine';
+import type { LeaseDownloads } from '../provider.ts';
 import type { BidiConnection } from './connection.ts';
 
 /** One finished download: the name the server suggested and where the browser wrote it. */
@@ -19,9 +21,24 @@ export interface FinishedDownload {
 
 /** One attempt's downloads: their directory, and waits for the downloads a trigger starts. */
 export class AttemptDownloads {
-  readonly dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-bidi-downloads-'));
+  readonly dir: string;
 
-  constructor(private readonly connection: BidiConnection) {}
+  constructor(
+    private readonly connection: BidiConnection,
+    attemptId: string,
+    private readonly remote: LeaseDownloads | undefined,
+  ) {
+    this.dir = remote === undefined ? mkdtempSync(path.join(os.tmpdir(), 'e2e-bidi-downloads-')) : path.posix.join(remote.dir, attemptId);
+  }
+
+  /** Copies one finished download to `file`: from this machine, or read off the remote browser's disk through its provider. */
+  async save(download: FinishedDownload, file: string, signal: AbortSignal): Promise<void> {
+    if (this.remote === undefined) {
+      copyFileSync(download.filepath, file);
+      return;
+    }
+    writeFileSync(file, await this.remote.read(download.filepath, signal));
+  }
 
   /** Points the user context's downloads at this attempt's directory. */
   async allow(userContext: string): Promise<void> {
@@ -74,8 +91,8 @@ export class AttemptDownloads {
     });
   }
 
-  /** Deletes the attempt's download directory; files a wait saved are already copied out. */
+  /** Deletes the attempt's local download directory; files a wait saved are already copied out, and a remote one is the provider's. */
   dispose(): void {
-    rmSync(this.dir, { recursive: true, force: true });
+    if (this.remote === undefined) rmSync(this.dir, { recursive: true, force: true });
   }
 }

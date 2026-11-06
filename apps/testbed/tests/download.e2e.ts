@@ -33,7 +33,7 @@ import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 import fs from 'node:fs';
 import path from 'node:path';
-import { asset, content, PREFIX } from './helpers.ts';
+import { browserName, asset, content, PREFIX } from './helpers.ts';
 
 /** `/respond` answering with `headers` and `body`. */
 function respond(headers: Record<string, string>, body = 'Hello world'): string {
@@ -53,6 +53,7 @@ test.describe('download event', { requires: ['browser'], tags: ['playwright'] },
   test('should report download when navigation turns into download @smoke', async ({ browser }) => {
     // e2e opens no page before the first goto, where Playwright starts on about:blank.
     await browser.goto('/empty.html');
+    test.skip(await browserName(browser) === 'chromium', 'chromium-bidi rejects the navigation with net::ERR_ABORTED before it announces the download, so goto cannot tell a download from an abort');
     let responseOrError: unknown;
     const download = await browser.waitForDownload(async () => {
       responseOrError = await browser.goto(`${PREFIX}/download`).catch((caught: Error) => caught);
@@ -67,6 +68,7 @@ test.describe('download event', { requires: ['browser'], tags: ['playwright'] },
   test('should work with Cross-Origin-Opener-Policy', async ({ browser }) => {
     // e2e opens no page before the first goto, where Playwright starts on about:blank.
     await browser.goto('/empty.html');
+    test.skip(await browserName(browser) === 'chromium', 'chromium-bidi rejects the navigation with net::ERR_ABORTED before it announces the download, so goto cannot tell a download from an abort');
     let responseOrError: unknown;
     const url = respond({ 'content-type': 'application/octet-stream', 'content-disposition': 'attachment', 'cross-origin-opener-policy': 'same-origin' });
     const download = await browser.waitForDownload(async () => {

@@ -74,11 +74,10 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (browser !== 'chromium' && browser !== 'firefox') {
     throw new ConfigurationError('INVALID_CONFIG', `web({ browser }) drives chromium or firefox over WebDriver BiDi, got ${JSON.stringify(browser)}`);
   }
-  if (options.connect?.reconnectEndpoint !== undefined || provider?.scope === 'attempt') {
-    const mode = provider === undefined ? 'connect.reconnectEndpoint' : `browser provider "${provider.name}" with scope "attempt"`;
+  if (options.connect?.reconnectEndpoint !== undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `web() does not ride a persistent remote context (${mode}): it isolates each attempt in a user context of its own; use connect.cdpEndpoint or scope "worker"`,
+      'web({ connect: { reconnectEndpoint } }) is not supported: a dropped CDP transport is not recovered mid-attempt; the next attempt attaches again through cdpEndpoint',
     );
   }
   const surface = new BidiSurface({

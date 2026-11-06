@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { Locator, Point } from 'e2e';
+import type { Browser } from '@e2e-dev/web';
 
 type Box = { x: number; y: number; width: number; height: number };
 
@@ -39,4 +40,9 @@ export function content(html: string): string {
 /** The absolute path of one of Playwright's test assets. */
 export function asset(name: string): string {
   return path.join(import.meta.dirname, '../app/playwright/assets', name);
+}
+
+/** The browser the open page runs in, read from its user agent. */
+export async function browserName(browser: Browser): Promise<'chromium' | 'firefox'> {
+  return (await browser.evaluate<string>('navigator.userAgent')).includes('Firefox/') ? 'firefox' : 'chromium';
 }

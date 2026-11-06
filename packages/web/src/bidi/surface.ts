@@ -6,7 +6,6 @@
  */
 
 import type { ErrorLatch } from '../support.ts';
-import { copyFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Input, Network, Storage } from 'webdriver-bidi-protocol';
 import {
@@ -90,6 +89,8 @@ export interface BidiSurfaceOptions {
  */
 export class BidiSurface {
   private browser: BidiBrowser | undefined;
+  /** The endpoint of the browser leased for the running attempt, in a provider's `attempt` scope. */
+  private attemptEndpoint: string | undefined;
   private session: BidiSession | undefined;
   private settings: SessionSettings | undefined;
   private headed = false;
@@ -151,7 +152,7 @@ export class BidiSurface {
     };
     this.options.leases?.init(info);
     await this.options.initScripts.load(info.projectRoot);
-    await this.acquireBrowser(info.signal);
+    if (!this.perAttempt) await this.acquireBrowser(info.signal);
   }
 
   /**
@@ -194,10 +195,16 @@ export class BidiSurface {
     return browser;
   }
 
-  /** A local launch, or an attach over CDP to the `connect` endpoint or a provider's lease. */
+  /** Whether every attempt leases a fresh browser of its own: a provider's `attempt` scope. */
+  private get perAttempt(): boolean {
+    return this.options.leases?.scope === 'attempt';
+  }
+
+  /** A local launch, or an attach over CDP to the `connect` endpoint, the attempt's lease, or the worker's. */
   private async openBrowser(signal: AbortSignal): Promise<BidiBrowser> {
     const { cdpEndpoint, leases } = this.options;
     if (cdpEndpoint !== undefined) return connectBidiOverCdp(await cdpEndpoint(signal), BROWSER_LAUNCH_TIMEOUT_MS);
+    if (this.attemptEndpoint !== undefined) return connectBidiOverCdp(this.attemptEndpoint, BROWSER_LAUNCH_TIMEOUT_MS);
     if (leases !== undefined) return connectBidiOverCdp(await leases.endpoint(signal), BROWSER_LAUNCH_TIMEOUT_MS);
     return launchBidiBrowser(this.options.browser, { headed: this.headed, timeoutMs: BROWSER_LAUNCH_TIMEOUT_MS, firefoxPrefs: firefoxMediaPrefs(this.options.media) });
   }
@@ -216,11 +223,21 @@ export class BidiSurface {
     const credentials = basicAuth === undefined
       ? undefined
       : await raceAbort(() => httpCredentials(basicAuth, context.resolveSecret), context.signal, 'resolving the basic-auth password');
-    const browser = await this.acquireBrowser(context.signal);
+    if (this.perAttempt) {
+      const lease = await this.options.leases!.startAttempt(context);
+      this.attemptEndpoint = lease.cdpEndpoint;
+    }
+    let browser: BidiBrowser;
+    try {
+      browser = await this.acquireBrowser(context.signal);
+    } catch (cause) {
+      if (this.perAttempt) await this.releaseAttemptBrowser({ signal: AbortSignal.timeout(SETUP_CLEANUP_MS), timeoutMs: SETUP_CLEANUP_MS });
+      throw cause;
+    }
     const session = new BidiSession(
       browser,
       this.settings,
-      { attemptId: context.attemptId, artifactsDir: context.artifactsDir, appLog: context.appLog, navigation: context.navigation, screen: context.screen, credentials },
+      { attemptId: context.attemptId, artifactsDir: context.artifactsDir, appLog: context.appLog, navigation: context.navigation, screen: context.screen, credentials, remoteDownloads: this.options.leases?.downloads() },
       this.owners,
     );
     const setup = session.openUserContext();
@@ -236,6 +253,7 @@ export class BidiSurface {
       } catch {
         await this.retireBrowser(budget);
       }
+      if (this.perAttempt) await this.releaseAttemptBrowser(budget);
       throw cause;
     }
     this.session = session;
@@ -262,7 +280,16 @@ export class BidiSurface {
     } catch (cause) {
       await this.retireBrowser(context);
       throw classify(cause, 'attempt cleanup');
+    } finally {
+      if (this.perAttempt) await this.releaseAttemptBrowser(context);
     }
+  }
+
+  /** Detaches from the attempt's leased browser and gives the lease back; each step attempted whatever the other did. */
+  private async releaseAttemptBrowser(context: EngineCleanupContext): Promise<void> {
+    this.attemptEndpoint = undefined;
+    await releaseQuietly(this.retireBrowser(context));
+    await this.options.leases?.endAttempt(context);
   }
 
   /** Closes the browser, best effort, so the next attempt opens a fresh one. */
@@ -489,29 +516,22 @@ export class BidiSurface {
    */
   async collectDownloads(count: number, trigger: () => Promise<void>, signal: AbortSignal, timeoutMs: number): Promise<{ path: string; absolutePath: string; suggestedFilename: string }[]> {
     const session = this.requireSession();
-    if (this.options.leases !== undefined) {
-      throw new EngineError('UNSUPPORTED_CAPABILITY', `downloads on the BiDi driver need the browser's filesystem; browser provider "${this.options.leases.name}" runs it on another machine`, { retryable: false });
+    if (this.options.leases !== undefined && session.attempt.remoteDownloads === undefined) {
+      throw new EngineError('UNSUPPORTED_CAPABILITY', `browser provider "${this.options.leases.name}" serves no downloads, so a file its remote browser saves cannot be read back`, { retryable: false });
     }
     const finished = await session.downloads.collect(count, trigger, signal, timeoutMs, (context) => session.onPage(context));
-    return finished.map((download) => {
+    const saved: { path: string; absolutePath: string; suggestedFilename: string }[] = [];
+    for (const download of finished) {
       const { relative, absolute } = session.artifactPath('downloads', download.suggestedFilename, '');
-      copyFileSync(download.filepath, absolute);
-      return { path: relative, absolutePath: absolute, suggestedFilename: download.suggestedFilename };
-    });
+      await session.downloads.save(download, absolute, signal);
+      saved.push({ path: relative, absolutePath: absolute, suggestedFilename: download.suggestedFilename });
+    }
+    return saved;
   }
 
-  /**
-   * Changes the attempt's media features from the next paint on. Firefox
-   * implements `emulation.setMediaFeaturesOverride` from version 159
-   * (https://bugzilla.mozilla.org/show_bug.cgi?id=2064354), so there it refuses.
-   */
+  /** Changes the attempt's media features from the next paint on. */
   emulateMedia(media: WebMedia, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'emulateMedia', async (session) => {
-      if (this.options.browser !== 'chromium') {
-        throw new EngineError('UNSUPPORTED_CAPABILITY', 'browser.emulateMedia needs emulation.setMediaFeaturesOverride, which Firefox implements from version 159; web({ colorScheme, reducedMotion }) applies on Firefox', {
-          retryable: false,
-        });
-      }
       session.media = { ...session.media, ...media };
       await session.applyMedia();
     });
@@ -558,7 +578,7 @@ export class BidiSurface {
 
   /** A masked viewport screenshot, saved under the attempt directory. */
   screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
-    return this.guard(operation, 'screenshot', (session) => screenshot(session, label));
+    return this.guard(operation, 'screenshot', (session, budget) => screenshot(session, label, budget.signal));
   }
 
   /** Starts the attempt's video: the provider's recording when it records, else the driver's own. */

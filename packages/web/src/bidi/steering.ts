@@ -25,7 +25,7 @@ export function goto(session: BidiSession, url: string, waitUntil: WaitUntil, si
     if (waitUntil === 'networkidle') await session.network.track();
     const wait = waitUntil === 'load' || waitUntil === 'networkidle' ? 'complete' : waitUntil === 'domcontentloaded' ? 'interactive' : 'none';
     signal.throwIfAborted();
-    await navigateOrDownload(session, context, url, wait);
+    await navigateOrDownload(session, context, url, wait, signal);
     if (waitUntil === 'networkidle') await session.network.waitForIdle(signal);
   });
 }
@@ -37,17 +37,41 @@ export function goto(session: BidiSession, url: string, waitUntil: WaitUntil, si
  * decides. Chromium rejects with `net::ERR_ABORTED` before announcing it,
  * and that error stands.
  */
-async function navigateOrDownload(session: BidiSession, context: string, url: string, wait: 'complete' | 'interactive' | 'none'): Promise<void> {
+async function navigateOrDownload(session: BidiSession, context: string, url: string, wait: 'complete' | 'interactive' | 'none', signal: AbortSignal): Promise<void> {
   let downloading = false;
   const off = session.connection.on('browsingContext.downloadWillBegin', (event) => {
     if (event.context === context) downloading = true;
   });
   try {
     await session.connection.send('browsingContext.navigate', { context, url, wait });
+  } catch (cause) {
+    if (!SUPERSEDED.test(cause instanceof Error ? cause.message : '')) throw cause;
+    await documentReady(session, context, wait, signal);
   } finally {
     off();
   }
   if (downloading) throw new EngineError('ENGINE_FAILURE', `navigation to ${url} failed: Download is starting`, { retryable: false });
+}
+
+/** Chromium's answer to a navigation another one replaced, as a page script redirecting the tab does mid-load. */
+const SUPERSEDED = /navigation canceled by concurrent navigation/i;
+
+/**
+ * Waits until the tab's current document reaches `wait`: the navigation that
+ * replaced ours (a client redirect), which Playwright's `goto` follows as
+ * the one it waits for. A document still being replaced reads again.
+ */
+async function documentReady(session: BidiSession, context: string, wait: 'complete' | 'interactive' | 'none', signal: AbortSignal): Promise<void> {
+  if (wait === 'none') return;
+  for (;;) {
+    signal.throwIfAborted();
+    const state = await session.read<string>('() => document.readyState', [], undefined, context).catch((cause: unknown) => {
+      if (isStale(cause)) return 'loading';
+      throw cause;
+    });
+    if (state === 'complete' || (wait === 'interactive' && state === 'interactive')) return;
+    await sleep(POLL_MS, undefined, { signal });
+  }
 }
 
 /** Reloads the tab and waits for its load event. */

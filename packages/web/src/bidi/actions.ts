@@ -333,15 +333,17 @@ async function mutateWhenReady(session: BidiSession, deadline: Deadline, signal:
 /**
  * Clicks a checkable once when its state differs, then polls until it
  * reads `checked`. A control gone after the click took it: the app replaced
- * it on change.
+ * it on change. A native radio cannot be cleared by a click; an ARIA radio is
+ * clicked like any control, and its script decides what the click does.
  */
 async function setChecked(session: BidiSession, target: NodeTarget, checked: boolean, deadline: Deadline, signal: AbortSignal): Promise<void> {
   const before = await session.run(checkState, [target.element], target.context);
   if (before.checked === null) throw new EngineError('NOT_ACTIONABLE', 'Not a checkbox or radio button', { retryable: false });
   if (before.checked === checked) return;
-  if (!checked && before.radio) {
+  if (!checked && before.radio === 'native') {
     throw new EngineError('NOT_ACTIONABLE', 'uncheck cannot clear a radio button; select another radio in its group', { retryable: false });
   }
+  const hint = !checked && before.radio === 'aria' ? '; a radio usually clears only when another radio in its group is selected' : '';
   await click(session, target, deadline, {}, signal);
   for (let first = true; ; first = false) {
     const after = await unlessStale(session.run(checkState, [target.element], target.context), undefined);
@@ -351,7 +353,7 @@ async function setChecked(session: BidiSession, target: NodeTarget, checked: boo
     }
     if (after.checked === checked) return;
     if (deadline.remaining() <= POLL_MS) {
-      throw new EngineError('NOT_ACTIONABLE', `${checked ? 'check' : 'uncheck'} clicked the control but its checked state did not change`, { retryable: false });
+      throw new EngineError('NOT_ACTIONABLE', `${checked ? 'check' : 'uncheck'} clicked the control but its checked state did not change${hint}`, { retryable: false });
     }
     await sleep(POLL_MS, undefined, { signal });
   }
@@ -386,7 +388,7 @@ async function uploadKind(files: readonly string[]): Promise<boolean> {
  */
 async function setInputFiles(session: BidiSession, target: NodeTarget, paths: readonly string[], deadline: Deadline, signal: AbortSignal): Promise<void> {
   if (session.settings.remoteFiles) {
-    throw new EngineError('UNSUPPORTED_CAPABILITY', 'setInputFiles: the BiDi driver cannot send local files to a browser on another machine; use the Playwright driver', { retryable: false });
+    throw new EngineError('UNSUPPORTED_CAPABILITY', 'setInputFiles: local files cannot be sent to a browser provider\'s browser on another machine', { retryable: false });
   }
   const connection = session.connection;
   const files = paths.map((file) => path.resolve(session.settings.projectRoot, file));

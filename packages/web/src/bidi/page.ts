@@ -7,6 +7,27 @@
 import { readSemanticsFunction } from '../in-page/read-semantics.ts';
 import type { RawNodeData, RawObservedNode } from '../read-node.ts';
 
+/** Where `BUILTINS_INIT_SCRIPT` keeps the builtins a page had before its own scripts ran. */
+const BUILTINS_KEY = 'e2e.builtins';
+
+/** The builtins the readers construct and call, as the document had them before any page script ran. */
+const BUILTIN_NAMES = ['Map', 'Set', 'WeakMap', 'WeakSet', 'Array', 'Object', 'JSON', 'Reflect', 'Symbol', 'Promise', 'Math', 'Number', 'String', 'RegExp', 'Error'];
+
+/** Keeps each document's pristine builtins, before the page's scripts can delete or replace one. */
+export const BUILTINS_INIT_SCRIPT = `(() => {
+  const key = Symbol.for(${JSON.stringify(BUILTINS_KEY)});
+  if (Object.prototype.hasOwnProperty.call(globalThis, key)) return;
+  Object.defineProperty(globalThis, key, { value: Object.freeze({ ${BUILTIN_NAMES.join(', ')} }), enumerable: false, configurable: false, writable: false });
+})();`;
+
+/**
+ * Declarations that shadow the builtins inside a page function with the
+ * pristine ones `BUILTINS_INIT_SCRIPT` kept, so a page that deleted or
+ * replaced `Map` (or another) cannot break a read; the page's own when the
+ * document never ran the preload.
+ */
+const PRISTINE = `const { ${BUILTIN_NAMES.join(', ')} } = globalThis[globalThis.Symbol.for(${JSON.stringify(BUILTINS_KEY)})] ?? globalThis;`;
+
 /**
  * Whether the page left `JSON.stringify` native and added no `toJSON` a
  * read's metadata would go through, so the metadata can cross as one string;
@@ -16,8 +37,16 @@ const NATIVE_JSON = `typeof JSON.stringify === 'function' &&
     /^function stringify\\(\\)\\s*\\{\\s*\\[native code\\]\\s*\\}$/.test(Function.prototype.toString.call(JSON.stringify)) &&
     !('toJSON' in Object.prototype) && !('toJSON' in Array.prototype)`;
 
+/** Whether `element` reads as hidden to the semantic reader, its `states.hidden`: for an iframe, whether everything inside it is hidden. */
+export const ELEMENT_HIDDEN = `(element, options) => {
+  ${PRISTINE}
+  const read = (${readSemanticsFunction.toString()});
+  return element.isConnected ? read(element, { ...options, mode: { kind: 'hidden' } }) : true;
+}`;
+
 /** Reads the document's semantic tree: the walk's metadata (see `NATIVE_JSON`), and the walked elements. */
 export const READ_TREE = `(options, structured) => {
+  ${PRISTINE}
   const read = (${readSemanticsFunction.toString()});
   const observation = read(document.documentElement, options);
   const data = { nodes: observation.nodes, ids: observation.ids, truncated: observation.truncated };
@@ -39,6 +68,7 @@ export const READ_TREE = `(options, structured) => {
  * filter asks about. Iframe documents are not entered.
  */
 export const LOCATE_READ = `(options, wants, key, structured) => {
+  ${PRISTINE}
   const read = (${readSemanticsFunction.toString()});
   const recorded = Reflect.get(globalThis, Symbol.for(key));
   const labelable = 'input, select, textarea, button, meter, output, progress, [aria-label], [aria-labelledby], [contenteditable], [role]';
@@ -153,6 +183,7 @@ export const ELEMENT_DISABLED = `(target, options) => {
       if (control) element = control;
     }
   }
+  ${PRISTINE}
   const read = (${readSemanticsFunction.toString()});
   const [node] = read(document.documentElement, { ...options, mode: { kind: 'nodes', elements: [element] } });
   return node === undefined ? false : node.states.disabled === true;
@@ -437,10 +468,10 @@ export function focus(element: Element, key: string): boolean {
 }
 
 /** A checkable's state and kind, as Playwright reads it: a checkable role without `aria-checked` is unchecked; `checked` is null for an element with no checked state. */
-export function checkState(element: Element): { checked: boolean | null; radio: boolean } {
+export function checkState(element: Element): { checked: boolean | null; radio: 'native' | 'aria' | null } {
   const role = (element.getAttribute('role') ?? '').trim().split(/\s+/)[0] ?? '';
   const input = element.nodeName === 'INPUT' ? (element as HTMLInputElement) : null;
-  const radio = input?.type === 'radio' || role === 'radio' || role === 'menuitemradio';
+  const radio = input?.type === 'radio' ? 'native' : role === 'radio' || role === 'menuitemradio' ? 'aria' : null;
   if (input !== null && (input.type === 'checkbox' || input.type === 'radio')) return { checked: input.checked, radio };
   if (['checkbox', 'menuitemcheckbox', 'option', 'radio', 'switch', 'menuitemradio', 'treeitem'].includes(role)) return { checked: element.getAttribute('aria-checked') === 'true', radio };
   return { checked: null, radio };

@@ -16,7 +16,7 @@
 
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { content, CROSS } from './helpers.ts';
+import { browserName, content, CROSS } from './helpers.ts';
 
 /** Records the last keydown in `window.lastEvent`, Playwright's `captureLastKeydown`. */
 const captureLastKeydown = `() => {
@@ -311,6 +311,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
   });
 
   test('should press NumpadDecimal as Delete', async ({ browser }) => {
+    test.skip(true, 'WebDriver numpad key values are the NumLock-on keys (https://w3c.github.io/webdriver/#keyboard-actions), so NumpadDecimal types "." where the US layout with NumLock off presses Delete');
     await browser.goto(content('<textarea></textarea>'));
     await browser.evaluate(captureLastKeydown);
     const textarea = browser.locator('textarea');
@@ -352,6 +353,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
   });
 
   test('should press audio and media control keys', async ({ browser }) => {
+    test.skip(true, 'WebDriver defines no key values for the media keys (https://w3c.github.io/webdriver/#keyboard-actions)');
     await browser.goto(content('<input autofocus>'));
     await browser.locator('input').focus();
     await browser.evaluate(captureLastKeydown);
@@ -440,6 +442,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
   test('should support MacOS shortcuts', async ({ browser }) => {
     test.skip(!isMac);
     await browser.goto('/input/textarea.html');
+    test.skip(await browserName(browser) === 'chromium', 'Chromium runs the macOS editing key bindings only for CDP key events that name their commands; WebDriver BiDi key actions carry none');
     await browser.locator('textarea').pressSequentially('some text');
     await browser.keyboard.press('Shift+Control+Alt+KeyB');
     await browser.keyboard.press('Backspace');
@@ -494,6 +497,7 @@ test.describe('page keyboard', { requires: ['browser'], tags: ['playwright'] }, 
   test('should move to the start of the document', async ({ browser }) => {
     test.skip(!isMac);
     await browser.goto(content('<div contenteditable></div>'));
+    test.skip(await browserName(browser) === 'chromium', 'Chromium runs the macOS editing key bindings only for CDP key events that name their commands; WebDriver BiDi key actions carry none');
     await browser.locator('div').focus();
     await browser.keyboard.type('1\n2\n3\n');
     await browser.keyboard.press('Shift+Meta+ArrowUp');

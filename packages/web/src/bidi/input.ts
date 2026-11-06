@@ -189,7 +189,19 @@ const LOCATED_KEYS: Readonly<Record<string, string>> = {
   NumpadDivide: '\uE029',
 };
 
-/** One Playwright key name as a WebDriver key value. */
+/** Each digit and punctuation key code's character on the US layout, unshifted and with Shift. */
+const CODE_CHARACTERS: Readonly<Record<string, readonly [string, string]>> = {
+  Digit1: ['1', '!'], Digit2: ['2', '@'], Digit3: ['3', '#'], Digit4: ['4', '$'], Digit5: ['5', '%'],
+  Digit6: ['6', '^'], Digit7: ['7', '&'], Digit8: ['8', '*'], Digit9: ['9', '('], Digit0: ['0', ')'],
+  Minus: ['-', '_'], Equal: ['=', '+'], BracketLeft: ['[', '{'], BracketRight: [']', '}'], Backslash: ['\\', '|'],
+  Semicolon: [';', ':'], Quote: ["'", '"'], Comma: [',', '<'], Period: ['.', '>'], Slash: ['/', '?'], Backquote: ['`', '~'],
+};
+
+/**
+ * One Playwright key name as a WebDriver key value. A key code held with
+ * Shift sends its shifted character, as the US layout gives it, since
+ * Chromium does not shift a code itself.
+ */
 function fixtureKeyValue(name: string, shifted: boolean): string {
   if (isModifier(name)) return modifierCode(name);
   if (Object.hasOwn(KEY_CODES, name)) return KEY_CODES[name as KeyName];
@@ -198,8 +210,7 @@ function fixtureKeyValue(name: string, shifted: boolean): string {
   const physical = /^Key([A-Z])$/.exec(name)?.[1];
   if (physical !== undefined) return shifted ? physical : physical.toLowerCase();
   if (/^[a-z]$/.test(name) && shifted) return name.toUpperCase();
-  const digit = /^Digit([0-9])$/.exec(name)?.[1];
-  if (digit !== undefined) return digit;
+  if (Object.hasOwn(CODE_CHARACTERS, name)) return CODE_CHARACTERS[name]![shifted ? 1 : 0];
   if (/^[\x20-\x7e]$/.test(name)) return name;
   throw new TestError('INVALID_ARGUMENT', `Unknown key: "${name}"`);
 }

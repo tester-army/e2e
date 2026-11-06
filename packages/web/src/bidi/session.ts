@@ -21,10 +21,11 @@ import { releaseQuietly, unlessStale } from './errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser, BidiBrowserName } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
-import { HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
+import { BUILTINS_INIT_SCRIPT, HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
 import { callFunction, type CallOptions, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 import type { BidiVideo } from './video.ts';
 import type { ProviderVideo } from '../provider-video.ts';
+import type { LeaseDownloads } from '../provider.ts';
 
 /** How long one step of closing an attempt may take before the next runs. */
 const CLOSE_STEP_MS = 10_000;
@@ -67,6 +68,8 @@ export interface AttemptSettings {
   /** Hands the trace a screen read after an action; absent when the attempt keeps no trace. */
   readonly screen: ((snapshot: EngineSnapshot) => void) | undefined;
   readonly credentials: { readonly username: string; readonly password: string } | undefined;
+  /** The provider that serves downloads off a remote browser's disk; undefined for a local browser. */
+  readonly remoteDownloads?: LeaseDownloads | undefined;
 }
 
 /** The user context and parent of each browsing context, as the session's events report them. */
@@ -174,6 +177,8 @@ export class BidiSession {
   private readonly heldKeys = new Set<string>();
   /** Where the mouse last moved, which a viewport swipe wheels at. */
   pointer: ViewportPoint = { x: 0, y: 0 };
+  /** The mouse buttons held down across input calls, which a move carries as pressure. */
+  private readonly heldButtons = new Set<number>();
   /** Input and page mutations dispatched so far: an action that fails after this moved may have reached the app. */
   dispatches = 0;
   /** Navigations the driver itself has in flight, which the trace leaves to the step that started them. */
@@ -211,7 +216,7 @@ export class BidiSession {
       onFailure: (error) => this.latch.latch(error),
       holdAll: settings.holdRequests,
     });
-    this.downloads = new AttemptDownloads(browser.connection);
+    this.downloads = new AttemptDownloads(browser.connection, attempt.attemptId, attempt.remoteDownloads);
   }
 
   /** Aborts when the attempt closes, ending work it started that nothing awaits any more. */
@@ -254,6 +259,7 @@ export class BidiSession {
     this.visited.clear();
     const scoped = { userContexts: [userContext] as [string] };
     const sources = [
+      wrapScript(BUILTINS_INIT_SCRIPT),
       wrapScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT),
       wrapScript(HIT_INTERCEPTOR_INIT_SCRIPT),
       ...(this.settings.holdRequests ? [wrapScript(BLOCK_SERVICE_WORKERS)] : []),
@@ -323,7 +329,7 @@ export class BidiSession {
    * Firefox takes the configured ones as launch preferences.
    */
   async applyMedia(): Promise<void> {
-    if (this.settings.browser !== 'chromium' || (this.media.colorScheme === undefined && this.media.reducedMotion === undefined)) return;
+    if (this.media.colorScheme === undefined && this.media.reducedMotion === undefined) return;
     const features: Emulation.MediaFeatures = obj({
       'prefers-color-scheme': this.media.colorScheme === 'no-preference' ? null : this.media.colorScheme,
       'prefers-reduced-motion': this.media.reducedMotion,
@@ -378,6 +384,7 @@ export class BidiSession {
     if (this.viewport !== null) await connection.send('browsingContext.setViewport', { context, viewport: this.viewport });
     this.context = context;
     this.pointer = { x: 0, y: 0 };
+    this.heldButtons.clear();
     await this.video?.contextOpened(context, await this.viewportSize());
     return context;
   }
@@ -429,10 +436,29 @@ export class BidiSession {
   async sendInput(actions: Input.SourceActions[], signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     const context = this.requireContext();
-    const sent = actions.map((source) => (source.type === 'key' ? this.keepHeld(source) : source));
+    const sent = actions.map((source) => (source.type === 'key' ? this.keepHeld(source) : source.type === 'pointer' ? this.withPressure(source) : source));
     this.dispatches += 1;
     await this.connection.send('input.performActions', { context, actions: sent });
     this.trackPointer(sent);
+  }
+
+  /**
+   * A mouse source with the pressure a held button gives: 0.5 on a press and
+   * on every move while a button is down, as a real mouse reports it, so a
+   * page reading `PointerEvent.pressure` sees the same. Records which buttons
+   * stay held after it.
+   */
+  private withPressure(source: Input.PointerSourceActions): Input.PointerSourceActions {
+    const actions = source.actions.map((action): Input.PointerSourceAction => {
+      if (action.type === 'pointerDown') {
+        this.heldButtons.add(action.button);
+        return { pressure: 0.5, ...action };
+      }
+      if (action.type === 'pointerUp') this.heldButtons.delete(action.button);
+      if (action.type === 'pointerMove' && this.heldButtons.size > 0) return { pressure: 0.5, ...action };
+      return action;
+    });
+    return { ...source, actions };
   }
 
   /**
@@ -473,6 +499,7 @@ export class BidiSession {
     this.frames.clear();
     this.heldKeys.clear();
     this.pointer = { x: 0, y: 0 };
+    this.heldButtons.clear();
   }
 
   /** Counts a page mutation the driver made in the page (a fill, a select), which may have reached the app. */
