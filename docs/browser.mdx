@@ -367,10 +367,13 @@ Two workers lease two sessions in parallel and keep them for the run.
 `scope: 'worker'`, the default, keeps one browser per worker slot for the
 whole run. `scope: 'attempt'` gives each attempt, retries included, a fresh
 browser that no earlier test touched, for the cost of a session start per
-attempt. In both scopes each attempt runs in a browser context of its own,
-so sessions, `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`,
-and `app.clearState()` work. A hosted session costs money while it runs, so
-keep `workers` at what the suite can fill.
+attempt. In worker scope each attempt runs in a new browser context, as in a
+local run. In attempt scope it runs in the fresh browser's own context, so
+what the provider set up there, such as a sign-in, reaches the test, and
+`app.clearState()` and [sessions](/authentication) throw
+`UNSUPPORTED_CAPABILITY`. `headers`, `basicAuth`, `userAgent`, `locale`,
+and `timezoneId` work in both. A hosted session costs money while it runs,
+so keep `workers` at what the suite can fill.
 
 A worker that dies (a crash, `process.exit`, a kill) can't release what it
 acquired. Implement `sweep` to have the runner release those leases when

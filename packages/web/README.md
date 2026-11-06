@@ -76,8 +76,10 @@ asks for a browser when one is needed and gives it back when its scope ends,
 on every exit path. `scope: 'worker'` (the default) leases one browser per
 worker slot in `prepare` and releases them in `finish`; a worker whose browser
 drops leases a replacement itself. `scope: 'attempt'` leases a fresh browser
-per attempt instead. Downloads work when the provider implements `downloads`
-and throw `UNSUPPORTED_CAPABILITY` otherwise; `setInputFiles` on a
+per attempt instead, and the attempt runs in that browser's own context, so
+`app.clearState()` and saved sessions throw `UNSUPPORTED_CAPABILITY`.
+Downloads work when the provider implements `downloads` and throw
+`UNSUPPORTED_CAPABILITY` otherwise; `setInputFiles` on a
 provider's browser always throws it. A provider implies chromium and excludes
 `connect`; no vendor ships in the package. See
 [Hosted browsers](../../docs/browser.mdx#hosted-browsers) for the contract

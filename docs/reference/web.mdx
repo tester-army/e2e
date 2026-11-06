@@ -89,6 +89,9 @@ web({ browser: 'firefox' }); // default: 'chromium'
   the run, or one per attempt with `scope: 'attempt'`. The engine drives
   each one as chromium over CDP, whether it is Chromium or another CDP
   server such as [Lightpanda](/integrations/lightpanda).
+- With `scope: 'attempt'`, each attempt runs in the leased browser's own
+  context, so `app.clearState()` and saved sessions throw
+  `UNSUPPORTED_CAPABILITY`.
 - [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`
   contract and an example provider.
 
@@ -322,6 +325,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | No WebKit | WebKit has no WebDriver BiDi endpoint. |
 | `connect` and browser providers are Chromium only | They attach over CDP. |
 | `connect.reconnectEndpoint` is `INVALID_CONFIG` | A dropped connection is not recovered mid-attempt. The next attempt attaches again. |
+| `app.clearState()` and saved sessions throw `UNSUPPORTED_CAPABILITY` with a `scope: 'attempt'` provider | The attempt runs in the fresh browser's own context, which they would replace. |
 | Pointer actions in a rotated, skewed, or mirrored iframe throw `NOT_ACTIONABLE` | Points are mapped through a frame's scale only. |
 | Selectors are CSS or XPath only, with no `>>` chains or `text=` and `nth=` engines | The browser runs the selector itself. |
 | HTML5 drag and drop drops no data on Firefox | [Firefox bug 1515879](https://bugzilla.mozilla.org/show_bug.cgi?id=1515879). Pointer drags work. |

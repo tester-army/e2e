@@ -27,8 +27,8 @@ export interface LightpandaOptions {
  * Lightpanda browsers for `web({ browser: lightpanda() })`: one
  * `lightpanda serve` per worker slot, started on a free port when the
  * engine asks and stopped when it gives the lease back. Worker scope only:
- * Lightpanda does not expose the default context identity a per-attempt
- * lease reattaches by. A server already running is a `web({ connect })`
+ * each attempt already gets a new browser context on the slot's server, so a
+ * server per attempt would only add a start per test. A server already running is a `web({ connect })`
  * target, not a provider.
  */
 export function lightpanda(options: LightpandaOptions = {}): BrowserProvider {

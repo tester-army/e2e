@@ -9,9 +9,10 @@ description: Run web tests in warm Chromium microVMs on your computer with the s
 `smol()` from `@e2e-dev/smol` is a
 [browser provider](/browser#hosted-browsers) that runs Chromium in
 [smol machines](https://smolmachines.com) microVMs on your computer. Each
-worker slot boots one browser machine, and each test attempt gets a new
-browser context on it. State on your computer or in external services stays
-shared.
+worker slot boots one browser machine, and each test attempt gets a branch
+of it or a new browser context on it, depending on the
+[scope](#choose-a-scope). State on your computer or in external services
+stays shared.
 
 ## Set up the provider
 
@@ -70,14 +71,55 @@ outbound network access. Stop sensitive loopback services before you test
 an untrusted app with `smol()`.
 </Warning>
 
-## Prepare each machine
+## Start every test signed in
 
 `prepare` drives each warm browser one time, before any attempt branches
-the machine, and needs `'attempt'` scope. It gets the browser's DevTools
-endpoint. Disconnect before `prepare` resolves, and leave the browser
-running. Each attempt runs in a browser context of its own, so cookies and
-storage `prepare` leaves in the browser don't reach tests. To start tests
-signed in, use [sessions](/authentication).
+it. Every attempt on that slot starts with the cookies, storage, and pages
+it left. It replaces [sessions](/authentication), which `'attempt'` scope
+can't use.
+
+`prepare` gets the browser's DevTools endpoint. Work in the default context,
+where attempts run. Disconnect before `prepare` resolves, and leave the
+browser running.
+
+<Accordion title="Sign in with Playwright">
+Drive the browser with any CDP client. This example uses `playwright-core`,
+which `@e2e-dev/web` does not install, so add it to your project:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev playwright-core
+```
+
+```bash pnpm
+pnpm add -D playwright-core
+```
+
+```bash bun
+bun add -d playwright-core
+```
+</CodeGroup>
+
+```ts title="Provider options"
+import { chromium } from 'playwright-core';
+
+smol({
+  hostPorts: [3000],
+  prepare: async (cdpEndpoint) => {
+    const browser = await chromium.connectOverCDP(cdpEndpoint);
+    const page = browser.contexts()[0]!.pages()[0]!;
+    await page.goto('http://localhost:3000/login');
+    await page.getByLabel('Email').fill('qa@example.com');
+    await page.getByLabel('Password').fill(process.env.QA_PASSWORD!);
+    await page.getByRole('button', { name: 'Sign in' }).click();
+    await page.waitForURL('**/dashboard');
+    await browser.close();
+  },
+})
+```
+
+On a browser from `connectOverCDP`, `browser.close()` only disconnects.
+</Accordion>
 
 ## Run the app in the machine
 
@@ -115,20 +157,22 @@ Set `app.url` to `http://localhost:<port>` and declare no `app.command`.
 
 `scope: 'attempt'`, the default, gives every attempt its own branch of the
 slot's warm machine, so one test's changes to the machine, such as an app's
-local database, never reach another.
+local database, never reach another. The attempt runs in the branched
+browser's own context, with what `prepare` left. `app.clearState()` and
+[sessions](/authentication) throw `UNSUPPORTED_CAPABILITY` here. Options
+such as `headers` and `locale` work.
 
-`scope: 'worker'` keeps one machine per worker slot for the run. Nothing is
-branched, and `prepare` is an `INVALID_CONFIG`.
-
-In both scopes each attempt gets a new browser context, as in a local run,
-so sessions and options such as `headers` and `locale` work.
+`scope: 'worker'` keeps one machine per worker slot for the run. Each
+attempt gets a new browser context on it, as in a local run, so sessions
+and `app.clearState()` work. Nothing is branched, and `prepare` is an
+`INVALID_CONFIG`.
 
 ## Options
 
 | Option      | Default     | Meaning |
 | ----------- | ----------- | ------- |
 | `scope`     | `'attempt'` | See [Choose a scope](#choose-a-scope). |
-| `prepare`   | none        | See [Prepare each machine](#prepare-each-machine). |
+| `prepare`   | none        | See [Start every test signed in](#start-every-test-signed-in). |
 | `hostPorts` | `[]`        | See [Set up the provider](#set-up-the-provider). Not 80 or 9229. |
 | `app`       | none        | See [Run the app in the machine](#run-the-app-in-the-machine). |
 | `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apt-get update && apt-get install -y fonts-noto-cjk` for more fonts. |

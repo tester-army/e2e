@@ -89,8 +89,9 @@ stays open behind it. A Kernel `profile` has no effect, because it applies
 only to the browser's default context.
 
 `scope: 'attempt'` leases a new browser for each attempt, retries included.
-The attempt runs in a new browser context on it, as in worker scope, so a
-`profile` has no effect here either. Each test pays for a browser start.
+The attempt runs in that browser's own context, so a `profile` applies, and
+`app.clearState()` and [sessions](/authentication) throw
+`UNSUPPORTED_CAPABILITY`. Each test pays for a browser start.
 
 ## Recordings
 

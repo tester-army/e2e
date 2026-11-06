@@ -32,8 +32,7 @@ import { invalidState, message } from './support.ts';
  * How long a lease lives. `worker` (the default) is one browser per worker
  * slot, acquired in `prepare` and released in `finish`; `attempt` is a fresh
  * browser per attempt, acquired in `startAttempt` and released in
- * `endAttempt`, reconnected through the lease's `reconnectEndpoint` after a
- * transport drop.
+ * `endAttempt`, whose attempt runs in the browser's default user context.
  */
 export type BrowserProviderScope = 'worker' | 'attempt';
 
@@ -72,10 +71,7 @@ export interface BrowserLease {
   readonly id: string;
   /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
   readonly cdpEndpoint: string;
-  /**
-   * Endpoint to reattach to the same browser after a transport drop, when it
-   * differs from `cdpEndpoint`; only meaningful for a per-attempt lease.
-   */
+  /** Not read by the engine: a dropped connection fails the attempt. */
   readonly reconnectEndpoint?: string | undefined;
 }
 
