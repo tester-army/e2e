@@ -129,7 +129,7 @@ export class AttemptNetwork {
       holdAll: this.options.holdAll,
       routes: this.routes.length,
       tracking: this.tracking,
-      credentials: this.options.credentials !== undefined,
+      challenges: this.options.credentials !== undefined || this.options.browser === 'firefox',
     };
     await this.binding?.reconcile(wants);
   }
@@ -478,17 +478,23 @@ export class AttemptNetwork {
     });
   }
 
-  /** Answers the attempt's basic-auth challenge with the credentials once; a second one for the same request means they were refused, and lets the 401 through. */
+  /**
+   * Answers a basic-auth challenge the binding holds: the attempt's with the
+   * credentials once, a second one for the same request (the credentials
+   * were refused) and any without credentials by letting the 401 through,
+   * and another client's with the browser's default. Firefox's default is a
+   * login prompt BiDi neither reports nor dismisses, which stalls the
+   * navigation, so there challenges are held even without credentials.
+   */
   private onAuth(binding: NetworkBinding, event: BidiEventParams<'network.authRequired'>): void {
+    if (!binding.holds(event)) return;
+    const request = event.request.request;
     const credentials = this.options.credentials;
-    if (!this.options.ours(event) || !event.isBlocked || credentials === undefined) return;
-    // A second challenge for the same request means the credentials were refused; it gets the 401.
-    const retry = binding.answerAuth(event.request.request, event.context ?? '');
-    void this.connection
-      .send('network.continueWithAuth', retry
-        ? { request: event.request.request, action: 'cancel' }
-        : { request: event.request.request, action: 'provideCredentials', credentials: { type: 'password', ...credentials } })
-      .catch((cause: unknown) => this.fail(cause));
+    let answer: Network.ContinueWithAuthParameters;
+    if (!this.options.ours(event)) answer = { request, action: 'default' };
+    else if (credentials === undefined || binding.answerAuth(request, event.context ?? '')) answer = { request, action: 'cancel' };
+    else answer = { request, action: 'provideCredentials', credentials: { type: 'password', ...credentials } };
+    void this.connection.send('network.continueWithAuth', answer).catch((cause: unknown) => this.fail(cause));
   }
 
   /**

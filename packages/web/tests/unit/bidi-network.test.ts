@@ -15,7 +15,7 @@ const SITE = 'http://app.test';
 /** An attempt network over `fake`, and the failures it latched. */
 function network(
   fake: FakeBidi,
-  options: { holdAll?: boolean; credentials?: { username: string; password: string }; exclusive?: boolean; ours?: (context: string | null) => boolean; onPage?: (context: string | null) => boolean } = {},
+  options: { holdAll?: boolean; credentials?: { username: string; password: string }; browser?: 'chromium' | 'firefox'; exclusive?: boolean; ours?: (context: string | null) => boolean; onPage?: (context: string | null) => boolean } = {},
 ) {
   const failures: Error[] = [];
   const contexts = new ContextTree();
@@ -30,7 +30,7 @@ function network(
     onPage: (context) => options.onPage?.(context) ?? true,
     contexts,
     exclusive: options.exclusive ?? false,
-    browser: 'chromium',
+    browser: options.browser ?? 'chromium',
     onFailure: (error) => failures.push(error),
     onNavigationAbort: () => undefined,
     holdAll: options.holdAll ?? false,
@@ -163,6 +163,25 @@ describe('AttemptNetwork', () => {
       { request: 'r1', action: 'provideCredentials', credentials: { type: 'password', username: 'ada', password: 'secret' } },
       { request: 'r1', action: 'cancel' },
     ]);
+  });
+
+  it('holds challenges on Firefox without credentials and lets each through as the 401', async () => {
+    const fake = new FakeBidi();
+    const { net, open } = network(fake, { browser: 'firefox' });
+    await net.bind('user-1');
+    await open('tab');
+    expect(fake.commands('network.addIntercept').map((command) => command.params)).toEqual([{ phases: ['authRequired'], contexts: ['tab'] }]);
+    fake.emit('network.authRequired', { ...request('r1', `${SITE}/private`), response: { status: 401 } });
+    await settle();
+    expect(fake.commands('network.continueWithAuth').map((command) => command.params)).toEqual([{ request: 'r1', action: 'cancel' }]);
+  });
+
+  it('holds no challenge on Chromium without credentials', async () => {
+    const fake = new FakeBidi();
+    const { net, open } = network(fake);
+    await net.bind('user-1');
+    await open('tab');
+    expect(fake.commands('network.addIntercept')).toEqual([]);
   });
 
   it('waits for 500 ms with no request in flight before calling the network idle', async () => {

@@ -30,13 +30,13 @@ export interface NetworkWants {
   readonly routes: number;
   /** Whether requests in flight are counted, for a `networkidle` wait. */
   readonly tracking: boolean;
-  /** Whether basic-auth challenges are answered. */
-  readonly credentials: boolean;
+  /** Whether basic-auth challenges are held, to answer with the credentials or refuse. */
+  readonly challenges: boolean;
 }
 
 /** What a binding installs, derived from the attempt's wants and the binding's blank-served tabs (`interceptionPolicy`). */
 interface InterceptionPolicy {
-  /** Whether the request events are needed: held requests, credentials, or an idle count. */
+  /** Whether the request events are needed: held requests, held challenges, or an idle count. */
   readonly events: boolean;
   /** Whether request bodies are collected, for routes to read. */
   readonly requestBodies: boolean;
@@ -97,10 +97,10 @@ const NETWORK_IDLE_MS = 500;
 /** The largest body a collector keeps, per request or response. */
 const MAX_COLLECTED_BODY = 20 * 1024 * 1024;
 
-/** The one rule of what a binding installs: requests are held for site headers, routes, or a blank-served tab; the events are needed for those, an idle count, or credentials. */
+/** The one rule of what a binding installs: requests are held for site headers, routes, or a blank-served tab; the events are needed for those, an idle count, or held challenges. */
 function interceptionPolicy(wants: NetworkWants, blankTabs: number): InterceptionPolicy {
   const hold = wants.holdAll || wants.routes > 0 || blankTabs > 0;
-  return { events: hold || wants.tracking || wants.credentials, requestBodies: wants.routes > 0, hold, auth: wants.credentials };
+  return { events: hold || wants.tracking || wants.challenges, requestBodies: wants.routes > 0, hold, auth: wants.challenges };
 }
 
 /** One user context's network state and the browser resources installed for it. */
