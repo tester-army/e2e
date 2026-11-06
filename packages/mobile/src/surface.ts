@@ -832,10 +832,17 @@ export class AgentDeviceSurface {
   /**
    * One permission change for `device.setPermission`: on the pinned app, else
    * on the app agent-device's session is on. The name and state are checked
-   * the way `openApp` checks its map, before any device command, and a
-   * missing state is refused rather than skipped.
+   * the way `openApp` checks its map, before any device command; a name that
+   * is not a string and a missing state are refused rather than skipped.
    */
   async setPermission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
+    // A symbol key or an object with a matching toString() would pass the map check below.
+    if (typeof permission !== 'string') {
+      throw new TestError(
+        'INVALID_ARGUMENT',
+        `device.setPermission permission must be one of ${DEVICE_PERMISSIONS.join(', ')}, got type ${typeof permission}`,
+      );
+    }
     assertPermissions('device.setPermission', { [permission]: state }, 'INVALID_ARGUMENT');
     if ((state as PermissionState | undefined) === undefined) {
       throw new TestError('INVALID_ARGUMENT', `device.setPermission.${permission} must be one of ${PERMISSION_STATES.join(', ')}, got undefined`);

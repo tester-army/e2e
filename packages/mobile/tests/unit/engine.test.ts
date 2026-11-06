@@ -2337,6 +2337,14 @@ describe('device fixture', () => {
       code: 'INVALID_ARGUMENT',
       message: 'device.setPermission.camera must be one of grant, deny, reset, got undefined',
     });
+    for (const permission of [Symbol('camera'), { toString: () => 'camera' }]) {
+      // The step label is built before the surface runs, so it must not throw on a symbol.
+      expect(typeof declared?.setPermission?.label?.(permission as never, 'grant')).toBe('string');
+      await expect(device.setPermission(permission as never, 'grant')).rejects.toMatchObject({
+        code: 'INVALID_ARGUMENT',
+        message: expect.stringMatching(/^device\.setPermission permission must be one of camera, .*, got type (symbol|object)$/),
+      });
+    }
     expect(h.fake.calls.length).toBe(before);
     await device.setPermission('camera', 'deny');
     expect(h.fake.calls.slice(before).map((call) => call.method)).toEqual(['settings.update']);
