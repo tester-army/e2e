@@ -27,7 +27,7 @@ import { releaseQuietly, unlessStale } from './errors.ts';
 import type { NodeTarget } from './frames.ts';
 import { invert, project } from './projection.ts';
 import { stillLocated } from './observe.ts';
-import { clickSources, dragPath, dragSources, dragStepMs, mouse, moveSources, pressSource, typeSource, wheelSources, type ClickOptions } from './input.ts';
+import { clickSources, dragPath, dragSources, dragStepMs, mouse, moveSources, typeSource, wheelSources, type ClickOptions } from './input.ts';
 import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
