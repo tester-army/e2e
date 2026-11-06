@@ -168,6 +168,10 @@ export interface FixtureOptions {
   readonly signal?: () => AbortSignal;
   /** Receives each artifact path the fixture attaches. */
   readonly attach?: (relative: string) => void;
+  /** Overrides how a navigation target resolves; defaults to resolving against `baseUrl`. */
+  readonly resolveUrl?: (url: string) => string;
+  /** Overrides the operation context each call gets, to record the budgets asked for. */
+  readonly operation?: (timeoutMs?: number) => OperationContext;
 }
 
 /** Builds `engine`'s `browser` fixture for the open attempt, with a harness context that records no steps. */
@@ -178,11 +182,11 @@ export function browserFixture(engine: EngineHandle, options: FixtureOptions): B
     targetName: 'web',
     app: {
       ...(options.site === undefined ? {} : { site: options.site }),
-      resolveUrl: (url: string) => new URL(url, `${options.baseUrl}/`).href,
+      resolveUrl: options.resolveUrl ?? ((url: string) => new URL(url, `${options.baseUrl}/`).href),
     },
     timeouts: { test: timeoutMs, action: timeoutMs, assertion: 5_000 },
     get signal() { return signal(); },
-    operation: (budget?: number): OperationContext => ({ signal: signal(), timeoutMs: budget ?? timeoutMs, runId: 'run-web-session', attemptId: 'attempt', origin: 'test' }),
+    operation: options.operation ?? ((budget?: number): OperationContext => ({ signal: signal(), timeoutMs: budget ?? timeoutMs, runId: 'run-web-session', attemptId: 'attempt', origin: 'test' })),
     attachArtifact: (_kind: string, relative: string) => options.attach?.(relative),
     attachViewport: () => undefined,
     expectable: (target: object) => target,
