@@ -13,6 +13,7 @@ import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
 import { frameContentInset } from '../observation.ts';
 import { BidiError, type BidiConnection } from './connection.ts';
 import { callFunction, ElementRef, WindowRef } from './script.ts';
+import { chainParts, cssChains, type CssStep } from './selector-tokens.ts';
 
 /** An element and the browsing context whose document holds it. */
 export interface NodeTarget {
@@ -82,58 +83,17 @@ export interface SelectedElement {
 
 /**
  * The elements of `selector` in document order, through open shadow roots,
- * as Playwright's CSS engine reads it: each compound is matched with the
- * browser's own `matches`, and the combinators between compounds walk the
- * composed tree, so a shadow host is the parent of its shadow root's
- * children and `my-host .inner` reaches into it. A selector the page cannot
- * parse is `INVALID_LOCATOR`. Runs in the page.
+ * as Playwright's CSS engine reads it: each compound of `chains` (the
+ * selector as `cssChains` splits it) is matched with the browser's own
+ * `matches`, and the combinators between compounds walk the composed tree,
+ * so a shadow host is the parent of its shadow root's children and
+ * `my-host .inner` reaches into it. A selector the page cannot parse is
+ * `INVALID_LOCATOR`. Runs in the page.
  */
-function cssSelectAll(selector: string, scopes?: Element[]): { element: Element; localName: string }[] | string {
-  type Step = { compound: string; combinator: ' ' | '>' | '+' | '~' | null };
-  const split = (text: string, at: (char: string) => boolean): { parts: string[]; separators: string[] } => {
-    const parts: string[] = [];
-    const separators: string[] = [];
-    let depth = 0;
-    let quote = '';
-    let current = '';
-    for (let index = 0; index < text.length; index += 1) {
-      const char = text[index]!;
-      if (quote !== '') {
-        if (char === '\\') current += char + (text[++index] ?? '');
-        else {
-          if (char === quote) quote = '';
-          current += char;
-        }
-        continue;
-      }
-      if (char === '"' || char === "'") quote = char;
-      else if (char === '(' || char === '[') depth += 1;
-      else if (char === ')' || char === ']') depth -= 1;
-      else if (depth === 0 && at(char)) {
-        parts.push(current);
-        separators.push(char);
-        current = '';
-        continue;
-      }
-      current += char;
-    }
-    parts.push(current);
-    return { parts, separators };
-  };
-  const steps = (complex: string): Step[] => {
-    const { parts, separators } = split(complex.trim(), (char) => char === '>' || char === '+' || char === '~');
-    const out: Step[] = [];
-    parts.forEach((part, index) => {
-      const compounds = split(part, (char) => /\s/.test(char)).parts.filter((compound) => compound !== '');
-      compounds.forEach((compound, inner) => {
-        out.push({ compound, combinator: inner > 0 ? ' ' : index > 0 ? (separators[index - 1] as '>' | '+' | '~') : null });
-      });
-    });
-    return out;
-  };
+function cssSelectAll(selector: string, chains: CssStep[][], scopes?: Element[]): { element: Element; localName: string }[] | string {
   const parentOf = (element: Element): Element | null =>
     element.parentElement ?? (element.parentNode !== null && element.parentNode.nodeType === 11 ? (element.parentNode as ShadowRoot).host : null);
-  const matchesFrom = (element: Element, chain: Step[], index: number): boolean => {
+  const matchesFrom = (element: Element, chain: CssStep[], index: number): boolean => {
     const step = chain[index]!;
     if (!element.matches(step.compound)) return false;
     if (index === 0) return true;
@@ -156,7 +116,6 @@ function cssSelectAll(selector: string, scopes?: Element[]): { element: Element;
   };
   try {
     document.querySelector(selector);
-    const chains = split(selector, (char) => char === ',').parts.map(steps);
     const out: { element: Element; localName: string }[] = [];
     const seen = new Set<Element>();
     const visit = (root: Document | ShadowRoot | Element): void => {
@@ -197,39 +156,13 @@ export async function selectElements(connection: BidiConnection, context: string
   return selected ?? [];
 }
 
-/**
- * The parts of a `>>` chain, each resolved inside the elements the one before
- * it matched; a `>>` inside quotes or brackets belongs to its part.
- */
-function chainParts(selector: string): string[] {
-  const parts: string[] = [];
-  let quote: string | null = null;
-  let depth = 0;
-  let start = 0;
-  for (let index = 0; index < selector.length; index += 1) {
-    const char = selector[index]!;
-    if (quote !== null) {
-      if (char === '\\') index += 1;
-      else if (char === quote) quote = null;
-    } else if (char === '"' || char === "'") quote = char;
-    else if (char === '[' || char === '(') depth += 1;
-    else if (char === ']' || char === ')') depth -= 1;
-    else if (depth === 0 && selector.startsWith('>>', index)) {
-      parts.push(selector.slice(start, index).trim());
-      start = index + 2;
-      index += 1;
-    }
-  }
-  parts.push(selector.slice(start).trim());
-  return parts;
-}
-
 /** The elements one chain part matches: in the document, or inside `scopes` (descendants, open shadow roots included). */
 async function selectWithin(connection: BidiConnection, context: string, part: string, scopes: readonly ElementRef[] | undefined, selector: string): Promise<SelectedElement[]> {
   if (scopes !== undefined && scopes.length === 0) return [];
   const locator = selectorLocator(part);
   if (locator.type === 'css') {
-    const found = await callFunction(connection, context, cssSelectAll, scopes === undefined ? [locator.value] : [locator.value, [...scopes]], { maxObjectDepth: null });
+    const chains = cssChains(locator.value);
+    const found = await callFunction(connection, context, cssSelectAll, scopes === undefined ? [locator.value, chains] : [locator.value, chains, [...scopes]], { maxObjectDepth: null });
     if (typeof found === 'string') throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: ${found}`);
     if (!isSelection(found)) throw new EngineError('ENGINE_FAILURE', `selector ${selector} read an unexpected value`, { retryable: false });
     return found;
