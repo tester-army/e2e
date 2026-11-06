@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { BidiVideo } from '../../src/bidi/video.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 
 const VIEWPORT = { width: 320, height: 240 };
@@ -16,7 +17,7 @@ const VIEWPORT = { width: 320, height: 240 };
 /** A Chromium recorder on `fake` whose CDP session never opens, with an ffmpeg that is never reached. */
 function recorder(fake: FakeBidi): BidiVideo {
   fake.on('goog:cdp.getSession', { error: 'unknown error', message: 'no CDP session for this tab' });
-  return new BidiVideo(fake.connection, 'chromium', mkdtempSync(path.join(os.tmpdir(), 'e2e-video-test-')), {}, { E2E_FFMPEG_PATH: process.execPath });
+  return new BidiVideo(fake.connection, BROWSER_TRAITS.chromium, mkdtempSync(path.join(os.tmpdir(), 'e2e-video-test-')), {}, { E2E_FFMPEG_PATH: process.execPath });
 }
 
 describe('BidiVideo', () => {

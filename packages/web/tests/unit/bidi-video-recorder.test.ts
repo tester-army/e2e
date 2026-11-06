@@ -12,6 +12,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { EngineError } from 'e2e/engine';
 import { BidiVideo, type VideoOptions } from '../../src/bidi/video.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi, type Reply } from '../helpers/bidi-fake.ts';
 
 const VIEWPORT = { width: 320, height: 200 };
@@ -67,7 +68,7 @@ describe('BidiVideo', () => {
     return index === 1 ? 'video.webm' : `video-part${String(index)}.webm`;
   }
 
-  const video = (options: VideoOptions = {}) => new BidiVideo(bidi.connection, 'firefox', artifactsDir, options, {});
+  const video = (options: VideoOptions = {}) => new BidiVideo(bidi.connection, BROWSER_TRAITS.firefox, artifactsDir, options, {});
   const started = () => bidi.commands('browsingContext.startScreencast').map((command) => command.params);
   const stops = () => bidi.commands('browsingContext.stopScreencast').length;
   const paths = (segments: readonly { path: string }[]) => segments.map((segment) => segment.path);

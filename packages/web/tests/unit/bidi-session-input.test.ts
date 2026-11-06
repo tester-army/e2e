@@ -5,6 +5,7 @@ import { ContextTree } from '../../src/bidi/context-tree.ts';
 import { clickSources, moveSources, pressDownSources, swipeSources, typeSource } from '../../src/bidi/input.ts';
 import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/bidi/keyboard.ts';
 import { BidiSession } from '../../src/bidi/session.ts';
+import { BROWSER_TRAITS, type BrowserName } from '../../src/browsers.ts';
 import type { NodeRef } from 'e2e/engine';
 import type { ElementRef } from '../../src/bidi/script.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
@@ -12,10 +13,10 @@ import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 const SHIFT = '';
 
 /** A session on `fake` with its tab open, on a 100 by 100 viewport. */
-function session(fake: FakeBidi, browser: 'chromium' | 'firefox' = 'chromium'): BidiSession {
-  const settings = { siteHeaders: () => undefined, holdRequests: false, media: {}, viewport: { width: 100, height: 100 }, browser, initScripts: { forAttempt: () => [] }, permissions: [], userContext: 'fresh' };
+function session(fake: FakeBidi, browser: BrowserName = 'chromium'): BidiSession {
+  const settings = { siteHeaders: () => undefined, holdRequests: false, media: {}, viewport: { width: 100, height: 100 }, initScripts: { forAttempt: () => [] }, permissions: [], userContext: 'fresh' };
   const attempt = { credentials: undefined };
-  const created = new BidiSession({ connection: fake.connection, exclusive: true } as never, settings as never, attempt as never, new ContextTree());
+  const created = new BidiSession({ connection: fake.connection, exclusive: true, traits: BROWSER_TRAITS[browser] } as never, settings as never, attempt as never, new ContextTree());
   created.context = 'tab';
   return created;
 }

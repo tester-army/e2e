@@ -13,7 +13,7 @@ import { ChromiumCdp } from './cdp.ts';
 import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand } from './chromium-keys.ts';
 import type { BidiConnection } from './connection.ts';
 import { codeOfValue, MODIFIER_CODES, pressStroke, strokeSource, type KeyStroke, type Modifier } from './keyboard.ts';
-import type { BidiBrowserName } from './launch.ts';
+import type { BrowserTraits } from '../browsers.ts';
 import { nextFrame, shownFrame } from './page.ts';
 import { callFunction } from './script.ts';
 
@@ -23,7 +23,7 @@ type HeldKey = { readonly via: 'bidi'; readonly value: string } | { readonly via
 /** What the input reaches the tab through. */
 export interface InputTarget {
   readonly connection: BidiConnection;
-  readonly browser: BidiBrowserName;
+  readonly traits: BrowserTraits;
   /** The tab input goes to; throws when none is open. */
   readonly context: () => string;
   /** The viewport in CSS pixels, which every pointer target must lie in. */
@@ -183,7 +183,7 @@ export class BidiInput {
    */
   key(stroke: KeyStroke, signal?: AbortSignal): Promise<void> {
     const modifiers = this.state.modifiers();
-    if (this.target.browser === 'chromium') {
+    if (this.target.traits.cdp) {
       const pressed = new Set([...this.state.keys].filter(([, held]) => held.via === 'cdp').map(([code]) => code));
       const commands = chromiumKeyCommands(stroke, { held: modifiers, pressed, mac: process.platform === 'darwin' });
       if (commands !== undefined) return this.sendCdpKeys(commands, signal);
@@ -247,7 +247,7 @@ export class BidiInput {
     signal?.throwIfAborted();
     this.target.context();
     await this.checkInViewport(actions.flatMap(targets));
-    if (this.target.browser === 'firefox' && actions.some((source) => source.type !== 'key')) await this.framePresented();
+    if (this.target.traits.pointerWaitsForFrame && actions.some((source) => source.type !== 'key')) await this.framePresented();
     signal?.throwIfAborted();
     const after = this.state.copy();
     const sent = actions.map((source) => (source.type === 'key' ? keepHeld(source, after) : source.type === 'pointer' ? withPressure(source, after) : source));

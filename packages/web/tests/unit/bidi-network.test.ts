@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import { ContextTree } from '../../src/bidi/context-tree.ts';
 import { AttemptNetwork, type NetworkRoute } from '../../src/bidi/network.ts';
+import { BROWSER_TRAITS, type BrowserName } from '../../src/browsers.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
 const SITE = 'http://app.test';
@@ -15,7 +16,7 @@ const SITE = 'http://app.test';
 /** An attempt network over `fake`, and the failures it latched. */
 function network(
   fake: FakeBidi,
-  options: { holdAll?: boolean; credentials?: { username: string; password: string }; browser?: 'chromium' | 'firefox'; exclusive?: boolean; ours?: (context: string | null) => boolean; onPage?: (context: string | null) => boolean } = {},
+  options: { holdAll?: boolean; credentials?: { username: string; password: string }; browser?: BrowserName; exclusive?: boolean; ours?: (context: string | null) => boolean; onPage?: (context: string | null) => boolean } = {},
 ) {
   const failures: Error[] = [];
   const contexts = new ContextTree();
@@ -30,7 +31,7 @@ function network(
     onPage: (context) => options.onPage?.(context) ?? true,
     contexts,
     exclusive: options.exclusive ?? false,
-    browser: options.browser ?? 'chromium',
+    traits: BROWSER_TRAITS[options.browser ?? 'chromium'],
     onFailure: (error) => failures.push(error),
     onNavigationAbort: () => undefined,
     holdAll: options.holdAll ?? false,

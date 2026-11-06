@@ -7,7 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
-import type { BrowserName } from '../../src/browser-names.ts';
+import type { BrowserName } from '../../src/browsers.ts';
 import { PARITY_PAGES } from '../helpers/locator-parity.ts';
 import { byRole, startWebSession, type WebSession } from '../helpers/web-session.ts';
 

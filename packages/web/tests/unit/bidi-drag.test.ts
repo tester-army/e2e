@@ -2,6 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { BidiInput } from '../../src/bidi/bidi-input.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { chromiumDrag } from '../../src/bidi/drag.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 
@@ -10,7 +11,7 @@ const TO = { x: 9, y: 9 };
 
 /** Drags from `FROM` to `TO` on `fake`'s tab through a fresh input. */
 function drag(fake: FakeBidi, signal: AbortSignal): Promise<void> {
-  const input = new BidiInput({ connection: fake.connection, browser: 'chromium', context: () => 'tab', viewport: async () => ({ width: 100, height: 100 }) });
+  const input = new BidiInput({ connection: fake.connection, traits: BROWSER_TRAITS.chromium, context: () => 'tab', viewport: async () => ({ width: 100, height: 100 }) });
   return chromiumDrag(input, fake.connection, 'tab', ['tab'], FROM, async () => TO, 0, signal);
 }
 
@@ -64,7 +65,7 @@ describe('chromiumDrag', () => {
 
   it('resolves the target only once the source is pressed', async () => {
     const fake = peer(() => false);
-    const input = new BidiInput({ connection: fake.connection, browser: 'chromium', context: () => 'tab', viewport: async () => ({ width: 100, height: 100 }) });
+    const input = new BidiInput({ connection: fake.connection, traits: BROWSER_TRAITS.chromium, context: () => 'tab', viewport: async () => ({ width: 100, height: 100 }) });
     let sentBefore = -1;
     await chromiumDrag(input, fake.connection, 'tab', ['tab'], FROM, async () => {
       sentBefore = pointerEnds(fake).length;

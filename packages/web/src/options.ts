@@ -1,7 +1,7 @@
 /** The options `web()` takes: which browser, how it is reached, and how every attempt's context is set up. */
 
 import type { Secret, ViewportSize } from 'e2e/engine';
-import type { BrowserName } from './browser-names.ts';
+import type { BrowserName } from './browsers.ts';
 import type { WebInitScript } from './init-scripts.ts';
 import type { WebMedia } from './media.ts';
 import type { BrowserProvider } from './provider.ts';

@@ -11,6 +11,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EngineAttemptContext, EngineCleanupContext, EngineFinishInfo, EngineHandle, EngineInitInfo, EnginePrepareInfo, OperationContext, ProviderRecordContext, ProviderRecording } from 'e2e/engine';
 import { connectBidiOverCdp, type BidiBrowser } from '../../src/bidi/launch.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { web } from '../../src/index.ts';
 import { LeasedBrowsers, type BrowserLease, type BrowserProvider, type BrowserReleaseContext, type BrowserRequest } from '../../src/provider.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
@@ -37,7 +38,7 @@ function fakeBrowser(_contextId: string) {
     .on('browsingContext.getTree', { result: { contexts: [] } })
     .on('script.callFunction', { result: { type: 'success', result: { type: 'object', value: [['width', { type: 'number', value: 1280 }], ['height', { type: 'number', value: 720 }]] }, realm: 'realm' } });
   const browser: BidiBrowser = {
-    name: 'chromium',
+    traits: BROWSER_TRAITS.chromium,
     version: '157',
     connection: peer.connection,
     exclusive: false,

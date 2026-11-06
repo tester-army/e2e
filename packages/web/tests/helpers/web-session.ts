@@ -25,7 +25,7 @@ import type {
 import { openHost, type E2EHost, type E2ESession } from 'e2e/runner';
 import type { TargetApp } from 'e2e';
 import { web, type Browser, type WebOptions } from '../../src/index.ts';
-import { BROWSER_NAMES, isBrowserName, type BrowserName } from '../../src/browser-names.ts';
+import { BROWSER_NAMES, isBrowserName, type BrowserName } from '../../src/browsers.ts';
 import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../../src/read-node.ts';
 

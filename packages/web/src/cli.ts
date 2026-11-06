@@ -1,7 +1,7 @@
 /** The `e2e-web` command: installs the browser builds this engine pins, and the ffmpeg that records Chromium video. */
 
 import os from 'node:os';
-import { BROWSER_NAMES, isBrowserName, type BrowserName } from './browser-names.ts';
+import { BROWSER_NAMES, isBrowserName, type BrowserName } from './browsers.ts';
 import { ensureFfmpeg, installBrowsers } from './install.ts';
 
 /** What `e2e-web install` installs: a browser, or ffmpeg. */

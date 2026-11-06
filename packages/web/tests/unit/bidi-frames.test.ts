@@ -9,6 +9,7 @@ import type { LocatorExpression, SemanticNode } from 'e2e/engine';
 import { FrameRegistry, inViewport, pageParts, resolveFrames, splitFrames } from '../../src/bidi/frames.ts';
 import { project, type Projection } from '../../src/bidi/projection.ts';
 import { ElementRef } from '../../src/bidi/script.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 
 /** An exact string pattern. */
@@ -127,19 +128,19 @@ function toTop(maps: readonly Projection[], point: { x: number; y: number }): { 
 describe('FrameRegistry.frameMaps', () => {
   it('reads a turned frame’s quad in the viewport of its process’s outermost document', async () => {
     const fake = turnedChromium(flatQuad(110, 70, 100, 100), { top: 'page', 'outer-doc': 'page' });
-    const maps = await nestedChromium().frameMaps(fake.connection, 'inner-doc', 'chromium');
+    const maps = await nestedChromium().frameMaps(fake.connection, 'inner-doc', BROWSER_TRAITS.chromium);
     expect(toTop(maps!, { x: 5, y: 5 })).toEqual({ x: 115, y: 75 });
   });
 
   it('reads it in the frame’s own document when another process renders that document', async () => {
     const fake = turnedChromium(flatQuad(10, 20, 100, 100), { top: 'page', 'outer-doc': 'oopif' });
-    const maps = await nestedChromium().frameMaps(fake.connection, 'inner-doc', 'chromium');
+    const maps = await nestedChromium().frameMaps(fake.connection, 'inner-doc', BROWSER_TRAITS.chromium);
     expect(toTop(maps!, { x: 5, y: 5 })).toEqual({ x: 115, y: 75 });
   });
 
   it('maps an unturned chain by each frame’s content box and scale, without CDP', async () => {
     const fake = measured({ outer: { content: { x: 100, y: 50, width: 200, height: 200 }, scale: { x: 0.5, y: 0.5 } }, inner: { content: { x: 10, y: 20, width: 100, height: 100 } } });
-    const maps = await nested().frameMaps(fake.connection, 'inner-doc', 'chromium');
+    const maps = await nested().frameMaps(fake.connection, 'inner-doc', BROWSER_TRAITS.chromium);
     expect(toTop(maps!, { x: 4, y: 4 })).toEqual({ x: 107, y: 62 });
     expect(fake.commands('goog:cdp.getSession')).toEqual([]);
   });

@@ -13,6 +13,7 @@ import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { EngineError, raceAbort, withTimeout } from 'e2e/engine';
+import { BROWSER_TRAITS, type BrowserName, type BrowserTraits } from '../browsers.ts';
 import { browserExecutable } from '../install.ts';
 import { cancelled } from '../support.ts';
 import { watchdogArgs } from './browser-watchdog.ts';
@@ -21,12 +22,10 @@ import { BidiConnection, webSocketTransport, type BidiTransport } from './connec
 import { releaseQuietly } from './errors.ts';
 import { MAPPER_READY } from './mapper-process.ts';
 
-/** The browsers the BiDi driver launches. WebKit has no BiDi endpoint yet. */
-export type BidiBrowserName = 'chromium' | 'firefox';
-
 /** One launched browser with its open BiDi session. */
 export interface BidiBrowser {
-  readonly name: BidiBrowserName;
+  /** What the driver does differently on this browser. */
+  readonly traits: BrowserTraits;
   /** The browser's version, as the session reports it. */
   readonly version: string;
   readonly connection: BidiConnection;
@@ -207,14 +206,14 @@ const FIREFOX_PREFS: Readonly<Record<string, string | number | boolean>> = {
  * process lets go of it, however this process ends. `signal` aborting at any
  * stage kills the browser and the mapper and fails the launch `CANCELLED`.
  */
-export async function launchBidiBrowser(name: BidiBrowserName, options: BidiLaunchOptions): Promise<BidiBrowser> {
+export async function launchBidiBrowser(name: BrowserName, options: BidiLaunchOptions): Promise<BidiBrowser> {
   const { signal, timeoutMs } = options;
   if (signal.aborted) throw cancelled(`BiDi ${name} launch cancelled`);
   const executable = options.executablePath ?? (await browserExecutable(name, options.headed, options.env));
   const profile = mkdtempSync(path.join(os.tmpdir(), `e2e-bidi-${name}-`));
   let watchdog: ChildProcess;
   try {
-    watchdog = name === 'firefox' ? spawnFirefox(executable, profile, options) : spawnChromium(executable, profile, options);
+    watchdog = LAUNCHERS[name].spawn(executable, profile, options);
   } catch (cause) {
     rmSync(profile, { recursive: true, force: true, maxRetries: 3 });
     throw launchFailure(`BiDi ${name} launch failed`, cause);
@@ -226,15 +225,12 @@ export async function launchBidiBrowser(name: BidiBrowserName, options: BidiLaun
   };
   signal.addEventListener('abort', abandon, { once: true });
   try {
-    const transport =
-      name === 'firefox'
-        ? await raceAbort(async () => webSocketTransport(`${await endpointLine(watchdog, FIREFOX_ENDPOINT, timeoutMs)}/session`, timeoutMs), signal, `BiDi ${name} launch`)
-        : await chromiumMapper(endpointLine(watchdog, CHROMIUM_ENDPOINT, timeoutMs), timeoutMs, signal);
-    connection = new BidiConnection(transport);
+    connection = new BidiConnection(await LAUNCHERS[name].transport(watchdog, timeoutMs, signal));
     const open = connection;
-    const version = await openSession(open, name, timeoutMs, signal);
+    const traits = BROWSER_TRAITS[name];
+    const version = await openSession(open, traits, timeoutMs, signal);
     return {
-      name,
+      traits,
       version,
       connection: open,
       exclusive: true,
@@ -270,9 +266,9 @@ export async function connectBidiOverCdp(endpoint: string, timeoutMs: number, si
   try {
     connection = new BidiConnection(await chromiumMapper(webSocketDebuggerUrl(endpoint, timeoutMs, signal), timeoutMs, signal));
     const open = connection;
-    const version = await openSession(open, 'chromium', timeoutMs, signal);
+    const version = await openSession(open, BROWSER_TRAITS.chromium, timeoutMs, signal);
     return {
-      name: 'chromium',
+      traits: BROWSER_TRAITS.chromium,
       version,
       connection: open,
       exclusive: false,
@@ -314,10 +310,10 @@ async function webSocketDebuggerUrl(endpoint: string, timeoutMs: number, signal:
  * Firefox from opening the input's chooser again; certificate errors fail
  * navigation, as Playwright's default `ignoreHTTPSErrors: false` does.
  */
-async function openSession(connection: BidiConnection, name: BidiBrowserName, timeoutMs: number, signal: AbortSignal): Promise<string> {
+async function openSession(connection: BidiConnection, traits: BrowserTraits, timeoutMs: number, signal: AbortSignal): Promise<string> {
   const opened = async (): Promise<string> => {
     const session = await connection.send('session.new', { capabilities: { alwaysMatch: { acceptInsecureCerts: false, unhandledPromptBehavior: { default: 'ignore', file: 'dismiss' } } } });
-    return name === 'chromium' ? chromiumVersion(connection) : session.capabilities.browserVersion;
+    return traits.cdp ? chromiumVersion(connection) : session.capabilities.browserVersion;
   };
   return withTimeout(
     raceAbort(opened(), signal, 'opening the BiDi session'),
@@ -360,6 +356,26 @@ function spawnChromium(executable: string, profile: string, options: BidiLaunchO
   ];
   return spawnWatched(executable, profile, args);
 }
+
+/** How one browser is launched: its process, and the BiDi transport to it once it listens. */
+interface Launcher {
+  spawn(executable: string, profile: string, options: BidiLaunchOptions): ChildProcess;
+  /** Waits for the endpoint `watchdog`'s browser prints and connects to it; `signal` aborting stops the wait. */
+  transport(watchdog: ChildProcess, timeoutMs: number, signal: AbortSignal): Promise<BidiTransport>;
+}
+
+/** Every browser's launcher: Firefox serves BiDi on a WebSocket of its own, Chromium through the mapper. */
+const LAUNCHERS: Readonly<Record<BrowserName, Launcher>> = {
+  chromium: {
+    spawn: spawnChromium,
+    transport: (watchdog, timeoutMs, signal) => chromiumMapper(endpointLine(watchdog, CHROMIUM_ENDPOINT, timeoutMs), timeoutMs, signal),
+  },
+  firefox: {
+    spawn: spawnFirefox,
+    transport: (watchdog, timeoutMs, signal) =>
+      raceAbort(async () => webSocketTransport(`${await endpointLine(watchdog, FIREFOX_ENDPOINT, timeoutMs)}/session`, timeoutMs), signal, 'BiDi firefox launch'),
+  },
+};
 
 /** The watchdog's entry point beside this module: the built `.js`, or the source when run from `src`. */
 const WATCHDOG_ENTRY = fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? './browser-watchdog.ts' : './browser-watchdog.js', import.meta.url));

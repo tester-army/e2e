@@ -46,7 +46,6 @@ import { DispatchScope } from './bidi-input.ts';
 import { afterDispatch, classify, releaseQuietly } from './errors.ts';
 import { BROWSER_OPEN_TIMEOUT_MS, BrowserHandle, type BrowserSource } from './browser-source.ts';
 import { fixtureKeyStroke, type KeyPhase } from './keyboard.ts';
-import type { BidiBrowserName } from './launch.ts';
 import type { NetworkRoute } from './network.ts';
 import type { ObservedResponse } from './network-binding.ts';
 import { locate, observe, traceScreen } from './observe.ts';
@@ -58,7 +57,6 @@ import { goto, reload, reset, restart, traverse, type WaitUntil } from './steeri
 
 /** What a BiDi surface is configured with, from `web()`. */
 export interface BidiSurfaceOptions {
-  readonly browser: BidiBrowserName;
   readonly viewport: ViewportSize | null;
   readonly testIdAttribute: string;
   readonly initScripts: ConfiguredInitScripts;
@@ -134,7 +132,6 @@ export class BidiSurface {
     const headers = this.options.headers === undefined ? undefined : lowercaseNames(this.options.headers);
     const site = info.app.site;
     this.settings = {
-      browser: this.options.browser,
       viewport: this.options.viewport,
       initScripts: this.options.initScripts,
       screencast: this.options.screencast,
@@ -255,7 +252,7 @@ export class BidiSurface {
     } catch (cause) {
       throw classify(cause, 'attempt setup');
     }
-    context.environment({ browser: `${handle.browser.name} ${handle.browser.version}`, driver: 'webdriver-bidi' });
+    context.environment({ browser: `${handle.browser.traits.name} ${handle.browser.version}`, driver: 'webdriver-bidi' });
   }
 
   /** Waits for a dialog or route handler still running, then rethrows what it latched. */
@@ -549,13 +546,14 @@ export class BidiSurface {
   }
 
   /**
-   * Changes the attempt's media features from the next paint on. Firefox
-   * overrides only `prefers-color-scheme` over BiDi, so a reduced-motion
-   * change refuses there; `web({ reducedMotion })` still applies at launch.
+   * Changes the attempt's media features from the next paint on. A browser
+   * that does not emulate reduced motion (Firefox overrides only
+   * `prefers-color-scheme` over BiDi) refuses a reduced-motion change;
+   * `web({ reducedMotion })` still applies at launch.
    */
   emulateMedia(media: WebMedia, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'emulateMedia', async (session) => {
-      if (this.options.browser === 'firefox' && media.reducedMotion !== undefined) {
+      if (!session.browser.traits.emulatesReducedMotion && media.reducedMotion !== undefined) {
         throw new EngineError('UNSUPPORTED_CAPABILITY', 'browser.emulateMedia({ reducedMotion }) is not supported on Firefox, which overrides only prefers-color-scheme over WebDriver BiDi; set web({ reducedMotion }) instead', { retryable: false });
       }
       session.media = { ...session.media, ...media };

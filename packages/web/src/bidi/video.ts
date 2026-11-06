@@ -17,7 +17,7 @@ import { ensureFfmpeg } from '../install.ts';
 import { ChromiumCdp } from './cdp.ts';
 import type { BidiConnection } from './connection.ts';
 import { classify, isStale, releaseQuietly, unlessStale } from './errors.ts';
-import type { BidiBrowserName } from './launch.ts';
+import type { BrowserTraits } from '../browsers.ts';
 
 /** Frames a second of the encoded video. */
 const FPS = 25;
@@ -57,7 +57,7 @@ export class BidiVideo {
 
   constructor(
     private readonly connection: BidiConnection,
-    private readonly browser: BidiBrowserName,
+    private readonly traits: BrowserTraits,
     private readonly artifactsDir: string,
     private readonly options: VideoOptions,
     /** The run's environment, which names the ffmpeg to encode with. */
@@ -71,7 +71,7 @@ export class BidiVideo {
    * on first use) or the segment cannot start.
    */
   async arm(context: string | undefined, viewport: { width: number; height: number }): Promise<void> {
-    if (this.browser === 'chromium') this.ffmpeg ??= await ensureFfmpeg({ ...this.env });
+    if (this.traits.screencast === 'cdp') this.ffmpeg ??= await ensureFfmpeg({ ...this.env });
     const generation = this.generation;
     if (this.current === undefined && context !== undefined) await this.tracked(this.begin(context, viewport, true));
     if (generation === this.generation) this.armed = true;
@@ -128,9 +128,9 @@ export class BidiVideo {
     mkdirSync(path.dirname(absolute), { recursive: true });
     const size = this.options.size ?? viewport;
     const startedAt = new Date().toISOString();
-    const finish = this.browser === 'firefox'
-      ? await this.firefoxSegment(context, size, absolute)
-      : await this.chromiumSegment(context, size, absolute);
+    const finish = this.traits.screencast === 'bidi'
+      ? await this.bidiSegment(context, size, absolute)
+      : await this.cdpSegment(context, size, absolute);
     const segment = { relative, absolute, startedAt, finish };
     if (generation !== this.generation || (!arming && !this.armed)) {
       this.current = segment;
@@ -156,8 +156,8 @@ export class BidiVideo {
     if (existsSync(segment.absolute)) this.finished.push({ path: segment.relative, startedAt: segment.startedAt });
   }
 
-  /** Firefox's own screencast; the file it writes is moved into the attempt directory when it stops. */
-  private async firefoxSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
+  /** The browser's own screencast (Firefox's); the file it writes is moved into the attempt directory when it stops. */
+  private async bidiSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
     const { screencast } = await this.connection.send('browsingContext.startScreencast', {
       context,
       mimeType: 'video/webm',
@@ -185,7 +185,7 @@ export class BidiVideo {
    * segment ends on a screenshot of the viewport as it stands. Everything the
    * segment acquires is released when a later step of its start fails.
    */
-  private async chromiumSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
+  private async cdpSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
     const ffmpeg = this.ffmpeg ??= await ensureFfmpeg({ ...this.env });
     const connection = this.connection;
     const cdp = await ChromiumCdp.forContext(connection, context);

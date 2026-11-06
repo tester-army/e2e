@@ -322,7 +322,7 @@ function pointerAim(session: BidiSession, target: NodeTarget, enabled: boolean):
     const local = await settledPoint(session, target, enabled, SCROLL_ALIGNMENTS[covered % SCROLL_ALIGNMENTS.length]);
     if (local instanceof Retry) return local;
     const chain = session.frames.chain(target.context);
-    const maps = await session.frames.frameMaps(session.connection, target.context, session.settings.browser);
+    const maps = await session.frames.frameMaps(session.connection, target.context, session.browser.traits);
     const inverses = maps?.map(invert);
     if (maps === null || inverses === undefined || inverses.includes(undefined)) {
       throw new EngineError('NOT_ACTIONABLE', 'element is in a frame that lays out no box, or whose transform the browser maps no point through', { retryable: false });
@@ -523,7 +523,7 @@ async function dragTo(session: BidiSession, source: NodeTarget, target: NodeTarg
  * pointer moves alone.
  */
 async function drag(session: BidiSession, from: ViewportPoint, to: () => Promise<ViewportPoint>, durationMs: number, signal: AbortSignal): Promise<void> {
-  if (session.settings.browser === 'chromium') {
+  if (session.browser.traits.cdp) {
     const context = session.requireContext();
     const documents = await session.documentContexts(context);
     await chromiumDrag(session.input, session.connection, context, documents, from, to, dragStepMs(durationMs), signal);

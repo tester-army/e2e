@@ -4,14 +4,15 @@
  * tree, axe's expectations) rather than drive the engine's contract.
  */
 
-import { launchBidiBrowser, type BidiBrowser, type BidiBrowserName } from '../../src/bidi/launch.ts';
+import { launchBidiBrowser, type BidiBrowser } from '../../src/bidi/launch.ts';
+import type { BrowserName } from '../../src/browsers.ts';
 import type { BidiConnection } from '../../src/bidi/connection.ts';
 import { callFunction, type PageArgument, type PageFunction, type PageValue } from '../../src/bidi/script.ts';
 import { startPageServer, type PageServer } from './web-session.ts';
 
 /** How to open the tab. */
 export interface BidiPageOptions {
-  readonly browser?: BidiBrowserName;
+  readonly browser?: BrowserName;
   /** Script sources every document of the tab runs before its own, in order. */
   readonly preloadScripts?: readonly string[];
 }

@@ -10,6 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EngineAttemptContext, EngineCleanupContext, EngineInitInfo, OperationContext } from 'e2e/engine';
 import { connectBidiOverCdp, type BidiBrowser } from '../../src/bidi/launch.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { web } from '../../src/index.ts';
 import type { BrowserProvider } from '../../src/provider.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
@@ -34,7 +35,7 @@ function fakeBrowser() {
     .on('network.addIntercept', { result: { intercept: 'i' } })
     .on('browsingContext.getTree', { result: { contexts: [] } })
     .on('script.callFunction', { result: { type: 'success', result: { type: 'object', value: [['width', { type: 'number', value: 1280 }], ['height', { type: 'number', value: 720 }]] }, realm: 'r' } });
-  const browser: BidiBrowser = { name: 'chromium', version: '157', connection: peer.connection, exclusive: false, close: async () => peer.drop() };
+  const browser: BidiBrowser = { traits: BROWSER_TRAITS.chromium, version: '157', connection: peer.connection, exclusive: false, close: async () => peer.drop() };
   return { browser, peer };
 }
 

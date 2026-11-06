@@ -12,7 +12,7 @@ import { frameContentInset } from '../observation.ts';
 import type { BidiConnection } from './connection.ts';
 import { ChromiumCdp } from './cdp.ts';
 import { callFunction, ElementRef, WindowRef } from './script.ts';
-import type { BidiBrowserName } from './launch.ts';
+import type { BrowserTraits } from '../browsers.ts';
 import { compose, IDENTITY, invert, rectToQuad, scaleThenTranslate, type Projection } from './projection.ts';
 import { chainParts, cssChains, type CssStep } from './selector-tokens.ts';
 
@@ -256,11 +256,11 @@ export class FrameRegistry {
    * frame on the way lays out no box, or the browser reports no quad for a
    * turned one.
    */
-  async frameMaps(connection: BidiConnection, context: string, browser: BidiBrowserName): Promise<Projection[] | null> {
+  async frameMaps(connection: BidiConnection, context: string, traits: BrowserTraits): Promise<Projection[] | null> {
     const chain = this.chain(context);
     const boxes = await measureFrames(connection, chain);
     if (boxes === null) return null;
-    const sessions = browser === 'chromium' && boxes.includes(TURNED) ? await Promise.all(chain.map((frame) => ChromiumCdp.forContext(connection, frame.context))) : undefined;
+    const sessions = traits.cdp && boxes.includes(TURNED) ? await Promise.all(chain.map((frame) => ChromiumCdp.forContext(connection, frame.context))) : undefined;
     const maps: Projection[] = [];
     let root: Projection = IDENTITY;
     for (const [index, box] of boxes.entries()) {

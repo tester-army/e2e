@@ -25,7 +25,8 @@ import { cancelled } from '../support.ts';
 import { ContextTree } from './context-tree.ts';
 import { releaseQuietly } from './errors.ts';
 import { routeEvents, SESSION_EVENTS } from './events.ts';
-import { connectBidiOverCdp, launchBidiBrowser, type BidiBrowser, type BidiBrowserName } from './launch.ts';
+import { connectBidiOverCdp, launchBidiBrowser, type BidiBrowser } from './launch.ts';
+import type { BrowserName } from '../browsers.ts';
 import type { BidiSession, UserContextMode } from './session.ts';
 
 /** How long each stage of opening a browser (launch, attach, subscribe) may take. */
@@ -88,7 +89,7 @@ const NOTHING = {
 };
 
 /** A browser launched on this machine from the pinned build `prepare` installs into the run's browsers cache. */
-export function launchSource(browser: BidiBrowserName, media: WebMedia): BrowserSource {
+export function launchSource(browser: BrowserName, media: WebMedia): BrowserSource {
   let run: { readonly headed: boolean; readonly env: Readonly<Record<string, string | undefined>> } | undefined;
   return {
     ...NOTHING,

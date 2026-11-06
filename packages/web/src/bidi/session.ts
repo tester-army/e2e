@@ -20,7 +20,7 @@ import type { ContextTree } from './context-tree.ts';
 import { AttemptDownloads } from './downloads.ts';
 import { releaseQuietly, unlessStale } from './errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
-import type { BidiBrowser, BidiBrowserName } from './launch.ts';
+import type { BidiBrowser } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
 import { HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from './page.ts';
 import { BUILTINS_INIT_SCRIPT, readerCall, readerInstallCall, READERS_INIT_SCRIPT, READERS_MISSING, type ReaderArgs, type ReaderName, type ReaderResult } from './readers.ts';
@@ -41,7 +41,6 @@ const BLOCK_SERVICE_WORKERS = "if (navigator.serviceWorker) navigator.serviceWor
 
 /** What every attempt of a worker is configured with. */
 export interface SessionSettings {
-  readonly browser: BidiBrowserName;
   readonly viewport: ViewportSize | null;
   readonly initScripts: ConfiguredInitScripts;
   readonly screencast: WebScreencastOptions;
@@ -218,7 +217,7 @@ export class BidiSession {
   ) {
     this.media = settings.media;
     this.viewport = settings.viewport;
-    this.input = new BidiInput({ connection: browser.connection, browser: settings.browser, context: () => this.requireContext(), viewport: () => this.viewportSize() });
+    this.input = new BidiInput({ connection: browser.connection, traits: browser.traits, context: () => this.requireContext(), viewport: () => this.viewportSize() });
     this.network = new AttemptNetwork(browser.connection, {
       siteHeaders: settings.siteHeaders,
       credentials: attempt.credentials,
@@ -226,7 +225,7 @@ export class BidiSession {
       onPage: (context) => this.onPage(context),
       contexts,
       exclusive: browser.exclusive,
-      browser: settings.browser,
+      traits: browser.traits,
       onFailure: (error) => this.latch.latch(error),
       onNavigationAbort: (context, url) => {
         if (context !== this.context) return;
@@ -381,15 +380,15 @@ export class BidiSession {
   }
 
   /**
-   * Applies the media features on Chromium (`emulation.setMediaFeaturesOverride`);
-   * Firefox takes the configured ones as launch preferences.
+   * Applies the media features (`emulation.setMediaFeaturesOverride`); a
+   * browser that does not emulate reduced motion takes it as a launch
+   * preference.
    */
   async applyMedia(userContext = this.userContext): Promise<void> {
     if (this.media.colorScheme === undefined && this.media.reducedMotion === undefined) return;
     const features: Emulation.MediaFeatures = obj({
       'prefers-color-scheme': this.media.colorScheme === 'no-preference' ? null : this.media.colorScheme,
-      // Firefox overrides only the color scheme; its reduced motion is the launch preference.
-      'prefers-reduced-motion': this.settings.browser === 'firefox' ? undefined : this.media.reducedMotion,
+      'prefers-reduced-motion': this.browser.traits.emulatesReducedMotion ? this.media.reducedMotion : undefined,
     });
     await this.connection.send('emulation.setMediaFeaturesOverride', { features, userContexts: [userContext] });
   }
@@ -413,7 +412,7 @@ export class BidiSession {
   /**
    * The attempt's tab, created on first use at the attempt's viewport, with
    * the network covering it and a video segment started when recording.
-   * Concurrent first uses share one creation. A window on Firefox.
+   * Concurrent first uses share one creation.
    */
   ensureContext(): Promise<string> {
     if (this.context !== undefined) return Promise.resolve(this.context);
@@ -434,7 +433,7 @@ export class BidiSession {
     if (userContext === '') throw invalidState('the attempt has no user context to open a tab in');
     this.adopted = this.settings.userContext === 'adopt-tab' ? await this.openTab(userContext) : undefined;
     const context = this.adopted ?? (await connection.send('browsingContext.create', {
-      type: this.settings.browser === 'firefox' ? 'window' : 'tab',
+      type: this.browser.traits.newContext,
       userContext,
     })).context;
     if (userContext !== this.userContext) {

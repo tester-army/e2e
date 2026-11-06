@@ -6,12 +6,13 @@
 
 import { describe, expect, it } from 'vitest';
 import { BidiInput, DispatchScope } from '../../src/bidi/bidi-input.ts';
+import { BROWSER_TRAITS } from '../../src/browsers.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
 
 /** Input on one fake tab with a 100 by 100 viewport. */
 function input(): BidiInput {
   const fake = new FakeBidi().on('input.performActions', { result: {} });
-  return new BidiInput({ connection: fake.connection, browser: 'chromium', context: () => 'tab', viewport: async () => ({ width: 100, height: 100 }) });
+  return new BidiInput({ connection: fake.connection, traits: BROWSER_TRAITS.chromium, context: () => 'tab', viewport: async () => ({ width: 100, height: 100 }) });
 }
 
 describe('DispatchScope', () => {

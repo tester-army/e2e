@@ -187,7 +187,7 @@ async function atEachOrigin(session: BidiSession, origins: readonly string[], wo
   if (origins.length === 0) return;
   const connection = session.connection;
   const { context } = await connection.send('browsingContext.create', {
-    type: session.settings.browser === 'firefox' ? 'window' : 'tab',
+    type: session.browser.traits.newContext,
     userContext: session.userContext,
     background: true,
   });

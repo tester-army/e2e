@@ -9,6 +9,7 @@
 import {
   ConfigurationError,
   defineEngine,
+  type AppPermissionState,
   isSecret,
   obj,
   LOCATOR_ACTION_KINDS,
@@ -29,8 +30,7 @@ import { ConfiguredInitScripts, validateInitScripts } from './init-scripts.ts';
 import { DEFAULT_VIEWPORT } from './support.ts';
 import { MEDIA_KEYS, mediaProblem } from './media.ts';
 import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
-import { validatePermissions } from './permissions.ts';
-import type { BrowserName } from './browser-names.ts';
+import { BROWSER_TRAITS, isBrowserName, type BrowserName } from './browsers.ts';
 
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments'] as const;
@@ -67,7 +67,7 @@ export function createWeb(options: WebOptions, attachTo?: BrowserSource): Engine
     );
   }
   if (options.connect !== undefined) validateConnect(options.connect);
-  if (options.connect !== undefined && typeof options.browser === 'string' && options.browser !== 'chromium') {
+  if (options.connect !== undefined && typeof options.browser === 'string' && !(isBrowserName(options.browser) && BROWSER_TRAITS[options.browser].cdp)) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `web({ connect }) requires the chromium browser; CDP attach is chromium-only, got "${options.browser}"`,
@@ -82,8 +82,8 @@ export function createWeb(options: WebOptions, attachTo?: BrowserSource): Engine
   validateMedia(options);
   if (options.initScripts !== undefined) validateInitScripts(options.initScripts);
   if (options.screencast !== undefined) validateScreencast(options.screencast);
-  const browser = provider === undefined ? options.browser ?? 'chromium' : 'chromium';
-  if (browser !== 'chromium' && browser !== 'firefox') {
+  const browser: unknown = provider === undefined ? options.browser ?? 'chromium' : 'chromium';
+  if (typeof browser !== 'string' || !isBrowserName(browser)) {
     throw new ConfigurationError('INVALID_CONFIG', `web({ browser }) drives chromium or firefox over WebDriver BiDi, got ${JSON.stringify(browser)}`);
   }
   const media = obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion });
@@ -92,7 +92,6 @@ export function createWeb(options: WebOptions, attachTo?: BrowserSource): Engine
   // Clearing state and saved sessions replace the user context, which only an attempt in a fresh one may do.
   const ownsContext = source.userContext === 'fresh';
   const surface = new BidiSurface({
-    browser,
     viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
     testIdAttribute: options.testIdAttribute ?? 'data-testid',
     initScripts: new ConfiguredInitScripts(options.initScripts ?? []),
@@ -417,6 +416,25 @@ function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckIn
     );
   }
   if (app.permissions !== undefined) validatePermissions(targetName, browser, app.permissions);
+}
+
+/**
+ * Refuses a permission `browser` cannot grant, and any state but `grant`:
+ * the engine only grants, and Chromium denies every permission a grant
+ * leaves out, so neither `deny` nor `reset` can mean what it does on a
+ * device. The harness has checked the map's shape and states already.
+ */
+function validatePermissions(targetName: string, browser: BrowserName, permissions: Readonly<Record<string, AppPermissionState>>): void {
+  const where = `target "${targetName}" app.permissions`;
+  rejectUnknownKeys(`${where} on ${browser}`, permissions, BROWSER_TRAITS[browser].permissions);
+  for (const [name, state] of Object.entries(permissions)) {
+    if (state !== 'grant') {
+      throw new ConfigurationError(
+        'INVALID_CONFIG',
+        `${where}.${name} is ${state}, but a web() target only grants; leave the permission out instead`,
+      );
+    }
+  }
 }
 
 /** This package's published version, read through require resolution. */

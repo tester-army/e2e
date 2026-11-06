@@ -33,7 +33,7 @@ export async function startVideo(session: BidiSession, recorder: ((signal: Abort
     await session.providerVideo.arm(AbortSignal.any([signal, session.lifetime]));
     return;
   }
-  session.video ??= new BidiVideo(session.connection, session.settings.browser, session.attempt.artifactsDir, session.settings.screencast, session.settings.env);
+  session.video ??= new BidiVideo(session.connection, session.browser.traits, session.attempt.artifactsDir, session.settings.screencast, session.settings.env);
   const size = session.context === undefined ? (session.settings.viewport ?? DEFAULT_VIDEO_SIZE) : await session.viewportSize();
   await session.video.arm(session.context, size);
   if (signal.aborted) {

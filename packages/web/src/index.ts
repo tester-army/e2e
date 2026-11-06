@@ -22,7 +22,7 @@ export type {
   BrowserReleaseContext,
   BrowserRequest,
 } from './provider.ts';
-export type { BrowserName } from './browser-names.ts';
+export type { BrowserName } from './browsers.ts';
 export type { Dialog, DialogHandler } from './dialogs.ts';
 export type {
   Browser,

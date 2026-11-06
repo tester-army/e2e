@@ -16,6 +16,7 @@ import type { Network } from 'webdriver-bidi-protocol';
 import { EngineError, type TextPattern } from 'e2e/engine';
 import { BidiError, type BidiConnection, type BidiEventParams } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
+import type { BrowserTraits } from '../browsers.ts';
 import { lowercaseNames } from '../protected-app.ts';
 import type { ContinueDecision, FulfillDecision } from '../route-options.ts';
 import { routePatternMatches } from '../route-pattern.ts';
@@ -67,8 +68,8 @@ export interface AttemptNetworkOptions {
   readonly contexts: ContextTree;
   /** Whether no other client drives the browser, so one intercept can cover every tab from its first request. */
   readonly exclusive: boolean;
-  /** The browser, whose request handling differs: Firefox keeps a replaced body's old `content-length` and sends no cookie a continue leaves out. */
-  readonly browser: 'chromium' | 'firefox';
+  /** How the browser handles a continued request and a basic-auth challenge. */
+  readonly traits: BrowserTraits;
   /** Takes a failure on a path no step awaits (deciding a held request, answering a challenge), for the next step to fail with. */
   readonly onFailure: (error: Error) => void;
   /** Takes the URL of a document request a test route aborted in `context`, before the abort goes out. */
@@ -129,7 +130,7 @@ export class AttemptNetwork {
       holdAll: this.options.holdAll,
       routes: this.routes.length,
       tracking: this.tracking,
-      challenges: this.options.credentials !== undefined || this.options.browser === 'firefox',
+      challenges: this.options.credentials !== undefined || this.options.traits.promptsForAuth,
     };
     await this.binding?.reconcile(wants);
   }
@@ -308,7 +309,7 @@ export class AttemptNetwork {
     const site = this.options.siteHeaders(stripHash(event.request.url));
     let applied = policy?.injected === undefined ? headers : withoutInjected(headers, policy.injected);
     if (policy?.overrides !== undefined) {
-      applied = applyHeaderOverrides(applied, policy.overrides, this.options.browser === 'chromium');
+      applied = applyHeaderOverrides(applied, policy.overrides, this.options.traits.continueAddsCookies);
       if (policy.method === 'POST' && event.request.method === 'GET') {
         for (const name of REQUEST_BODY_HEADERS) delete applied[name];
       }
@@ -400,7 +401,7 @@ export class AttemptNetwork {
    */
   private async postData(binding: NetworkBinding, request: Network.RequestData, navigation: boolean): Promise<{ postData?: string; body?: Buffer; bodyUnavailable?: true }> {
     if (request.bodySize === 0 || (request.bodySize === null && ['GET', 'HEAD'].includes(request.method))) return {};
-    const body = navigation && this.options.browser === 'chromium' ? undefined : await binding.requestBody(request.request);
+    const body = navigation && !this.options.traits.navigationBodies ? undefined : await binding.requestBody(request.request);
     return body === undefined ? { bodyUnavailable: true } : { postData: body.toString(), body };
   }
 
@@ -417,11 +418,11 @@ export class AttemptNetwork {
    * request goes.
    */
   private async continue(binding: NetworkBinding, request: InterceptedRequest, overrides: ContinueDecision = {}): Promise<void> {
-    if (overrides.url !== undefined && this.options.browser === 'firefox') throw firefoxUrlRewrite(request.url);
+    if (overrides.url !== undefined && !this.options.traits.continueRewritesUrl) throw firefoxUrlRewrite(request.url);
     const site = this.options.siteHeaders(overrides.url ?? request.url);
     const routeHeaders = overrides.headers === undefined ? undefined : lowercaseNames(overrides.headers);
-    let headers = routeHeaders === undefined ? undefined : applyHeaderOverrides(request.headers, routeHeaders, this.options.browser === 'chromium');
-    if (overrides.postData !== undefined && this.options.browser === 'firefox') headers = { ...(headers ?? request.headers), 'content-length': String(Buffer.byteLength(overrides.postData)) };
+    let headers = routeHeaders === undefined ? undefined : applyHeaderOverrides(request.headers, routeHeaders, this.options.traits.continueAddsCookies);
+    if (overrides.postData !== undefined && this.options.traits.continueKeepsContentLength) headers = { ...(headers ?? request.headers), 'content-length': String(Buffer.byteLength(overrides.postData)) };
     if (site !== undefined) headers = { ...(headers ?? request.headers), ...site };
     if (routeHeaders !== undefined || site !== undefined) {
       binding.keepRedirectPolicy(request.id, {
