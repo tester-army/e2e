@@ -22,7 +22,7 @@ function network(
   fake.on('network.addDataCollector', { result: { collector: 'collector-1' } });
   fake.on('session.subscribe', { result: { subscription: 'subscription-1' } });
   const net = new AttemptNetwork(fake.connection, {
-    siteHeaders: (url) => (url.startsWith(SITE) ? { 'x-preview': 'token' } : undefined),
+    siteHeaders: (url) => (new URL(url).origin === new URL(SITE).origin ? { 'x-preview': 'token' } : undefined),
     credentials: options.credentials,
     ours: (event) => options.ours?.(event.context) ?? true,
     onPage: (context) => options.onPage?.(context) ?? true,
