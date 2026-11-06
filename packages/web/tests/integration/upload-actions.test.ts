@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { NodeRef } from 'e2e/engine';
-import { bySelector, onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { bySelector, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 let session: WebSession;
 let file: string;
@@ -90,8 +90,7 @@ describe.each(KINDS)('for the %s', (kind) => {
   it.for([
     ['a file input', '<input id="avatar" type="file">', '#avatar'],
     ['a button over a hidden input', `<button id="pick" type="button" onclick="document.getElementById('avatar').click()">Choose avatar</button><input id="avatar" type="file" hidden>`, '#pick'],
-  ] as const)('clears %s with an empty list and fires input and change', async ([_name, html, selector], { skip }) => {
-    skip(onFirefox && selector === '#pick', 'Firefox bug: a second upload through a button that clicks a hidden file input fails with "upload clicked the control but it opened no file chooser"');
+  ] as const)('clears %s with an empty list and fires input and change', async ([_name, html, selector]) => {
     await session.setContent(`${html}${COUNT_CLICKS}`);
     expect(await upload(await targetOf(kind, selector))).toBeUndefined();
     await session.browser.evaluate(() => {

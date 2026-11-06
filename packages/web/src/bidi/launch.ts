@@ -306,12 +306,14 @@ async function webSocketDebuggerUrl(endpoint: string, timeoutMs: number, signal:
  * returns the browser's version. A
  * user prompt stays open for the driver to route
  * (`browsingContext.userPromptOpened`), as Playwright hands each dialog to
- * its listener; certificate errors fail navigation, as Playwright's default
- * `ignoreHTTPSErrors: false` does.
+ * its listener; a file chooser is dismissed once `input.fileDialogOpened`
+ * names its input, which `input.setFiles` fills, since one left open keeps
+ * Firefox from opening the input's chooser again; certificate errors fail
+ * navigation, as Playwright's default `ignoreHTTPSErrors: false` does.
  */
 async function openSession(connection: BidiConnection, name: BidiBrowserName, timeoutMs: number, signal: AbortSignal): Promise<string> {
   const opened = async (): Promise<string> => {
-    const session = await connection.send('session.new', { capabilities: { alwaysMatch: { acceptInsecureCerts: false, unhandledPromptBehavior: { default: 'ignore' } } } });
+    const session = await connection.send('session.new', { capabilities: { alwaysMatch: { acceptInsecureCerts: false, unhandledPromptBehavior: { default: 'ignore', file: 'dismiss' } } } });
     return name === 'chromium' ? chromiumVersion(connection) : session.capabilities.browserVersion;
   };
   return withTimeout(
