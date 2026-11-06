@@ -78,36 +78,22 @@ it. Every attempt on that slot starts with the cookies, storage, and pages
 it left. It replaces [sessions](/authentication), which `'attempt'` scope
 can't use.
 
-`prepare` gets the browser's DevTools endpoint. Work in the default context,
-where attempts run. Disconnect before `prepare` resolves, and leave the
-browser running.
+`prepare` gets the browser's DevTools endpoint, and a `browser` and
+`screen` on its open tab, the same ones a test gets. Pass `browser.goto` a
+full URL. smol detaches them once `prepare` resolves; the browser keeps
+running, with its cookies, storage, and pages. Another CDP client must
+disconnect before `prepare` resolves and leave the browser running.
 
-<Accordion title="Sign in with a session cookie">
-Any CDP client works. This example signs in over HTTP and hands the session
-cookie to the browser with `Storage.setCookies`, using only Node's `fetch`
-and `WebSocket`:
-
+<Accordion title="Sign in in prepare">
 ```ts title="Provider options"
 smol({
   hostPorts: [3000],
-  prepare: async (cdpEndpoint) => {
-    const login = await fetch('http://localhost:3000/api/login', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: 'qa@example.com', password: process.env.QA_PASSWORD }),
-    });
-    const [name, value] = login.headers.getSetCookie()[0]!.split(';')[0]!.split('=');
-    const version = await (await fetch(`${cdpEndpoint}/json/version`)).json();
-    const socket = new WebSocket(version.webSocketDebuggerUrl);
-    await new Promise((resolve) => socket.addEventListener('open', resolve, { once: true }));
-    const done = new Promise((resolve) => socket.addEventListener('message', resolve, { once: true }));
-    socket.send(JSON.stringify({
-      id: 1,
-      method: 'Storage.setCookies',
-      params: { cookies: [{ name, value, domain: 'localhost', path: '/', httpOnly: true }] },
-    }));
-    await done;
-    socket.close();
+  prepare: async (_cdpEndpoint, { browser, screen }) => {
+    await browser.goto('http://localhost:3000/login');
+    await screen.getByLabel('Email').fill('qa@example.com');
+    await screen.getByLabel('Password').fill(process.env.QA_PASSWORD!);
+    await screen.getByRole('button', 'Sign in').tap();
+    await browser.waitForURL('http://localhost:3000/dashboard');
   },
 })
 ```

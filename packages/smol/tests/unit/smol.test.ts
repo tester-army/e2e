@@ -83,11 +83,24 @@ const sdk = vi.hoisted(() => {
 
 vi.mock('smolmachines', () => ({ Machine: sdk.Machine }));
 
+/** Each `attachBrowser` call: the endpoint, and whether the attached session was closed. */
+const attached = vi.hoisted(() => [] as { endpoint: string; browser: object; screen: object; closed: boolean }[]);
+
+vi.mock('@e2e-dev/web', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  attachBrowser: async (endpoint: string) => {
+    const session = { endpoint, browser: { name: 'browser' }, screen: { name: 'screen' }, closed: false };
+    attached.push(session);
+    return { browser: session.browser, screen: session.screen, close: async () => void (session.closed = true) };
+  },
+}));
+
 const fetched: string[] = [];
 
 beforeEach(() => {
   Object.assign(sdk.state, { created: [], scripts: [], branches: [], deleted: [], connected: [], connectedOptions: [], files: [], machines: [], exitCode: 0, deleteFailures: new Map(), branchFailure: undefined, createLockFailures: 0, blockAppShell: false, appShellEntered: undefined });
   fetched.length = 0;
+  attached.length = 0;
   vi.stubGlobal('fetch', async (url: string) => {
     fetched.push(url);
     return new Response('{}');
@@ -158,6 +171,23 @@ describe('smol()', () => {
       expect(fetched).toContain(`${lease.cdpEndpoint}/json/version`);
     }
     expect(first.lines).toEqual([expect.stringMatching(new RegExp(`^browser ${lease1.id}, branched from ${warm} in \\d+ ms$`))]);
+  });
+
+  it('hands prepare the endpoint and a browser and screen attached to it, and detaches them after', async () => {
+    const calls: { endpoint: string; browser: unknown; screen: unknown; open: boolean }[] = [];
+    await smol({
+      prepare: async (endpoint, { browser, screen }) => void calls.push({ endpoint, browser, screen, open: !attached[0]!.closed }),
+    }).acquire(request({ attemptId: 'a1' }));
+    const endpoint = `http://127.0.0.1:${hostPortOf(sdk.state.created[0]!.config.ports)}`;
+    expect(calls).toEqual([{ endpoint, browser: attached[0]!.browser, screen: attached[0]!.screen, open: true }]);
+    expect(attached).toEqual([expect.objectContaining({ endpoint, closed: true })]);
+  });
+
+  it('detaches and deletes the machine when prepare fails', async () => {
+    const provider = smol({ prepare: async () => { throw new Error('sign-in failed'); } });
+    await expect(provider.acquire(request({ attemptId: 'a1' }))).rejects.toThrow('sign-in failed');
+    expect(attached).toEqual([expect.objectContaining({ closed: true })]);
+    expect(sdk.state.deleted).toEqual([sdk.state.created[0]!.config.name]);
   });
 
   it('runs setup before Chromium starts and relays each host port to the machine’s loopback', async () => {

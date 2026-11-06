@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import path from 'node:path';
-import type { BrowserLease, BrowserProvider, BrowserProviderScope, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
+import { attachBrowser, type AttachedBrowser, type BrowserLease, type BrowserProvider, type BrowserProviderScope, type BrowserReleaseContext, type BrowserRequest } from '@e2e-dev/web';
 import { ConfigurationError } from 'e2e/engine';
 import { smolMachines, type SmolMachine, type SmolMachines } from './machines.ts';
 
@@ -94,12 +94,13 @@ export interface SmolOptions {
   /**
    * Drives the warm browser once before any attempt branches it: sign in,
    * seed storage, open the app. Every attempt then starts from that state.
-   * It gets the browser's DevTools endpoint and must disconnect, not close
-   * the browser, before it resolves. Runs once per worker slot. `attempt`
-   * scope only: in `worker` scope every attempt gets a new browser context,
-   * which would never see it.
+   * It gets the browser's DevTools endpoint, and `browser` and `screen` on
+   * its open tab, which smol detaches once it resolves. Another CDP client
+   * must disconnect, not close the browser, before it resolves. Runs once per
+   * worker slot. `attempt` scope only: in `worker` scope every attempt gets a
+   * new browser context, which would never see it.
    */
-  readonly prepare?: ((cdpEndpoint: string) => Promise<void>) | undefined;
+  readonly prepare?: ((cdpEndpoint: string, attached: SmolPrepareContext) => Promise<void>) | undefined;
   /**
    * Runs the app under test inside each browser machine instead of on this
    * computer: its code never runs on the host, and every attempt gets its
@@ -108,6 +109,9 @@ export interface SmolOptions {
    */
   readonly app?: SmolApp | undefined;
 }
+
+/** What `prepare` drives the warm browser with: the same `browser` and `screen` a test gets. */
+export type SmolPrepareContext = Pick<AttachedBrowser, 'browser' | 'screen'>;
 
 /** A browser machine and the DevTools endpoint it publishes on this computer. */
 interface Browser {
@@ -150,6 +154,18 @@ async function waitForCdp(endpoint: string, signal: AbortSignal): Promise<void> 
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   throw new Error(`browser at ${endpoint} did not answer within ${CDP_READY_MS / 1000}s (${last})`);
+}
+
+/** Runs `prepare` with `browser` and `screen` attached to the browser at `endpoint`, then detaches them. */
+async function prepareBrowser(prepare: NonNullable<SmolOptions['prepare']>, endpoint: string, signal: AbortSignal): Promise<void> {
+  const attached = await attachBrowser(endpoint, { signal });
+  try {
+    await prepare(endpoint, { browser: attached.browser, screen: attached.screen });
+  } catch (cause) {
+    await attached.close().catch(() => undefined);
+    throw cause;
+  }
+  await attached.close();
 }
 
 /** Runs `command` in the background, past the end of the exec that starts it. */
@@ -287,7 +303,7 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
       await machine.shell(startScript(setup, hostPorts), request.signal);
       if (app !== undefined) await machine.shell(appScript(app), request.signal);
       await waitForCdp(endpoint, request.signal);
-      if (prepare !== undefined) await prepare(endpoint);
+      if (prepare !== undefined) await prepareBrowser(prepare, endpoint, request.signal);
       return { machine, endpoint };
     } catch (cause) {
       await machines.delete(name).catch(() => false);

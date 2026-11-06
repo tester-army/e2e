@@ -5,4 +5,4 @@
  */
 
 export { smol } from './provider.ts';
-export type { SmolApp, SmolOptions } from './provider.ts';
+export type { SmolApp, SmolOptions, SmolPrepareContext } from './provider.ts';
