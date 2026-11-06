@@ -911,7 +911,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * descendants stay listed and nothing past the cut is lost.
    */
   const isReadInLine = memoized((el: Element): boolean => {
-    const parent = el.assignedSlot ?? parentOrHostOf(el);
+    const parent = flatParentOf(el);
     if (parent === null || !flowsInLine(el)) return false;
     if (!ownsLine(parent)) return isReadInLine(parent);
     const fits = projection.textLimit === null || lineTextOf(parent).length <= projection.textLimit;
@@ -1005,6 +1005,21 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     el.shadowRoot ?? closedShadowRoots?.get(el) ?? null;
 
   /**
+   * The element's parent in the flat tree: the slot it is assigned to, else
+   * its parent element, else the host of the shadow root it is in. A closed
+   * root hides `assignedSlot` from the outside, so a light child of a host
+   * with a recorded closed root finds its slot among that root's slots.
+   */
+  const flatParentOf = (el: Element): Element | null => {
+    if (el.assignedSlot !== null) return el.assignedSlot;
+    const closed = el.parentElement === null ? undefined : closedShadowRoots?.get(el.parentElement);
+    for (const slot of Array.from(closed?.querySelectorAll('slot') ?? [])) {
+      if (slot.assignedNodes().includes(el)) return slot;
+    }
+    return parentOrHostOf(el);
+  };
+
+  /**
    * The element that holds focus, through every shadow root on the way.
    * `document.activeElement` is retargeted to the outermost host and each
    * root's `activeElement` names the next hop, so the chain is followed until
@@ -1076,7 +1091,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * so siblings under one ancestor share the walk up.
    */
   const isSkippedContent = memoized((el: Element): boolean => {
-    const parent = el.assignedSlot ?? parentOrHostOf(el);
+    const parent = flatParentOf(el);
     if (parent === null) return false;
     return styleOf(parent)?.getPropertyValue('content-visibility') === 'hidden' || isSkippedContent(parent);
   });
@@ -1125,7 +1140,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    */
   const hidesSubtree = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
     (el.getAttribute('aria-hidden') ?? '').toLowerCase() === 'true' ||
-    isInert(el, style) ||
+    isInert(el) ||
     style === undefined ||
     style.display === 'none' ||
     isInClosedDetails(el);
@@ -1133,14 +1148,18 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   /**
    * Inert content takes no input and is hidden from assistive technology, as
    * Chrome's tree drops it, though it still paints: listing it would hand the
-   * agent controls that ignore every action. Chromium computes the inherited
-   * `interactivity: inert`, which follows the flat tree, so a light child
-   * slotted into an inert slot of a closed root counts; the attribute covers a
-   * browser that does not compute it. A modal dialog's inertness of the rest
-   * of the page is not in the style and stays listed.
+   * agent controls that ignore every action. Inertness follows the flat tree,
+   * so a light child slotted into an inert slot of a closed root counts:
+   * Chromium computes it as the inherited `interactivity: inert`, and a
+   * browser without that property (Firefox) has it read from the `inert`
+   * attributes up the flat tree. A modal dialog's inertness of the rest of the
+   * page is in neither and stays listed.
    */
-  const isInert = (el: Element, style: CSSStyleDeclaration | undefined): boolean =>
-    el.hasAttribute('inert') || style?.getPropertyValue('interactivity') === 'inert';
+  const isInert = memoized((el: Element): boolean => {
+    if (el.hasAttribute('inert') || styleOf(el)?.getPropertyValue('interactivity') === 'inert') return true;
+    const parent = flatParentOf(el);
+    return parent !== null && isInert(parent);
+  });
 
   /** A closed select has no option boxes; explicit exclusions still remove choices it does not offer. */
   const isOfferedOption = (option: HTMLOptionElement): boolean => {
@@ -1749,7 +1768,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   // The root is the document the screen shows, listed whatever its own box: a
   // page of fixed controls leaves `<html>` with no height of its own.
   nodes[include(element, -1)]!.states.hidden = false;
-  if (isInert(element, styleOf(element))) return { nodes, elements, ids, truncated } as SemanticResult<Mode>;
+  if (isInert(element)) return { nodes, elements, ids, truncated } as SemanticResult<Mode>;
   for (const child of Array.from(element.children)) walk(child, 0);
 
   return { nodes, elements, ids, truncated } as SemanticResult<Mode>;

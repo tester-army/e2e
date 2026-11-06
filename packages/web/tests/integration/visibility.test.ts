@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
-import { itFailsOnFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 let page: WebSession;
 
@@ -197,8 +197,7 @@ describe('an inert subtree', () => {
     expect(await hiddenOf('#inert-save')).toBe(false);
   });
 
-  // Firefox bug: a button slotted into an inert slot of a closed shadow root is listed as not inert.
-  itFailsOnFirefox('lists nothing under an inert document root, and nothing slotted into an inert slot of a closed root', async () => {
+  it('lists nothing under an inert document root, and nothing slotted into an inert slot of a closed root', async () => {
     await page.setContent('<!doctype html><html inert><body><button>Whole page</button></body></html>');
     expect((await captureTree()).filter((node) => node.role === 'button')).toEqual([]);
     await page.setContent(`
