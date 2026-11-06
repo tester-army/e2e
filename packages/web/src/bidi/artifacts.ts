@@ -9,7 +9,7 @@ import { maskedPixels } from './observe.ts';
 import type { BidiSession } from './session.ts';
 import { BidiVideo } from './video.ts';
 
-/** The viewport a video starts at before any tab exists: the configured one, else Playwright's default. */
+/** The viewport a video starts at before any tab exists: the configured one, else 1280 by 720. */
 const DEFAULT_VIDEO_SIZE = { width: 1280, height: 720 };
 
 /** Writes a masked viewport screenshot under the attempt directory and returns its relative path. */

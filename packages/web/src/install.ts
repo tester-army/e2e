@@ -175,7 +175,7 @@ export async function installBrowsers(names: readonly BrowserName[], context: In
       cancelledCheck(context.signal);
       context.log(`Downloading ${browser} ${buildId} into ${cacheDir}`);
       try {
-        await install({ browser: browser as never, buildId, cacheDir, platform, installDeps: context.withDeps === true });
+        await install({ browser: browser as never, buildId, cacheDir, platform });
       } catch (cause) {
         throw new InfrastructureError(
           'BROWSER_INSTALL_FAILED',
@@ -184,27 +184,43 @@ export async function installBrowsers(names: readonly BrowserName[], context: In
         );
       }
     }
-    if (context.withDeps === true && names.includes('firefox')) installFirefoxDeps(context.log);
+    if (context.withDeps === true) installSystemDeps(names, context.log);
   });
 }
 
-/** The Debian packages Firefox needs beyond a minimal Linux image. */
-const FIREFOX_APT_PACKAGES = [
-  'libasound2t64', 'libatk1.0-0t64', 'libcairo-gobject2', 'libcairo2', 'libdbus-1-3', 'libfontconfig1', 'libfreetype6',
-  'libgdk-pixbuf-2.0-0', 'libglib2.0-0t64', 'libgtk-3-0t64', 'libpango-1.0-0', 'libpangocairo-1.0-0', 'libx11-6',
-  'libx11-xcb1', 'libxcb-shm0', 'libxcb1', 'libxcomposite1', 'libxcursor1', 'libxdamage1', 'libxext6', 'libxfixes3',
-  'libxi6', 'libxrandr2', 'libxrender1', 'libxtst6',
-];
+/** The fonts and tools a headless browser renders with on a minimal Debian or Ubuntu image. */
+const APT_TOOLS = ['fonts-noto-color-emoji', 'fonts-unifont', 'libfontconfig1', 'libfreetype6', 'xfonts-cyrillic', 'xfonts-scalable', 'fonts-liberation', 'fonts-ipafont-gothic', 'fonts-wqy-zenhei', 'fonts-tlwg-loma-otf', 'fonts-freefont-ttf'];
 
-/** Installs Firefox's system libraries with apt on Debian and Ubuntu; elsewhere there is nothing to do. */
-function installFirefoxDeps(log: (line: string) => void): void {
+/** The Debian packages each browser loads, by their Ubuntu 24.04 names. */
+const APT_PACKAGES: Readonly<Record<BrowserName, readonly string[]>> = {
+  chromium: [
+    'libasound2t64', 'libatk-bridge2.0-0t64', 'libatk1.0-0t64', 'libatspi2.0-0t64', 'libcairo2', 'libcups2t64', 'libdbus-1-3', 'libdrm2', 'libgbm1',
+    'libglib2.0-0t64', 'libnspr4', 'libnss3', 'libpango-1.0-0', 'libx11-6', 'libxcb1', 'libxcomposite1', 'libxdamage1', 'libxext6', 'libxfixes3',
+    'libxkbcommon0', 'libxrandr2',
+  ],
+  firefox: [
+    'libasound2t64', 'libatk1.0-0t64', 'libcairo-gobject2', 'libcairo2', 'libdbus-1-3', 'libfontconfig1', 'libfreetype6', 'libgdk-pixbuf-2.0-0',
+    'libglib2.0-0t64', 'libgtk-3-0t64', 'libpango-1.0-0', 'libpangocairo-1.0-0', 'libx11-6', 'libx11-xcb1', 'libxcb-shm0', 'libxcb1', 'libxcomposite1',
+    'libxcursor1', 'libxdamage1', 'libxext6', 'libxfixes3', 'libxi6', 'libxrandr2', 'libxrender1',
+  ],
+};
+
+/**
+ * Installs the system packages `names` load, with apt on Debian and Ubuntu
+ * (as root, else through sudo); elsewhere there is nothing to do. A package
+ * Ubuntu 24.04 renamed with a `t64` suffix also takes its older name.
+ */
+function installSystemDeps(names: readonly BrowserName[], log: (line: string) => void): void {
   if (process.platform !== 'linux' || !existsSync('/usr/bin/apt-get')) return;
-  log(`Installing Firefox system libraries: ${FIREFOX_APT_PACKAGES.join(' ')}`);
+  const packages = [...new Set([...APT_TOOLS, ...names.flatMap((name) => APT_PACKAGES[name])])];
+  const wanted = packages.map((name) => (name.endsWith('t64') ? `${name} | ${name.slice(0, -3)}` : name)).join(', ');
+  log(`Installing system packages: ${packages.join(' ')}`);
   const root = process.getuid?.() === 0;
-  const run = (args: string[]) => spawnSync(root ? args[0]! : 'sudo', root ? args.slice(1) : args, { stdio: 'inherit' });
-  run(['apt-get', 'update']);
-  const result = run(['apt-get', 'install', '-y', '--no-install-recommends', ...FIREFOX_APT_PACKAGES]);
-  if (result.status !== 0) throw new InfrastructureError('BROWSER_INSTALL_FAILED', 'apt-get could not install the Firefox system libraries');
+  const run = (args: string[]) => spawnSync(root ? args[0]! : 'sudo', root ? args.slice(1) : args, { stdio: 'inherit', env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' } });
+  if (run(['apt-get', 'update']).status !== 0) throw new InfrastructureError('BROWSER_INSTALL_FAILED', 'apt-get update failed');
+  if (run(['apt-get', 'satisfy', '-y', '--no-install-recommends', wanted]).status !== 0) {
+    throw new InfrastructureError('BROWSER_INSTALL_FAILED', 'apt-get could not install the browsers\' system packages');
+  }
 }
 
 /** Rejects with `CANCELLED` once `signal` aborted. */

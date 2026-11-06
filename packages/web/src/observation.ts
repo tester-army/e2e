@@ -6,15 +6,11 @@
 import {
   EngineError,
   sameSite,
-  OBSERVED_NAME_LIMIT,
-  OBSERVED_TEXT_LIMIT,
   type NodeRef,
   type SemanticNode,
   type ViewportPoint,
 } from 'e2e/engine';
 import {
-  readDocumentSemanticsFunction,
-  SECURE_FIELD_SELECTOR,
   type RawNodeData,
   type RawObservedNode,
 } from './read-node.ts';
@@ -111,7 +107,7 @@ export function frameContentInset(element: Element): Rect {
 }
 
 /** A frame element's content box, from its border box and `frameContentInset`. */
-export function contentBox(border: Rect, inset: Rect): Rect {
+function contentBox(border: Rect, inset: Rect): Rect {
   return { x: border.x + inset.x, y: border.y + inset.y, width: inset.width, height: inset.height };
 }
 

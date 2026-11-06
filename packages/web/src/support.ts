@@ -1,7 +1,6 @@
 /** Shared error, filename, and swipe helpers for the web engine. */
 
-import { setTimeout } from 'node:timers/promises';
-import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint, type ViewportSize } from 'e2e/engine';
+import { EngineError, withinCleanupBudget, type EngineCleanupContext, type Momentum, type ScrollDirection, type ViewportPoint } from 'e2e/engine';
 import { ConfigurationError, InfrastructureError, TestError } from 'e2e/engine';
 
 export const DEFAULT_VIEWPORT = { width: 1280, height: 720 } as const;

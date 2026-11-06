@@ -21,7 +21,7 @@ export interface Dialog {
 
 export type DialogHandler = 'accept' | 'dismiss' | ((dialog: Dialog) => void | Promise<void>);
 
-/** A driver's native dialog as the router answers it: Playwright's `Dialog`, or the BiDi driver's user prompt. */
+/** A native dialog as the router answers it: the BiDi driver's user prompt. */
 export interface NativeDialog {
   type(): string;
   message(): string;

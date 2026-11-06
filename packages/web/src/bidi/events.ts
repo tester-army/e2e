@@ -37,8 +37,7 @@ const ABORTED = new Set(['net::ERR_ABORTED', 'NS_BINDING_ABORTED']);
  * Routes `connection`'s events to the attempt `current` returns; returns the
  * unsubscribe. A prompt in a context of another session (a browser shared
  * over CDP) is left for that session to answer. Where the app went is told
- * as the Playwright driver tells it (`app-log.ts`): its own navigations, the
- * tabs it opens, and the frames it loads, never the driver's. Every origin a
+ * to the app log: its own navigations, the tabs it opens, and the frames it loads, never the driver's. Every origin a
  * document starts or lands at (after a redirect) is visited, for its
  * permissions and a saved session's storage.
  */
@@ -141,7 +140,7 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
   };
 }
 
-/** A browser's own request for a site icon the app never served, which the Playwright app log leaves out too. */
+/** A browser's own request for a site icon the app never served, which the app log leaves out. */
 function isMissingFavicon(url: string, status: number): boolean {
   return status === 404 && URL.canParse(url) && new URL(url).pathname === '/favicon.ico';
 }

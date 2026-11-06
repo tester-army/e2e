@@ -356,8 +356,7 @@ export class BidiSession {
   /**
    * The attempt's tab, created on first use at the attempt's viewport, with
    * the network covering it and a video segment started when recording.
-   * Concurrent first uses share one creation. A window on Firefox:
-   * Playwright's build never answers a tab created in a new user context.
+   * Concurrent first uses share one creation. A window on Firefox.
    */
   ensureContext(): Promise<string> {
     if (this.context !== undefined) return Promise.resolve(this.context);
@@ -395,7 +394,7 @@ export class BidiSession {
     await this.connection.send('browsingContext.setViewport', { context: await this.ensureContext(), viewport: size });
   }
 
-  /** Closes the tab and every tab the app opened, keeping the user context's storage, as a restart of the Playwright driver closes every page. */
+  /** Closes the tab and every tab the app opened, keeping the user context's storage, as a restart closes every page. */
   async closeContext(): Promise<void> {
     await this.video?.contextClosing();
     this.retireContext();

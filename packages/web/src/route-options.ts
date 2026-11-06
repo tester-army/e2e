@@ -12,20 +12,20 @@ import { types } from 'node:util';
 import { rejectUnknownOptions, TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
 import { headerProblem } from './protected-app.ts';
 
-/** What `route.fulfill` hands Playwright once the response is validated. */
+/** What `route.fulfill` hands the driver once the response is validated. */
 export interface FulfillDecision {
   readonly status: number;
   readonly headers: Record<string, string>;
   readonly contentType?: string;
   readonly json?: JsonValue;
-  /** A `Buffer` for bytes, which Playwright sends unchanged. */
+  /** A `Buffer` for bytes, sent unchanged. */
   readonly body?: string | Buffer;
-  /** Absolute; Playwright reads it and derives `Content-Type` from its extension when none is given. */
+  /** Absolute; the driver reads it and derives `Content-Type` from its extension when none is given. */
   readonly path?: string;
 }
 
 /**
- * What `route.continue` hands Playwright once the overrides are validated;
+ * What `route.continue` hands the driver once the overrides are validated;
  * `headers` before the site's are merged in, a header set to `undefined`
  * left out so the request goes without it.
  */
@@ -45,7 +45,7 @@ const CONTINUE_KEYS = ['url', 'method', 'headers', 'postData'];
  * (the project root, never `process.cwd()`) and must name a file now, so a
  * missing fixture fails the step with its own message, and `json` follows
  * the JSON-value rules `evaluate` does. A `content-type` header becomes
- * `contentType` when none is given, since Playwright overwrites the header
+ * `contentType` when none is given, since the driver overwrites the header
  * with the type it derives for `json` and `path`.
  */
 export function parseFulfill(
@@ -164,7 +164,7 @@ function requireHeaders(api: string, value: unknown, kind: 'request' | 'response
   return Object.fromEntries(headers);
 }
 
-/** A fulfill body: a string as is, or bytes as a `Buffer` over the same memory so Playwright sends them unchanged. */
+/** A fulfill body: a string as is, or bytes as a `Buffer` over the same memory so they are sent unchanged. */
 function requireBody(value: unknown): string | Buffer {
   if (typeof value === 'string') return value;
   if (types.isUint8Array(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);

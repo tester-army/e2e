@@ -19,7 +19,6 @@ import {
   EngineError,
   matchesText,
   pollCondition,
-  raceAbort,
   rejectUnknownOptions,
   TestError,
   toTextPattern,
@@ -29,8 +28,6 @@ import {
   type FixtureOperation,
   type FixtureOperations,
   type LocatorExpression,
-  type OperationContext,
-  type TextPattern,
 } from 'e2e/engine';
 import type { DialogHandler } from './dialogs.ts';
 import { initScriptLabel } from './init-scripts.ts';
@@ -144,8 +141,7 @@ export interface BrowserExpectation {
 
 /**
  * The screen scope `browser.frameLocator` returns. Every `Screen` query answers
- * from inside the frame, and because the frame's document is Playwright's,
- * the web-only escape hatches follow it in: `locator` for a CSS or XPath
+ * from inside the frame, and the web-only escape hatches follow it in: `locator` for a CSS or XPath
  * selector on a control with no accessible name, `frameLocator` for a frame
  * nested inside this one.
  */

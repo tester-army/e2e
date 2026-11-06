@@ -1,7 +1,6 @@
 /**
  * The WebDriver BiDi surface: one browser per worker and one `BidiSession`
- * per attempt, behind the same engine hooks and `browser` fixture calls as
- * `PlaywrightSurface`. Each hook is bounded and classified here and
+ * per attempt, behind the engine hooks and the `browser` fixture calls. Each hook is bounded and classified here and
  * delegates to the module that implements it.
  */
 

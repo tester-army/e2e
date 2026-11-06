@@ -34,9 +34,9 @@ import { domReady, ELEMENT_HIDDEN, LOCATE_READ, type PlaywrightAria, maskSecureF
 import { ElementRef, type PageArgument } from './script.ts';
 import type { BidiSession } from './session.ts';
 
-/** Shared node budget of one observation, as the Playwright surface's. */
+/** Shared node budget of one observation. */
 const MAX_OBSERVED_NODES = 3_000;
-/** Nested iframe capture depth; deeper frames stay boundary nodes, as on the Playwright surface. */
+/** Nested iframe capture depth; deeper frames stay boundary nodes. */
 const MAX_FRAME_DEPTH = 4;
 /** Settling is best-effort and spends from the observation's budget. */
 const SETTLE_TIMEOUT_MS = 5_000;
@@ -54,8 +54,7 @@ interface CapturedTree {
 /**
  * One semantic observation, with masked pixels when asked, taken after the
  * tree so no screenshot mask is ever read into it. Pixels a capture could
- * not produce are left out, as the contract allows and the Playwright
- * surface does; the tree is never.
+ * not produce are left out, as the contract allows; the tree is never.
  */
 export async function observe(session: BidiSession, timeoutMs: number, signal: AbortSignal, options?: EngineObserveOptions): Promise<EngineSnapshot> {
   const context = session.requireContext();
@@ -75,7 +74,7 @@ export async function observe(session: BidiSession, timeoutMs: number, signal: A
   };
 }
 
-/** How long the screen an action left may take for the trace before the step goes without one, as on the Playwright surface. */
+/** How long the screen an action left may take for the trace before the step goes without one. */
 const TRACE_SCREEN_TIMEOUT_MS = 1_000;
 
 /**

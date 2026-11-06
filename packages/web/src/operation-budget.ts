@@ -14,15 +14,15 @@ export function connectionAbort(signal: AbortSignal, label: string): EngineError
 }
 
 /**
- * How much sooner than an operation's deadline Playwright's own timeout
+ * How much sooner than an operation's deadline the driver's own timeout
  * fires: its error names what blocked an action, or that the input was
  * already dispatched, and this lead lets that answer arrive before the
- * deadline does. The deadline is for the calls Playwright never answers: an
+ * deadline does. The deadline is for the calls the browser never answers: an
  * evaluate, which takes no timeout, and a point tap on a page whose renderer
  * is stuck in a script. A budget shorter than twice the
  * lead splits in half.
  */
-const PLAYWRIGHT_TIMEOUT_LEAD_MS = 250;
+const DRIVER_TIMEOUT_LEAD_MS = 250;
 
 /**
  * Whether the operation's deadline may end it. `test-code` is for an
@@ -35,8 +35,8 @@ export type OperationBound = 'deadline' | 'test-code';
 /**
  * Bounds one operation by its budget: a call still pending at the deadline
  * is abandoned as `OPERATION_TIMEOUT` instead of holding the test until its
- * own timeout. `remaining` hands `work` the time left before Playwright's
- * own timeout, the one to pass Playwright.
+ * own timeout. `remaining` hands `work` the time left before the driver's
+ * own timeout, the one to pass the driver.
  */
 export function withOperationDeadline<T>(
   budget: ConnectionBudget,
@@ -58,14 +58,14 @@ export function withOperationDeadline<T>(
   return withConnectionBudget(budget, label, (remaining) =>
     work(() => {
       const current = remaining();
-      const lead = Math.min(PLAYWRIGHT_TIMEOUT_LEAD_MS, current.timeoutMs / 2);
+      const lead = Math.min(DRIVER_TIMEOUT_LEAD_MS, current.timeoutMs / 2);
       return { signal: current.signal, timeoutMs: Math.ceil(current.timeoutMs - lead) };
     }),
   );
 }
 
 /** Bounds the entire transition, aborts abandoned work, and never grants a fresh dispatch budget. */
-export async function withConnectionBudget<T>(
+async function withConnectionBudget<T>(
   budget: ConnectionBudget,
   label: string,
   work: (remaining: () => ConnectionBudget) => Promise<T>,

@@ -114,7 +114,7 @@ export function pageValueEncoder(): (root: unknown) => string | undefined {
  * Compiles the page-side error boundary without evaluating the caller's source in this process.
  * The source is one expression: a function it evaluates to is called with the argument, any
  * other value is the result. The boundary resolves to JSON text, a primitive the caller takes
- * back without Playwright serializing it in the page, so a page that deleted or replaced a
+ * back without the protocol serializing it in the page, so a page that deleted or replaced a
  * global the serializer needs still returns its result; `decodeEvaluation` reads it.
  *
  * A function serialized with `toString()` carries whatever the loader compiled

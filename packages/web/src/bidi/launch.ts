@@ -2,8 +2,8 @@
  * Launches a local browser, or attaches to a remote Chromium, and opens a
  * WebDriver BiDi session on it. Firefox speaks BiDi natively over a
  * WebSocket; Chromium speaks CDP, so the `chromium-bidi` mapper translates,
- * in a child process (`mapper-process.ts`). Local launches use the binaries
- * Playwright installed, so the two drivers compare one browser build.
+ * in a child process (`mapper-process.ts`). Local launches run the pinned
+ * builds `install.ts` keeps in the browsers cache.
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -37,15 +37,16 @@ export interface BidiBrowser {
 export interface BidiLaunchOptions {
   readonly headed: boolean;
   readonly timeoutMs: number;
-  /** Overrides the Playwright-installed binary. */
+  /** Overrides the pinned build's binary. */
   readonly executablePath?: string;
   /** Firefox preferences for this launch, beside the driver's own. */
   readonly firefoxPrefs?: Readonly<Record<string, string | number | boolean>>;
 }
 
 /**
- * The Chromium switches and disabled features Playwright 1.64 launches with,
- * kept equal here so both drivers run the same browser configuration.
+ * The Chromium switches and disabled features an automated run launches
+ * with, Playwright 1.64's set: no background throttling, no first-run UI,
+ * nothing the browser fetches or shows on its own.
  */
 const CHROMIUM_ARGS = [
   '--disable-field-trial-config',
@@ -99,8 +100,8 @@ const CHROMIUM_ARGS = [
 ];
 
 /**
- * The Firefox preferences Playwright 1.64's own BiDi launcher writes into its
- * profile (beside the Remote Agent's recommended set, which it applies on
+ * The Firefox preferences an automated profile takes, Playwright 1.64's BiDi
+ * launcher's set (beside the Remote Agent's recommended set, which it applies on
  * start): nothing reaches the network on its own, background windows keep
  * focus and full-rate timers, and startup opens no page of its own.
  */

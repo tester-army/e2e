@@ -1,6 +1,6 @@
 /**
  * The attempt's recording on the BiDi driver, one segment per tab the
- * attempt shows, as the Playwright surface records it. Firefox records
+ * attempt shows. Firefox records
  * natively (`browsingContext.startScreencast`, a VP8 webm of the page's
  * repaints, which ends at the last one). Chromium's mapper
  * does not implement that command, so its segment is the CDP screencast
@@ -83,7 +83,7 @@ export class BidiVideo {
   /**
    * Ends the recording and returns every segment written, in order. A
    * segment that was lost (its finish failed and left no file) is reported
-   * instead, as the Playwright recorder reports one; the segments that did
+   * instead; the segments that did
    * finalize stay on disk.
    */
   async stop(): Promise<readonly VideoFile[]> {
