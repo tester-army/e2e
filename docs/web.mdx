@@ -132,9 +132,10 @@ app: {
 },
 ```
 
-The browser sends `headers` only to the origin of `app.url`: its scheme,
-host, and port. To send them to another origin, such as an API host behind
-the same gate, list it in `credentialOrigins`. See
+The browser adds `headers` only to requests that start at the origin of
+`app.url`: its scheme, host, and port. A request keeps them through its
+redirects, to any origin. To add them for another origin, such as an API
+host behind the same gate, list it in `credentialOrigins`. See
 [request credentials](/reference/security#request-credentials). For ngrok,
 use `'ngrok-skip-browser-warning': '1'`.
 `app.identity` keeps the cache identity stable when the preview URL changes.
@@ -147,8 +148,8 @@ workers.
 Use `basicAuth` for HTTP basic authentication. The browser answers a `401`
 challenge from the origin of `app.url`, and from each origin in
 `credentialOrigins`. WebKit answers any origin when one of those is on a
-default port, such as an `https://` URL with no port. Declare the password
-under `secrets` and pass `secrets.get(name)`:
+default port, such as an `https://` URL with no port, or has an IPv6 host.
+Declare the password under `secrets` and pass `secrets.get(name)`:
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';

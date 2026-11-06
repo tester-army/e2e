@@ -39,7 +39,7 @@ Redaction matches strings, and screenshots mask secure fields only:
   app's origin or one you list, even one a third-party page starts, and stay
   on its redirects to any origin. `basicAuth` answers a `401` from those
   origins, and from any origin on WebKit when one of those is on a default
-  port.
+  port or has an IPv6 host.
 - **Committed recordings.** Cache entries store typed values verbatim, except
   secret fills. They aren't signed and replay with your permissions, so
   review them as you would test code.

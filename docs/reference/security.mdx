@@ -103,9 +103,9 @@ and use the step's secrets there.
 
 ### Request credentials
 
-The browser engine sends configured request credentials only to exact
-origins: the scheme, host, and port of `app.url`, plus the extras
-`credentialOrigins` lists.
+The browser engine scopes configured request credentials to exact origins:
+the scheme, host, and port of `app.url`, plus the extras `credentialOrigins`
+lists.
 
 | Option | Goes to |
 | --- | --- |
@@ -113,8 +113,9 @@ origins: the scheme, host, and port of `app.url`, plus the extras
 | `basicAuth` | The answer to a `401` challenge from an allowed origin |
 
 - Another port on the same host, a subdomain, and a sibling host under a
-  shared domain such as `vercel.app` are other origins. They get no
-  credentials.
+  shared domain such as `vercel.app` are other origins. A request that
+  starts there carries no `headers`, and a `401` from there gets no answer,
+  except as the next bullets note.
 - `headers` follow the origin a request starts on. A request to an allowed
   origin keeps them through every redirect, to any origin. A request that
   starts elsewhere gets none, even when it redirects to an allowed origin.
