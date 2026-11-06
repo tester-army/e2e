@@ -114,11 +114,15 @@ jobs:
         uses: ./.github/actions/example-packages
         with:
           working-directory: ${{ matrix.tests }}
-      # The runner downloads its own Chromium on first use; the system
-      # libraries it links against need root.
-      - name: Chromium system dependencies
+      # The system libraries Chromium links against need root, so the install
+      # runs under sudo with the runner's HOME and hands the cache back.
+      - name: Chromium and its system dependencies
         working-directory: ${{ matrix.tests }}
-        run: npx playwright-core install-deps chromium
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo env "PATH=$PATH" "HOME=$HOME" npx --no-install e2e-web install chromium --with-deps
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/.cache/e2e"
       - name: Run the tests
         id: test
         working-directory: ${{ matrix.tests }}
