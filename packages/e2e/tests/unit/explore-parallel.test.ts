@@ -6,7 +6,7 @@ import addFormats from 'ajv-formats';
 import { describe, expect, it } from 'vitest';
 import type { ModelAdapter, ModelCall } from '../../src/agent/model/adapter.ts';
 import { explorerFile, explorerSource, type ExploreSpec } from '../../src/explore/explorer.ts';
-import { exploreFocuses, focusContext } from '../../src/explore/focus.ts';
+import { chooseFocuses, exploreFocuses, focusContext } from '../../src/explore/focus.ts';
 import { applyGroups, MergeCallError, requestGroups, validateGroups, type MergeAnswer } from '../../src/explore/merge.ts';
 import { planInstruction } from '../../src/explore/plan.ts';
 import { explorerOfFile, type ExploreProgress } from '../../src/explore/progress.ts';
@@ -42,7 +42,7 @@ function spec(count: number): ExploreSpec {
     accounts: [],
     session: undefined,
     openApp: true,
-    focuses: count === 1 ? [] : exploreFocuses(count, { otherAccount: false }),
+    focuses: count === 1 ? [] : exploreFocuses(count, { platform: 'web', otherAccount: false }),
   };
 }
 
@@ -102,23 +102,73 @@ function answering(groups: readonly (readonly number[])[], release?: Promise<voi
 const scope = (notices: string[] = [], signal = new AbortController().signal) => ({ signal, notice: (message: string) => void notices.push(message) });
 
 describe('explore focuses', () => {
-  it('gives n explorers the first n focuses in order, and the other account only when there is one to sign in with', () => {
-    expect(exploreFocuses(3, { otherAccount: false }).map((focus) => focus.label)).toEqual(['core flows', 'edge-case input', 'state across screens']);
-    expect(exploreFocuses(5, { otherAccount: false }).map((focus) => focus.label)).toEqual([
-      'core flows',
-      'edge-case input',
-      'state across screens',
-      'layouts',
-      'content and controls',
+  it('gives n explorers the first n focuses in order, named by kind of defect', () => {
+    expect(exploreFocuses(3, { platform: 'web', otherAccount: false }).map((focus) => focus.label)).toEqual(['wrong results', 'input and validation', 'state and navigation']);
+    expect(exploreFocuses(5, { platform: 'web', otherAccount: false }).map((focus) => focus.label)).toEqual([
+      'wrong results',
+      'input and validation',
+      'state and navigation',
+      'layout and environment',
+      'errors and recovery',
     ]);
-    const [, , , roles] = exploreFocuses(4, { otherAccount: true });
-    expect(roles).toMatchObject({ label: 'layouts and roles', text: expect.stringContaining('sign in as another of the configured accounts') });
-    expect(exploreFocuses(4, { otherAccount: false })[3]!.text).not.toContain('sign in');
-    expect(exploreFocuses(5, { otherAccount: false })[3]!.text).toContain('resize_viewport');
+    // Worded for any app: no screen kinds a CRUD web app alone has.
+    const texts = exploreFocuses(5, { platform: 'web', otherAccount: false }).map((focus) => focus.text).join(' ');
+    expect(texts).not.toMatch(/\brecords?\b|toolbar/);
+    expect(texts).toContain('empty, loading, and error states');
+  });
+
+  it('words the environment focus for the target\'s platform', () => {
+    const environment = (platform: string) => exploreFocuses(4, { platform, otherAccount: false })[3]!.text;
+    expect(environment('web')).toContain('resize_viewport');
+    expect(environment('web')).toContain('tablet and phone widths');
+    for (const platform of ['ios', 'android']) {
+      expect(environment(platform)).toContain('rotate the device');
+      expect(environment(platform)).toContain('background and resume');
+      expect(environment(platform)).toContain('keyboard never covers');
+      expect(environment(platform)).toContain('permission prompts');
+      expect(environment(platform)).toContain('deep');
+      expect(environment(platform)).not.toMatch(/resize_viewport|widths/);
+    }
+    expect(environment('desktop')).not.toMatch(/resize_viewport|rotate/);
+    expect(environment('desktop')).toContain('sizes the app supports');
+  });
+
+  it('adds another account\'s view to the environment focus only when there is one to sign in with', () => {
+    const [, , , roles] = exploreFocuses(4, { platform: 'ios', otherAccount: true });
+    expect(roles).toMatchObject({ label: 'layout and roles', text: expect.stringContaining('sign in as another of the configured accounts') });
+    expect(exploreFocuses(4, { platform: 'ios', otherAccount: false })[3]!.text).not.toContain('sign in');
+  });
+
+  it('runs the user\'s own focuses in place of the built-in ones, one explorer each, labeled by their first clause', () => {
+    const base = { platform: 'web', otherAccount: false };
+    expect(chooseFocuses({ ...base, focuses: undefined, parallel: undefined })).toEqual([]);
+    expect(chooseFocuses({ ...base, focuses: undefined, parallel: 1 })).toEqual([]);
+    expect(chooseFocuses({ ...base, focuses: [], parallel: 2 }).map((focus) => focus.label)).toEqual(['wrong results', 'input and validation']);
+    const own = chooseFocuses({ ...base, focuses: [' sharing: invite a second person and revoke access ', 'offline use and sync conflicts after reconnecting to the network'], parallel: undefined });
+    expect(own).toEqual([
+      { label: 'sharing', text: 'sharing: invite a second person and revoke access' },
+      { label: 'offline use and sync conflicts after re…', text: 'offline use and sync conflicts after reconnecting to the network' },
+    ]);
+    expect(chooseFocuses({ ...base, focuses: ['offline use'], parallel: 1 })).toEqual([{ label: 'offline use', text: 'offline use' }]);
+  });
+
+  it('rejects a parallel count that does not match the focuses, more than five focuses, and an empty one', () => {
+    const base = { platform: 'web', otherAccount: false };
+    expect(() => chooseFocuses({ ...base, focuses: ['a', 'b'], parallel: 3 })).toThrow(
+      'parallel is 3 but 2 focuses were given: each explorer takes one focus, so pass as many focuses as explorers, or leave parallel out',
+    );
+    expect(() => chooseFocuses({ ...base, focuses: ['a', 'b'], parallel: 1 })).toThrow('parallel is 1 but 2 focuses were given');
+    expect(() => chooseFocuses({ ...base, focuses: ['a', 'b', 'c', 'd', 'e', 'f'], parallel: undefined })).toThrow('at most 5 focuses, one per explorer, got 6');
+    expect(() => chooseFocuses({ ...base, focuses: ['a', '  '], parallel: undefined })).toThrow('a focus must not be empty');
+  });
+
+  it('keeps a single explorer with a focus of its own a single exploration', () => {
+    const single: ExploreSpec = { ...spec(1), focuses: [{ label: 'offline use', text: 'offline use' }] };
+    expect(explorerFile(single, 1)).toBe('explore');
   });
 
   it('puts the focus beside the goal in the planner prompt, and asks every step to serve it', () => {
-    const [focus] = exploreFocuses(2, { otherAccount: false });
+    const [focus] = exploreFocuses(2, { platform: 'web', otherAccount: false });
     const focused = planInstruction(new ExploreState('Explore the tracker', BUDGETS, Date.now, focus), { mustFinish: false, remainingMs: 300_000, timeoutMs: 60_000 });
     expect(focused).toContain(`Goal: Explore the tracker\n${focusContext(focus!)}`);
     expect(focused).toContain('Plan every step for the focus on the Focus: line');
@@ -229,7 +279,7 @@ describe('explorerSource', () => {
     expect(source.files).toEqual(['explore/1', 'explore/2']);
     const events: unknown[] = [];
     const built = source.build('explore/2', (event) => events.push(event));
-    expect(built.registration.tests[0]!.options.agentContext).toContain('Focus: edge-case input');
+    expect(built.registration.tests[0]!.options.agentContext).toContain('Focus: input and validation');
     expect(built.attempts.agents?.get('default')?.tools).toHaveProperty('report_finding');
     expect(() => source.build('explore', () => undefined)).toThrow('no explorer');
     expect(events).toEqual([]);
@@ -268,8 +318,8 @@ describe('ExploreRecord', () => {
     expect(snapshot.steps.map((step) => step.explorer)).toEqual([1]);
     expect(snapshot.findings.map((entry) => [entry.explorer, entry.index])).toEqual([[1, 0]]);
     expect(snapshot.explorers).toEqual([
-      { index: 1, focus: 'core flows', ended: 'finished', summary: 'Explorer 1 is done.' },
-      { index: 2, focus: 'edge-case input', ended: 'time' },
+      { index: 1, focus: 'wrong results', ended: 'finished', summary: 'Explorer 1 is done.' },
+      { index: 2, focus: 'input and validation', ended: 'time' },
     ]);
     expect(new Set(heard)).toEqual(new Set([1, 2]));
     assertValidExplore(snapshot);

@@ -69,13 +69,21 @@ configured secrets are redacted (topic `writing-tests`).
 ## Parallel explorers
 
 `--parallel <n>` (1 to 5) runs n explorers at once, each with the whole goal
-and its own focus, in order: core flows (create, edit, delete, and the counts
-and states afterwards); edge-case input and validation; state across controls
-and screens; layouts at narrow widths, plus another account when more than one
-is configured and no `--session` is set; every toolbar button, shortcut, link,
-upload, and download. Several explorers with different focuses find more
-distinct defects than one; give each the whole goal rather than splitting it
-by area.
+and its own focus, a kind of defect, in order: wrong results (what the app
+shows and keeps after an action, on every screen with the same data); input
+and validation; state and navigation (combined controls, back, reload or
+relaunch, changes other screens depend on); layout and environment for the
+target's platform (widths and `resize_viewport` on web; rotation, background
+and resume, keyboard, permission prompts, deep links on mobile), plus another
+account when more than one is configured and no `--session` is set; errors and
+recovery (empty, loading, error states, double submits, the controls the main
+flows skip). Several explorers with different focuses find more distinct
+defects than one; give each the whole goal rather than splitting it by area.
+
+`--focus "<text>"`, repeatable up to 5, replaces the built-in focuses with
+your own, one explorer each; the explorer count is the number of focuses, and
+a `--parallel` that does not match it exits 2. `focuses` on `explore` from
+`e2e/runner` does the same.
 
 Each explorer is one test (`explore/1` to `explore/<n>`) in its own worker.
 `--max-steps` and `--timeout` are each explorer's own budget, not the run's:
@@ -105,7 +113,8 @@ answered, and the run's AI totals include it.
 | `--session <name>` | none | Run the setup that saves this session, then explore with it restored. |
 | `--max-steps <n>` | 8 (1 to 100) | Exploration steps at most. |
 | `--timeout <ms>` | 600000 (180000 to 7200000) | Each explorer's time budget; the last minute is for the assessment. |
-| `--parallel <n>` | 1 (1 to 5) | Explorers at once, each with its own focus and the budgets above; findings merged. |
+| `--parallel <n>` | 1, or the `--focus` count (1 to 5) | Explorers at once, each with its own focus and the budgets above; findings merged. |
+| `--focus <text>` | built-in focuses | An explorer's own focus, repeatable; replaces the built-in list. |
 | `--headed`, `--reporter`, `--output`, `--debug`, `--ai-trace`, `--trace [mode]`, `--video [mode]` | as `run` | Same meaning as for `e2e run`. The exploration is one attempt, so a retry mode (`on-first-retry`, `on-all-retries`) records nothing (the run's notice says to pass `--trace on`); put the goal before a bare `--trace` or `--video`. |
 
 Per-step action and model-call budgets default to 40 each;

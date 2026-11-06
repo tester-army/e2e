@@ -170,14 +170,14 @@ describe('e2e explore', () => {
       ['explore/2', ['Explore the home page and find bugs']],
     ]);
     // The planner and the explorer of each read its own focus.
-    expect(planPrompts.filter((prompt) => prompt.includes('Focus: the core flows end to end'))).toHaveLength(2);
-    expect(planPrompts.filter((prompt) => prompt.includes('Focus: edge-case input and validation'))).toHaveLength(2);
-    expect(loopCalls.some((call) => call.system.includes('Focus: edge-case input and validation'))).toBe(true);
+    expect(planPrompts.filter((prompt) => prompt.includes('Focus: wrong results:'))).toHaveLength(2);
+    expect(planPrompts.filter((prompt) => prompt.includes('Focus: input and validation:'))).toHaveLength(2);
+    expect(loopCalls.some((call) => call.system.includes('Focus: input and validation:'))).toBe(true);
     const record = outcome.explore;
     expect(record).toEqual(outcome.report.run.explore);
     expect(record.explorers).toEqual([
-      { index: 1, focus: 'core flows', ended: 'step-limit', summary: 'One defect on the home page.' },
-      { index: 2, focus: 'edge-case input', ended: 'step-limit', summary: 'One defect on the home page.' },
+      { index: 1, focus: 'wrong results', ended: 'step-limit', summary: 'One defect on the home page.' },
+      { index: 2, focus: 'input and validation', ended: 'step-limit', summary: 'One defect on the home page.' },
     ]);
     expect(record.steps.map((step) => [step.explorer, step.index])).toEqual([[1, 1], [2, 1]]);
     // Both explorers reported the counter: the merge keeps one, naming the other.

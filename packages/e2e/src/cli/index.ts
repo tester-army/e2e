@@ -794,6 +794,11 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       `explorers at once, ${PARALLEL_BOUNDS.min} through ${PARALLEL_BOUNDS.max}, each with the whole goal, its own focus, and the budgets above; findings are merged (default: ${PARALLEL_BOUNDS.default})`,
       parseBoundedInt(PARALLEL_BOUNDS),
     )
+    .option(
+      '--focus <text>',
+      `an explorer's own focus, repeatable, up to ${PARALLEL_BOUNDS.max}: replaces the built-in focuses, one explorer each; --parallel, if given, must match the count`,
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
     .option('--headed', 'show the UI while the agent explores, when the engine supports it')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
@@ -814,6 +819,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
           "e2e explore --session admin 'Explore the admin settings and find bugs'",
           "e2e explore --parallel 3 'Explore the issue tracker and find bugs'",
+          "e2e explore --focus 'sharing and permissions' --focus 'offline use' 'Explore the notes app'",
           "e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
@@ -833,6 +839,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           maxSteps?: number;
           timeout?: number;
           parallel?: number;
+          focus?: string[];
           headed?: boolean;
           reporter?: Reporter[];
           output?: string;
@@ -855,6 +862,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             maxSteps: options.maxSteps,
             timeoutMs: options.timeout,
             parallel: options.parallel,
+            focuses: options.focus,
             headed: options.headed,
             reporters: options.reporter,
             output: options.output,

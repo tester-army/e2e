@@ -21,9 +21,9 @@ import type { RunnerOutput } from '../run/process-output.ts';
 import { run, type RunOutcome } from '../run/runner.ts';
 import { registerStaticSecrets, staticSecretLedger } from '../run/secrecy.ts';
 import type { BuiltinReporter, E2EConfig, RecordingMode } from '../types.ts';
-import { buildExplorer, EXPLORER_SOURCE_MODULE, explorerSource, type ExploreSpec } from './explorer.ts';
+import { buildExplorer, EXPLORER_SOURCE_MODULE, explorerCount, explorerSource, type ExploreSpec } from './explorer.ts';
 import { PARALLEL_BOUNDS, STEP_BOUNDS, TIMEOUT_BOUNDS } from './bounds.ts';
-import { exploreFocuses } from './focus.ts';
+import { chooseFocuses } from './focus.ts';
 import { requestGroups } from './merge.ts';
 import type { PlanAccount } from './plan.ts';
 import type { ExploreProgress } from './progress.ts';
@@ -64,6 +64,12 @@ export interface ExploreOptions {
    * value (`rawConfig`) they run one after another in this process.
    */
   readonly parallel?: number | undefined;
+  /**
+   * The explorers' own focuses (`--focus`), one per explorer, in place of the
+   * built-in list; at most 5. Without `parallel`, the explorer count is their
+   * number; with it, the two must match.
+   */
+  readonly focuses?: readonly string[] | undefined;
   readonly headed?: boolean | undefined;
   readonly reporters?: readonly BuiltinReporter[] | undefined;
   /** The results directory, `--output`, over the config's `output`. */
@@ -122,7 +128,7 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     maxSteps: resolveBounded(options.maxSteps, STEP_BOUNDS, 'maxSteps'),
     timeoutMs: resolveBounded(options.timeoutMs, TIMEOUT_BOUNDS, 'timeout'),
   };
-  const parallel = resolveBounded(options.parallel, PARALLEL_BOUNDS, 'parallel');
+  const parallel = options.parallel === undefined ? undefined : resolveBounded(options.parallel, PARALLEL_BOUNDS, 'parallel');
 
   // The config's secrets are known to the process before what its top-level
   // code printed is released, as `run` loads its config.
@@ -152,8 +158,14 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
     accounts,
     session: options.session,
     openApp: target.app.base !== undefined || launchesPinnedApp(target),
-    focuses: parallel === 1 ? [] : exploreFocuses(parallel, { otherAccount: accounts.length > 1 && options.session === undefined }),
+    focuses: chooseFocuses({
+      focuses: options.focuses,
+      parallel,
+      platform: target.platform,
+      otherAccount: accounts.length > 1 && options.session === undefined,
+    }),
   };
+  const explorers = explorerCount(spec);
   // Built once here, so a missing model fails before anything starts and a
   // replaced executor is told about once; the run builds its own.
   const sources = { entry: raw.agents?.[agentName], config: resolved };
@@ -169,11 +181,11 @@ export async function explore(options: ExploreOptions = {}): Promise<ExploreOutc
   // Parallel explorers run in worker processes of their own, which load the
   // config file and build their explorer from the spec. A config value
   // cannot cross into one, so its explorers run here, one after another.
-  const remote = parallel > 1 && configPath !== undefined
-    ? { configPath, workers: parallel, source: { module: EXPLORER_SOURCE_MODULE, data: spec } }
+  const remote = explorers > 1 && configPath !== undefined
+    ? { configPath, workers: explorers, source: { module: EXPLORER_SOURCE_MODULE, data: spec } }
     : undefined;
-  if (remote === undefined && parallel > 1) {
-    notice(`the config is a value, not a file, so the ${String(parallel)} explorers run one after another in this process`);
+  if (remote === undefined && explorers > 1) {
+    notice(`the config is a value, not a file, so the ${String(explorers)} explorers run one after another in this process`);
   }
   // The exploration is bounded by its own `--timeout`, not `maxDuration`.
   const { maxDuration: _maxDuration, ...runConfig } = raw;

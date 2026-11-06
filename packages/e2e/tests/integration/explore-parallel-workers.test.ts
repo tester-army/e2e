@@ -73,7 +73,7 @@ const model = {
         return tool('observe', {});
       }
       if (request.prompt.some((message) => message.role === 'tool')) return tool('complete_step', { status: 'passed', summary: 'Looked' });
-      if (MODE === 'crash' && prompt.includes('Focus: edge-case input')) process.kill(process.pid, 'SIGKILL');
+      if (MODE === 'crash' && prompt.includes('Focus: input and validation')) process.kill(process.pid, 'SIGKILL');
       if (MODE === 'barrier') await barrier();
       return tool('report_finding', finding);
     }
@@ -139,7 +139,7 @@ export default {
       ['explore/2', 'failed'],
     ]);
     const started = events.flatMap((event) => (event.type === 'explore' && event.progress.phase === 'started' ? [[event.explorer, event.progress.focus]] : []));
-    expect(started.toSorted()).toEqual([[1, 'core flows'], [2, 'edge-case input']]);
+    expect(started.toSorted()).toEqual([[1, 'wrong results'], [2, 'input and validation']]);
     expect(outcome.explore.steps.map((step) => step.explorer).toSorted()).toEqual([1, 2]);
     expect(outcome.explore.findings).toHaveLength(1);
     expect(outcome.explore.findings[0]).toMatchObject({ title: COUNTER_FINDING.title, merged: [{ id: expect.any(String), title: COUNTER_FINDING.title }] });
@@ -187,8 +187,8 @@ export default {
     const relayed = events.flatMap((event) => (event.type === 'explore' && event.explorer === 2 ? [event.progress.phase] : []));
     expect(relayed).toEqual(expect.arrayContaining(['started', 'step-started']));
     expect(outcome.explore.explorers).toEqual([
-      { index: 1, focus: 'core flows', ended: 'step-limit', summary: 'One defect on the home page.' },
-      { index: 2, focus: 'edge-case input', ended: 'aborted' },
+      { index: 1, focus: 'wrong results', ended: 'step-limit', summary: 'One defect on the home page.' },
+      { index: 2, focus: 'input and validation', ended: 'aborted' },
     ]);
     expect(outcome.explore.findings.map((finding) => finding.explorer)).toEqual([1]);
     expect(outcome.explore.merge).toBeUndefined();

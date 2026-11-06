@@ -39,7 +39,7 @@ export interface ExploreSpec {
   readonly session: string | undefined;
   /** Whether each explorer opens the app first; see `ExploreBodyOptions.openApp`. */
   readonly openApp: boolean;
-  /** One focus per explorer, in order; empty when the exploration runs one explorer. */
+  /** One focus per explorer, in order; empty for a single explorer with no focus of its own. */
   readonly focuses: readonly ExploreFocus[];
 }
 
@@ -71,7 +71,7 @@ export function explorerCount(spec: ExploreSpec): number {
 
 /** The virtual file of explorer `index`: `explore` alone, `explore/<index>` among several. */
 export function explorerFile(spec: ExploreSpec, index: number): string {
-  return spec.focuses.length === 0 ? EXPLORE_FILE : parallelExplorerFile(index);
+  return explorerCount(spec) === 1 ? EXPLORE_FILE : parallelExplorerFile(index);
 }
 
 /**

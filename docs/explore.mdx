@@ -141,13 +141,33 @@ bunx e2e explore --parallel 3 'Explore the issue tracker and find bugs'
 ```
 </CodeGroup>
 
-Explorer 1 takes the first focus, explorer 2 the second, and so on:
+Each focus is a kind of defect. Explorer 1 takes the first, explorer 2 the
+second, and so on:
 
-1. Core flows: create, edit, and delete, then the counts and states on every screen.
-2. Edge-case input and validation.
-3. State across controls and screens: filters, sorting, paging, reloads.
-4. Layouts at narrow widths when the engine can resize the viewport, and other roles when several accounts are configured and no `--session` is set.
-5. Every toolbar button, shortcut, link, upload, and download.
+1. Wrong results: what the app shows and keeps after an action, on every screen that shows the same data.
+2. Input and validation.
+3. State and navigation: combined controls, back, reload or relaunch, and changes other screens depend on.
+4. Layout and environment, for the target's platform: tablet and phone widths in a browser; rotation, background and resume, the keyboard, permission prompts, and deep links on a device. With several accounts configured and no `--session`, other roles too.
+5. Errors and recovery: empty, loading, and error states, double submits, and the controls the main flows skip.
+
+To hunt your own kinds of defects, pass `--focus` once per explorer. Your
+focuses replace the built-in ones, and the explorer count is their number:
+
+<CodeGroup>
+```bash npm
+npx e2e explore --focus 'sharing and permissions' --focus 'offline use and sync' 'Explore the notes app'
+```
+
+```bash pnpm
+pnpm exec e2e explore --focus 'sharing and permissions' --focus 'offline use and sync' 'Explore the notes app'
+```
+
+```bash bun
+bunx e2e explore --focus 'sharing and permissions' --focus 'offline use and sync' 'Explore the notes app'
+```
+</CodeGroup>
+
+Up to 5 focuses. With `--parallel` too, it must match the number of focuses.
 
 Each explorer has its own step and time budget, and its own browser or
 device. When the engine provides fewer, the other explorers wait for a free

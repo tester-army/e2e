@@ -36,6 +36,12 @@ export interface ExplorationOptions {
    * they run one after another.
    */
   readonly parallel?: number | undefined;
+  /**
+   * The explorers' own focuses, one per explorer, in place of the built-in
+   * ones; at most 5. Without `parallel` they set the explorer count; with it,
+   * the two must match.
+   */
+  readonly focuses?: readonly string[] | undefined;
   /** Abort to interrupt the exploration; its teardown runs before the call resolves. */
   readonly interruptSignal?: AbortSignal | undefined;
   /**
@@ -77,6 +83,7 @@ export async function runExploration(options: ExplorationOptions = {}): Promise<
       maxSteps: options.maxSteps,
       timeoutMs: options.timeoutMs,
       parallel: options.parallel,
+      focuses: options.focuses,
       ...owned,
     });
   });
