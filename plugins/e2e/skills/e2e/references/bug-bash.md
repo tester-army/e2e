@@ -235,10 +235,11 @@ verify one area after another.
      await agent.assert('the cart line for "Dune" totals twice its unit price');
    });
    ```
-3. Run your repros with an output directory of your own, `npx e2e run
-   tests/bugbash/<slug>.e2e.ts --output .e2e/bugbash/verify-<area>` (a run
-   clears its output's results, and another subagent may be reading them),
-   then one file alone while you fix it. Confirmed when it fails on the
+3. Run your repros with the bug-bash config and an output directory of your
+   own, `npx e2e run tests/bugbash/<slug>.e2e.ts --config
+   e2e.bugbash.config.ts --output .e2e/bugbash/verify-<area>` (a run clears
+   its output's results, and another subagent may be reading them), then one
+   file alone while you fix it. Confirmed when it fails on the
    reported defect: `ASSERTION_FAILED` from the closing `assert`, or a
    failed `act` whose message names the defect. A failed `act` carries the
    code the model chose, so only its message and screenshot tell the defect
@@ -258,8 +259,8 @@ verify one area after another.
 
 ## 7. Report
 
-Run every repro once, `npx e2e run --tag bugbash`, so each bug you report
-still fails. Lead with the confirmed bugs, most severe first. For each: title, path, one
+Run every repro once, `npx e2e run --tag bugbash --config
+e2e.bugbash.config.ts`, so each bug you report still fails. Lead with the confirmed bugs, most severe first. For each: title, path, one
 line of expected against actual, root cause when known, steps, screenshot
 and video paths, repro test, and the charters that found it. Then the
 environment candidates that are production risks, marked unverified. Then
