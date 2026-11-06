@@ -104,6 +104,12 @@ describe('rows that differ by a clock-like value alone', () => {
     expect(pageMoved(slots('9:00', '9:30'), slots('9:00', '9:30'))).toBe(false);
     expect(pageMoved(slots('9:00', '9:30'), slots('9:00', '9:31'))).toBe(false);
   });
+
+  it('is a page that moved when its one line is the value, a pager or carousel with nothing beside it', () => {
+    expect(pageMoved(slots('10:30'), slots('11:00'))).toBe(true);
+    expect(pageMoved(slots('10:30'), slots('10:30'))).toBe(false);
+    expect(pageMoved(slots(), slots())).toBe(false);
+  });
 });
 
 describe('pageLanded', () => {

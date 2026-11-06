@@ -120,21 +120,27 @@ const TURNOVER_CLOCKS = 2;
  * of its list. A different set of lines is a page that moved, whatever
  * clock-like values read. When only those differ, one changing is a clock
  * ticking beside a list that has not moved, and several are the list's own
- * rows (a time picker, a timetable) turning over.
+ * rows (a time picker, a timetable) turning over. A clock needs a line beside
+ * it to tick beside: on a page of one line, a pager or carousel whose only text
+ * goes `10:30` to `11:00`, that line is the page.
  */
 export function pageMoved(before: PageReading, after: PageReading): boolean {
   if (!sameLines(before, after)) return true;
   let ticked = 0;
   for (const [at, line] of before.lines.entries()) if (line.exact !== after.lines[at]?.exact) ticked += 1;
-  return ticked >= TURNOVER_CLOCKS;
+  return ticked >= TURNOVER_CLOCKS || (ticked > 0 && before.lines.length < 2);
 }
 
 /**
  * The share of a page's lines that must be new for a swipe to have turned it.
- * A page turn replaces most of the rows it shows; a counter or a status line
- * beside a stale list replaces a line or two. A third leaves room for chrome
- * as large as the list itself, and a page with more takes the look that
- * proves it holds still, which only costs the read this saves.
+ * Lines are keyed by position as well as text, so this share only does work
+ * on a windowed list, whose rows keep fixed slots: a page turn replaces most
+ * of them, while a counter or a status line beside a stale list replaces a
+ * line or two. On a list whose rows move (a native list, an unwindowed web
+ * list) any movement changes nearly every line, and the share is met by the
+ * first pixel scrolled. A third leaves room for chrome as large as the list
+ * itself, and a page with more takes the look that proves it holds still,
+ * which only costs the read this saves.
  */
 const LANDED_NEW_SHARE = 1 / 3;
 
