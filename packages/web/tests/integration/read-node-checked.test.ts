@@ -84,7 +84,7 @@ describe('checked and selected', () => {
     expect(nodes.has('hidden-label')).toBe(false);
   });
 
-  it('leaves out a box-less control no label of its own draws with a box a click can land on', async () => {
+  it('leaves out a box-less control no label of its own draws in a way a tap can click', async () => {
     await page.setContent(`
       <style>.shrunk { opacity: 0; width: 0; height: 0; margin: 0; padding: 0; border: 0; position: absolute }</style>
       <label><input class="shrunk" type="checkbox" data-testid="invisible" style="visibility:hidden">Invisible</label>
@@ -92,6 +92,7 @@ describe('checked and selected', () => {
       <skip-slot><input class="shrunk" type="checkbox" id="skipped" data-testid="skipped"></skip-slot>
       <label for="skipped">Skipped</label>
       <label style="display:contents"><input class="shrunk" type="checkbox" data-testid="contents"><span>Contents</span></label>
+      <label><input class="shrunk" type="checkbox" data-testid="link">Accept <a href="#terms">the terms</a></label>
       <script>
         customElements.define('skip-slot', class extends HTMLElement {
           connectedCallback() {
@@ -101,7 +102,7 @@ describe('checked and selected', () => {
       </script>
     `);
     const nodes = await captureByTestId();
-    for (const id of ['invisible', 'text', 'skipped', 'contents']) expect(nodes.has(id), id).toBe(false);
+    for (const id of ['invisible', 'text', 'skipped', 'contents', 'link']) expect(nodes.has(id), id).toBe(false);
   });
 
   it('applies the option limit to offered choices after hidden options are excluded', async () => {

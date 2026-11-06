@@ -140,6 +140,7 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <input class="shrunk" type="checkbox" id="hidden-label"><label for="hidden-label" style="display: none">Hidden label</label>
       <label><input class="shrunk" type="checkbox" style="visibility: hidden">Invisible</label>
       <label style="display: contents"><input class="shrunk" type="checkbox"><span class="box"></span>Contents</label>
+      <label><input class="shrunk" type="checkbox"><span class="box"></span>Accept <a href="#terms">the terms</a></label>
     `,
   },
   {

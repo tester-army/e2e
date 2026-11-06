@@ -370,8 +370,11 @@ describe.each(KINDS)('a control its own label covers, through the %s target', (k
 
 describe('a checkbox or radio an observation lists over no box', () => {
   it('takes a tap on its listed node, so the walk lists none a tap cannot reach', async () => {
-    await page.setContent(`<style>${ELEMENT_PLUS_CSS}</style>${ELEMENT_PLUS_CONTROLS}
-      <label style="display:contents"><input class="el-checkbox__original" type="checkbox" id="contents"><span class="el-checkbox__inner"></span>Contents</label>`);
+    await page.setContent(`<style>${ELEMENT_PLUS_CSS}</style>
+      <label class="el-checkbox"><span class="el-checkbox__input"><input class="el-checkbox__original" type="checkbox" id="agree"><span class="el-checkbox__inner"></span></span><span class="el-checkbox__label">Agree</span></label>
+      <label class="el-checkbox"><span class="el-checkbox__input"><input class="el-checkbox__original" type="radio" id="small"><span class="el-checkbox__inner"></span></span><span class="el-checkbox__label">Small</span></label>
+      <label style="display:contents"><input class="el-checkbox__original" type="checkbox" id="contents"><span class="el-checkbox__inner"></span>Contents</label>
+      <label class="el-checkbox"><span class="el-checkbox__input"><input class="el-checkbox__original" type="checkbox" id="terms"><span class="el-checkbox__inner"></span></span><span class="el-checkbox__label">Accept <a href="#went">the Terms and Conditions</a></span></label>`);
     let nextId = 1;
     const published = new Published();
     try {
@@ -392,9 +395,10 @@ describe('a checkbox or radio an observation lists over no box', () => {
       };
       walk(tree);
       const listed = nodes.filter((node) => node.role === 'checkbox' || node.role === 'radio');
-      expect(listed.map((node) => node.name)).toEqual(['安装', '卸载', 'Agree', 'Large']);
+      expect(listed.map((node) => node.name)).toEqual(['Agree', 'Small']);
       for (const node of listed) {
         const element = await published.element(node.ref.id);
+        expect(await element.evaluate((input) => input.getBoundingClientRect().width), node.name ?? '').toBe(0);
         expect(await perform({ kind: 'element', element }, { kind: 'tap' }), node.name ?? '').toBeUndefined();
         expect(await element.evaluate((input) => (input as HTMLInputElement).checked), node.name ?? '').toBe(true);
       }
