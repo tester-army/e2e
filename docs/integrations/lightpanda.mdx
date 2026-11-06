@@ -107,9 +107,7 @@ when you run more.
 | `loadResources` | `[]`                            | Sub-resources the server fetches: `iframe`, `image`, `stylesheet`. See [Fetch more of the page](#fetch-more-of-the-page). |
 | `args`          | `[]`                            | Further `lightpanda serve` flags, after the ones the provider sets. |
 
-The provider leases one server per worker slot for the run; it has no
-`scope: 'attempt'`, since Lightpanda does not expose the default context
-identity a per-attempt lease reattaches by. A server that does not answer
+The provider leases one server per worker slot for the run. A server that does not answer
 on its port within ten seconds fails the lease, and so does a binary that
 exits first, with its stderr in the message.
 
@@ -163,7 +161,7 @@ tracks most of them.
 | ------- | ------------ | --- |
 | [Sessions](/authentication) (`test.setup` with `session.save`, `session:` on a test) | The setup passes and the session is saved, but a test that restores it opens signed out. | Cookies set on a context before its first page exists are dropped. Set them from the test with `browser.setCookies` after `app.open` instead. |
 | [Dialogs](/browser#handle-a-dialog) | `browser.onDialog` runs, then fails the test with `ENGINE_FAILURE`: `Page.handleJavaScriptDialog` reports no dialog. | Lightpanda answers `alert`, `confirm` (`false`), and `prompt` (`null`) itself before a client can. |
-| [Downloads](/browser#download-a-file) and file uploads | `browser.waitForDownload` and `setInputFiles` throw `UNSUPPORTED_CAPABILITY`. | The engine supports neither on a provider's browser right now. |
+| [Downloads](/browser#download-a-file) and file uploads | `browser.waitForDownload` and `setInputFiles` throw `UNSUPPORTED_CAPABILITY`. | The provider serves no [downloads](/browser#downloads-on-the-provider), and the engine sends no local files to a provider's browser. |
 | [Iframes](/browser#reach-into-an-iframe) | `frameLocator` finds nothing. | Iframes are not loaded by default. `loadResources: ['iframe']` loads them; queries and fills then work, but a listener in the host page on an element the frame created does not fire. |
 | Drags: `screen.swipe`, `locator.swipeTo`, and `browser.mouse` moves with a button down | `ENGINE_FAILURE` naming `Input.setInterceptDrags`. | The engine needs that command for a drag and Lightpanda has not implemented it. |
 | `browser.setViewport` | The page measures the new size, but a `resize` listener never runs. | No `resize` event is dispatched. |

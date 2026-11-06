@@ -243,8 +243,8 @@ An attempt that records [video](/reference/config#video) gets:
 - **Dropped browser connections.** A browser session cannot be resumed, so
   a dropped connection fails the attempt.
 - **Browser downloads and uploads.** TestMu AI's browsers run on other
-  machines, so `browser.waitForDownload` and `setInputFiles` fail with
-  `UNSUPPORTED_CAPABILITY`. Assert on the download link or the request
+  machines and the provider serves no downloads, so `browser.waitForDownload`
+  and `setInputFiles` fail with `UNSUPPORTED_CAPABILITY`. Assert on the download link or the request
   instead.
 
 ## Next

@@ -73,7 +73,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | An option `web()` does not take (`url` or any other app key included), or an unknown key inside `connect` or `basicAuth`. The message names the nearest known key for a likely typo (`viewprt` is `viewport`), else every key. |
-| `INVALID_CONFIG` | `connect.reconnectEndpoint`, or a provider with `scope: 'attempt'`. Neither is supported right now. |
+| `INVALID_CONFIG` | `connect.reconnectEndpoint`, which is not supported. |
 
 #### `browser`
 
@@ -86,10 +86,9 @@ web({ browser: 'firefox' }); // default: 'chromium'
 - `'chromium'` or `'firefox'`. [Installing browsers](#installing-browsers)
   has the builds.
 - A `BrowserProvider` leases hosted browsers instead, one per worker slot for
-  the run. The engine drives each one as chromium over CDP, whether it is
-  Chromium or another CDP server such as
-  [Lightpanda](/integrations/lightpanda).
-- A provider with `scope: 'attempt'` is not supported right now.
+  the run, or one per attempt with `scope: 'attempt'`. The engine drives
+  each one as chromium over CDP, whether it is Chromium or another CDP
+  server such as [Lightpanda](/integrations/lightpanda).
 - [Hosted browsers](/browser#hosted-browsers) has the `BrowserProvider`
   contract and an example provider.
 
@@ -147,8 +146,8 @@ web({ connect: { cdpEndpoint: async () => 'ws://127.0.0.1:9222' } });
 - `cdpEndpoint(signal)` resolves when a worker first needs the browser, and
   again when an attempt starts after the connection dropped.
 - Each attempt gets a new browser context on the remote browser.
-- `reconnectEndpoint`, which kept one persistent context across a
-  disconnect, is not supported right now.
+- `reconnectEndpoint` is not supported. A connection that drops fails the
+  attempt, and the next attempt attaches again through `cdpEndpoint`.
 
 ```ts
 interface WebConnectOptions {
@@ -322,11 +321,11 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | --- | --- |
 | No WebKit | WebKit has no WebDriver BiDi endpoint. |
 | `connect` and browser providers are Chromium only | They attach over CDP. |
-| No persistent context: `connect.reconnectEndpoint` and a provider with `scope: 'attempt'` are `INVALID_CONFIG` | Each attempt runs in a browser context of its own. |
+| `connect.reconnectEndpoint` is `INVALID_CONFIG` | A dropped connection is not recovered mid-attempt. The next attempt attaches again. |
 | Pointer actions in a rotated, skewed, or mirrored iframe throw `NOT_ACTIONABLE` | Points are mapped through a frame's scale only. |
 | Selectors are CSS or XPath only, with no `>>` chains or `text=` and `nth=` engines | The browser runs the selector itself. |
 | HTML5 drag and drop drops no data on Firefox | [Firefox bug 1515879](https://bugzilla.mozilla.org/show_bug.cgi?id=1515879). Pointer drags work. |
-| Downloads and `setInputFiles` throw `UNSUPPORTED_CAPABILITY` with a browser provider | The files are on another machine. |
+| `setInputFiles` throws `UNSUPPORTED_CAPABILITY` with a browser provider, and so do downloads when the provider serves none | The files are on another machine. |
 | A saved session throws `UNSUPPORTED_CAPABILITY` for an IndexedDB value that is not JSON or a `Date` | A `Blob` or class instance can't be restored. |
 
 ### The browser fixture
@@ -839,7 +838,7 @@ const file = await browser.waitForDownload(() =>
 
 | Throws | When |
 | --- | --- |
-| `UNSUPPORTED_CAPABILITY` | The browser comes from a browser provider. |
+| `UNSUPPORTED_CAPABILITY` | The browser comes from a browser provider without [`downloads`](/browser#downloads-on-the-provider). |
 | `ACTION_FAILED` | The download did not complete in time. A trigger that resolved in time but started no download fails with `no download started within <n>ms; the trigger resolved after <m>ms`. |
 
 A trigger still running at the timeout fails with the step timeout. One that
@@ -904,7 +903,7 @@ bunx @e2e-dev/web install chromium --with-deps
   `chromium`.
 - `--headed` installs the full Chrome build a headed run launches.
 - `--with-deps` also installs the system libraries the browsers need on
-  Debian and Ubuntu, with `apt-get`.
+  Debian and Ubuntu, with `apt-get`, through `sudo` when not run as root.
 - Browsers go to `E2E_BROWSERS_PATH`, else the user cache:
   `~/Library/Caches/e2e/browsers` on macOS, `$XDG_CACHE_HOME/e2e/browsers`
   or `~/.cache/e2e/browsers` on Linux, `%LOCALAPPDATA%\e2e\browsers` on

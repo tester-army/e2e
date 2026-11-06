@@ -64,8 +64,9 @@ engine: web({
 ```
 
 Each attempt gets a new browser context on the remote browser.
-`connect.reconnectEndpoint`, a persistent context across a disconnect, is not
-supported right now and is `INVALID_CONFIG`.
+`connect.reconnectEndpoint` is not supported and is `INVALID_CONFIG`: a
+dropped connection fails the attempt, and the next attempt attaches again
+through `cdpEndpoint`.
 
 ### Leasing hosted browsers (`browser`)
 
@@ -74,9 +75,10 @@ it provisioned. Pass a `BrowserProvider` as `browser` instead and the engine
 asks for a browser when one is needed and gives it back when its scope ends,
 on every exit path. `scope: 'worker'` (the default) leases one browser per
 worker slot in `prepare` and releases them in `finish`; a worker whose browser
-drops leases a replacement itself. `scope: 'attempt'` is not supported right
-now and is `INVALID_CONFIG`. Downloads and `setInputFiles` on a provider's
-browser throw `UNSUPPORTED_CAPABILITY`. A provider implies chromium and excludes
+drops leases a replacement itself. `scope: 'attempt'` leases a fresh browser
+per attempt instead. Downloads work when the provider implements `downloads`
+and throw `UNSUPPORTED_CAPABILITY` otherwise; `setInputFiles` on a
+provider's browser always throws it. A provider implies chromium and excludes
 `connect`; no vendor ships in the package. See
 [Hosted browsers](../../docs/browser.mdx#hosted-browsers) for the contract
 and an example against a generic session API.

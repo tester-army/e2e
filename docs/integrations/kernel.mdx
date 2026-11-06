@@ -77,7 +77,7 @@ and the rest of `BrowserCreateParams` in your `@onkernel/sdk`. It adds two:
 
 | Option   | Default    | Meaning |
 | -------- | ---------- | ------- |
-| `scope`  | `'worker'` | One browser per worker slot. See [Scopes](#scopes). |
+| `scope`  | `'worker'` | One browser per worker slot, or `'attempt'` for one per attempt. See [Scopes](#scopes). |
 | `replay` | `true`     | A Kernel replay or the engine's screencast. See [Recordings](#recordings). |
 
 ## Scopes
@@ -88,8 +88,9 @@ sees another test's cookies, storage, or permissions. Kernel's first tab
 stays open behind it. A Kernel `profile` has no effect, because it applies
 only to the browser's default context.
 
-`scope: 'attempt'`, a new browser for each attempt, is not supported right
-now: `web()` throws `INVALID_CONFIG` for it.
+`scope: 'attempt'` leases a new browser for each attempt, retries included.
+The attempt runs in a new browser context on it, as in worker scope, so a
+`profile` has no effect here either. Each test pays for a browser start.
 
 ## Recordings
 
@@ -108,14 +109,16 @@ Kernel replays only headed browsers, its default. With `headless: true` or
 
 ## Downloads
 
-`browser.waitForDownload` and `setInputFiles` are not supported on a Kernel
-browser right now. Each throws `UNSUPPORTED_CAPABILITY`.
+`browser.waitForDownload` works as it does locally, in both scopes. The
+provider copies each file off the browser's disk into the attempt's
+artifacts. `setInputFiles` throws `UNSUPPORTED_CAPABILITY`, since local
+files can't be sent to a Kernel browser.
 
 ## Watch and clean up browsers
 
 The reporter logs `browser <id>, watch at <live view URL>` for each new
 browser. Each browser carries the tags `e2e_run`, `e2e_target`, `e2e_slot`,
-on top of your `tags`. Kernel's
+and `e2e_attempt` in `'attempt'` scope, on top of your `tags`. Kernel's
 dashboard then names the run that started it.
 
 When the run ends, the provider deletes every active browser tagged with the

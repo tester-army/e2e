@@ -57,21 +57,15 @@ runs:
       run: |
         set -euo pipefail
         [ -f packages/web/dist/bin.js ] || { pnpm --filter e2e run build && pnpm --filter @e2e-dev/web run build; }
-    # apt-get needs root, so the install runs under sudo with the runner's
-    # HOME, which keeps the browsers in the runner's cache, then hands that
-    # cache back to the runner.
+    # The install runs apt-get through sudo itself.
     - name: Install Chromium
       shell: bash
       env:
         ONLY_SHELL: ${{ inputs.only-shell }}
       run: |
         set -euo pipefail
-        sudo apt-get update -qq
-        install_chromium() { sudo env "PATH=$PATH" "HOME=$HOME" ${XDG_CACHE_HOME:+"XDG_CACHE_HOME=$XDG_CACHE_HOME"} node packages/web/dist/bin.js install chromium --with-deps "$@"; }
-        install_chromium
-        [ "$ONLY_SHELL" = 'true' ] || install_chromium --headed
-        CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/e2e"
-        sudo chown -R "$(id -u):$(id -g)" "$CACHE"
+        node packages/web/dist/bin.js install chromium --with-deps
+        [ "$ONLY_SHELL" = 'true' ] || node packages/web/dist/bin.js install chromium --with-deps --headed
     # autoclean deletes the archives the mirror no longer serves, so the set
     # changes only when a package version does.
     - name: Name the archive set
