@@ -532,6 +532,14 @@ expect.soft.any(Number);
 test.skip(true, 'not today');
 test.skip('not today');
 test.skip('later', async () => {});
+// fail takes the same three shapes and returns nothing inside a body; describe and setup take no fail option.
+test.fail(true, 'known gap');
+test.fail('known gap');
+test.fail('gap', async () => {}) satisfies ReturnType<typeof test>;
+void (test.fail(false) satisfies void);
+test('gap', { fail: 'known gap' }, async () => {});
+// @ts-expect-error a group cannot expect failure; mark each test
+test.describe('gaps', { fail: true }, () => {});
 void screen.getByLabel('Plan').selectOption({ value: 'pro' });
 // @ts-expect-error one of label, value, or index, never two
 void screen.getByLabel('Plan').selectOption({ value: 'pro', index: 1 });
@@ -754,6 +762,8 @@ report.run.carried satisfies
 // A run test filters narrowed records each filter by name, and every row one left out names it.
 report.run.filters satisfies readonly { name: string; candidates: number; excluded: number; note?: string | undefined }[] | undefined;
 report.run.results[0]!.skip?.filter satisfies string | undefined;
+report.run.results[0]!.expectedFailure?.reason satisfies string | undefined;
+report.run.results[0]!.attempts[0]!.expectedFailure?.error?.code satisfies string | undefined;
 report.run.filters?.[0]?.outcome satisfies 'failed' | 'timed-out' | undefined;
 // @ts-expect-error only a filtered skip names the test filter that left the test out
 ({ cause: 'explicit', reason: 'not on CI', filter: 'jev' }) satisfies NonNullable<Report['run']['results'][number]['skip']>;

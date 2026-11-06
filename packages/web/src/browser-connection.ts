@@ -1,8 +1,14 @@
 /** Shares one browser process connection across a worker's attempts. */
 
-import type { Browser } from 'playwright-core';
-import { chromium, firefox, selectors, webkit } from 'playwright-core';
+import type { Browser, BrowserType } from 'playwright-core';
 import { SELECTOR_ENGINES } from './selector-engines.ts';
+
+/**
+ * Playwright, imported the first time a browser is looked up, launched, or
+ * attached to. A process that only reads the config (`e2e list`, a run whose
+ * browsers come from a provider) never loads it.
+ */
+const loadPlaywright = () => import('playwright-core');
 
 /** Every browser the engine launches, in the order the CLI lists them. */
 export const BROWSER_NAMES = ['chromium', 'firefox', 'webkit'] as const;
@@ -56,9 +62,14 @@ export class BrowserConnection {
       if (this.pending !== cached) return this.acquire(name, headed, timeoutMs, connect);
       this.pending = undefined;
     }
-    await registerSelectorEngines();
-    const launching =
-      connect !== undefined ? connect() : browserType(name).launch({ headless: !headed, timeout: timeoutMs, ...RUNNER_OWNS_SIGNALS });
+    // Set before anything awaits: the first call loads Playwright, and a `dispose`
+    // that arrives meanwhile must close the browser this launch produces, while a
+    // second caller waits for it instead of launching another.
+    const launching = registerSelectorEngines().then(() =>
+      connect !== undefined
+        ? connect()
+        : browserType(name).then((type) => type.launch({ headless: !headed, timeout: timeoutMs, ...RUNNER_OWNS_SIGNALS })),
+    );
     this.pending = launching;
     try {
       return await launching;
@@ -81,7 +92,8 @@ export class BrowserConnection {
 }
 
 /** Maps a browser name to its Playwright BrowserType. */
-export function browserType(name: BrowserName): typeof chromium {
+export async function browserType(name: BrowserName): Promise<BrowserType> {
+  const { chromium, firefox, webkit } = await loadPlaywright();
   if (name === 'firefox') return firefox;
   if (name === 'webkit') return webkit;
   return chromium;
@@ -95,6 +107,7 @@ export function browserType(name: BrowserName): typeof chromium {
  */
 export async function connectCdp(endpoint: string, timeoutMs: number): Promise<Browser> {
   await registerSelectorEngines();
+  const { chromium } = await loadPlaywright();
   return chromium.connectOverCDP(endpoint, { timeout: timeoutMs });
 }
 
@@ -110,10 +123,14 @@ function registerSelectorEngines(): Promise<void> {
   // Playwright serializes a function argument with `toString()` and invokes it
   // in the page, so each factory is materialized from its source here to keep
   // the in-page code self-contained, the same way the reader is assembled.
-  selectorEngines ??= Promise.all(
-    SELECTOR_ENGINES.map(({ name, source }) =>
-      selectors.register(name, new Function(`return ${source};`)() as () => unknown),
-    ),
-  ).then(() => undefined);
+  selectorEngines ??= loadPlaywright()
+    .then(({ selectors }) =>
+      Promise.all(
+        SELECTOR_ENGINES.map(({ name, source }) =>
+          selectors.register(name, new Function(`return ${source};`)() as () => unknown),
+        ),
+      ),
+    )
+    .then(() => undefined);
   return selectorEngines;
 }

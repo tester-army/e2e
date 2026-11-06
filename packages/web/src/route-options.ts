@@ -8,6 +8,7 @@
  */
 
 import { statSync } from 'node:fs';
+import { types } from 'node:util';
 import { rejectUnknownOptions, TestError, validateJsonValue, type JsonValue } from 'e2e/engine';
 import { headerProblem } from './protected-app.ts';
 
@@ -17,12 +18,17 @@ export interface FulfillDecision {
   readonly headers: Record<string, string>;
   readonly contentType?: string;
   readonly json?: JsonValue;
-  readonly body?: string;
+  /** A `Buffer` for bytes, which Playwright sends unchanged. */
+  readonly body?: string | Buffer;
   /** Absolute; Playwright reads it and derives `Content-Type` from its extension when none is given. */
   readonly path?: string;
 }
 
-/** What `route.continue` hands Playwright once the overrides are validated; `headers` before the site's are merged in. */
+/**
+ * What `route.continue` hands Playwright once the overrides are validated;
+ * `headers` before the site's are merged in, a header set to `undefined`
+ * left out so the request goes without it.
+ */
 export interface ContinueDecision {
   readonly url?: string;
   readonly method?: string;
@@ -58,7 +64,7 @@ export function parseFulfill(
   if (json !== undefined) validateJsonValue(json, 'route.fulfill json');
   const file = path === undefined ? undefined : resolvePath(requireString('route.fulfill', 'path', path, true));
   if (file !== undefined) requireFile(file);
-  const replied = requireHeaders('route.fulfill', headers) ?? {};
+  const replied = requireHeaders('route.fulfill', headers, 'response') ?? {};
   const type = contentType === undefined
     ? Object.entries(replied).find(([name]) => name.toLowerCase() === 'content-type')?.[1]
     : requireString('route.fulfill', 'contentType', contentType, true);
@@ -67,7 +73,7 @@ export function parseFulfill(
     headers: replied,
     ...(type === undefined ? {} : { contentType: type }),
     ...(json === undefined ? {} : { json: json as JsonValue }),
-    ...(body === undefined ? {} : { body: requireString('route.fulfill', 'body', body, false) }),
+    ...(body === undefined ? {} : { body: requireBody(body) }),
     ...(file === undefined ? {} : { path: file }),
   };
 }
@@ -93,7 +99,7 @@ export function parseContinue(
       throw new TestError('INVALID_ARGUMENT', `route.continue url must keep the request's ${from} scheme; got ${to}`);
     }
   }
-  const replaced = requireHeaders('route.continue', headers);
+  const replaced = requireHeaders('route.continue', headers, 'request');
   return {
     ...(target === undefined ? {} : { url: target }),
     ...(method === undefined ? {} : { method: requireString('route.continue', 'method', method, true) }),
@@ -132,17 +138,37 @@ function requireString(api: string, key: string, value: unknown, nonempty: boole
   return value;
 }
 
-/** A header map the browser can send, or `undefined` when none was given. */
-function requireHeaders(api: string, value: unknown): Record<string, string> | undefined {
+/**
+ * A header map the browser can send, or `undefined` when none was given. A
+ * request header set to `undefined` is dropped, so the request goes without
+ * it. A response `set-cookie` may join several cookies with `\n`, the way
+ * Playwright reports them, and each line is checked as its own value; any
+ * other line break is refused as header injection.
+ */
+function requireHeaders(api: string, value: unknown, kind: 'request' | 'response'): Record<string, string> | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new TestError('INVALID_ARGUMENT', `${api} headers must map names to string values`);
   }
+  const headers: [string, string][] = [];
   for (const [name, entry] of Object.entries(value)) {
-    const problem = headerProblem(name, entry);
-    if (problem !== undefined) throw new TestError('INVALID_ARGUMENT', `${api} ${problem}`);
+    if (entry === undefined && kind === 'request') continue;
+    if (typeof entry !== 'string') throw new TestError('INVALID_ARGUMENT', `${api} ${headerProblem(name, entry)}`);
+    const lines = kind === 'response' && name.toLowerCase() === 'set-cookie' ? entry.split('\n') : [entry];
+    for (const line of lines) {
+      const problem = headerProblem(name, line);
+      if (problem !== undefined) throw new TestError('INVALID_ARGUMENT', `${api} ${problem}`);
+    }
+    headers.push([name, entry]);
   }
-  return value as Record<string, string>;
+  return Object.fromEntries(headers);
+}
+
+/** A fulfill body: a string as is, or bytes as a `Buffer` over the same memory so Playwright sends them unchanged. */
+function requireBody(value: unknown): string | Buffer {
+  if (typeof value === 'string') return value;
+  if (types.isUint8Array(value)) return Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+  throw new TestError('INVALID_ARGUMENT', 'route.fulfill body must be a string, Buffer, or Uint8Array');
 }
 
 /** Rejects a path that does not name a regular file; synchronous so the check lands before the decision. */

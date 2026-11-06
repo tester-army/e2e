@@ -44,7 +44,7 @@ export type {
   ProviderRecordingStopContext,
   ProviderRecordingTarget,
 } from './recording.ts';
-export { Deadline, pollCondition, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
+export { Deadline, pollCondition, stepTimeout, withTimeout, withinCleanupBudget, type PollConditionOptions } from '../internal/time.ts';
 export { sameSite, siteOf, urlMatches } from '../internal/urls.ts';
 export { obj, type WithoutUndefined } from '../internal/objects.ts';
 import type { AppPermissionState, Expectable, Locator, Screen, Secret } from '../types.ts';
@@ -180,7 +180,7 @@ export type EngineAppDeclaration = EngineAppInfo & {
 export interface FixtureOperation<Args extends unknown[] = unknown[]> {
   readonly kind: 'resource' | 'assertion';
   readonly label?: (...args: Args) => string;
-  /** Action timeout by default; false when the method owns its assertion/navigation deadline. */
+  /** Action timeout by default, none of its own for 0; false when the method owns its assertion/navigation deadline. */
   readonly timeout?: number | false | ((...args: Args) => number | undefined);
   /** Assertions verify by default; waits may opt in as well. */
   readonly verifies?: boolean;

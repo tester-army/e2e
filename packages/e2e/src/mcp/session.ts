@@ -31,6 +31,7 @@ import { selectStandaloneTest, testLocation } from '../run/standalone-test.ts';
 import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
 import { appLines } from './app-lines.ts';
+import { SESSION_BOUNDS } from './bounds.ts';
 import type { LoadedConfig } from './config.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
@@ -44,8 +45,6 @@ const SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 const SESSION_IDLE_MS = 30 * 60 * 1000;
 /** How long the attempt outlives its step, so a step that hit the TTL is still closed in order. */
 const CLOSE_GRACE_MS = 60 * 1000;
-/** How many sessions `e2e mcp --max-sessions` allows at once, each a browser or a device. */
-export const SESSION_BOUNDS = { min: 1, max: 16, default: 4 } as const;
 const SESSION_INSTRUCTION = 'Interactive session: a coding agent drives the app over MCP.';
 
 interface LiveSession {

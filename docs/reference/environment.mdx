@@ -1,9 +1,8 @@
 ---
 title: Environment variables
 description: Every variable the runner and the first-party engines read, and what each one does.
-icon: "dollar-sign"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/environment.png?v=67a4d71e70"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/environment.png?v=67a4d71e70"
+"og:image": "https://e2e.com/docs/images/og/reference/environment.png?v=67a4d71e70"
+"twitter:image": "https://e2e.com/docs/images/og/reference/environment.png?v=67a4d71e70"
 ---
 
 These variables configure the runner and first-party packages. In the tables,
@@ -111,7 +110,7 @@ Replaces [`cache.dir`](/reference/config#cache) for `e2e run` and
 | --- | --- | --- | --- |
 | `NO_COLOR` | `NO_COLOR=1` | set | Plain CLI output. Without it, colors are on for a TTY or in CI, off when piped |
 | `FORCE_COLOR` | `FORCE_COLOR=1` | set | Colored CLI output even when piped |
-| `TERM` | `TERM=dumb` | value | `dumb` draws the `e2e init` wordmark at rest, without animation, as in CI |
+| `TERM` | `TERM=dumb` | value | `dumb` draws the `e2e init` logo at rest, without animation, as in CI |
 | `GITHUB_SHA`, `GITHUB_HEAD_REF`, `GITHUB_REF_NAME` | `GITHUB_REF_NAME=main` | value | The commit and branch the report records under `run.vcs` when `git` cannot read the project root. `GITHUB_HEAD_REF` wins over `GITHUB_REF_NAME` |
 
 `--debug` and `--ai-trace` are flags, not variables; see

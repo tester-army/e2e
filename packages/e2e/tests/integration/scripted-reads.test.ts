@@ -15,7 +15,10 @@ test('reads answer from the current tree', async ({ app, screen }) => {
   expect(await screen.getByRole('heading', { level: 1 }).textContent()).toBe('Dashboard');
   expect(await screen.getByRole('image', { name: 'Map' }).textContent()).toBeNull();
   expect(await screen.getByLabel('Search').inputValue()).toBe('hello-value');
-  expect(await screen.getByRole('heading', { level: 1 }).inputValue()).toBe('');
+  const noValue = await screen.getByRole('heading', { level: 1 }).inputValue().catch((error: unknown) => error);
+  expect(noValue).toMatchObject({ code: 'ACTION_FAILED' });
+  const noState = await screen.getByRole('button', { name: 'Submit' }).isChecked().catch((error: unknown) => error);
+  expect(noState).toMatchObject({ code: 'ACTION_FAILED' });
   expect(await screen.getByTestId('card').getAttribute('class')).toBe('card active');
   expect(await screen.getByTestId('card').getAttribute('missing')).toBeNull();
   expect(await screen.getByRole('button', { name: 'Submit' }).isVisible()).toBe(true);
@@ -49,7 +52,6 @@ test('reads answer from the current tree', async ({ app, screen }) => {
 test('secure fields still answer state reads', async ({ app, screen }) => {
   await app.open('/');
   expect(await screen.getByLabel('Password').isEnabled()).toBe(true);
-  expect(await screen.getByLabel('Password').isChecked()).toBe(false);
   expect(await screen.getByLabel('Password').isVisible()).toBe(true);
   expect(await screen.getByLabel('Password').boundingBox()).toEqual({ x: 10, y: 140, width: 200, height: 30 });
 });

@@ -131,6 +131,30 @@ test('needs the database', async ({ app }) => {
 });
 `;
 
+const MARKED_HOOKS = `import { beforeAll, test } from 'e2e';
+
+beforeAll(() => {
+  throw new Error('database is down');
+});
+
+test('needs the database', { fail: 'the database gap' }, async ({ app }) => {
+  await app.open('/');
+});
+`;
+
+const EXPECTED = `import { expect, test } from 'e2e';
+
+test('counter gap', { fail: 'the counter starts at one' }, async ({ app, screen }) => {
+  await app.open('/');
+  await expect(screen.getByRole('status', { name: 'Counter' })).toHaveText('1', { timeout: 200 });
+});
+
+test('fixed gap', async ({ app }) => {
+  test.fail('the home page is broken');
+  await app.open('/');
+});
+`;
+
 const VISUAL = `import { expect, test } from 'e2e';
 
 test('matches its screenshot', async ({ app, screen }) => {
@@ -191,6 +215,8 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         'tests/sloppy.e2e.ts': SLOPPY,
         'tests/hooks.e2e.ts': HOOKS,
         'tests/visual.e2e.ts': VISUAL,
+        'tests/expected.e2e.ts': EXPECTED,
+        'tests/marked-hooks.e2e.ts': MARKED_HOOKS,
       });
       const transport = new StdioClientTransport({
         command: process.execPath,
@@ -310,6 +336,22 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
       expect(opened.text).toMatch(/\n\nNo screen to show: no app page is open/);
       const closed = await invoke('close_session');
       expect(closed.text).not.toContain('HOOK_FAILED');
+    });
+
+    it('tells a test that failed as test.fail expected, and one that passed unexpectedly', async () => {
+      const expected = await invoke('open_session', { test: `tests/expected.e2e.ts:${lineOf(EXPECTED, "test('counter gap'")}` });
+      expect(expected.text).toMatch(/^Test "counter gap" \(tests\/expected\.e2e\.ts:\d+\) failed as expected after \S+; 2 steps ran\.\nExpected to fail: the counter starts at one\nASSERTION_FAILED: /);
+      expect(expected.text).toContain('Steps:');
+      await invoke('close_session');
+      const fixed = await invoke('open_session', { test: `tests/expected.e2e.ts:${lineOf(EXPECTED, "test('fixed gap'")}` });
+      expect(fixed.text).toMatch(/^Test "fixed gap" \(tests\/expected\.e2e\.ts:\d+\) failed after \S+; 1 step ran\.\nExpected to fail: the home page is broken\nUNEXPECTED_PASS: test is marked test.fail \("the home page is broken"\) but passed/);
+      await invoke('close_session');
+    });
+
+    it('does not cover a beforeAll failure with test.fail', async () => {
+      const opened = await invoke('open_session', { test: 'tests/marked-hooks.e2e.ts' });
+      expect(opened.text).toMatch(/^Test "needs the database" \(tests\/marked-hooks\.e2e\.ts:\d+\) failed after \S+; 0 steps ran\.\nExpected to fail: the database gap\nHOOK_FAILED in beforeAll: /);
+      await invoke('close_session');
     });
 
     it('compares a screenshot against the baseline an earlier session wrote', async () => {

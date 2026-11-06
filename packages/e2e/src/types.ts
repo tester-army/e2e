@@ -439,7 +439,8 @@ export interface ActionOptions {
 /**
  * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
- * `tap({ position })` it is the node's own top-left corner.
+ * `tap({ position })` it is the node's own top-left corner, inside its
+ * border on a document platform.
  */
 export type Point = ViewportPoint;
 
@@ -457,11 +458,11 @@ export interface ClickOptions extends ActionOptions {
 /** `tap` and `click` options. */
 export interface TapOptions extends ClickOptions {
   /**
-   * Where to tap, relative to the node's top-left corner. Without it the
-   * platform picks a point of the node, usually its center, behind its own
-   * actionability checks; with it the pointer is dispatched at that point
-   * once the node is in view and has a box, which needs the engine's `tap`
-   * pointer action.
+   * Where to tap, relative to the node's top-left corner, inside its border
+   * on a document platform. Without it the platform picks a point of the
+   * node, usually its center, behind its own actionability checks; with it
+   * the pointer is dispatched at that point once the node is in view and has
+   * a box, which needs the engine's `tap` pointer action.
    */
   position?: Point;
 }
@@ -574,7 +575,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   focus(options?: ActionOptions): Promise<void>;
   /** Hovers over exactly one matching actionable node. */
   hover(options?: ActionOptions): Promise<void>;
-  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root. */
+  /** Sets the files of exactly one file input, or of a control that opens a file chooser; paths resolve from the project root, and an empty array clears the input. */
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void>;
   /** Drags exactly one node to exactly one target. */
   dragTo(target: Locator, options?: ActionOptions): Promise<void>;
@@ -584,7 +585,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   swipe(options: SwipeOptions & ActionOptions): Promise<void>;
   /** Reads normalized text once a match exists, without retrying for a particular value. */
   textContent(): Promise<string | null>;
-  /** Reads the current input value. */
+  /** Reads the current input value; throws `ACTION_FAILED` on a node with no value, such as a heading. */
   inputValue(): Promise<string>;
   /** Reads one attribute. */
   getAttribute(name: string): Promise<string | null>;
@@ -596,7 +597,7 @@ export interface Locator extends Omit<Screen, 'tree' | 'debug'> {
   isEnabled(): Promise<boolean>;
   /** Reads current disabled state, the negation of `isEnabled`. */
   isDisabled(): Promise<boolean>;
-  /** Reads current checked state. */
+  /** Reads current checked state; throws `ACTION_FAILED` on a node with no checked state, such as a button. */
   isChecked(): Promise<boolean>;
   /** Reads the current viewport-relative rectangle. */
   boundingBox(): Promise<{ x: number; y: number; width: number; height: number } | null>;
@@ -727,6 +728,12 @@ export interface TestOptions {
   tags?: readonly string[];
   /** Skips the test; a string is the reason. Any truthy layer skips. */
   skip?: boolean | string;
+  /**
+   * Expects the test to fail; a string is the reason. A test failure then
+   * passes it, and a pass fails it with `UNEXPECTED_PASS`. Not allowed inside
+   * a serial group.
+   */
+  fail?: boolean | string;
   /** Focuses the test locally. CI rejects it with `ONLY_IN_CI`. */
   only?: boolean;
   /** Platforms the test runs on; other targets skip it. Innermost wins. */
@@ -761,12 +768,12 @@ export interface TestOptions {
   video?: RecordingMode;
 }
 
-export interface DescribeOptions extends Omit<TestOptions, 'only'> {
+export interface DescribeOptions extends Omit<TestOptions, 'only' | 'fail'> {
   /** Runs the group as one ordered retry unit with shared app state. Nesting one serial group in another is a `COLLECTION_ERROR`. */
   serial?: boolean;
 }
 
-export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'agent'> {
+export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'fail' | 'agent'> {
   /** Session names this setup test MUST save. */
   sessions: readonly string[];
   /** A setup test runs once per target, so it pins at most one agent. */
@@ -830,6 +837,19 @@ export interface TestAPI<Fixtures = TestFixtures> {
    */
   skip(condition: boolean, reason?: string): void;
   skip(reason?: string): void;
+  /** Registers one test that is expected to fail. */
+  fail(title: string, fn: TestFn<Fixtures>): TestCase;
+  /**
+   * Inside a running test: marks it expected to fail when `condition` is
+   * true (or always, with no condition). The body keeps running. A test
+   * failure then passes the test, keeping the error and `reason` in the
+   * report; a pass fails it with `UNEXPECTED_PASS`. Infrastructure failures
+   * and interrupts are not covered. A setup test or a serial group member
+   * cannot be marked. Outside a test body this form is `COLLECTION_ERROR`;
+   * use `test.fail(title, fn)` or the `fail` option to mark at collection.
+   */
+  fail(condition: boolean, reason?: string): void;
+  fail(reason?: string): void;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */

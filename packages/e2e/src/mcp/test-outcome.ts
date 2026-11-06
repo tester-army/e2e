@@ -31,9 +31,13 @@ const STEP_GLYPH: Record<StepRecord['status'], string> = { passed: '✓', failed
 
 /** The opening lines of a session that ran `test`, before its summary and catalog. */
 export function describeTestOutcome(test: StandaloneTest, outcome: StandaloneTestOutcome, projectRoot: string): string {
-  const { steps, error, failure } = outcome;
+  const { steps, failure, expectedFailure } = outcome;
+  // A failure the test expected is the story of its pass.
+  const error = outcome.error ?? expectedFailure?.error;
   const title = test.pair.test.titlePath.join(' › ');
-  const lines = [`Test "${title}" (${testLocation(test.pair.test)}) ${STATUS_TEXT[outcome.status]} after ${formatTime(outcome.durationMs)}; ${plural(steps.length, 'step')} ran.`];
+  const status = expectedFailure?.error === undefined ? STATUS_TEXT[outcome.status] : 'failed as expected';
+  const lines = [`Test "${title}" (${testLocation(test.pair.test)}) ${status} after ${formatTime(outcome.durationMs)}; ${plural(steps.length, 'step')} ran.`];
+  if (expectedFailure !== undefined) lines.push(`Expected to fail: ${expectedFailure.reason}`);
   if (error !== undefined) {
     const phase = error.phase === undefined || error.phase === 'body' ? '' : ` in ${error.phase}`;
     lines.push(`${error.code}${phase}: ${error.message}`);
@@ -54,7 +58,7 @@ export function describeTestOutcome(test: StandaloneTest, outcome: StandaloneTes
     lines.push(`Also failed${secondary.phase === undefined || secondary.phase === 'body' ? '' : ` in ${secondary.phase}`}: ${secondary.code}: ${secondary.message}`);
   }
   // A pass needs no story; where a run stopped does.
-  if (outcome.status !== 'passed' && steps.length > 0) {
+  if ((outcome.status !== 'passed' || error !== undefined) && steps.length > 0) {
     const shown = steps.slice(-MAX_STEPS);
     lines.push(shown.length < steps.length ? `Steps, the last ${shown.length} of ${steps.length}:` : 'Steps:');
     for (const step of shown) lines.push(`  ${stepLine(step)}`);

@@ -3,19 +3,19 @@
   "name": "io.github.tester-army/e2e",
   "title": "e2e",
   "description": "Open live web and mobile app sessions from an e2e project to inspect the app and try locators.",
-  "websiteUrl": "https://e2e.tester.army/docs/reference/mcp",
+  "websiteUrl": "https://e2e.com/docs/reference/mcp",
   "repository": {
     "url": "https://github.com/tester-army/e2e",
     "source": "github",
     "subfolder": "packages/e2e"
   },
-  "version": "0.22.0",
+  "version": "0.23.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "e2e",
-      "version": "0.22.0",
+      "version": "0.23.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"

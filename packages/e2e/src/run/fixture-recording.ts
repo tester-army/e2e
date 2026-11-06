@@ -1,7 +1,7 @@
 /** Explicit fixture operations: open the step before running any engine code. */
 import type { FixtureOperation, FixtureOperations } from '../engine/index.ts';
 import { asEngineError, ConfigurationError, TestError, translateEngineError } from '../internal/errors.ts';
-import { withAbort, withTimeout } from '../internal/time.ts';
+import { stepTimeout, withAbort, withTimeout } from '../internal/time.ts';
 import type { AttemptEnvironment } from './fixtures.ts';
 
 export class FixtureRecorder {
@@ -72,12 +72,10 @@ export class FixtureRecorder {
     const label = operation.label?.(...args) ?? '';
     return environment.steps.run(operation.kind, api, label, () => {
       const timeout = typeof operation.timeout === 'function' ? operation.timeout(...args) : operation.timeout;
-      if (timeout !== false && timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
-        throw new TestError('INVALID_ARGUMENT', `${api} timeout must be positive and finite`);
-      }
-      const pending = withAbort(() => translated(api, body), environment.budget.signal, () => new TestError('CANCELLED', `${api} cancelled`));
-      if (timeout === false) return pending;
-      const timeoutMs = timeout ?? environment.config.actionTimeout;
+      const own = timeout === false ? false : stepTimeout(timeout, api);
+      const pending = withAbort(() => translated(label === '' ? api : `${api} ${label}`, body), environment.budget.signal, () => new TestError('CANCELLED', `${api} cancelled`));
+      if (own === false) return pending;
+      const timeoutMs = own ?? environment.config.actionTimeout;
       return withTimeout(pending, timeoutMs, () => new TestError('ACTION_FAILED', `${api} exceeded its timeout of ${timeoutMs}ms`));
     }, { verifies: operation.verifies ?? operation.kind === 'assertion' });
   }
@@ -87,13 +85,14 @@ export class FixtureRecorder {
  * Runs one operation and maps an `EngineError` it rejects with onto the runner
  * taxonomy, as every other engine surface is mapped: a contributed fixture
  * that lost its session throws `INVALID_STATE`, which a test reads as
- * `APP_NOT_OPEN`. Anything else is rethrown as the fixture threw it.
+ * `APP_NOT_OPEN`. Anything else is rethrown as the fixture threw it. `call`
+ * names the operation and its label, so a timeout says what it waited for.
  */
-async function translated(api: string, body: () => Promise<unknown>): Promise<unknown> {
+async function translated(call: string, body: () => Promise<unknown>): Promise<unknown> {
   try {
     return await body();
   } catch (cause) {
-    throw asEngineError(cause) === undefined ? cause : translateEngineError(cause, ` in ${api}`);
+    throw asEngineError(cause) === undefined ? cause : translateEngineError(cause, ` in ${call}`);
   }
 }
 

@@ -1,9 +1,8 @@
 ---
 title: test
 description: Tests, setup tests, groups, hooks, options, and fixtures.
-icon: "flask-vial"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/test.png?v=d1ad3b01c3"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/test.png?v=d1ad3b01c3"
+"og:image": "https://e2e.com/docs/images/og/reference/test.png?v=d1ad3b01c3"
+"twitter:image": "https://e2e.com/docs/images/og/reference/test.png?v=d1ad3b01c3"
 ---
 
 `test` declares tests, setup tests, groups, and hooks. Declarations run
@@ -33,6 +32,7 @@ describe('checkout', { tags: ['billing'] }, () => {
 | --- | --- |
 | [`test`](#test) | `TestCase` |
 | [`test.skip`](#test-skip) | `TestCase \| void` |
+| [`test.fail`](#test-fail) | `TestCase \| void` |
 | [`test.only`](#test-only) | `TestCase` |
 | [`test.setup`](#test-setup) | `TestCase` |
 | [`test.extend`](#test-extend) | `TestAPI` |
@@ -123,6 +123,33 @@ test('switches organizations', { session: 'admin' }, async ({ app, agent }) => {
 | --- | --- |
 | `INVALID_ARGUMENT` | Called in a setup test. A setup test cannot skip because other tests depend on its sessions. |
 | `COLLECTION_ERROR` | The conditional form, outside a test body. |
+
+#### `test.fail`
+
+Registers a test that is expected to fail, or marks the running test.
+
+```ts
+test.fail('shows the cart badge', async ({ app, screen }) => {}); // at registration
+test.fail(platform === 'web', 'tap on a display: contents element'); // inside a body
+test.fail('known gap'); // inside a body, always
+test('exports a PDF', { fail: 'PDF export is broken' }, async ({ app }) => {}); // by option
+```
+
+- The body keeps running after the call. A `beforeEach` hook can mark the
+  test too.
+- A failed assertion, action, thrown error, or timeout makes the test
+  `passed`. The report keeps the reason and the error.
+- A pass makes the test `failed` with `UNEXPECTED_PASS`. Remove the mark
+  once the cause is fixed.
+- Infrastructure errors, interrupts, a failed `beforeAll` or `afterAll`, and
+  API misuse such as `INVALID_ARGUMENT` still fail the test.
+- An expected failure is not retried. An unexpected pass is.
+- A skip wins over the mark.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A true condition in a setup test, a serial group member, an `afterEach` hook, or a fixture teardown. |
+| `COLLECTION_ERROR` | The conditional form, outside a test body, or the `fail` option inside a serial group. |
 
 #### `test.only`
 
@@ -316,6 +343,7 @@ blocked event loop hangs it.
 | [`retries`](#retries) | `number` | `config.retries` |
 | [`tags`](#tags) | `readonly string[]` | - |
 | [`skip`](#skip) | `boolean \| string` | - |
+| [`fail`](#fail) | `boolean \| string` | - |
 | [`only`](#only) | `boolean` | - |
 | [`platforms`](#platforms) | `readonly string[]` | - |
 | [`requires`](#requires) | `readonly Capability[]` | - |
@@ -328,8 +356,8 @@ blocked event loop hangs it.
 | [`sessions`](#sessions) | `readonly string[]` | required |
 
 `test` takes every option but `serial` and `sessions`. `describe` takes
-every option but `only` and `sessions`. `test.setup` requires `sessions` and
-takes no `session`, `only`, or `skip`.
+every option but `only`, `fail`, and `sessions`. `test.setup` requires
+`sessions` and takes no `session`, `only`, `skip`, or `fail`.
 
 Resolution order: test, nearest group, outer groups, config, built-in
 default. Inside a [serial group](#serial), the group's `retries`, `trace`, and
@@ -376,6 +404,15 @@ Skips the test at collection. A string is the reason. Any truthy layer skips.
 
 ```ts
 test('exports a PDF', { skip: 'PDF export is off on staging' }, async ({ app }) => {});
+```
+
+#### `fail`
+
+Expects the test to fail; see [`test.fail`](#test-fail). A string is the
+reason. Not allowed inside a serial group.
+
+```ts
+test('exports a PDF', { fail: 'PDF export is broken' }, async ({ app }) => {});
 ```
 
 #### `only`
@@ -642,6 +679,19 @@ export interface TestAPI<Fixtures = TestFixtures> {
    */
   skip(condition: boolean, reason?: string): void;
   skip(reason?: string): void;
+  /** Registers one test that is expected to fail. */
+  fail(title: string, fn: TestFn<Fixtures>): TestCase;
+  /**
+   * Inside a running test: marks it expected to fail when `condition` is
+   * true (or always, with no condition). The body keeps running. A test
+   * failure then passes the test, keeping the error and `reason` in the
+   * report; a pass fails it with `UNEXPECTED_PASS`. Infrastructure failures
+   * and interrupts are not covered. A setup test or a serial group member
+   * cannot be marked. Outside a test body this form is `COLLECTION_ERROR`;
+   * use `test.fail(title, fn)` or the `fail` option to mark at collection.
+   */
+  fail(condition: boolean, reason?: string): void;
+  fail(reason?: string): void;
   /** Registers one focused local test. CI rejects focused tests. */
   only(title: string, fn: TestFn<Fixtures>): TestCase;
   /** Registers one setup test with statically declared session outputs. */
@@ -708,6 +758,12 @@ export interface TestOptions {
   tags?: readonly string[];
   /** Skips the test; a string is the reason. Any truthy layer skips. */
   skip?: boolean | string;
+  /**
+   * Expects the test to fail; a string is the reason. A test failure then
+   * passes it, and a pass fails it with `UNEXPECTED_PASS`. Not allowed inside
+   * a serial group.
+   */
+  fail?: boolean | string;
   /** Focuses the test locally. CI rejects it with `ONLY_IN_CI`. */
   only?: boolean;
   /** Platforms the test runs on; other targets skip it. Innermost wins. */
@@ -742,12 +798,12 @@ export interface TestOptions {
   video?: RecordingMode;
 }
 
-export interface DescribeOptions extends Omit<TestOptions, 'only'> {
+export interface DescribeOptions extends Omit<TestOptions, 'only' | 'fail'> {
   /** Runs the group as one ordered retry unit with shared app state. Nesting one serial group in another is a `COLLECTION_ERROR`. */
   serial?: boolean;
 }
 
-export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'agent'> {
+export interface SetupOptions extends Omit<TestOptions, 'session' | 'only' | 'skip' | 'fail' | 'agent'> {
   /** Session names this setup test MUST save. */
   sessions: readonly string[];
   /** A setup test runs once per target, so it pins at most one agent. */

@@ -42,7 +42,7 @@ The wizard picks the engines (web, mobile, or both) and a model provider (None f
 and offers to install this skill, register the MCP server for your coding
 agent, and install dependencies. `--yes` picks the web engine (Playwright) and Vercel AI
 Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
-symlinks to it), registers MCP in `.mcp.json` and `.cursor/mcp.json`, skips
+symlinks to it), registers MCP in `.mcp.json`, `.cursor/mcp.json`, and `.codex/config.toml`, skips
 installing dependencies. A flag per question overrides one default:
 `--engine` (`web,mobile` for both), `--gateway`, `--endpoint`, `--skills`,
 `--mcp` (comma-separated locations, or `none`), `--install`; `npx e2e init --help` lists the values.
@@ -53,8 +53,8 @@ asks only for the skill, MCP, and install.
 
 The wizard needs a terminal: without one, `init` exits with code 2. From an
 agent's shell, run `npx e2e init --yes` when its defaults fit and install the
-dependencies after it, or install by hand (below). Neither registers the MCP
-server for Codex (topic `mcp`).
+dependencies after it, or install by hand (below). `--yes` includes MCP
+registration; a manual install needs a separate entry (topic `mcp`).
 
 Init adds dependencies and a `test:e2e` script to `package.json`, writes
 `e2e.config.ts` and `tests/example.e2e.ts`, updates `.gitignore`, leaves
@@ -436,3 +436,6 @@ export default {
 
 Re-running `init` preserves the e2e MCP server's environment and client settings
 while repairing its launch command. A current registration is left unchanged.
+Codex reads `.codex/config.toml` only in trusted projects; start a new session
+after installing dependencies. To add Codex to an existing setup, run the
+installed CLI with `e2e init --yes --skills none --mcp .codex/config.toml`.

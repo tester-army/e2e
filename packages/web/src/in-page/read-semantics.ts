@@ -1457,6 +1457,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     // no rect, as Playwright's `boundingBox()` answers null; a box with no
     // size, or one `visibility: hidden` keeps, is still a rect.
     const rect = el.getClientRects().length === 0 ? null : el.getBoundingClientRect();
+    const borderLeft = Number.parseFloat(style?.borderLeftWidth ?? '') || 0;
+    const borderTop = Number.parseFloat(style?.borderTopWidth ?? '') || 0;
     const role = isDocumentRoot ? 'document' : roleOf(el, tag);
     let level: number | null = null;
     if (role === 'heading') {
@@ -1489,6 +1491,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       attributes,
       testId: el.getAttribute(options.testIdAttribute),
       rect: rect === null ? null : { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+      origin: rect === null || (borderLeft === 0 && borderTop === 0) ? null : { x: rect.x + borderLeft, y: rect.y + borderTop },
     };
   };
 

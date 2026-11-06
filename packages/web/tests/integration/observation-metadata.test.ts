@@ -1,6 +1,7 @@
-import { chromium, type Browser, type ElementHandle } from 'playwright-core';
+import { chromium, type Browser } from 'playwright-core';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { captureDocument } from '../../src/observation.ts';
+import { Published } from '../helpers/published.ts';
 
 let browser: Browser;
 
@@ -9,7 +10,7 @@ afterAll(async () => { await browser.close(); });
 
 it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON', 'function-toString'] as const)('captures live refs when the page overrides %s', async (override) => {
   const page = await browser.newPage();
-  const handles = new Map<string, ElementHandle<Element>>();
+  const published = new Published();
   try {
     await page.setContent(`<button onclick="this.textContent = 'Clicked'">Preserved "quoted" name</button>
       <input type="password" aria-label="Password" value="withheld-secret">`);
@@ -30,7 +31,7 @@ it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON', 'funct
     }, override);
     const captured = await captureDocument({
       testIdAttribute: 'data-testid', site: undefined, reserveIds: () => 1,
-      commit: (id, element) => { handles.set(id, element); },
+      commit: published.commit,
     }, page, { framePath: [], budget: 100, deadline: Date.now() + 10_000, signal: new AbortController().signal });
 
     expect(captured.nodeCount).toBe(3);
@@ -39,10 +40,10 @@ it.each(['stringify', 'bound-stringify', 'object-toJSON', 'array-toJSON', 'funct
     expect(button).toMatchObject({ role: 'button', name: 'Preserved "quoted" name' });
     expect(captured.tree.children?.[1]).toMatchObject({ states: { secure: true }, name: 'Password' });
     expect(JSON.stringify(captured.tree)).not.toContain('withheld-secret');
-    await handles.get(button!.ref.id)!.click();
+    await (await published.element(button!.ref.id)).click();
     expect(await page.getByRole('button').textContent()).toBe('Clicked');
   } finally {
-    await Promise.all([...handles.values()].map((element) => element.dispose()));
+    published.dispose();
     await page.close();
   }
 });

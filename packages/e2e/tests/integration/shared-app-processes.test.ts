@@ -6,11 +6,12 @@
  * start outlives the attempt that began it.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { AppProcesses } from '../../src/run/managed-process.ts';
+import type { ProcessPool } from '../../src/run/process-pool.ts';
 import type { Target } from '../../src/types.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
@@ -25,25 +26,45 @@ const { resolveConfig } = (await import(resolveModule)) as typeof import('../../
 const debugModule = new URL('../../dist/internal/debug.js', import.meta.url).href;
 const { DebugTrace } = (await import(debugModule)) as typeof import('../../src/internal/debug.ts');
 
+/** How long a test waits for the app process to start: vitest's 1 s default is too short on a loaded machine. */
+const PROCESS_POLL = { timeout: 5_000 };
+
 describe('SharedAppProcesses', { timeout: 30_000 }, () => {
   let dir: string;
   let port: number;
   let url: string;
   let command: { readonly executable: string; readonly args: readonly string[] };
-  /** Everything a test started, stopped after it whatever the test asserted. */
+  /** Actual processes, with each stop shared by the pool and teardown. */
   let started: AppProcesses[];
+  /** Calls waiting on the pool, which may reject before their processes stop. */
+  let starting: Promise<unknown>[];
+  /** Actual starts, including the cleanup they await when aborted. */
+  let launching: Promise<unknown>[];
+  /** Aborts the starts a failed test left waiting. */
+  let teardown: AbortController;
 
   beforeEach(async () => {
     dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-shared-apps-'));
+    started = [];
+    starting = [];
+    launching = [];
+    teardown = new AbortController();
     writeStartupScripts(dir);
     port = await freePort();
     url = `http://127.0.0.1:${port}`;
     command = { executable: process.execPath, args: ['server.cjs', String(port)] };
-    started = [];
   });
 
-  afterEach(async () => {
+  /** Stops both acquired processes and starts abandoned by their callers. */
+  const stopProcesses = async () => {
+    teardown.abort();
+    await Promise.allSettled(starting);
+    await Promise.allSettled(launching);
     for (const processes of started) await processes.stop(() => undefined);
+  };
+
+  afterEach(async () => {
+    await stopProcesses();
     rmSync(dir, { recursive: true, force: true });
   });
 
@@ -54,25 +75,49 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
       { projectRoot: dir, env: {} },
     );
 
+  /** Tracks the pool's actual starts and shares each stop with teardown. */
+  const trackStarts = (pool: InstanceType<typeof SharedAppProcesses>): ProcessPool => ({
+    acquire: (key, launch, signal) => pool.acquire(key, (scope) => {
+      const pending = launch(scope).then((processes) => {
+        let stopping: Promise<void> | undefined;
+        const tracked: AppProcesses = { stop: (onFailure) => stopping ??= processes.stop(onFailure) };
+        started.push(tracked);
+        return tracked;
+      });
+      launching.push(pending);
+      return pending;
+    }, signal),
+  });
+
   const start = (
     pool: InstanceType<typeof SharedAppProcesses>,
     config: ReturnType<typeof load>,
     name = 't0',
     signal: AbortSignal = new AbortController().signal,
-  ) =>
-    startDeclaredProcesses(
+  ) => {
+    const opening = startDeclaredProcesses(
       config.targets.filter((target) => target.name === name),
       config.projectRoot,
       () => ({ ci: false }),
-      signal,
+      AbortSignal.any([signal, teardown.signal]),
       new DebugTrace(false),
-      pool,
-    ).then((processes) => {
-      started.push(processes);
-      return processes;
-    });
+      trackStarts(pool),
+    );
+    starting.push(opening.catch(() => undefined));
+    return opening;
+  };
 
   const serving = async (): Promise<boolean> => fetch(url).then((response) => response.ok, () => false);
+
+  /** A server whose SIGTERM handler can hold shutdown or record its project. */
+  const shutdownCommand = (onStop: string) => {
+    writeFileSync(path.join(dir, 'shutdown.cjs'), `
+const fs = require('node:fs');
+process.on('SIGTERM', () => { ${onStop} });
+require('./server.cjs');
+`);
+    return { ...command, args: ['shutdown.cjs', String(port)] };
+  };
 
   it('shares the app command sessions on fresh loads both declare, whatever page each opens', async () => {
     /** A fresh load of one config: t0 opens the app's root, t1 a page of it, on one command. */
@@ -124,18 +169,71 @@ describe('SharedAppProcesses', { timeout: 30_000 }, () => {
     const pool = new SharedAppProcesses();
     const cancel = new AbortController();
     const opening = start(pool, config, 't0', cancel.signal);
-    await expect.poll(serving).toBe(true);
+    await expect.poll(serving, PROCESS_POLL).toBe(true);
     cancel.abort();
     await expect(opening).rejects.toMatchObject({ code: 'CANCELLED' });
     // Nobody holds the abandoned start, so the pool stops what it spawned.
-    await expect.poll(serving).toBe(false);
+    await Promise.allSettled(launching);
+    expect(await serving()).toBe(false);
     // The next attempt starts it afresh rather than waiting on the abandoned start.
     const retry = new AbortController();
     const again = start(pool, config, 't0', retry.signal);
-    await expect.poll(serving).toBe(true);
+    await expect.poll(serving, PROCESS_POLL).toBe(true);
     retry.abort();
     await expect(again).rejects.toMatchObject({ code: 'CANCELLED' });
-    await expect.poll(serving).toBe(false);
+    await Promise.allSettled(launching);
+    expect(await serving()).toBe(false);
     expect(startupLog(dir)).toBe('app\napp\n');
+  });
+
+  it.skipIf(process.platform === 'win32')('waits for a stop already running in the pool when teardown begins', async () => {
+    const stoppingFile = path.join(dir, 'stopping');
+    const releaseFile = path.join(dir, 'release-stop');
+    const config = load({ app: { url, command: shutdownCommand(`
+      fs.writeFileSync('stopping', 'started');
+      setInterval(() => { if (fs.existsSync('release-stop')) process.exit(0); }, 10);
+    `) } });
+    const first = await start(new SharedAppProcesses(), config);
+    const stopping = first.stop(() => undefined);
+    let cleaning: Promise<void> | undefined;
+    try {
+      await expect.poll(() => existsSync(stoppingFile), PROCESS_POLL).toBe(true);
+      let cleaned = false;
+      cleaning = stopProcesses().then(() => { cleaned = true; });
+      // An HTTP round trip also lets a prematurely completed teardown finish its microtasks.
+      expect(await serving()).toBe(true);
+      expect(cleaned).toBe(false);
+    } finally {
+      writeFileSync(releaseFile, 'released');
+      await stopping;
+      await cleaning;
+    }
+    expect(await serving()).toBe(false);
+  });
+
+  it.skipIf(process.platform === 'win32')('keeps the project until shutdown completes in the actual afterEach hook', async ({ onTestFinished }) => {
+    const evidence = mkdtempSync(path.join(os.tmpdir(), 'e2e-shared-apps-shutdown-'));
+    const receipt = path.join(evidence, 'shutdown.json');
+    onTestFinished(async () => {
+      try {
+        expect(await serving()).toBe(false);
+        expect(existsSync(dir)).toBe(false);
+        expect(JSON.parse(readFileSync(receipt, 'utf8'))).toEqual({ projectExists: true });
+      } finally {
+        await stopProcesses();
+        rmSync(dir, { recursive: true, force: true });
+        rmSync(evidence, { recursive: true, force: true });
+      }
+    });
+    const config = load({ app: {
+      url,
+      readyUrl: 'http://127.0.0.1:1/',
+      command: shutdownCommand(`setTimeout(() => {
+        fs.writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({ projectExists: fs.existsSync(${JSON.stringify(dir)}) }));
+        process.exit(0);
+      }, 100);`),
+    } });
+    void start(new SharedAppProcesses(), config);
+    await expect.poll(serving, PROCESS_POLL).toBe(true);
   });
 });

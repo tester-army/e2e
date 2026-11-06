@@ -1,6 +1,6 @@
 {
   "name": "e2e",
-  "version": "0.22.0",
+  "version": "0.23.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
   "mcpName": "io.github.tester-army/e2e",
   "keywords": [
@@ -92,19 +92,20 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@ai-sdk/provider": "4.0.35",
+    "@ai-sdk/provider": "4.0.36",
     "@clack/prompts": "1.8.1",
     "@jridgewell/remapping": "2.3.5",
     "@modelcontextprotocol/server": "2.4.0",
+    "@napi-rs/image": "1.16.0",
     "@oxc-project/runtime": "0.157.0",
     "@vitest/expect": "5.1.0",
     "commander": "15.0.0",
-    "fast-png": "8.0.0",
     "get-tsconfig": "4.14.3",
     "oxc-parser": "0.157.0",
     "oxc-transform": "0.157.0",
     "picocolors": "1.1.1",
     "pixelmatch": "8.0.0",
+    "toml-eslint-parser": "1.0.3",
     "zod": "4.6.7"
   },
   "peerDependencies": {
@@ -136,20 +137,18 @@
     }
   },
   "devDependencies": {
-    "@ai-sdk/anthropic": "4.0.96",
-    "@ai-sdk/google": "4.0.111",
-    "@ai-sdk/openai": "4.0.108",
-    "@ai-sdk/openai-compatible": "3.0.84",
-    "@ai-sdk/xai": "5.0.38",
+    "@ai-sdk/anthropic": "4.0.97",
+    "@ai-sdk/google": "4.0.112",
+    "@ai-sdk/openai": "4.0.109",
+    "@ai-sdk/openai-compatible": "3.0.85",
+    "@ai-sdk/xai": "5.0.39",
     "@e2e-dev/web": "workspace:*",
     "@modelcontextprotocol/client": "2.4.0",
     "@openrouter/ai-sdk-provider": "3.1.0",
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
-    "ai": "7.0.162",
+    "ai": "7.0.163",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "pngjs": "7.0.0",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   },

@@ -293,6 +293,23 @@ describe('the TypeScript loader', () => {
     expect(output).toContain(`@oxc-transform/binding-${process.platform}-${process.arch}`);
   });
 
+  it('runs --version, --help, and a test that takes no screenshot without @napi-rs/image', async () => {
+    createProject({ type: 'module' });
+    const hook = "import { registerHooks } from 'node:module';\nregisterHooks({ resolve(specifier, context, nextResolve) {\n  if (specifier === '@napi-rs/image') throw new Error('Cannot find native binding. npm has a bug related to optional dependencies');\n  return nextResolve(specifier, context);\n} });\n";
+    write({
+      'no-image.mjs': hook,
+      'tests/plain.e2e.ts': "import { expect, test } from 'e2e';\n\ntest('runs', () => {\n  expect(1 as number).toBe(1);\n});\n",
+    });
+    const env = { NODE_OPTIONS: `--import ${pathToFileURL(path.join(dir, 'no-image.mjs')).href}` };
+    for (const flag of ['--version', '--help']) {
+      const { stdout } = await execFileAsync(process.execPath, [CLI, flag], { cwd: dir, env: { ...process.env, ...env } });
+      expect(stdout.length).toBeGreaterThan(0);
+    }
+    const { code, stdout } = await runCli(['tests/plain.e2e.ts'], env);
+    expect(stdout).toContain('1 passed');
+    expect(code).toBe(0);
+  });
+
   it.each([
     ['an auto-accessor', { 'lib/accessor.ts': 'export class A {\n  accessor w = 5;\n}\n' }, '../lib/accessor', 'lib/accessor.ts:2:3: `accessor` class fields (auto-accessors) are not supported'],
     [

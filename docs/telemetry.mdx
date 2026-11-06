@@ -1,9 +1,8 @@
 ---
 title: Telemetry
 description: What the CLI sends, what it never sends, and how to turn it off.
-icon: "chart-line"
-"og:image": "https://e2e.tester.army/docs/images/og/telemetry.png?v=723dc5172f"
-"twitter:image": "https://e2e.tester.army/docs/images/og/telemetry.png?v=723dc5172f"
+"og:image": "https://e2e.com/docs/images/og/telemetry.png?v=723dc5172f"
+"twitter:image": "https://e2e.com/docs/images/og/telemetry.png?v=723dc5172f"
 ---
 
 The `e2e` CLI sends anonymous usage data: which commands, engines, and
@@ -143,6 +142,7 @@ own tools count together as `tool`, and any other name as `other`.
 | `status`, `exit_code`, `duration_ms` | The run's outcome |
 | `flags` | The names of the flags given to the run command, never their values |
 | `tests_discovered`, `tests_selected`, `tests_executed`, `tests_passed`, `tests_failed`, `tests_interrupted`, `tests_flaky`, `tests_skipped` | The summary counts |
+| `tests_failed_as_expected` | Tests whose failure `test.fail` covered, counted as passed |
 | `attempts_total`, `tests_retried` | How many attempts the run made across tests and serial groups, and how many of these needed more than one |
 | `filters_run`, `filters_timed_out`, `filters_failed`, `filters_skipped`, `filters_changed_files`, `tests_left_out_by_filters` | How many [test filters](/filters) the run applied, how many ran out of time, and how many failed, whether a run with `--changed-since` called none of them, such as when no file changed, how many files the change had, and how many tests the filters left out. Never a filter's name, reason, or note, a path, or a commit |
 | `targets`, `platforms`, `engines` | How many targets, on which platforms, and with which engines and versions: `web`, `ios`, `web@0.6.1`, or your own engine's name and version |

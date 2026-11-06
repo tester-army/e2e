@@ -9,7 +9,8 @@ import { isRecordingMode, legacyTraceSpelling, RECORDING_MODES } from '../intern
 import { CollectionError } from '../internal/errors.ts';
 import { validateTitle } from '../internal/ids.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
-import { parseSkipCall, skipRunningTest } from '../internal/skip.ts';
+import { markRunningTestExpectedToFail } from '../internal/expected-failure.ts';
+import { parseModifierCall, skipRunningTest } from '../internal/skip.ts';
 import { unknownKeyMessage } from '../internal/options.ts';
 import type { SourceLocation } from '../internal/source.ts';
 import type {
@@ -267,6 +268,7 @@ const TEST_OPTION_KEYS: readonly string[] = Object.keys({
   retries: true,
   tags: true,
   skip: true,
+  fail: true,
   only: true,
   platforms: true,
   requires: true,
@@ -400,6 +402,10 @@ function insideSerial(group: GroupNode | undefined): boolean {
 function validateTestOptions(options: TestOptions, group: GroupNode | undefined, kind: 'test' | 'setup'): void {
   if (kind === 'setup') validateCommonOptions(options, 'setup options', SETUP_OPTION_KEYS);
   else validateCommonOptions(options, 'test options', TEST_OPTION_KEYS);
+  const fail: unknown = options.fail;
+  if (fail !== undefined && typeof fail !== 'boolean' && typeof fail !== 'string') {
+    throw new CollectionError(`test options: fail must be true, false, or a reason string, got ${describeValue(fail)}`);
+  }
   if (insideSerial(group)) {
     const forbidden: (keyof TestOptions)[] = [
       'retries',
@@ -409,6 +415,7 @@ function validateTestOptions(options: TestOptions, group: GroupNode | undefined,
       'platforms',
       'requires',
       'skip',
+      'fail',
       'only',
     ];
     for (const key of forbidden) {
@@ -618,11 +625,19 @@ function createTestAPI(chain: readonly FixtureDefinition[]): TestAPI {
 
   const api: TestAPI = Object.assign(testFunction, {
     skip(first?: string | boolean, second?: TestFn | string): TestCase | undefined {
-      const call = parseSkipCall(first, second);
+      const call = parseModifierCall(first, second);
       if (call.kind === 'register') {
         return requireCollector('test.skip()').registerTest('test', 'skip', call.title, { skip: true }, [], call.fn as TestFn, chain);
       }
       skipRunningTest(call.condition, call.reason);
+      return undefined;
+    },
+    fail(first?: string | boolean, second?: TestFn | string): TestCase | undefined {
+      const call = parseModifierCall(first, second);
+      if (call.kind === 'register') {
+        return requireCollector('test.fail()').registerTest('test', 'normal', call.title, { fail: true }, [], call.fn as TestFn, chain);
+      }
+      markRunningTestExpectedToFail(call.condition, call.reason);
       return undefined;
     },
     only(title: string, fn: TestFn): TestCase {

@@ -18,7 +18,7 @@ export interface RetryAttempt {
   readonly error?: SerializedError | undefined;
 }
 
-/** Only test-category failures and timeouts consume retry budget. */
+/** Only test-category failures and timeouts consume retry budget, an unexpected pass of a `test.fail` test included. */
 export function isRetryEligible(attempt: RetryAttempt): boolean {
   return (
     attempt.status === 'timed-out' ||

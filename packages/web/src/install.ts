@@ -22,10 +22,10 @@ function headlessShellInstalled(browsersPath: string, revision: string): boolean
  * Whether the build the run launches (headless shell for headless chromium, else the full build)
  * is on disk, or undefined when `env` points at another cache than this process loaded.
  */
-function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): boolean | undefined {
+async function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): Promise<boolean | undefined> {
   if (env['PLAYWRIGHT_BROWSERS_PATH'] !== process.env['PLAYWRIGHT_BROWSERS_PATH']) return undefined;
   try {
-    const executable = browserType(name).executablePath();
+    const executable = (await browserType(name)).executablePath();
     if (headed || name !== 'chromium') return existsSync(executable);
     return headlessShellAt(executable);
   } catch {
@@ -83,13 +83,13 @@ export function runPlaywrightCli(args: readonly string[]): Promise<number> {
  * disk, a `warn` when the first run will download it, or none when `env`
  * points at another browser cache than this process loaded.
  */
-export function browserCheck(
+export async function browserCheck(
   name: BrowserName,
   env: NodeJS.ProcessEnv,
   headed: boolean,
-  isInstalled: (name: BrowserName) => boolean | undefined = (browser) => isBrowserInstalled(browser, env, headed),
-): EngineDoctorCheck[] {
-  const installed = isInstalled(name);
+  isInstalled: (name: BrowserName) => boolean | undefined | Promise<boolean | undefined> = (browser) => isBrowserInstalled(browser, env, headed),
+): Promise<EngineDoctorCheck[]> {
+  const installed = await isInstalled(name);
   if (installed === undefined) return [];
   if (installed) return [{ id: 'browser', status: 'pass', message: `${name} is installed` }];
   return [
@@ -124,7 +124,7 @@ export interface EnsureBrowsersOptions {
    * Injected detection for tests; defaults to an executable existence check.
    * Undefined means "cannot tell here": the installer runs and decides.
    */
-  readonly isInstalled?: (name: BrowserName) => boolean | undefined;
+  readonly isInstalled?: (name: BrowserName) => boolean | undefined | Promise<boolean | undefined>;
   /** Injected installer for tests; defaults to spawning the Playwright CLI. */
   readonly install?: (names: readonly BrowserName[], context: InstallContext) => Promise<void>;
   /** Aborts a download in progress; the run's interrupt owns it. */
@@ -161,7 +161,7 @@ export async function ensureBrowsersInstalled(
   const env = options.env ?? process.env;
   const headed = options.headed ?? false;
   const isInstalled = options.isInstalled ?? ((name: BrowserName) => isBrowserInstalled(name, env, headed));
-  const verdicts = new Map([...new Set(names)].map((name) => [name, isInstalled(name)] as const));
+  const verdicts = new Map(await Promise.all([...new Set(names)].map(async (name) => [name, await isInstalled(name)] as const)));
   const missing = [...verdicts.keys()].filter((name) => verdicts.get(name) !== true);
   if (missing.length === 0) return;
   // The headline is only honest when every listed browser is known to be

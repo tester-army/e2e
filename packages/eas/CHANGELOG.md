@@ -1,5 +1,13 @@
 # @e2e-dev/eas
 
+## 0.3.3
+
+### Patch Changes
+
+- [#1518](https://github.com/tester-army/e2e/pull/1518) [`1293b78`](https://github.com/tester-army/e2e/commit/1293b7807f17db1901814bc245d658bdd92a2096) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - Errors and logs now name Expo instead of EAS, following Expo's [service names](https://docs.expo.dev/eas-to-expo/): an error from Expo's API starts with `Expo:` instead of `EAS:`, and a queued session logs `still queued at Expo after two minutes`.
+
+- [#1517](https://github.com/tester-army/e2e/pull/1517) [`c59156e`](https://github.com/tester-army/e2e/commit/c59156e458a1e9aa8640a4c0879208b8c674ac78) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - `easSimulators()` is now `expoSimulators()`, matching the service's name, Expo Simulators. `easSimulators()` and `EasSimulatorsOptions` still work as deprecated aliases of `expoSimulators()` and `ExpoSimulatorsOptions`. The provider now logs as `expo-simulators` instead of `eas-simulators`, and its config errors start with `expoSimulators`.
+
 ## 0.3.2
 
 ### Patch Changes

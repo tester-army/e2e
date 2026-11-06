@@ -651,10 +651,10 @@ describe('e2e init argument parsing', () => {
   });
 
   it('merges repeated --skills and --mcp flags like comma-separated ones', async () => {
-    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json');
+    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json,.codex/config.toml');
     expect(initMock).toHaveBeenCalledExactlyOnceWith(
       process.cwd(),
-      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json'] }),
+      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json', '.codex/config.toml'] }),
     );
   });
 
@@ -680,7 +680,7 @@ describe('e2e init argument parsing', () => {
     [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
     [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
     [['--skills', ''], 'must name at least one skill directory'],
-    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, none'],
+    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, .codex/config.toml, none'],
     [['--mcp', 'none,.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
     [['--mcp', 'none', '--mcp', '.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
     [['--skills', '.claude/skills', '--skills', 'none'], 'error: --skills: none cannot be combined with other values'],
@@ -806,7 +806,7 @@ describe('e2e --version and --help', () => {
     expect(help).toMatch(/^ {2}-h, --help {2,}show help$/mu);
     expect(help).toContain('Examples:\n  $ e2e init\n  $ e2e run\n');
     expect(help).toContain('Run e2e <command> --help for the flags of one command.');
-    expect(help).toContain('Docs: https://e2e.tester.army/docs\n');
+    expect(help).toContain('Docs: https://e2e.com/docs\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
   });
@@ -858,7 +858,7 @@ describe('e2e --version and --help', () => {
     expect(help).toContain("  $ e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke\n");
     expect(help).toMatch(/^Exit codes:\n {2}0 {4}every selected test passed/mu);
     expect(help).toMatch(/^ {2}130 {2}interrupted/mu);
-    expect(help).toContain('Docs: https://e2e.tester.army/docs/reference/cli#exit-codes\n');
+    expect(help).toContain('Docs: https://e2e.com/docs/reference/cli#exit-codes\n');
     expect(process.exitCode).toBe(0);
     expect(runMock).not.toHaveBeenCalled();
   });

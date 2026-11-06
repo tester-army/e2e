@@ -3,7 +3,7 @@
 A SwiftUI greeting app with three locator tests and two agent tests.
 The test project is in `e2e/`, next to the Xcode project.
 
-<img src="screenshot-greeting.png" alt="SwiftUI app with the greeting Hello, Ada!" width="300" /> <img src="screenshot-error.png" alt="SwiftUI app with the error Enter a name first." width="300" />
+<img src="screenshot-greeting.png" alt="SwiftUI app with the greeting hello, Ada!" width="300" /> <img src="screenshot-error.png" alt="SwiftUI app with the error enter a name first." width="300" />
 
 ## Run
 
@@ -35,9 +35,10 @@ Without the key, the agent tests skip. Add `-- --no-cache` to use fresh
 model calls. Results are in `e2e/.e2e/report.json`.
 
 See [e2e/e2e.config.ts](e2e/e2e.config.ts) and [e2e/tests/](e2e/tests/) for the setup.
-For device setup and CI, see the [Mobile guide](https://e2e.tester.army/docs/mobile).
+For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](HelloApp/Fonts/OFL.txt).
 
-Last checked on 2026-11-02 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, and Xcode
-27.2 on an iOS 26.5 simulator. The three locator tests passed.
+Last checked on 2026-11-04 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, and Xcode
+27.2 on an iOS 26.5 simulator. The three locator tests and the two agent
+tests passed.

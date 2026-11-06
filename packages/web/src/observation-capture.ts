@@ -5,8 +5,8 @@ import { EngineError, type EngineObserveOptions, type EngineSnapshot, type Opera
 import { CaptureScope } from './capture-scope.ts';
 import { captureDocument, ROOT_NODE_ID } from './observation.ts';
 import { capturePixels } from './observe.ts';
-import { RefRegistry, type CapturedObservation } from './refs.ts';
-import { cancelled, currentViewport, type ActionTarget } from './support.ts';
+import { RefRegistry, type CapturedObservation, type ListedTarget } from './refs.ts';
+import { cancelled, currentViewport } from './support.ts';
 
 /** Shared node budget across the main document and its frames. */
 const MAX_OBSERVED_NODES = 3_000;
@@ -30,7 +30,7 @@ export async function captureObservation(
 ): Promise<CapturedObservation> {
   const deadline = Date.now() + operation.timeoutMs;
   let accepting = true;
-  const generation = new Map<string, ActionTarget>();
+  const generation = new Map<string, ListedTarget>();
   try {
     const settleDeadline = Math.min(deadline, Date.now() + SETTLE_TIMEOUT_MS);
     await new CaptureScope(settleDeadline, operation.signal).run(() => page.waitForLoadState('domcontentloaded', {
@@ -51,9 +51,9 @@ export async function captureObservation(
         captureDocument({
           ...settings,
           reserveIds: (count) => refs.reserveIds(count),
-          commit: (id, element) => {
-            if (accepting && !operation.signal.aborted) generation.set(id, { kind: 'element', element });
-            else void element.dispose().catch(() => undefined);
+          commit: (id, target) => {
+            if (accepting && !operation.signal.aborted) generation.set(id, target);
+            else target.list.dispose();
           },
         }, page, {
           framePath: [], budget: MAX_OBSERVED_NODES,

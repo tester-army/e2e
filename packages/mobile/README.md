@@ -19,7 +19,7 @@ npm install --save-dev e2e @e2e-dev/mobile
 
 `agent-device` needs Xcode with an iOS simulator runtime, or the Android SDK
 with an emulator. A phone needs Developer Mode and runner signing on iOS, or
-USB debugging authorized on Android (see [Physical devices](https://e2e.tester.army/docs/mobile#physical-devices)). Run `npx e2e doctor` to check the setup before
+USB debugging authorized on Android (see [Physical devices](https://e2e.com/docs/mobile#physical-devices)). Run `npx e2e doctor` to check the setup before
 a run.
 
 ```ts title="e2e.config.ts"
@@ -89,8 +89,8 @@ spread.
   (`ABOUT`, `android:id/title`) are the node's `testId`, what `getByTestId`
   matches.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
-  the tree exposes the checked state; Android switches do not), focus on
-  editable fields, `Enter`, single-character keys, swipe within a node, drag.
+  the tree exposes the checked state, as switches do on both platforms),
+  focus on editable fields, `Enter`, single-character keys, swipe within a node, drag.
   `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`,
   `modifiers` on `tap` or `doubleTap`, focus on a control, and other keys fail with
   `UNSUPPORTED_CAPABILITY`.
@@ -176,4 +176,4 @@ withheld for the rest of the attempt.
 
 ## Documentation
 
-Full documentation lives at [e2e.tester.army/docs](https://e2e.tester.army/docs).
+Full documentation lives at [e2e.com/docs](https://e2e.com/docs).

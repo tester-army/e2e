@@ -80,6 +80,20 @@ function matcherLabel(negated: boolean, name: ValueMatcherName): string {
   return `expect.poll(...).${negated ? 'not.' : ''}${name}(...)`;
 }
 
+/**
+ * The poll's own deadline capped by its phase's. A poll without one of its
+ * own (`timeout: 0`) waits for the phase's, so it needs a phase to bound it.
+ */
+function pollDeadline(own: Deadline | undefined, phase: Deadline | undefined): Deadline {
+  if (own === undefined) {
+    if (phase === undefined) {
+      throw new ConfigurationError('INVALID_CONFIG', 'expect.poll timeout 0 waits for the test deadline, so it runs only inside a test; pass a positive timeout');
+    }
+    return phase;
+  }
+  return phase === undefined ? own : Deadline.min(own, phase);
+}
+
 async function pollMatcher(
   read: () => unknown,
   options: PollOptions,
@@ -92,12 +106,12 @@ async function pollMatcher(
   const timeout = options.timeout ?? attempt?.assertionTimeout ?? DEFAULT_TIMEOUT_MS;
   const interval = options.interval ?? POLL_INTERVAL_MS;
   const startedAt = Date.now();
-  const own = new Deadline(timeout, startedAt);
+  const own = timeout === 0 ? undefined : new Deadline(timeout, startedAt);
   // Inside an attempt the poll ends with the phase it runs in (the test
   // deadline in the body, the hook's cleanup budget in afterEach) and stops
   // the moment the attempt is cancelled, so a timed-out test never keeps
-  // reading through teardown.
-  const deadline = attempt === undefined ? own : Deadline.min(own, attempt.budget.deadline);
+  // reading through teardown. A timeout of 0 sets no deadline of its own.
+  const deadline = pollDeadline(own, attempt?.budget.deadline);
   // The phase that started the poll cancels it when it returns without
   // awaiting it, so the poll can never fail whatever runs after.
   const signals = [attempt?.budget.signal, scopeSignal].filter((signal) => signal !== undefined);

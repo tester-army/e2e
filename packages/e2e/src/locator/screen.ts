@@ -8,6 +8,7 @@ import { locatorBrand } from '../internal/brands.ts';
 import { isSecret } from '../secrets.ts';
 import { TestError } from '../internal/errors.ts';
 import { requireFinitePoint } from '../internal/geometry.ts';
+import { isCheckable, isValueControl } from '../internal/roles.ts';
 import { isPlainObject, rejectUnknownOptions } from '../internal/options.ts';
 import { realmSlot } from '../internal/realm-slot.ts';
 import { obj } from '../internal/objects.ts';
@@ -320,7 +321,7 @@ class ScreenImpl implements Screen {
     }
     return await this.context.steps.run('screen', api, 'whole screen', async () => {
       const { engine } = this.context;
-      return this.context.renderTree(await engine.session.observe(engine.operation(options?.timeout)));
+      return this.context.renderTree(await engine.session.observe(engine.operationWithin(engine.deadline(options?.timeout))));
     });
   }
 
@@ -516,8 +517,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   setInputFiles(paths: string | readonly string[], options?: ActionOptions): Promise<void> {
     const list = typeof paths === 'string' ? [paths] : [...paths];
-    if (list.length === 0 || list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
-      throw new TestError('INVALID_ARGUMENT', 'setInputFiles requires one or more non-empty paths');
+    if (list.some((entry) => typeof entry !== 'string' || entry.trim() === '')) {
+      throw new TestError('INVALID_ARGUMENT', 'setInputFiles paths must be non-empty strings');
     }
     const base = this.context.projectRoot;
     const resolved = list.map((entry) => (base === undefined ? entry : nodePath.resolve(base, entry)));
@@ -561,7 +562,9 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async inputValue(): Promise<string> {
     const node = await this.readGuarded();
-    return node.value ?? '';
+    if (node.value !== undefined) return node.value;
+    if (isValueControl(node)) return '';
+    throw new TestError('ACTION_FAILED', `Node is not an <input>, <textarea> or <select> element: ${this.label}`);
   }
 
   async getAttribute(name: string): Promise<string | null> {
@@ -588,6 +591,7 @@ class LocatorImpl extends ScreenImpl implements Locator {
 
   async isChecked(): Promise<boolean> {
     const node = await this.readGuarded(false);
+    if (!isCheckable(node)) throw new TestError('ACTION_FAILED', `Not a checkbox or radio button: ${this.label}`);
     return node.states?.checked === true;
   }
 

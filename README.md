@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.star-history.com/tester-army/e2e"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/badge?repo=tester-army/e2e&type=trending&theme=dark" /><img alt="GitHub Trending Repository of the Day" src="https://api.star-history.com/badge?repo=tester-army/e2e&type=trending" /></picture></a>
+  <a href="https://trendshift.io/repositories/274762" target="_blank"><img src="https://trendshift.io/api/badge/repositories/274762" alt="tester-army/e2e | Trendshift" width="250" height="55" /></a>
 </p>
 
 # e2e
@@ -83,9 +83,11 @@ every page, so coding agents can read them offline in `node_modules/e2e/docs`.
 Join us in changing how software gets tested.
 [We are hiring.](https://e2e.com/careers?utm_source=e2e&utm_medium=github&utm_campaign=readme_hiring)
 
-Or, if you want to hack on e2e, see [Contributing](./CONTRIBUTING.md). We
-prefer [GitHub issues](https://github.com/tester-army/e2e/issues) and [Discord discussions](https://tester.army/discord)
-over drive-by pull requests.
+Questions? Ask on [Discord](https://tester.army/discord). Issues are for bugs
+and feature requests.
+
+Want to hack on e2e? See [Contributing](./CONTRIBUTING.md). We prefer an issue
+or a Discord discussion before a pull request.
 
 ## Security
 

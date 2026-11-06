@@ -10,7 +10,6 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { Readable } from 'node:stream';
-import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import type { z } from 'zod';
 
 /** The MCP server name the agent sees. Distinct from `e2e mcp`'s `e2e`, so a permission request naming it is about these tools. */
@@ -39,8 +38,9 @@ export interface ToolServer {
   close(): Promise<void>;
 }
 
-/** Starts the tool server on an ephemeral 127.0.0.1 port. */
+/** Starts the tool server on an ephemeral 127.0.0.1 port. The MCP SDK loads here, with the first server, not with the config. */
 export async function serveTools(tools: readonly ServedTool[]): Promise<ToolServer> {
+  const { createMcpHandler, McpServer } = await import('@modelcontextprotocol/server');
   const route = `/${randomUUID()}/mcp`;
   const handler = createMcpHandler(
     () => {

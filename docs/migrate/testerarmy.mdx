@@ -1,12 +1,11 @@
 ---
 title: From TesterArmy
 description: Turn TesterArmy saved tests into e2e tests that run in your repository and CI.
-icon: "/images/icons/testerarmy.png"
 ---
 
 import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 
-export const migrationPrompt = `Migrate this project's TesterArmy saved tests to e2e, one group at a time. Docs: \`https://e2e.tester.army/docs/migrate/testerarmy.md\`
+export const migrationPrompt = `Migrate this project's TesterArmy saved tests to e2e, one group at a time. Docs: \`https://e2e.com/docs/migrate/testerarmy.md\`
 
 1. Read the migration guide above. It maps TesterArmy project settings, steps, and groups to e2e and marks what e2e does not have yet.
 2. If you have no \`testerarmy\` MCP tools, add the server with \`npx add-mcp --global --name testerarmy https://tester.army/mcp\`. If Claude Code uses a custom \`CLAUDE_CONFIG_DIR\`, run \`claude mcp add --transport http testerarmy https://tester.army/mcp\` instead. Ask me to sign in and restart the session, then wait until I confirm.

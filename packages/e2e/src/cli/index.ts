@@ -1,4 +1,9 @@
-/** e2e CLI. */
+/**
+ * e2e CLI. A command that needs a heavy dependency, such as the MCP server,
+ * the prompt library, or the schema library, imports its module when it
+ * runs, so `e2e run`, `e2e list`, and `--help` load none of them. What a flag
+ * needs to be defined, such as its bounds or its choices, lives in a module of its own.
+ */
 
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, normalize, resolve as resolvePath, sep } from 'node:path';
@@ -12,7 +17,7 @@ import type { Shard, TagMode } from '../collect/select.ts';
 import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
 import { writeTerminal } from '../run/process-output.ts';
-import { explore, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/index.ts';
+import { STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/bounds.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded, failureLine } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
@@ -25,22 +30,19 @@ import { Telemetry } from '../telemetry/telemetry.ts';
 import { CACHE_DIR_DESCRIPTION, registerCacheCommand } from './cache.ts';
 import { docsLine, examples, helpSection, pc } from './help.ts';
 import { EXIT_CODES } from './exit-codes.ts';
-import { doctor, formatDoctorReport, type DoctorReport } from './doctor.ts';
+import type { DoctorReport } from './doctor.ts';
 import { ERROR_CODE_LIMIT, feedback, FEEDBACK_LIMITS, FEEDBACK_TYPES, type FeedbackReport } from './feedback.ts';
 import { guide } from './guide.ts';
-import { init } from './init.ts';
 import { addInitOptions, checkInitFlags, type InitFlagValues } from './init/flags.ts';
-import { mcp } from './mcp.ts';
 import { parseList, parseNames } from './parse-names.ts';
-import { SESSION_BOUNDS } from '../mcp/session.ts';
-import { PROVIDER_IDS } from '../oauth/providers.ts';
-import { runLogin, runLogout, runModels, type LoginFlags } from '../oauth/cli.ts';
+import { SESSION_BOUNDS } from '../mcp/bounds.ts';
+import { PROVIDER_IDS } from '../oauth/provider-ids.ts';
+import type { LoginFlags } from '../oauth/cli.ts';
 import { SignalLadder } from './signals.ts';
 import { skillTopics } from './skill.ts';
-import { watchSession } from './watch.ts';
 import { UpdateCheck } from './update-check.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
-import { parseUpgradeTarget, upgrade, type UpgradeTarget } from './upgrade.ts';
+import { parseUpgradeTarget, type UpgradeTarget } from './upgrade-target.ts';
 import { wordmarkBanner } from './wordmark.ts';
 
 /** An integer of at least one, for `--max-failures` and `--repeat-each`. */
@@ -395,6 +397,7 @@ async function initBeforeExplore(telemetry: Telemetry, command: Command): Promis
   }
   // The invocation as typed, goal and flags included, for the line that tells the user what to run next.
   const continueWith = ['e2e', ...(command.parent?.args ?? [command.name()])];
+  const { init } = await import('./init.ts');
   const { exitCode, ready, ...outcome } = await init(cwd, { interactive: true, continueWith });
   telemetry.record(initCompletedEvent(outcome));
   if (!ready) process.exitCode = exitCode;
@@ -500,8 +503,10 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ].join('\n'),
     )
     .action(async (directory: string | undefined, options: InitFlagValues, command: Command) => {
+      const flags = checkInitFlags(options, command);
+      const { init } = await import('./init.ts');
       const { exitCode, ...outcome } = await init(resolvePath(process.cwd(), directory ?? '.'), {
-        ...checkInitFlags(options, command),
+        ...flags,
         ...(directory === undefined ? {} : { directory }),
         // Prompts need a terminal on both ends; a pipe or a CI log has neither.
         interactive: process.stdin.isTTY === true && process.stdout.isTTY === true,
@@ -526,6 +531,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ['', examples(['e2e login openai', 'e2e login github-copilot --from-gh', 'e2e login opencode-console', 'e2e login spacexai', 'e2e login']), '', docsLine('/subscriptions')].join('\n'),
     )
     .action(async (provider: string | undefined, options: LoginFlags) => {
+      const { runLogin } = await import('../oauth/cli.ts');
       process.exitCode = await runLogin(provider, options);
     });
 
@@ -536,6 +542,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addArgument(new Argument('[provider]', 'openai, github-copilot, opencode-console, or spacexai; omitted, a picker').choices(PROVIDER_IDS))
     .addHelpText('after', ['', examples(['e2e logout', 'e2e logout openai']), '', docsLine('/subscriptions')].join('\n'))
     .action(async (provider: string | undefined) => {
+      const { runLogout } = await import('../oauth/cli.ts');
       process.exitCode = await runLogout(provider);
     });
 
@@ -548,6 +555,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addArgument(new Argument('[provider]', 'openai, github-copilot, opencode-console, or spacexai; omitted, every stored login').choices(PROVIDER_IDS))
     .addHelpText('after', ['', examples(['e2e models', 'e2e models openai']), '', docsLine('/subscriptions#pick-a-model')].join('\n'))
     .action(async (provider: string | undefined) => {
+      const { runModels } = await import('../oauth/cli.ts');
       process.exitCode = await runModels(provider);
     });
 
@@ -590,6 +598,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ].join('\n'),
     )
     .action(async (options: { config?: string; target?: string; headed?: boolean; maxSessions?: number }) => {
+      const { mcp } = await import('./mcp.ts');
       process.exitCode = await mcp(version, options, telemetry);
     });
 
@@ -725,8 +734,9 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         const output = claimRunnerOutput();
         try {
           if (options.watch === true) {
-            await watchToOutcome(telemetry, command, (signals, record) =>
-              watchSession({
+            await watchToOutcome(telemetry, command, async (signals, record) => {
+              const { watchSession } = await import('./watch.ts');
+              return watchSession({
                 base: runOptions,
                 cwd: process.cwd(),
                 signals,
@@ -742,8 +752,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
                 writeError: (text) => void process.stderr.write(text),
                 pc: picocolors.createColors(process.stdout.isTTY === true),
                 clear: process.stdout.isTTY === true,
-              }),
-            );
+              });
+            });
             return;
           }
           await runToOutcome(telemetry, command, (signals) =>
@@ -827,8 +837,9 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         command: Command,
       ) => {
         if (options.config === undefined && !(await initBeforeExplore(telemetry, command))) return;
-        await runToOutcome(telemetry, command, (signals) =>
-          explore({
+        await runToOutcome(telemetry, command, async (signals) => {
+          const { explore } = await import('../explore/index.ts');
+          return explore({
             goal,
             configPath: options.config,
             target: options.target,
@@ -846,8 +857,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             interruptSignal: signals.interruptSignal,
             forceSignal: signals.forceSignal,
             notice: (message) => process.stderr.write(`e2e explore: ${message}\n`),
-          }),
-        );
+          });
+        });
       },
     );
 
@@ -941,6 +952,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ['', examples(['e2e doctor', 'e2e doctor --json', 'e2e doctor --check-model', 'e2e doctor --target web --headed']), '', docsLine('/reference/cli#e2e-doctor')].join('\n'),
     )
     .action(async (options: { config?: string; target?: string[]; headed?: boolean; checkModel?: boolean; json?: boolean }) => {
+      const { doctor, formatDoctorReport } = await import('./doctor.ts');
       const output = claimRunnerOutput();
       if (options.json === true) output.keepStdoutForReport();
       // Ctrl-C stops the checks, which then report: an engine server is
@@ -991,6 +1003,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
       ].join('\n'),
     )
     .action(async (target: UpgradeTarget | undefined, options: { dryRun?: boolean }) => {
+      const { upgrade } = await import('./upgrade.ts');
       const { exitCode, ...outcome } = await upgrade({
         target: target ?? { kind: 'tag', tag: 'latest' },
         ...(options.dryRun === undefined ? {} : { dryRun: options.dryRun }),

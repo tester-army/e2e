@@ -1,9 +1,8 @@
 ---
 title: CLI
 description: Commands, flags, output formats, and exit codes.
-icon: "terminal"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/cli.png?v=e0e03be674"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/cli.png?v=e0e03be674"
+"og:image": "https://e2e.com/docs/images/og/reference/cli.png?v=e0e03be674"
+"twitter:image": "https://e2e.com/docs/images/og/reference/cli.png?v=e0e03be674"
 ---
 
 The `e2e` command scaffolds a project, runs, lists, and explores tests,
@@ -56,8 +55,8 @@ $ npx e2e --version
 - Output is colored on a terminal or in CI, and plain when piped or when
   `NO_COLOR` is set. `FORCE_COLOR` keeps the colors.
 - `e2e` without a command prints the help on stderr and exits 2.
-- On a terminal 55 or more columns wide, `e2e --help` opens with the e2e
-  wordmark: the site's lettering in block characters. Piped output and
+- On a terminal 52 or more columns wide, `e2e --help` opens with the e2e
+  logo in block characters. Piped output and
   narrower terminals get the text alone.
 - When a newer `e2e` is on npm, a command run on a terminal ends with the
   version and the [`e2e upgrade`](#e2e-upgrade) command for the project's
@@ -119,7 +118,7 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | `--gateway <id>` | The model gateway for agent steps in a new config: `vercel`, `openrouter`, `openai-compatible`, `chatgpt`, `copilot`, `opencode-console`, `grok`, or `none`. Default: asked. |
 | `--endpoint <url>` | Base URL for `--gateway openai-compatible`, and implies it. HTTPS, or HTTP on a loopback host. Default: asked; `http://127.0.0.1:11434/v1` with `--yes`. |
 | `--skills <dirs>` | Where to install the agent skill: `.agents/skills`, `.claude/skills`, or `none`. Comma-separated or repeated. Default: asked. |
-| `--mcp <files>` | Where to register the MCP server: `.mcp.json`, `.cursor/mcp.json`, or `none`. Comma-separated or repeated. Default: asked. |
+| `--mcp <files>` | Where to register the MCP server: `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, or `none`. Comma-separated or repeated. Default: asked. |
 | `--install`, `--no-install` | Whether to install dependencies. Default: asked; `--no-install` with `--yes`. |
 
 - A flag answers its question and skips that prompt.
@@ -134,14 +133,14 @@ bunx e2e init --yes --gateway openrouter --skills .agents/skills --mcp .mcp.json
 | 2 | No terminal on stdin and stdout, and no `--yes`. The message names the flag. |
 | 2 | `--example` with a directory that has files in it, or the example download failed. Nothing stays behind. |
 | 2 | The dependency installation failed. |
-| 130 | Ctrl-C or SIGTERM while the wordmark is written or the example downloads, or SIGINT during the dependency installation. A partial example is removed. |
+| 130 | Ctrl-C or SIGTERM while the logo is drawn or the example downloads, or SIGINT during the dependency installation. A partial example is removed. |
 
 ##### Prompts
 
-On a terminal, the wizard opens with the e2e wordmark, written letter by
-letter over about a second, the way a pen writes it. With `--yes`, in CI, on
-a dumb terminal, or on a terminal under 11 rows, it prints at once. Piped
-output never shows it.
+On a terminal 52 or more columns wide, the wizard opens with the e2e logo,
+shading in from ░ to █, top rows first, in about half a second. With
+`--yes`, in CI, on a dumb terminal, or on a terminal under 7 rows, it prints
+at once. Piped output and narrower terminals never show it.
 
 For a new project, the wizard asks for:
 
@@ -159,7 +158,9 @@ For a new project, the wizard asks for:
   `.agents/skills/` serves Codex, Cursor, Copilot, Gemini CLI, OpenCode, and
   Zed; `.claude/skills/` serves Claude Code. Both are preselected.
 - **Where to register the [MCP server](/reference/mcp).** `.mcp.json` for
-  Claude Code, `.cursor/mcp.json` for Cursor. Both are preselected.
+  Claude Code, `.cursor/mcp.json` for Cursor, `.codex/config.toml` for Codex.
+  All are preselected. Codex loads the config in trusted projects; start a new
+  session after installing dependencies.
 
 After you confirm the file changes, the wizard asks whether to install the
 selected dependencies. The installer follows the project's `packageManager`
@@ -174,7 +175,7 @@ field or lockfile, then the invoking package manager, then npm.
 | `tests/example.e2e.ts` | An app-open test that passes against any page, plus a commented agent test. Device setup gets a Settings check instead. With both engines, `tests/web.e2e.ts` and `tests/mobile.e2e.ts` instead, each test with `requires: ['browser']` or `requires: ['device']` so the other target skips it |
 | `.gitignore` | Appends `node_modules/`, `.e2e/results/`, `.e2e/cache/`, `.e2e/sessions/`, `.e2e/report.json`, `.e2e/ai-trace.json`, `.e2e/junit.xml`, `.e2e/summary.md`, `.e2e/logs/`, and `.e2e/videos/`. Committing the cache is opt-in; see [commit the replay cache](/cache#commit-the-replay-cache) |
 | `.agents/skills/e2e/`, `.claude/skills/e2e/` | `SKILL.md` and one `references/<topic>.md` per `e2e guide` topic. With both chosen, the Claude Code directory is a relative symlink (`../../.agents/skills/e2e`) to the copy, the layout `npx skills add` produces |
-| `.mcp.json`, `.cursor/mcp.json` | Registers `e2e mcp` without changing other servers |
+| `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml` | Registers `e2e mcp` without changing other servers |
 
 <a id="starting-from-an-example" />
 ##### Starting from an example

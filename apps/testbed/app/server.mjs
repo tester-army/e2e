@@ -1,14 +1,17 @@
 /**
  * Playground app for dogfooding the e2e runner. No dependencies. The pages
  * live under `pages/` by group; this file serves them, the API, and the
- * cookie session.
+ * cookie session. Any other path goes to the routes of the tests ported from
+ * Playwright (`playwright/`).
  */
 
 import { createServer } from 'node:http';
 import { layout } from './layout.mjs';
 import { pages } from './pages/index.mjs';
+import { playwrightRoutes } from './playwright/routes.mjs';
 
 const PORT = Number(process.env.PORT ?? 4271);
+const playwright = playwrightRoutes(PORT);
 
 function parseCookies(request) {
   const header = request.headers.cookie ?? '';
@@ -76,11 +79,13 @@ const server = createServer(async (request, response) => {
   }
 
   if (!(url.pathname in pages)) {
-    send(404, { 'content-type': 'text/plain' }, 'not found');
+    await playwright.handle(request, response);
     return;
   }
   html(render(url.pathname));
 });
+
+server.on('upgrade', playwright.upgrade);
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`playground listening on http://127.0.0.1:${PORT}`);

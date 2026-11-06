@@ -1,6 +1,6 @@
 {
   "name": "@e2e-dev/decision",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Decision-model executors and test filters for e2e",
   "license": "Apache-2.0",
   "repository": {
@@ -31,7 +31,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "pngjs": "7.0.0",
+    "@napi-rs/image": "1.16.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
@@ -39,12 +39,11 @@
     "e2e": ">=0.21.3 <1"
   },
   "devDependencies": {
-    "@ai-sdk/openai": "4.0.108",
-    "@ai-sdk/typesafe-ai": "3.0.33",
+    "@ai-sdk/openai": "4.0.109",
+    "@ai-sdk/typesafe-ai": "3.0.34",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
-    "ai": "7.0.162",
+    "ai": "7.0.163",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "e2e": "workspace:*",

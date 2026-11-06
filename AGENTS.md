@@ -107,10 +107,9 @@ suites that consume the built packages the way a user would.
   package, each engine an optional peer and each provider on its own entry
   that never imports the other engine (`@e2e-dev/testmu` and
   `@e2e-dev/testmu/web`).
-  Its docs page under `docs/integrations/` ships with the vendor's logo as
-  the sidebar icon and on its overview card (`authoring-docs`, "Page
-  icons"); `scripts/check-docs-logos.ts` fails `pnpm docs:check` without
-  them.
+  Its docs page under `docs/integrations/` ships with the vendor's logo on
+  its overview card (`authoring-docs`, "Vendor logos");
+  `scripts/check-docs-logos.ts` fails `pnpm docs:check` without it.
 - `packages/lightpanda` - the published `@e2e-dev/lightpanda` package: a
   `BrowserProvider` that starts a local `lightpanda serve` per worker slot
   and stops it with the run; no vendor SDK, the binary is the dependency.
@@ -213,7 +212,7 @@ suites that consume the built packages the way a user would.
   posts one Slack message for the run (`scripts/examples-nightly/`, the
   `SLACK_EXAMPLES_NIGHTLY_WEBHOOK_URL` secret). A new example or platform
   gets a matrix entry there. It also needs an official entry in
-  `examples/examples.json` (the list e2e.tester.army/examples renders,
+  `examples/examples.json` (the list e2e.com/examples renders,
   partner and community repositories included) and a preset in
   `packages/e2e/src/cli/init/examples.ts`; `pnpm check:examples` fails
   without either. A change still runs the example's suite by hand and updates the
@@ -455,6 +454,9 @@ CROSSCHECK_BENCHMARK_URL=http://127.0.0.1:4280 pnpm --filter @e2e-dev/web exec v
   of `tests/crosscheck/crosscheck.ts`, each with its reason, not lines.
 - A reader change (`src/in-page/read-semantics.ts`) runs it before the PR.
   A bug in that family starts as a fixture page line here.
+- Pages load with Playwright's clock paused (`openCheckPage`), so a timer
+  cannot replace a node between the engine's read and the oracles'. Content a
+  timer reveals is never read: build fixture pages synchronously.
 - `tests/integration/conformance.test.ts` holds the reader to a third
   oracle: the role and accessible-name expectations of the axe-core test
   suite (`tests/conformance/axe-core/`, vendored byte for byte through
@@ -544,9 +546,9 @@ trees, on both platforms, without a device.
   old ones in the same pull request. A step that was never recorded still runs
   live. A strict run replays on retries too and never writes or deletes an
   entry, whatever the mode.
-  The web benchmark's entries are in. The mobile benchmark's iOS entries are
-  recorded on a Mac; nobody has recorded on an Android emulator yet, so the
-  Android side spends model calls until an emulator recording is committed.
+  The web benchmark's entries are in. The mobile benchmark's iOS and Android
+  entries are recorded on a Mac; Android replays with `--strict-cache`, iOS
+  leniently.
 - No implicit default model. For the built-in agent, the entry's `model`
   serves `act`; the judgment calls (`assert`, `waitFor`, `extract`) use its
   `judge` when one is configured, else `model`. A judgment never sees the

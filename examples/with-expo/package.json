@@ -13,9 +13,8 @@
     "test:e2e:web": "e2e run --target web"
   },
   "dependencies": {
-    "@expo-google-fonts/dm-mono": "^0.4.2",
     "@expo-google-fonts/inter": "^0.4.2",
-    "@expo-google-fonts/stack-sans-notch": "^0.4.0",
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo/metro-runtime": "~57.0.16",
     "expo": "~57.0.26",
     "expo-build-properties": "~57.0.22",

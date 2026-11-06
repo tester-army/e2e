@@ -1,9 +1,8 @@
 ---
 title: e2e/engine
 description: Build an engine with observations, actions, lifecycle hooks, and fixtures.
-icon: "gear"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/engine.png?v=d82cf186db"
+"og:image": "https://e2e.com/docs/images/og/reference/engine.png?v=d82cf186db"
+"twitter:image": "https://e2e.com/docs/images/og/reference/engine.png?v=d82cf186db"
 ---
 
 `e2e/engine` is the contract an engine implements to drive a user interface,
@@ -1086,7 +1085,7 @@ honors in `actions` and `pointerActions`.
 | `hover` | - | yes | yes |
 | `scrollIntoView` | - | yes | - |
 | `selectOption` | `value` | yes | - |
-| `setInputFiles` | `paths` | yes | - |
+| `setInputFiles` | `paths`; empty clears the input | yes | - |
 | `dragTo` | `target`: a `NodeRef` or a `ViewportPoint` | yes | yes |
 | `swipe` | `direction`, `momentum?` | yes | yes |
 | `swipeTo` | `target`, `durationMs?` | - | yes |
@@ -1747,6 +1746,7 @@ obj({ a: 1, b: undefined, c: 3 }); // { a: 1, c: 3 }
 ```ts
 export function raceAbort<T>(work: Promise<T> | (() => Promise<T>), signal: AbortSignal, label: string): Promise<T>;
 export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () => Error): Promise<T>;
+export function stepTimeout(timeout: unknown, api: string): number | undefined;
 export function withinCleanupBudget(
   promise: Promise<unknown>,
   budget: { readonly signal: AbortSignal; readonly timeoutMs: number },
@@ -1755,12 +1755,16 @@ export function withinCleanupBudget(
 
 ```ts
 await raceAbort(() => client.tap(ref.id), context.signal, 'kiosk tap');
+const operation = context.operation(stepTimeout(options?.timeout, 'kiosk.print'));
 ```
 
 - `raceAbort` abandons the wait when `signal` aborts. Pass a thunk to check
   cancellation before dispatch.
 - `withTimeout` races a promise against a timeout and throws what
   `onTimeout` builds.
+- `stepTimeout` turns a call's own `timeout` option into a budget for
+  `context.operation`: `0` waits until the test timeout, or `cleanupTimeout` in `afterEach`, and a negative,
+  `NaN`, or infinite one is `INVALID_ARGUMENT`.
 - `withinCleanupBudget` never rejects. It resolves when the promise settles,
   failures included, when `signal` aborts, or when `timeoutMs` passes.
 
@@ -2273,6 +2277,13 @@ export interface SemanticNode {
     readonly width: number;
     readonly height: number;
   };
+  /**
+   * The point an offset into the node is measured from, in `rect`'s space,
+   * when it is not `rect`'s top-left corner: a document element's padding
+   * box, inside its border, or the corner of a box a frame clipped `rect`
+   * from. `tap({ position })` adds the offset to it.
+   */
+  readonly origin?: ViewportPoint;
   /**
    * Platform selector that addresses this node within its own document, when
    * the platform has one. It is structural, not semantic: it survives the

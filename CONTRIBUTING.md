@@ -17,6 +17,8 @@ tracker.
 
 ## Issues
 
+- Questions and help requests go to [Discord](https://tester.army/discord),
+  not issues. Question issues are closed.
 - Bug reports need a link to a public repository or sandbox that reproduces
   the bug, and the steps to run it. Reports without them are closed.
 - Feature requests need the proposed API, its upsides, and its downsides.
@@ -30,7 +32,7 @@ The changes most likely to be accepted:
 - Engine and platform fixes (a browser, device, or OS that misbehaves)
 - Performance improvements
 - Community examples: a link to your own example repository on
-  [e2e.tester.army/examples](https://e2e.tester.army/examples), added to
+  [e2e.com/examples](https://e2e.com/examples), added to
   [`examples/examples.json`](./examples/examples.json) as
   [`examples/CONTRIBUTING.md`](./examples/CONTRIBUTING.md) describes
 
@@ -203,7 +205,11 @@ pending changesets. That PR gets no CI of its own (it is opened with
 peer ranges, builds, publishes the new versions, and creates the matching
 GitHub release. A release that published `e2e` then lists it in the MCP
 Registry (`mcp-registry.yml`); to retry a failed listing, run that workflow
-by hand with the version. `@e2edev/e2e` is the
+by hand with the version. It also publishes the skills under `skills/` to
+ClawHub as `@e2e/<skill>` (`clawhub.yml`, with the `CLAWHUB_TOKEN` secret);
+retry it the same way with `dry-run` unchecked (a dispatch only previews by
+default), and with the newest version only, since an older tag would
+publish older skills. `@e2edev/e2e` is the
 runner's retired name, and the `@e2edev` scope is the engines' and reporters'
 retired scope; both are deprecated on npm.
 

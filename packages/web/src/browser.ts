@@ -23,6 +23,7 @@ import {
   obj,
   pollCondition,
   raceAbort,
+  stepTimeout,
   rejectUnknownOptions,
   TestError,
   toTextPattern,
@@ -39,8 +40,8 @@ import {
 import { classifyInputError } from './actions.ts';
 import type { DialogHandler } from './dialogs.ts';
 import { saveDownloadsTo, saveFromBrowser, saveLocally } from './downloads.ts';
-import { isTestErrorCode, message as causeMessage, translatePwError } from './support.ts';
-import { compileEvaluation, pageFunctionSource } from './evaluation.ts';
+import { isTestErrorCode, message as causeMessage, pageScriptFailure, translatePwError } from './support.ts';
+import { compileEvaluation, decodeEvaluation, pageFunctionSource } from './evaluation.ts';
 import { initScriptLabel, testInitScriptSource } from './init-scripts.ts';
 import { MEDIA_KEYS, mediaLabel, mediaProblem, type WebMedia } from './media.ts';
 import { lowercaseNames } from './protected-app.ts';
@@ -55,12 +56,13 @@ import type { PlaywrightSurface } from './surface.ts';
  */
 export type RouteFulfillResponse = {
   status?: number;
+  /** Response headers; `set-cookie` may join several cookies with `\n`, as `route.fetch()` reports them. */
   headers?: Record<string, string>;
   /** Sets the `Content-Type` response header. */
   contentType?: string;
 } & (
   | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
+  | { body: string | Uint8Array; json?: never; path?: never }
   | { path: string; json?: never; body?: never }
   | { body?: never; json?: never; path?: never }
 );
@@ -71,8 +73,8 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
+  /** Replaces every request header; `undefined` drops one, and the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string | undefined>;
   /** Request body. */
   postData?: string;
 }
@@ -102,8 +104,10 @@ export interface WebResponse {
   readonly url: string;
   /** HTTP status. */
   readonly status: number;
-  /** Response headers, lower-cased names. */
+  /** Response headers, lower-cased names; `route.fetch()` joins several `set-cookie` values with `\n`, `waitForResponse` leaves cookie headers out. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and returns its bytes; rejects with `ACTION_FAILED` when the body could not be read. */
+  body(): Promise<Buffer>;
   /** Waits for the body and parses it as JSON; rejects with `ACTION_FAILED` when the body could not be read. */
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text; rejects with `ACTION_FAILED` when the body could not be read. */
@@ -112,7 +116,7 @@ export interface WebResponse {
 
 /**
  * Reads the body once the response is known and keeps the outcome: a body
- * that arrived decodes to text on every call, a body the browser could not
+ * that arrived returns a copy of its bytes on every call, a body the browser could not
  * read rejects every call with `ACTION_FAILED` naming the cause. Swallowing
  * that failure would hand the test an empty string the server never sent,
  * indistinguishable from a real empty body. `failure` names the reason the
@@ -125,10 +129,10 @@ async function readResponseBody(
   api: 'waitForResponse' | 'route.fetch',
   body: () => Promise<Buffer>,
   failure: () => string | undefined = () => undefined,
-): Promise<() => Promise<string>> {
+): Promise<() => Promise<Buffer>> {
   try {
-    const text = new TextDecoder().decode(await body());
-    return () => Promise.resolve(text);
+    const bytes = await body();
+    return () => Promise.resolve(Buffer.from(bytes));
   } catch (cause) {
     const error = new TestError(
       'ACTION_FAILED',
@@ -136,6 +140,23 @@ async function readResponseBody(
     );
     return () => Promise.reject(error);
   }
+}
+
+/** The `WebResponse` over a Playwright response's metadata and a reader for its body bytes. */
+function webResponse(
+  response: { url(): string; status(): number; headers(): Record<string, string> },
+  body: () => Promise<Buffer>,
+): WebResponse {
+  const text = async (): Promise<string> => new TextDecoder().decode(await body());
+  return {
+    url: response.url(),
+    status: response.status(),
+    headers: response.headers(),
+    body,
+    // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
+    json: async <T = unknown>() => JSON.parse(await text()) as T,
+    text,
+  };
 }
 
 export interface CookieFields {
@@ -334,10 +355,7 @@ async function collectDownloads(
   timeout: number | undefined,
   api: 'browser.waitForDownload' | 'browser.waitForDownloads',
 ): Promise<DownloadedFile[]> {
-  if (timeout !== undefined && (!Number.isFinite(timeout) || timeout <= 0)) {
-    throw new TestError('INVALID_ARGUMENT', `${api} timeout must be positive and finite`);
-  }
-  const operation = context.operation(timeout);
+  const operation = context.operation(stepTimeout(timeout, api));
   const waitMs = operation.timeoutMs;
   const deadline = new Deadline(waitMs);
   const scope = new AbortController();
@@ -438,16 +456,17 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
    * be cut at the action timeout.
    */
   const navigation = (
+    api: string,
     options: { timeout?: number } | undefined,
     run: (operation: OperationContext) => Promise<void>,
   ): Promise<void> => {
-    const operation = context.operation(options?.timeout ?? context.timeouts.test);
+    const operation = context.operation(stepTimeout(options?.timeout, api) ?? context.timeouts.test);
     return surface.guard(operation, 'navigation', run);
   };
 
   /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
-  const deadlineFor = (timeout: number | undefined): Deadline =>
-    new Deadline(context.operation(timeout ?? context.timeouts.assertion).timeoutMs);
+  const deadlineFor = (timeout: number | undefined, api: string): Deadline =>
+    new Deadline(context.operation(stepTimeout(timeout, api) ?? context.timeouts.assertion).timeoutMs);
 
   /** The page URL, read within the action timeout or, for a matcher poll, within the poll's deadline. */
   const currentUrl = (deadline?: Deadline) =>
@@ -460,7 +479,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto(url, options) {
       const resolved = context.app.resolveUrl(url);
-      return navigation(options, (operation) => surface.navigating(async () => {
+      return navigation('browser.goto', options, (operation) => surface.navigating(async () => {
         const page = await surface.ensurePage();
         await page.goto(resolved, {
           waitUntil: options?.waitUntil ?? 'load',
@@ -469,15 +488,15 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       }));
     },
     reload: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.reload', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().reload({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     back: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.back', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     forward: (options) =>
-      navigation(options, (operation) => surface.navigating(async () => {
+      navigation('browser.forward', options, (operation) => surface.navigating(async () => {
         await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
       })),
     url: () => currentUrl(),
@@ -498,12 +517,18 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const evaluate = compileEvaluation(source, arg !== undefined);
       // JSON safety is checked above; Playwright's recursive argument type cannot expand JsonValue.
       const input: unknown = arg;
-      const result = await surface.guard(context.operation(), 'evaluate', () =>
-        surface.requirePage().evaluate(evaluate, input),
-      );
-      if (!result.ok) throw new TestError('EVALUATE_FAILED', result.message);
-      validateJsonValue(result.value, 'evaluate result');
-      return result.value as T;
+      // A handle, not a value: the boundary resolves to a string, which Playwright
+      // keeps out of its in-page serializer when it is taken back from a handle.
+      const report = await surface.guard(context.operation(), 'evaluate', async (operation) => {
+        const page = surface.requirePage();
+        try {
+          const handle = await page.evaluateHandle(evaluate, input);
+          return await handle.jsonValue();
+        } catch (cause) {
+          throw (await pageScriptFailure(page, cause, 'evaluate', operation.timeoutMs)) ?? cause;
+        }
+      });
+      return decodeEvaluation(report) as T;
     },
     async addInitScript(script: unknown, ...rest: unknown[]) {
       const source = await testInitScriptSource(script, rest.length === 0 ? undefined : { arg: rest[0] }, (file) => surface.projectPath(file));
@@ -517,6 +542,12 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       // is latched on the surface and fails the next step with its real cause.
       const handleRoute = async (route: Route): Promise<void> => {
         let decided = false;
+        const request = route.request();
+        // Noted before the abort, so a navigation it fails reads as aborted by the test.
+        const abort = async (): Promise<void> => {
+          surface.noteRouteAbort(request);
+          await route.abort();
+        };
         const decide = (name: string) => {
           if (decided) {
             throw new TestError('ACTION_FAILED', `route handler already decided; ${name} called twice`);
@@ -531,11 +562,10 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           try {
             await act();
           } catch (cause) {
-            await route.abort().catch(() => undefined);
+            await abort().catch(() => undefined);
             throw cause;
           }
         };
-        const request = route.request();
         const postData = request.postData();
         const publicRoute: WebRoute = {
           request: {
@@ -554,15 +584,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
                 maxRedirects: 0,
               });
               try {
-                const text = await readResponseBody('route.fetch', () => response.body());
-                return {
-                  url: response.url(),
-                  status: response.status(),
-                  headers: response.headers(),
-                  // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
-                  json: async <T = unknown>() => JSON.parse(await text()) as T,
-                  text,
-                };
+                return webResponse(response, await readResponseBody('route.fetch', () => response.body()));
               } finally {
                 await response.dispose();
               }
@@ -595,7 +617,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           },
           abort: async (...args: unknown[]) => {
             requireNoArguments('route.abort', args);
-            await decideWith('abort', () => route.abort());
+            await decideWith('abort', abort);
           },
         };
         try {
@@ -612,7 +634,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
               ? cause
               : new TestError('ACTION_FAILED', `route handler failed: ${causeMessage(cause)}`),
           );
-          if (!decided) await route.abort().catch(() => undefined);
+          if (!decided) await abort().catch(() => undefined);
         }
       };
       // Tracked so the attempt end waits for a handler still running and
@@ -637,7 +659,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     },
     waitForResponse(pattern, options) {
       const wirePattern = toTextPattern(pattern);
-      const operation = context.operation(options?.timeout);
+      const operation = context.operation(stepTimeout(options?.timeout, 'browser.waitForResponse'));
       return surface.guard(operation, 'waitForResponse', async (currentOperation) => {
         const page = await surface.ensurePage();
         const response = await page.waitForResponse(
@@ -645,28 +667,21 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
           { timeout: currentOperation.timeoutMs },
         );
         // Started now, while the browser still holds the body, and awaited
-        // only by `text` and `json` on a budget of their own: the timeout
+        // only by the body readers on a budget of their own: the timeout
         // bounds the match, never a body still streaming in behind headers
         // that already arrived.
         const body = readResponseBody('waitForResponse', () => response.body(), () => response.request().failure()?.errorText);
-        const text = async (): Promise<string> => {
+        const read = async (): Promise<Buffer> => {
           const { signal, timeoutMs } = context.operation();
-          const read = await raceAbort(
+          const bytes = await raceAbort(
             withTimeout(body, timeoutMs, () =>
               new TestError('ACTION_FAILED', `waitForResponse: response body did not finish within ${timeoutMs}ms`)),
             signal,
             'waitForResponse body',
           );
-          return read();
+          return bytes();
         };
-        return {
-          url: response.url(),
-          status: response.status(),
-          headers: response.headers(),
-          // oxlint-disable-next-line e2e/no-unchecked-json -- public API: the caller names T, unknown by default
-          json: async <T = unknown>() => JSON.parse(await text()) as T,
-          text,
-        };
+        return webResponse(response, read);
       });
     },
     cookies: () =>
@@ -797,13 +812,13 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     forward: navigationCall,
     url: action,
     title: action,
-    waitForURL: { ...navigationCall, verifies: true, label: (url) => String(url) },
+    waitForURL: { ...navigationCall, verifies: true, label: patternLabel },
     evaluate: action,
     addInitScript: { ...action, label: (script) => initScriptLabel(script) },
-    route: { ...action, label: (pattern) => String(pattern) },
-    unroute: { ...action, label: (pattern) => String(pattern) },
+    route: { ...action, label: patternLabel },
+    unroute: { ...action, label: patternLabel },
     unrouteAll: action,
-    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: (pattern) => String(pattern) },
+    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: patternLabel },
     cookies: action,
     setCookies: action,
     clearCookies: action,
@@ -821,7 +836,7 @@ interface ExpectationDeps {
   currentUrl(deadline: Deadline): Promise<string>;
   currentTitle(deadline: Deadline): Promise<string>;
   baseHref(): string;
-  deadlineFor(timeout: number | undefined): Deadline;
+  deadlineFor(timeout: number | undefined, api: string): Deadline;
   readonly context: EngineFixtureContext;
 }
 
@@ -844,7 +859,7 @@ function createBrowserExpectation(deps: ExpectationDeps, negated = false): Brows
     read: (deadline: Deadline) => Promise<BrowserSample>,
     timeout: number | undefined,
   ): Promise<void> => {
-    const deadline = deps.deadlineFor(timeout);
+    const deadline = deps.deadlineFor(timeout, api);
     // pollCondition calls onTimeout only after a read completed, so a sample is always there.
     let last: BrowserSample | undefined;
     await pollCondition({
@@ -947,6 +962,11 @@ function requireSelector(method: string, selector: unknown): string {
     throw new TestError('INVALID_LOCATOR', `${method}() requires a nonempty selector`);
   }
   return selector;
+}
+
+/** A URL pattern as steps and errors name it: a string quoted, a RegExp as its literal. */
+function patternLabel(pattern: string | RegExp): string {
+  return typeof pattern === 'string' ? JSON.stringify(pattern) : String(pattern);
 }
 
 /**

@@ -57,7 +57,7 @@ Set the engine's `videoTouches: false` for video: drawing touches into a
 recording on an Expo iOS simulator outlasts the attempt's cleanup. The package
 calls Expo's API with `fetch`, so there is no SDK to install.
 
-Full documentation lives at [e2e.tester.army/docs/integrations/eas](https://e2e.tester.army/docs/integrations/eas).
+Full documentation lives at [e2e.com/docs/integrations/eas](https://e2e.com/docs/integrations/eas).
 
 ## License
 

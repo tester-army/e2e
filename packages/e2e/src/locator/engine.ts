@@ -20,7 +20,7 @@ import {
 } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
 import { describeExpression, expressionHints, filterSpine } from './expression.ts';
-import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, ReadWindow, sleep } from '../internal/time.ts';
+import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, ReadWindow, sleep, stepTimeout } from '../internal/time.ts';
 import { timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { targetLabel } from '../cache/trace.ts';
@@ -123,9 +123,9 @@ export class LocatorEngine {
     return this.options.redact?.(text) ?? text;
   }
 
-  /** Builds an operation context capped by the remaining test timeout. */
+  /** Builds an operation context on a plain budget, capped by the remaining test timeout: 0 is an expired one. */
   operation(timeoutMs?: number): OperationContext {
-    return this.operationWithin(this.deadline(timeoutMs));
+    return this.operationWithin(this.capped(timeoutMs));
   }
 
   /** The reads of one wait on `deadline`: the last may run past it, up to the running phase's deadline. */
@@ -133,12 +133,18 @@ export class LocatorEngine {
     return new ReadWindow(deadline, this.options.budget.deadline);
   }
 
-  /** Deadline for one action-family operation, capped by the running phase's deadline. */
+  /**
+   * Deadline for one action-family operation on a call's own `timeout`,
+   * capped by the running phase's deadline. 0 sets no deadline of its own,
+   * so the phase's alone bounds it.
+   */
   deadline(timeoutMs?: number): Deadline {
-    return Deadline.min(
-      new Deadline(timeoutMs ?? this.options.actionTimeout),
-      this.options.budget.deadline,
-    );
+    return this.capped(stepTimeout(timeoutMs, 'the step'));
+  }
+
+  /** A deadline `timeoutMs` (default the action timeout) from now, capped by the running phase's deadline. */
+  private capped(timeoutMs: number | undefined): Deadline {
+    return Deadline.min(new Deadline(timeoutMs ?? this.options.actionTimeout), this.options.budget.deadline);
   }
 
   /** An operation context bounded by a deadline a caller shares across steps, such as the swipes of one scroll. */
@@ -465,10 +471,10 @@ const ref = await this.singleOf(await this.resolveOnce(expression, reads, missin
   }
 
   /**
-   * Performs one pointer action at an offset from the top-left corner of
-   * exactly one match: the node is scrolled into view when the engine can,
-   * then its box is read and the pointer dispatched at the point, with no
-   * node behind the gesture. The node has to be visible with a box within
+   * Performs one pointer action at an offset from the origin of exactly one
+   * match (`SemanticNode.origin`, else its box's top-left corner): the node
+   * is scrolled into view when the engine can, then its box is read and the
+   * pointer dispatched at the point, with no node behind the gesture. The node has to be visible with a box within
    * the deadline; one that never is fails as LOCATOR_NOT_FOUND, as `waitFor`
    * does.
    */
@@ -500,9 +506,9 @@ const ref = await this.singleOf(await this.resolveOnce(expression, reads, missin
         throw cause;
       }
       sampled = true;
-      const rect = isNodeVisible(node) ? node.rect : undefined;
-      if (rect !== undefined) {
-        await this.dispatchAt({ x: rect.x + offset.x, y: rect.y + offset.y }, action, deadline);
+      if (isNodeVisible(node) && node.rect !== undefined) {
+        const origin = node.origin ?? node.rect;
+        await this.dispatchAt({ x: origin.x + offset.x, y: origin.y + offset.y }, action, deadline);
         return;
       }
       if (deadline.expired()) throw notVisible();

@@ -54,7 +54,7 @@ also gets its own copy of the running app and the data it keeps on the machine.
 `scope: 'worker'` keeps one browser machine per worker slot instead, shared by
 the attempts on that slot.
 
-Full documentation lives at [e2e.tester.army/docs/integrations/smol](https://e2e.tester.army/docs/integrations/smol).
+Full documentation lives at [e2e.com/docs/integrations/smol](https://e2e.com/docs/integrations/smol).
 
 ## License
 

@@ -1,7 +1,8 @@
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Browser, ElementHandle, Page } from 'playwright-core';
+import type { Browser, JSHandle, Page } from 'playwright-core';
 import { EngineError, TestError, type OperationContext } from 'e2e/engine';
+import { ElementList } from '../../src/element-list.ts';
 import { captureDocument, ROOT_NODE_ID } from '../../src/observation.ts';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { BrowserConnection } from '../../src/browser-connection.ts';
@@ -31,6 +32,8 @@ async function setup() {
     viewportSize: () => ({ width: 100, height: 80 }),
     url: () => 'https://app.test/current',
     frames: () => [{
+      url: () => 'https://app.test/current',
+      parentFrame: () => null,
       locator: (selector: string) => selector.startsWith('e2e-closed') ? masks[1] : masks[0],
       evaluateHandle: () => ({ evaluate: async () => undefined, dispose: async () => undefined }),
     }],
@@ -73,7 +76,7 @@ describe('semantic capture fallback', () => {
     const { surface, screenshot } = await setup();
     const dispose = vi.fn(async () => undefined);
     vi.mocked(captureDocument).mockImplementationOnce(async (deps) => {
-      deps.commit('old', { dispose } as unknown as ElementHandle<Element>);
+      deps.commit('old', { kind: 'listed', list: new ElementList({ dispose } as unknown as JSHandle), index: 0 });
       return { tree: { ref: { id: ROOT_NODE_ID, revision: '' } }, truncated: false, nodeCount: 1 };
     });
     await surface.observe(operation());

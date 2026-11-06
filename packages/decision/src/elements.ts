@@ -84,6 +84,8 @@ export interface ActionSpace {
 
 /** TypeSafe's per-question choice limit; the AI SDK itself has none. */
 const MAX_CHOICES = 255;
+/** Targets one question can offer: every target question also carries the `none` fallback. */
+const MAX_TARGETS = MAX_CHOICES - 1;
 
 const tappable = new Set([
   'button',
@@ -221,8 +223,8 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
       Number(a.row.passive) - Number(b.row.passive) || Number(b.row.inViewport) - Number(a.row.inViewport) || a.order - b.order,
     )
     .map(({ row }) => row);
-  const omitted = Math.max(0, ordered.length - MAX_CHOICES);
-  const kept = ordered.slice(0, MAX_CHOICES);
+  const omitted = Math.max(0, ordered.length - MAX_TARGETS);
+  const kept = ordered.slice(0, MAX_TARGETS);
   // Drop targets come from the kept rows a pointer reaches, whatever their
   // role: a board whose columns are bare text takes a drop on the column's
   // title. A drag needs a second row to drop on, or it is no operation.
@@ -254,7 +256,7 @@ export function actionSpace(ctx: StepExecutorContext, observation: SpaceObservat
           // Every select shares one target group and one question, so options
           // stop at the per-question cap. They stay out of `omitted`: scrolling
           // never reveals an option the cap dropped.
-          if (selectCount >= MAX_CHOICES) continue;
+          if (selectCount >= MAX_TARGETS) continue;
           const key = `${index}:${optionIndex}`;
           const optionLabel = child.name ?? child.text ?? '';
           options.set(key, { id: row.node.id, description: `select option ${JSON.stringify(optionLabel)} in ${named(role, label)}`, optionLabel });

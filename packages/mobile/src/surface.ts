@@ -265,6 +265,8 @@ interface ScreenRecording {
   readonly relative: string;
   readonly absolute: string;
   startedAt: string;
+  /** Shared finalization survives a caller's cancelled wait, including its successful result. */
+  stopping?: Promise<{ readonly outPath?: unknown }> | undefined;
 }
 
 /** The device provider's recording of the leased device, as its `record` is starting it or started it. */
@@ -694,12 +696,18 @@ export class AgentDeviceSurface {
    * `closeApp` leaves it.
    */
   private async stopScreenRecording(video: ScreenRecording, signal: AbortSignal): Promise<{ readonly outPath?: unknown }> {
-    const result = await this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' }), signal);
-    if (this.recording === video) this.recording = undefined;
-    if (result.recordOnlySession === true) {
-      this.screenReplaced();
-    }
-    return result;
+    return raceAbort(() => {
+      // Cleanup must wait for this bookkeeping as well as the SDK request.
+      video.stopping ??= this.track(this.command('stop video recording', (client) => client.recording.record({ ...this.selection(), action: 'stop' })).then((result) => {
+        if (this.recording === video) this.recording = undefined;
+        if (result.recordOnlySession === true) this.screenReplaced();
+        return result;
+      }, (cause: unknown) => {
+        video.stopping = undefined;
+        throw cause;
+      }));
+      return video.stopping;
+    }, signal, 'stop video recording');
   }
 
   /**
@@ -1368,7 +1376,8 @@ export class AgentDeviceSurface {
         case 'uncheck': {
           const wanted = action.kind === 'check';
           const checked = target.node.states?.checked;
-          // A toggle whose state the tree does not expose (Android switches)
+          // A toggle whose state the tree does not expose (a radio or checkbox
+          // the app gives no checked state)
           // cannot be set, only flipped; flipping blind could undo a correct state.
           if (checked === undefined) {
             throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);

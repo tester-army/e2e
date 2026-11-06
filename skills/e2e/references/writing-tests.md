@@ -72,12 +72,17 @@ test.skip('later', async () => {});
 test.only('focus', async () => {});         // local only: CI fails with ONLY_IN_CI
 test('conditional', async () => { test.skip(await onlyOneOrg(), 'nothing to switch to'); }); // throws: the body stops here, reported skipped; call it before the first step
 test('later', async () => { test.skip('waiting on the API'); }); // bare skip from the body
+test.fail('known gap', async () => {}); // expected to fail: a test failure passes it, a pass fails it with UNEXPECTED_PASS
+test('gap on web', async ({ platform }) => { test.fail(platform === 'web', 'known gap'); }); // marks, does not throw; the body runs on
 test.setup('sign in', { sessions: ['admin'] }, async ({ app, screen, session }) => {}); // see Sign-in sessions
 const wsTest = test.extend<{ ws: Ws }>({ ws: async ({ browser }, use) => { await use(await seed()); await drop(); } });
 wsTest('uses the workspace', async ({ ws }) => {}); // code after use() is teardown, runs after failures too
 ```
 
-A setup test cannot skip from its body (`INVALID_ARGUMENT`).
+A setup test cannot skip from its body (`INVALID_ARGUMENT`), and neither a
+setup test nor a serial member can call `test.fail`. `test.fail` covers test
+failures and timeouts only: an infrastructure error such as `ENGINE_FAILURE`
+or a blocked agent verdict still fails the test.
 
 | Option | Default | Notes |
 | --- | --- | --- |
@@ -85,6 +90,7 @@ A setup test cannot skip from its body (`INVALID_ARGUMENT`).
 | `retries` | `config.retries` | 0 to 10; a serial group's value applies to its members. |
 | `tags` | `[]` | Distinct, non-blank, no comma or edge whitespace (`'Login Form'` is fine); union across layers. `--tag smoke` selects, `--tag-mode all` requires every tag. |
 | `skip` | unset | `true` or a reason string. |
+| `fail` | unset | `true` or a reason string: expected to fail, as `test.fail`. Tests only, not groups or setup tests. |
 | `platforms` | unset | Only targets with these platforms, e.g. `['ios']`. |
 | `requires` | `[]` | Engine capabilities, e.g. `['browser']`; missing ones skip the test at selection rather than failing it with `UNSUPPORTED_CAPABILITY`. |
 | `session` | unset | Restore state saved by a setup test. |
@@ -94,7 +100,7 @@ A setup test cannot skip from its body (`INVALID_ARGUMENT`).
 | `serial` | `false` | Groups only. Members share app state, run in order on one worker, retry as a whole, and take the group's `trace` and `video`. |
 
 Serial members cannot set `retries`, `trace`, `video`, `session`,
-`platforms`, `requires`, `skip`, or `only`, nor can a nested `describe` set
+`platforms`, `requires`, `skip`, `fail`, or `only`, nor can a nested `describe` set
 `trace` or `video`; nesting serial groups is a `COLLECTION_ERROR`.
 
 Hooks nest: outer `beforeEach` first, inner `afterEach` first. `beforeAll`
@@ -150,7 +156,7 @@ assertion. Every query also exists on a locator, scoped to its subtree.
 | `getByPlaceholder(text, { exact?, visible? })` | Inputs by placeholder. |
 | `getByText(text, { exact?, visible? })` | Visible text. |
 | `getByDisplayValue(value, { exact?, visible? })` | Inputs by current value; on the web it cannot scope child queries or be a `filter({ has })` or `filter({ hasNot })` target. |
-| `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), accessibility identifier or resource id on a device (React Native `testID`, SwiftUI `.accessibilityIdentifier`, Compose `testTag` with `testTagsAsResourceId` on Android, Flutter `Semantics(identifier:)`, .NET MAUI `AutomationId`); a string matches the whole id, a RegExp tests it; on Android the `<package>:id/` prefix may be left off. Last resort. |
+| `getByTestId(id, { visible? })` | `data-testid` on the web (or `web({ testIdAttribute })`), accessibility identifier or resource id on a device (React Native `testID`, SwiftUI `.accessibilityIdentifier`, Compose `testTag` with `testTagsAsResourceId` on Android, Flutter `Semantics(identifier:)`, .NET MAUI `AutomationId`, NativeScript `testID`); a string matches the whole id, a RegExp tests it; on Android the `<package>:id/` prefix may be left off. Last resort. |
 
 Roles: `button`, `link`, `textbox`, `searchbox`, `combobox`, `listbox`,
 `option`, `checkbox`, `radio`, `radiogroup`, `switch`, `slider`, `spinbutton`,
@@ -213,7 +219,7 @@ Each action resolves one node, waits up to `config.actionTimeout` (30 s, or
 `press(key)`, `check()`, `uncheck()`,
 `selectOption(label | { label } | { value } | { index })` (one option; an
 array is `INVALID_ARGUMENT`), `focus()`, `hover()`, `setInputFiles(paths)`
-(relative to the project root), `dragTo(locator)`, `scrollIntoView()`,
+(relative to the project root; `[]` clears), `dragTo(locator)`, `scrollIntoView()`,
 `swipe({ direction, momentum? })`. Web only, `UNSUPPORTED_CAPABILITY` on a
 device: `secondaryTap`, `selectOption`, `setInputFiles`, `scrollIntoView`,
 and `modifiers`.
@@ -224,7 +230,7 @@ field and types one character per `delay`, plain string only (a `Secret` is
 `INVALID_ARGUMENT` and goes through `fill`).
 
 Coordinates are CSS pixels, for what the tree does not list: `tap({ position:
-{ x, y } })` offsets from the node's top-left corner (with `modifiers` it is
+{ x, y } })` offsets from the node's top-left corner inside its border (with `modifiers` it is
 `INVALID_ARGUMENT`), `screen.tapAt({ x, y })` taps a viewport point,
 `screen.swipe({ from, to, duration? })` swipes along a path,
 `screen.swipe({ direction, momentum? })` swipes the viewport. Prefer a
@@ -239,9 +245,9 @@ the action timeout, then read once with no retry for a value. `isVisible()`,
 `nth(i)` locator per current match and `allTextContents()` every match's
 text, both `[]` at zero. Text is the rendered text, whitespace collapsed: on
 the web what `innerText` reads (`text-transform` applies, `display: none`
-drops out, `<br>` is a space); `toHaveText` reads the same. `isChecked()` is
-`false`, not an error, on a node with no checked state, so query checkable
-controls by role. `waitFor({ state?: 'attached' | 'detached' | 'visible' | 'hidden', timeout? })` waits
+drops out, `<br>` is a space); `toHaveText` reads the same. `isChecked()` on a
+node that cannot be checked (a button), and `inputValue()` on one that holds
+no value (a heading), throw `ACTION_FAILED`. `waitFor({ state?: 'attached' | 'detached' | 'visible' | 'hidden', timeout? })` waits
 within `actionTimeout`, else `LOCATOR_NOT_FOUND`. For a value that has to
 settle use `expect`, not a read. Reading a password field's value or
 attributes is `POLICY_DENIED`, as is `toHaveAttribute` on one, negated too.
@@ -485,17 +491,20 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
 - `route(pattern, handler)`, `unroute(pattern)`: intercept requests, newest
   route first; `route.request` has `url`, `method`, `headers`, `postData`.
   `route.fetch()` reads upstream without deciding the route and returns
-  `{ url, status, headers, text(), json() }`; redirects are not followed.
+  `{ url, status, headers, body(), text(), json() }`; redirects are not followed.
+  Hand binary bodies on with `body()`, never `text()`.
   The handler calls exactly one of
-  `fulfill({ status?, headers?, contentType?, json | body | path })`,
+  `fulfill({ status?, headers?, contentType?, json | body | path })` (`body`
+  a string or bytes; several cookies as one `\n`-joined `set-cookie`),
   `continue({ url?, method?, headers?, postData? })` (straight to the
-  network), `fallback()` (the route registered before it), or `abort()`;
+  network; a header set to `undefined` is dropped, configured site headers
+  still added), `fallback()` (the route registered before it), or `abort()`;
   none or two fails the next step with `ACTION_FAILED`, an unsupported
   option with `INVALID_ARGUMENT`.
 - `unrouteAll()` removes every route; configured site headers stay.
 - `waitForResponse(pattern, { timeout? })`: resolves once the headers
-  arrive, with `{ url, status, headers, json(), text() }`; `text()` and
-  `json()` wait for the body (up to the action timeout) and reject with
+  arrive, with `{ url, status, headers, body(), json(), text() }`; the body
+  readers wait for the body (up to the action timeout) and reject with
   `ACTION_FAILED` when it could not be read. Start the wait before the
   request, including the first `browser.goto` or `app.open`.
 - `cookies()`, `setCookies([...])`: a target is an http(s) URL or a domain.

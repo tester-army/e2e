@@ -1,9 +1,8 @@
 ---
 title: MCP server
 description: Let your coding agent use your app and check its own work.
-icon: "plug"
-"og:image": "https://e2e.tester.army/docs/images/og/mcp-server.png?v=17998906c0"
-"twitter:image": "https://e2e.tester.army/docs/images/og/mcp-server.png?v=17998906c0"
+"og:image": "https://e2e.com/docs/images/og/mcp-server.png?v=17998906c0"
+"twitter:image": "https://e2e.com/docs/images/og/mcp-server.png?v=17998906c0"
 ---
 
 `e2e mcp` gives a coding agent such as Claude Code, Codex, or Cursor a live
@@ -26,8 +25,10 @@ step with no recording.
 
 ## Set it up
 
-`e2e init` offers to register the server in `.mcp.json` (Claude Code) and
-`.cursor/mcp.json` (Cursor). By hand:
+`e2e init` offers to register the server in `.mcp.json` (Claude Code),
+`.cursor/mcp.json` (Cursor), and `.codex/config.toml` (Codex). Install the
+project dependencies and start the MCP client in the project directory so
+`npx` uses the installed e2e version. By hand:
 
 <Tabs>
   <Tab title="Claude Code">
@@ -46,8 +47,9 @@ step with no recording.
     </CodeGroup>
   </Tab>
   <Tab title="Codex">
-    Add the server to `.codex/config.toml`, trust the project, and start a
-    new session:
+    Run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI,
+    or add the entry below. Trust the project and start a new Codex session.
+    `codex mcp list`, run in the project, shows the registration:
 
     ```toml title=".codex/config.toml"
     [mcp_servers.e2e]

@@ -324,6 +324,18 @@ describe('LocatorEngine perform contract', () => {
     expect(performed).toEqual([{ kind: 'scrollIntoView' }]);
   });
 
+  it('offsets a positioned tap from the node origin when it reports one, else its box corner', async () => {
+    const boxed: SemanticNode = { ...NODE, rect: { x: 10, y: 20, width: 100, height: 40 } };
+    const bordered: SemanticNode = { ...boxed, origin: { x: 18, y: 28 } };
+    const { engine, performed } = makeEngine({ read: [() => boxed, () => bordered] });
+    await engine.performWithin(EXPRESSION, { x: 5, y: 6 }, { kind: 'tap' });
+    await engine.performWithin(EXPRESSION, { x: 5, y: 6 }, { kind: 'tap' });
+    expect(performed.filter((entry) => typeof entry === 'object' && entry !== null && 'point' in entry)).toEqual([
+      { point: { x: 15, y: 26 }, action: { kind: 'tap' } },
+      { point: { x: 23, y: 34 }, action: { kind: 'tap' } },
+    ]);
+  });
+
   it('marks every action it performs with the test origin, so an engine can act without settling', async () => {
     const { engine, origins } = makeEngine({});
     await engine.perform(EXPRESSION, { kind: 'tap' });
@@ -367,6 +379,30 @@ describe('LocatorEngine secret fill', () => {
     const refusal = new E2EError('test', 'POLICY_DENIED', 'not a password field');
     await expect(engine.fillSecret(EXPRESSION, async () => Promise.reject(refusal))).rejects.toBe(refusal);
     expect(calls.perform).toBe(0);
+  });
+});
+
+describe('LocatorEngine step deadline', () => {
+  it('waits past the action timeout with timeout 0, until the phase deadline', async () => {
+    const budget = new AttemptBudget(new AbortController().signal, new Deadline(600));
+    const { engine } = makeEngine({ resolve: Array.from({ length: 50 }, () => () => [] as readonly NodeRef[]) }, { actionTimeout: 100, budget });
+    expect(engine.deadline(0)).toBe(budget.deadline);
+    const started = Date.now();
+    await expect(engine.perform(EXPRESSION, { kind: 'tap' }, 0)).rejects.toMatchObject({ code: 'LOCATOR_NOT_FOUND' });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(550);
+  });
+
+  it('keeps an operation budget of 0 an expired one, for a caller passing what is left of its deadline', () => {
+    const { engine } = makeEngine({}, { actionTimeout: 100 });
+    expect(engine.operation(0).timeoutMs).toBe(1);
+  });
+
+  it('refuses a negative, NaN, or infinite timeout before resolving', async () => {
+    const { engine, calls } = makeEngine({});
+    for (const timeout of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(engine.perform(EXPRESSION, { kind: 'tap' }, timeout)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    }
+    expect(calls.resolve).toBe(0);
   });
 });
 

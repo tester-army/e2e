@@ -78,8 +78,10 @@ model: an AI SDK provider key, or a ChatGPT subscription through
 ## MCP server
 
 The plugin does not bundle the e2e MCP server, which runs from the project's
-own `e2e` install. To let Codex drive the running app, add it to the
-project's `.codex/config.toml`:
+own `e2e` install. `e2e init` offers to register it for Codex. In an existing
+project, run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI
+or add the entry below. Install dependencies, trust the project, and start a
+new Codex session from the project directory:
 
 ```toml
 [mcp_servers.e2e]
@@ -101,11 +103,11 @@ Writing and running tests through the CLI does not require an MCP connection.
   failure codes; never test content, app content, or credentials) to a
   PostHog project run by the e2e maintainers. Turn it off with
   `E2E_TELEMETRY_DISABLED=1`, `DO_NOT_TRACK=1`, or `npx e2e telemetry disable`.
-  See [Telemetry](https://e2e.tester.army/docs/telemetry).
+  See [Telemetry](https://e2e.com/docs/telemetry).
 - `npx e2e feedback` sends a report to the same project. The skill shows the
   report first and sends it only when you agree.
 - Agent steps send the redacted screen to the model provider you configure.
-  See [Security](https://e2e.tester.army/docs/reference/security) for what
+  See [Security](https://e2e.com/docs/reference/security) for what
   is redacted.
 
 ## Maintain the package
@@ -124,4 +126,4 @@ is outside this package.
 The initial Codex manifest, icons, and skill UI metadata came from
 [tester-army/plugins at 9954005](https://github.com/tester-army/plugins/tree/9954005c9688bb1928bdaad20cb8098160406931/plugins/e2e).
 The shared skill content follows this monorepo's current sources.
-Docs: <https://e2e.tester.army/docs>.
+Docs: <https://e2e.com/docs>.

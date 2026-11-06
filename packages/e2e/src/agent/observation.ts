@@ -3,6 +3,7 @@
 import { appNavigation } from '../cache/route.ts';
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../engine/contract.ts';
 import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.ts';
+import { sha256Hex } from '../internal/ids.ts';
 import type { SecretLedger } from '../internal/redact.ts';
 import { collapseText } from '../internal/text.ts';
 import { sleep } from '../internal/time.ts';
@@ -209,6 +210,7 @@ const NODE_FIELDS: { readonly [Field in NodeField]-?: FieldRedaction<Field> } = 
   attributes: (attributes, _node, redaction) =>
     Object.fromEntries(Object.entries(attributes).map(([key, value]) => [redactText(key, redaction), redactText(value, redaction)])),
   rect: keep,
+  origin: keep,
   selector: (selector, _node, redaction) => redactText(selector, redaction),
   framePath: (framePath, _node, redaction) => framePath.map((selector) => redactText(selector, redaction)),
 };
@@ -527,16 +529,13 @@ export function observationShape(observation: AgentObservation): string | undefi
 }
 
 /**
- * FNV-1a over the image bytes: fast, and equal frames encode to equal bytes.
- * The screen presenter compares consecutive screenshots with it too.
+ * SHA-256 over the image bytes: equal frames encode to equal bytes. Hashed
+ * natively, which a per-byte loop in script cannot match on a megabyte-sized
+ * screenshot, and no 32-bit collision can read two screens as one. The screen
+ * presenter compares consecutive screenshots with it too.
  */
 export function pixelDigest(bytes: Uint8Array): string {
-  let hash = 0x811c9dc5;
-  for (const byte of bytes) {
-    hash ^= byte;
-    hash = Math.imul(hash, 0x01000193) >>> 0;
-  }
-  return hash.toString(16);
+  return sha256Hex(bytes);
 }
 
 /** `12:05`, `0:59`, `23:59:59`: a value that changes on its own once a second or minute. */

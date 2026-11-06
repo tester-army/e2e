@@ -1,9 +1,8 @@
 ---
 title: Browser
 description: The browser engine, its options, and the browser fixture it contributes.
-icon: "globe"
-"og:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
-"twitter:image": "https://e2e.tester.army/docs/images/og/reference/web.png?v=66fee465a4"
+"og:image": "https://e2e.com/docs/images/og/reference/web.png?v=66fee465a4"
+"twitter:image": "https://e2e.com/docs/images/og/reference/web.png?v=66fee465a4"
 ---
 
 `@e2e-dev/web` is the browser engine. It drives Chromium, Firefox, and WebKit
@@ -458,7 +457,7 @@ The [config](/reference/config) sets each member's budget:
 
 A `{ timeout }` option overrides the budget on `goto`, `reload`, `back`,
 `forward`, `waitForResponse`, `waitForDownload`, and `waitForDownloads`, capped
-by the test deadline. `url`, `title`, `evaluate`, `addInitScript`, `route`,
+by the test deadline (`cleanupTimeout` in `afterEach`); `0` waits until it. `url`, `title`, `evaluate`, `addInitScript`, `route`,
 `unroute`, `unrouteAll`, `cookies`, `setCookies`, `clearCookies`, `setViewport`,
 `emulateMedia`, `onDialog`, `keyboard.*`, and `mouse.*` take no override.
 
@@ -601,8 +600,8 @@ const title = await browser.evaluate<string>('document.title');
 
 | Throws | When |
 | --- | --- |
-| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). |
-| `EVALUATE_FAILED` | The evaluated code threw. The error carries its message. |
+| `INVALID_ARGUMENT` | `arg` or the return value is not a [`JsonValue`](#jsonvalue). A class instance, such as a `DOMRect` or an element, is not: return `rect.toJSON()` or the fields you need. |
+| `EVALUATE_FAILED` | The evaluated code threw, or the page replaced a JavaScript built-in such as `Map` that the engine needs. The error carries the message. |
 | `ACTION_FAILED` | A Playwright timeout. |
 | `ENGINE_FAILURE` | The page closed or the context was lost. |
 
@@ -616,7 +615,7 @@ await browser.route('**/api/quote', async (route) => {
 });
 ```
 
-`route.fetch()` returns the upstream `{ url, status, headers, text(), json() }`
+`route.fetch()` returns the upstream `{ url, status, headers, body(), text(), json() }`
 with the site's headers, under the action timeout, without deciding the route.
 It does not follow redirects, which could take it past the navigation rule.
 
@@ -628,9 +627,16 @@ It does not follow redirects, which could take it past the navigation rule.
 - Routes run newest first.
 - The handler must decide exactly once, with `fulfill`, `continue`,
   `fallback`, or `abort`, each described on `WebRoute` below.
-- A `continue` URL goes through the same rule as `goto`.
+- A `continue` URL goes through the same rule as `goto`. A `continue` header
+  set to `undefined` is dropped, also on redirects.
+- A `fulfill` body is a string or bytes (`Buffer`, `Uint8Array`), sent as is.
+- To set several cookies, join them with `\n` in one `set-cookie` header, as
+  `route.fetch()` headers report them. Any other line break in a header is refused.
 - A handler that throws (a failed `expect` on the request, say) fails the
   next step with that error, or the attempt at its end when no step follows.
+  A step the handler made fail, such as the `goto` whose request it left
+  aborted, fails with the handler's error. A `goto` whose request a handler
+  aborted on purpose fails with `ACTION_FAILED`.
   A handler still running then gets the cleanup budget to finish. Whatever it
   throws after the budget is dropped.
 
@@ -649,12 +655,13 @@ It does not follow redirects, which could take it past the navigation rule.
  */
 export type RouteFulfillResponse = {
   status?: number;
+  /** Response headers; `set-cookie` may join several cookies with `\n`, as `route.fetch()` reports them. */
   headers?: Record<string, string>;
   /** Sets the `Content-Type` response header. */
   contentType?: string;
 } & (
   | { json: JsonValue; body?: never; path?: never }
-  | { body: string; json?: never; path?: never }
+  | { body: string | Uint8Array; json?: never; path?: never }
   | { path: string; json?: never; body?: never }
   | { body?: never; json?: never; path?: never }
 );
@@ -665,8 +672,8 @@ export interface RouteContinueOverrides {
   url?: string;
   /** Request method. */
   method?: string;
-  /** Replaces every request header; the configured `headers` for the app's site are added on top. */
-  headers?: Record<string, string>;
+  /** Replaces every request header; `undefined` drops one, and the configured `headers` for the app's site are added on top. */
+  headers?: Record<string, string | undefined>;
   /** Request body. */
   postData?: string;
 }
@@ -726,15 +733,16 @@ expect(response.status).toBe(201);
 
 - The deadline bounds the match: the response resolves as soon as its headers
   arrive.
-- `text()` and `json()` wait for the body on a budget of their own,
+- `body()`, `text()`, and `json()` wait for the body on a budget of their own,
   `config.actionTimeout` capped by the test deadline.
 - `url`, `status`, and `headers` are always readable.
-- A genuinely empty body reads as `''`.
+- A genuinely empty body reads as an empty `Buffer` from `body()` and `''`
+  from `text()`; `json()` rejects it.
 
 | Throws | When |
 | --- | --- |
 | `INVALID_ARGUMENT` | A predicate function as the pattern. |
-| `ACTION_FAILED` | Nothing matches inside the deadline. From `text()` and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
+| `ACTION_FAILED` | Nothing matches inside the deadline. From `body()`, `text()`, and `json()`: a body still streaming when their budget runs out, or a body the browser could not read (a connection reset short of the declared `Content-Length`, a request the page aborted, or a redirect, whose body the browser never keeps), instead of an empty string. |
 
 ```ts
 export interface WebResponse {
@@ -742,8 +750,10 @@ export interface WebResponse {
   readonly url: string;
   /** HTTP status. */
   readonly status: number;
-  /** Response headers, lower-cased names. */
+  /** Response headers, lower-cased names; `route.fetch()` joins several `set-cookie` values with `\n`, `waitForResponse` leaves cookie headers out. */
   readonly headers: Readonly<Record<string, string>>;
+  /** Waits for the body and returns its bytes. */
+  body(): Promise<Buffer>;
   /** Waits for the body and parses it as JSON. */
   json<T = unknown>(): Promise<T>;
   /** Waits for the body and reads it as text. */
@@ -984,11 +994,14 @@ observation budget, capped at two seconds, for the screenshot. The deadline
 covers the page walk, metadata and element readback, and nested frames.
 
 Semantic metadata crosses the Playwright connection as one JSON string, to
-cut serialization overhead. Actions still use the live element handles
-captured with that metadata. A page that replaces `JSON.stringify`, or adds
-`toJSON` methods to object or array prototypes, gets structured transfer.
-Cleanup does not wait for stalled protocol replies. An abandoned reader
-cannot reuse node IDs or publish handles over a newer observation.
+cut serialization overhead. The elements the reader walked stay in one
+in-page array per document, and an action makes the handle for its node from
+that array the first time it reaches for it. A reference still names the
+element the walk read, not whatever sits at that position later. A page that
+replaces `JSON.stringify`, or adds `toJSON` methods to object or array
+prototypes, gets structured transfer. Cleanup does not wait for stalled
+protocol replies. An abandoned reader cannot reuse node IDs or publish
+references over a newer observation.
 
 ## surfaceOf
 

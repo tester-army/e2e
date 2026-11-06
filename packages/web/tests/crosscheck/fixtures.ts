@@ -264,4 +264,17 @@ export const FIXTURE_PAGES: readonly FixturePage[] = [
       <div contenteditable="true" aria-label="Decorated editor"><h2 role="presentation">Editor title</h2><img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAAAAAAALAAAAAABAAEAAAIBRAA7"></div>
     `,
   },
+  {
+    name: 'list rebuilt every millisecond',
+    html: `
+      <div id="rebuilt-list"></div>
+      <script>
+        const rebuild = () => {
+          document.getElementById('rebuilt-list').innerHTML = '<button type="button">Tap me</button><button type="button">Decoy</button>';
+        };
+        rebuild();
+        setInterval(rebuild, 1);
+      </script>
+    `,
+  },
 ];

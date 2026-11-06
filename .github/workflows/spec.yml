@@ -64,14 +64,19 @@ jobs:
           pnpm exec tsc -p .dev/skills/babysit/scripts
           node --test .dev/skills/babysit/scripts/pr-status.test.ts
       - name: Install browsers
-        run: node packages/web/dist/bin.js install chromium --with-deps
+        uses: ./.github/actions/chromium
       # On a pull request, Jev leaves out the tests the change can't affect;
-      # the merge queue and main pass no --changed-since and run every test.
+      # a push to main passes no --changed-since and runs every test.
       # Without the key (a fork's pull request), every test runs.
       - name: Testbed
-        run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0}', github.base_ref) || '' }}
+        run: pnpm --filter @e2e-dev/testbed test ${{ github.event_name == 'pull_request' && format('--changed-since origin/{0} --exclude-tag playwright', github.base_ref) || '' }}
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      # The tests ported from Playwright pin the web engine's behavior, so a
+      # pull request runs all of them, not only the ones Jev picks.
+      - name: Testbed, Playwright tests
+        if: ${{ github.event_name == 'pull_request' }}
+        run: pnpm --filter @e2e-dev/testbed exec e2e run --tag playwright
 
   test:
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -93,7 +98,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Install browsers
-        run: pnpm --filter @e2e-dev/web exec playwright-core install chromium --with-deps
+        uses: ./.github/actions/chromium
+        with:
+          only-shell: false
       - name: Unit and integration tests
         run: pnpm test
 

@@ -17,6 +17,8 @@ import {
   type SerializedError,
 } from '../internal/errors.ts';
 import { isRuntimeSkip, type RuntimeSkip } from '../internal/skip.ts';
+import { lateExpectedFailureError } from '../internal/expected-failure.ts';
+import { settleExpectedFailure } from './expected-failure.ts';
 import type { ExecutorAttempt } from '../agent/executor.ts';
 import { isModelUnreachable } from '../agent/error.ts';
 import { withAiTraceScope } from '../internal/ai-trace.ts';
@@ -469,10 +471,11 @@ export class TargetExecutor implements SerialHost {
         });
         attempts.push(attempt);
         this.options.events?.onAttempt?.(pair, attempt);
-        if (isFailedStatus(attempt.status)) {
+        if (isFailedStatus(attempt.status) || attempt.expectedFailure?.error !== undefined) {
           // A failed realm is never reused, but afterAll still runs for every
           // scope whose beforeAll started in it. A body that skipped itself
-          // left the suite instance as it found it, so the next test keeps it.
+          // left the suite instance as it found it, so the next test keeps it;
+          // one that failed as expected still failed.
           await this.realms.leave(realm);
           realm = null;
         }
@@ -921,6 +924,8 @@ export class TargetExecutor implements SerialHost {
     let failurePhase: AttemptPhase | undefined;
     /** Set when the body (or a beforeEach) skipped the test with `test.skip(...)`. */
     let skipped: RuntimeSkip | undefined;
+    /** Why the attempt is expected to fail: the `fail` option, else the first `test.fail(...)` that marked it. */
+    let expectedFailure = pair.options.expectedFailure;
     let phase: AttemptPhase = 'launch';
     /** Moves the attempt to `next`, and the steps it records into the hook they run in (none for the body). */
     const enter = (next: AttemptPhase): void => {
@@ -1065,7 +1070,22 @@ export class TargetExecutor implements SerialHost {
       // run on is published here and cleared when `attemptEnd` fires in `finally`.
       const soft = new SoftFailures();
       publishAttempt(
-        { attemptId, owner: 'suite', testKind: pair.test.kind, assertionTimeout: this.config.assertionTimeout, budget, soft },
+        {
+          attemptId,
+          owner: 'suite',
+          testKind: pair.test.kind,
+          assertionTimeout: this.config.assertionTimeout,
+          budget,
+          soft,
+          ...(context.kind === 'ordinary'
+            ? {
+                expectFailure: (reason: string) => {
+                  if (phase === 'afterEach') throw lateExpectedFailureError();
+                  expectedFailure ??= reason;
+                },
+              }
+            : {}),
+        },
         attemptEnd.signal,
       );
 
@@ -1262,6 +1282,11 @@ export class TargetExecutor implements SerialHost {
         // A failure that first landed in teardown has had no look yet.
         await captureEvidence();
       }
+      // The cache below still settles on what the attempt did, read off `failure`.
+      settleExpectedFailure(record, expectedFailure, {
+        serialize: (error) => serializeError(error, { phase: 'body', projectRoot: this.config.projectRoot, redact }),
+        redact,
+      });
       // A serial member's recording ends with the member, not the group.
       if (openSession !== null && shared !== undefined) {
         await this.stopRunningRecording(openSession, attemptId, record, artifacts.sink, secondaryErrors);
