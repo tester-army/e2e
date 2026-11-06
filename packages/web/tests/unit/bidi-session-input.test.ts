@@ -2,7 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { clickSources, fixtureKeySource, fixtureKeyStroke, strokeSource } from '../../src/bidi/input.ts';
-import { BidiSession, ContextOwners } from '../../src/bidi/session.ts';
+import { ContextTree } from '../../src/bidi/context-tree.ts';
+import { BidiSession } from '../../src/bidi/session.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
 const SHIFT = '';
@@ -11,7 +12,7 @@ const SHIFT = '';
 function session(fake: FakeBidi): BidiSession {
   const settings = { siteHeaders: () => undefined, holdRequests: false, media: {}, viewport: null, browser: 'chromium', initScripts: { forAttempt: () => [] }, permissions: [] };
   const attempt = { credentials: undefined };
-  const created = new BidiSession({ connection: fake.connection, exclusive: true } as never, settings as never, attempt as never, new ContextOwners());
+  const created = new BidiSession({ connection: fake.connection, exclusive: true } as never, settings as never, attempt as never, new ContextTree());
   created.context = 'tab';
   return created;
 }

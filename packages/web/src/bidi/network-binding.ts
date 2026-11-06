@@ -183,9 +183,9 @@ export class NetworkBinding {
     this.forget(event.request.request);
   }
 
-  /** Retires the requests in flight from `context`, a tab that closed, whatever events its teardown still sends. */
-  retire(context: string): void {
-    for (const [request, from] of this.inflight) if (from === context) this.forget(request);
+  /** Retires the requests in flight from any of `contexts`, which closed, whatever events their teardown still sends. */
+  retire(contexts: ReadonlySet<string>): void {
+    for (const [request, from] of this.inflight) if (contexts.has(from)) this.forget(request);
   }
 
   /** Drops one request from the in-flight count. */

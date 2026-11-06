@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { ContextTree } from '../../src/bidi/context-tree.ts';
 import { AttemptNetwork, type NetworkRoute } from '../../src/bidi/network.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
@@ -26,6 +27,7 @@ function network(
     credentials: options.credentials,
     ours: (event) => options.ours?.(event.context) ?? true,
     onPage: (context) => options.onPage?.(context) ?? true,
+    contexts: new ContextTree(),
     exclusive: options.exclusive ?? false,
     browser: 'chromium',
     onFailure: (error) => failures.push(error),

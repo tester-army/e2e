@@ -9,7 +9,8 @@ import type { AppLogEntry } from 'e2e/engine';
 import type { NativeDialog } from '../dialogs.ts';
 import type { BidiConnection } from './connection.ts';
 import { callFunction } from './script.ts';
-import type { BidiSession, ContextOwners } from './session.ts';
+import type { ContextTree } from './context-tree.ts';
+import type { BidiSession } from './session.ts';
 
 /** The events every session subscribes to for as long as the browser runs. */
 export const SESSION_EVENTS = [
@@ -43,7 +44,7 @@ const ABORTED = new Set(['net::ERR_ABORTED', 'NS_BINDING_ABORTED']);
  * document starts or lands at (after a redirect) is visited, for its
  * permissions and a saved session's storage.
  */
-export function routeEvents(connection: BidiConnection, owners: ContextOwners, current: () => BidiSession | undefined): () => void {
+export function routeEvents(connection: BidiConnection, contexts: ContextTree, current: () => BidiSession | undefined): () => void {
   const report = (entry: AppLogEntry): void => {
     try {
       current()?.attempt.appLog(entry);
@@ -79,7 +80,7 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
     const session = ours(event.context);
     if (session === undefined || NO_PLACE.has(event.url) || event.url.startsWith('data:')) return;
     void session.visit(event.url).catch((cause: unknown) => session.latch.latch(asError(cause)));
-    if (owners.top(event.context) !== event.context) {
+    if (contexts.top(event.context) !== event.context) {
       void frameName(connection, event.context).then((name) => went(`frame${name === '' ? '' : ` "${name}"`} loaded ${event.url}`));
       return;
     }
@@ -95,7 +96,7 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
   };
   const offs = [
     connection.on('browsingContext.contextCreated', (info) => {
-      owners.created(info.context, info.userContext, info.parent);
+      contexts.created(info.context, info.userContext, info.parent);
       const session = ours(info.context);
       if (info.parent != null || info.originalOpener == null || session === undefined) return;
       void session.network.addContext(info.context).catch((cause: unknown) => session.latch.latch(asError(cause)));
@@ -105,14 +106,16 @@ export function routeEvents(connection: BidiConnection, owners: ContextOwners, c
     }),
     connection.on('browsingContext.contextDestroyed', (info) => {
       const session = ours(info.context);
-      if (info.parent == null && session !== undefined) {
+      if (session !== undefined && contexts.top(info.context) !== info.context) {
+        session.network.retire(info.context);
+      } else if (session !== undefined) {
         if (info.context === session.context) session.retireContext();
         void session.network.removeContext(info.context).catch((cause: unknown) => session.latch.latch(asError(cause)));
       }
       const tab = appTabs.get(info.context);
       if (tab !== undefined && session !== undefined) tellOpened(tab, undefined);
       appTabs.delete(info.context);
-      owners.destroyed(info.context);
+      contexts.destroyed(info.context);
     }),
     connection.on('browsingContext.navigationStarted', (event) => {
       const session = ours(event.context);

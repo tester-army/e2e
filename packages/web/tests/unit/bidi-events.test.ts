@@ -8,12 +8,13 @@ import { describe, expect, it } from 'vitest';
 import type { AppLogEntry } from 'e2e/engine';
 import { DialogRouter } from '../../src/dialogs.ts';
 import { routeEvents } from '../../src/bidi/events.ts';
-import { ContextOwners, type BidiSession } from '../../src/bidi/session.ts';
+import { ContextTree } from '../../src/bidi/context-tree.ts';
+import type { BidiSession } from '../../src/bidi/session.ts';
 import { ErrorLatch } from '../../src/support.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
 
 /** The parts of a session the event router reads, owning `userContext`'s contexts. */
-function attempt(owners: ContextOwners, userContext: string) {
+function attempt(owners: ContextTree, userContext: string) {
   const latch = new ErrorLatch();
   const log: AppLogEntry[] = [];
   const added: string[] = [];
@@ -26,7 +27,7 @@ function attempt(owners: ContextOwners, userContext: string) {
     dialogs: new DialogRouter(latch),
     attempt: { appLog: (entry: AppLogEntry) => log.push(entry), navigation: (line: string) => lines.push(line) },
     visit: async (url: string) => void visited.push(url),
-    network: { addContext: async (context: string) => void added.push(context), removeContext: async () => undefined },
+    network: { addContext: async (context: string) => void added.push(context), removeContext: async () => undefined, retire: () => undefined },
     owns: (context: string | null | undefined) => context != null && owners.owner(context) === userContext,
   };
   return { session: session as unknown as BidiSession, state: session, log, added, latch, lines, visited };
@@ -40,7 +41,7 @@ function prompt(context: string, type = 'confirm') {
 describe('routeEvents', () => {
   it('answers a prompt in the attempt’s context through its dialog router', async () => {
     const fake = new FakeBidi();
-    const owners = new ContextOwners();
+    const owners = new ContextTree();
     const { session } = attempt(owners, 'mine');
     routeEvents(fake.connection, owners, () => session);
     fake.emit('browsingContext.contextCreated', { context: 'tab', userContext: 'mine', parent: null, url: 'about:blank', children: null, clientWindow: 'w' });
@@ -57,7 +58,7 @@ describe('routeEvents', () => {
 
   it('leaves a prompt in another session’s context alone', async () => {
     const fake = new FakeBidi();
-    const owners = new ContextOwners();
+    const owners = new ContextTree();
     const { session } = attempt(owners, 'mine');
     routeEvents(fake.connection, owners, () => session);
     fake.emit('browsingContext.contextCreated', { context: 'theirs', userContext: 'other', parent: null, url: 'about:blank', children: null, clientWindow: 'w' });
@@ -68,7 +69,7 @@ describe('routeEvents', () => {
 
   it('dismisses an unhandled prompt and fails the next step naming it', async () => {
     const fake = new FakeBidi();
-    const owners = new ContextOwners();
+    const owners = new ContextTree();
     const { session, latch } = attempt(owners, 'mine');
     routeEvents(fake.connection, owners, () => session);
     fake.emit('browsingContext.contextCreated', { context: 'tab', userContext: 'mine', parent: null, url: 'about:blank', children: null, clientWindow: 'w' });
@@ -80,7 +81,7 @@ describe('routeEvents', () => {
 
   it('gives a frame its parent’s owner, covers a tab the app opens, and logs only the attempt’s pages', () => {
     const fake = new FakeBidi();
-    const owners = new ContextOwners();
+    const owners = new ContextTree();
     const { session, log, added } = attempt(owners, 'mine');
     const off = routeEvents(fake.connection, owners, () => session);
     fake.emit('browsingContext.contextCreated', { context: 'tab', userContext: 'mine', parent: null, url: 'about:blank', children: null, clientWindow: 'w' });
@@ -99,7 +100,7 @@ describe('routeEvents', () => {
 
   it('tells where the app went, never the driver’s own navigations, names each frame and tab once, and visits every document it starts or lands at', async () => {
     const fake = new FakeBidi();
-    const owners = new ContextOwners();
+    const owners = new ContextTree();
     const { session, state, lines, visited } = attempt(owners, 'mine');
     fake.on('script.callFunction', (params) => ({
       result: { type: 'success', realm: 'r', result: { type: 'string', value: (params['target'] as { context: string }).context === 'frame' ? 'pay' : '' } },

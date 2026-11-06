@@ -45,6 +45,7 @@ import type { WebBasicAuth, WebScreencastOptions } from '../options.ts';
 import { perform, performAt, typeInto, typeText } from './actions.ts';
 import { screenshot, startVideo, stopVideo } from './artifacts.ts';
 import { afterDispatch, classify, releaseQuietly } from './errors.ts';
+import { ContextTree } from './context-tree.ts';
 import { routeEvents, SESSION_EVENTS } from './events.ts';
 import { fixtureKeyStroke, strokeSource } from './input.ts';
 import type { KeyPhase } from './chromium-keys.ts';
@@ -54,7 +55,7 @@ import type { ObservedResponse } from './network-binding.ts';
 import { locate, observe, traceScreen } from './observe.ts';
 import { documentTitle } from './page.ts';
 import type { PageArgument, PageValue } from './script.ts';
-import { BidiSession, ContextOwners, type SessionSettings } from './session.ts';
+import { BidiSession, type SessionSettings } from './session.ts';
 import { captureState, restoreState } from './state.ts';
 import { goto, reload, reset, restart, traverse, type WaitUntil } from './steering.ts';
 
@@ -97,7 +98,8 @@ export class BidiSurface {
   private session: BidiSession | undefined;
   private settings: SessionSettings | undefined;
   private headed = false;
-  private readonly owners = new ContextOwners();
+  /** Every browsing context of the browser, which the session's events and a snapshot taken on connect keep current. */
+  private readonly contexts = new ContextTree();
   private unrouteEvents: () => void = () => undefined;
   /**
    * The launch or attach in flight, which `dispose` waits out. A launch
@@ -215,22 +217,31 @@ export class BidiSurface {
     this.unrouteEvents();
     if (stale !== undefined) await releaseQuietly(stale.close());
     const browser = await this.openBrowser(AbortSignal.any([AbortSignal.timeout(BROWSER_LAUNCH_TIMEOUT_MS), disposal, ...(signal === undefined ? [] : [signal])]));
+    // Routed before subscribing, so no context event is lost; the snapshot then adds the contexts already open.
+    this.contexts.clear();
+    const unroute = routeEvents(browser.connection, this.contexts, () => this.session);
     try {
       await withTimeout(
-        browser.connection.send('session.subscribe', { events: [...SESSION_EVENTS] }),
+        this.subscribe(browser),
         BROWSER_LAUNCH_TIMEOUT_MS,
-        () => new EngineError('OPERATION_TIMEOUT', `the browser did not take its event subscription within ${BROWSER_LAUNCH_TIMEOUT_MS}ms`, { retryable: false }),
+        () => new EngineError('OPERATION_TIMEOUT', `the browser did not take its event subscription and list its open contexts within ${BROWSER_LAUNCH_TIMEOUT_MS}ms`, { retryable: false }),
       );
       if (disposal.aborted) throw cancelled('the engine was disposed while its browser launched');
       if (signal?.aborted === true) throw cancelled('browser connect cancelled');
     } catch (cause) {
+      unroute();
       await releaseQuietly(browser.close());
       throw cause;
     }
     this.browser = browser;
-    this.owners.clear();
-    this.unrouteEvents = routeEvents(browser.connection, this.owners, () => this.session);
+    this.unrouteEvents = unroute;
     return browser;
+  }
+
+  /** Subscribes `browser` to the session's events, then adds the browsing contexts already open to the tree. */
+  private async subscribe(browser: BidiBrowser): Promise<void> {
+    await browser.connection.send('session.subscribe', { events: [...SESSION_EVENTS] });
+    await this.contexts.sync(async () => (await browser.connection.send('browsingContext.getTree', {})).contexts);
   }
 
   /** Whether every attempt leases a fresh browser of its own: a provider's `attempt` scope. */
@@ -277,7 +288,7 @@ export class BidiSurface {
       browser,
       this.settings,
       { attemptId: context.attemptId, artifactsDir: context.artifactsDir, appLog: context.appLog, navigation: context.navigation, screen: context.screen, credentials, remoteDownloads: this.options.leases?.downloads() },
-      this.owners,
+      this.contexts,
     );
     const setup = session.openUserContext();
     try {

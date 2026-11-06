@@ -14,6 +14,7 @@ import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import type { Network } from 'webdriver-bidi-protocol';
 import { BidiError, type BidiConnection, type BidiEventParams } from './connection.ts';
+import type { ContextTree } from './context-tree.ts';
 import { lowercaseNames } from '../protected-app.ts';
 import { releaseQuietly } from './errors.ts';
 import { NetworkBinding, alreadyGone, bytesText, headerRecord, stripHash, type ObservedResponse } from './network-binding.ts';
@@ -59,6 +60,8 @@ export interface AttemptNetworkOptions {
   readonly ours: (event: { readonly userContext?: string | null; readonly context: string | null }) => boolean;
   /** Whether a context is the attempt's tab or a frame in it, which a response wait listens to. */
   readonly onPage: (context: string | null) => boolean;
+  /** The browsing-context tree, whose subtree of a closed context has its requests retired with it. */
+  readonly contexts: ContextTree;
   /** Whether no other client drives the browser, so one intercept can cover every tab from its first request. */
   readonly exclusive: boolean;
   /** The browser, whose request handling differs: Firefox keeps a replaced body's old `content-length` and sends no cookie a continue leaves out. */
@@ -183,10 +186,19 @@ export class AttemptNetwork {
   removeContext(context: string): Promise<void> {
     const binding = this.binding;
     binding?.closedTabs.add(context);
-    binding?.retire(context);
+    this.retire(context);
     return this.change(async () => {
       if (binding !== undefined && binding === this.binding && binding.tops.delete(context)) await this.reconcile();
     });
+  }
+
+  /**
+   * A browsing context of the attempt (a tab or a frame) closed: the
+   * requests in flight from it and every frame in it stop counting, whatever
+   * events their teardown still sends. Call it before the tree forgets them.
+   */
+  retire(context: string): void {
+    this.binding?.retire(this.options.contexts.subtree(context));
   }
 
   /**

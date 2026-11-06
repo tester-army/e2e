@@ -15,6 +15,7 @@ import type { WebMedia } from '../media.ts';
 import { cancelled, ErrorLatch, invalidState, sanitizeFilename } from '../support.ts';
 import type { WebScreencastOptions } from '../options.ts';
 import { BidiError, type BidiConnection } from './connection.ts';
+import type { ContextTree } from './context-tree.ts';
 import { AttemptDownloads } from './downloads.ts';
 import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand, type KeyStroke } from './chromium-keys.ts';
 import { heldModifiers, MODIFIER_VALUES, pressSource, pressStroke, SHIFT_KEY } from './input.ts';
@@ -83,43 +84,6 @@ const DEFAULT_USER_CONTEXT = 'default';
 
 /** The sandbox realm a failed read runs again in, to tell a page that broke the readers from a fault of their own. */
 const READER_PROBE_SANDBOX = 'e2e-reader-probe';
-
-/** The user context and parent of each browsing context, as the session's events report them. */
-export class ContextOwners {
-  private readonly owners = new Map<string, string>();
-  private readonly parents = new Map<string, string>();
-
-  /** Records `context`'s user context, or its parent's for a frame. */
-  created(context: string, userContext: string | undefined, parent: string | null | undefined): void {
-    if (parent != null) this.parents.set(context, parent);
-    if (userContext !== undefined) this.owners.set(context, userContext);
-    else if (parent != null) this.owners.set(context, this.owners.get(parent) ?? '');
-  }
-
-  /** Forgets a closed context. */
-  destroyed(context: string): void {
-    this.owners.delete(context);
-    this.parents.delete(context);
-  }
-
-  /** The user context `context` belongs to; undefined for one never seen. */
-  owner(context: string): string | undefined {
-    return this.owners.get(context);
-  }
-
-  /** The top-level browsing context `context` is, or is a frame of. */
-  top(context: string): string {
-    let top = context;
-    for (let parent = this.parents.get(top); parent !== undefined; parent = this.parents.get(top)) top = parent;
-    return top;
-  }
-
-  /** Forgets everything recorded, for a new user context. */
-  clear(): void {
-    this.owners.clear();
-    this.parents.clear();
-  }
-}
 
 /**
  * The ids the driver minted and the element behind each, with the browsing
@@ -220,7 +184,7 @@ export class BidiSession {
     readonly browser: BidiBrowser,
     readonly settings: SessionSettings,
     readonly attempt: AttemptSettings,
-    private readonly owners: ContextOwners,
+    private readonly contexts: ContextTree,
   ) {
     this.media = settings.media;
     this.viewport = settings.viewport;
@@ -229,6 +193,7 @@ export class BidiSession {
       credentials: attempt.credentials,
       ours: (event) => this.owns(event.context),
       onPage: (context) => this.onPage(context),
+      contexts,
       exclusive: browser.exclusive,
       browser: settings.browser,
       onFailure: (error) => this.latch.latch(error),
@@ -253,12 +218,12 @@ export class BidiSession {
 
   /** Whether `context` belongs to this attempt's user context. */
   owns(context: string | null | undefined): boolean {
-    return context != null && this.owners.owner(context) === this.userContext;
+    return context != null && this.contexts.owner(context) === this.userContext;
   }
 
   /** Whether `context` is the attempt's tab or a frame in it: what a page-scoped wait listens to, not a tab the app opened. */
   onPage(context: string | null | undefined): boolean {
-    return context != null && this.context !== undefined && this.owners.top(context) === this.context;
+    return context != null && this.context !== undefined && this.contexts.top(context) === this.context;
   }
 
   /**
@@ -407,7 +372,6 @@ export class BidiSession {
       type: this.settings.browser === 'firefox' ? 'window' : 'tab',
       userContext,
     })).context;
-    this.owners.created(context, userContext, null);
     if (userContext !== this.userContext) {
       if (context !== this.adopted) await releaseQuietly(connection.send('browsingContext.close', { context }));
       throw new EngineError('NODE_STALE', 'the attempt replaced its user context while a tab opened', { retryable: true });
