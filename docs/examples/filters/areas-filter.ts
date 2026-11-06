@@ -13,19 +13,20 @@ export const areas = {
   name: 'areas',
   filter(tests, { changes }) {
     const reached = new Set<string>();
+    let unmapped: string | undefined;
     for (const file of changes.files) {
       const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
-      if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
-      for (const tag of AREAS[area] ?? []) reached.add(tag);
+      if (area === undefined) unmapped = file;
+      else for (const tag of AREAS[area] ?? []) reached.add(tag);
     }
     const exclude: Record<string, string> = {};
     const relevance: Record<string, number> = {};
     for (const test of tests) {
       const tags = test.tags.filter((tag) => AREA_TAGS.has(tag));
-      if (tags.length === 0) continue;
       if (tags.some((tag) => reached.has(tag))) relevance[test.id] = 1;
-      else exclude[test.id] = 'the change reaches none of its areas';
+      else if (tags.length > 0 && unmapped === undefined) exclude[test.id] = 'the change reaches none of its areas';
     }
-    return { exclude, relevance };
+    if (unmapped === undefined) return { exclude, relevance };
+    return { exclude, relevance, note: `${unmapped} is in no area, so areas leaves nothing out` };
   },
 } satisfies TestFilter;

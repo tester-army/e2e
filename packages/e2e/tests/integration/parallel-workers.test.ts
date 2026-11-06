@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -1069,6 +1069,20 @@ test('${title}', async () => {
   await new Promise((resolve) => setTimeout(resolve, ${ms}));
 });
 `;
+      /** Like `sleeping`, but once `ORDER_BARRIER` names a directory, it waits there until `other` has started too. */
+      const gated = (title: string, other: string, ms: number) => `import { existsSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { test } from 'e2e';
+
+test('${title}', async () => {
+  const barrier = process.env['ORDER_BARRIER'];
+  if (barrier !== undefined) {
+    writeFileSync(path.join(barrier, '${title}'), '');
+    while (!existsSync(path.join(barrier, '${other}'))) await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  await new Promise((resolve) => setTimeout(resolve, ${ms}));
+});
+`;
       /** The titles of the tests that ran, in the order their first attempts started. */
       const startOrder = (outcome: RunOutcome) =>
         outcome.report.run.results
@@ -1076,14 +1090,16 @@ test('${title}', async () => {
           .toSorted((a, b) => Date.parse(a.attempts[0]!.startedAt) - Date.parse(b.attempts[0]!.startedAt))
           .map((result) => result.titlePath.at(-1));
       const { outcome: first, project } = await runProjectWithConfigFile(
-        { 'tests/alpha.e2e.ts': sleeping('alpha', 0), 'tests/beta.e2e.ts': sleeping('beta', 900), 'tests/gamma.e2e.ts': sleeping('gamma', 700) },
+        { 'tests/alpha.e2e.ts': sleeping('alpha', 0), 'tests/beta.e2e.ts': gated('beta', 'gamma', 900), 'tests/gamma.e2e.ts': gated('gamma', 'beta', 700) },
         { configSource: workerFakeConfigSource(1) },
       );
       // No report to learn from yet.
       expect(startOrder(first)).toEqual(['alpha', 'beta', 'gamma']);
 
-      // Two workers take beta and gamma, the files that run spent longest in, and alpha waits for one of them.
-      const parallel = await runExistingWithConfigFile(project, { runOptions: { workers: 2 } });
+      // Two workers take beta and gamma, the files that run spent longest in. Neither sleeps before both have started, so alpha waits for one of them however slowly the second worker boots.
+      const barrier = mkdtempSync(path.join(tmpdir(), 'e2e-order-'));
+      const parallel = await runExistingWithConfigFile(project, { runOptions: { workers: 2, env: { ...process.env, CI: '', APP_URL: undefined, ORDER_BARRIER: barrier } } });
+      rmSync(barrier, { recursive: true, force: true });
       expect(parallel.exitCode).toBe(0);
       expect(startOrder(parallel).at(-1)).toBe('alpha');
 
