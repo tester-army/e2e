@@ -5,7 +5,7 @@
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -34,8 +34,7 @@ describe('e2e-web', () => {
     expect(await exited(runBin(['install', 'chromium']))).toEqual({ code: 0, signal: null });
   });
 
-  // Missing in the installer: a download host override and SIGTERM cancelling the download with exit 143.
-  it.skip('ends the download when the command gets SIGTERM, and exits 143', async () => {
+  it('ends the download when the command gets SIGTERM, and exits 143', async () => {
     const browsers = mkdtempSync(path.join(tmpdir(), 'e2e-web-cli-'));
     const sockets: Socket[] = [];
     const server: Server = createServer((socket) => {
@@ -54,6 +53,7 @@ describe('e2e-web', () => {
 
     const child = runBin(['install', 'chromium'], {
       E2E_BROWSERS_PATH: browsers,
+      E2E_BROWSERS_DOWNLOAD_HOST: `http://127.0.0.1:${String(address.port)}`,
     });
     const download = await connected;
     const downloadClosed = new Promise<void>((resolve) => download.once('close', () => resolve()));
@@ -61,5 +61,7 @@ describe('e2e-web', () => {
 
     expect(await exited(child)).toEqual({ code: 143, signal: null });
     await downloadClosed;
+    expect(readdirSync(browsers, { recursive: true, encoding: 'utf8' }).filter((entry) => statSync(path.join(browsers, entry)).isFile())).toEqual([]);
+    expect(existsSync(path.join(browsers, '.install.lock'))).toBe(false);
   });
 });

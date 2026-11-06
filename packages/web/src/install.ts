@@ -12,6 +12,7 @@ import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { gunzipSync } from 'node:zlib';
 import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e/engine';
+import { browserPlatform, executablePath, installBuild, type BrowserPlatform, type BuildName } from './browser-builds.ts';
 import type { BrowserName } from './browser-names.ts';
 
 /** The Chrome for Testing build chromium runs: the headless shell headless, the full browser headed. */
@@ -38,11 +39,8 @@ const LOCK_WAIT_MS = 10 * 60_000;
 /** A lock older than this was left by a process that died mid-install. */
 const STALE_LOCK_MS = 15 * 60_000;
 
-/** The `@puppeteer/browsers` module, loaded the first time a browser is installed or looked up. */
-const loadBrowsers = () => import('@puppeteer/browsers');
-
-/** The puppeteer browser name of the build `name` runs in this mode. */
-function buildOf(name: BrowserName, headed: boolean): { readonly browser: 'chrome' | 'chrome-headless-shell' | 'firefox'; readonly buildId: string } {
+/** The build `name` runs in this mode. */
+function buildOf(name: BrowserName, headed: boolean): { readonly browser: BuildName; readonly buildId: string } {
   if (name === 'firefox') return { browser: 'firefox', buildId: FIREFOX_BUILD };
   return { browser: headed ? 'chrome' : 'chrome-headless-shell', buildId: CHROMIUM_BUILD };
 }
@@ -59,11 +57,23 @@ export function browsersPath(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(env['XDG_CACHE_HOME'] ?? path.join(os.homedir(), '.cache'), 'e2e', 'browsers');
 }
 
+/** This machine's browser platform; throws `BROWSER_INSTALL_FAILED` where no build ships. */
+function requirePlatform(): BrowserPlatform {
+  const platform = browserPlatform();
+  if (platform === undefined) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `no browser builds for ${process.platform} ${process.arch}`);
+  return platform;
+}
+
+/** The mirror origin `E2E_BROWSERS_DOWNLOAD_HOST` names for browser downloads, without a trailing slash. */
+function downloadHost(env: NodeJS.ProcessEnv): string | undefined {
+  const host = env['E2E_BROWSERS_DOWNLOAD_HOST'];
+  return host === undefined || host === '' ? undefined : host.replace(/\/+$/, '');
+}
+
 /** The executable of the build `name` runs in this mode, whether or not it is installed yet. */
 export async function browserExecutable(name: BrowserName, headed: boolean, env: NodeJS.ProcessEnv = process.env): Promise<string> {
-  const { computeExecutablePath } = await loadBrowsers();
   const { browser, buildId } = buildOf(name, headed);
-  return computeExecutablePath({ browser: browser as never, buildId, cacheDir: browsersPath(env) });
+  return executablePath(browsersPath(env), browser, buildId, requirePlatform());
 }
 
 /** Whether the build `name` runs in this mode is on disk. */
@@ -162,21 +172,19 @@ export async function ensureBrowsersInstalled(
  * that start at once download each build once.
  */
 export async function installBrowsers(names: readonly BrowserName[], context: InstallContext): Promise<void> {
-  const { install, detectBrowserPlatform } = await loadBrowsers();
   const cacheDir = browsersPath(context.env);
-  const platform = detectBrowserPlatform();
-  if (platform === undefined) {
-    throw new InfrastructureError('BROWSER_INSTALL_FAILED', `no browser builds for ${process.platform} ${process.arch}`);
-  }
+  const platform = requirePlatform();
   await withCacheLock(cacheDir, context.signal, async () => {
+    if (context.withDeps === true) installSystemDeps(names, context.log);
     for (const name of new Set(names)) {
       const { browser, buildId } = buildOf(name, context.headed);
       if (existsSync(await browserExecutable(name, context.headed, context.env))) continue;
       cancelledCheck(context.signal);
       context.log(`Downloading ${browser} ${buildId} into ${cacheDir}`);
       try {
-        await install({ browser: browser as never, buildId, cacheDir, platform });
+        await installBuild({ build: browser, buildId, platform, cacheDir, host: downloadHost(context.env), signal: context.signal });
       } catch (cause) {
+        cancelledCheck(context.signal);
         throw new InfrastructureError(
           'BROWSER_INSTALL_FAILED',
           `could not install ${browser} ${buildId}: ${cause instanceof Error ? cause.message : String(cause)}; run "npx @e2e-dev/web install ${name}" (pnpm: "pnpm exec e2e-web install ${name}") manually`,
@@ -184,7 +192,6 @@ export async function installBrowsers(names: readonly BrowserName[], context: In
         );
       }
     }
-    if (context.withDeps === true) installSystemDeps(names, context.log);
   });
 }
 
@@ -201,7 +208,7 @@ const APT_PACKAGES: Readonly<Record<BrowserName, readonly string[]>> = {
   firefox: [
     'libasound2t64', 'libatk1.0-0t64', 'libcairo-gobject2', 'libcairo2', 'libdbus-1-3', 'libfontconfig1', 'libfreetype6', 'libgdk-pixbuf-2.0-0',
     'libglib2.0-0t64', 'libgtk-3-0t64', 'libpango-1.0-0', 'libpangocairo-1.0-0', 'libx11-6', 'libx11-xcb1', 'libxcb-shm0', 'libxcb1', 'libxcomposite1',
-    'libxcursor1', 'libxdamage1', 'libxext6', 'libxfixes3', 'libxi6', 'libxrandr2', 'libxrender1',
+    'libxcursor1', 'libxdamage1', 'libxext6', 'libxfixes3', 'libxi6', 'libxrandr2', 'libxrender1', 'xz-utils',
   ],
 };
 

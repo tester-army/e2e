@@ -1,5 +1,6 @@
 /** The `e2e-web` command: installs the browser builds this engine pins. */
 
+import os from 'node:os';
 import { BROWSER_NAMES, isBrowserName, type BrowserName } from './browser-names.ts';
 import { installBrowsers, installFfmpeg } from './install.ts';
 
@@ -56,15 +57,32 @@ export async function main(args: readonly string[], io: CliIo = PROCESS_IO): Pro
   return io.run(browsers, { withDeps: options.includes('--with-deps'), headed: options.includes('--headed') });
 }
 
-/** Installs `names` (and ffmpeg with chromium), narrating to stderr; resolves to the exit code. */
+/**
+ * Installs `names` (and ffmpeg with chromium), narrating to stderr; resolves
+ * to the exit code. SIGINT or SIGTERM aborts the download, the partial files
+ * are removed, and the exit code is the signal's, 130 or 143.
+ */
 async function runInstall(names: readonly BrowserName[], { withDeps, headed }: { readonly withDeps: boolean; readonly headed: boolean }): Promise<number> {
   const log = (line: string) => process.stderr.write(`${line}\n`);
+  const controller = new AbortController();
+  let signalCode: number | undefined;
+  const handlers = (['SIGINT', 'SIGTERM'] as const).map((signal) => {
+    const handler = () => {
+      signalCode = 128 + os.constants.signals[signal];
+      controller.abort();
+    };
+    process.once(signal, handler);
+    return () => process.off(signal, handler);
+  });
   try {
-    await installBrowsers(names, { log, env: process.env, headed, withDeps });
-    if (names.includes('chromium')) await installFfmpeg({ log, env: process.env });
-    return 0;
+    await installBrowsers(names, { log, signal: controller.signal, env: process.env, headed, withDeps });
+    if (names.includes('chromium')) await installFfmpeg({ log, signal: controller.signal, env: process.env });
+    return signalCode ?? 0;
   } catch (cause) {
+    if (signalCode !== undefined) return signalCode;
     log(cause instanceof Error ? cause.message : String(cause));
     return 1;
+  } finally {
+    for (const remove of handlers) remove();
   }
 }

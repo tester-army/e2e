@@ -172,6 +172,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
 | `E2E_BROWSERS_PATH` | `E2E_BROWSERS_PATH=/opt/e2e-browsers` | value | Where `@e2e-dev/web` installs and launches its browsers. Unset, the user cache. See [Installing browsers](/reference/web#installing-browsers) |
+| `E2E_BROWSERS_DOWNLOAD_HOST` | `E2E_BROWSERS_DOWNLOAD_HOST=https://mirror.example.com` | value | A mirror `@e2e-dev/web` downloads browsers from, serving the paths of `storage.googleapis.com` and `archive.mozilla.org`. Unset, those hosts. See [Installing browsers](/reference/web#installing-browsers) |
 | `E2E_FFMPEG_PATH` | `E2E_FFMPEG_PATH=/usr/bin/ffmpeg` | value | The ffmpeg that encodes Chromium video, with `libvpx-vp9`. Unset, `ffmpeg` on `PATH` or a pinned download |
 | `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with. Unset, the browser lease fails. See [Kernel](/integrations/kernel) |
 | `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with. Unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |

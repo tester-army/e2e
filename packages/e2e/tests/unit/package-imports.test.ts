@@ -193,7 +193,7 @@ const STARTUP: readonly { readonly dir: string; readonly entry: string; readonly
   { dir: 'acp', entry: 'index.ts', lazy: ['@agentclientprotocol/sdk', '@modelcontextprotocol/server'] },
   { dir: 'limrun', entry: 'index.ts', lazy: ['@limrun/api'] },
   // `e2e list`, and a run whose browsers a provider hosts, read the config without ever installing a browser or starting the BiDi mapper.
-  { dir: 'web', entry: 'index.ts', lazy: ['@puppeteer/browsers', 'chromium-bidi'] },
+  { dir: 'web', entry: 'index.ts', lazy: ['yauzl', 'chromium-bidi'] },
 ];
 
 describe.each(STARTUP)('importing packages/$dir/src/$entry', ({ dir, entry, lazy }) => {

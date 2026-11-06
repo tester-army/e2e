@@ -56,9 +56,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
-    "@puppeteer/browsers": "3.2.6",
     "chromium-bidi": "159.0.8135-0",
-    "webdriver-bidi-protocol": "1.0.2",
     "yauzl": "3.4.0"
   },
   "peerDependencies": {
@@ -67,9 +65,11 @@
   "devDependencies": {
     "@napi-rs/image": "1.16.0",
     "@types/node": "26.6.6",
+    "@types/yauzl": "3.4.0",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.1.0"
+    "vitest": "5.1.0",
+    "webdriver-bidi-protocol": "1.0.2"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
