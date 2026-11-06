@@ -641,7 +641,7 @@ Per attempt:
 | Mistake | Fails |
 | --- | --- |
 | A value that is not a plain object of functions, an empty name, a core name (`agent`, `app`, `screen`, `platform`, `session`), or a name an earlier `extend` in the chain defined | At import, `COLLECTION_ERROR` naming the fixture |
-| A name the target's engine contributes (`browser` on a Playwright target) | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
+| A name the target's engine contributes (`browser` on a web target) | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
 | A definition that returns without calling `use` | The attempt, in `beforeEach`, `TEST_SETUP_FAILED` |
 | A definition that calls `use` twice | The attempt, at teardown, `TEST_SETUP_FAILED` |
 | A definition that throws before `use` | The attempt, in `beforeEach`, with that error |

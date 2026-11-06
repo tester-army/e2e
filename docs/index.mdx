@@ -41,9 +41,9 @@ test('a member upgrades to Pro', async ({ app, agent, screen }) => {
 ## How it works
 
 - **Targets.** Each test runs one time per target, such as Chromium or an
-  iPhone simulator. The [web engine](/web) drives browsers through
-  Playwright. The [mobile engine](/mobile) drives iOS simulators and Android
-  emulators through agent-device. You can also
+  iPhone simulator. The [web engine](/web) drives Chromium and Firefox over
+  WebDriver BiDi. The [mobile engine](/mobile) drives iOS simulators and
+  Android emulators through agent-device. You can also
   [write your own](/writing-an-engine).
 - **Agent steps.** `agent.act` completes a goal. `agent.assert`,
   `agent.waitFor`, and `agent.extract` judge the screen. Use your own

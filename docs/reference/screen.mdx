@@ -158,8 +158,7 @@ Slate editor renders into, is a `textbox`.
   an unnamed `textbox`. A name from the host's own `aria-label`,
   `aria-labelledby`, `aria-placeholder`, or `data-placeholder` (Quill) stays.
 
-`getByRole` resolves through Playwright's role selector, which has no such
-rule. So `getByRole` finds an editor only when the host carries
+`getByRole` follows Playwright's role rules, which have no such rule. So `getByRole` finds an editor only when the host carries
 `role="textbox"`; `getByLabel` and `getByTestId` reach it either way. Anchor
 a test on a label or a test id, not on the placeholder.
 
