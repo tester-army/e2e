@@ -11,7 +11,7 @@
 
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { orderRedirectPauses } from './redirect-pause-order.ts';
+import { cdpFixups } from './cdp-fixups.ts';
 
 /**
  * The rejection the mapper leaves unhandled when a tab closes while its
@@ -137,8 +137,8 @@ async function serve(): Promise<void> {
   socket.addEventListener('close', () => process.exit(0));
   const cdpConnection = new MapperCdpConnection({
     setOnMessage: (handler) => {
-      const ordered = orderRedirectPauses((message) => void handler(message));
-      socket.addEventListener('message', (event) => ordered(String(event.data)));
+      const fixed = cdpFixups((message) => void handler(message), (message) => socket.send(message));
+      socket.addEventListener('message', (event) => fixed(String(event.data)));
     },
     sendMessage: (message) => socket.send(message),
     close: () => socket.close(),
