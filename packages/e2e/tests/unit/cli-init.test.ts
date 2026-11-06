@@ -75,7 +75,7 @@ beforeEach(() => {
   vi.mocked(clack.select).mockReset().mockResolvedValue('none');
   vi.mocked(clack.text).mockReset().mockResolvedValue('http://127.0.0.1:11434/v1');
   vi.mocked(clack.confirm).mockReset().mockResolvedValue(false);
-  answers = { engines: [], skills: ['.agents/skills', '.claude/skills'], mcp: ['.mcp.json', '.cursor/mcp.json'] };
+  answers = { engines: [], skills: ['.agents/skills', '.claude/skills'], mcp: ['.mcp.json', '.cursor/mcp.json', '.codex/config.toml'] };
   vi.mocked(clack.multiselect)
     .mockReset()
     .mockImplementation(async (prompt) => {
@@ -119,6 +119,9 @@ describe('e2e init', () => {
     expect(read('tests/example.e2e.ts')).not.toContain('fetch(');
     expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
     expect(JSON.parse(read('.cursor/mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'npx', args: ['e2e', 'mcp'] } } });
+    expect(read('.codex/config.toml')).toContain('[mcp_servers.e2e]');
+    expect(read('.codex/config.toml')).toContain('command = "npx"');
+    expect(output()).toContain('trusted projects');
     expect(read('.gitignore')).toContain('node_modules/');
     expect(read('.gitignore')).toContain('.e2e/junit.xml');
     expect(read('.gitignore')).toContain('.e2e/summary.md');
@@ -737,8 +740,8 @@ describe('e2e init', () => {
       required: false,
     }));
     expect(clack.multiselect).toHaveBeenCalledWith(expect.objectContaining({
-      options: [expect.objectContaining({ value: '.mcp.json' }), expect.objectContaining({ value: '.cursor/mcp.json' })],
-      initialValues: ['.mcp.json', '.cursor/mcp.json'],
+      options: [expect.objectContaining({ value: '.mcp.json' }), expect.objectContaining({ value: '.cursor/mcp.json' }), expect.objectContaining({ value: '.codex/config.toml' })],
+      initialValues: ['.mcp.json', '.cursor/mcp.json', '.codex/config.toml'],
       required: false,
     }));
     expect(read('.mcp.json')).toContain('"e2e"');
@@ -870,7 +873,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npm exec -- e2e guide');
-    expect(output()).toContain('claude mcp add --scope project e2e -- npx e2e mcp');
+    expect(output()).toContain('e2e init --yes --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
   });
 
   it('is idempotent', async () => {

@@ -403,9 +403,12 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     mkdirSync(path.dirname(registration.absolute), { recursive: true });
     writeFileSync(registration.absolute, registration.content, 'utf8');
     clack.log.success(`${registration.existing ? 'Updated' : 'Created'} ${registration.relative} (e2e mcp server)`);
+    if (registration.relative === '.codex/config.toml') {
+      clack.log.info('Codex loads project MCP settings only in trusted projects; start a new Codex session after installing dependencies.');
+    }
   }
   if (mcpFiles.length === 0) {
-    clack.log.info('Skipped the MCP server; register it later with: claude mcp add --scope project e2e -- npx e2e mcp');
+    clack.log.info('Skipped the MCP server; register it later with: e2e init --yes --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
