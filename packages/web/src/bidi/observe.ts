@@ -304,9 +304,10 @@ async function readFrame(
 /**
  * A viewport screenshot with every secure field in every document covered
  * and the caret hidden. The capture fails open nowhere: a document that
- * cannot be masked, a frame that appeared or went away, or a field that
- * moved while the screenshot was taken fails it as `NODE_STALE`, retried on
- * a settled page, and any other masking failure fails it outright.
+ * cannot be masked, a frame that appeared or went away, a field that moved
+ * while the screenshot was taken, or a capture the browser failed because
+ * its document was replaced under it fails it as `NODE_STALE`, retried on a
+ * settled page, and any other failure fails it outright.
  */
 export async function maskedPixels(session: BidiSession, viewport: ViewportSize, signal: AbortSignal): Promise<{ pixels: ObservationPixels; maskedRegionCount: number }> {
   for (;;) {
@@ -336,13 +337,17 @@ async function maskedCapture(session: BidiSession, viewport: ViewportSize): Prom
       count += await session.run(maskSecureFields, [SECURE_FIELD_SELECTOR, CLOSED_SHADOW_ROOTS_KEY, token], each);
       masked.push(each);
     }
-    const { data } = await captureUnlessNavigated(session, context, documents);
+    // Firefox fails a capture whose document a navigation already under way replaced mid-snapshot
+    // ("Unable to capture screenshot"), so a failed capture is stale when a masked document was replaced.
+    const captured = await captureUnlessNavigated(session, context, documents).then((value) => value, (cause: unknown) => ({ failed: cause }));
     held = (await Promise.all(masked.map((each) => session.run(unmaskSecureFields, [token], each)))).every(Boolean);
     masked.length = 0;
     const after = await session.documentContexts(context);
     if (!held || after.length !== documents.length || after.some((each, index) => each !== documents[index])) {
-      throw new EngineError('NODE_STALE', 'the page changed while its screenshot was masked', { retryable: true });
+      throw new EngineError('NODE_STALE', 'the page changed while its screenshot was masked', { retryable: true, cause: 'failed' in captured ? captured.failed : undefined });
     }
+    if ('failed' in captured) throw captured.failed;
+    const { data } = captured;
     const bytes = new Uint8Array(Buffer.from(data, 'base64'));
     const size = readPngSize(bytes) ?? viewport;
     return {
