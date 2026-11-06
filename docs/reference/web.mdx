@@ -905,6 +905,8 @@ await screen.getByRole('button', 'Sign in').tap();
 
 - `cdpEndpoint` is the DevTools HTTP endpoint or its `ws://` URL. Chromium
   only.
+- On macOS, start Chrome with `--use-mock-keychain`. Without it, Chrome for
+  Testing can wait on a Keychain prompt and load no page.
 - It drives the first open tab in the browser's default context. When no
   tab is open, it opens one.
 - Relative URLs have no base. Pass `browser.goto` a full URL.
