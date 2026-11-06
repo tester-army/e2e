@@ -22,6 +22,11 @@ import {
 import { createRequire } from 'node:module';
 import { asBrowserProvider, LeasedBrowsers } from './provider.ts';
 import { DEFAULT_VIEWPORT, MEDIA_KEYS, mediaProblem, type WebOptions } from './options.ts';
+import { perform, performAt, typeText } from './driver/actions.ts';
+import { screenshot, startVideo, stopVideo } from './driver/artifacts.ts';
+import { locate, observe } from './driver/observe.ts';
+import { captureState, restoreState } from './driver/state.ts';
+import { reset, restart } from './driver/steering.ts';
 import { BidiSurface } from './driver/surface.ts';
 import { cdpSource, launchSource, leaseSource, type BrowserSource } from './driver/browser-source.ts';
 import type { Browser } from './fixture/types.ts';
@@ -115,39 +120,53 @@ export function createWeb(options: WebOptions, attachTo?: BrowserSource): Engine
     settleAttempt: (context) => surface.settleAttempt(context),
     endAttempt: (context) => surface.endAttempt(context),
     dispose: (context) => surface.dispose(context),
-    observe: (operation, observeOptions) => surface.observe(operation, observeOptions),
-    locate: (expression, operation) => surface.locate(expression, operation),
-    perform: (ref, action, operation) => surface.perform(ref, action, operation),
+    observe: (operation, observeOptions) => surface.guard(operation, 'observe', (session, { timeoutMs, signal }) => observe(session, timeoutMs, signal, observeOptions)),
+    locate: (expression, operation) => surface.guard(operation, 'locate', (session) => locate(session, expression)),
+    // An input operation that fails once its input went out may have reached the app; a sensitive value never leaves in its error.
+    perform: (ref, action, operation) =>
+      surface.guard(operation, action.kind, (session, { timeoutMs, signal }) => perform(session, ref, action, timeoutMs, signal), {
+        input: true,
+        traced: true,
+        ...(action.kind === 'fill' && action.sensitive ? { sensitive: action.value } : {}),
+      }),
     // A browser honors every action kind of the contract.
     actions: LOCATOR_ACTION_KINDS,
     // The click holds each modifier.
     tapModifiers: true,
     // A page takes every pointer action of the contract at a bare point too.
-    performAt: (point, action, operation) => surface.performAt(point, action, operation),
+    performAt: (point, action, operation) =>
+      surface.guard(operation, `${action.kind} at point`, (session, { signal }) => performAt(session, point, action, signal), { input: true, traced: true }),
     pointerActions: POINTER_ACTION_KINDS,
     keyboard: {
-      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
-      press: (key, operation) => surface.pressKey(key, operation),
+      type: (text, keyboardOptions, operation) =>
+        surface.guard(operation, 'keyboard.type', (session, { signal }) => typeText(session, text, keyboardOptions.replace, signal), { input: true, traced: true }),
+      press: (key, operation) => surface.guard(operation, 'keyboard.press', (session, { signal }) => session.input.press(key, signal), { input: true, traced: true }),
     },
     validateApp: (app, info) => validateApp(app, info, browser, source.userContext !== 'adopt-tab'),
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {
-      open: (url, operation) => surface.open(url, operation),
+      open: (url, operation) => surface.goto(url, 'load', operation),
       back: (operation) => surface.back(operation),
-      resize: (size, operation) => surface.resize(size, operation),
-      restart: (operation) => surface.restart(operation),
-      reset: ownsContext ? (operation) => surface.reset(operation) : () => Promise.reject(defaultContextLimit('app.clearState()', source)),
+      // The agent's `resize` verb sets the viewport as `browser.setViewport` does, and shows the screen after it.
+      resize: (size, operation) => surface.guard(operation, 'resize', (session) => session.setViewport(size), { traced: true }),
+      // Replaces the tab with a blank one, keeping the attempt's storage.
+      restart: (operation) => surface.guard(operation, 'restart', (session, { signal }) => restart(session, signal)),
+      // Starts the attempt over in a clean user context.
+      reset: ownsContext
+        ? (operation) => surface.guard(operation, 'state reset', (session, { signal }) => reset(session, signal))
+        : () => Promise.reject(defaultContextLimit('app.clearState()', source)),
     },
     artifacts: {
-      screenshot: (label, operation) => surface.screenshot(label, operation),
-      startVideo: (operation) => surface.startVideo(operation),
-      stopVideo: (operation) => surface.stopVideo(operation),
+      screenshot: (label, operation) => surface.guard(operation, 'screenshot', (session, { signal }) => screenshot(session, label, signal)),
+      // The provider's recording when it records, else the driver's own.
+      startVideo: (operation) => surface.guard(operation, 'video', (session, { signal }) => startVideo(session, source.recorder(session.attempt.attemptId), signal)),
+      stopVideo: (operation) => surface.guard(operation, 'video', (session, { signal }) => stopVideo(session, signal)),
     },
     ...(ownsContext
       ? {
           state: {
-            capture: (operation) => surface.captureState(operation),
-            restore: (state, operation) => surface.restoreState(state, operation),
+            capture: (operation) => surface.guard(operation, 'state capture', (session) => captureState(session)),
+            restore: (state, operation) => surface.guard(operation, 'state restore', (session, { signal }) => restoreState(session, state, signal)),
           },
         }
       : {}),

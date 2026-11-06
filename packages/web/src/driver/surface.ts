@@ -1,7 +1,10 @@
 /**
- * The WebDriver BiDi surface: one browser per worker (or per attempt) and
- * one `BidiSession` per attempt, behind the engine hooks and the `browser` fixture calls. Each hook is bounded and classified here and
- * delegates to the module that implements it.
+ * The driver's surface: one browser per worker (or per attempt) and one
+ * `BidiSession` per attempt, with the engine's lifecycle hooks and `guard`,
+ * which bounds and classifies every operation. `engine.ts` binds each
+ * contract hook to the driver module that implements it through `guard`;
+ * the `browser` fixture calls the methods here, which keep it apart from
+ * the session.
  */
 
 import path from 'node:path';
@@ -17,18 +20,9 @@ import {
   type EngineDoctorInfo,
   type EngineFinishInfo,
   type EngineInitInfo,
-  type EngineObserveOptions,
   type EnginePrepareInfo,
   type EnginePrepareResult,
-  type EngineSnapshot,
-  type EngineState,
-  type LocatorAction,
-  type LocatorExpression,
-  type NodeRef,
   type OperationContext,
-  type PointerAction,
-  type SemanticNode,
-  type VideoSegment,
   type ViewportPoint,
   type ViewportSize,
 } from 'e2e/engine';
@@ -36,19 +30,17 @@ import type { DialogHandler } from './dialogs.ts';
 import type { ConfiguredInitScripts } from '../init-scripts.ts';
 import { httpCredentials, lowercaseNames, siteHeadersFor } from '../protected-app.ts';
 import type { WebBasicAuth, WebMedia, WebScreencastOptions } from '../options.ts';
-import { perform, performAt, typeInto, typeText } from './actions.ts';
-import { screenshot, startVideo, stopVideo } from './artifacts.ts';
+import { typeInto } from './actions.ts';
 import { DispatchScope } from './input.ts';
 import { abortError, afterDispatch, cancelled, classify, type ErrorLatch, invalidState, releaseQuietly } from '../errors.ts';
 import { BROWSER_OPEN_TIMEOUT_MS, BrowserHandle, type BrowserSource } from './browser-source.ts';
 import { fixtureKeyStroke, type KeyPhase } from './keyboard.ts';
 import type { NetworkRoute } from './network.ts';
 import type { ObservedResponse } from './network-binding.ts';
-import { locate, observe, traceScreen } from './observe.ts';
+import { traceScreen } from './observe.ts';
 import { documentTitle } from '../in-page/page.ts';
 import { BidiSession, type SessionSettings } from './session.ts';
-import { captureState, restoreState } from './state.ts';
-import { goto, reload, reset, restart, traverse, type WaitUntil } from './steering.ts';
+import { goto, reload, traverse, type WaitUntil } from './steering.ts';
 import type { PageArgument, PageValue } from './script.ts';
 
 /** What a BiDi surface is configured with, from `web()`. */
@@ -124,26 +116,19 @@ export class BidiSurface {
     const stale = this.handle;
     this.handle = undefined;
     if (stale !== undefined) await releaseQuietly(stale.close());
-    const { source } = this.options;
-    const headers = this.options.headers === undefined ? undefined : lowercaseNames(this.options.headers);
+    const { source, headers, basicAuth: _basicAuth, ...configured } = this.options;
+    const siteHeaders = headers === undefined ? undefined : lowercaseNames(headers);
     const site = info.app.site;
     this.settings = {
-      viewport: this.options.viewport,
-      initScripts: this.options.initScripts,
-      screencast: this.options.screencast,
-      userAgent: this.options.userAgent,
-      locale: this.options.locale,
-      timezoneId: this.options.timezoneId,
-      media: this.options.media,
-      testIdAttribute: this.options.testIdAttribute,
+      ...configured,
       site,
       projectRoot: info.projectRoot,
       permissions: Object.keys(info.app.permissions ?? {}),
       remoteFiles: source.files === 'remote',
       userContext: source.userContext,
       env: info.env,
-      holdRequests: headers !== undefined,
-      siteHeaders: (url) => siteHeadersFor(url, site, headers),
+      holdRequests: siteHeaders !== undefined,
+      siteHeaders: (url) => siteHeadersFor(url, site, siteHeaders),
     };
     source.init(info);
     await this.options.initScripts.load(info.projectRoot);
@@ -332,11 +317,11 @@ export class BidiSurface {
    * a sensitive value never leaves in a message or a cause. A step that
    * changed the page hands the trace the screen it left.
    */
-  private async guard<T>(
+  async guard<T>(
     operation: OperationContext,
     label: string,
-    work: (session: BidiSession, budget: { readonly signal: AbortSignal; readonly timeoutMs: number }) => Promise<T>,
-    kind: { readonly input?: boolean; readonly sensitive?: string; readonly traced?: boolean; readonly testCode?: boolean } = {},
+    work: (session: BidiSession, budget: OperationBudget) => Promise<T>,
+    kind: GuardKind = {},
   ): Promise<T> {
     this.session?.latch.throwPending();
     const session = this.session;
@@ -354,11 +339,6 @@ export class BidiSurface {
     return result;
   }
 
-  /** Opens `url` in the attempt's tab, creating it on first use. */
-  open(url: string, operation: OperationContext): Promise<void> {
-    return this.goto(url, 'load', operation);
-  }
-
   /** Goes back one history entry. */
   back(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'navigation', (session, budget) => traverse(session, -1, budget.timeoutMs, budget.signal), { traced: true });
@@ -369,16 +349,6 @@ export class BidiSurface {
     return this.guard(operation, 'navigation', (session, budget) => traverse(session, 1, budget.timeoutMs, budget.signal), { traced: true });
   }
 
-  /** Replaces the tab with a blank one, keeping the attempt's storage. */
-  restart(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'restart', (session, budget) => restart(session, budget.signal));
-  }
-
-  /** Starts the attempt over in a clean user context. */
-  reset(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state reset', (session, budget) => reset(session, budget.signal));
-  }
-
   /** `browser.goto`: navigates and waits as `waitUntil` says. */
   goto(url: string, waitUntil: WaitUntil, operation: OperationContext): Promise<void> {
     return this.guard(operation, 'navigation', (session, budget) => goto(session, url, waitUntil, budget.signal), { traced: true });
@@ -387,40 +357,6 @@ export class BidiSurface {
   /** Reloads the tab. */
   reload(operation: OperationContext): Promise<void> {
     return this.guard(operation, 'navigation', (session, budget) => reload(session, budget.signal), { traced: true });
-  }
-
-  /** One observation of the tab, its frames and, when asked, masked pixels. */
-  observe(operation: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot> {
-    return this.guard(operation, 'observe', (session, budget) => observe(session, budget.timeoutMs, budget.signal, options));
-  }
-
-  /** The nodes `expression` matches now, each a ref an action can take. */
-  locate(expression: LocatorExpression, operation: OperationContext): Promise<readonly SemanticNode[]> {
-    return this.guard(operation, 'locate', (session) => locate(session, expression));
-  }
-
-  /** One action on a node, failing as may-have-committed once its input went out. */
-  perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
-    return this.guard(operation, action.kind, (session, budget) => perform(session, ref, action, budget.timeoutMs, budget.signal), {
-      input: true,
-      traced: true,
-      ...(action.kind === 'fill' && action.sensitive ? { sensitive: action.value } : {}),
-    });
-  }
-
-  /** One pointer action at a viewport point. */
-  performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
-    return this.guard(operation, `${action.kind} at point`, (session, budget) => performAt(session, point, action, budget.signal), { input: true, traced: true });
-  }
-
-  /** Types into whatever holds focus. */
-  typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.type', (session, budget) => typeText(session, text, options.replace, budget.signal), { input: true, traced: true });
-  }
-
-  /** Presses one key of the contract grammar. */
-  pressKey(key: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.press', (session, budget) => session.input.press(key, budget.signal), { input: true, traced: true });
   }
 
   /** One `browser.keyboard` call (`fixtureKeyStroke`); a key it holds stays held until its `keyboard.up`. */
@@ -581,35 +517,14 @@ export class BidiSurface {
     return this.guard(operation, 'setViewport', (session) => session.setViewport(size));
   }
 
-  /** Sets the viewport for the agent's `resize` verb, as `browser.setViewport` does, and shows the screen after it. */
-  resize(size: ViewportSize, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'resize', (session) => session.setViewport(size), { traced: true });
-  }
+}
 
-  /** The attempt's saved-session state. */
-  captureState(operation: OperationContext): Promise<EngineState> {
-    return this.guard(operation, 'state capture', (session) => captureState(session));
-  }
-
-  /** Replaces the attempt's storage with a saved session's. */
-  restoreState(state: EngineState, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state restore', (session, budget) => restoreState(session, state, budget.signal));
-  }
-
-  /** A masked viewport screenshot, saved under the attempt directory. */
-  screenshot(label: string | undefined, operation: OperationContext): Promise<string> {
-    return this.guard(operation, 'screenshot', (session, budget) => screenshot(session, label, budget.signal));
-  }
-
-  /** Starts the attempt's video: the provider's recording when it records, else the driver's own. */
-  startVideo(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'video', (session, budget) => startVideo(session, this.options.source.recorder(session.attempt.attemptId), budget.signal));
-  }
-
-  /** Ends the attempt's video and returns its segments. */
-  stopVideo(operation: OperationContext): Promise<readonly VideoSegment[]> {
-    return this.guard(operation, 'video', (session, budget) => stopVideo(session, budget.signal));
-  }
+/** How `guard` treats an operation: whether it sends input, fills a sensitive value, shows the trace the screen it left, or runs the test's own code. */
+export interface GuardKind {
+  readonly input?: boolean;
+  readonly sensitive?: string;
+  readonly traced?: boolean;
+  readonly testCode?: boolean;
 }
 
 /** What `attemptScope` binds: the attempt's own latch, credentials, lifetime, and cookie jar. */
@@ -636,7 +551,7 @@ function boundedCleanup(work: Promise<unknown>, budget: EngineCleanupContext, la
 }
 
 /** What an operation may spend: its signal and the milliseconds left. */
-interface OperationBudget {
+export interface OperationBudget {
   readonly timeoutMs: number;
   readonly signal: AbortSignal;
 }
