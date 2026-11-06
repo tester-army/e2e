@@ -1105,6 +1105,20 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
   };
 
   /**
+   * True for a checkbox or radio hidden only by having no box, with a label of
+   * its own that renders. Element Plus shrinks its native input to 0x0 under
+   * the box its label draws, so a person sees the control as that label, and a
+   * click on the label sets it. Chrome's accessibility tree keeps such an
+   * input, so the walk lists it too: otherwise the model reads the label text
+   * with no checkbox and no checked state.
+   */
+  const isDrawnByLabel = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
+    if (!(el instanceof HTMLInputElement) || (el.type !== 'checkbox' && el.type !== 'radio')) return false;
+    if (style?.visibility !== 'visible' || isInClosedDetails(el) || isSkippedContent(el)) return false;
+    return [...(el.labels ?? [])].some((label) => !isHidden(label));
+  };
+
+  /**
    * What takes the element and everything under it out of the tree walk: an
    * `aria-hidden` or inert subtree, which the accessibility tree drops though
    * it may paint (`isInert`), and `display: none` or a closed `<details>`
@@ -1574,14 +1588,17 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
     }
 
     let nextParent = parent;
+    const drawnByLabel = hidden && isDrawnByLabel(el, style);
     // An empty painted rectangle carries no semantics to be "interesting" by and
     // is still something a person sees and aims at; `roleOf` names it `box`.
-    if (!hidden && (isInteresting(el) || isVisibleEmptyBox(el))) {
+    if ((!hidden || drawnByLabel) && (isInteresting(el) || isVisibleEmptyBox(el))) {
       if (nodes.length >= maxNodes) {
         truncated = true;
         return;
       }
       nextParent = include(el, parent, style);
+      // Listed on purpose, so not "hidden", as a select's options are below.
+      if (drawnByLabel) nodes[nextParent]!.states.hidden = false;
     }
     // A closed select paints none of its options, so the hidden test would
     // drop every one of them — and a model shown `combobox "Category"` alone
