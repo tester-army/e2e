@@ -873,7 +873,7 @@ describe('e2e init', () => {
     expect(existsSync(path.join(dir, '.claude'))).toBe(false);
     expect(existsSync(path.join(dir, '.mcp.json'))).toBe(false);
     expect(output()).toContain('npm exec -- e2e guide');
-    expect(output()).toContain('e2e init --yes --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
+    expect(output()).toContain('e2e init --yes --skills none --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
   });
 
   it('is idempotent', async () => {

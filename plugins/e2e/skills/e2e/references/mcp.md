@@ -24,7 +24,7 @@ Cursor, and Codex. Reuse an existing registration; when adding one, use the proj
 config so it starts in the project it drives. Install dependencies and start
 the MCP client in that directory so `npx` uses the installed e2e version.
 
-For an existing setup, `e2e init --yes --mcp .codex/config.toml` adds Codex.
+For an existing setup, `e2e init --yes --skills none --mcp .codex/config.toml` adds Codex.
 Codex reads `.codex/config.toml` in a trusted project:
 
 ```toml

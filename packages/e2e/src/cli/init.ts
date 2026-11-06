@@ -408,7 +408,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     }
   }
   if (mcpFiles.length === 0) {
-    clack.log.info('Skipped the MCP server; register it later with: e2e init --yes --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
+    clack.log.info('Skipped the MCP server; register it later with: e2e init --yes --skills none --mcp .codex/config.toml,.mcp.json,.cursor/mcp.json');
   }
   if (missingIgnore.length > 0) {
     const prefix = existingIgnore === '' || existingIgnore.endsWith('\n') ? '' : '\n';
