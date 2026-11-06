@@ -69,7 +69,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `use.viewport`, `use.browserName` | `web({ viewport, browser })` | renamed |
 | `use.testIdAttribute` | `web({ testIdAttribute })` | renamed |
 | `use.httpCredentials` | `web({ basicAuth })`, answered for the app's origin only; `credentialOrigins` adds more | renamed |
-| `use.extraHTTPHeaders` | `web({ headers })`, sent to the app's origin only; `credentialOrigins` adds more | renamed |
+| `use.extraHTTPHeaders` | `web({ headers })`, sent on requests that start at the app's origin; `credentialOrigins` adds more | renamed |
 | `chromium.connectOverCDP(url)` | `web({ connect: { cdpEndpoint: () => url } })`, chromium only | renamed |
 | `use.connectOptions` (`wsEndpoint`) | `web({ connect })` attaches over CDP only | missing |
 | `retries`, `workers`, `timeout` | the same names at the top level. `workers` takes an integer from 1 to 1024, not `'50%'`; `retries` stops at 10. The defaults differ, see [below](#defaults-that-differ) | renamed |
