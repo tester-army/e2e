@@ -1,7 +1,8 @@
 # @e2e-dev/web
 
-The browser engine for [`e2e`](https://www.npmjs.com/package/e2e), built on
-[Playwright](https://playwright.dev).
+The browser engine for [`e2e`](https://www.npmjs.com/package/e2e). It drives
+Chromium and Firefox over [WebDriver BiDi](https://w3c.github.io/webdriver-bidi/):
+Firefox natively, Chromium through the chromium-bidi mapper.
 
 `e2e` ships no engine of its own: every target names the engine that drives
 it, and this package is the one for browsers. It implements the public
@@ -13,11 +14,6 @@ seam with no privilege either way.
 ```bash
 npm install --save-dev e2e @e2e-dev/web
 ```
-
-This package depends on `playwright-core` pinned to an exact version, so the
-engine always runs the Playwright it was tested against. An app that depends
-on Playwright itself keeps its own copy; the two share a browser cache only
-when their versions match.
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
@@ -36,7 +32,7 @@ with `readyUrl` to poll, default `url`), `environment` (`test`, `staging`,
 session key when the origin is ephemeral). `web({ url })` and the other old
 app options are `INVALID_CONFIG`. A target with `app.url` is a `browser`
 target, so a test can `requires: ['browser']`. Browser options:
-`browser` (`chromium`, `firefox`, `webkit`; default `chromium`; or a
+`browser` (`chromium` or `firefox`; default `chromium`; or a
 `BrowserProvider` that leases hosted browsers, see below), `viewport`
 (`{ width, height }`; default 1280x720), `testIdAttribute` (the attribute
 `getByTestId` and a node's `testId` read; default `data-testid`), `userAgent`
@@ -46,16 +42,16 @@ such as `de-DE` and `Europe/Berlin`), `colorScheme` and `reducedMotion` (the
 `prefers-color-scheme` and `prefers-reduced-motion` every page reports, from
 first paint; `browser.emulateMedia` changes them in a test), `initScripts` (scripts every document
 runs before the page's own), and
-`connect` — attach to a remote browser over CDP instead of launching a local
-one.
+`connect` (attach to a remote browser over CDP instead of launching a local
+one).
 
 ### Attaching to a remote browser (`connect`)
 
 Set `connect.cdpEndpoint` to attach over the Chrome DevTools Protocol rather
 than launch. The resolver is async and called at worker init, and again at the
 start of any attempt that finds the session dropped, so a hosted browser whose
-endpoint is provisioned per run — a cloud session URL that is not known at
-config load — resolves each time it is needed. The resolver receives an
+endpoint is provisioned per run (a cloud session URL that is not known at
+config load) resolves each time it is needed. The resolver receives an
 `AbortSignal` that fires when the init or attempt is cancelled or exceeds its
 budget; a browser that connects after that is detached, never used. CDP attach
 is chromium-only, and disposing the engine detaches the session without
@@ -67,19 +63,9 @@ engine: web({
 });
 ```
 
-For transport recovery, add `connect.reconnectEndpoint(signal)`. This opts
-into the remote browser's persistent default context. `cdpEndpoint` then
-provisions a fresh, dedicated browser for every attempt, including retries;
-`reconnectEndpoint` must return that same browser after a disconnect. The
-engine verifies the default context ID and active page target ID, clears stale
-references, and never repeats a dispatched operation. A missing target fails
-the attempt. The host owns deleting the remote browser after cleanup.
-
-This mode does not support `headers`, `basicAuth`, `userAgent`, `locale`, `timezoneId`, context reset, or session
-state capture and restore. Recording resumes after reconnect, but a segment
-lost during the disconnect remains unavailable. See the
-[Playwright reference](../../docs/reference/web.mdx#recovering-a-cdp-transport)
-for the lifecycle and ownership contract.
+Each attempt gets a new browser context on the remote browser.
+`connect.reconnectEndpoint`, a persistent context across a disconnect, is not
+supported right now and is `INVALID_CONFIG`.
 
 ### Leasing hosted browsers (`browser`)
 
@@ -88,10 +74,9 @@ it provisioned. Pass a `BrowserProvider` as `browser` instead and the engine
 asks for a browser when one is needed and gives it back when its scope ends,
 on every exit path. `scope: 'worker'` (the default) leases one browser per
 worker slot in `prepare` and releases them in `finish`; a worker whose browser
-drops leases a replacement itself. `scope: 'attempt'` leases a fresh browser in
-every `startAttempt` and releases it in `endAttempt`, reattaching through the
-lease's `reconnectEndpoint` after a transport drop, with the limits of
-`connect.reconnectEndpoint`. A provider implies chromium and excludes
+drops leases a replacement itself. `scope: 'attempt'` is not supported right
+now and is `INVALID_CONFIG`. Downloads and `setInputFiles` on a provider's
+browser throw `UNSUPPORTED_CAPABILITY`. A provider implies chromium and excludes
 `connect`; no vendor ships in the package. See
 [Hosted browsers](../../docs/browser.mdx#hosted-browsers) for the contract
 and an example against a generic session API.
@@ -138,11 +123,16 @@ cacheable:
 npx @e2e-dev/web install chromium --with-deps
 ```
 
-It downloads the browsers for the Playwright version this package pins, the
-ones the engine launches. Under pnpm, run the bin by name:
-`pnpm exec e2e-web install chromium --with-deps`.
+It downloads the builds this package pins: Chrome for Testing for `chromium`
+(the headless shell, plus full Chrome with `--headed`) and Firefox for
+`firefox`. Chromium also gets an ffmpeg to record video: `E2E_FFMPEG_PATH`,
+else a system `ffmpeg` with VP9, else a pinned download. Browsers go to
+`E2E_BROWSERS_PATH`, else the user cache (`~/Library/Caches/e2e/browsers`,
+`~/.cache/e2e/browsers`, or `%LOCALAPPDATA%\e2e\browsers`). Under pnpm, run
+the bin by name: `pnpm exec e2e-web install chromium --with-deps`.
 
-`--with-deps` also installs the system libraries a slim container image lacks.
+`--with-deps` also installs the system libraries a slim Debian or Ubuntu image
+lacks.
 
 ## Documentation
 
