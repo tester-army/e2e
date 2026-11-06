@@ -857,6 +857,11 @@ await off();
   `Dialog`.
 - A function handler must call `accept` or `dismiss`. One that does neither
   has the dialog dismissed, as an unhandled dialog does.
+- A dialog no handler takes is dismissed and fails the next step, unless an
+  agent step's own action opened it, replayed from the cache or not. Then
+  it's answered for the agent: an alert, a confirm, and a leave-page dialog
+  are accepted, and a prompt is dismissed. The app log names each one. A
+  dialog belongs to the newest action before it, never to a read.
 - A handler that throws fails the next step with its error, or the attempt
   at its end when no step follows. One that throws before answering has its
   dialog dismissed.
@@ -865,7 +870,7 @@ The errors surface on the next step, not on `onDialog`:
 
 | Throws | When |
 | --- | --- |
-| `APP_NOT_OPEN` | A function handler answered neither way, or no handler took the dialog. |
+| `INVALID_STATE` | A function handler answered neither way, or no handler took a dialog a test's own step opened. |
 | `ASSERTION_FAILED` | The handler's `expect` failed. |
 | `ENGINE_FAILURE` | The handler threw an unclassified error. |
 

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": "trace-1",
+  "createdAt": "2026-11-06T21:09:07.253Z",
+  "payload": {
+    "actions": [
+      {
+        "name": "tap",
+        "summary": "tap button \"Submit report\"",
+        "target": {
+          "role": "button",
+          "name": "Submit report",
+          "testId": "submit-report-button"
+        }
+      }
+    ],
+    "executor": {
+      "name": "e2e-default-agent",
+      "version": "2"
+    },
+    "recordedFor": {
+      "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20deferred-dialog",
+      "targetId": "web",
+      "instructionDigest": "0f97cef062579bf174a4272ebd0c9023c90355e5341388a94c5bf29f99c1bd37",
+      "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+      "callIndex": 0,
+      "agent": "default"
+    },
+    "recordedBy": {
+      "provider": "gateway",
+      "model": "openai/gpt-6-luna-fast"
+    },
+    "summary": "Submitted the report and waited for the deferred confirmation; the page now shows “Report submitted after deferred confirmation.”",
+    "startPath": "/e/deferred-dialog",
+    "endPath": "/e/deferred-dialog",
+    "endAnchors": [
+      {
+        "text": "Report submitted after deferred confirmation",
+        "testId": "success-message"
+      }
+    ],
+    "goneAnchors": [
+      {
+        "text": "Submit the report; a confirmation dialog appears shortly after the click. Accept it."
+      },
+      {
+        "role": "button",
+        "name": "Submit report",
+        "testId": "submit-report-button"
+      }
+    ],
+    "endWaitMs": 13352,
+    "keyedBy": {
+      "cacheSchema": "trace-1",
+      "policyVersion": "conservative/6",
+      "project": "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c",
+      "platform": "web",
+      "engineName": "web",
+      "engineSpiVersion": 1,
+      "appIdentity": "dc587874e98340c0ead3b9555bef25c85bca9337c6c8e28ae9e991c982ef1202",
+      "agentContextDigest": "02e45116d4a18a6603260cbbc8fa198d311b6a1a01362cc9dd6aa341d16bb3cf"
+    }
+  }
+}

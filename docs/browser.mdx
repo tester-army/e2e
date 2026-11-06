@@ -62,8 +62,8 @@ expect(response.status).toBe(201);
 
 ## Handle a dialog
 
-An unhandled `alert`, `confirm`, or `prompt` fails the next step. Register a
-handler first:
+An unhandled `alert`, `confirm`, `prompt`, or leave-page dialog that a test's
+own step opens fails the next step. Register a handler first:
 
 ```ts
 const off = await browser.onDialog('accept');
@@ -73,6 +73,12 @@ await off();
 
 A function handler gets the dialog and must call `accept(text?)` or
 `dismiss()`.
+
+The agent can't see native dialogs, so one its own action opens is answered
+for it when no handler is registered. This covers `agent.act` and its replays,
+`e2e explore`, and the action tools of an `e2e mcp` session. An alert, a
+confirm, and a leave-page dialog are accepted, and a prompt is dismissed. The
+app log names each one.
 
 ## Download a file
 

@@ -303,6 +303,8 @@ export class PlaywrightSurface {
   private artifactsDir = '';
   /** Navigations the engine has in flight, which the app log leaves to the step that started them. */
   private ownNavigations = 0;
+  /** Who made the newest action on the page: a dialog no handler takes is answered when it was the agent. */
+  private actor: 'agent' | 'test' | undefined;
   /** One entry per navigation in flight, set to the URL of a document request a test route aborted during it. */
   private readonly navigationAborts = new Set<{ url?: string }>();
   /** What the attempt tells its trace beside the app log; absent between attempts. */
@@ -493,7 +495,8 @@ export class PlaywrightSurface {
     // `validateApp` admitted only grants.
     const granted = Object.keys(this.app.permissions ?? {});
     this.latch = new ErrorLatch();
-    const dialogs = new DialogRouter(this.latch);
+    this.actor = undefined;
+    const dialogs = new DialogRouter(this.latch, { agentActed: () => this.actor === 'agent', log: context.appLog });
     this.routes = routes;
     this.initScripts = initScripts;
     this.dialogs = dialogs;
@@ -714,11 +717,27 @@ export class PlaywrightSurface {
     }
   }
 
+  /**
+   * `guard` for an operation that acts on the page (a navigation, input, or
+   * a script) rather than reading it. Its author owns the dialogs that open
+   * after it until the next action: one no handler takes is answered when
+   * the author is an agent step, the step replayed from the cache included.
+   */
+  guardAction<T>(
+    operation: OperationContext,
+    label: string,
+    fn: (operation: OperationContext) => Promise<T>,
+    translate?: (cause: unknown, label: string) => Error,
+  ): Promise<T> {
+    this.actor = (operation.agentStep ?? operation.origin === 'agent') ? 'agent' : 'test';
+    return this.guard(operation, label, fn, translate);
+  }
+
   // --- steering: the session hooks ---
 
   /** Opens one URL the harness resolved; the attempt's page is created on first use. */
   open(url: string, operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(operation, 'navigation', (currentOperation) =>
+    return this.acted(operation, this.guardAction(operation, 'navigation', (currentOperation) =>
       this.navigating(async () => {
         const page = await this.ensurePage();
         await page.goto(url, { waitUntil: 'load', timeout: currentOperation.timeoutMs });
@@ -727,7 +746,7 @@ export class PlaywrightSurface {
   }
 
   back(operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(operation, 'navigation', (currentOperation) =>
+    return this.acted(operation, this.guardAction(operation, 'navigation', (currentOperation) =>
       this.navigating(async () => {
         await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
       }),
@@ -736,7 +755,7 @@ export class PlaywrightSurface {
 
   /** Sets the viewport for the agent's `resize` verb, as `browser.setViewport` does, and shows the screen after it. */
   resize(size: ViewportSize, operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(operation, 'resize', () => this.setViewport(size)));
+    return this.acted(operation, this.guardAction(operation, 'resize', () => this.setViewport(size)));
   }
 
   /**
@@ -782,12 +801,12 @@ export class PlaywrightSurface {
 
   /** Restarts the document while retaining this attempt's context and storage. */
   restart(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'restart', () => this.requireSession().restart());
+    return this.guardAction(operation, 'restart', () => this.requireSession().restart());
   }
 
   /** Replaces the context with a clean one and opens its blank page. */
   reset(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state reset', async (currentOperation) => {
+    return this.guardAction(operation, 'state reset', async (currentOperation) => {
       const session = this.requireSession();
       await session.replace(undefined, currentOperation);
       await session.ensurePage();
@@ -927,7 +946,7 @@ export class PlaywrightSurface {
    * on the root acts on the document element the root stands for.
    */
   perform(ref: NodeRef, action: LocatorAction, operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(
+    return this.acted(operation, this.guardAction(
       operation,
       action.kind,
       (currentOperation) => {
@@ -948,7 +967,7 @@ export class PlaywrightSurface {
 
   /** One pointer action at a viewport point in CSS pixels, with nothing resolved behind it; see `dispatchPointerAction`. */
   performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(operation, `${action.kind} at point`, (currentOperation) => {
+    return this.acted(operation, this.guardAction(operation, `${action.kind} at point`, (currentOperation) => {
       this.requireSession().requireObservation();
       return dispatchPointerAction(this.requirePage(), point, action, currentOperation.signal);
     }, classifyInputError));
@@ -962,7 +981,7 @@ export class PlaywrightSurface {
    * scoped by the browser to the whole editing host, so it is opt-in.
    */
   typeText(text: string, options: { readonly replace: boolean }, operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(operation, 'keyboard.type', async (currentOperation) => {
+    return this.acted(operation, this.guardAction(operation, 'keyboard.type', async (currentOperation) => {
       const session = this.requireSession();
       session.requireObservation();
       const token = session.token();
@@ -986,7 +1005,7 @@ export class PlaywrightSurface {
 
   /** Sends one key to whatever holds focus, in the contract's key grammar Playwright shares. */
   pressKey(key: string, operation: OperationContext): Promise<void> {
-    return this.acted(operation, this.guard(operation, 'keyboard.press', () => {
+    return this.acted(operation, this.guardAction(operation, 'keyboard.press', () => {
       this.requireSession().requireObservation();
       return this.requirePage().keyboard.press(key);
     }, classifyInputError));

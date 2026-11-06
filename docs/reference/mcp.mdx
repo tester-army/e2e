@@ -274,6 +274,11 @@ changed on screen.
   `secrets` and the engine declares the `fill` action. The plaintext never
   reaches the agent as text; see
   [screenshots after a secret fill](/reference/security#screenshots-after-a-secret-fill).
+- A native dialog an action opens is answered as in `agent.act`: an alert, a
+  confirm, and a leave-page dialog are accepted, and a prompt is dismissed.
+  The result doesn't say so, and the test line registers no handler, so a
+  test of that flow needs `browser.onDialog` first. `run_code` runs test
+  statements, so a dialog it opens fails the next call.
 
 #### `dismiss_keyboard`
 

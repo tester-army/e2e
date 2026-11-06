@@ -26,7 +26,7 @@ function runtime(): AgentContext & { steps: StepRecorder } {
 }
 
 describe('step accounting operation contexts', () => {
-  it('marks actions as the agent\'s, and as the test\'s while a trace replays', () => {
+  it('marks actions as the agent\'s, and as the test\'s origin while a trace replays, always within the agent step', () => {
     const accounting = new StepAccounting(runtime(), {
       api: 'agent.act',
       timeoutMs: 10_000,
@@ -37,11 +37,15 @@ describe('step accounting operation contexts', () => {
     expect(accounting.replayingTrace).toBe(false);
     expect(accounting.actionOperation().origin).toBe('agent');
     expect(accounting.operation().origin).toBe('agent');
+    expect(accounting.actionOperation().agentStep).toBe(true);
     accounting.replaying(true);
     // Both contexts: targeted actions take actionOperation(), navigation takes operation().
     expect(accounting.replayingTrace).toBe(true);
     expect(accounting.actionOperation().origin).toBe('test');
     expect(accounting.operation().origin).toBe('test');
+    // A replayed action is still the agent step's, so an engine answers what the agent cannot see for it.
+    expect(accounting.actionOperation().agentStep).toBe(true);
+    expect(accounting.operation().agentStep).toBe(true);
     accounting.replaying(false);
     expect(accounting.replayingTrace).toBe(false);
     expect(accounting.actionOperation().origin).toBe('agent');
