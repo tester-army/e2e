@@ -122,7 +122,10 @@ const TURNOVER_CLOCKS = 2;
  * ticking beside a list that has not moved, and several are the list's own
  * rows (a time picker, a timetable) turning over. A clock needs a line beside
  * it to tick beside: on a page of one line, a pager or carousel whose only text
- * goes `10:30` to `11:00`, that line is the page.
+ * goes `10:30` to `11:00`, that line is the page. The page is the whole screen,
+ * so a carousel with any other named node beside it (a title, a button) still
+ * reads as a clock ticking; telling the two apart takes more than the screen
+ * can say.
  */
 export function pageMoved(before: PageReading, after: PageReading): boolean {
   if (!sameLines(before, after)) return true;
