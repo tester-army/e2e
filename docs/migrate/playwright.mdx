@@ -76,7 +76,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `expect.timeout` | `assertionTimeout` | renamed |
 | `use.actionTimeout` | `actionTimeout` | renamed |
 | `use.navigationTimeout` | `timeout`, the test budget; `browser.goto(url, { timeout })` overrides one call | renamed |
-| `use.storageState`, a `setup` project in `projects[].dependencies` | `test.setup(title, { sessions }, fn)` with `session.save(name)`, then `{ session }` on a test, see [Signing in](/authentication); no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
+| `use.storageState`, a `setup` project in `projects[].dependencies` | `test.setup(title, { sessions }, fn)` with `session.save(name)`, then `{ session }` on a test, see [Authentication](/authentication); no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `use.storageState: { cookies }` with fixed values | `browser.setCookies(cookies)` in a fixture | renamed |
 | `use.trace` | `trace`: `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, or `'on-all-retries'`, at the top of the config, per target, per test, or `--trace [mode]`. A trace is a markdown page, `trace.md`, in each test's directory under `.e2e/results/`, not a zip, with no viewer. No `'retain-on-first-failure'`, `'retain-on-failure-and-retries'`, or object form. The default differs, see [below](#defaults-that-differ) | renamed |
 | `use.video` | `video`, with the modes and places of `trace`, and `--video [mode]`; no `{ mode, size }` object | renamed |
@@ -436,7 +436,7 @@ context.
 - `browser.evaluate` takes and returns JSON only, so the report can record
   and redact the result. Pass values in through `arg`.
 - A password is a `Secret` with no string value, and the model never sees
-  it. See [Signing in](/authentication).
+  it. See [Authentication](/authentication).
 - Sessions are per run. `test.setup` saves state under a name, one time per
   run and target, and `{ session }` restores it. The file is encrypted and
   deleted at cleanup, so there is no `.auth/user.json` to reuse across runs.
