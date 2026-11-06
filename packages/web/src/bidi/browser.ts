@@ -1,30 +1,20 @@
 /**
- * The `browser` fixture on the BiDi driver: the shared declaration,
- * matchers, route contract, and argument checks (`browser-calls.ts`), over
- * the BiDi surface's calls.
+ * The `browser` fixture on the BiDi driver: the shared declaration and
+ * matchers, the route contract (`route-handler.ts`), and the argument checks
+ * (`fixture-arguments.ts`), over the BiDi surface's calls.
  */
 
 import type { Network, Storage } from 'webdriver-bidi-protocol';
 import type { Expectable, JsonValue } from 'e2e';
-import { Deadline, rejectUnknownOptions, stepTimeout, TestError, toTextPattern, type EngineFixtureContext, type OperationContext, type TextPattern } from 'e2e/engine';
-import { createBrowserExpectation, declareBrowserFixture, frameScreen, requireSelector, type Browser, type BrowserExpectation, type Cookie } from '../browser.ts';
-import {
-  cookieTargets,
-  readResponseBody,
-  requireCookieFilter,
-  requireDownloadCount,
-  downloadTimeout,
-  requireMedia,
-  runRouteHandler,
-  waitedResponse,
-  webResponse,
-  type RouteAdapter,
-} from '../browser-calls.ts';
+import { Deadline, rejectUnknownOptions, stepTimeout, TestError, toTextPattern, type EngineFixtureContext, type OperationContext } from 'e2e/engine';
+import { createBrowserExpectation, declareBrowserFixture, frameScreen, requireSelector, type Browser, type BrowserExpectation, type Cookie, type WebResponse } from '../browser.ts';
 import { evaluateInPage } from '../evaluation.ts';
 import { testInitScriptSource } from '../init-scripts.ts';
 import { routePatternMatches, routePatternsEqual } from '../route-pattern.ts';
+import { cookieTargets, requireCookieFilter, requireDownloadCount, requireMedia } from './fixture-arguments.ts';
 import { moveSources, pressDownSources, releaseSources, wheelSources } from './input.ts';
-import type { InterceptedRequest, NetworkRoute, RouteDecisions } from './network.ts';
+import type { InterceptedRequest } from './network.ts';
+import { readResponseBody, runRouteHandler, waitedResponse, webResponse } from './route-handler.ts';
 import type { PageArgument } from './script.ts';
 import type { AttemptScope, BidiSurface } from './surface.ts';
 
@@ -44,12 +34,6 @@ export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFi
   });
   const scope = surface.attemptScope();
   const { latch } = scope;
-  const routes: { readonly pattern: TextPattern; readonly route: NetworkRoute }[] = [];
-  const removeRoutes = (match: (stored: (typeof routes)[number]) => boolean): Promise<void> => {
-    const removed = new Set(routes.filter(match).map((stored) => stored.route));
-    for (let index = routes.length - 1; index >= 0; index -= 1) if (removed.has(routes[index]!.route)) routes.splice(index, 1);
-    return surface.unroute((route) => removed.has(route), context.operation());
-  };
 
   const browser: Omit<Browser, keyof Expectable<BrowserExpectation>> = {
     goto: (url, options) => surface.goto(context.app.resolveUrl(url), options?.waitUntil ?? 'load', navigation('browser.goto', options)),
@@ -72,23 +56,27 @@ export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFi
       await surface.addInitScript(source, context.operation());
     },
     route(pattern, handler) {
-      const wirePattern = toTextPattern(pattern);
-      const route: NetworkRoute = {
-        predicate: (url) => routePatternMatches(wirePattern, url.href),
+      return surface.route({
+        pattern: toTextPattern(pattern),
         handle: (request, decisions) => {
-          const work = runRouteHandler(handler, routeAdapter(surface, scope, context, request, decisions), (error) => latch.latch(error), context, (file) => surface.projectPath(file));
+          const work = runRouteHandler(
+            handler,
+            { url: request.url, method: request.method, headers: request.headers, ...(request.postData === undefined ? {} : { postData: request.postData }) },
+            { ...decisions, fetch: () => routeFetch(surface, scope, context, request) },
+            (error) => latch.latch(error),
+            context,
+            (file) => surface.projectPath(file),
+          );
           latch.track('route', work);
           return work;
         },
-      };
-      routes.push({ pattern: wirePattern, route });
-      return surface.route(route, context.operation());
+      }, context.operation());
     },
     unroute(pattern) {
       const wirePattern = toTextPattern(pattern);
-      return removeRoutes((stored) => routePatternsEqual(stored.pattern, wirePattern));
+      return surface.unroute((route) => routePatternsEqual(route.pattern, wirePattern), context.operation());
     },
-    unrouteAll: () => removeRoutes(() => true),
+    unrouteAll: () => surface.unroute(() => true, context.operation()),
     async waitForResponse(pattern, options) {
       const wirePattern = toTextPattern(pattern);
       const response = await surface.waitForResponse((url) => routePatternMatches(wirePattern, url), context.operation(stepTimeout(options?.timeout, 'browser.waitForResponse')));
@@ -167,50 +155,40 @@ export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFi
 }
 
 /**
- * A held request as the shared route contract drives it, bound to the
- * attempt it was held in (`scope`). `fetch` replays it
- * from Node as the browser sent it (its body bytes, its cookies, and the
- * site headers) within the operation's budget, and stores the cookies the
+ * `route.fetch` for a request held in the attempt `scope`: replays it from
+ * Node as the browser sent it (its body bytes, its cookies, and the site
+ * headers) within the operation's budget, and stores the cookies the
  * response sets in the user context, as Playwright's `route.fetch` does. A
  * Basic challenge is answered once with the attempt's `basicAuth`
  * credentials, as the browser answers its own. A body the browser did not
  * keep refuses the replay rather than send none.
  */
-function routeAdapter(surface: BidiSurface, scope: AttemptScope, context: EngineFixtureContext, request: InterceptedRequest, decisions: RouteDecisions): RouteAdapter {
-  return {
-    request: { url: request.url, method: request.method, headers: request.headers, ...(request.postData === undefined ? {} : { postData: request.postData }) },
-    fetch: async () => {
-      if (request.bodyUnavailable === true) {
-        throw new TestError('ACTION_FAILED', 'route.fetch: the browser kept none of the request body (too large or streamed), so the request cannot be replayed');
-      }
-      const operation = context.operation();
-      const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(operation.timeoutMs), scope.lifetime]);
-      const headers = { ...request.headers, ...(request.cookie === undefined ? {} : { cookie: request.cookie }), ...surface.siteHeaders(request.url) };
-      const send = (extra: Record<string, string>): Promise<Response> => fetch(request.url, {
-        method: request.method,
-        headers: { ...headers, ...extra },
-        redirect: 'manual',
-        signal,
-        ...(request.body === undefined ? {} : { body: new Uint8Array(request.body) }),
-      });
-      let fetched = await send({});
-      const { credentials } = scope;
-      if (fetched.status === 401 && credentials !== undefined && /^basic\b/i.test(fetched.headers.get('www-authenticate') ?? '')) {
-        await fetched.body?.cancel();
-        fetched = await send({ authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}` });
-      }
-      const cookies = fetched.headers.getSetCookie().flatMap((header) => setCookieOf(header, new URL(request.url)) ?? []);
-      if (cookies.length > 0) await scope.storeCookies(cookies, signal);
-      const body = await readResponseBody('route.fetch', async () => Buffer.from(await fetched.arrayBuffer()));
-      const responseHeaders = Object.fromEntries([...fetched.headers].filter(([name]) => name !== 'set-cookie'));
-      const setCookies = fetched.headers.getSetCookie();
-      return webResponse({ url: request.url, status: fetched.status, headers: setCookies.length === 0 ? responseHeaders : { ...responseHeaders, 'set-cookie': setCookies.join('\n') } }, body);
-    },
-    fulfill: (decision) => decisions.fulfill(decision),
-    continue: (decision) => decisions.continue(decision),
-    fallback: () => decisions.fallback(),
-    abort: () => decisions.abort(),
-  };
+async function routeFetch(surface: BidiSurface, scope: AttemptScope, context: EngineFixtureContext, request: InterceptedRequest): Promise<WebResponse> {
+  if (request.bodyUnavailable === true) {
+    throw new TestError('ACTION_FAILED', 'route.fetch: the browser kept none of the request body (too large or streamed), so the request cannot be replayed');
+  }
+  const operation = context.operation();
+  const signal = AbortSignal.any([operation.signal, AbortSignal.timeout(operation.timeoutMs), scope.lifetime]);
+  const headers = { ...request.headers, ...(request.cookie === undefined ? {} : { cookie: request.cookie }), ...surface.siteHeaders(request.url) };
+  const send = (extra: Record<string, string>): Promise<Response> => fetch(request.url, {
+    method: request.method,
+    headers: { ...headers, ...extra },
+    redirect: 'manual',
+    signal,
+    ...(request.body === undefined ? {} : { body: new Uint8Array(request.body) }),
+  });
+  let fetched = await send({});
+  const { credentials } = scope;
+  if (fetched.status === 401 && credentials !== undefined && /^basic\b/i.test(fetched.headers.get('www-authenticate') ?? '')) {
+    await fetched.body?.cancel();
+    fetched = await send({ authorization: `Basic ${Buffer.from(`${credentials.username}:${credentials.password}`).toString('base64')}` });
+  }
+  const cookies = fetched.headers.getSetCookie().flatMap((header) => setCookieOf(header, new URL(request.url)) ?? []);
+  if (cookies.length > 0) await scope.storeCookies(cookies, signal);
+  const body = await readResponseBody('route.fetch', async () => Buffer.from(await fetched.arrayBuffer()));
+  const responseHeaders = Object.fromEntries([...fetched.headers].filter(([name]) => name !== 'set-cookie'));
+  const setCookies = fetched.headers.getSetCookie();
+  return webResponse({ url: request.url, status: fetched.status, headers: setCookies.length === 0 ? responseHeaders : { ...responseHeaders, 'set-cookie': setCookies.join('\n') } }, body);
 }
 
 /** A `Set-Cookie` cookie's path when the header gives none: the directory of `url`'s path (RFC 6265 default-path). */
@@ -263,7 +241,7 @@ async function downloads(
   timeout: number | undefined,
   api: string,
 ): Promise<{ path: string; absolutePath: string; suggestedFilename: string }[]> {
-  const { signal, timeoutMs } = context.operation(downloadTimeout(timeout, api));
+  const { signal, timeoutMs } = context.operation(stepTimeout(timeout, api));
   const files = await surface.collectDownloads(count, trigger, signal, timeoutMs);
   for (const file of files) context.attachArtifact('download', file.path);
   return files;

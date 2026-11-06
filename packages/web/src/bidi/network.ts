@@ -13,11 +13,14 @@ import { readFile } from 'node:fs/promises';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import type { Network } from 'webdriver-bidi-protocol';
+import type { TextPattern } from 'e2e/engine';
 import { BidiError, type BidiConnection, type BidiEventParams } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
 import { lowercaseNames } from '../protected-app.ts';
+import type { ContinueDecision, FulfillDecision } from '../route-options.ts';
+import { routePatternMatches } from '../route-pattern.ts';
 import { releaseQuietly } from './errors.ts';
-import { NetworkBinding, alreadyGone, bytesText, headerRecord, stripHash, type ObservedResponse } from './network-binding.ts';
+import { NetworkBinding, alreadyGone, bytesText, headerRecord, stripHash, type NetworkWants, type ObservedResponse } from './network-binding.ts';
 
 /** A request the browser holds for a route to decide. */
 export interface InterceptedRequest {
@@ -38,16 +41,16 @@ export interface InterceptedRequest {
 
 /** What a route does with one held request; exactly one of these runs. */
 export interface RouteDecisions {
-  continue(overrides?: { url?: string; method?: string; headers?: Record<string, string>; postData?: string }): Promise<void>;
-  fulfill(response: { status: number; headers: Record<string, string>; contentType?: string; body?: string | Uint8Array; json?: unknown; path?: string }): Promise<void>;
+  continue(decision: ContinueDecision): Promise<void>;
+  fulfill(decision: FulfillDecision): Promise<void>;
   abort(): Promise<void>;
   /** Hands the request to the next older matching route, or to the network. */
   fallback(): Promise<void>;
 }
 
-/** One registered route: which URLs it takes, and what it does with each request. */
+/** One registered route: the URL pattern it takes, and what it does with each request. */
 export interface NetworkRoute {
-  readonly predicate: (url: URL) => boolean;
+  readonly pattern: TextPattern;
   readonly handle: (request: InterceptedRequest, decisions: RouteDecisions) => Promise<void>;
 }
 
@@ -96,9 +99,7 @@ const CONTENT_TYPES: Readonly<Record<string, string>> = {
 /** One attempt's network: its routes and policy, and the binding to the current user context that carries out both. */
 export class AttemptNetwork {
   private routes: NetworkRoute[] = [];
-  /** Whether every request is held: site headers to add, or a route registered. */
-  private holding: boolean;
-  /** Whether the request events are wanted whatever else holds: an idle count, or a blank-served tab, once asked for. */
+  /** Whether requests in flight are counted, once a `networkidle` wait asked for it. */
   private tracking = false;
   /** The current user context's state and resources; replaced whole by `bind`. */
   private binding: NetworkBinding | undefined;
@@ -112,7 +113,6 @@ export class AttemptNetwork {
     private readonly connection: BidiConnection,
     private readonly options: AttemptNetworkOptions & { readonly holdAll: boolean },
   ) {
-    this.holding = options.holdAll;
     this.offClose = connection.onClose(() => this.binding?.endWaits(new Error('the BiDi connection closed before the response finished loading')));
   }
 
@@ -123,18 +123,15 @@ export class AttemptNetwork {
     return next;
   }
 
-  /** Installs what the attempt's routes, headers, credentials, and waits need on the bound user context, whatever an earlier try left out. */
+  /** Installs what the attempt's routes, headers, credentials, and waits need on the bound user context, whatever an earlier try left out, and removes what nothing needs any more. */
   private async reconcile(): Promise<void> {
-    const binding = this.binding;
-    if (binding === undefined) return;
-    const hold = this.holding || binding.blank.size > 0;
-    await binding.reconcile({
-      events: hold || this.tracking || this.options.credentials !== undefined,
-      requestBodies: this.holding,
-      hold,
-      auth: this.options.credentials !== undefined,
-      exclusive: this.options.exclusive,
-    });
+    const wants: NetworkWants = {
+      holdAll: this.options.holdAll,
+      routes: this.routes.length,
+      tracking: this.tracking,
+      credentials: this.options.credentials !== undefined,
+    };
+    await this.binding?.reconcile(wants);
   }
 
   /**
@@ -151,7 +148,12 @@ export class AttemptNetwork {
       this.binding = undefined;
       old?.close();
       await this.release(old);
-      this.binding = new NetworkBinding(this.connection, userContext, (binding) => this.listen(binding));
+      this.binding = new NetworkBinding(this.connection, userContext, {
+        exclusive: this.options.exclusive,
+        contexts: this.options.contexts,
+        ours: this.options.ours,
+        listen: (binding) => this.listen(binding),
+      });
       await this.reconcile();
     });
   }
@@ -161,34 +163,28 @@ export class AttemptNetwork {
     const connection = this.connection;
     return [
       connection.on('network.beforeRequestSent', (event) => this.onRequest(binding, event)),
-      connection.on('network.responseCompleted', (event) => binding.settle(event)),
-      connection.on('network.fetchError', (event) => binding.settle(event)),
       connection.on('network.authRequired', (event) => this.onAuth(binding, event)),
     ];
   }
 
-  /** A top-level tab of the attempt opened: the intercepts cover it from now on. */
+  /**
+   * A top-level tab of the attempt opened: the intercepts cover it from now
+   * on. A tab the context tree no longer knows closed before the queue
+   * caught up, and is left out instead of covering a tab that no longer exists.
+   */
   addContext(context: string): Promise<void> {
     const binding = this.binding;
-    binding?.closedTabs.delete(context);
     return this.change(async () => {
-      if (binding === undefined || binding !== this.binding || binding.closedTabs.has(context)) return;
-      binding.tops.add(context);
-      await this.reconcile();
+      if (binding !== undefined && binding === this.binding && binding.cover(context)) await this.reconcile();
     });
   }
 
-  /**
-   * A top-level tab of the attempt closed. It is marked closed at once, so a
-   * queued addition or intercept refresh leaves it out instead of covering a
-   * tab that no longer exists, and its requests in flight stop counting.
-   */
+  /** A top-level tab of the attempt closed: its requests in flight stop counting, and the intercepts stop covering it. */
   removeContext(context: string): Promise<void> {
     const binding = this.binding;
-    binding?.closedTabs.add(context);
     this.retire(context);
     return this.change(async () => {
-      if (binding !== undefined && binding === this.binding && binding.tops.delete(context)) await this.reconcile();
+      if (binding !== undefined && binding === this.binding && binding.uncover(context)) await this.reconcile();
     });
   }
 
@@ -210,14 +206,12 @@ export class AttemptNetwork {
     let binding: NetworkBinding | undefined;
     await this.change(async () => {
       binding = this.binding;
-      if (binding === undefined) return;
-      binding.blank.add(context);
-      binding.tops.add(context);
-      this.tracking = true;
+      binding?.serveBlank(context);
       await this.reconcile();
     });
     return () => this.change(async () => {
-      binding?.blank.delete(context);
+      binding?.unserveBlank(context);
+      if (binding !== undefined && binding === this.binding) await this.reconcile();
     });
   }
 
@@ -239,36 +233,38 @@ export class AttemptNetwork {
    */
   addRoute(route: NetworkRoute): Promise<void> {
     return this.change(async () => {
-      const holding = this.holding;
       this.routes.push(route);
-      this.holding = true;
       try {
         await this.reconcile();
       } catch (cause) {
         this.routes = this.routes.filter((one) => one !== route);
-        this.holding = holding;
         throw cause;
       }
     });
   }
 
-  /** Removes the routes `match` selects. */
-  removeRoutes(match: (route: NetworkRoute) => boolean): void {
-    this.routes = this.routes.filter((route) => !match(route));
+  /**
+   * Removes the routes `match` selects, in order with the additions before
+   * it, and lets interception go once nothing needs requests held.
+   */
+  removeRoutes(match: (route: NetworkRoute) => boolean): Promise<void> {
+    return this.change(async () => {
+      this.routes = this.routes.filter((route) => !match(route));
+      await this.reconcile();
+    });
   }
 
   /**
    * Counts the attempt's request in flight (an EventSource stream never
    * settles, so it does not count) and, when one of the binding's intercepts
    * holds it, decides it as Playwright does: a held request of another user
-   * context or of no frame goes on untouched, a site icon is aborted, a
-   * redirect hop goes on with what its first hop was continued with, a CORS
+   * context or of no frame goes on untouched, a redirect hop goes on with what its first hop was continued with, a CORS
    * preflight is answered while routes are set, and the rest go through the
    * routes.
    */
   private onRequest(binding: NetworkBinding, event: BidiEventParams<'network.beforeRequestSent'>): void {
     const request = event.request.request;
-    const blocked = event.isBlocked && (event.intercepts ?? []).some((intercept) => binding.intercepts.has(intercept));
+    const blocked = binding.holds(event);
     const pass = (overrides: Partial<Network.ContinueRequestParameters> = {}): void => {
       void this.connection.send('network.continueRequest', { request, ...overrides }).catch((cause: unknown) => this.fail(cause));
     };
@@ -277,14 +273,10 @@ export class AttemptNetwork {
       return;
     }
     const headers = headerRecord(event.request.headers);
-    if (event.context !== null && this.options.onPage(event.context) && headers['accept'] !== 'text/event-stream') binding.started(request, event.context);
+    if (event.context !== null) binding.started(request, event.context, this.options.onPage(event.context) && headers['accept'] !== 'text/event-stream');
     if (!blocked) return;
     if (event.context === null) {
       pass();
-      return;
-    }
-    if (stripHash(event.request.url).endsWith('/favicon.ico')) {
-      void unlessCancelled(this.connection.send('network.failRequest', { request })).catch((cause: unknown) => this.fail(cause));
       return;
     }
     if (event.redirectCount > 0) {
@@ -295,7 +287,7 @@ export class AttemptNetwork {
       void this.answerPreflight(request, headers).catch((cause: unknown) => this.fail(cause));
       return;
     }
-    const decide = binding.blank.has(event.context) ? this.answerBlank(event) : this.route(binding, event);
+    const decide = binding.isBlank(event.context) ? this.answerBlank(event) : this.route(binding, event);
     void decide.catch(async (cause: unknown) => {
       await releaseQuietly(this.connection.send('network.failRequest', { request }));
       this.fail(cause);
@@ -312,7 +304,7 @@ export class AttemptNetwork {
    */
   private redirectHeaders(binding: NetworkBinding, event: BidiEventParams<'network.beforeRequestSent'>, headers: Record<string, string>): Partial<Network.ContinueRequestParameters> {
     const id = event.request.request;
-    const policy = binding.redirects.get(id);
+    const policy = binding.redirectPolicy(id);
     const site = this.options.siteHeaders(stripHash(event.request.url));
     let applied = policy?.injected === undefined ? headers : withoutInjected(headers, policy.injected);
     if (policy?.overrides !== undefined) {
@@ -323,7 +315,7 @@ export class AttemptNetwork {
     }
     if (site !== undefined) applied = { ...applied, ...site };
     if (policy !== undefined || site !== undefined) {
-      binding.redirects.set(id, {
+      binding.keepRedirectPolicy(id, {
         ...(policy?.overrides === undefined ? {} : { overrides: policy.overrides }),
         method: policy?.method ?? event.request.method,
         ...(site === undefined ? {} : { injected: site }),
@@ -373,19 +365,19 @@ export class AttemptNetwork {
     const request = event.request;
     const address = stripHash(request.url);
     const url = URL.canParse(address) ? new URL(address) : undefined;
-    const matching = url === undefined ? [] : this.routes.filter((route) => route.predicate(url)).toReversed();
+    const matching = url === undefined ? [] : this.routes.filter((route) => routePatternMatches(route.pattern, url.href)).toReversed();
     const intercepted: InterceptedRequest = {
       id: request.request,
       url: address,
       method: request.method,
       headers: headerRecord(request.headers),
       ...(request.cookies.length === 0 ? {} : { cookie: request.cookies.map((cookie) => `${cookie.name}=${bytesText(cookie.value)}`).join('; ') }),
-      ...(matching.length === 0 ? {} : await this.postData(binding.requestCollector, request, event.navigation !== null)),
+      ...(matching.length === 0 ? {} : await this.postData(binding, request, event.navigation !== null)),
     };
     for (const route of matching) {
       let passed = false;
       await route.handle(intercepted, {
-        continue: (overrides) => unlessCancelled(this.continue(binding, intercepted, overrides)),
+        continue: (decision) => unlessCancelled(this.continue(binding, intercepted, decision)),
         fulfill: (response) => unlessCancelled(this.fulfill(binding, intercepted, response)),
         abort: () => {
           if (event.navigation !== null && event.context !== null) this.options.onNavigationAbort(event.context, address);
@@ -406,17 +398,10 @@ export class AttemptNetwork {
    * a held navigation's on Chromium, which never answers for the body of a
    * paused form submission (https://github.com/puppeteer/puppeteer/pull/15607).
    */
-  private async postData(collector: string | undefined, request: Network.RequestData, navigation: boolean): Promise<{ postData?: string; body?: Buffer; bodyUnavailable?: true }> {
+  private async postData(binding: NetworkBinding, request: Network.RequestData, navigation: boolean): Promise<{ postData?: string; body?: Buffer; bodyUnavailable?: true }> {
     if (request.bodySize === 0 || (request.bodySize === null && ['GET', 'HEAD'].includes(request.method))) return {};
-    if (collector === undefined || (navigation && this.options.browser === 'chromium')) return { bodyUnavailable: true };
-    try {
-      const { bytes } = await this.connection.send('network.getData', { dataType: 'request', request: request.request, collector });
-      const body = bytes.type === 'string' ? Buffer.from(bytes.value) : Buffer.from(bytes.value, 'base64');
-      return { postData: body.toString(), body };
-    } catch (cause) {
-      if (cause instanceof BidiError && cause.error === 'no such network data') return { bodyUnavailable: true };
-      throw cause;
-    }
+    const body = navigation && this.options.browser === 'chromium' ? undefined : await binding.requestBody(request.request);
+    return body === undefined ? { bodyUnavailable: true } : { postData: body.toString(), body };
   }
 
   /**
@@ -429,18 +414,14 @@ export class AttemptNetwork {
    * request's redirect hops (`redirectHeaders`), so a hop that leaves the
    * site never carries the site's headers.
    */
-  private async continue(
-    binding: NetworkBinding,
-    request: InterceptedRequest,
-    overrides: { url?: string; method?: string; headers?: Record<string, string>; postData?: string } = {},
-  ): Promise<void> {
+  private async continue(binding: NetworkBinding, request: InterceptedRequest, overrides: ContinueDecision = {}): Promise<void> {
     const site = this.options.siteHeaders(overrides.url ?? request.url);
     const routeHeaders = overrides.headers === undefined ? undefined : lowercaseNames(overrides.headers);
     let headers = routeHeaders === undefined ? undefined : applyHeaderOverrides(request.headers, routeHeaders, this.options.browser === 'chromium');
     if (overrides.postData !== undefined && this.options.browser === 'firefox') headers = { ...(headers ?? request.headers), 'content-length': String(Buffer.byteLength(overrides.postData)) };
     if (site !== undefined) headers = { ...(headers ?? request.headers), ...site };
     if (routeHeaders !== undefined || site !== undefined) {
-      binding.redirects.set(request.id, {
+      binding.keepRedirectPolicy(request.id, {
         ...(routeHeaders === undefined ? {} : { overrides: routeHeaders }),
         method: overrides.method ?? request.method,
         ...(site === undefined ? {} : { injected: site }),
@@ -459,15 +440,15 @@ export class AttemptNetwork {
    * Answers a held request with a response the test wrote; a `path` body's
    * type follows its extension. As Playwright's fulfill: the status carries
    * its reason phrase, a cross-origin request gets CORS headers unless the
-   * response sets its own, and the body is kept for a response wait to read,
-   * since a browser keeps no body it did not load.
+   * response sets its own, the body goes as the decoded bytes it is, framed
+   * by its own length whatever `content-encoding` and `content-length` the
+   * headers name (as `route.fetch`'s do, over a body it already decoded), and
+   * it is kept for a response wait to read, since a browser keeps no body it
+   * did not load.
    */
-  private async fulfill(
-    binding: NetworkBinding,
-    request: InterceptedRequest,
-    response: { status: number; headers: Record<string, string>; contentType?: string; body?: string | Uint8Array; json?: unknown; path?: string },
-  ): Promise<void> {
-    const headers = { ...lowercaseNames(response.headers) };
+  private async fulfill(binding: NetworkBinding, request: InterceptedRequest, response: FulfillDecision): Promise<void> {
+    const { 'content-encoding': _encoding, 'content-length': _length, ...given } = lowercaseNames(response.headers);
+    const headers: Record<string, string> = { ...given };
     let body: Buffer;
     if (response.json !== undefined) {
       body = Buffer.from(JSON.stringify(response.json));
@@ -486,7 +467,8 @@ export class AttemptNetwork {
       headers['access-control-allow-credentials'] = 'true';
       headers['vary'] = 'Origin';
     }
-    binding.fulfilledBodies.set(request.id, body);
+    headers['content-length'] = String(body.length);
+    binding.fulfilled(request.id, body);
     await this.connection.send('network.provideResponse', {
       request: request.id,
       statusCode: response.status,
@@ -501,8 +483,7 @@ export class AttemptNetwork {
     const credentials = this.options.credentials;
     if (!this.options.ours(event) || !event.isBlocked || credentials === undefined) return;
     // A second challenge for the same request means the credentials were refused; it gets the 401.
-    const retry = binding.answered.has(event.request.request);
-    binding.answered.add(event.request.request);
+    const retry = binding.answerAuth(event.request.request, event.context ?? '');
     void this.connection
       .send('network.continueWithAuth', retry
         ? { request: event.request.request, action: 'cancel' }
