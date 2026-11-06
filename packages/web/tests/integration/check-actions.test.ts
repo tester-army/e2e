@@ -13,6 +13,7 @@ import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { LocatorAction } from 'e2e/engine';
 import { classifyActionError, dispatchLocatorAction } from '../../src/actions.ts';
+import { ElementList } from '../../src/element-list.ts';
 import type { ActionTarget } from '../../src/support.ts';
 
 let browser: Browser;
@@ -46,13 +47,15 @@ beforeEach(async () => {
 
 const KINDS = ['locator', 'element'] as const;
 
-/** The control as the engine would hold it: a locator, or an element handle pinned by an observation. */
+/**
+ * The control as the engine would hold it: a locator, or the element handle
+ * an observed ref resolves to, made on first use from the walk's in-page array.
+ */
 async function targetOf(kind: (typeof KINDS)[number], selector: string): Promise<ActionTarget> {
   const locator = page.locator(selector);
   if (kind === 'locator') return { kind, locator };
-  const element = await locator.elementHandle();
-  if (element === null) throw new Error(`no element for ${selector}`);
-  return { kind, element };
+  const walk = new ElementList(await locator.evaluateHandle((node) => [node]));
+  return { kind, element: await walk.at(0) };
 }
 
 /** A refusal waits out the whole deadline, so the cases that expect one take a short one. */
