@@ -2,6 +2,7 @@
 
 import type { Screen } from 'e2e';
 import type { Browser } from './browser.ts';
+import { cdpSource } from './bidi/browser-source.ts';
 import { createWeb } from './engine.ts';
 
 export interface AttachBrowserOptions {
@@ -28,11 +29,11 @@ export interface AttachedBrowser extends AsyncDisposable {
  */
 export async function attachBrowser(cdpEndpoint: string, options: AttachBrowserOptions = {}): Promise<AttachedBrowser> {
   const engine = createWeb(
-    { connect: { cdpEndpoint: () => cdpEndpoint }, viewport: null, ...(options.testIdAttribute === undefined ? {} : { testIdAttribute: options.testIdAttribute }) },
-    true,
+    { viewport: null, ...(options.testIdAttribute === undefined ? {} : { testIdAttribute: options.testIdAttribute }) },
+    cdpSource('attach', () => cdpEndpoint),
   );
   // The runner loads only when something attaches, not with every config that imports this package.
   const { openEngine } = await import('e2e/runner');
-  const session = await openEngine<{ browser: Browser }>(engine, { signal: options.signal, timeout: options.timeout });
+  const session = await openEngine(engine, { signal: options.signal, timeout: options.timeout });
   return { browser: session.fixtures.browser, screen: session.fixtures.screen, close: session.close, [Symbol.asyncDispose]: session.close };
 }

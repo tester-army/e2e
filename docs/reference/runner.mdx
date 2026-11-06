@@ -357,22 +357,22 @@ exposed. Match them with [`isE2EError`](#ise2eerror) and `error.code`.
 
 #### `openEngine`
 
-`openEngine<Fixtures>(engine: EngineHandle, options?: OpenEngineOptions)`
+`openEngine(engine: EngineHandle<Fixtures>, options?: OpenEngineOptions)`
 opens one attempt on `engine` with no config, test, or agent. Use it to drive
 an app from code before tests do.
 
 ```ts title="scripts/seed.ts"
 import { openEngine } from 'e2e/runner';
-import { web, type Browser } from '@e2e-dev/web';
+import { web } from '@e2e-dev/web';
 
-await using session = await openEngine<{ browser: Browser }>(web(), { timeout: 60_000 });
+await using session = await openEngine(web(), { timeout: 60_000 });
 const { browser, screen } = session.fixtures;
 await browser.goto('http://localhost:3000/login');
 await screen.getByRole('button', 'Sign in').tap();
 ```
 
-- `session.fixtures` holds `screen`, `app`, and the engine's fixtures, with
-  the same waiting and errors a test gets.
+- `session.fixtures` holds `screen`, `app`, and the engine's fixtures, typed
+  as the engine declares them, with the same waiting and errors a test gets.
 - Each call is one attempt. Open another session for a fresh one.
 - There is no `app.url`. Pass full URLs.
 - Artifacts go to a temporary directory that `close()` removes. Nothing is

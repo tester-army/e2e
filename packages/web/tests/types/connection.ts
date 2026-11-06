@@ -1,19 +1,19 @@
-/** Compile-time assertions for endpoint provisioning, transport recovery, and the browser provider seam. */
+/** Compile-time assertions for endpoint provisioning and the browser provider seam. */
 import { secrets } from 'e2e';
 import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
 
-({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async (signal) => {
+({ cdpEndpoint: async (signal) => {
   signal.throwIfAborted();
   return 'ws://localhost:9222';
 } }) satisfies WebConnectOptions;
 
-// @ts-expect-error recovery cannot omit the fresh-attempt provisioner.
-({ reconnectEndpoint: () => 'ws://localhost:9222' }) satisfies WebConnectOptions;
-// @ts-expect-error a recovery resolver must return an endpoint, never a page or a success flag.
-({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async () => true }) satisfies WebConnectOptions;
+// @ts-expect-error reconnectEndpoint is removed: the next attempt attaches through cdpEndpoint again.
+({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: () => 'ws://localhost:9222' }) satisfies WebConnectOptions;
+// @ts-expect-error a resolver must return an endpoint, never a page or a success flag.
+({ cdpEndpoint: async () => true }) satisfies WebConnectOptions;
 
 ({ name: 'hosted', scope: 'attempt', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined }) satisfies BrowserProvider;
-({ id: 's', cdpEndpoint: 'ws://localhost:9222', reconnectEndpoint: undefined }) satisfies BrowserLease;
+({ id: 's', cdpEndpoint: 'ws://localhost:9222' }) satisfies BrowserLease;
 ({ browser: { name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined } }) satisfies WebOptions;
 
 // @ts-expect-error a lease names its endpoint; a browser object or a page is not one.

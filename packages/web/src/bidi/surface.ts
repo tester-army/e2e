@@ -1,6 +1,6 @@
 /**
- * The WebDriver BiDi surface: one browser per worker and one `BidiSession`
- * per attempt, behind the engine hooks and the `browser` fixture calls. Each hook is bounded and classified here and
+ * The WebDriver BiDi surface: one browser per worker (or per attempt) and
+ * one `BidiSession` per attempt, behind the engine hooks and the `browser` fixture calls. Each hook is bounded and classified here and
  * delegates to the module that implements it.
  */
 
@@ -35,20 +35,17 @@ import {
 } from 'e2e/engine';
 import type { DialogHandler } from '../dialogs.ts';
 import type { ConfiguredInitScripts } from '../init-scripts.ts';
-import { browserCheck, ensureBrowsersInstalled } from '../install.ts';
 import type { WebMedia } from '../media.ts';
-import { withOperationDeadline } from '../operation-budget.ts';
+import { withDeadline } from '../operation-budget.ts';
 import { httpCredentials, lowercaseNames, siteHeadersFor } from '../protected-app.ts';
-import type { LeasedBrowsers } from '../provider.ts';
 import { cancelled, invalidState } from '../support.ts';
 import type { WebBasicAuth, WebScreencastOptions } from '../options.ts';
 import { perform, performAt, typeInto, typeText } from './actions.ts';
 import { screenshot, startVideo, stopVideo } from './artifacts.ts';
 import { afterDispatch, classify, releaseQuietly } from './errors.ts';
-import { ContextTree } from './context-tree.ts';
-import { routeEvents, SESSION_EVENTS } from './events.ts';
+import { BROWSER_OPEN_TIMEOUT_MS, BrowserHandle, type BrowserSource } from './browser-source.ts';
 import { fixtureKeyStroke, type KeyPhase } from './keyboard.ts';
-import { connectBidiOverCdp, launchBidiBrowser, type BidiBrowser, type BidiBrowserName } from './launch.ts';
+import type { BidiBrowserName } from './launch.ts';
 import type { NetworkRoute } from './network.ts';
 import type { ObservedResponse } from './network-binding.ts';
 import { locate, observe, traceScreen } from './observe.ts';
@@ -57,11 +54,6 @@ import type { PageArgument, PageValue } from './script.ts';
 import { BidiSession, type SessionSettings } from './session.ts';
 import { captureState, restoreState } from './state.ts';
 import { goto, reload, reset, restart, traverse, type WaitUntil } from './steering.ts';
-
-/** Browser launch budget when the harness init budget is not otherwise expressed. */
-const BROWSER_LAUNCH_TIMEOUT_MS = 60_000;
-/** How long closing an attempt whose setup failed may take before the browser is retired instead. */
-const SETUP_CLEANUP_MS = 15_000;
 
 /** What a BiDi surface is configured with, from `web()`. */
 export interface BidiSurfaceOptions {
@@ -77,72 +69,67 @@ export interface BidiSurfaceOptions {
   readonly timezoneId: string | undefined;
   /** The configured media features every attempt starts from. */
   readonly media: WebMedia;
-  /** Resolves a remote Chromium's CDP endpoint instead of launching one (`web({ connect })`). */
-  readonly cdpEndpoint: ((signal: AbortSignal) => string | Promise<string>) | undefined;
-  /** A browser provider's worker-scoped leases, attached to over CDP. */
-  readonly leases: LeasedBrowsers | undefined;
-  /** Drives the attached browser's default user context on its open tab and leaves both as they are (`attachBrowser`). */
-  readonly existingTab: boolean;
+  /** Where the browser comes from. */
+  readonly source: BrowserSource;
+}
+
+/** A browser being opened, which the next caller joins and `endAttempt` or `dispose` cancels. */
+interface Acquisition {
+  readonly controller: AbortController;
+  readonly handle: Promise<BrowserHandle>;
 }
 
 /**
- * The engine surface on WebDriver BiDi: one browser per worker, one
- * attempt at a time on it, and every engine hook guarded by the operation's
- * budget and the attempt's error latch.
+ * The engine surface on WebDriver BiDi: one browser per worker (or per
+ * attempt, as the source says), one attempt at a time on it, and every
+ * engine hook guarded by the operation's budget and the attempt's error
+ * latch.
  */
 export class BidiSurface {
-  private browser: BidiBrowser | undefined;
-  /** The endpoint of the browser leased for the running attempt, in a provider's `attempt` scope. */
-  private attemptEndpoint: string | undefined;
+  /** The browser the worker, or in `attempt` scope the running attempt, rides. */
+  private handle: BrowserHandle | undefined;
+  private acquiring: Acquisition | undefined;
   private session: BidiSession | undefined;
   private settings: SessionSettings | undefined;
-  private headed = false;
-  /** Every browsing context of the browser, which the session's events and a snapshot taken on connect keep current. */
-  private readonly contexts = new ContextTree();
-  private unrouteEvents: () => void = () => undefined;
   /**
-   * The launch or attach in flight, which `dispose` waits out. A launch
-   * outlives a caller that gave up; an attach is bound to its caller's
-   * `signal` and never publishes a browser once that aborted.
-   */
-  private acquiring: { readonly browser: Promise<BidiBrowser>; readonly signal: AbortSignal | undefined } | undefined;
-  /**
-   * Aborted by `dispose`: a launch or lease still pending fails `CANCELLED`,
-   * and a launch that finishes after it closes its browser instead of
-   * publishing it. Replaced by `init`.
+   * Aborted by `dispose`: a browser still being opened fails `CANCELLED`, and
+   * one that opens after it is closed instead of published. Replaced by
+   * `init`.
    */
   private disposal = new AbortController();
 
   constructor(private readonly options: BidiSurfaceOptions) {}
 
-  /** Installs the build this driver launches, or leases a provider's browsers, once per run; reads the init scripts. */
-  /**
-   * The checks of `e2e doctor`: the init scripts `prepare` reads, and the
-   * browser, which only a local launch needs on this machine.
-   */
+  /** The checks of `e2e doctor`: the init scripts `prepare` reads, and what the browser source needs on this machine. */
   async doctor(info: EngineDoctorInfo): Promise<readonly EngineDoctorCheck[]> {
     const scripts = await this.options.initScripts.doctor(info.projectRoot);
-    if (this.options.leases !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: `browsers come from the "${this.options.leases.name}" provider` }];
-    if (this.options.cdpEndpoint !== undefined) return [...scripts, { id: 'browser', status: 'skip', message: 'the browser is attached over CDP' }];
-    return [...scripts, ...(await browserCheck(this.options.browser, info.env, info.headed))];
+    return [...scripts, ...(await this.options.source.doctor(info))];
   }
 
+  /** Reads the init scripts and has the source provision the run's browsers, once per run. */
   async prepare(info: EnginePrepareInfo): Promise<EnginePrepareResult | void> {
     await this.options.initScripts.load(info.projectRoot);
-    if (this.options.leases !== undefined) return this.options.leases.prepare(info);
-    if (this.options.cdpEndpoint !== undefined) return;
-    await ensureBrowsersInstalled([this.options.browser], { env: info.env, signal: info.signal, log: info.log, headed: info.headed });
+    return this.options.source.prepare(info);
   }
 
-  /** Releases what `prepare` leased. */
-  async finish(info: EngineFinishInfo): Promise<void> {
-    await this.options.leases?.finish(info);
+  /** Releases what `prepare` provisioned. */
+  finish(info: EngineFinishInfo): Promise<void> {
+    return this.options.source.finish(info);
   }
 
-  /** Launches or attaches to the worker's browser. */
+  /**
+   * Records the run and, in `worker` scope, opens the worker's browser. A
+   * new tenure: a browser an earlier init was still opening is cancelled,
+   * and one it left open is closed, so nothing it opened is reused.
+   */
   async init(info: EngineInitInfo): Promise<void> {
+    this.disposal.abort();
     this.disposal = new AbortController();
-    this.headed = info.headed;
+    this.acquiring = undefined;
+    const stale = this.handle;
+    this.handle = undefined;
+    if (stale !== undefined) await releaseQuietly(stale.close());
+    const { source } = this.options;
     const headers = this.options.headers === undefined ? undefined : lowercaseNames(this.options.headers);
     const site = info.app.site;
     this.settings = {
@@ -158,155 +145,116 @@ export class BidiSurface {
       site,
       projectRoot: info.projectRoot,
       permissions: Object.keys(info.app.permissions ?? {}),
-      remoteFiles: this.options.leases !== undefined,
-      defaultUserContext: this.perAttempt || this.options.existingTab,
-      existingTab: this.options.existingTab,
+      remoteFiles: source.files === 'remote',
+      userContext: source.userContext,
+      env: info.env,
       holdRequests: headers !== undefined,
       siteHeaders: (url) => siteHeadersFor(url, site, headers),
     };
-    this.options.leases?.init(info);
+    source.init(info);
     await this.options.initScripts.load(info.projectRoot);
-    if (!this.perAttempt) await this.acquireBrowser(info.signal);
+    if (source.scope === 'worker') await this.browserFor(info.signal);
   }
 
   /**
-   * The live browser, relaunched or reattached when the last one went away;
-   * the one that went away is closed first, so a launched browser whose
-   * mapper died leaves no process or profile behind. A caller that gives up
-   * leaves the launch running, owned by the surface: it publishes the
-   * browser, or closes it once the surface was disposed.
+   * The worker's live browser, opened when there is none or the last one
+   * went away; in `attempt` scope (`attempt` given) always a fresh one for
+   * the attempt. A caller joins the worker's opening in flight, and its
+   * `signal` bounds only its own wait, so a browser a caller gave up on
+   * still opens and is published for the next one; an attempt's opening is
+   * the attempt's alone.
    */
-  private async acquireBrowser(signal: AbortSignal): Promise<BidiBrowser> {
-    if (this.browser !== undefined && !this.browser.connection.isClosed) return this.browser;
-    const verb = this.attaches ? 'connect' : 'launch';
-    const bound = AbortSignal.any([signal, this.disposal.signal]);
-    if (bound.aborted) throw cancelled(`browser ${verb} cancelled`);
-    // An attach its caller gave up never publishes; it settles before the next one starts.
-    if (this.acquiring?.signal?.aborted === true) await releaseQuietly(this.acquiring.browser);
-    if (this.acquiring === undefined) {
-      const caller = this.attaches ? signal : undefined;
-      this.acquiring = {
-        signal: caller,
-        browser: this.launch(caller).finally(() => {
-          this.acquiring = undefined;
-        }),
-      };
-    }
+  private async browserFor(signal: AbortSignal, attempt?: EngineAttemptContext): Promise<BrowserHandle> {
+    if (attempt === undefined && this.handle?.alive === true) return this.handle;
+    const verb = this.options.source.kind === 'launch' ? 'launch' : 'connect';
+    if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
+    const acquiring = attempt === undefined ? (this.acquiring ?? this.acquire(undefined)) : this.acquire(attempt);
     try {
-      return await raceAbort(this.acquiring.browser, bound, `browser ${verb}`);
+      return await raceAbort(acquiring.handle, signal, `browser ${verb}`);
     } catch (cause) {
       throw classify(cause, `browser ${verb} failed`);
     }
   }
 
-  /** Whether the browser is attached to over CDP rather than launched here. */
-  private get attaches(): boolean {
-    return this.options.cdpEndpoint !== undefined || this.options.leases !== undefined;
-  }
-
   /**
-   * Closes a browser that went away, opens the next, subscribes it, and
-   * publishes it unless the surface was disposed or the attach's `signal`
-   * aborted meanwhile.
+   * Opens a browser in the background: the one that went away is closed
+   * first, so a launched browser whose mapper died leaves no process or
+   * profile behind. The opening ends `CANCELLED` once the surface is
+   * disposed, its attempt ends, or (in `attempt` scope) the attempt's signal
+   * aborts; a worker's opening is also bounded by `BROWSER_OPEN_TIMEOUT_MS`.
+   * It publishes the browser unless it was cancelled by then.
    */
-  private async launch(signal: AbortSignal | undefined): Promise<BidiBrowser> {
-    const disposal = this.disposal.signal;
-    const stale = this.browser;
-    this.browser = undefined;
-    this.unrouteEvents();
-    if (stale !== undefined) await releaseQuietly(stale.close());
-    const browser = await this.openBrowser(AbortSignal.any([AbortSignal.timeout(BROWSER_LAUNCH_TIMEOUT_MS), disposal, ...(signal === undefined ? [] : [signal])]));
-    // Routed before subscribing, so no context event is lost; the snapshot then adds the contexts already open.
-    this.contexts.clear();
-    const unroute = routeEvents(browser.connection, this.contexts, () => this.session);
-    try {
-      await withTimeout(
-        this.subscribe(browser),
-        BROWSER_LAUNCH_TIMEOUT_MS,
-        () => new EngineError('OPERATION_TIMEOUT', `the browser did not take its event subscription and list its open contexts within ${BROWSER_LAUNCH_TIMEOUT_MS}ms`, { retryable: false }),
-      );
-      if (disposal.aborted) throw cancelled('the engine was disposed while its browser launched');
-      if (signal?.aborted === true) throw cancelled('browser connect cancelled');
-    } catch (cause) {
-      unroute();
-      await releaseQuietly(browser.close());
-      throw cause;
-    }
-    this.browser = browser;
-    this.unrouteEvents = unroute;
-    return browser;
-  }
-
-  /** Subscribes `browser` to the session's events, then adds the browsing contexts already open to the tree. */
-  private async subscribe(browser: BidiBrowser): Promise<void> {
-    await browser.connection.send('session.subscribe', { events: [...SESSION_EVENTS] });
-    await this.contexts.sync(async () => (await browser.connection.send('browsingContext.getTree', {})).contexts);
-  }
-
-  /** Whether every attempt leases a fresh browser of its own: a provider's `attempt` scope. */
-  private get perAttempt(): boolean {
-    return this.options.leases?.scope === 'attempt';
-  }
-
-  /** A local launch, or an attach over CDP to the `connect` endpoint, the attempt's lease, or the worker's. */
-  private async openBrowser(signal: AbortSignal): Promise<BidiBrowser> {
-    const { cdpEndpoint, leases } = this.options;
-    if (cdpEndpoint !== undefined) return attach('connect.cdpEndpoint', await cdpEndpoint(signal), signal);
-    if (this.attemptEndpoint !== undefined) return attach('the browser provider', this.attemptEndpoint, signal);
-    if (leases !== undefined) return attach('the browser provider', await leases.endpoint(signal), signal);
-    return launchBidiBrowser(this.options.browser, { headed: this.headed, timeoutMs: BROWSER_LAUNCH_TIMEOUT_MS, firefoxPrefs: firefoxMediaPrefs(this.options.media) });
+  private acquire(attempt: EngineAttemptContext | undefined): Acquisition {
+    this.acquiring?.controller.abort();
+    const controller = new AbortController();
+    const timeout = new AbortController();
+    const timer = attempt === undefined
+      ? setTimeout(() => timeout.abort(new EngineError('OPERATION_TIMEOUT', `the browser did not open within ${BROWSER_OPEN_TIMEOUT_MS}ms`, { retryable: false })), BROWSER_OPEN_TIMEOUT_MS)
+      : undefined;
+    const signal = AbortSignal.any([controller.signal, this.disposal.signal, timeout.signal, ...(attempt === undefined ? [] : [attempt.signal])]);
+    const stale = this.handle;
+    this.handle = undefined;
+    const acquisition: Acquisition = {
+      controller,
+      handle: (async () => {
+        if (stale !== undefined) await releaseQuietly(stale.close());
+        const browser = await this.options.source.open({ signal, attempt });
+        const handle = await BrowserHandle.open(browser, () => this.session, signal);
+        this.handle = handle;
+        return handle;
+      })().finally(() => {
+        clearTimeout(timer);
+        if (this.acquiring === acquisition) this.acquiring = undefined;
+      }),
+    };
+    this.acquiring = acquisition;
+    return acquisition;
   }
 
   /**
-   * Opens the attempt's session: its user context, network, downloads, and
-   * emulation. A setup that fails or is cancelled is closed at once, and
-   * the setup itself is waited out within the same budget (a user context
-   * that lands later removes itself); when either cannot finish, or the late
-   * removal fails, the browser is retired.
+   * Opens the attempt's session on the browser and sets up its user
+   * context, network, downloads, and emulation. The session is the
+   * attempt's from the start, so `endAttempt`, which the harness runs after
+   * a failed start too, tears down whatever the setup reached; a user
+   * context that lands after the attempt ended removes itself.
    */
   async startAttempt(context: EngineAttemptContext): Promise<void> {
     if (this.session !== undefined) throw invalidState('an attempt is already running');
-    if (this.settings === undefined) throw invalidState('the engine is not initialized');
+    const settings = this.settings;
+    if (settings === undefined) throw invalidState('the engine is not initialized');
+    const { source } = this.options;
     const basicAuth = this.options.basicAuth;
     const credentials = basicAuth === undefined
       ? undefined
       : await raceAbort(() => httpCredentials(basicAuth, context.resolveSecret), context.signal, 'resolving the basic-auth password');
     const signal = AbortSignal.any([context.signal, this.disposal.signal]);
-    if (this.perAttempt) {
-      const lease = await this.options.leases!.startAttempt({ ...context, signal });
-      this.attemptEndpoint = lease.cdpEndpoint;
-    }
-    let browser: BidiBrowser;
+    let handle: BrowserHandle;
     try {
-      browser = await this.acquireBrowser(signal);
+      handle = await this.browserFor(signal, source.scope === 'attempt' ? { ...context, signal } : undefined);
     } catch (cause) {
-      // The lease stays the attempt's: `endAttempt` gives it back.
-      throw this.perAttempt ? classify(cause, 'attaching to the leased browser') : cause;
+      throw source.scope === 'attempt' ? classify(cause, 'attaching to the leased browser') : cause;
     }
     const session = new BidiSession(
-      browser,
-      this.settings,
-      { attemptId: context.attemptId, artifactsDir: context.artifactsDir, appLog: context.appLog, navigation: context.navigation, screen: context.screen, credentials, remoteDownloads: this.options.leases?.downloads() },
-      this.contexts,
+      handle.browser,
+      settings,
+      {
+        attemptId: context.attemptId,
+        artifactsDir: context.artifactsDir,
+        appLog: context.appLog,
+        navigation: context.navigation,
+        screen: context.screen,
+        credentials,
+        remoteDownloads: source.downloads(),
+      },
+      handle.contexts,
     );
-    const setup = session.openUserContext();
-    try {
-      await raceAbort(setup, context.signal, 'attempt setup');
-    } catch (cause) {
-      const budget = { signal: AbortSignal.timeout(SETUP_CLEANUP_MS), timeoutMs: SETUP_CLEANUP_MS };
-      const landed = setup.then(() => ({ failure: undefined }), (late: unknown) => ({ failure: late instanceof EngineError && late.code === 'CANCELLED' ? undefined : late }));
-      try {
-        await boundedCleanup(session.close(), budget, 'attempt setup cleanup');
-        const { failure } = await withTimeout(landed, budget.timeoutMs, () => new EngineError('OPERATION_TIMEOUT', 'attempt setup never settled', { retryable: false }));
-        if (failure !== undefined) throw failure;
-      } catch {
-        await this.retireBrowser(budget);
-      }
-      if (this.perAttempt) await this.releaseAttemptBrowser(budget);
-      throw cause;
-    }
     this.session = session;
-    context.environment({ browser: `${browser.name} ${browser.version}`, driver: 'webdriver-bidi' });
+    try {
+      await raceAbort(session.openUserContext(signal), context.signal, 'attempt setup');
+    } catch (cause) {
+      throw classify(cause, 'attempt setup');
+    }
+    context.environment({ browser: `${handle.browser.name} ${handle.browser.version}`, driver: 'webdriver-bidi' });
   }
 
   /** Waits for a dialog or route handler still running, then rethrows what it latched. */
@@ -315,54 +263,63 @@ export class BidiSurface {
   }
 
   /**
-   * Ends the attempt's session. Idempotent. A close that fails or outlives
-   * the cleanup budget leaves resources the browser may still hold, so the
-   * browser is retired (the next attempt launches or attaches afresh) and the
-   * failure reported.
+   * Ends the attempt's session, also after a failed `startAttempt`.
+   * Idempotent. A close that fails or outlives the cleanup budget leaves
+   * resources the browser may still hold, so the browser is retired (the
+   * next attempt opens a fresh one) and the failure reported. In `attempt`
+   * scope the attempt's browser is closed and given back on every path.
    */
   async endAttempt(context: EngineCleanupContext): Promise<void> {
     const session = this.session;
     this.session = undefined;
-    if (session === undefined) {
-      // A per-attempt lease granted, or still pending, for an attempt that never opened is given back.
-      if (this.perAttempt) await this.releaseAttemptBrowser(context);
-      return;
-    }
+    const { source } = this.options;
     try {
-      await boundedCleanup(session.close(), context, 'attempt cleanup');
-    } catch (cause) {
-      await this.retireBrowser(context);
-      throw classify(cause, 'attempt cleanup');
+      if (session !== undefined) {
+        try {
+          await boundedCleanup(session.close(), context, 'attempt cleanup');
+        } catch (cause) {
+          await this.retireBrowser(context);
+          throw classify(cause, 'attempt cleanup');
+        }
+      }
     } finally {
-      if (this.perAttempt) await this.releaseAttemptBrowser(context);
+      if (source.scope === 'attempt') {
+        await this.retireBrowser(context);
+        await source.endAttempt(context);
+      }
     }
   }
 
-  /** Detaches from the attempt's leased browser and gives the lease back; each step attempted whatever the other did. */
-  private async releaseAttemptBrowser(context: EngineCleanupContext): Promise<void> {
-    this.attemptEndpoint = undefined;
-    await releaseQuietly(this.retireBrowser(context));
-    await this.options.leases?.endAttempt(context);
-  }
-
-  /** Closes the browser, best effort, so the next attempt opens a fresh one. */
+  /**
+   * Closes the browser within the cleanup budget, best effort, so the next
+   * attempt opens a fresh one. In `attempt` scope an opening still in flight
+   * is the ending attempt's, so it is cancelled: a browser it opens after
+   * closes itself, and a lease it gets is given back.
+   */
   private async retireBrowser(context: EngineCleanupContext): Promise<void> {
-    const browser = this.browser;
-    this.browser = undefined;
-    this.unrouteEvents();
-    if (browser !== undefined) await withinCleanupBudget(browser.close(), context);
+    if (this.options.source.scope === 'attempt') {
+      this.acquiring?.controller.abort();
+      this.acquiring = undefined;
+    }
+    const handle = this.handle;
+    this.handle = undefined;
+    if (handle !== undefined) await withinCleanupBudget(handle.close(), context);
   }
 
-  /** Ends the attempt, closes the browser, and releases a provider's lease, each attempted whatever the others did. */
+  /** Ends the attempt, cancels a browser still opening, closes the browser, and releases what the source holds, each attempted whatever the others did. */
   async dispose(context: EngineCleanupContext): Promise<void> {
     this.disposal.abort();
     const results = await Promise.allSettled([this.endAttempt(context)]);
-    if (this.acquiring !== undefined) await releaseQuietly(withinCleanupBudget(this.acquiring.browser, context));
-    const browser = this.browser;
-    this.browser = undefined;
-    if (browser !== undefined) results.push(...(await Promise.allSettled([boundedCleanup(browser.close(), context, 'browser close')])));
-    this.unrouteEvents();
-    results.push(...(await Promise.allSettled([this.options.leases?.dispose(context)])));
+    const acquiring = this.acquiring;
+    this.acquiring = undefined;
+    if (acquiring !== undefined) {
+      acquiring.controller.abort();
+      await withinCleanupBudget(acquiring.handle, context);
+    }
+    const handle = this.handle;
+    this.handle = undefined;
+    if (handle !== undefined) results.push(...(await Promise.allSettled([boundedCleanup(handle.close(), context, 'browser close')])));
+    results.push(...(await Promise.allSettled([this.options.source.dispose(context)])));
     const failed = results.find((result) => result.status === 'rejected');
     if (failed !== undefined) throw classify(failed.reason, 'dispose');
   }
@@ -392,7 +349,7 @@ export class BidiSurface {
     const dispatches = session?.dispatches ?? 0;
     let result: T;
     try {
-      result = await withOperationDeadline(operation, label, (remaining) => work(this.requireSession(), remaining()));
+      result = await withDeadline(operation, label, (budget) => work(this.requireSession(), budget));
     } catch (cause) {
       // A handler error latched while the operation ran is its cause: a route that refused its own arguments aborts the request the step waited on.
       session?.latch.throwPending();
@@ -420,12 +377,12 @@ export class BidiSurface {
 
   /** Replaces the tab with a blank one, keeping the attempt's storage. */
   restart(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'restart', (session) => restart(session));
+    return this.guard(operation, 'restart', (session, budget) => restart(session, budget.signal));
   }
 
   /** Starts the attempt over in a clean user context. */
   reset(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state reset', (session) => reset(session));
+    return this.guard(operation, 'state reset', (session, budget) => reset(session, budget.signal));
   }
 
   /** `browser.goto`: navigates and waits as `waitUntil` says. */
@@ -574,8 +531,9 @@ export class BidiSurface {
    */
   async collectDownloads(count: number, trigger: () => Promise<void>, signal: AbortSignal, timeoutMs: number): Promise<{ path: string; absolutePath: string; suggestedFilename: string }[]> {
     const session = this.requireSession();
-    if (this.options.leases !== undefined && session.attempt.remoteDownloads === undefined) {
-      throw new EngineError('UNSUPPORTED_CAPABILITY', `browser provider "${this.options.leases.name}" serves no downloads, so a file its remote browser saves cannot be read back`, { retryable: false });
+    const { source } = this.options;
+    if (source.kind === 'lease' && session.attempt.remoteDownloads === undefined) {
+      throw new EngineError('UNSUPPORTED_CAPABILITY', `browser provider "${source.leases.name}" serves no downloads, so a file its remote browser saves cannot be read back`, { retryable: false });
     }
     const endsAt = Date.now() + timeoutMs;
     const finished = await session.downloads.collect(count, trigger, signal, timeoutMs, (context) => session.onPage(context));
@@ -640,7 +598,7 @@ export class BidiSurface {
 
   /** Replaces the attempt's storage with a saved session's. */
   restoreState(state: EngineState, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'state restore', (session) => restoreState(session, state));
+    return this.guard(operation, 'state restore', (session, budget) => restoreState(session, state, budget.signal));
   }
 
   /** A masked viewport screenshot, saved under the attempt directory. */
@@ -650,7 +608,7 @@ export class BidiSurface {
 
   /** Starts the attempt's video: the provider's recording when it records, else the driver's own. */
   startVideo(operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'video', (session, budget) => startVideo(session, this.options.leases?.recorder(session.attempt.attemptId), budget.signal));
+    return this.guard(operation, 'video', (session, budget) => startVideo(session, this.options.source.recorder(session.attempt.attemptId), budget.signal));
   }
 
   /** Ends the attempt's video and returns its segments. */
@@ -680,27 +638,4 @@ function boundedCleanup(work: Promise<unknown>, budget: EngineCleanupContext, la
     budget.timeoutMs,
     () => new EngineError('OPERATION_TIMEOUT', `${label} did not finish within ${budget.timeoutMs}ms`, { retryable: false }),
   );
-}
-
-/**
- * Attaches over CDP to the endpoint `source` resolved, unless `signal`
- * aborted while it resolved; an empty endpoint is refused by the name of
- * its source.
- */
-function attach(source: string, endpoint: unknown, signal: AbortSignal): Promise<BidiBrowser> {
-  if (signal.aborted) throw cancelled('browser connect cancelled');
-  if (typeof endpoint !== 'string' || endpoint.trim() === '') {
-    throw new EngineError('ENGINE_FAILURE', `${source} resolved to an empty CDP endpoint`, { retryable: false });
-  }
-  return connectBidiOverCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS);
-}
-
-/** Firefox preferences that set the configured media features for every page, since Firefox before 159 has no BiDi media override. */
-function firefoxMediaPrefs(media: WebMedia): Record<string, number> {
-  const prefs: Record<string, number> = {};
-  if (media.colorScheme !== undefined) {
-    prefs['layout.css.prefers-color-scheme.content-override'] = media.colorScheme === 'dark' ? 0 : media.colorScheme === 'light' ? 1 : 2;
-  }
-  if (media.reducedMotion !== undefined) prefs['ui.prefersReducedMotion'] = media.reducedMotion === 'reduce' ? 1 : 0;
-  return prefs;
 }

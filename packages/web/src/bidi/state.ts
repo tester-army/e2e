@@ -162,12 +162,12 @@ export async function captureState(session: BidiSession): Promise<EngineState> {
 }
 
 /** Replaces the user context with a clean one holding the snapshot: cookies through `storage.setCookie`, each origin's storage from its blank document. */
-export async function restoreState(session: BidiSession, state: EngineState): Promise<void> {
+export async function restoreState(session: BidiSession, state: EngineState, signal: AbortSignal): Promise<void> {
   if (state.format !== STATE_FORMAT || state.version !== 1 || !isStorageState(state.data)) {
     throw new EngineError('INVALID_STATE', `unsupported state format ${state.format}@${String(state.version)}`, { retryable: false });
   }
   const { cookies, origins } = state.data;
-  await session.replaceUserContext();
+  await session.replaceUserContext(signal);
   for (const { size: _size, ...cookie } of cookies) {
     await session.connection.send('storage.setCookie', { cookie, partition: session.partition() });
   }

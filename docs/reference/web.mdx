@@ -73,7 +73,6 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | An option `web()` does not take (`url` or any other app key included), or an unknown key inside `connect` or `basicAuth`. The message names the nearest known key for a likely typo (`viewprt` is `viewport`), else every key. |
-| `INVALID_CONFIG` | `connect.reconnectEndpoint`, which is not supported. |
 
 #### `browser`
 
@@ -149,19 +148,18 @@ web({ connect: { cdpEndpoint: async () => 'ws://127.0.0.1:9222' } });
 - `cdpEndpoint(signal)` resolves when a worker first needs the browser, and
   again when an attempt starts after the connection dropped.
 - Each attempt gets a new browser context on the remote browser.
-- `reconnectEndpoint` is not supported. A connection that drops fails the
-  attempt, and the next attempt attaches again through `cdpEndpoint`.
+- A connection that drops fails the attempt, and the next attempt attaches
+  again through `cdpEndpoint`.
 
 ```ts
 interface WebConnectOptions {
   cdpEndpoint(signal: AbortSignal): string | Promise<string>;
-  reconnectEndpoint?(signal: AbortSignal): string | Promise<string>;
 }
 ```
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | A `connect` without `cdpEndpoint`, or with one given as a string, at config load. Also `connect` beside a `browser` provider, a `browser` other than chromium, or any `reconnectEndpoint`. |
+| `INVALID_CONFIG` | A `connect` without `cdpEndpoint`, or with one given as a string, at config load. Also `connect` beside a `browser` provider, or a `browser` other than chromium. |
 
 To reuse one sign-in across files,
 [sign in once in a setup test](/authentication#reuse-authenticated-sessions).
@@ -324,7 +322,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | --- | --- |
 | No WebKit | WebKit has no WebDriver BiDi endpoint. |
 | `connect` and browser providers are Chromium only | They attach over CDP. |
-| `connect.reconnectEndpoint` is `INVALID_CONFIG` | A dropped connection is not recovered mid-attempt. The next attempt attaches again. |
+| `connect.reconnectEndpoint` is removed | A dropped connection is not recovered mid-attempt. The next attempt attaches again. |
 | `app.clearState()` and saved sessions throw `UNSUPPORTED_CAPABILITY` with a `scope: 'attempt'` provider | The attempt runs in the fresh browser's own context, which they would replace. |
 | Pointer actions in a rotated, skewed, or mirrored iframe throw `NOT_ACTIONABLE` | Points are mapped through a frame's scale only. |
 | Selectors are CSS or XPath only, with no `>>` chains or `text=` and `nth=` engines | The browser runs the selector itself. |

@@ -897,10 +897,21 @@ export interface Engine {
   dispose?(context: EngineDisposeContext): Promise<void>;
 }
 
-/** A validated engine: branded, frozen, capabilities computed. */
-export interface EngineHandle extends Engine {
+/** Type-only key carrying the fixtures an engine contributes; no handle has it at runtime. */
+declare const contributedFixtures: unique symbol;
+
+/** The factories of an engine's contributed fixtures, one per fixture of `Fixtures`. */
+export type EngineFixtureFactories<Fixtures extends object> = { readonly [K in keyof Fixtures]: (context: EngineFixtureContext) => Fixtures[K] };
+
+/**
+ * A validated engine: branded, frozen, capabilities computed. `Fixtures` is
+ * what its `fixtures` contribute, as `defineEngine` read them from its spec,
+ * so code handed the engine (`openEngine`) gets them typed.
+ */
+export interface EngineHandle<Fixtures extends object = object> extends Engine {
   readonly [engineBrand]: true;
   readonly capabilities: ReadonlySet<EngineCapability>;
+  readonly [contributedFixtures]?: Fixtures;
 }
 
 export { defineEngine, isEngineHandle } from './manifest.ts';

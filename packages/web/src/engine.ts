@@ -22,6 +22,8 @@ import { createRequire } from 'node:module';
 import { asBrowserProvider, LeasedBrowsers } from './provider.ts';
 import type { WebOptions } from './options.ts';
 import { BidiSurface } from './bidi/surface.ts';
+import { cdpSource, launchSource, leaseSource, type BrowserSource } from './bidi/browser-source.ts';
+import type { Browser } from './browser.ts';
 import { createBidiBrowserFixture } from './bidi/browser.ts';
 import { ConfiguredInitScripts, validateInitScripts } from './init-scripts.ts';
 import { DEFAULT_VIEWPORT } from './support.ts';
@@ -33,16 +35,17 @@ import type { BrowserName } from './browser-names.ts';
 /** App fields only a device target reads. */
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments'] as const;
 
-export function web(options: WebOptions = {}): EngineHandle {
-  return createWeb(options, false);
+export function web(options: WebOptions = {}): EngineHandle<{ browser: Browser }> {
+  return createWeb(options);
 }
 
 /**
- * The web engine for `options`. With `existingTab`, an attempt on the
- * `connect` browser drives its default user context on the tab already open
- * there and leaves both behind, and the target needs no `app.url`.
+ * The web engine for `options`, its browser from `attachTo` when given:
+ * `attachBrowser`'s source, whose attempt drives the tab already open in the
+ * browser's own user context and leaves both behind, so the target needs no
+ * `app.url`. Otherwise the browser comes from what `options` name.
  */
-export function createWeb(options: WebOptions, existingTab: boolean): EngineHandle {
+export function createWeb(options: WebOptions, attachTo?: BrowserSource): EngineHandle<{ browser: Browser }> {
   if ('allowedOrigins' in options) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -83,15 +86,11 @@ export function createWeb(options: WebOptions, existingTab: boolean): EngineHand
   if (browser !== 'chromium' && browser !== 'firefox') {
     throw new ConfigurationError('INVALID_CONFIG', `web({ browser }) drives chromium or firefox over WebDriver BiDi, got ${JSON.stringify(browser)}`);
   }
-  if (options.connect?.reconnectEndpoint !== undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      'connect.reconnectEndpoint is not supported: a dropped CDP transport is not recovered mid-attempt; use connect.cdpEndpoint, which the next attempt attaches through again',
-    );
-  }
-  // A per-attempt lease runs in its browser's default context, which its `prepare` may have signed in.
-  const perAttempt = provider?.scope === 'attempt';
-  const defaultContext = perAttempt || existingTab;
+  const media = obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion });
+  const source = attachTo
+    ?? (provider !== undefined ? leaseSource(new LeasedBrowsers(provider)) : options.connect !== undefined ? cdpSource('connect', options.connect.cdpEndpoint) : launchSource(browser, media));
+  // Clearing state and saved sessions replace the user context, which only an attempt in a fresh one may do.
+  const ownsContext = source.userContext === 'fresh';
   const surface = new BidiSurface({
     browser,
     viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
@@ -103,10 +102,8 @@ export function createWeb(options: WebOptions, existingTab: boolean): EngineHand
     userAgent: options.userAgent,
     locale: options.locale,
     timezoneId: options.timezoneId,
-    media: obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion }),
-    cdpEndpoint: options.connect?.cdpEndpoint,
-    leases: provider === undefined ? undefined : new LeasedBrowsers(provider),
-    existingTab,
+    media,
+    source,
   });
   return defineEngine({
     name: 'web',
@@ -135,28 +132,28 @@ export function createWeb(options: WebOptions, existingTab: boolean): EngineHand
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressKey(key, operation),
     },
-    validateApp: (app, info) => validateApp(app, info, browser, !existingTab),
+    validateApp: (app, info) => validateApp(app, info, browser, source.userContext !== 'adopt-tab'),
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {
       open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
       resize: (size, operation) => surface.resize(size, operation),
       restart: (operation) => surface.restart(operation),
-      reset: defaultContext ? () => Promise.reject(defaultContextLimit('app.clearState()', provider?.name)) : (operation) => surface.reset(operation),
+      reset: ownsContext ? (operation) => surface.reset(operation) : () => Promise.reject(defaultContextLimit('app.clearState()', source)),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
-    ...(defaultContext
-      ? {}
-      : {
+    ...(ownsContext
+      ? {
           state: {
             capture: (operation) => surface.captureState(operation),
             restore: (state, operation) => surface.restoreState(state, operation),
           },
-        }),
+        }
+      : {}),
     fixtures: {
       browser: (context) => createBidiBrowserFixture(surface, context),
     },
@@ -182,16 +179,16 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
 
 /**
  * What riding the browser's own context rules out, named with its cause:
- * `what` replaces the browser context. `provider` names a per-attempt lease;
- * none means `attachBrowser`.
+ * `what` replaces the browser context, which a per-attempt lease and
+ * `attachBrowser` both ride.
  */
-function defaultContextLimit(what: string, provider: string | undefined): ConfigurationError {
-  if (provider === undefined) {
+function defaultContextLimit(what: string, source: BrowserSource): ConfigurationError {
+  if (source.kind !== 'lease') {
     return new ConfigurationError('UNSUPPORTED_CAPABILITY', `${what} is unavailable on an attached browser: it replaces the browser context, and the attach drives the browser's own`);
   }
   return new ConfigurationError(
     'UNSUPPORTED_CAPABILITY',
-    `${what} is unavailable with browser provider "${provider}" with scope "attempt": it replaces the browser context, and the attempt rides the leased browser's own; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test`,
+    `${what} is unavailable with browser provider "${source.leases.name}" with scope "attempt": it replaces the browser context, and the attempt rides the leased browser's own; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test`,
   );
 }
 
@@ -209,31 +206,23 @@ function kindOf(value: unknown): string {
 }
 
 /**
- * `cdpEndpoint` is the one resolver every connect mode needs: the shared
- * browser's source at init, and the fresh browser each persistent attempt
- * provisions. Without it the attach would call an undefined resolver, so a
- * config missing it fails here, at load, instead of at worker init or on
- * every attempt with `ENGINE_FAILURE: ... resolve is not a function`.
+ * `cdpEndpoint` is the resolver `connect` attaches through. Without it the
+ * attach would call an undefined resolver, so a config missing it fails
+ * here, at load, instead of at worker init with `ENGINE_FAILURE: ... resolve
+ * is not a function`. Any other key, a removed `reconnectEndpoint` included,
+ * is refused.
  */
 function validateConnect(connect: unknown): void {
   if (!isRecord(connect)) {
-    throw new ConfigurationError('INVALID_CONFIG', `web({ connect }) must be a plain object: { cdpEndpoint, reconnectEndpoint? }, got ${kindOf(connect)}`);
+    throw new ConfigurationError('INVALID_CONFIG', `web({ connect }) must be a plain object: { cdpEndpoint }, got ${kindOf(connect)}`);
   }
-  rejectUnknownKeys('web({ connect })', connect, ['cdpEndpoint', 'reconnectEndpoint']);
-  const { cdpEndpoint, reconnectEndpoint } = connect;
+  rejectUnknownKeys('web({ connect })', connect, ['cdpEndpoint']);
+  const { cdpEndpoint } = connect;
   if (cdpEndpoint === undefined) {
-    throw new ConfigurationError(
-      'INVALID_CONFIG',
-      `web({ connect }) requires cdpEndpoint, the resolver that provisions the browser: (signal) => url${
-        reconnectEndpoint === undefined ? '' : '; reconnectEndpoint only reconnects to the browser cdpEndpoint provisioned'
-      }`,
-    );
+    throw new ConfigurationError('INVALID_CONFIG', 'web({ connect }) requires cdpEndpoint, the resolver that provisions the browser: (signal) => url');
   }
   if (typeof cdpEndpoint !== 'function') {
     throw new ConfigurationError('INVALID_CONFIG', `web({ connect: { cdpEndpoint } }) must be a resolver function (signal) => url, got ${kindOf(cdpEndpoint)}`);
-  }
-  if (reconnectEndpoint !== undefined && typeof reconnectEndpoint !== 'function') {
-    throw new ConfigurationError('INVALID_CONFIG', `web({ connect: { reconnectEndpoint } }) must be a resolver function (signal) => url, got ${kindOf(reconnectEndpoint)}`);
   }
 }
 

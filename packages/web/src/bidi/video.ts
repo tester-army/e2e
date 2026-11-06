@@ -36,13 +36,20 @@ interface Segment {
   finish(): Promise<void>;
 }
 
-/** The attempt's video on the BiDi driver: one segment per tab it shows, and the segments it lost. */
+/**
+ * The attempt's video on the BiDi driver: one segment per tab it shows, and
+ * the first segment it lost. A segment that fails to start or to finish
+ * never fails the step that opened or closed its tab: `stop` reports it,
+ * where the harness applies the video policy.
+ */
 export class BidiVideo {
   private armed = false;
   private current: Segment | undefined;
   private count = 0;
   private finished: VideoFile[] = [];
-  private lost: { readonly relative: string; readonly cause: unknown } | undefined;
+  private lost: EngineError | undefined;
+  /** The ffmpeg that encodes Chromium's segments, found once by the first `arm`. */
+  private ffmpeg: string | undefined;
   /** Bumped by every `stop`, so a segment whose start outlived the stop ends at once instead of recording on. */
   private generation = 0;
   /** Segment starts in flight, which `stop` waits out. */
@@ -53,17 +60,29 @@ export class BidiVideo {
     private readonly browser: BidiBrowserName,
     private readonly artifactsDir: string,
     private readonly options: VideoOptions,
+    /** The run's environment, which names the ffmpeg to encode with. */
+    private readonly env: Readonly<Record<string, string | undefined>>,
   ) {}
 
-  /** Starts recording `context`, unless a segment already records, and arms the recorder. */
+  /**
+   * Starts recording `context`, unless a segment already records, and arms
+   * the recorder for every tab opened after. Fails, leaving the recorder
+   * disarmed, when Chromium has no ffmpeg to encode with or the segment
+   * cannot start.
+   */
   async arm(context: string | undefined, viewport: { width: number; height: number }): Promise<void> {
-    this.armed = true;
-    if (this.current === undefined && context !== undefined) await this.tracked(this.begin(context, viewport));
+    if (this.browser === 'chromium') this.ffmpeg ??= requireFfmpeg(this.env);
+    const generation = this.generation;
+    if (this.current === undefined && context !== undefined) await this.tracked(this.begin(context, viewport, true));
+    if (generation === this.generation) this.armed = true;
   }
 
-  /** A tab the attempt opened: the next segment, when armed. */
+  /** A tab the attempt opened: the next segment, when armed. A segment that cannot start is reported by `stop`, never here. */
   async contextOpened(context: string, viewport: { width: number; height: number }): Promise<void> {
-    if (this.armed) await this.tracked(this.begin(context, viewport));
+    if (!this.armed) return;
+    await this.tracked(this.begin(context, viewport, false)).catch((cause: unknown) => {
+      this.lost ??= new EngineError('ENGINE_FAILURE', `video segment for a new tab could not start: ${message(cause)}`, { retryable: false, cause });
+    });
   }
 
   /** Keeps a segment start visible to `stop` until it settles. */
@@ -94,14 +113,12 @@ export class BidiVideo {
     await this.end();
     const lost = this.lost;
     this.lost = undefined;
-    if (lost !== undefined) {
-      throw new EngineError('ENGINE_FAILURE', `video segment ${lost.relative} could not be finalized: ${message(lost.cause)}`, { retryable: false, cause: lost.cause });
-    }
+    if (lost !== undefined) throw lost;
     return this.finished.splice(0);
   }
 
-  /** Ends any segment in progress and starts the next on `context`. */
-  private async begin(context: string, viewport: { width: number; height: number }): Promise<void> {
+  /** Ends any segment in progress and starts the next on `context`; `arming` starts it before the recorder is armed. */
+  private async begin(context: string, viewport: { width: number; height: number }, arming: boolean): Promise<void> {
     await this.end();
     const generation = this.generation;
     this.count += 1;
@@ -115,7 +132,7 @@ export class BidiVideo {
       ? await this.firefoxSegment(context, size, absolute)
       : await this.chromiumSegment(context, size, absolute);
     const segment = { relative, absolute, startedAt, finish };
-    if (generation !== this.generation || !this.armed) {
+    if (generation !== this.generation || (!arming && !this.armed)) {
       this.current = segment;
       await this.end();
       return;
@@ -132,7 +149,7 @@ export class BidiVideo {
       await segment.finish();
     } catch (cause) {
       if (!existsSync(segment.absolute)) {
-        this.lost ??= { relative: segment.relative, cause };
+        this.lost ??= new EngineError('ENGINE_FAILURE', `video segment ${segment.relative} could not be finalized: ${message(cause)}`, { retryable: false, cause });
         return;
       }
     }
@@ -169,10 +186,7 @@ export class BidiVideo {
    * segment acquires is released when a later step of its start fails.
    */
   private async chromiumSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
-    const ffmpeg = ffmpegExecutable();
-    if (ffmpeg === undefined) {
-      throw new EngineError('ENGINE_FAILURE', 'recording video on chromium needs ffmpeg with libvpx-vp9: run "npx @e2e-dev/web install chromium", or set E2E_FFMPEG_PATH', { retryable: false });
-    }
+    const ffmpeg = this.ffmpeg ??= requireFfmpeg(this.env);
     const connection = this.connection;
     const cdp = await ChromiumCdp.forContext(connection, context);
     const encoder = new FrameEncoder(ffmpeg, size, absolute);
@@ -209,6 +223,15 @@ export class BidiVideo {
       if (unacknowledged !== undefined && !isStale(unacknowledged)) throw classify(unacknowledged, 'video');
     };
   }
+}
+
+/** The ffmpeg `env` names that encodes VP9; `ENGINE_FAILURE` naming how to get one when there is none. */
+function requireFfmpeg(env: Readonly<Record<string, string | undefined>>): string {
+  const ffmpeg = ffmpegExecutable(env);
+  if (ffmpeg === undefined) {
+    throw new EngineError('ENGINE_FAILURE', 'recording video on chromium needs ffmpeg with libvpx-vp9: run "npx @e2e-dev/web install chromium", or set E2E_FFMPEG_PATH', { retryable: false });
+  }
+  return ffmpeg;
 }
 
 /** The tab's viewport as it stands, as a JPEG in device pixels; the encoder scales it down to the segment's size. */

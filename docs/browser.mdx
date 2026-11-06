@@ -267,8 +267,6 @@ export interface BrowserLease {
   readonly id: string;
   /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
   readonly cdpEndpoint: string;
-  /** Not used right now: a dropped connection fails the attempt. */
-  readonly reconnectEndpoint?: string;
 }
 ```
 
@@ -278,8 +276,8 @@ and a `log` that reaches the reporter. Read tokens from `request.env`, not
 `process.env`.
 
 A lease is JSON data. `release` gets back the object `acquire` returned, so
-a provider can keep its own fields on it. Only `id`, `cdpEndpoint`, and
-`reconnectEndpoint` travel to the worker, so key anything a worker uses,
+a provider can keep its own fields on it. Only `id` and `cdpEndpoint`
+travel to the worker, so key anything a worker uses,
 such as a recording, on `lease.id`.
 
 Against a typical session API, a provider sends three requests: create a

@@ -79,9 +79,4 @@ export class ContextTree {
     for (const each of found) for (const child of this.nodes.get(each)?.children ?? []) found.add(child);
     return found;
   }
-
-  /** Forgets everything recorded, for a new browser. */
-  clear(): void {
-    this.nodes.clear();
-  }
 }

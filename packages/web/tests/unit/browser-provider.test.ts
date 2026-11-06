@@ -47,7 +47,7 @@ function fakeBrowser(_contextId: string) {
 }
 
 /** A scripted provider: leases `lease-<n>` against `wss://<n>.example`, remembering every call. */
-function provider(options: { scope?: 'worker' | 'attempt'; failSlot?: number; failRelease?: boolean; reconnect?: boolean; sweep?: 'open' | 'fail' } = {}) {
+function provider(options: { scope?: 'worker' | 'attempt'; failSlot?: number; failRelease?: boolean; sweep?: 'open' | 'fail' } = {}) {
   const acquired: BrowserRequest[] = [];
   const released: BrowserLease[] = [];
   const open = new Map<string, BrowserLease>();
@@ -64,7 +64,6 @@ function provider(options: { scope?: 'worker' | 'attempt'; failSlot?: number; fa
       const lease = {
         id: `lease-${n}`,
         cdpEndpoint: `wss://${n}.example`,
-        ...(options.reconnect === true ? { reconnectEndpoint: `wss://${n}.example/reconnect` } : {}),
         // A provider's own bookkeeping never reaches a worker.
         secret: 'x'.repeat(100),
       } as BrowserLease;
@@ -305,8 +304,8 @@ describe('worker scope', () => {
     });
   });
 
-  it('refuses a lease without an id and a cdpEndpoint, or with a reconnectEndpoint that is not one, and still releases nothing for it', async () => {
-    for (const lease of [{}, { id: 'bare' }, { cdpEndpoint: 'wss://d.example' }, { id: ' ', cdpEndpoint: 'wss://d.example' }, { id: 'x', cdpEndpoint: 'wss://d.example', reconnectEndpoint: 7 }]) {
+  it('refuses a lease without an id and a cdpEndpoint, and still releases nothing for it', async () => {
+    for (const lease of [{}, { id: 'bare' }, { cdpEndpoint: 'wss://d.example' }, { id: ' ', cdpEndpoint: 'wss://d.example' }]) {
       const released: BrowserLease[] = [];
       const odd: BrowserProvider = { name: 'odd', acquire: async () => lease as unknown as BrowserLease, release: async (granted) => { released.push(granted); } };
       const runner = web({ browser: odd });
@@ -577,8 +576,8 @@ describe('attempt scope', () => {
       if (how === 'aborted') controller.abort();
       else await worker.endAttempt!(cleanup());
       grant();
-      await expect(starting).rejects.toMatchObject({ code: 'CANCELLED', message: expect.stringContaining('arrived after the attempt ended; released') });
-      expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']);
+      await expect(starting).rejects.toMatchObject({ code: 'CANCELLED' });
+      await vi.waitFor(() => expect(cloud.released.map((lease) => lease.id)).toEqual(['lease-0']));
       expect(connectCdp).not.toHaveBeenCalled();
       // The next attempt starts clean and leases its own browser.
       await worker.startAttempt!(attempt('a2'));
@@ -602,14 +601,14 @@ describe('attempt scope', () => {
     expect(cloud.released).toHaveLength(1);
   });
 
-  it('never reattaches mid-attempt, even through the lease\'s reconnectEndpoint: the next attempt leases a fresh browser', async () => {
+  it('never reattaches mid-attempt: the next attempt leases a fresh browser', async () => {
     const fakes: ReturnType<typeof fakeBrowser>[] = [];
     connectCdp.mockImplementation(async () => {
       const fake = fakeBrowser('context');
       fakes.push(fake);
       return fake.browser;
     });
-    const cloud = provider({ scope: 'attempt', reconnect: true });
+    const cloud = provider({ scope: 'attempt' });
     const worker = web({ browser: cloud.impl });
     await worker.init!(initInfo(0, (await prepared(cloud.impl, 1)).env));
     await worker.startAttempt!(attempt('a1'));

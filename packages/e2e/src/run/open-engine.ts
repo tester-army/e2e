@@ -29,11 +29,12 @@ export interface EngineSession<Fixtures extends object = Record<string, unknown>
 
 /**
  * Opens one attempt on `engine` with no config, test, or agent, and hands
- * back its fixtures: the same `screen` and engine fixtures a test gets, with
- * the same waiting and errors. Nothing is written to the project.
+ * back its fixtures: the same `screen` and engine fixtures a test gets, typed
+ * as the engine declares them, with the same waiting and errors. Nothing is
+ * written to the project.
  */
 export async function openEngine<Fixtures extends object = Record<string, unknown>>(
-  engine: EngineHandle,
+  engine: EngineHandle<Fixtures>,
   options: OpenEngineOptions = {},
 ): Promise<EngineSession<Fixtures>> {
   const env = options.env ?? process.env;

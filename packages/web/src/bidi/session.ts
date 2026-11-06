@@ -55,10 +55,10 @@ export interface SessionSettings {
   readonly permissions: readonly string[];
   /** Whether the browser runs on another machine (a provider's lease), whose filesystem local paths do not reach. */
   readonly remoteFiles: boolean;
-  /** Runs the attempt in the browser's default user context, which a fresh per-attempt lease prepared, instead of a new one. */
-  readonly defaultUserContext: boolean;
-  /** Drives the default user context's first open tab, and leaves it open, instead of opening a tab of its own. */
-  readonly existingTab: boolean;
+  /** The user context an attempt runs in (`BrowserSource.userContext`). */
+  readonly userContext: UserContextMode;
+  /** The run's environment, which names the tools the driver spawns (ffmpeg). */
+  readonly env: Readonly<Record<string, string | undefined>>;
   /** Whether every request is held for the configured site headers, and service workers blocked. */
   readonly holdRequests: boolean;
   readonly siteHeaders: (url: string) => Readonly<Record<string, string>> | undefined;
@@ -78,8 +78,23 @@ export interface AttemptSettings {
   readonly remoteDownloads?: LeaseDownloads | undefined;
 }
 
+/**
+ * Which user context an attempt runs in: a fresh one it creates and
+ * removes, the browser's default one (which a per-attempt lease's `prepare`
+ * may have signed in), or the default one on the tab already open there,
+ * which the attempt adopts and leaves open (`attachBrowser`).
+ */
+export type UserContextMode = 'fresh' | 'default' | 'adopt-tab';
+
 /** The browser's own user context, which a lease's `prepare` signed in and which outlives every attempt. */
 const DEFAULT_USER_CONTEXT = 'default';
+
+/** A user context the attempt set up, with the preload scripts scoped to it, and the tab it had. */
+interface ScopedUserContext {
+  readonly userContext: string;
+  readonly preloads: readonly string[];
+  readonly context: string | undefined;
+}
 
 /** The sandbox realm a failed read runs again in, to tell a page that broke the readers from a fault of their own. */
 const READER_PROBE_SANDBOX = 'e2e-reader-probe';
@@ -180,8 +195,13 @@ export class BidiSession {
   private adopted: string | undefined;
   /** User contexts this attempt created and has not yet seen removed, tried again by every later removal and by `close`. */
   private readonly unremoved = new Set<string>();
-  /** Set by `close`: a user context that opens after it (a reset or restore the attempt gave up on) is removed at once. */
-  private closed = false;
+  /**
+   * Bumped by every user context the attempt starts to set up and by
+   * `close`: one that lands for an earlier generation (a reset given up on,
+   * superseded, or outlived by the attempt) removes itself instead of
+   * replacing the one in use.
+   */
+  private generation = 0;
   private readonly ended = new AbortController();
   private preloads: string[] = [];
   private readonly addedScripts: string[] = [];
@@ -238,74 +258,113 @@ export class BidiSession {
   }
 
   /**
-   * Creates the attempt's user context and applies everything scoped to it:
-   * the preloaded scripts, downloads, the emulated user agent, locale (and
-   * the `accept-language` Playwright's locale sends), time zone, and media,
-   * and the network the headers and credentials need. Every step settles
-   * before a failure is thrown, and each preload script is recorded as it is
-   * added, so `close` removes everything that was set up.
+   * Sets up the attempt's first user context, binds the network to it, and,
+   * when the attempt adopts the open tab, reads that tab before anything
+   * navigates. `signal` aborting, or `close`, before it lands removes it.
    */
-  async openUserContext(): Promise<void> {
-    const connection = this.connection;
-    const { userContext } = this.settings.defaultUserContext ? { userContext: DEFAULT_USER_CONTEXT } : await connection.send('browser.createUserContext', {});
-    if (this.closed && userContext !== DEFAULT_USER_CONTEXT) {
-      await connection.send('browser.removeUserContext', { userContext });
-      throw cancelled('the attempt closed while its user context opened');
-    }
-    this.userContext = userContext;
-    this.granted.clear();
-    this.visited.clear();
-    const scoped = { userContexts: [userContext] as [string] };
-    const sources = [
-      wrapScript(BUILTINS_INIT_SCRIPT),
-      wrapScript(READERS_INIT_SCRIPT),
-      wrapScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT),
-      wrapScript(HIT_INTERCEPTOR_INIT_SCRIPT),
-      ...(this.settings.holdRequests ? [wrapScript(BLOCK_SERVICE_WORKERS)] : []),
-      ...[...this.settings.initScripts.forAttempt(), ...this.addedScripts].map(wrapAppScript),
-    ];
-    const { userAgent, locale, timezoneId } = this.settings;
-    this.preloads = [];
-    const steps = await Promise.allSettled([
-      ...sources.map(async (source) => {
-        this.preloads.push((await connection.send('script.addPreloadScript', { functionDeclaration: source, ...scoped })).script);
-      }),
-      this.downloads.allow(userContext),
-      userAgent === undefined ? undefined : connection.send('emulation.setUserAgentOverride', { userAgent, ...scoped }),
-      locale === undefined ? undefined : connection.send('emulation.setLocaleOverride', { locale, ...scoped }),
-      locale === undefined ? undefined : connection.send('network.setExtraHeaders', { headers: [{ name: 'accept-language', value: { type: 'string', value: locale } }], ...scoped }),
-      timezoneId === undefined ? undefined : connection.send('emulation.setTimezoneOverride', { timezone: timezoneId, ...scoped }),
-      this.applyMedia(),
-      this.network.bind(userContext),
-    ]);
-    const failed = steps.find((step) => step.status === 'rejected');
-    if (failed !== undefined) throw failed.reason;
-    if (this.closed) {
-      await this.dropUserContext();
-      throw cancelled('the attempt closed while its user context opened');
-    }
-    // An attach reads and drives the page it found before anything navigates.
-    if (this.settings.existingTab) await this.ensureContext();
+  async openUserContext(signal: AbortSignal): Promise<void> {
+    await this.installUserContext(signal);
+    await this.network.bind(this.userContext);
+    if (this.settings.userContext === 'adopt-tab') await this.ensureContext();
   }
 
   /**
-   * Removes the user context, which closes its tabs, then its preload
-   * scripts: removing a script from a live tab races the tab's close inside
-   * the Chromium mapper.
+   * Replaces the user context with a clean one, the test's routes and added
+   * init scripts carried over. The new one is set up in full before it
+   * takes the old one's place in one step, and only then is the old one
+   * removed, so no step ever runs between the two. One whose `signal`
+   * aborted, or that a later replacement or `close` overtook, removes itself
+   * and leaves the user context in use as it was.
    */
-  async dropUserContext(): Promise<void> {
+  async replaceUserContext(signal: AbortSignal): Promise<void> {
+    const previous = await this.installUserContext(signal);
+    this.retireContext();
     await this.video?.contextClosing();
-    const userContext = this.userContext;
+    await this.network.bind(this.userContext);
+    await this.dropUserContext(previous);
+  }
+
+  /**
+   * Creates a user context (the browser's own one when the settings ask for
+   * it) and applies everything scoped to it: the preloaded scripts,
+   * downloads, the emulated user agent, locale (and the `accept-language`
+   * Playwright's locale sends), time zone, and media. Every step settles
+   * before a failure is thrown, and a failed or overtaken setup removes what
+   * it made. Once set up, it is published in place of the attempt's user
+   * context, whose scope is returned.
+   */
+  private async installUserContext(signal: AbortSignal): Promise<ScopedUserContext> {
+    const generation = ++this.generation;
+    const connection = this.connection;
+    signal.throwIfAborted();
+    const { userContext } = this.settings.userContext === 'fresh' ? await connection.send('browser.createUserContext', {}) : { userContext: DEFAULT_USER_CONTEXT };
+    const preloads: string[] = [];
+    const overtaken = (): boolean => signal.aborted || generation !== this.generation;
+    try {
+      if (overtaken()) throw cancelled('the attempt closed or gave up while its user context opened');
+      const scoped = { userContexts: [userContext] as [string] };
+      const sources = [
+        wrapScript(BUILTINS_INIT_SCRIPT),
+        wrapScript(READERS_INIT_SCRIPT),
+        wrapScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT),
+        wrapScript(HIT_INTERCEPTOR_INIT_SCRIPT),
+        ...(this.settings.holdRequests ? [wrapScript(BLOCK_SERVICE_WORKERS)] : []),
+        ...[...this.settings.initScripts.forAttempt(), ...this.addedScripts].map(wrapAppScript),
+      ];
+      const { userAgent, locale, timezoneId } = this.settings;
+      const steps = await Promise.allSettled([
+        ...sources.map(async (source) => {
+          preloads.push((await connection.send('script.addPreloadScript', { functionDeclaration: source, ...scoped })).script);
+        }),
+        this.downloads.allow(userContext),
+        userAgent === undefined ? undefined : connection.send('emulation.setUserAgentOverride', { userAgent, ...scoped }),
+        locale === undefined ? undefined : connection.send('emulation.setLocaleOverride', { locale, ...scoped }),
+        locale === undefined ? undefined : connection.send('network.setExtraHeaders', { headers: [{ name: 'accept-language', value: { type: 'string', value: locale } }], ...scoped }),
+        timezoneId === undefined ? undefined : connection.send('emulation.setTimezoneOverride', { timezone: timezoneId, ...scoped }),
+        this.applyMedia(userContext),
+      ]);
+      const failed = steps.find((step) => step.status === 'rejected');
+      if (failed !== undefined) throw failed.reason;
+      if (overtaken()) throw cancelled('the attempt closed or gave up while its user context opened');
+    } catch (cause) {
+      await releaseQuietly(this.dropUserContext({ userContext, preloads, context: undefined }));
+      throw cause;
+    }
+    const previous = { userContext: this.userContext, preloads: this.preloads, context: this.context };
+    this.userContext = userContext;
+    this.preloads = preloads;
+    this.granted.clear();
+    this.visited.clear();
+    return previous;
+  }
+
+  /** Ends the recording of the attempt's tab, forgets its user context, and removes it with its preload scripts. */
+  private async closeUserContext(): Promise<void> {
+    await this.video?.contextClosing();
+    const current = { userContext: this.userContext, preloads: this.preloads, context: this.context };
     this.userContext = '';
-    if (userContext === DEFAULT_USER_CONTEXT) {
-      if (this.context !== undefined && this.context !== this.adopted) await releaseQuietly(this.connection.send('browsingContext.close', { context: this.context }));
-    } else if (userContext !== '') this.unremoved.add(userContext);
+    this.preloads = [];
+    try {
+      await this.dropUserContext(current);
+    } finally {
+      this.retireContext();
+    }
+  }
+
+  /**
+   * Removes a user context the attempt no longer uses, which closes its
+   * tabs, then its preload scripts: removing a script from a live tab races
+   * the tab's close inside the Chromium mapper. The browser's own user
+   * context stays; only the tab the attempt opened there is closed.
+   */
+  private async dropUserContext(dropped: ScopedUserContext): Promise<void> {
+    if (dropped.userContext === DEFAULT_USER_CONTEXT) {
+      if (dropped.context !== undefined && dropped.context !== this.adopted) await releaseQuietly(this.connection.send('browsingContext.close', { context: dropped.context }));
+    } else if (dropped.userContext !== '') this.unremoved.add(dropped.userContext);
     try {
       await this.removeUserContexts();
     } finally {
-      await Promise.all(this.preloads.map((script) => releaseQuietly(this.connection.send('script.removePreloadScript', { script }))));
-      this.preloads = [];
-      this.retireContext();
+      await Promise.all(dropped.preloads.map((script) => releaseQuietly(this.connection.send('script.removePreloadScript', { script }))));
     }
   }
 
@@ -321,24 +380,18 @@ export class BidiSession {
     if (failed !== undefined) throw (failed as PromiseRejectedResult).reason;
   }
 
-  /** Replaces the user context with a clean one, the test's routes and added init scripts carried over. */
-  async replaceUserContext(): Promise<void> {
-    await this.dropUserContext();
-    await this.openUserContext();
-  }
-
   /**
    * Applies the media features on Chromium (`emulation.setMediaFeaturesOverride`);
    * Firefox takes the configured ones as launch preferences.
    */
-  async applyMedia(): Promise<void> {
+  async applyMedia(userContext = this.userContext): Promise<void> {
     if (this.media.colorScheme === undefined && this.media.reducedMotion === undefined) return;
     const features: Emulation.MediaFeatures = obj({
       'prefers-color-scheme': this.media.colorScheme === 'no-preference' ? null : this.media.colorScheme,
       // Firefox overrides only the color scheme; its reduced motion is the launch preference.
       'prefers-reduced-motion': this.settings.browser === 'firefox' ? undefined : this.media.reducedMotion,
     });
-    await this.connection.send('emulation.setMediaFeaturesOverride', { features, userContexts: [this.userContext] });
+    await this.connection.send('emulation.setMediaFeaturesOverride', { features, userContexts: [userContext] });
   }
 
   /** Adds an init script for every document of this user context from now on, and of every one that replaces it. */
@@ -378,7 +431,8 @@ export class BidiSession {
   private async createContext(): Promise<string> {
     const connection = this.connection;
     const userContext = this.userContext;
-    this.adopted = this.settings.existingTab ? await this.openTab(userContext) : undefined;
+    if (userContext === '') throw invalidState('the attempt has no user context to open a tab in');
+    this.adopted = this.settings.userContext === 'adopt-tab' ? await this.openTab(userContext) : undefined;
     const context = this.adopted ?? (await connection.send('browsingContext.create', {
       type: this.settings.browser === 'firefox' ? 'window' : 'tab',
       userContext,
@@ -409,11 +463,17 @@ export class BidiSession {
     await this.connection.send('browsingContext.setViewport', { context: this.context, viewport: this.viewport });
   }
 
-  /** Closes the tab and every tab the app opened, keeping the user context's storage, as a restart closes every page. */
-  async closeContext(): Promise<void> {
+  /**
+   * Closes the tab and every tab the app opened, keeping the user context's
+   * storage, as a restart closes every page. Nothing more is closed once
+   * `signal` aborted.
+   */
+  async closeContext(signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     await this.video?.contextClosing();
     this.retireContext();
     const { contexts } = await this.connection.send('browsingContext.getTree', { maxDepth: 0 });
+    signal.throwIfAborted();
     const tabs = contexts.filter((info) => info.userContext === this.userContext).map((info) => info.context);
     await Promise.all(tabs.map(async (context) => {
       await this.network.removeContext(context);
@@ -580,7 +640,7 @@ export class BidiSession {
    * replacement user context still opening removes itself when it lands.
    */
   async close(): Promise<void> {
-    this.closed = true;
+    this.generation += 1;
     this.ended.abort();
     const gone = this.connection.isClosed;
     const step = (label: string, work: () => unknown): (() => Promise<unknown>) => () =>
@@ -588,7 +648,7 @@ export class BidiSession {
     const results = await settleEach([
       step('video stop', () => this.video?.stop()),
       step('provider video', () => this.providerVideo?.abandon(AbortSignal.timeout(CLOSE_STEP_MS))),
-      step('user context removal', () => (gone ? undefined : this.dropUserContext())),
+      step('user context removal', () => (gone ? undefined : this.closeUserContext())),
       step('earlier user contexts', () => (gone ? undefined : this.removeUserContexts())),
       step('network release', () => this.network.dispose()),
       () => this.downloads.dispose(),

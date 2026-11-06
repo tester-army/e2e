@@ -23,6 +23,7 @@ function attempt(owners: ContextTree, userContext: string) {
   const session = {
     context: 'tab',
     ownNavigations: 0,
+    lifetime: new AbortController().signal,
     latch,
     dialogs: new DialogRouter(latch),
     attempt: { appLog: (entry: AppLogEntry) => log.push(entry), navigation: (line: string) => lines.push(line) },
@@ -98,7 +99,7 @@ describe('routeEvents', () => {
     expect(log).toEqual([{ source: 'console', level: 'error', text: 'boom' }]);
   });
 
-  it('tells where the app went, never the driver’s own navigations, names each frame and tab once, and visits every document it starts or lands at', async () => {
+  it('tells where the app went in event order, never the driver’s own navigations, names each frame and tab once, and visits every document it starts or lands at', async () => {
     const fake = new FakeBidi();
     const owners = new ContextTree();
     const { session, state, lines, visited } = attempt(owners, 'mine');
@@ -130,10 +131,10 @@ describe('routeEvents', () => {
     expect(lines).toEqual([
       'navigated to http://app.test/checkout',
       'navigated to http://app.test/checkout?step=2',
+      'frame "pay" loaded http://pay.test/embed',
       'the app opened a new tab at http://app.test/help; the test stays on its page',
       'the new tab navigated to http://app.test/help/2',
       'the app opened a new tab; the test stays on its page',
-      'frame "pay" loaded http://pay.test/embed',
     ]);
     expect(new Set(visited)).toEqual(new Set(['http://app.test/', 'http://app.test/checkout', 'http://app.test/checkout?step=2', 'http://pay.test/embed', 'http://app.test/help', 'http://app.test/help/2']));
   });

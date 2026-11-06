@@ -196,8 +196,8 @@ describe('web() option keys', () => {
 
   it('rejects an unknown key inside connect and basicAuth', () => {
     const cdpEndpoint = () => 'ws://127.0.0.1:9222';
-    expect(() => web({ connect: { cdpEndpoint, reconectEndpoint: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web({ connect }) has unknown key "reconectEndpoint"; did you mean "reconnectEndpoint"?'),
+    expect(() => web({ connect: { cdpEndpoint, cdpEndpont: cdpEndpoint } } as unknown as Parameters<typeof web>[0])).toThrow(
+      refused('web({ connect }) has unknown key "cdpEndpont"; did you mean "cdpEndpoint"?'),
     );
     expect(() => web({ basicAuth: { username: 'u', password: 'p', usernme: 'u' } } as unknown as Parameters<typeof web>[0])).toThrow(
       refused('web({ basicAuth }) has unknown key "usernme"; did you mean "username"?'),

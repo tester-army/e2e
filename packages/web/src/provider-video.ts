@@ -6,7 +6,7 @@
  */
 
 import { stopProviderRecording, type VideoSegment } from 'e2e/engine';
-import { connectionAbort } from './operation-budget.ts';
+import { abortError } from './operation-budget.ts';
 import type { LeaseRecording } from './provider.ts';
 
 /** How long a recording that started after its attempt gave up gets to stop. */
@@ -34,7 +34,7 @@ export class ProviderVideo {
       return;
     }
     await this.stopLease(started, AbortSignal.timeout(LATE_STOP_MS)).catch(() => undefined);
-    throw connectionAbort(signal, 'video');
+    throw abortError(signal, 'video');
   }
 
 

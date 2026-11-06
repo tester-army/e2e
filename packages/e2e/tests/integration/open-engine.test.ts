@@ -3,6 +3,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { EngineHandle } from '../../src/engine/index.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 
 const runnerModule = new URL('../../dist/runner.js', import.meta.url).href;
@@ -23,7 +24,8 @@ describe('openEngine', { timeout: 60_000 }, () => {
 
   it('hands back screen and the engine fixtures, then ends the attempt and disposes the engine once', async () => {
     const fake = createFakeEngine({ fixtures: true, platform: 'kiosk' });
-    const session = await openEngine<{ gadget: { poke(what: string): Promise<string> } }>(fake.engine, { cwd: dir, env: {} });
+    const engine = fake.engine as EngineHandle<{ gadget: { poke(what: string): Promise<string> } }>;
+    const session = await openEngine(engine, { cwd: dir, env: {} });
     expect(fake.stats()).toMatchObject({ inits: 1, attemptsStarted: 1, attemptsEnded: 0 });
 
     expect(await session.fixtures.screen.getByRole('button', 'Submit').count()).toBe(1);

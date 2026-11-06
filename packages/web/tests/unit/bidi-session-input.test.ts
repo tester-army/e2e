@@ -13,7 +13,7 @@ const SHIFT = '';
 
 /** A session on `fake` with its tab open, on a 100 by 100 viewport. */
 function session(fake: FakeBidi, browser: 'chromium' | 'firefox' = 'chromium'): BidiSession {
-  const settings = { siteHeaders: () => undefined, holdRequests: false, media: {}, viewport: { width: 100, height: 100 }, browser, initScripts: { forAttempt: () => [] }, permissions: [] };
+  const settings = { siteHeaders: () => undefined, holdRequests: false, media: {}, viewport: { width: 100, height: 100 }, browser, initScripts: { forAttempt: () => [] }, permissions: [], userContext: 'fresh' };
   const attempt = { credentials: undefined };
   const created = new BidiSession({ connection: fake.connection, exclusive: true } as never, settings as never, attempt as never, new ContextTree());
   created.context = 'tab';
@@ -180,7 +180,7 @@ describe('BidiSession.close', () => {
       .on('browser.createUserContext', () => new Promise((resolve) => (created = resolve)))
       .on('network.addDataCollector', { result: { collector: 'c' } });
     const closing = session(fake);
-    const opening = closing.openUserContext();
+    const opening = closing.openUserContext(new AbortController().signal);
     await settle();
     await closing.close();
     created({ result: { userContext: 'late' } });
@@ -199,13 +199,15 @@ describe('BidiSession.close', () => {
   });
 
   it('owes a user context whose removal failed in a reset, and removes it on close', async () => {
-    const fake = new FakeBidi().on('browser.createUserContext', { result: { userContext: 'first' } }).on('network.addDataCollector', { result: { collector: 'c' } });
+    const names = ['first', 'second'];
+    const fake = new FakeBidi().on('browser.createUserContext', async () => ({ result: { userContext: names.shift() } })).on('network.addDataCollector', { result: { collector: 'c' } });
     const closing = session(fake);
-    await closing.openUserContext();
+    await closing.openUserContext(new AbortController().signal);
     fake.on('browser.removeUserContext', { error: 'unknown error', message: 'busy' });
-    await expect(closing.dropUserContext()).rejects.toThrow('busy');
+    await expect(closing.replaceUserContext(new AbortController().signal)).rejects.toThrow('busy');
+    expect(closing.userContext).toBe('second');
     fake.on('browser.removeUserContext', { result: {} });
     await closing.close();
-    expect(fake.commands('browser.removeUserContext').map((command) => command.params['userContext'])).toEqual(['first', 'first']);
+    expect(fake.commands('browser.removeUserContext').map((command) => command.params['userContext'])).toEqual(['first', 'first', 'second']);
   });
 });

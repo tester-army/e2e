@@ -56,12 +56,33 @@ export function routeEvents(connection: BidiConnection, contexts: ContextTree, c
     const session = current();
     return session?.owns(context) === true ? session : undefined;
   };
-  const went = (line: string): void => {
+  /** Each attempt's lines still waiting on an earlier one, so the trace reads them in the order they happened. */
+  const queued = new WeakMap<BidiSession, Promise<void>>();
+  const send = (session: BidiSession, line: string): void => {
+    if (session.lifetime.aborted) return;
     try {
-      current()?.attempt.navigation(line);
+      session.attempt.navigation(line);
     } catch {
       return;
     }
+  };
+  /**
+   * Tells `session`'s trace where the app went, in event order: a line whose
+   * text is still being read (`line` a promise) holds its place, and the
+   * lines after it wait for it. Only the attempt the event belonged to hears
+   * it, never one that started since.
+   */
+  const went = (session: BidiSession, line: string | Promise<string>): void => {
+    const before = queued.get(session);
+    if (before === undefined && typeof line === 'string') {
+      send(session, line);
+      return;
+    }
+    const next = (before ?? Promise.resolve()).then(async () => send(session, await line));
+    queued.set(session, next);
+    void next.finally(() => {
+      if (queued.get(session) === next) queued.delete(session);
+    });
   };
   /**
    * Tabs the app opened: whether the opening was told, and whether their
@@ -71,27 +92,27 @@ export function routeEvents(connection: BidiConnection, contexts: ContextTree, c
    * anywhere.
    */
   const appTabs = new Map<string, { told: boolean; committed: boolean }>();
-  const tellOpened = (tab: { told: boolean }, url: string | undefined): void => {
+  const tellOpened = (session: BidiSession, tab: { told: boolean }, url: string | undefined): void => {
     if (tab.told) return;
     tab.told = true;
-    went(`the app opened a new tab${url === undefined ? '' : ` at ${url}`}; the test stays on its page`);
+    went(session, `the app opened a new tab${url === undefined ? '' : ` at ${url}`}; the test stays on its page`);
   };
   const navigated = (event: { readonly context: string; readonly url: string }): void => {
     const session = ours(event.context);
     if (session === undefined || NO_PLACE.has(event.url) || event.url.startsWith('data:')) return;
     void session.visit(event.url).catch((cause: unknown) => session.latch.latch(asError(cause)));
     if (contexts.top(event.context) !== event.context) {
-      void frameName(connection, event.context).then((name) => went(`frame${name === '' ? '' : ` "${name}"`} loaded ${event.url}`));
+      went(session, frameName(connection, event.context).then((name) => `frame${name === '' ? '' : ` "${name}"`} loaded ${event.url}`));
       return;
     }
     if (event.context === session.context) {
-      if (session.ownNavigations === 0) went(`navigated to ${event.url}`);
+      if (session.ownNavigations === 0) went(session, `navigated to ${event.url}`);
       return;
     }
     const tab = appTabs.get(event.context);
     if (tab === undefined) return;
-    tellOpened(tab, event.url);
-    if (tab.committed) went(`the new tab navigated to ${event.url}`);
+    tellOpened(session, tab, event.url);
+    if (tab.committed) went(session, `the new tab navigated to ${event.url}`);
     else tab.committed = true;
   };
   const offs = [
@@ -102,7 +123,7 @@ export function routeEvents(connection: BidiConnection, contexts: ContextTree, c
       void session.network.addContext(info.context).catch((cause: unknown) => session.latch.latch(asError(cause)));
       const tab = { told: false, committed: false };
       appTabs.set(info.context, tab);
-      if (!NO_PLACE.has(info.url)) tellOpened(tab, info.url);
+      if (!NO_PLACE.has(info.url)) tellOpened(session, tab, info.url);
     }),
     connection.on('browsingContext.contextDestroyed', (info) => {
       const session = ours(info.context);
@@ -113,7 +134,7 @@ export function routeEvents(connection: BidiConnection, contexts: ContextTree, c
         void session.network.removeContext(info.context).catch((cause: unknown) => session.latch.latch(asError(cause)));
       }
       const tab = appTabs.get(info.context);
-      if (tab !== undefined && session !== undefined) tellOpened(tab, undefined);
+      if (tab !== undefined && session !== undefined) tellOpened(session, tab, undefined);
       appTabs.delete(info.context);
       contexts.destroyed(info.context);
     }),
@@ -122,7 +143,7 @@ export function routeEvents(connection: BidiConnection, contexts: ContextTree, c
       if (session === undefined) return;
       void session.visit(event.url).catch((cause: unknown) => session.latch.latch(asError(cause)));
       const tab = appTabs.get(event.context);
-      if (tab !== undefined && !NO_PLACE.has(event.url)) tellOpened(tab, event.url);
+      if (tab !== undefined && !NO_PLACE.has(event.url)) tellOpened(session, tab, event.url);
     }),
     connection.on('browsingContext.navigationCommitted', navigated),
     connection.on('browsingContext.fragmentNavigated', navigated),

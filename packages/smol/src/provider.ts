@@ -101,6 +101,8 @@ export interface SmolOptions {
    * new browser context, which would never see it.
    */
   readonly prepare?: ((cdpEndpoint: string, attached: SmolPrepareContext) => Promise<void>) | undefined;
+  /** How long the `browser` and `screen` calls of one `prepare` may take altogether, in milliseconds; default 120000. */
+  readonly prepareTimeout?: number | undefined;
   /**
    * Runs the app under test inside each browser machine instead of on this
    * computer: its code never runs on the host, and every attempt gets its
@@ -157,8 +159,8 @@ async function waitForCdp(endpoint: string, signal: AbortSignal): Promise<void> 
 }
 
 /** Runs `prepare` with `browser` and `screen` attached to the browser at `endpoint`, then detaches them. */
-async function prepareBrowser(prepare: NonNullable<SmolOptions['prepare']>, endpoint: string, signal: AbortSignal): Promise<void> {
-  const attached = await attachBrowser(endpoint, { signal });
+async function prepareBrowser(prepare: NonNullable<SmolOptions['prepare']>, endpoint: string, signal: AbortSignal, timeout: number | undefined): Promise<void> {
+  const attached = await attachBrowser(endpoint, { signal, timeout });
   try {
     await prepare(endpoint, { browser: attached.browser, screen: attached.screen });
   } catch (cause) {
@@ -260,7 +262,7 @@ function appScript(app: SmolApp): string {
  * target, and named after both, so `sweep` deletes what a dead worker left.
  */
 export function smol(options: SmolOptions = {}): BrowserProvider {
-  const { scope = 'attempt', setup, cpus = DEFAULT_CPUS, memoryMb = DEFAULT_MEMORY_MB, hostPorts = [], prepare, app } = options;
+  const { scope = 'attempt', setup, cpus = DEFAULT_CPUS, memoryMb = DEFAULT_MEMORY_MB, hostPorts = [], prepare, prepareTimeout, app } = options;
   for (const port of hostPorts) checkPort(`hostPorts entry`, port);
   if (app !== undefined) {
     checkPort('app.port', app.port);
@@ -272,6 +274,9 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
     if (hostPorts.includes(app.port)) {
       throw new ConfigurationError('INVALID_CONFIG', `smol: port ${app.port} is both app.port and in hostPorts; the browser's localhost:${app.port} can be only one of them`);
     }
+  }
+  if (prepareTimeout !== undefined && (typeof prepareTimeout !== 'number' || !Number.isFinite(prepareTimeout) || prepareTimeout <= 0)) {
+    throw new ConfigurationError('INVALID_CONFIG', `smol: prepareTimeout must be a positive number of milliseconds, got ${JSON.stringify(prepareTimeout)}`);
   }
   const appSource = app === undefined ? undefined : path.resolve(app.source ?? '.');
   if (prepare !== undefined && scope === 'worker') {
@@ -303,7 +308,7 @@ export function smol(options: SmolOptions = {}): BrowserProvider {
       await machine.shell(startScript(setup, hostPorts), request.signal);
       if (app !== undefined) await machine.shell(appScript(app), request.signal);
       await waitForCdp(endpoint, request.signal);
-      if (prepare !== undefined) await prepareBrowser(prepare, endpoint, request.signal);
+      if (prepare !== undefined) await prepareBrowser(prepare, endpoint, request.signal, prepareTimeout);
       return { machine, endpoint };
     } catch (cause) {
       await machines.delete(name).catch(() => false);

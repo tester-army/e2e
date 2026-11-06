@@ -16,11 +16,6 @@ describe('web()', () => {
     expect(() => web({ browser: 'webkit' } as unknown as WebOptions)).toThrow(/drives chromium or firefox over WebDriver BiDi, got "webkit"/);
   });
 
-  it('refuses a persistent remote context, naming why', () => {
-    const cdpEndpoint = () => 'ws://127.0.0.1:9222';
-    expect(() => web({ connect: { cdpEndpoint, reconnectEndpoint: cdpEndpoint } })).toThrow(/connect\.reconnectEndpoint is not supported/);
-  });
-
   it('validates the options it takes', () => {
     expect(() => web({ locale: 'de-DE', timezoneId: 'Europe/Berlin', headers: { 'x-a': 'b' }, colorScheme: 'dark' })).not.toThrow();
     expect(() => web({ headers: { 'x bad': 'b' } })).toThrow(/invalid header name/);

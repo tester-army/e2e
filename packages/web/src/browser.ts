@@ -254,11 +254,7 @@ export interface Browser extends Expectable<BrowserExpectation> {
     /** Types plain text. */
     type(text: string): Promise<void>;
   };
-  /**
-   * Direct pointer input from test code, independent of agent observations.
-   * After CDP recovery, test code can read current geometry with `evaluate`
-   * before starting a pointer sequence.
-   */
+  /** Direct pointer input from test code, independent of agent observations. */
   readonly mouse: {
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;

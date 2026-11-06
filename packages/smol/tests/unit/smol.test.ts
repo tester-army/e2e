@@ -84,12 +84,12 @@ const sdk = vi.hoisted(() => {
 vi.mock('smolmachines', () => ({ Machine: sdk.Machine }));
 
 /** Each `attachBrowser` call: the endpoint, and whether the attached session was closed. */
-const attached = vi.hoisted(() => [] as { endpoint: string; browser: object; screen: object; closed: boolean }[]);
+const attached = vi.hoisted(() => [] as { endpoint: string; timeout: number | undefined; browser: object; screen: object; closed: boolean }[]);
 
 vi.mock('@e2e-dev/web', async (importOriginal) => ({
   ...(await importOriginal<object>()),
-  attachBrowser: async (endpoint: string) => {
-    const session = { endpoint, browser: { name: 'browser' }, screen: { name: 'screen' }, closed: false };
+  attachBrowser: async (endpoint: string, options: { timeout?: number } = {}) => {
+    const session = { endpoint, timeout: options.timeout, browser: { name: 'browser' }, screen: { name: 'screen' }, closed: false };
     attached.push(session);
     return { browser: session.browser, screen: session.screen, close: async () => void (session.closed = true) };
   },
@@ -181,6 +181,15 @@ describe('smol()', () => {
     const endpoint = `http://127.0.0.1:${hostPortOf(sdk.state.created[0]!.config.ports)}`;
     expect(calls).toEqual([{ endpoint, browser: attached[0]!.browser, screen: attached[0]!.screen, open: true }]);
     expect(attached).toEqual([expect.objectContaining({ endpoint, closed: true })]);
+  });
+
+  it('gives prepare the prepareTimeout as its attached session timeout', async () => {
+    await smol({ prepareTimeout: 600_000, prepare: async () => undefined }).acquire(request({ attemptId: 'a1' }));
+    expect(attached).toEqual([expect.objectContaining({ timeout: 600_000 })]);
+  });
+
+  it('refuses a prepareTimeout that is not a positive number of milliseconds', () => {
+    expect(() => smol({ prepareTimeout: 0 })).toThrow(/prepareTimeout must be a positive number/);
   });
 
   it('detaches and deletes the machine when prepare fails', async () => {

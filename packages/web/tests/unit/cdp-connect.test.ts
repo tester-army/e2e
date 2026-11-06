@@ -23,11 +23,11 @@ function initInfo(signal = new AbortController().signal): EngineInitInfo {
 }
 
 describe('web({ connect })', () => {
-  it('refuses a persistent remote context, naming the attach it takes instead', () => {
-    const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' };
+  it('refuses the removed reconnectEndpoint as an unknown key', () => {
+    const connect = { cdpEndpoint: () => 'ws://localhost:0', reconnectEndpoint: () => 'ws://localhost:0' } as WebConnectOptions;
     expect(() => web({ connect })).toThrow(expect.objectContaining({
       code: 'INVALID_CONFIG',
-      message: expect.stringMatching(/connect\.reconnectEndpoint is not supported.*use connect\.cdpEndpoint/),
+      message: expect.stringContaining('web({ connect }) has unknown key "reconnectEndpoint"'),
     }));
   });
 
@@ -40,15 +40,12 @@ describe('web({ connect })', () => {
     const resolver = () => 'ws://localhost:0';
     const url = 'ws://host/devtools/browser/session-token';
     const connect = (value: unknown) => () => web({ connect: value as WebConnectOptions });
-    // reconnectEndpoint alone used to pass load and fail every attempt with "resolve is not a function".
-    expect(connect({ reconnectEndpoint: resolver })).toThrow(refused(/requires cdpEndpoint.*reconnectEndpoint only reconnects/));
     expect(connect({})).toThrow(refused(/requires cdpEndpoint, the resolver that provisions the browser/));
     expect(connect({ cdpEndpoint: url })).toThrow(refused(/cdpEndpoint.*must be a resolver function.*got a string$/));
-    expect(connect({ cdpEndpoint: resolver, reconnectEndpoint: url })).toThrow(refused(/reconnectEndpoint.*must be a resolver function.*got a string$/));
     expect(connect(url)).toThrow(refused(/connect.*must be a plain object.*got a string$/));
     expect(connect(null)).toThrow(refused(/must be a plain object.*got null$/));
     expect(connect([resolver])).toThrow(refused(/must be a plain object.*got an array$/));
-    for (const value of [{ cdpEndpoint: url }, { cdpEndpoint: resolver, reconnectEndpoint: url }, url]) {
+    for (const value of [{ cdpEndpoint: url }, url]) {
       expect(connect(value)).toThrow(expect.objectContaining({ message: expect.not.stringContaining('session-token') }));
     }
   });
@@ -78,7 +75,7 @@ describe('CDP attach at init', () => {
     });
   });
 
-  it('hands the init signal to the resolver and cancels promptly while it is still pending', async () => {
+  it('cancels an init promptly while the resolver is pending, and aborts the resolver once the engine is disposed', async () => {
     const controller = new AbortController();
     let seen: AbortSignal | undefined;
     const engine = web({
@@ -94,6 +91,8 @@ describe('CDP attach at init', () => {
     expect(seen!.aborted).toBe(false);
     controller.abort();
     await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(seen!.aborted).toBe(false);
+    await engine.dispose!({ signal: new AbortController().signal, timeoutMs: 1_000 });
     expect(seen!.aborted).toBe(true);
   });
 

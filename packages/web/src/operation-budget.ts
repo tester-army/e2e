@@ -1,13 +1,14 @@
-/** One deadline for connection recovery and the operation it precedes. */
+/** One deadline per engine operation, and the time it leaves the driver's own timeouts. */
 import { EngineError, raceAbort } from 'e2e/engine';
 
-export interface ConnectionBudget {
+/** What an operation may spend: its signal and the milliseconds left. */
+export interface OperationBudget {
   readonly timeoutMs: number;
   readonly signal: AbortSignal;
 }
 
-/** Preserves the reason for an engine-owned deadline without relabeling caller cancellation. */
-export function connectionAbort(signal: AbortSignal, label: string): EngineError {
+/** The error `signal` aborted with when it is an engine-owned deadline, else a plain cancellation of `label`. */
+export function abortError(signal: AbortSignal, label: string): EngineError {
   return signal.reason instanceof EngineError && signal.reason.code === 'OPERATION_TIMEOUT'
     ? signal.reason
     : new EngineError('CANCELLED', `${label} cancelled`, { retryable: false });
@@ -19,76 +20,29 @@ export function connectionAbort(signal: AbortSignal, label: string): EngineError
  * already dispatched, and this lead lets that answer arrive before the
  * deadline does. The deadline is for the calls the browser never answers: an
  * evaluate, which takes no timeout, and a point tap on a page whose renderer
- * is stuck in a script. A budget shorter than twice the
- * lead splits in half.
+ * is stuck in a script. A budget shorter than twice the lead splits in half.
  */
 const DRIVER_TIMEOUT_LEAD_MS = 250;
 
 /**
- * Whether the operation's deadline may end it. `test-code` is for an
- * operation that runs the test's own code (a download trigger): that code
- * keeps its own steps and their budgets, so the operation is not cut under
- * it, and only cancellation ends the wait.
+ * Bounds one operation by its budget: work still pending at the deadline is
+ * aborted and abandoned as `OPERATION_TIMEOUT` instead of holding the test
+ * until its own timeout. `work` gets a signal that aborts at the deadline or
+ * on cancellation, and the time to pass the driver's own timeouts, which
+ * fire `DRIVER_TIMEOUT_LEAD_MS` sooner.
  */
-export type OperationBound = 'deadline' | 'test-code';
-
-/**
- * Bounds one operation by its budget: a call still pending at the deadline
- * is abandoned as `OPERATION_TIMEOUT` instead of holding the test until its
- * own timeout. `remaining` hands `work` the time left before the driver's
- * own timeout, the one to pass the driver.
- */
-export function withOperationDeadline<T>(
-  budget: ConnectionBudget,
-  label: string,
-  work: (remaining: () => ConnectionBudget) => Promise<T>,
-  bound: OperationBound = 'deadline',
-): Promise<T> {
-  if (bound === 'test-code') {
-    const endsAt = Date.now() + budget.timeoutMs;
-    return raceAbort(
-      () => work(() => {
-        if (budget.signal.aborted) throw connectionAbort(budget.signal, label);
-        return { signal: budget.signal, timeoutMs: Math.max(1, endsAt - Date.now()) };
-      }),
-      budget.signal,
-      label,
-    );
-  }
-  return withConnectionBudget(budget, label, (remaining) =>
-    work(() => {
-      const current = remaining();
-      const lead = Math.min(DRIVER_TIMEOUT_LEAD_MS, current.timeoutMs / 2);
-      return { signal: current.signal, timeoutMs: Math.ceil(current.timeoutMs - lead) };
-    }),
-  );
-}
-
-/** Bounds the entire transition, aborts abandoned work, and never grants a fresh dispatch budget. */
-async function withConnectionBudget<T>(
-  budget: ConnectionBudget,
-  label: string,
-  work: (remaining: () => ConnectionBudget) => Promise<T>,
-): Promise<T> {
+export async function withDeadline<T>(operation: OperationBudget, label: string, work: (budget: OperationBudget) => Promise<T>): Promise<T> {
   const controller = new AbortController();
-  const signal = AbortSignal.any([budget.signal, controller.signal]);
-  const endsAt = Date.now() + budget.timeoutMs;
-  const timeout = () => new EngineError('OPERATION_TIMEOUT', `${label} timed out`, { retryable: false });
-  const timer = setTimeout(() => controller.abort(timeout()), Math.max(0, budget.timeoutMs));
-  const remaining = (): ConnectionBudget => {
-    if (signal.aborted) throw connectionAbort(signal, label);
-    const timeoutMs = endsAt - Date.now();
-    if (timeoutMs <= 0) {
-      controller.abort(timeout());
-      throw connectionAbort(signal, label);
-    }
-    return { signal, timeoutMs };
-  };
+  const signal = AbortSignal.any([operation.signal, controller.signal]);
+  const expire = (): void => controller.abort(new EngineError('OPERATION_TIMEOUT', `${label} timed out`, { retryable: false }));
+  if (operation.timeoutMs <= 0) expire();
+  const timer = setTimeout(expire, Math.max(0, operation.timeoutMs));
   try {
-    return await raceAbort(() => work(remaining), signal, label);
+    if (signal.aborted) throw abortError(signal, label);
+    const lead = Math.min(DRIVER_TIMEOUT_LEAD_MS, operation.timeoutMs / 2);
+    return await raceAbort(() => work({ signal, timeoutMs: Math.ceil(operation.timeoutMs - lead) }), signal, label);
   } catch (cause) {
-    if (budget.signal.aborted) throw connectionAbort(budget.signal, label);
-    if (signal.aborted) throw connectionAbort(signal, label);
+    if (signal.aborted) throw abortError(operation.signal.aborted ? operation.signal : signal, label);
     throw cause;
   } finally {
     clearTimeout(timer);

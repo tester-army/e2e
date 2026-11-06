@@ -19,13 +19,12 @@ export interface WebConnectOptions {
    * to attach to. Async because a hosted endpoint is not known at config load;
    * called once per worker in `init`, and again at the start of any attempt
    * that finds the session dropped, so a fresh per-run URL reconnects cleanly.
-   * `signal` aborts when the init or attempt that needs the browser is
-   * cancelled or exceeds its budget: a resolver that provisions a session
-   * should stop and release it, since a browser that arrives late is detached.
+   * An attach the init or attempt gave up on keeps going for the next
+   * attempt. `signal` aborts when the worker is disposed, or the attach
+   * takes more than 60 seconds: a resolver that provisions a session should
+   * stop and release it, since a browser that arrives then is detached.
    */
   readonly cdpEndpoint: (signal: AbortSignal) => string | Promise<string>;
-  /** A persistent remote context across a disconnect. Not supported right now: any value is `INVALID_CONFIG`. */
-  readonly reconnectEndpoint?: (signal: AbortSignal) => string | Promise<string>;
 }
 
 /** HTTP basic authentication the browser answers a `401` challenge with. */

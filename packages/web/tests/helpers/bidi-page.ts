@@ -40,7 +40,7 @@ export async function openBidiPage(options: BidiPageOptions = {}): Promise<BidiP
   const server = await startPageServer();
   let browser: BidiBrowser;
   try {
-    browser = await launchBidiBrowser(options.browser ?? 'chromium', { headed: false, timeoutMs: 30_000 });
+    browser = await launchBidiBrowser(options.browser ?? 'chromium', { headed: false, timeoutMs: 30_000, env: process.env, signal: new AbortController().signal });
   } catch (cause) {
     await server.close();
     throw cause;

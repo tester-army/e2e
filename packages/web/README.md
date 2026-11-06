@@ -63,10 +63,9 @@ engine: web({
 });
 ```
 
-Each attempt gets a new browser context on the remote browser.
-`connect.reconnectEndpoint` is not supported and is `INVALID_CONFIG`: a
-dropped connection fails the attempt, and the next attempt attaches again
-through `cdpEndpoint`.
+Each attempt gets a new browser context on the remote browser. A dropped
+connection fails the attempt, and the next attempt attaches again through
+`cdpEndpoint`.
 
 ### Leasing hosted browsers (`browser`)
 

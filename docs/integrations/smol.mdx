@@ -83,6 +83,8 @@ can't use.
 full URL. smol detaches them once `prepare` resolves; the browser keeps
 running, with its cookies, storage, and pages. Another CDP client must
 disconnect before `prepare` resolves and leave the browser running.
+The `browser` and `screen` calls of one `prepare` may take 120 seconds in
+all; raise that with `prepareTimeout`.
 
 <Accordion title="Sign in in prepare">
 ```ts title="Provider options"
@@ -151,6 +153,7 @@ and `app.clearState()` work. Nothing is branched, and `prepare` is an
 | ----------- | ----------- | ------- |
 | `scope`     | `'attempt'` | See [Choose a scope](#choose-a-scope). |
 | `prepare`   | none        | See [Start every test signed in](#start-every-test-signed-in). |
+| `prepareTimeout` | `120000` | Milliseconds the `browser` and `screen` calls of one `prepare` may take in all. |
 | `hostPorts` | `[]`        | See [Set up the provider](#set-up-the-provider). Not 80 or 9229. |
 | `app`       | none        | See [Run the app in the machine](#run-the-app-in-the-machine). |
 | `setup`     | none        | Shell script run as root in each machine before Chromium starts, such as `apt-get update && apt-get install -y fonts-noto-cjk` for more fonts. |

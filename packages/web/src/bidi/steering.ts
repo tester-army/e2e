@@ -182,14 +182,23 @@ async function landedEntry(session: BidiSession): Promise<string | undefined> {
   }
 }
 
-/** Closes every tab, keeping the user context's storage, and opens a blank one; the harness reopens the app. */
-export async function restart(session: BidiSession): Promise<void> {
-  await session.closeContext();
+/**
+ * Closes every tab, keeping the user context's storage, and opens a blank
+ * one; the harness reopens the app. Stops once `signal` aborts, so a restart
+ * given up on never opens a tab under the step after it.
+ */
+export async function restart(session: BidiSession, signal: AbortSignal): Promise<void> {
+  await session.closeContext(signal);
+  signal.throwIfAborted();
   await session.ensureContext();
 }
 
-/** Replaces the user context with a clean one and opens its blank tab. */
-export async function reset(session: BidiSession): Promise<void> {
-  await session.replaceUserContext();
+/**
+ * Replaces the user context with a clean one and opens its blank tab. Stops
+ * once `signal` aborts: a replacement that lands after removes itself.
+ */
+export async function reset(session: BidiSession, signal: AbortSignal): Promise<void> {
+  await session.replaceUserContext(signal);
+  signal.throwIfAborted();
   await session.ensureContext();
 }

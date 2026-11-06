@@ -14,7 +14,6 @@ import {
   ConfigurationError,
   EngineError,
   isProviderRecording,
-  obj,
   raceAbort,
   type EngineAttemptContext,
   type EngineCleanupContext,
@@ -25,7 +24,7 @@ import {
   type ProviderRecordContext,
   type ProviderRecording,
 } from 'e2e/engine';
-import { connectionAbort } from './operation-budget.ts';
+import { abortError } from './operation-budget.ts';
 import { invalidState, message } from './support.ts';
 
 /**
@@ -71,8 +70,6 @@ export interface BrowserLease {
   readonly id: string;
   /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
   readonly cdpEndpoint: string;
-  /** Not read by the engine: a dropped connection fails the attempt. */
-  readonly reconnectEndpoint?: string | undefined;
 }
 
 /** Handed to `release`, once per lease. */
@@ -216,8 +213,8 @@ function isNonEmptyString(value: unknown): value is string {
 /** A lease as a provider returned it or as JSON parsed it back, checked field by field: the engine trusts nothing it did not write. */
 function isBrowserLease(value: unknown): value is BrowserLease {
   if (typeof value !== 'object' || value === null) return false;
-  const { id, cdpEndpoint, reconnectEndpoint } = value as Record<keyof BrowserLease, unknown>;
-  return isNonEmptyString(id) && isNonEmptyString(cdpEndpoint) && (reconnectEndpoint === undefined || isNonEmptyString(reconnectEndpoint));
+  const { id, cdpEndpoint } = value as Record<keyof BrowserLease, unknown>;
+  return isNonEmptyString(id) && isNonEmptyString(cdpEndpoint);
 }
 
 /**
@@ -251,7 +248,7 @@ function handoffVariable(targetName: string): string {
 function encodeHandoff(handoff: Handoff): string {
   const encoded = JSON.stringify({
     slots: handoff.slots,
-    leases: handoff.leases.map((lease) => obj({ id: lease.id, cdpEndpoint: lease.cdpEndpoint, reconnectEndpoint: lease.reconnectEndpoint })),
+    leases: handoff.leases.map((lease) => ({ id: lease.id, cdpEndpoint: lease.cdpEndpoint })),
   });
   const bytes = Buffer.byteLength(encoded);
   if (bytes > MAX_HANDOFF_ENV_BYTES) {
@@ -570,7 +567,7 @@ export class LeasedBrowsers {
       try {
         recording = await record(lease, { runId: run.runId, targetName: run.targetName, attemptId, env: run.env, signal });
       } catch (cause) {
-        if (signal.aborted) throw connectionAbort(signal, `recording from "${provider.name}"`);
+        if (signal.aborted) throw abortError(signal, `recording from "${provider.name}"`);
         throw new EngineError('ENGINE_FAILURE', `${label} could not start recording browser ${lease.id}: ${message(cause)}`, { retryable: false, cause });
       }
       if (!isProviderRecording(recording)) {
@@ -601,7 +598,7 @@ export class LeasedBrowsers {
         try {
           return await served.read(lease, file, { runId: run.runId, targetName: run.targetName, env: run.env, signal });
         } catch (cause) {
-          if (signal.aborted) throw connectionAbort(signal, `download from "${provider.name}"`);
+          if (signal.aborted) throw abortError(signal, `download from "${provider.name}"`);
           throw new EngineError('ENGINE_FAILURE', `${label} could not read download ${file} from browser ${lease.id}: ${message(cause)}`, { retryable: false, cause });
         }
       },
