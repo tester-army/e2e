@@ -93,7 +93,7 @@ afterEach(() => {
 });
 
 describe('e2e init', () => {
-  it('adds the runner, Playwright, and AI with --yes and does not install or prompt', async () => {
+  it('adds the runner, the web engine, and AI with --yes and does not install or prompt', async () => {
     expect((await init(dir, { yes: true })).exitCode).toBe(0);
     // The runner pins itself the way it pins engines: a caret on a stable version, exact on a canary.
     const runnerVersion = (JSON.parse(readFileSync(path.resolve(import.meta.dirname, '../../package.json'), 'utf8')) as { version: string }).version;
@@ -251,7 +251,7 @@ describe('e2e init', () => {
       initialValues: ['web'],
       required: false,
       options: [
-        expect.objectContaining({ value: 'web', label: 'Web', hint: 'Playwright' }),
+        expect.objectContaining({ value: 'web', label: 'Web', hint: 'Chromium, Firefox' }),
         expect.objectContaining({ value: 'mobile', label: 'Mobile (iOS/Android)', hint: 'agent-device' }),
       ],
     }));
