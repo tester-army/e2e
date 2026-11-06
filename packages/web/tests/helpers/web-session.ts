@@ -111,9 +111,20 @@ export function bySelector(selector: string): LocatorExpression {
   return { kind: 'selector', selector };
 }
 
-/** Starts the page server on an ephemeral port. */
-async function startPageServer(pages: Map<string, string | PageHandler>): Promise<{ server: Server; origin: string }> {
-  const server = createServer((request, response) => {
+/** A local HTTP server for the pages a test writes inline. */
+export interface PageServer {
+  /** `http://127.0.0.1:<port>`. */
+  readonly origin: string;
+  /** Serves `body` (HTML) or a handler at `pathname` and returns its URL. */
+  serve(pathname: string, body: string | PageHandler): string;
+  /** Closes the server and every connection it holds. */
+  close(): Promise<void>;
+}
+
+/** Starts a page server on an ephemeral port. */
+export async function startPageServer(): Promise<PageServer> {
+  const pages = new Map<string, string | PageHandler>();
+  const server: Server = createServer((request, response) => {
     const page = pages.get(new URL(request.url ?? '/', 'http://pages.test').pathname);
     if (typeof page === 'function') return page(request, response);
     if (page === undefined) {
@@ -128,7 +139,19 @@ async function startPageServer(pages: Map<string, string | PageHandler>): Promis
     server.once('error', reject);
     server.listen(0, '127.0.0.1', resolve);
   });
-  return { server, origin: `http://127.0.0.1:${String((server.address() as AddressInfo).port)}` };
+  const origin = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
+  return {
+    origin,
+    serve(pathname, body) {
+      pages.set(pathname, body);
+      return `${origin}${pathname}`;
+    },
+    async close() {
+      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+      server.closeAllConnections();
+      await closed;
+    },
+  };
 }
 
 /**
@@ -136,8 +159,8 @@ async function startPageServer(pages: Map<string, string | PageHandler>): Promis
  * over it with a context that records no steps.
  */
 export async function startWebSession(options: WebSessionOptions = {}): Promise<WebSession> {
-  const pages = new Map<string, string | PageHandler>();
-  const { server, origin } = await startPageServer(pages);
+  const server = await startPageServer();
+  const { origin } = server;
   const engine = web(options.web ?? {});
   const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-web-session-'));
   const ownRoot = options.projectRoot === undefined ? mkdtempSync(path.join(tmpdir(), 'e2e-web-root-')) : undefined;
@@ -187,10 +210,7 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
     projectRoot,
     attached,
     op,
-    serve(pathname, body) {
-      pages.set(pathname, body);
-      return `${origin}${pathname}`;
-    },
+    serve: (pathname, body) => server.serve(pathname, body),
     async setContent(html) {
       contentCount += 1;
       await session.open(session.serve(`/content-${String(contentCount)}`, html));
@@ -239,9 +259,7 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
         await session.endAttempt();
         await engine.dispose!(cleanup());
       } finally {
-        const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-        server.closeAllConnections();
-        await closed;
+        await server.close();
         rmSync(artifactsDir, { recursive: true, force: true });
         if (ownRoot !== undefined) rmSync(ownRoot, { recursive: true, force: true });
       }
