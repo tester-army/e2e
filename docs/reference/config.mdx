@@ -1792,7 +1792,7 @@ interface TestFilterChanges {
 interface TestFilterResult {
   /** The tests to leave out, by `id`, each with a non-empty reason the report shows. An `id` of a collected test this filter wasn't given is ignored; any other fails the filter. */
   readonly exclude: Readonly<Record<string, string>>;
-  /** How likely each test is to fail on this change, by `id` as for `exclude`, from 0 to 1; any other score fails the filter. Each target starts the files of the likeliest first, in bands at 75%, 50%, and 25%, and the target with the likeliest file goes first. A test no filter scores counts as 0, and a test several filters score keeps its highest. */
+  /** How likely each test is to fail on this change, by `id` as for `exclude`, from 0 to 1; any other score fails the filter. Each target starts the files of the likeliest first, in bands at 75%, 50%, and 25%, and targets go by the band of their best file, ties in config order. A test no filter scores counts as 0, and a test several filters score keeps its highest. */
   readonly relevance?: Readonly<Record<string, number>>;
   /** One line about the whole decision. */
   readonly note?: string;

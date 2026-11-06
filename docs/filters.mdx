@@ -142,17 +142,16 @@ the most with `--max-failures` and with one worker, the default in CI.
 | Test | Score |
 | --- | --- |
 | Its test file, setup file, or stored screenshots changed | 100% |
-| The model judged it | The higher of its rating and its setup's |
-| The model didn't judge it | 50% |
+| Every other test | The higher of its rating and its setup's, where a rating the model didn't give counts as 50% |
 
-- Files start in four bands: 75% and up, 50% to 74%, 25% to 49%, and below
-  25%. A file takes the band of its likeliest test.
+- Files start in four bands: 75% and up, 50% up to 75%, 25% up to 50%, and
+  under 25%. A file takes the band of its likeliest test.
 - With more than one worker, the file the previous run spent longest in
   starts first inside a band, read from `report.json` in the output
   directory. A file with no time starts before the timed ones.
-- The target with the likeliest file goes first, and each target starts its
-  own files in that order. A target's setup tests still finish before its
-  first test file starts.
+- Targets go by the band of their best file, ties in config order, and each
+  target starts its own files in that order. A target's setup tests still
+  finish before its first test file starts.
 - A short likely file can start before a long unlikely one, so with several
   workers a run that finishes whole can end later. The report keeps its
   order, and `e2e list` shows none.
@@ -167,7 +166,7 @@ A filter you write scores tests with `relevance`, as in
   The decision filter's note ends with its spend: model calls, tokens, and
   the cost when the provider reports it, as the AI Gateway does. A line such
   as `ranked 7 of 7 tests by relevance, likeliest first` follows when
-  the scores change the order. A `Left out` row follows in the summary. When the
+  the scores put tests in more than one band. A `Left out` row follows in the summary. When the
   filters leave nothing to run, the run passes and starts no app.
 - **[Pull request comment](/github) and `summary.md`**: the headline
   `7 passed, 70 left out by filters`, and a folded table of the tests with

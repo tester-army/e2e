@@ -287,7 +287,7 @@ describe('orderWorkPlans', () => {
     ]);
   });
 
-  it('leaves the plans in config order when nothing is scored, and a target with no file to run last among equals', () => {
+  it('leaves the plans in config order when nothing is scored, a target with no file to run keeping its place', () => {
     const plans = plansFor({ web: ['tests/a.e2e.ts'], ios: [], android: ['tests/b.e2e.ts'] });
     expect(dispatched(orderWorkPlans(plans, { relevanceOf: none, durationOf: untimed })).map(([name]) => name)).toEqual(['web', 'ios', 'android']);
   });
