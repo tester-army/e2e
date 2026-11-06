@@ -202,7 +202,7 @@ export interface EngineFixtureContext {
   readonly app: EngineAppInfo & {
     /**
      * Resolves a navigation target against the base URL. Throws
-     * `APP_URL_REQUIRED` when the target declares no URL and `POLICY_DENIED`
+     * `APP_URL_REQUIRED` for a relative URL when the target declares no URL and `POLICY_DENIED`
      * for any scheme but `http:` and `https:` (`about:blank` aside), so a
      * fixture never re-implements the rule the harness owns.
      */

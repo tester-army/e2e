@@ -2092,7 +2092,7 @@ The factory runs once per attempt with an `EngineFixtureContext`:
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | The factory returns a plain surface, not one declared through `context.fixture`, the first time a test reaches for it. |
-| `APP_URL_REQUIRED` | `app.resolveUrl` on a target that declares no URL. |
+| `APP_URL_REQUIRED` | `app.resolveUrl` with a relative URL on a target that declares no URL. |
 | `POLICY_DENIED` | `app.resolveUrl` with any scheme but `http:` and `https:` (`about:blank` aside). |
 
 ```ts

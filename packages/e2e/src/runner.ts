@@ -8,5 +8,6 @@ export {
   type ExplorationResult as ExploreResult,
 } from './explore/public-explore.ts';
 export type { RunEventSink } from './run/events.ts';
+export { openEngine, type EngineSession, type OpenEngineOptions } from './run/open-engine.ts';
 export { openHost, type E2EHost, type E2ESession, type OpenHostOptions, type OpenSessionOptions } from './run/open-session.ts';
 export type { StepProgress, StepRecord } from './run/steps.ts';

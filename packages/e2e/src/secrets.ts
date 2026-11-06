@@ -50,24 +50,29 @@ export function setSecretRegistry(registry: SecretRegistry | undefined): void {
 
 /** The registries standalone attempts hold, oldest first; the newest is the one installed. */
 const holds: { readonly registry: SecretRegistry; readonly live: boolean }[] = [];
+/** The registry installed before the first hold, such as a run worker's, which the last release puts back. */
+let unheld: SecretRegistry | undefined;
 
-/** The newest live hold's registry, else the newest hold's, else none. */
+/** The newest live hold's registry, else the newest hold's, else the one installed before any hold. */
 function installHeld(): void {
   const newest = holds.findLast((hold) => hold.live) ?? holds.at(-1);
-  if (newest === undefined) registrySlot.delete(globalThis);
-  else registrySlot.set(globalThis, newest.registry);
+  const registry = newest?.registry ?? unheld;
+  if (registry === undefined) registrySlot.delete(globalThis);
+  else registrySlot.set(globalThis, registry);
 }
 
 /**
  * Installs `registry` for a standalone worker or attempt until the returned
  * release runs. Several may hold one at once, as live sessions do: releasing
- * one installs the newest registry still held, and releasing the last clears
+ * one installs the newest registry still held, and releasing the last puts
+ * back the one installed before the first hold (a run worker's) or clears
  * the slot, so closing one session never leaves another resolving against
  * none. A `live` hold is an attempt's: it outranks a worker that opens while
  * the attempt runs, whose config would otherwise capture the attempt's handles.
  */
 export function holdSecretRegistry(registry: SecretRegistry, options: { readonly live?: boolean } = {}): () => void {
   const hold = { registry, live: options.live === true };
+  if (holds.length === 0) unheld = registrySlot.get(globalThis);
   holds.push(hold);
   installHeld();
   return () => {

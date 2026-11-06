@@ -155,6 +155,15 @@ describe('holdSecretRegistry', () => {
     expect(resolves('admin-token')).toBe(false);
   });
 
+  it('puts back the registry a run worker installed before the first hold', () => {
+    setSecretRegistry(withAdmin);
+    const release = holdSecretRegistry(withKey);
+    expect(resolves('api-key')).toBe(true);
+    release();
+    expect(resolves('admin-token')).toBe(true);
+    setSecretRegistry(undefined);
+  });
+
   it('leaves a registry a run installed since in place', () => {
     const release = holdSecretRegistry(withKey);
     setSecretRegistry(withAdmin);
