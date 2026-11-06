@@ -391,8 +391,11 @@ export async function actionPoint(element: Element, options: ActionPointOptions)
     : ([...element.querySelectorAll('*')].find((child) => child.getClientRects().length > 0) ?? element.parentElement ?? element);
   if (options.scroll && options.align !== undefined) scrolled.scrollIntoView({ ...options.align, behavior: 'instant' });
   else if (options.scroll && !centred(visible())) scrolled.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
+  // Read in two frames whose animation time differs: a frame that repeats the time shows no motion.
+  const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
+  const first = await frame();
   const before = rectsOf()[0] ?? element.getBoundingClientRect();
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  for (let tries = 0; tries < 5 && (await frame()) === first; tries += 1);
   const after = rectsOf()[0] ?? element.getBoundingClientRect();
   if (after.x !== before.x || after.y !== before.y || after.width !== before.width || after.height !== before.height) return { state: 'moving' };
   const area = visible();
@@ -847,9 +850,12 @@ export async function scrollIntoViewIfNeeded(element: Element): Promise<'detache
     const top = Math.min(...rects.map((rect) => rect.top));
     return new DOMRect(left, top, Math.max(...rects.map((rect) => rect.right)) - left, Math.max(...rects.map((rect) => rect.bottom)) - top);
   };
+  // Read in two frames whose animation time differs: a frame that repeats the time shows no motion.
+  const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
+  const first = await frame();
   const before = bounds();
   if (before === null) return 'hidden';
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  for (let tries = 0; tries < 5 && (await frame()) === first; tries += 1);
   const rect = bounds();
   if (rect === null) return 'hidden';
   if (rect.x !== before.x || rect.y !== before.y || rect.width !== before.width || rect.height !== before.height) return 'moving';

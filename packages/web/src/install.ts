@@ -188,7 +188,7 @@ export async function installBrowsers(names: readonly BrowserName[], context: In
   });
 }
 
-/** The fonts and tools a headless browser renders with on a minimal Debian or Ubuntu image. */
+/** The fonts a headless browser renders with on a minimal Debian or Ubuntu image; each one the distribution lacks is left out. */
 const APT_TOOLS = ['fonts-noto-color-emoji', 'fonts-unifont', 'libfontconfig1', 'libfreetype6', 'xfonts-cyrillic', 'xfonts-scalable', 'fonts-liberation', 'fonts-ipafont-gothic', 'fonts-wqy-zenhei', 'fonts-tlwg-loma-otf', 'fonts-freefont-ttf'];
 
 /** The Debian packages each browser loads, by their Ubuntu 24.04 names. */
@@ -208,16 +208,18 @@ const APT_PACKAGES: Readonly<Record<BrowserName, readonly string[]>> = {
 /**
  * Installs the system packages `names` load, with apt on Debian and Ubuntu
  * (as root, else through sudo); elsewhere there is nothing to do. A package
- * Ubuntu 24.04 renamed with a `t64` suffix also takes its older name.
+ * Ubuntu 24.04 renamed with a `t64` suffix also takes its older name, and a
+ * font the distribution does not carry is skipped.
  */
 function installSystemDeps(names: readonly BrowserName[], log: (line: string) => void): void {
   if (process.platform !== 'linux' || !existsSync('/usr/bin/apt-get')) return;
-  const packages = [...new Set([...APT_TOOLS, ...names.flatMap((name) => APT_PACKAGES[name])])];
-  const wanted = packages.map((name) => (name.endsWith('t64') ? `${name} | ${name.slice(0, -3)}` : name)).join(', ');
-  log(`Installing system packages: ${packages.join(' ')}`);
   const root = process.getuid?.() === 0;
   const run = (args: string[]) => spawnSync(root ? args[0]! : 'sudo', root ? args.slice(1) : args, { stdio: 'inherit', env: { ...process.env, DEBIAN_FRONTEND: 'noninteractive' } });
   if (run(['apt-get', 'update']).status !== 0) throw new InfrastructureError('BROWSER_INSTALL_FAILED', 'apt-get update failed');
+  const fonts = APT_TOOLS.filter((name) => spawnSync('apt-get', ['install', '--simulate', '--no-install-recommends', name], { stdio: 'ignore' }).status === 0);
+  const packages = [...new Set([...fonts, ...names.flatMap((name) => APT_PACKAGES[name])])];
+  const wanted = packages.map((name) => (name.endsWith('t64') ? `${name} | ${name.slice(0, -3)}` : name)).join(', ');
+  log(`Installing system packages: ${packages.join(' ')}`);
   if (run(['apt-get', 'satisfy', '-y', '--no-install-recommends', wanted]).status !== 0) {
     throw new InfrastructureError('BROWSER_INSTALL_FAILED', 'apt-get could not install the browsers\' system packages');
   }
