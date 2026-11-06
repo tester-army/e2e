@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { ContextTree } from '../../src/bidi/context-tree.ts';
-import { clickSources, moveSources, pressDownSources, swipeSources } from '../../src/bidi/input.ts';
+import { clickSources, moveSources, pressDownSources, swipeSources, typeSource } from '../../src/bidi/input.ts';
 import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/bidi/keyboard.ts';
 import { BidiSession } from '../../src/bidi/session.ts';
 import type { NodeRef } from 'e2e/engine';
@@ -102,7 +102,10 @@ describe('BidiInput.send', () => {
 
   it('refuses a pointer target outside the viewport before sending, as not dispatched, on either browser', async () => {
     for (const browser of ['chromium', 'firefox'] as const) {
-      const fake = new FakeBidi().on('input.performActions', { result: {} });
+      // Firefox waits for a shown frame before pointer input; the page has one.
+      const fake = new FakeBidi()
+        .on('input.performActions', { result: {} })
+        .on('script.callFunction', { result: { type: 'success', realm: 'r', result: { type: 'boolean', value: true } } });
       const held = session(fake, browser);
       for (const [x, y] of [[-1, -1], [101, 10], [10, 101]] as const) {
         await expect(held.input.send(moveSources(x, y))).rejects.toMatchObject({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('outside the 100x100 viewport') });
@@ -113,6 +116,22 @@ describe('BidiInput.send', () => {
       await held.input.send(clickSources(100, 100));
       expect(held.dispatches).toBe(1);
     }
+  });
+
+  it('brings a hidden tab to the front before Firefox pointer input, which the parent process sends to the tab on screen', async () => {
+    let shown = false;
+    const fake = new FakeBidi()
+      .on('input.performActions', { result: {} })
+      .on('browsingContext.activate', () => {
+        shown = true;
+        return { result: {} };
+      })
+      .on('script.callFunction', () => ({ result: { type: 'success', realm: 'r', result: shown ? { type: 'undefined' } : { type: 'boolean', value: false } } }));
+    const held = session(fake, 'firefox');
+    await held.input.send(clickSources(5, 5));
+    await held.input.send([typeSource('a')]);
+    expect(fake.commands('browsingContext.activate').map((command) => command.params)).toEqual([{ context: 'tab' }]);
+    expect(fake.commands('input.performActions')).toHaveLength(2);
   });
 
   it('counts input the page suppressed as not dispatched, and input it saw or a failed send as dispatched', async () => {

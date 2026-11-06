@@ -131,3 +131,23 @@ describe('nested frame locators', () => {
     });
   });
 });
+
+describe('a cross-site frame', () => {
+  let page: WebSession;
+
+  beforeAll(async () => {
+    page = await startWebSession();
+  });
+
+  afterAll(async () => {
+    await page.close();
+  });
+
+  it('takes a tap, which the browser routes into the frame\'s own process', async () => {
+    const inner = page.serve('/cross-site-button', '<button onclick="this.textContent = \'Clicked\'">Press</button>').replace('127.0.0.1', 'localhost');
+    await page.setContent(`<iframe id="site" src="${inner}"></iframe>`);
+    await page.waitForFrames();
+    await page.act(withinFrames(['#site'], buttonNamed('Press')), { kind: 'tap' });
+    expect(await page.locate(withinFrames(['#site'], buttonNamed('Clicked')))).toHaveLength(1);
+  });
+});

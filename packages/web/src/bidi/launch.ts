@@ -195,6 +195,9 @@ const FIREFOX_PREFS: Readonly<Record<string, string | number | boolean>> = {
   'toolkit.startup.max_resumed_crashes': -1,
   // Wheel actions go through the path real wheels take, so a scroll shows on the next frame, as it does in Chromium.
   'remote.events.async.wheel.enabled': true,
+  // Mouse actions too: the parent process routes them into an out-of-process (cross-site) frame, which a mouse
+  // event synthesized in the top document's process never reaches.
+  'remote.events.async.mouse.enabled': true,
 };
 
 /**

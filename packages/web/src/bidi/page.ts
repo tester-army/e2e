@@ -206,6 +206,12 @@ export function nextFrame(): Promise<void> | undefined {
   return new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 }
 
+/** Resolves true after the next rendered frame, or false at once in a hidden document, which renders none. */
+export function shownFrame(): Promise<boolean> | boolean {
+  if (document.visibilityState === 'hidden') return false;
+  return new Promise((resolve) => requestAnimationFrame(() => setTimeout(() => resolve(true), 0)));
+}
+
 /**
  * Focuses an element; returns whether focus landed on it, or on the editing
  * host that holds it, followed through open and recorded closed shadow roots.
