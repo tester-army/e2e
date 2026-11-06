@@ -34,6 +34,15 @@ import type { BrowserName } from './browser-names.ts';
 const NATIVE_APP_KEYS = ['bundleId', 'appPath', 'launchArguments'] as const;
 
 export function web(options: WebOptions = {}): EngineHandle {
+  return createWeb(options, false);
+}
+
+/**
+ * The web engine for `options`. With `existingTab`, an attempt on the
+ * `connect` browser drives its default user context on the tab already open
+ * there and leaves both behind, and the target needs no `app.url`.
+ */
+export function createWeb(options: WebOptions, existingTab: boolean): EngineHandle {
   if ('allowedOrigins' in options) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
@@ -82,6 +91,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   }
   // A per-attempt lease runs in its browser's default context, which its `prepare` may have signed in.
   const perAttempt = provider?.scope === 'attempt';
+  const defaultContext = perAttempt || existingTab;
   const surface = new BidiSurface({
     browser,
     viewport: options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport,
@@ -96,6 +106,7 @@ export function web(options: WebOptions = {}): EngineHandle {
     media: obj({ colorScheme: options.colorScheme, reducedMotion: options.reducedMotion }),
     cdpEndpoint: options.connect?.cdpEndpoint,
     leases: provider === undefined ? undefined : new LeasedBrowsers(provider),
+    existingTab,
   });
   return defineEngine({
     name: 'web',
@@ -124,21 +135,21 @@ export function web(options: WebOptions = {}): EngineHandle {
       type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation),
       press: (key, operation) => surface.pressKey(key, operation),
     },
-    validateApp: (app, info) => validateApp(app, info, browser),
+    validateApp: (app, info) => validateApp(app, info, browser, !existingTab),
     ...(isSecret(options.basicAuth?.password) ? { secrets: [options.basicAuth.password] } : {}),
     session: {
       open: (url, operation) => surface.open(url, operation),
       back: (operation) => surface.back(operation),
       resize: (size, operation) => surface.resize(size, operation),
       restart: (operation) => surface.restart(operation),
-      reset: perAttempt ? () => Promise.reject(defaultContextLimit('app.clearState()', provider.name)) : (operation) => surface.reset(operation),
+      reset: defaultContext ? () => Promise.reject(defaultContextLimit('app.clearState()', provider?.name)) : (operation) => surface.reset(operation),
     },
     artifacts: {
       screenshot: (label, operation) => surface.screenshot(label, operation),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },
-    ...(perAttempt
+    ...(defaultContext
       ? {}
       : {
           state: {
@@ -170,10 +181,14 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
 } satisfies Record<keyof WebOptions, true>);
 
 /**
- * What a per-attempt lease rules out, named with its cause: `what` replaces
- * the browser context, and the attempt rides the leased browser's own one.
+ * What riding the browser's own context rules out, named with its cause:
+ * `what` replaces the browser context. `provider` names a per-attempt lease;
+ * none means `attachBrowser`.
  */
-function defaultContextLimit(what: string, provider: string): ConfigurationError {
+function defaultContextLimit(what: string, provider: string | undefined): ConfigurationError {
+  if (provider === undefined) {
+    return new ConfigurationError('UNSUPPORTED_CAPABILITY', `${what} is unavailable on an attached browser: it replaces the browser context, and the attach drives the browser's own`);
+  }
   return new ConfigurationError(
     'UNSUPPORTED_CAPABILITY',
     `${what} is unavailable with browser provider "${provider}" with scope "attempt": it replaces the browser context, and the attempt rides the leased browser's own; every attempt already starts on a fresh browser, and scope "worker" can clear one mid-test`,
@@ -397,7 +412,7 @@ function validateTestIdAttribute(attribute: unknown): void {
  * `app.open()` to open, and the fields that describe an installed device app
  * have nothing to act on here. `permissions` must be ones `browser` grants.
  */
-function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckInfo, browser: BrowserName): void {
+function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckInfo, browser: BrowserName, urlRequired: boolean): void {
   for (const key of NATIVE_APP_KEYS) {
     if (app[key] !== undefined) {
       throw new ConfigurationError(
@@ -406,7 +421,7 @@ function validateApp(app: EngineAppDeclaration, { targetName }: EngineAppCheckIn
       );
     }
   }
-  if (app.url === undefined) {
+  if (urlRequired && app.url === undefined) {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `target "${targetName}" needs app.url: a web() target opens the app at a URL, targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }]`,

@@ -81,6 +81,8 @@ export interface BidiSurfaceOptions {
   readonly cdpEndpoint: ((signal: AbortSignal) => string | Promise<string>) | undefined;
   /** A browser provider's worker-scoped leases, attached to over CDP. */
   readonly leases: LeasedBrowsers | undefined;
+  /** Drives the attached browser's default user context on its open tab and leaves both as they are (`attachBrowser`). */
+  readonly existingTab: boolean;
 }
 
 /**
@@ -156,7 +158,8 @@ export class BidiSurface {
       projectRoot: info.projectRoot,
       permissions: Object.keys(info.app.permissions ?? {}),
       remoteFiles: this.options.leases !== undefined,
-      defaultUserContext: this.perAttempt,
+      defaultUserContext: this.perAttempt || this.options.existingTab,
+      existingTab: this.options.existingTab,
       holdRequests: headers !== undefined,
       siteHeaders: (url) => siteHeadersFor(url, site, headers),
     };

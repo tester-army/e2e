@@ -319,7 +319,8 @@ export function declareBrowserFixture(
 export interface ExpectationDeps {
   currentUrl(deadline: Deadline): Promise<string>;
   currentTitle(deadline: Deadline): Promise<string>;
-  baseHref(): string;
+  /** The app URL relative URLs resolve against; undefined without one. */
+  baseHref(): string | undefined;
   deadlineFor(timeout: number | undefined, api: string): Deadline;
   readonly context: EngineFixtureContext;
 }

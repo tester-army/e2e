@@ -37,7 +37,8 @@ export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFi
   const expectation = createBrowserExpectation({
     currentUrl,
     currentTitle,
-    baseHref: () => context.app.resolveUrl(''),
+    // An app without a URL has no site either.
+    baseHref: () => (context.app.site === undefined ? undefined : context.app.resolveUrl('')),
     deadlineFor: (timeout, api) => new Deadline(context.operation(stepTimeout(timeout, api) ?? context.timeouts.assertion).timeoutMs),
     context,
   });

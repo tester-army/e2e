@@ -57,6 +57,8 @@ export interface SessionSettings {
   readonly remoteFiles: boolean;
   /** Runs the attempt in the browser's default user context, which a fresh per-attempt lease prepared, instead of a new one. */
   readonly defaultUserContext: boolean;
+  /** Drives the default user context's first open tab, and leaves it open, instead of opening a tab of its own. */
+  readonly existingTab: boolean;
   /** Whether every request is held for the configured site headers, and service workers blocked. */
   readonly holdRequests: boolean;
   readonly siteHeaders: (url: string) => Readonly<Record<string, string>> | undefined;
@@ -200,6 +202,8 @@ export class BidiSession {
   /** The viewport `browser.setViewport` set for the rest of the attempt; the configured one until then. */
   private viewport: ViewportSize | null;
   private creating: Promise<string> | undefined;
+  /** The tab the attempt found open and adopted (`existingTab`), which it never closes. */
+  private adopted: string | undefined;
   /** User contexts this attempt created and has not yet seen removed, tried again by every later removal and by `close`. */
   private readonly unremoved = new Set<string>();
   /** Set by `close`: a user context that opens after it (a reset or restore the attempt gave up on) is removed at once. */
@@ -304,6 +308,8 @@ export class BidiSession {
       await this.dropUserContext();
       throw cancelled('the attempt closed while its user context opened');
     }
+    // An attach reads and drives the page it found before anything navigates.
+    if (this.settings.existingTab) await this.ensureContext();
   }
 
   /**
@@ -315,8 +321,9 @@ export class BidiSession {
     await this.video?.contextClosing();
     const userContext = this.userContext;
     this.userContext = '';
-    if (userContext === DEFAULT_USER_CONTEXT && this.context !== undefined) await releaseQuietly(this.connection.send('browsingContext.close', { context: this.context }));
-    else if (userContext !== '') this.unremoved.add(userContext);
+    if (userContext === DEFAULT_USER_CONTEXT) {
+      if (this.context !== undefined && this.context !== this.adopted) await releaseQuietly(this.connection.send('browsingContext.close', { context: this.context }));
+    } else if (userContext !== '') this.unremoved.add(userContext);
     try {
       await this.removeUserContexts();
     } finally {
@@ -387,17 +394,22 @@ export class BidiSession {
     return this.creating;
   }
 
-  /** Opens the attempt's tab in its user context, refusing one that opened after the user context was replaced. */
+  /**
+   * Opens the attempt's tab in its user context, or adopts the one already
+   * open there when the settings ask for it, refusing one that opened after
+   * the user context was replaced.
+   */
   private async createContext(): Promise<string> {
     const connection = this.connection;
     const userContext = this.userContext;
-    const { context } = await connection.send('browsingContext.create', {
+    this.adopted = this.settings.existingTab ? await this.openTab(userContext) : undefined;
+    const context = this.adopted ?? (await connection.send('browsingContext.create', {
       type: this.settings.browser === 'firefox' ? 'window' : 'tab',
       userContext,
-    });
+    })).context;
     this.owners.created(context, userContext, null);
     if (userContext !== this.userContext) {
-      await releaseQuietly(connection.send('browsingContext.close', { context }));
+      if (context !== this.adopted) await releaseQuietly(connection.send('browsingContext.close', { context }));
       throw new EngineError('NODE_STALE', 'the attempt replaced its user context while a tab opened', { retryable: true });
     }
     await this.network.addContext(context);
@@ -407,6 +419,12 @@ export class BidiSession {
     this.heldButtons.clear();
     await this.video?.contextOpened(context, await this.viewportSize());
     return context;
+  }
+
+  /** The first top-level tab already open in `userContext`, if any. */
+  private async openTab(userContext: string): Promise<string | undefined> {
+    const { contexts } = await this.connection.send('browsingContext.getTree', { maxDepth: 0 });
+    return contexts.find((info) => info.userContext === userContext)?.context;
   }
 
   /** Resizes the tab, and every tab the attempt opens after it, to `size`. */

@@ -53,6 +53,19 @@ const LOGIN = `<!doctype html>
 </body>
 </html>`;
 
+/** Signing in sets a `session` cookie in the page and goes to `/`. */
+const SIGN_IN = `<!doctype html>
+<html>
+<head><title>Fixture Sign In</title></head>
+<body>
+<form onsubmit="event.preventDefault(); document.cookie = 'session=' + encodeURIComponent(this.email.value) + '; path=/; max-age=3600'; location.href = '/';">
+<label>Email <input name="email"></label>
+<label>Password <input type="password" name="password"></label>
+<button>Sign in</button>
+</form>
+</body>
+</html>`;
+
 /**
  * A checkout control rendered the way third-party storefront widgets render
  * theirs: inside a closed shadow root, invisible to `shadowRoot` and to
@@ -385,6 +398,7 @@ const PAGES: Readonly<Record<string, string>> = {
   '/form': FORM,
   '/values': VALUES,
   '/login': LOGIN,
+  '/sign-in': SIGN_IN,
   '/state': STATE,
   '/twins': TWINS,
   '/rows': ROWS,
