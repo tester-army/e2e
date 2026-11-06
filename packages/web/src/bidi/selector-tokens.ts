@@ -114,20 +114,44 @@ function trimmedText(tokens: readonly SelectorToken[]): string {
 }
 
 /**
+ * One part of a `>>` chain: the engine that reads it, the text that engine
+ * reads, and whether it is the part the chain captures (`*css=article`).
+ */
+export interface SelectorPart {
+  readonly engine: string;
+  readonly body: string;
+  readonly capture: boolean;
+}
+
+/** An engine prefix as Playwright's selector grammar reads it, with the capture marker `*` before the engine name. */
+const ENGINE_PREFIX = /^(\*?)([a-zA-Z_0-9-]+)\s*=/;
+
+/**
+ * A chain part as Playwright reads it: a prefix names the engine and may
+ * mark the capture, a path is XPath, the rest CSS. A `*` not followed by an
+ * engine prefix is CSS's universal selector.
+ */
+function selectorPart(text: string): SelectorPart {
+  const prefix = ENGINE_PREFIX.exec(text);
+  if (prefix !== null) return { engine: prefix[2]!, body: text.slice(prefix[0].length), capture: prefix[1] === '*' };
+  return { engine: /^\(*(\/|\.\.)/.test(text) ? 'xpath' : 'css', body: text, capture: false };
+}
+
+/**
  * The parts of a `>>` chain, each resolved inside the elements the one before
  * it matched; a `>>` that is escaped, quoted, or inside brackets belongs to
  * its part.
  */
-export function chainParts(selector: string): string[] {
-  const parts: string[] = [];
+export function chainParts(selector: string): SelectorPart[] {
+  const parts: SelectorPart[] = [];
   let current: SelectorToken[] = [];
   for (const token of tokenizeSelector(selector)) {
     if (token.kind === 'chain') {
-      parts.push(trimmedText(current));
+      parts.push(selectorPart(trimmedText(current)));
       current = [];
     } else current.push(token);
   }
-  parts.push(trimmedText(current));
+  parts.push(selectorPart(trimmedText(current)));
   return parts;
 }
 

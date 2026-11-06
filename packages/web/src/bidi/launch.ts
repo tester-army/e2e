@@ -14,6 +14,7 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { EngineError, withTimeout } from 'e2e/engine';
 import { browserExecutable } from '../install.ts';
+import { ChromiumCdp } from './cdp.ts';
 import { BidiConnection, webSocketTransport, type BidiTransport } from './connection.ts';
 import { releaseQuietly } from './errors.ts';
 import { MAPPER_READY } from './mapper-process.ts';
@@ -292,8 +293,8 @@ async function openSession(connection: BidiConnection, name: BidiBrowserName, ti
  * revision hash as `browserVersion` for the headless shell.
  */
 async function chromiumVersion(connection: BidiConnection): Promise<string> {
-  const { result } = (await connection.sendExtension('goog:cdp.sendCommand', { method: 'Browser.getVersion', params: {} })) as { result: { product: string } };
-  return result.product.slice(result.product.lastIndexOf('/') + 1);
+  const { product } = await ChromiumCdp.browser(connection).send('Browser.getVersion', {});
+  return product.slice(product.lastIndexOf('/') + 1);
 }
 
 const FIREFOX_ENDPOINT = /WebDriver BiDi listening on (ws:\/\/\S+)/;

@@ -8,6 +8,7 @@
  */
 
 import type { KeyModifier } from 'e2e/engine';
+import type { CdpCommand } from './cdp.ts';
 
 /** A modifier key as the page sees it; `ControlOrMeta` resolves to one of these first. */
 export type Modifier = Exclude<KeyModifier, 'ControlOrMeta'>;
@@ -201,10 +202,7 @@ export function lacksWebDriverValue(name: string, shifted: boolean): boolean {
 }
 
 /** One CDP command of a key press. */
-export interface CdpKeyCommand {
-  readonly method: 'Input.dispatchKeyEvent' | 'Input.cancelDragging';
-  readonly params: Readonly<Record<string, unknown>>;
-}
+export type CdpKeyCommand = CdpCommand<'Input.dispatchKeyEvent' | 'Input.cancelDragging'>;
 
 /** What a Chromium key press needs to know about the keyboard before it: the modifiers held, the platform, and the keys CDP holds down. */
 export interface ChromiumKeyboard {
@@ -274,7 +272,7 @@ export function chromiumKeyCommands(stroke: KeyStroke, keyboard: ChromiumKeyboar
       modifiers: mask(modifiers),
       ...(typesText ? { text: key, unmodifiedText: key } : {}),
       autoRepeat: keyboard.pressed.has(code),
-      commands,
+      commands: [...commands],
     },
   };
   const up: CdpKeyCommand = { method: 'Input.dispatchKeyEvent', params: { ...event, type: 'keyUp', modifiers: mask(modifiers) } };

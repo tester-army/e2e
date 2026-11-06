@@ -14,6 +14,7 @@ import path from 'node:path';
 import { EngineError, type VideoFile } from 'e2e/engine';
 import { message } from '../support.ts';
 import { ffmpegExecutable } from '../install.ts';
+import { ChromiumCdp } from './cdp.ts';
 import type { BidiConnection } from './connection.ts';
 import { classify, isStale, releaseQuietly, unlessStale } from './errors.ts';
 import type { BidiBrowserName } from './launch.ts';
@@ -173,14 +174,12 @@ export class BidiVideo {
       throw new EngineError('ENGINE_FAILURE', 'recording video on chromium needs ffmpeg with libvpx-vp9: run "npx @e2e-dev/web install chromium", or set E2E_FFMPEG_PATH', { retryable: false });
     }
     const connection = this.connection;
-    const { session } = (await connection.sendExtension('goog:cdp.getSession', { context })) as { session: string };
+    const cdp = await ChromiumCdp.forContext(connection, context);
     const encoder = new FrameEncoder(ffmpeg, size, absolute);
     let unacknowledged: unknown;
-    const off = connection.onExtension('goog:cdp.Page.screencastFrame', (event) => {
-      if (event['session'] !== session) return;
-      const params = event['params'] as { data: string; sessionId: number };
-      void encoder.frame(Buffer.from(params.data, 'base64'))
-        .then(() => connection.sendExtension('goog:cdp.sendCommand', { method: 'Page.screencastFrameAck', params: { sessionId: params.sessionId }, session }))
+    const off = cdp.on('Page.screencastFrame', (frame) => {
+      void encoder.frame(Buffer.from(frame.data, 'base64'))
+        .then(() => cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId }))
         .catch((cause: unknown) => {
           unacknowledged ??= cause;
         });
@@ -188,11 +187,7 @@ export class BidiVideo {
     let subscription: string | undefined;
     try {
       subscription = await connection.subscribeExtension(['goog:cdp.Page.screencastFrame'], [context]);
-      await connection.sendExtension('goog:cdp.sendCommand', {
-        method: 'Page.startScreencast',
-        params: { format: 'jpeg', quality: this.options.quality ?? 90, maxWidth: size.width, maxHeight: size.height },
-        session,
-      });
+      await cdp.send('Page.startScreencast', { format: 'jpeg', quality: this.options.quality ?? 90, maxWidth: size.width, maxHeight: size.height });
     } catch (cause) {
       off();
       if (subscription !== undefined) await releaseQuietly(connection.send('session.unsubscribe', { subscriptions: [subscription] }));
@@ -205,7 +200,7 @@ export class BidiVideo {
         off();
         const screen = await unlessStale(currentScreen(connection, context, this.options.quality ?? 90), undefined);
         if (screen !== undefined) await encoder.frame(screen);
-        await unlessStale(connection.sendExtension('goog:cdp.sendCommand', { method: 'Page.stopScreencast', params: {}, session }), undefined);
+        await unlessStale(cdp.send('Page.stopScreencast', {}), undefined);
         await releaseQuietly(connection.send('session.unsubscribe', { subscriptions: [subscribed] }));
       } finally {
         off();

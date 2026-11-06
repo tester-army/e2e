@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LocatorExpression, SemanticNode } from 'e2e/engine';
 import { FrameRegistry, inViewport, resolveFrames, selectorLocator, withinFrame } from '../../src/bidi/frames.ts';
+import { chainParts } from '../../src/bidi/selector-tokens.ts';
 import { project, type Projection } from '../../src/bidi/projection.ts';
 import { ElementRef } from '../../src/bidi/script.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
@@ -169,12 +170,20 @@ describe('inViewport', () => {
 });
 
 describe('selectorLocator', () => {
+  /** The locator of `selector`'s only chain part. */
+  const locator = (selector: string): unknown => selectorLocator(chainParts(selector)[0]!, selector);
+
   it('reads a selector as Playwright does: a prefix names the engine, a path is XPath, the rest CSS', () => {
-    expect(selectorLocator('xpath=//iframe')).toEqual({ type: 'xpath', value: '//iframe' });
-    expect(selectorLocator('css=#a > b')).toEqual({ type: 'css', value: '#a > b' });
-    expect(selectorLocator('//li')).toEqual({ type: 'xpath', value: '//li' });
-    expect(selectorLocator('(//li)[2]')).toEqual({ type: 'xpath', value: '(//li)[2]' });
-    expect(selectorLocator('../a')).toEqual({ type: 'xpath', value: '../a' });
-    expect(selectorLocator('iframe[name="pay"]')).toEqual({ type: 'css', value: 'iframe[name="pay"]' });
+    expect(locator('xpath=//iframe')).toEqual({ type: 'xpath', value: '//iframe' });
+    expect(locator('css=#a > b')).toEqual({ type: 'css', value: '#a > b' });
+    expect(locator('//li')).toEqual({ type: 'xpath', value: '//li' });
+    expect(locator('(//li)[2]')).toEqual({ type: 'xpath', value: '(//li)[2]' });
+    expect(locator('../a')).toEqual({ type: 'xpath', value: '../a' });
+    expect(locator('iframe[name="pay"]')).toEqual({ type: 'css', value: 'iframe[name="pay"]' });
+    expect(locator('* > button')).toEqual({ type: 'css', value: '* > button' });
+  });
+
+  it('rejects an engine other than CSS and XPath', () => {
+    expect(() => locator('text=Hello')).toThrow('the text= engine is not supported');
   });
 });

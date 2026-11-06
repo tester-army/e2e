@@ -12,10 +12,11 @@ import { message } from '../support.ts';
 import { CLOSED_SHADOW_ROOTS_KEY } from '../closed-shadow.ts';
 import { frameContentInset } from '../observation.ts';
 import { BidiError, type BidiConnection } from './connection.ts';
+import { ChromiumCdp } from './cdp.ts';
 import { callFunction, ElementRef, WindowRef } from './script.ts';
 import type { BidiBrowserName } from './launch.ts';
 import { compose, IDENTITY, invert, rectToQuad, scaleThenTranslate, type Projection } from './projection.ts';
-import { chainParts, cssChains, type CssStep } from './selector-tokens.ts';
+import { chainParts, cssChains, type CssStep, type SelectorPart } from './selector-tokens.ts';
 
 /** An element and the browsing context whose document holds it. */
 export interface NodeTarget {
@@ -68,15 +69,13 @@ export async function contentContext(connection: BidiConnection, frame: NodeTarg
 }
 
 /**
- * A selector as a `browsingContext.locateNodes` locator, read as Playwright
- * reads one: an `xpath=` or `css=` prefix names its engine, and an
- * unprefixed one is XPath when it starts with `/`, `..`, or a parenthesized
- * path such as `(//li)[2]`, else CSS.
+ * One chain part of `selector` as a `browsingContext.locateNodes` locator.
+ * Only the CSS and XPath engines are supported; another is
+ * `INVALID_LOCATOR`.
  */
-export function selectorLocator(selector: string): BrowsingContext.Locator {
-  if (selector.startsWith('xpath=')) return { type: 'xpath', value: selector.slice('xpath='.length) };
-  if (selector.startsWith('css=')) return { type: 'css', value: selector.slice('css='.length) };
-  return /^\(*(\/|\.\.)/.test(selector) ? { type: 'xpath', value: selector } : { type: 'css', value: selector };
+export function selectorLocator(part: SelectorPart, selector: string): BrowsingContext.Locator {
+  if (part.engine === 'css' || part.engine === 'xpath') return { type: part.engine, value: part.body };
+  throw new TestError('INVALID_LOCATOR', `selector ${selector} is not a CSS or XPath selector: the ${part.engine}= engine is not supported`);
 }
 
 /** One element a selector matched, and its tag name. */
@@ -150,20 +149,20 @@ function cssSelectAll(selector: string, chains: CssStep[][], scopes?: Element[])
  */
 export async function selectElements(connection: BidiConnection, context: string, selector: string): Promise<SelectedElement[]> {
   const parts = chainParts(selector);
-  if (parts.slice(0, -1).some((part) => part.startsWith('*'))) {
+  if (parts.slice(0, -1).some((part) => part.capture)) {
     throw new TestError('INVALID_LOCATOR', 'a selector that captures with * (*css=article >> text=Hello) is not supported: use filter({ has }) instead');
   }
   let selected: SelectedElement[] | undefined;
   for (const part of parts) {
-    selected = await selectWithin(connection, context, part.replace(/^\*/, ''), selected?.map((each) => each.element), selector);
+    selected = await selectWithin(connection, context, part, selected?.map((each) => each.element), selector);
   }
   return selected ?? [];
 }
 
 /** The elements one chain part matches: in the document, or inside `scopes` (descendants, open shadow roots included). */
-async function selectWithin(connection: BidiConnection, context: string, part: string, scopes: readonly ElementRef[] | undefined, selector: string): Promise<SelectedElement[]> {
+async function selectWithin(connection: BidiConnection, context: string, part: SelectorPart, scopes: readonly ElementRef[] | undefined, selector: string): Promise<SelectedElement[]> {
   if (scopes !== undefined && scopes.length === 0) return [];
-  const locator = selectorLocator(part);
+  const locator = selectorLocator(part, selector);
   if (locator.type === 'css') {
     const chains = cssChains(locator.value);
     const found = await callFunction(connection, context, cssSelectAll, scopes === undefined ? [locator.value, chains] : [locator.value, chains, [...scopes]], { maxObjectDepth: null });
@@ -241,11 +240,11 @@ export class FrameRegistry {
       if (measured !== TURNED && !isFrameBox(measured)) return null;
       boxes.push(measured);
     }
-    const sessions = browser === 'chromium' && boxes.includes(TURNED) ? await Promise.all(chain.map((frame) => cdpSession(connection, frame.context))) : undefined;
+    const sessions = browser === 'chromium' && boxes.includes(TURNED) ? await Promise.all(chain.map((frame) => ChromiumCdp.forContext(connection, frame.context))) : undefined;
     const maps: Projection[] = [];
     let root: Projection = IDENTITY;
     for (const [index, box] of boxes.entries()) {
-      if (index > 0) root = sessions !== undefined && sessions[index] !== sessions[index - 1] ? IDENTITY : compose(root, maps[index - 1]!);
+      if (index > 0) root = sessions !== undefined && sessions[index]!.session !== sessions[index - 1]!.session ? IDENTITY : compose(root, maps[index - 1]!);
       const map = box === TURNED ? await turnedFrameMap(connection, chain[index]!, sessions?.[index], root) : scaleThenTranslate(box.content, box.scale);
       if (map === undefined) return null;
       maps.push(map);
@@ -284,12 +283,6 @@ export class FrameRegistry {
 /** What `FRAME_BOX` reports for a frame a rotation, skew, reflection, or 3D transform turns. */
 const TURNED = 'turned';
 
-/** The CDP session of the target that renders `context`, which frames of one process share. */
-async function cdpSession(connection: BidiConnection, context: string): Promise<string> {
-  const { session } = (await connection.sendExtension('goog:cdp.getSession', { context })) as { session: string };
-  return session;
-}
-
 /** The corners of a quad, top-left first and clockwise. */
 type Quad = readonly [Point, Point, Point, Point];
 
@@ -323,16 +316,15 @@ const FRAME_BORDER_BOX = `(element) => {
  * frame's document (`getBoxQuads`, behind `layout.css.getBoxQuads.enabled`).
  * Undefined when the browser reports none.
  */
-async function turnedFrameMap(connection: BidiConnection, frame: NodeTarget, session: string | undefined, root: Projection): Promise<Projection | undefined> {
+async function turnedFrameMap(connection: BidiConnection, frame: NodeTarget, cdp: ChromiumCdp | undefined, root: Projection): Promise<Projection | undefined> {
   const box = await callFunction(connection, frame.context, FRAME_BORDER_BOX, [frame.element], { maxObjectDepth: null });
   if (!isFrameBorderBox(box)) return undefined;
   let quad = box.quad === null ? null : quadOf(box.quad);
   let toDocument: Projection | undefined = IDENTITY;
-  if (session !== undefined) {
+  if (cdp !== undefined) {
     const backendNodeId = Number(/\.e\.(\d+)$/.exec(frame.element.sharedId)?.[1]);
     if (!Number.isInteger(backendNodeId)) return undefined;
-    const { result } = (await connection.sendExtension('goog:cdp.sendCommand', { method: 'DOM.getContentQuads', params: { backendNodeId }, session })) as { result: { quads: number[][] } };
-    const [flat] = result.quads;
+    const [flat] = (await cdp.send('DOM.getContentQuads', { backendNodeId })).quads;
     quad = flat === undefined ? null : quadOf([0, 2, 4, 6].map((at) => ({ x: flat[at]!, y: flat[at + 1]! })));
     toDocument = invert(root);
   }

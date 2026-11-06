@@ -66,6 +66,7 @@
     "@napi-rs/image": "1.16.0",
     "@types/node": "26.6.6",
     "@types/yauzl": "3.4.0",
+    "devtools-protocol": "0.0.1734725",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.1.0",

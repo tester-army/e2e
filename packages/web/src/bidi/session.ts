@@ -14,6 +14,7 @@ import type { ConfiguredInitScripts } from '../init-scripts.ts';
 import type { WebMedia } from '../media.ts';
 import { cancelled, ErrorLatch, invalidState, sanitizeFilename } from '../support.ts';
 import type { WebScreencastOptions } from '../options.ts';
+import { ChromiumCdp } from './cdp.ts';
 import { BidiError, type BidiConnection } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
 import { AttemptDownloads } from './downloads.ts';
@@ -565,11 +566,11 @@ export class BidiSession {
   private async sendCdpKeys(commands: readonly CdpKeyCommand[], signal?: AbortSignal): Promise<void> {
     signal?.throwIfAborted();
     const context = this.requireContext();
-    const { session } = (await this.connection.sendExtension('goog:cdp.getSession', { context })) as { session: string };
+    const cdp = await ChromiumCdp.forContext(this.connection, context);
     signal?.throwIfAborted();
     this.dispatches += 1;
     for (const command of commands) {
-      await this.connection.sendExtension('goog:cdp.sendCommand', { method: command.method, params: command.params, session });
+      await cdp.send(command.method, command.params);
       const held = holdsAfter(command);
       if (held?.down === true) this.cdpHeldKeys.add(held.code);
       else if (held?.down === false) this.cdpHeldKeys.delete(held.code);

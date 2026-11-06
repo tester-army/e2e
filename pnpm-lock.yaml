@@ -713,6 +713,9 @@ importers:
       '@types/yauzl':
         specifier: 3.4.0
         version: 3.4.0
+      devtools-protocol:
+        specifier: 0.0.1734725
+        version: 0.0.1734725
       e2e:
         specifier: workspace:*
         version: link:../e2e

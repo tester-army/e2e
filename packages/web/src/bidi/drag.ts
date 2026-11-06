@@ -8,9 +8,11 @@
  * the page does not start stays plain pointer moves.
  */
 
+import type { Protocol } from 'devtools-protocol';
 import type { BidiConnection } from './connection.ts';
 import { raceAbort } from 'e2e/engine';
 import { releaseQuietly, unlessStale } from './errors.ts';
+import { ChromiumCdp } from './cdp.ts';
 import { mouse } from './input.ts';
 import { callFunction } from './script.ts';
 
@@ -66,20 +68,18 @@ export async function chromiumDrag(
   const [from, first, ...rest] = path;
   if (from === undefined || first === undefined) return;
   const last = rest.at(-1) ?? first;
-  const { session } = (await connection.sendExtension('goog:cdp.getSession', { context })) as { session: string };
-  const cdp = (method: string, params: object): Promise<unknown> => {
+  const cdp = await ChromiumCdp.forContext(connection, context);
+  const setInterceptDrags = (enabled: boolean): Promise<unknown> => {
     signal.throwIfAborted();
-    return connection.sendExtension('goog:cdp.sendCommand', { method, params, session });
+    return cdp.send('Input.setInterceptDrags', { enabled });
   };
   const pointer = (actions: Parameters<typeof mouse>[0]): Promise<unknown> => {
     signal.throwIfAborted();
     return connection.send('input.performActions', { context, actions: [mouse(actions)] });
   };
-  let intercepted: (data: unknown) => void = () => undefined;
-  const dragData = new Promise<unknown>((resolve) => (intercepted = resolve));
-  const off = connection.onExtension('goog:cdp.Input.dragIntercepted', (event) => {
-    if (event['session'] === session) intercepted((event['params'] as { data: unknown }).data);
-  });
+  let intercepted: (data: Protocol.Input.DragData) => void = () => undefined;
+  const dragData = new Promise<Protocol.Input.DragData>((resolve) => (intercepted = resolve));
+  const off = cdp.on('Input.dragIntercepted', (event) => intercepted(event.data));
   let subscription: string | undefined;
   let pressed = false;
   let intercepting = false;
@@ -92,12 +92,12 @@ export async function chromiumDrag(
     // Armed after the press: armed before, it latches onto the move to the press point and misses the drag.
     await Promise.all(documents.map((each) => unlessStale(callFunction(connection, each, watchDrag), undefined)));
     intercepting = true;
-    await cdp('Input.setInterceptDrags', { enabled: true });
+    await setInterceptDrags(true);
     // One discrete move, as Playwright's: an interpolated one would be checked before it passed the drag threshold.
     await pointer([{ type: 'pointerMove', x: first.x, y: first.y, origin: 'viewport' }]);
     const started = await Promise.all(documents.map((each) => unlessStale(callFunction(connection, each, dragStarted, [], { awaitPromise: true }), false)));
     const data = started.includes(true) ? await raceAbort(dragData, signal, 'drag') : undefined;
-    await cdp('Input.setInterceptDrags', { enabled: false });
+    await setInterceptDrags(false);
     intercepting = false;
     if (data === undefined) {
       await pointer([
@@ -107,12 +107,16 @@ export async function chromiumDrag(
       pressed = false;
       return;
     }
-    await cdp('Input.dispatchDragEvent', { type: 'dragEnter', x: first.x, y: first.y, data });
-    for (const point of rest) await cdp('Input.dispatchDragEvent', { type: 'dragOver', x: point.x, y: point.y, data });
-    await cdp('Input.dispatchDragEvent', { type: 'drop', x: last.x, y: last.y, data });
+    const dispatch = (type: Protocol.Input.DispatchDragEventRequest['type'], point: Point): Promise<unknown> => {
+      signal.throwIfAborted();
+      return cdp.send('Input.dispatchDragEvent', { type, x: point.x, y: point.y, data });
+    };
+    await dispatch('dragEnter', first);
+    for (const point of rest) await dispatch('dragOver', point);
+    await dispatch('drop', last);
   } finally {
     off();
-    if (intercepting) await releaseQuietly(connection.sendExtension('goog:cdp.sendCommand', { method: 'Input.setInterceptDrags', params: { enabled: false }, session }));
+    if (intercepting) await releaseQuietly(cdp.send('Input.setInterceptDrags', { enabled: false }));
     if (pressed) await releaseQuietly(connection.send('input.performActions', { context, actions: [mouse([{ type: 'pointerUp', button: 0 }])] }));
     if (subscription !== undefined) await releaseQuietly(connection.send('session.unsubscribe', { subscriptions: [subscription] }));
   }

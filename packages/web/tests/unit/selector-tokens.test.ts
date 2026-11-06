@@ -45,15 +45,41 @@ describe('tokenizeSelector', () => {
 });
 
 describe('chainParts', () => {
+  /** The body of each part of `selector`. */
+  const bodies = (selector: string): string[] => chainParts(selector).map((part) => part.body);
+
   it('splits on >> outside escapes, strings, and groups', () => {
-    expect(chainParts('article >> text=Hello')).toEqual(['article', 'text=Hello']);
-    expect(chainParts('text="a >> b" >> div')).toEqual(['text="a >> b"', 'div']);
-    expect(chainParts('[title="a>>b"] >> p')).toEqual(['[title="a>>b"]', 'p']);
-    expect(chainParts('#a\\>>> b')).toEqual(['#a\\>', 'b']);
+    expect(bodies('article >> text=Hello')).toEqual(['article', 'Hello']);
+    expect(bodies('text="a >> b" >> div')).toEqual(['"a >> b"', 'div']);
+    expect(bodies('[title="a>>b"] >> p')).toEqual(['[title="a>>b"]', 'p']);
+    expect(bodies('#a\\>>> b')).toEqual(['#a\\>', 'b']);
   });
 
   it('keeps an escaped space at the end of a part', () => {
-    expect(chainParts('#a\\  >> b')).toEqual(['#a\\ ', 'b']);
+    expect(bodies('#a\\  >> b')).toEqual(['#a\\ ', 'b']);
+  });
+
+  it('reads the engine of each part as Playwright does', () => {
+    expect(chainParts('css=#a > b >> xpath=//li >> (//p)[2] >> text=Hi >> iframe[name="x=y"]')).toEqual([
+      { engine: 'css', body: '#a > b', capture: false },
+      { engine: 'xpath', body: '//li', capture: false },
+      { engine: 'xpath', body: '(//p)[2]', capture: false },
+      { engine: 'text', body: 'Hi', capture: false },
+      { engine: 'css', body: 'iframe[name="x=y"]', capture: false },
+    ]);
+  });
+
+  it('marks a capture only on a * before an engine prefix, and keeps CSS universals', () => {
+    expect(chainParts('*css=article >> *text=Hi')).toEqual([
+      { engine: 'css', body: 'article', capture: true },
+      { engine: 'text', body: 'Hi', capture: true },
+    ]);
+    expect(chainParts('* >> * > button >> div > * >> css=*')).toEqual([
+      { engine: 'css', body: '*', capture: false },
+      { engine: 'css', body: '* > button', capture: false },
+      { engine: 'css', body: 'div > *', capture: false },
+      { engine: 'css', body: '*', capture: false },
+    ]);
   });
 });
 
