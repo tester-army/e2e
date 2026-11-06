@@ -33,8 +33,8 @@ runs:
       run: |
         set -euo pipefail
         . /etc/os-release
-        CHROME="$(sed -n "s/^export const CHROMIUM_BUILD = '\(.*\)';$/\1/p" packages/web/src/install.ts)"
-        [ -n "$CHROME" ] || { echo "::error::CHROMIUM_BUILD not found in packages/web/src/install.ts"; exit 1; }
+        CHROME="$(sed -n "s/^export const CHROMIUM_BUILD = '\(.*\)';$/\1/p" packages/web/src/install/provision.ts)"
+        [ -n "$CHROME" ] || { echo "::error::CHROMIUM_BUILD not found in packages/web/src/install/provision.ts"; exit 1; }
         sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 "$ARCHIVES"
         sudo install -d -o _apt -g root -m 700 "$ARCHIVES/partial"
         printf 'Dir::Cache::Archives "%s/";\nAPT::Keep-Downloaded-Packages "true";\n' "$ARCHIVES" \
