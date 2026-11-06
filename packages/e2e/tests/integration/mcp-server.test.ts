@@ -321,7 +321,8 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(stale.isError).toBe(true);
     expect(stale.text).toMatch(/^tap #n9999 failed: LOCATOR_NOT_FOUND: node #n9999 is not on the current screen/);
     expect(stale.text).not.toContain('Tapped');
-    expect(stale.text).toContain('re-observe');
+    // The page's late button may land before or after this look, so the screen comes back as changes or as unchanged.
+    expect(stale.text).toMatch(/\n\nScreen (changes|unchanged) since revision /);
 
     const before = await call('screenshot');
     expect(before.isError, before.text).toBe(false);
