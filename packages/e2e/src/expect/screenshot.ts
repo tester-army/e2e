@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { LocatorExpression } from '../engine/surface.ts';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
-import { TestError } from '../internal/errors.ts';
+import { InfrastructureError, TestError } from '../internal/errors.ts';
 import { compareImages, decodePng, encodePng, type ImageComparison, type RgbaImage } from '../internal/image.ts';
 import { pollReads, type Deadline, type ReadWindow } from '../internal/time.ts';
 import { describeExpression } from '../locator/expression.ts';
@@ -205,11 +205,12 @@ async function expectDifferent(run: Run, expected: RgbaImage | undefined, deadli
   });
 }
 
-/** Reads a stored screenshot; one that is not a PNG fails the call. */
+/** Reads a stored screenshot; one that is not a PNG fails the call, and a codec that cannot load fails it as itself. */
 function readStored(api: string, stored: Stored): RgbaImage {
   try {
     return decodePng(readFileSync(stored.file));
   } catch (cause) {
+    if (cause instanceof InfrastructureError) throw cause;
     throw new TestError('INVALID_ARGUMENT', `${api} could not read the stored screenshot ${stored.shown} as a PNG; delete it or run with --update-snapshots`, { cause });
   }
 }

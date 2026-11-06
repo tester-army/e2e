@@ -31,7 +31,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "pngjs": "7.0.0",
+    "@napi-rs/image": "1.16.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
@@ -43,7 +43,6 @@
     "@ai-sdk/typesafe-ai": "3.0.34",
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
     "ai": "7.0.163",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decisionExecutor } from '../src/index.ts';
-import { PNG } from 'pngjs';
 import { BUTTONS, context, invalidConfig, scriptedDecision, scriptedOutputs, whitePixels } from './helpers.ts';
+import { pngOf, rgbaOf } from './png-helpers.ts';
 
 
 describe('vision', () => {
@@ -121,7 +121,7 @@ describe('vision details', () => {
     const fixture = context({ tree: BUTTONS, observation: { pixels: whitePixels() }, model: text.model });
     await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     const sent = (index: number) => {
-      const png = PNG.sync.read(Buffer.from(requests[index]?.files[0]?.data as Uint8Array));
+      const png = rgbaOf(requests[index]?.files[0]?.data as Uint8Array);
       return { png, at: (x: number, y: number) => [...png.data.subarray((y * png.width + x) * 4, (y * png.width + x) * 4 + 3)] };
     };
     const full = sent(1);
@@ -191,10 +191,9 @@ describe('vision details', () => {
   it('replays a landed point for the same control on the same page, and relocates one that missed', async () => {
     /** Two screenshots that differ only inside the tapped region. */
     const frame = (dot: boolean) => {
-      const png = new PNG({ width: 800, height: 600 });
-      png.data.fill(255);
-      if (dot) for (let i = 0; i < 4; i += 1) png.data[(100 * 800 + 100) * 4 + i] = 0;
-      return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
+      const rgba = new Uint8Array(800 * 600 * 4).fill(255);
+      if (dot) for (let i = 0; i < 4; i += 1) rgba[(100 * 800 + 100) * 4 + i] = 0;
+      return { data: pngOf(800, 600, rgba), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 };
     };
     const { model, requests } = scriptedDecision((id, keys, call) => {
       if (id === 'operation') return { choice: call < 12 ? 'tap_at' : 'blocked' };
@@ -229,10 +228,9 @@ describe('vision details', () => {
     let look = 0;
     fixture.observe.mockImplementation(async () => {
       look += 1;
-      const png = new PNG({ width: 800, height: 600 });
-      png.data.fill(255);
-      png.data[look] = 0;
-      return { revision: String(look), text: 'x', truncated: false, viewport: { width: 800, height: 600 }, tree: BUTTONS, pixels: { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 } };
+      const rgba = new Uint8Array(800 * 600 * 4).fill(255);
+      rgba[look] = 0;
+      return { revision: String(look), text: 'x', truncated: false, viewport: { width: 800, height: 600 }, tree: BUTTONS, pixels: { data: pngOf(800, 600, rgba), mediaType: 'image/png' as const, width: 800, height: 600, scale: 1, maskedRegionCount: 0 } };
     });
     const verdict = await decisionExecutor({ model, textModel: text.model, vision: true }).runStep(fixture.ctx);
     expect(verdict).toMatchObject({ status: 'blocked', summary: 'The decision model cannot make progress.' });
