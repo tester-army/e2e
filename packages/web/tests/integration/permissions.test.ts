@@ -8,7 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AppPermissionState } from 'e2e/engine';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 describe('app permissions', () => {
   let app: FixtureApp;
@@ -43,7 +43,8 @@ describe('app permissions', () => {
     }, text)) as string;
   }
 
-  it('gives every page the clipboard the target grants, after a restart and a context reset too', async () => {
+  it('gives every page the clipboard the target grants, after a restart and a context reset too', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: Firefox has no clipboard-read or clipboard-write permission to grant');
     const engine = await boot({ 'clipboard-read': 'grant', 'clipboard-write': 'grant' });
     try {
       expect(await copy(engine, 'first')).toBe('first');

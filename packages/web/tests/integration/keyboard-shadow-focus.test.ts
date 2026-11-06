@@ -5,7 +5,6 @@ import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 let session: WebSession;
 const typeText = (text: string, replace: boolean) => session.engine.keyboard!.type(text, { replace }, session.op(5_000));
 const bodyData = (key: string) => session.browser.evaluate((name: string) => document.body.dataset[name] ?? null, key);
-const page = { evaluate: <A,>(fn: (arg: A) => unknown, arg?: A) => session.browser.evaluate(fn as never, (arg ?? null) as never) };
 
 beforeAll(async () => {
   session = await startWebSession();
@@ -18,7 +17,7 @@ afterAll(async () => {
 });
 
 async function focusShadow(shadowMode: ShadowRootMode, markup: string): Promise<void> {
-  await page.evaluate(({ mode, html }: { mode: ShadowRootMode; html: string }) => {
+  await session.browser.evaluate(({ mode, html }: { mode: ShadowRootMode; html: string }) => {
     document.body.innerHTML = '<div id="outer"></div>';
     const outer = document.getElementById('outer')!.attachShadow({ mode });
     outer.innerHTML = '<div id="inner"></div>';
@@ -54,7 +53,7 @@ describe.each(['open', 'closed'] as const)('%s shadow focus', (mode) => {
 });
 
 it('does not mistake the iframe host for an editable control when its button has focus', async () => {
-  await page.evaluate(async () => {
+  await session.browser.evaluate(async () => {
     const frame = document.createElement('iframe');
     const loaded = new Promise<void>((resolve) => { frame.addEventListener('load', () => resolve(), { once: true }); });
     frame.srcdoc = '<button id="stop">Stop</button>';

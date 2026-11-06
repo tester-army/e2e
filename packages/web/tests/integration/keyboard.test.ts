@@ -1,7 +1,7 @@
 /** Held keyboard input through the actual browser fixture and native DOM events. */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Browser } from '../../src/browser.ts';
-import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 describe('held keyboard input', () => {
   let session: WebSession;
   let browser: Browser;
@@ -33,7 +33,8 @@ describe('held keyboard input', () => {
     expect(events).toContain('keyup|Shift|false|false;');
     expect(events).toContain('keydown|b|false|false;');
   });
-  it('presses a media key and NumpadDecimal with NumLock off, which take CDP and a NumLock-off WebDriver value', async () => {
+  it('presses a media key and NumpadDecimal with NumLock off, which take CDP and a NumLock-off WebDriver value', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: WebDriver defines no key value for MediaPlayPause, and only Chromium presses it, over CDP');
     await browser.keyboard.press('Shift');
     await browser.keyboard.press('MediaPlayPause');
     await browser.keyboard.press('NumpadDecimal');

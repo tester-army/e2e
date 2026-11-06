@@ -1,6 +1,6 @@
 /**
- * One web engine booted through its public contract for an integration test:
- * a launched browser, one open attempt, the `browser` fixture over it, and a
+ * One web engine hosted by the runner for an integration test: a launched
+ * browser, one open attempt, the attempt's real `browser` fixture, and a
  * local server that serves the pages a test writes inline.
  */
 
@@ -9,38 +9,69 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { it } from 'vitest';
 import type {
-  EngineAppInfo,
   EngineAttemptContext,
   EngineFixtureContext,
   EngineHandle,
   EngineObserveOptions,
   EngineSnapshot,
+  Expectable,
   LocatorAction,
   LocatorExpression,
   OperationContext,
   SemanticNode,
 } from 'e2e/engine';
+import { openHost, type E2EHost, type E2ESession } from 'e2e/runner';
+import type { TargetApp } from 'e2e';
 import { web, type Browser, type WebOptions } from '../../src/index.ts';
+import { BROWSER_NAMES, isBrowserName, type BrowserName } from '../../src/browser-names.ts';
 import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
 import { SECURE_FIELD_SELECTOR, type RawNodeData } from '../../src/read-node.ts';
-import { ignoreTrace, noSecrets } from './secrets.ts';
 
 /** Answers one request the page server got for a path a test registered. */
 export type PageHandler = (request: IncomingMessage, response: ServerResponse) => void;
 
+/** The attempt sinks a test may listen on beside the runner's own. */
+export type AttemptSinks = Partial<Pick<EngineAttemptContext, 'appLog' | 'navigation' | 'screen' | 'environment'>>;
+
+/**
+ * The browser the integration suite runs on: `E2E_WEB_BROWSER` (the
+ * `integration-firefox` project sets it), else chromium.
+ */
+export function testBrowser(): BrowserName {
+  const name = process.env['E2E_WEB_BROWSER'] ?? 'chromium';
+  if (!isBrowserName(name)) throw new Error(`E2E_WEB_BROWSER must be one of ${BROWSER_NAMES.join(', ')}, got "${name}"`);
+  return name;
+}
+
+/** Whether the suite runs on Firefox, for a test that names a Firefox limit in its skip. */
+export const onFirefox = testBrowser() === 'firefox';
+
+/** `it`, or `it.fails` on Firefox: for a test a named Firefox bug fails today, so the run says when the bug is fixed. */
+export const itFailsOnFirefox = onFirefox ? it.fails : it;
+
+/** `web(options)` on the suite's browser, for a test that drives the engine contract by hand. */
+export function testWeb(options: WebOptions = {}): EngineHandle {
+  return web({ browser: testBrowser(), ...options });
+}
+
 /** How to boot the session. */
 export interface WebSessionOptions {
+  /** The browser; defaults to `testBrowser()`. A `web.browser` wins. */
+  readonly browser?: BrowserName;
   /** The `web()` options. */
   readonly web?: WebOptions;
-  /** The site the app declares; defaults to the page server's host, `null` for none. */
-  readonly site?: string | null;
-  /** App fields beside the site, such as the permissions it holds. */
-  readonly app?: Omit<EngineAppInfo, 'site'>;
-  /** The per-operation budget; defaults to 30 s. */
+  /** The app's URL; defaults to the page server's origin. */
+  readonly appUrl?: string;
+  /** App fields beside the URL, such as the permissions it holds. */
+  readonly app?: Omit<TargetApp, 'url'>;
+  /** Static secrets the config declares, by name. */
+  readonly secrets?: Readonly<Record<string, string>>;
+  /** The action timeout, every operation's budget; defaults to 30 s. */
   readonly timeoutMs?: number;
-  /** Fields of the attempt context beside the defaults: secrets, trace sinks. */
-  readonly attempt?: Partial<Omit<EngineAttemptContext, 'attemptId' | 'artifactsDir' | 'signal'>>;
+  /** Sinks that hear what the engine tells each attempt's trace, beside the runner. */
+  readonly attempt?: AttemptSinks;
   /** The project root `{ path }` init scripts and uploads resolve against; defaults to a fresh directory. */
   readonly projectRoot?: string;
   /** Whether to start the attempt at boot; defaults to true. */
@@ -53,10 +84,11 @@ export interface WebSession {
   readonly browser: Browser;
   /** The page server's origin, `http://127.0.0.1:<port>`. */
   readonly origin: string;
+  /** The current attempt's artifact directory. */
   readonly artifactsDir: string;
   readonly projectRoot: string;
-  /** The artifact paths the fixture attached, in order. */
-  readonly attached: string[];
+  /** The ids of the artifacts the current attempt's steps attached, in order. */
+  artifacts(): string[];
   /** A fresh operation context for the current attempt. */
   op(timeoutMs?: number): OperationContext;
   /** Serves `body` (HTML) or a handler at `pathname` and returns its URL. */
@@ -78,12 +110,15 @@ export interface WebSession {
   /** Resolves once every iframe of the top document finished loading. */
   waitForFrames(): Promise<void>;
   /** Starts a new attempt, ending the current one first if it is open. */
-  startAttempt(attemptId?: string): Promise<void>;
-  /** Ends the current attempt. */
+  startAttempt(): Promise<void>;
+  /** Ends the current attempt; throws what its close reported. */
   endAttempt(): Promise<void>;
-  /** Ends the attempt, disposes the engine, and closes the page server. */
+  /** Ends the attempt, closes the host, and closes the page server. */
   close(): Promise<void>;
 }
+
+/** The session deadline: long enough that a file-wide attempt never hits it, so each operation's own budget decides. */
+const SESSION_DEADLINE_MS = 600_000;
 
 /** Every node under `node`, depth first, `node` first. */
 function flatten(node: SemanticNode, out: SemanticNode[] = []): SemanticNode[] {
@@ -157,84 +192,111 @@ export async function startPageServer(): Promise<PageServer> {
   };
 }
 
-/** What a `browser` fixture built outside the harness reads of it. */
+/** What a `browser` fixture over a hand-driven engine reads of its harness. */
 export interface FixtureOptions {
   /** The base URL relative navigations resolve against. */
   readonly baseUrl: string;
   readonly site?: string;
   /** The per-operation budget; defaults to 30 s. */
   readonly timeoutMs?: number;
-  /** The signal each operation carries; read per call. */
-  readonly signal?: () => AbortSignal;
   /** Receives each artifact path the fixture attaches. */
   readonly attach?: (relative: string) => void;
-  /** Overrides how a navigation target resolves; defaults to resolving against `baseUrl`. */
-  readonly resolveUrl?: (url: string) => string;
-  /** Overrides the operation context each call gets, to record the budgets asked for. */
+  /** Overrides the operation context each call gets, to record the budgets the fixture asks for. */
   readonly operation?: (timeoutMs?: number) => OperationContext;
 }
 
-/** Builds `engine`'s `browser` fixture for the open attempt, with a harness context that records no steps. */
+/**
+ * The `browser` fixture over an engine a test drives through the engine
+ * contract by hand (its own `init` and `startAttempt`, a provider, a lease),
+ * which no runner hosts. The context records no steps and mints no
+ * locators; a test that needs neither the hand-driven lifecycle nor a
+ * provider uses `startWebSession`, whose fixture is the runner's own.
+ */
 export function browserFixture(engine: EngineHandle, options: FixtureOptions): Browser {
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const signal = options.signal ?? (() => new AbortController().signal);
-  const context = {
+  const unsupported = (what: string) => () => {
+    throw new Error(`${what} needs the runner: use startWebSession`);
+  };
+  const context: EngineFixtureContext = {
     targetName: 'web',
     app: {
       ...(options.site === undefined ? {} : { site: options.site }),
-      resolveUrl: options.resolveUrl ?? ((url: string) => new URL(url, `${options.baseUrl}/`).href),
+      resolveUrl: (url) => new URL(url, `${options.baseUrl}/`).href,
     },
     timeouts: { test: timeoutMs, action: timeoutMs, assertion: 5_000 },
-    get signal() { return signal(); },
-    operation: options.operation ?? ((budget?: number): OperationContext => ({ signal: signal(), timeoutMs: budget ?? timeoutMs, runId: 'run-web-session', attemptId: 'attempt', origin: 'test' })),
-    attachArtifact: (_kind: string, relative: string) => options.attach?.(relative),
+    signal: new AbortController().signal,
+    operation: options.operation ?? ((budget) => ({ signal: new AbortController().signal, timeoutMs: budget ?? timeoutMs, runId: 'run-web-session', attemptId: 'attempt', origin: 'test' })),
+    attachArtifact: (_kind, relative) => options.attach?.(relative),
     attachViewport: () => undefined,
-    expectable: (target: object) => target,
-    fixture: (_name: string, target: object) => target,
-  } as unknown as EngineFixtureContext;
+    locator: unsupported('a locator'),
+    screen: unsupported('a screen scope'),
+    expectable: <T extends object, E extends object>(target: T): T & Expectable<E> => target as T & Expectable<E>,
+    fixture: (_name, surface) => surface,
+  };
   return engine.fixtures!['browser']!(context) as Browser;
 }
 
+/** `engine` with each attempt's trace sinks teed to `sinks` as well as the runner's. */
+function withAttemptSinks(engine: EngineHandle, sinks: AttemptSinks | undefined): EngineHandle {
+  if (sinks === undefined) return engine;
+  return {
+    ...engine,
+    startAttempt: (context) => {
+      const teed: Record<string, (...args: never[]) => void> = {};
+      for (const [key, extra] of Object.entries(sinks) as [keyof AttemptSinks, (...args: never[]) => void][]) {
+        const own = context[key] as ((...args: never[]) => void) | undefined;
+        teed[key] = (...args) => {
+          own?.(...args);
+          extra(...args);
+        };
+      }
+      return engine.startAttempt!({ ...context, ...teed });
+    },
+  };
+}
+
 /**
- * Boots a web engine, starts one attempt, and builds the `browser` fixture
- * over it with a context that records no steps.
+ * Boots a web engine through the runner's public host (`openHost` from
+ * `e2e/runner`), starts one attempt, and hands back the attempt's real
+ * `browser` fixture beside the engine's own contract. The browser is
+ * `options.browser`, else the one `testBrowser()` names.
  */
 export async function startWebSession(options: WebSessionOptions = {}): Promise<WebSession> {
   const server = await startPageServer();
   const { origin } = server;
-  const engine = web(options.web ?? {});
-  const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-web-session-'));
+  const engine = web({ browser: options.browser ?? testBrowser(), ...options.web });
   const ownRoot = options.projectRoot === undefined ? mkdtempSync(path.join(tmpdir(), 'e2e-web-root-')) : undefined;
   const projectRoot = options.projectRoot ?? ownRoot!;
+  // The runner keeps output inside the project.
+  const output = mkdtempSync(path.join(projectRoot, '.e2e-session-'));
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const attached: string[] = [];
-  const site = options.site === undefined ? '127.0.0.1' : options.site;
-  let attemptId = 'attempt-1';
-  let attemptOpen = false;
+  type Fixtures = { browser: Browser };
+  let host: E2EHost<Fixtures> | undefined;
+  let attempt: E2ESession<Fixtures> | undefined;
+  let attemptCount = 0;
   let attemptController = new AbortController();
   let contentCount = 0;
-  let browser: Browser | undefined;
+
+  const live = (): E2ESession<Fixtures> => {
+    if (attempt === undefined) throw new Error('no attempt is open');
+    return attempt;
+  };
 
   const op = (budget = timeoutMs): OperationContext => ({
     signal: attemptController.signal,
     timeoutMs: budget,
-    runId: 'run-web-session',
-    attemptId,
+    runId: host?.runId ?? 'run-web-session',
+    attemptId: attempt?.attemptId ?? 'no-attempt',
     origin: 'test',
   });
 
-  const cleanup = () => ({ signal: new AbortController().signal, timeoutMs });
-
   const session: WebSession = {
     engine,
-    get browser() {
-      if (browser === undefined) throw new Error('no attempt is open');
-      return browser;
-    },
+    get browser() { return live().fixtures.browser; },
     origin,
-    artifactsDir,
+    get artifactsDir() { return live().artifactsDir; },
     projectRoot,
-    attached,
+    artifacts: () => live().steps().flatMap((step) => step.artifacts),
     op,
     serve: (pathname, body) => server.serve(pathname, body),
     async setContent(html) {
@@ -259,58 +321,45 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
       while (![...document.querySelectorAll('iframe')].every(loaded)) await new Promise((resolve) => setTimeout(resolve, 20));
       return null;
     }).then(() => undefined),
-    async startAttempt(id = `attempt-${String(Number(attemptId.split('-').at(-1) ?? '0') + 1)}`) {
-      if (attemptOpen) await session.endAttempt();
-      attemptId = id;
+    async startAttempt() {
+      if (attempt !== undefined) await session.endAttempt();
+      attemptCount += 1;
       attemptController = new AbortController();
-      await engine.startAttempt!({
-        attemptId,
-        artifactsDir,
-        signal: attemptController.signal,
-        resolveSecret: noSecrets,
-        ...ignoreTrace,
-        ...options.attempt,
-      });
-      attemptOpen = true;
-      browser = browserFixture(engine, {
-        baseUrl: origin,
-        ...(site === null ? {} : { site }),
-        timeoutMs,
-        signal: () => attemptController.signal,
-        attach: (relative) => attached.push(relative),
-      });
+      attempt = await host!.openSession({ name: `attempt ${String(attemptCount)}`, timeout: SESSION_DEADLINE_MS });
     },
     async endAttempt() {
-      if (!attemptOpen) return;
-      attemptOpen = false;
-      browser = undefined;
-      await engine.endAttempt!(cleanup());
+      const ending = attempt;
+      if (ending === undefined) return;
+      attempt = undefined;
+      attemptController.abort();
+      const failures = await ending.close();
+      if (failures.length > 0) throw new AggregateError(failures, `ending the attempt failed: ${failures.map((failure) => failure.message).join('; ')}`);
     },
     async close() {
-      try {
-        await session.endAttempt();
-        await engine.dispose!(cleanup());
-      } finally {
-        await server.close();
-        rmSync(artifactsDir, { recursive: true, force: true });
-        if (ownRoot !== undefined) rmSync(ownRoot, { recursive: true, force: true });
-      }
+      const ended = await session.endAttempt().then(() => undefined, (error: unknown) => error);
+      const failures = (await host?.close()) ?? [];
+      await server.close();
+      rmSync(output, { recursive: true, force: true });
+      if (ownRoot !== undefined) rmSync(ownRoot, { recursive: true, force: true });
+      if (ended !== undefined) throw ended;
+      if (failures.length > 0) throw new AggregateError(failures, `closing the host failed: ${failures.map((failure) => failure.message).join('; ')}`);
     },
   };
 
   try {
-    await engine.init!({
-      runId: 'run-web-session',
-      targetName: 'web',
-      projectRoot,
-      app: { ...options.app, ...(site === null ? {} : { site }) },
+    host = await openHost<Fixtures>({
+      cwd: projectRoot,
       env: {},
-      headed: false,
-      workerSlot: 0,
-      log: () => undefined,
-      signal: new AbortController().signal,
+      config: {
+        targets: [{ engine: withAttemptSinks(engine, options.attempt), app: { ...options.app, url: options.appUrl ?? origin } }],
+        timeout: SESSION_DEADLINE_MS,
+        actionTimeout: timeoutMs,
+        video: 'off',
+        output,
+        ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
+      },
     });
-    if (options.startAttempt !== false) await session.startAttempt('attempt-1');
+    if (options.startAttempt !== false) await session.startAttempt();
   } catch (cause) {
     await session.close().catch(() => undefined);
     throw cause;

@@ -44,7 +44,7 @@ describe('init scripts', () => {
 
   /** Boots one worker with `options` and runs `body` in one attempt with its `browser` fixture. */
   async function attempt(options: WebOptions, body: (browser: Browser, session: WebSession) => Promise<void>): Promise<void> {
-    const session = await startWebSession({ web: options, projectRoot });
+    const session = await startWebSession({ web: options, projectRoot, secrets: { key: 'init-script-key' } });
     try {
       for (const [pathname, html] of Object.entries(PAGES)) session.serve(pathname, html);
       await body(session.browser, session);

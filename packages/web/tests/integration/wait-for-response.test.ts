@@ -1,9 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { withTimeout } from 'e2e/engine';
 import type { Browser } from '../../src/browser.ts';
-import { browserFixture, startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /**
  * One origin with a body for every outcome `waitForResponse` reports: a full
@@ -70,21 +69,15 @@ describe('browser.waitForResponse bodies', () => {
   let server: Server;
   let origin: string;
   let browser: Browser;
-  let operationBudgetMs: number;
 
   beforeAll(async () => {
     ({ server, url: origin } = await startBodyServer());
-    session = await startWebSession({ site: null, startAttempt: false });
+    session = await startWebSession({ appUrl: origin, timeoutMs: 2_000, startAttempt: false });
   });
 
   beforeEach(async () => {
     await session.startAttempt();
-    operationBudgetMs = 2_000;
-    browser = browserFixture(session.engine, {
-      baseUrl: origin,
-      timeoutMs: 5_000,
-      operation: (timeoutMs = operationBudgetMs) => ({ signal: new AbortController().signal, timeoutMs, runId: 'responses', attemptId: 'responses', origin: 'test' }),
-    });
+    browser = session.browser;
   });
 
   afterEach(async () => {
@@ -103,10 +96,8 @@ describe('browser.waitForResponse bodies', () => {
    */
   async function observe(pathname: string, options?: { timeout: number }) {
     await session.open(`${origin}/`);
-    // The harness's step bound, as the fixture recorder applies it to every `browser` call.
-    const bound = options?.timeout ?? 2_000;
     const [response] = await Promise.all([
-      withTimeout(browser.waitForResponse(`**${pathname}`, options), bound, () => new Error(`step exceeded ${bound}ms`)),
+      browser.waitForResponse(`**${pathname}`, options),
       browser.evaluate(
         (url: string) => { void fetch(url).then((reply) => reply.text()).catch(() => undefined); return null; },
         `${origin}${pathname}`,
@@ -154,7 +145,8 @@ describe('browser.waitForResponse bodies', () => {
     await expect(response.json()).rejects.toMatchObject({ code: 'ACTION_FAILED' });
   });
 
-  it('matches on headers inside its timeout and lets text() wait for a slower body', async () => {
+  it('matches on headers inside its timeout and lets text() wait for a slower body', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: Firefox sends network.responseStarted only once the body starts, not when the headers arrive');
     const response = await observe('/api/slow', { timeout: 500 });
     expect(response.status).toBe(200);
     await expect(response.text()).resolves.toBe('slow-body');
@@ -163,10 +155,9 @@ describe('browser.waitForResponse bodies', () => {
   it('rejects reading a body that never finishes once the action budget runs out', async () => {
     const response = await observe('/api/endless', { timeout: 500 });
     expect(response.status).toBe(200);
-    operationBudgetMs = 300;
     await expect(response.text()).rejects.toMatchObject({
       code: 'ACTION_FAILED',
-      message: 'waitForResponse: response body did not finish within 300ms',
+      message: 'waitForResponse: response body did not finish within 2000ms',
     });
   });
 

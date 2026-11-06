@@ -101,7 +101,7 @@ jobs:
         uses: ./.github/actions/chromium
         with:
           only-shell: false
-      # The web engine's locator parity suite runs on Firefox too.
+      # @e2e-dev/web's integration suite, locator parity included, runs on Firefox too.
       - name: Install Firefox
         run: node packages/web/dist/bin.js install firefox --with-deps
       - name: Unit and integration tests

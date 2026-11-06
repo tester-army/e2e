@@ -9,7 +9,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { WebMedia, WebOptions } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /** What the media page shows: its paragraph's computed style, what `matchMedia` reports now, and what its head script read before first paint. */
 interface MediaReading {
@@ -80,7 +80,8 @@ describe('media emulation', () => {
     }
   });
 
-  it('leaves the browser\'s own media when none is configured', async () => {
+  it('leaves the browser\'s own media when none is configured', async ({ skip }) => {
+    skip(onFirefox && process.platform === 'darwin', 'Firefox limit: headless Firefox follows the host\'s color scheme, which macOS may set to dark');
     const engine = await boot({});
     try {
       expect(await openMedia(engine)).toEqual(loadedWith({ dark: false, reduce: false }));
@@ -89,7 +90,8 @@ describe('media emulation', () => {
     }
   });
 
-  it('emulates media set before the first navigation from first paint, and holds a change for the rest of the attempt', async () => {
+  it('emulates media set before the first navigation from first paint, and holds a change for the rest of the attempt', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: browser.emulateMedia({ reducedMotion }) is UNSUPPORTED_CAPABILITY, BiDi overrides only the color scheme');
     const engine = await boot({ colorScheme: 'dark' });
     const { browser } = engine;
     try {
@@ -110,7 +112,8 @@ describe('media emulation', () => {
     }
   });
 
-  it('gives a tab the app opens itself a test\'s change as it appears and later', async () => {
+  it('gives a tab the app opens itself a test\'s change as it appears and later', async ({ skip }) => {
+    skip(onFirefox, 'Firefox limit: browser.emulateMedia({ reducedMotion }) is UNSUPPORTED_CAPABILITY, BiDi overrides only the color scheme');
     const engine = await boot({ colorScheme: 'dark' });
     try {
       await engine.browser.emulateMedia({ colorScheme: 'light' });
@@ -142,8 +145,7 @@ describe('media emulation', () => {
     const engine = await boot({ colorScheme: 'dark' });
     const { browser } = engine;
     const refused = (message: string) => expect.objectContaining({ code: 'INVALID_ARGUMENT', message });
-    // The harness records every fixture call as a step, so a refusal thrown before the call's promise is a rejection all the same.
-    const emulate = (media: WebMedia) => Promise.resolve().then(() => browser.emulateMedia(media));
+    const emulate = (media: WebMedia) => browser.emulateMedia(media);
     try {
       await expect(emulate({ colorScheme: 'sepia' } as unknown as WebMedia)).rejects.toThrow(
         refused('browser.emulateMedia({ colorScheme }) must be "light", "dark", or "no-preference", got "sepia"'),

@@ -12,7 +12,6 @@ describe('browser.clearCookies', () => {
   let session: WebSession;
   let origin: string;
   let browser: Browser;
-  const page = { evaluate: <T,>(fn: () => T) => browser.evaluate(fn as never) as Promise<T> };
 
   beforeAll(async () => {
     session = await startWebSession({ startAttempt: false });
@@ -55,20 +54,19 @@ describe('browser.clearCookies', () => {
   });
 
   it('clears every cookie without options and keeps page storage', async () => {
-    await page.evaluate(() => {
+    await browser.evaluate(() => {
       localStorage.setItem('preference', 'kept');
       sessionStorage.setItem('tab', 'kept');
       return null;
     });
     await browser.clearCookies();
     expect(await remaining()).toEqual([]);
-    expect(await page.evaluate(() => [localStorage.getItem('preference'), sessionStorage.getItem('tab')])).toEqual(['kept', 'kept']);
+    expect(await browser.evaluate(() => [localStorage.getItem('preference'), sessionStorage.getItem('tab')])).toEqual(['kept', 'kept']);
   });
 
   it('refuses an unknown filter and a value that is not a string or RegExp, clearing nothing', async () => {
     const refused = expect.objectContaining({ code: 'INVALID_ARGUMENT' });
-    // The harness records each fixture call as a step, so a refusal thrown before the call's promise is a rejection all the same.
-    const clear = (filter: unknown) => Promise.resolve().then(() => browser.clearCookies(filter as CookieFilter));
+    const clear = (filter: unknown) => browser.clearCookies(filter as CookieFilter);
     await expect(clear({ url: origin })).rejects.toThrow(refused);
     await expect(clear({ name: 1 })).rejects.toThrow(refused);
     expect(await remaining()).toHaveLength(4);

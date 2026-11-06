@@ -6,6 +6,7 @@
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { WebRoute } from '../../src/browser.ts';
+import { decodePng } from '../helpers/png.ts';
 import { startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 let session: WebSession;
@@ -62,13 +63,19 @@ describe('a frame whose navigation is held', () => {
 
   it('masks a secure field the parent wrote into the initial document', async () => {
     await pageWithHeldFrame();
-    await session.browser.evaluate(() => {
-      document.querySelector('iframe')!.contentDocument!.body.innerHTML = '<input type="password" value="hunter2">';
-      return null;
+    const center = await session.browser.evaluate(() => {
+      const frame = document.querySelector('iframe')!;
+      frame.contentDocument!.body.innerHTML = '<input type="password" value="hunter2" style="background:red;border:0;width:60px;height:20px">';
+      const outer = frame.getBoundingClientRect();
+      const inner = frame.contentDocument!.querySelector('input')!.getBoundingClientRect();
+      return { x: Math.round(outer.left + frame.clientLeft + inner.left + inner.width / 2), y: Math.round(outer.top + frame.clientTop + inner.top + inner.height / 2) };
     });
     const snapshot = await observeWithPixels();
-    expect(snapshot.pixels).toBeDefined();
     expect(snapshot.maskedRegionCount).toBe(1);
+    const image = decodePng(snapshot.pixels!.data);
+    // The field's own red never shows: the mask covers it, at its place inside the uncommitted frame.
+    expect(image.pixelAt(center.x, center.y)).toEqual([0, 0, 0, 255]);
+    expect(image.pixelAt(300, 5)).toEqual([255, 255, 255, 255]);
   });
 
   it('captures past a sandboxed frame no script can reach', async () => {

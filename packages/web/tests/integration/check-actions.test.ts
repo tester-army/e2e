@@ -53,94 +53,92 @@ async function perform(target: Target, action: LocatorAction): Promise<Error | u
   }
 }
 
-/** The page, read through the fixture. */
-const page = {
-  setContent: (html: string) => session.setContent(html),
-  goto: (url: string) => session.open(url),
-  evaluate: <T,>(fn: () => T) => session.browser.evaluate(fn as never) as Promise<T>,
-  textContent: (selector: string) => session.browser.evaluate((target: string) => document.querySelector(target)?.textContent ?? null, selector),
-  isChecked: (selector: string) => session.browser.evaluate((target: string) => document.querySelector<HTMLInputElement>(target)!.checked, selector),
-  getAttribute: (selector: string, name: string) => session.browser.evaluate(
+/** The text of the first element `selector` matches. */
+function textOf(selector: string): Promise<string | null> {
+  return session.browser.evaluate((target: string) => document.querySelector(target)?.textContent ?? null, selector);
+}
+
+/** Whether the input `selector` matches is checked. */
+function isChecked(selector: string): Promise<boolean> {
+  return session.browser.evaluate((target: string) => document.querySelector<HTMLInputElement>(target)!.checked, selector);
+}
+
+/** The attribute `name` of the first element `selector` matches. */
+function attributeOf(selector: string, name: string): Promise<string | null> {
+  return session.browser.evaluate(
     ({ target, attribute }: { target: string; attribute: string }) => document.querySelector(target)!.getAttribute(attribute),
     { target: selector, attribute: name },
-  ),
-  waitForURL: async (url: string) => {
-    const deadline = Date.now() + 5_000;
-    while (await session.browser.url() !== url) {
-      if (Date.now() > deadline) throw new Error(`never reached ${url}`);
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-  },
-};
+  );
+}
 
 /** Clicks the page saw, counted in the page. */
 function clicks(): Promise<number> {
-  return page.evaluate(() => (window as unknown as { clicks: number }).clicks);
+  return session.browser.evaluate(() => (window as unknown as { clicks: number }).clicks);
 }
 
 const COUNT_CLICKS = '<script>window.clicks = 0; document.addEventListener("click", () => window.clicks++, true)</script>';
 
 describe.each(KINDS)('for the %s', (kind) => {
   it('checks a radio the app replaces with its selected view', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <div id="plan"><label><input type="radio" name="plan" id="pro"
         onchange="document.getElementById('plan').innerHTML = '<p>Pro selected</p>'">Pro</label></div>`);
     expect(await perform(await targetOf(kind, '#pro'), { kind: 'check' })).toBeUndefined();
-    expect(await page.textContent('#plan')).toBe('Pro selected');
+    expect(await textOf('#plan')).toBe('Pro selected');
   });
 
   it('leaves what replaced the control to the next read, even an unchecked copy', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <div id="terms"><label><input type="checkbox" id="box"
         onchange="document.getElementById('terms').innerHTML = '<label><input type=checkbox id=box>Agree</label>'">Agree</label></div>`);
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toBeUndefined();
-    expect(await page.isChecked('#box')).toBe(false);
+    expect(await isChecked('#box')).toBe(false);
   });
 
   it('checks a radio that navigates on change', async () => {
-    await page.goto(`${origin}/`);
+    await session.open(`${origin}/`);
     expect(await perform(await targetOf(kind, '#pro'), { kind: 'check' })).toBeUndefined();
-    await page.waitForURL(`${origin}/next`);
+    await session.browser.waitForURL(`${origin}/next`);
   });
 
   it('checks and unchecks a checkbox, and clicks nothing already in the wanted state', async () => {
-    await page.setContent(`${COUNT_CLICKS}<label><input type="checkbox" id="box">Notify</label>`);
+    await session.setContent(`${COUNT_CLICKS}<label><input type="checkbox" id="box">Notify</label>`);
     const target = await targetOf(kind, '#box');
     expect(await perform(target, { kind: 'check' })).toBeUndefined();
     expect(await perform(target, { kind: 'check' })).toBeUndefined();
-    expect(await page.isChecked('#box')).toBe(true);
+    expect(await isChecked('#box')).toBe(true);
     expect(await perform(target, { kind: 'uncheck' })).toBeUndefined();
-    expect(await page.isChecked('#box')).toBe(false);
+    expect(await isChecked('#box')).toBe(false);
     expect(await clicks()).toBe(2);
   });
 
   it('checks an ARIA checkbox', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <div role="checkbox" id="box" aria-checked="false" tabindex="0"
         onclick="this.setAttribute('aria-checked', String(this.getAttribute('aria-checked') !== 'true'))">Notify</div>`);
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toBeUndefined();
-    expect(await page.getAttribute('#box', 'aria-checked')).toBe('true');
+    expect(await attributeOf('#box', 'aria-checked')).toBe('true');
   });
 
   it('waits for a controlled checkbox that commits its state after a timer', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <label><input type="checkbox" id="box"
         onclick="const box = this; const next = box.checked; event.preventDefault();
           setTimeout(() => { box.checked = next; }, 300)">Notify</label>`);
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toBeUndefined();
-    expect(await page.isChecked('#box')).toBe(true);
+    expect(await isChecked('#box')).toBe(true);
   });
 
   it('waits for a switch whose aria-checked flips after a timer', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <button role="switch" id="toggle" aria-checked="true"
         onclick="setTimeout(() => this.setAttribute('aria-checked', String(this.getAttribute('aria-checked') !== 'true')), 300)">Wi-Fi</button>`);
     expect(await perform(await targetOf(kind, '#toggle'), { kind: 'uncheck' })).toBeUndefined();
-    expect(await page.getAttribute('#toggle', 'aria-checked')).toBe('false');
+    expect(await attributeOf('#toggle', 'aria-checked')).toBe('false');
   });
 
   it('fails a rejected click on a control a later re-render replaces', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <div id="terms"><label><input type="checkbox" id="box" onclick="event.preventDefault();
         setTimeout(() => { document.getElementById('terms').innerHTML = '<label><input type=checkbox id=box>Agree</label>'; }, 300)">Agree</label></div>`);
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toMatchObject({
@@ -150,7 +148,7 @@ describe.each(KINDS)('for the %s', (kind) => {
   });
 
   it('fails a click that left the control as it was', async () => {
-    await page.setContent('<label><input type="checkbox" id="box" onclick="event.preventDefault()">Locked</label>');
+    await session.setContent('<label><input type="checkbox" id="box" onclick="event.preventDefault()">Locked</label>');
     expect(await perform(await targetOf(kind, '#box'), { kind: 'check' })).toMatchObject({
       code: 'NOT_ACTIONABLE',
       message: 'check clicked the control but its checked state did not change',
@@ -158,21 +156,21 @@ describe.each(KINDS)('for the %s', (kind) => {
   });
 
   it('refuses to uncheck a radio without clicking it', async () => {
-    await page.setContent(`${COUNT_CLICKS}<label><input type="radio" name="plan" id="pro" checked>Pro</label>`);
+    await session.setContent(`${COUNT_CLICKS}<label><input type="radio" name="plan" id="pro" checked>Pro</label>`);
     expect(await perform(await targetOf(kind, '#pro'), { kind: 'uncheck' })).toMatchObject({ code: 'NOT_ACTIONABLE' });
     expect(await clicks()).toBe(0);
   });
 
   it('unchecks an ARIA radio by clicking it, leaving the radio behavior to its script', async () => {
-    await page.setContent(`
+    await session.setContent(`
       <div role="radio" id="pro" aria-checked="true" tabindex="0"
         onclick="this.setAttribute('aria-checked', 'false')">Pro</div>`);
     expect(await perform(await targetOf(kind, '#pro'), { kind: 'uncheck' })).toBeUndefined();
-    expect(await page.getAttribute('#pro', 'aria-checked')).toBe('false');
+    expect(await attributeOf('#pro', 'aria-checked')).toBe('false');
   });
 
   it('fails an ARIA radio whose click keeps it checked, naming the radio group', async () => {
-    await page.setContent('<div role="radio" id="pro" aria-checked="true" tabindex="0">Pro</div>');
+    await session.setContent('<div role="radio" id="pro" aria-checked="true" tabindex="0">Pro</div>');
     expect(await perform(await targetOf(kind, '#pro'), { kind: 'uncheck' })).toMatchObject({
       code: 'NOT_ACTIONABLE',
       message: expect.stringContaining('another radio in its group'),
@@ -180,16 +178,16 @@ describe.each(KINDS)('for the %s', (kind) => {
   });
 
   it('refuses a control that cannot be checked', async () => {
-    await page.setContent('<button id="go">Go</button>');
+    await session.setContent('<button id="go">Go</button>');
     expect(await perform(await targetOf(kind, '#go'), { kind: 'check' })).toMatchObject({ code: 'NOT_ACTIONABLE' });
   });
 });
 
 describe('a control gone before the click', () => {
   it('stays a retryable stale node: nothing was dispatched', async () => {
-    await page.setContent('<label><input type="checkbox" id="box">Notify</label>');
+    await session.setContent('<label><input type="checkbox" id="box">Notify</label>');
     const target = await targetOf('agent', '#box');
-    await page.evaluate(() => { document.getElementById('box')!.remove(); return null; });
+    await session.browser.evaluate(() => { document.getElementById('box')!.remove(); return null; });
     expect(await perform(target, { kind: 'check' })).toMatchObject({ code: 'NODE_STALE', retryable: true });
   });
 });

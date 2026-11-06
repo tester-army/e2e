@@ -47,12 +47,12 @@ describe('document readers', () => {
     const declarations = recordCalls(true);
     const page = await startWebSession();
     sessions.push(page);
-    declarations.length = 0;
-    // Opening the page reads its tree first, which installs the readers.
     await page.setContent('<button data-testid="go">Go</button>');
-    const installs = declarations.filter((declaration) => declaration === readerInstallCall('tree'));
+    declarations.length = 0;
+    expect(await page.locate(byTestId('go'))).toHaveLength(1);
+    const installs = declarations.filter((declaration) => declaration === readerInstallCall('locate'));
     expect(installs).toHaveLength(1);
-    expect(declarations.indexOf(readerCall('tree'))).toBeLessThan(declarations.indexOf(installs[0]!));
+    expect(declarations.indexOf(readerCall('locate'))).toBeLessThan(declarations.indexOf(installs[0]!));
     declarations.length = 0;
     expect(await page.locate(byTestId('go'))).toHaveLength(1);
     expect(declarations).toEqual([readerCall('locate')]);
@@ -82,14 +82,20 @@ describe('document readers', () => {
     const declarations = recordCalls(false);
     const page = await startWebSession();
     sessions.push(page);
+    let releaseCover!: () => void;
+    const coverHeld = new Promise<void>((resolve) => { releaseCover = resolve; });
+    page.serve('/cover-gone', (_request, response) => { void coverHeld.then(() => response.end('gone')); });
     await page.setContent(`
       <div data-testid="feed" style="height: 200px; overflow: auto"><div style="height: 2000px">rows</div></div>
       <div id="cover" style="position: fixed; inset: 0; background: white"></div>
-      <script>setTimeout(() => document.getElementById('cover').remove(), 300);</script>`);
+      <script>fetch('/cover-gone').then(() => document.getElementById('cover').remove());</script>`);
     const [feed] = await page.locate(byTestId('feed'));
     declarations.length = 0;
-    await page.engine.perform!(feed!.ref, { kind: 'swipe', direction: 'down' }, page.op());
-    expect(declarations.some((declaration) => declaration.includes('actionPoint'))).toBe(true);
+    const wheeled = page.engine.perform!(feed!.ref, { kind: 'swipe', direction: 'down' }, page.op());
+    // The cover stays until the wheel is waiting on it, so the wait is what this sees.
+    await expect.poll(() => declarations.some((declaration) => declaration.includes('actionPoint'))).toBe(true);
+    releaseCover();
+    await wheeled;
     await expect.poll(() => page.browser.evaluate(() => document.querySelector('[data-testid="feed"]')!.scrollTop)).toBe(100);
   });
 });

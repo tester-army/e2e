@@ -16,7 +16,7 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TestError } from 'e2e/engine';
 import type { Browser, WebRoute } from '../../src/browser.ts';
-import { browserFixture, startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { browserFixture, itFailsOnFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 interface Echo {
   readonly path: string;
@@ -85,21 +85,6 @@ describe('browser.route decisions', () => {
   let origin: string;
   let otherSite: string;
   let browser: Browser;
-  let attached: string[];
-  /** The page, through the fixture's `evaluate`. */
-  const page = {
-    evaluate: <A,>(fn: (arg: A) => unknown, arg: A) => browser.evaluate(fn as never, arg as never) as Promise<never>,
-  };
-
-  /** The harness's navigation rule: relative to the base, only http(s) and the exact `about:blank` admitted. */
-  const resolveUrl = (url: string): string => {
-    const resolved = new URL(url, `${origin}/`);
-    if (!['http:', 'https:'].includes(resolved.protocol) && resolved.href !== 'about:blank') {
-      throw new TestError('POLICY_DENIED', `forbidden URL scheme: ${resolved.protocol}`);
-    }
-    return resolved.href;
-  };
-
   beforeAll(async () => {
     const started = await startCountingServer(hits);
     server = started.server;
@@ -107,15 +92,14 @@ describe('browser.route decisions', () => {
     // The same server under another host name: `localhost` is a site of its own.
     otherSite = `http://localhost:${started.port}`;
     writeFileSync(path.join(projectRoot, 'quote.json'), '{"cents":4200}\n');
-    session = await startWebSession({ web: { headers: { 'X-Gate': 'open-sesame' } }, timeoutMs: 5_000, startAttempt: false, projectRoot });
+    session = await startWebSession({ web: { headers: { 'X-Gate': 'open-sesame' } }, appUrl: origin, timeoutMs: 5_000, startAttempt: false, projectRoot });
   });
 
   beforeEach(async () => {
     hits.clear();
     await session.startAttempt();
-    attached = [];
     await session.open(`${origin}/`);
-    browser = browserFixture(session.engine, { baseUrl: origin, site: '127.0.0.1', timeoutMs: 5_000, resolveUrl, attach: (relative) => attached.push(relative) });
+    browser = session.browser;
   });
 
   afterEach(async () => {
@@ -131,23 +115,23 @@ describe('browser.route decisions', () => {
 
   /** Fetches `url` from the page; a failed fetch reads as `failed`. */
   const fetchText = (url: string): Promise<string> =>
-    page.evaluate((target) => fetch(target).then((reply) => reply.text(), () => 'failed'), url);
+    browser.evaluate((target) => fetch(target).then((reply) => reply.text(), () => 'failed'), url);
 
   /** Fetches `url` from the page and returns its response headers and body. */
   const fetchReply = (url: string): Promise<{ contentType: string | null; body: string }> =>
-    page.evaluate(async (target) => {
+    browser.evaluate(async (target) => {
       const reply = await fetch(target);
       return { contentType: reply.headers.get('content-type'), body: await reply.text() };
     }, url);
 
   /** Fetches `url` from the page and returns its body bytes. */
   const fetchBytes = async (url: string): Promise<number[]> =>
-    page.evaluate((target) => fetch(target).then(async (reply) => [...new Uint8Array(await reply.arrayBuffer())]), url);
+    browser.evaluate((target) => fetch(target).then(async (reply) => [...new Uint8Array(await reply.arrayBuffer())]), url);
 
   /** Fetches `url` from the page and parses what `/echo` received. */
   const fetchEcho = async (url: string, init?: { method: string; body: string }): Promise<Echo> =>
     JSON.parse(
-      await page.evaluate(([target, options]) => fetch(target!, options ?? undefined).then((reply) => reply.text()), [url, init ?? null] as const),
+      await browser.evaluate(([target, options]) => fetch(target!, options ?? undefined).then((reply) => reply.text()), [url, init ?? null] as const),
     ) as Echo;
 
   /** Calls a decision the way a JavaScript caller can: any argument, typed or not. */
@@ -168,7 +152,7 @@ describe('browser.route decisions', () => {
       expect(JSON.parse(await upstream.text())).toEqual(echo);
       await route.fulfill({ json: { ...echo, amended: true } });
     });
-    expect(await page.evaluate(async url => (await fetch(url)).json(), `${origin}/echo`)).toMatchObject({ amended: true });
+    expect(await browser.evaluate(async url => (await fetch(url)).json(), `${origin}/echo`)).toMatchObject({ amended: true });
     expect(hits.get('/echo')).toBe(1);
   });
 
@@ -189,7 +173,6 @@ describe('browser.route decisions', () => {
     const recording = browserFixture(session.engine, {
       baseUrl: origin,
       site: '127.0.0.1',
-      resolveUrl,
       operation: (timeoutMs?: number) => {
         asked.push(timeoutMs);
         return { signal: new AbortController().signal, timeoutMs: Math.min(timeoutMs ?? 5_000, 5_000), runId: 'routes', attemptId: 'routes', origin: 'test' };
@@ -209,26 +192,25 @@ describe('browser.route decisions', () => {
 
   it('rejects an invalid download count before running the trigger', async () => {
     let calls = 0;
-    // The harness records each fixture call as a step, so a refusal thrown before the call's promise is a rejection all the same.
-    await expect(Promise.resolve().then(() => browser.waitForDownloads(async () => { calls += 1; }, { count: 0 }))).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
+    await expect(browser.waitForDownloads(async () => { calls += 1; }, { count: 0 })).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
     expect(calls).toBe(0);
   });
 
   it('fails a multi-download wait whose trigger starts too few downloads', async () => {
     await expect(browser.waitForDownloads(async () => undefined, { count: 2, timeout: 30 })).rejects.toMatchObject({
-      code: 'ACTION_FAILED', message: expect.stringContaining('2 downloads'),
+      code: 'ACTION_FAILED', message: expect.stringContaining('0 of 2 downloads started within 30ms; the trigger resolved after'),
     });
   });
 
   it.each(['waitForDownload', 'waitForDownloads'] as const)('%s bounds saving a download whose HTTP body never finishes', async (method) => {
-    await page.evaluate(() => {
+    await browser.evaluate(() => {
       const link = document.createElement('a');
       link.href = '/stream-download';
       link.textContent = 'Stream';
       document.body.append(link);
       return null;
     }, null);
-    const trigger = async () => { await page.evaluate(() => { document.querySelector<HTMLAnchorElement>('a')!.click(); return null; }, null); };
+    const trigger = async () => { await browser.evaluate(() => { document.querySelector<HTMLAnchorElement>('a')!.click(); return null; }, null); };
     const work = method === 'waitForDownload'
       ? browser.waitForDownload(trigger, { timeout: 500 })
       : browser.waitForDownloads(trigger, { count: 1, timeout: 500 });
@@ -247,7 +229,7 @@ describe('browser.route decisions', () => {
   });
 
   it.each(['waitForDownload', 'waitForDownloads'] as const)('%s fails and keeps nothing while its trigger is still pending', async (method) => {
-    await page.evaluate(() => {
+    await browser.evaluate(() => {
       const link = document.createElement('a');
       link.href = '/stream-download';
       link.textContent = 'Pending';
@@ -257,7 +239,7 @@ describe('browser.route decisions', () => {
     let release!: () => void;
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const trigger = async (): Promise<void> => {
-      await page.evaluate(() => { document.querySelector<HTMLAnchorElement>('a')!.click(); return null; }, null);
+      await browser.evaluate(() => { document.querySelector<HTMLAnchorElement>('a')!.click(); return null; }, null);
       await pending;
     };
     const work = method === 'waitForDownload'
@@ -269,10 +251,11 @@ describe('browser.route decisions', () => {
         work.then(() => 'completed', (cause: unknown) => cause),
         new Promise((resolve) => { timer = setTimeout(() => resolve('still pending'), 1500); }),
       ]);
-      expect(result).toMatchObject({ code: 'ACTION_FAILED' });
+      // BiDi has no command that cancels a download, so the one the link started keeps streaming until the server closes it.
+      expect(result).toMatchObject({ code: 'ACTION_FAILED', message: 'the download trigger did not resolve within 500ms' });
       release();
       await work.catch(() => undefined);
-      expect(attached).toEqual([]);
+      expect(session.artifacts()).toEqual([]);
     } finally {
       clearTimeout(timer);
       release();
@@ -366,7 +349,7 @@ describe('browser.route decisions', () => {
   ])('continue drops a header set to undefined on %s', async (_name, target) => {
     await browser.route(`**${target}`, (route) =>
       route.continue({ headers: { ...route.request.headers, 'x-drop': undefined, 'x-keep': 'yes' } }));
-    const echo = JSON.parse(await page.evaluate(
+    const echo = JSON.parse(await browser.evaluate(
       (url) => fetch(url, { headers: { 'x-drop': 'a' } }).then((reply) => reply.text()),
       `${origin}${target}`,
     )) as Echo;
@@ -376,7 +359,8 @@ describe('browser.route decisions', () => {
     expect(echo.headers['x-gate']).toBe('open-sesame');
   });
 
-  it('continue sends a rewritten url, method, and body without touching the original', async () => {
+  // Firefox bug: after route.continue({ url }) the request reaches the new URL and BiDi reports responseCompleted, but the page's fetch never resolves.
+  itFailsOnFirefox('continue sends a rewritten url, method, and body without touching the original', async () => {
     await browser.route('**/api/quote', (route) =>
       route.continue({ url: '/echo', method: 'PUT', postData: 'payload' }));
     const echo = await fetchEcho(`${origin}/api/quote`, { method: 'POST', body: 'original' });
@@ -386,7 +370,8 @@ describe('browser.route decisions', () => {
     expect(hits.get('/echo')).toBe(1);
   });
 
-  it('continue to another site leaves the site header behind', async () => {
+  // Firefox bug: after route.continue({ url }) the request reaches the new URL and BiDi reports responseCompleted, but the page's fetch never resolves.
+  itFailsOnFirefox('continue to another site leaves the site header behind', async () => {
     await browser.route('**/api/quote', (route) => route.continue({ url: `${otherSite}/echo` }));
     const echo = await fetchEcho(`${origin}/api/quote`);
     expect(echo.headers.host).toBe(`localhost:${new URL(origin).port}`);

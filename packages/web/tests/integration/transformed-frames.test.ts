@@ -6,7 +6,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { LocatorExpression } from 'e2e/engine';
-import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { itFailsOnFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 /** Escapes HTML for a double-quoted attribute value, so a document can carry a nested `srcdoc`. */
 function attribute(html: string): string {
@@ -50,7 +50,8 @@ describe('taps in turned frames', () => {
     await tapThrough(['#outer', '#inner']);
   });
 
-  it('taps through a turned frame inside a cross-origin frame', async () => {
+  // Firefox bug: the tap lands outside the turned frame once a cross-origin frame holds it (NOT_ACTIONABLE, the click reached no event in the element's document).
+  itFailsOnFirefox('taps through a turned frame inside a cross-origin frame', async () => {
     const target = page.serve('/turned-target', TARGET);
     const middle = page.serve('/turned-middle', `<style>body { margin: 0 }</style><iframe id="inner" style="${FRAME_STYLE}" src="${target}"></iframe>`);
     const crossOrigin = middle.replace('127.0.0.1', 'localhost');

@@ -11,7 +11,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { describe, expect, it } from 'vitest';
 import type { AppLogEntry, EngineSnapshot } from 'e2e/engine';
-import { startWebSession, type WebSession, type WebSessionOptions } from '../helpers/web-session.ts';
+import { startWebSession, testBrowser, type WebSession, type WebSessionOptions } from '../helpers/web-session.ts';
 
 const PAGE = `<!doctype html><html><body><h1>Todos</h1><script>
   console.log('ready');
@@ -80,7 +80,7 @@ describe('app log', () => {
         { source: 'network', level: 'error', text: `GET ${url}/api/todos 500 Internal Server Error` },
         { source: 'network', level: 'warning', text: `GET ${url}/api/missing 404 Not Found` },
         { source: 'error', level: 'error', text: expect.stringMatching(/^RangeError: render loop exceeded/) },
-        { source: 'network', level: 'error', text: expect.stringMatching(new RegExp(`^GET ${url}/api/reset net::ERR_`)) },
+        { source: 'network', level: 'error', text: expect.stringMatching(new RegExp(`^GET ${url}/api/reset (net::ERR_|NS_ERROR_)`)) },
       ]));
       expect(entries).toHaveLength(7);
       expect(entries.some((entry) => entry.text.startsWith('Failed to load resource'))).toBe(false);
@@ -121,7 +121,7 @@ describe('app log', () => {
       expect(navigations().some((text) => text.includes('/moving'))).toBe(false);
       expect(navigations().some((text) => text.startsWith('the new tab navigated'))).toBe(false);
       await expect.poll(() => facts.length, { timeout: 5_000 }).toBe(1);
-      expect(facts[0]).toEqual({ browser: expect.stringMatching(/^chromium \S+$/), driver: 'webdriver-bidi' });
+      expect(facts[0]).toEqual({ browser: expect.stringMatching(new RegExp(`^${testBrowser()} \\S+$`)), driver: 'webdriver-bidi' });
     } finally {
       await session.close();
     }
@@ -166,7 +166,7 @@ describe('app log', () => {
     const facts: Record<string, string>[] = [];
     const session = await boot({ environment: (told) => facts.push({ ...told }) });
     try {
-      expect(facts[0]?.['browser']).toMatch(/^chromium \d+\./);
+      expect(facts[0]?.['browser']).toMatch(new RegExp(`^${testBrowser()} \\d+\\.`));
     } finally {
       await session.close();
     }

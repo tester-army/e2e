@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { onFirefox, startWebSession, type WebSession } from '../helpers/web-session.ts';
 
 describe('navigations that turn into downloads', () => {
   let page: WebSession;
@@ -39,7 +39,7 @@ describe('navigations that turn into downloads', () => {
     });
     const started = Date.now();
     const failure = await page.browser.goto(empty).catch((caught: unknown) => caught);
-    expect((failure as Error).message).toContain('net::ERR_ABORTED');
+    expect((failure as Error).message).toContain(onFirefox ? 'NS_BINDING_ABORTED' : 'net::ERR_ABORTED');
     expect(Date.now() - started).toBeLessThan(1_000);
   });
 });
