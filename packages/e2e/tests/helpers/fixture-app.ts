@@ -15,6 +15,7 @@ import { HOME_PAGES } from './fixture-pages/home.ts';
 import { LIVE_PAGES } from './fixture-pages/live.ts';
 import type { FixtureState, PageRenderer } from './fixture-pages/page.ts';
 import { RECORD_PAGES, renderCompany, renderRecord } from './fixture-pages/records.ts';
+import { SCROLL_PAGES } from './fixture-pages/scroll.ts';
 
 export interface FixtureApp {
   readonly url: string;
@@ -36,6 +37,7 @@ const ROUTES: Record<string, PageRenderer> = {
   ...GESTURE_PAGES,
   ...LIVE_PAGES,
   ...RECORD_PAGES,
+  ...SCROLL_PAGES,
 };
 
 /** Pages whose path carries an id or a name. */
