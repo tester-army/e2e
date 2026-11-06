@@ -10,6 +10,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type {
+  EngineAppInfo,
   EngineAttemptContext,
   EngineFixtureContext,
   EngineHandle,
@@ -32,8 +33,10 @@ export type PageHandler = (request: IncomingMessage, response: ServerResponse) =
 export interface WebSessionOptions {
   /** The `web()` options. */
   readonly web?: WebOptions;
-  /** The site the app declares; defaults to the page server's host. */
+  /** The site the app declares; defaults to the page server's host, `null` for none. */
   readonly site?: string | null;
+  /** App fields beside the site, such as the permissions it holds. */
+  readonly app?: Omit<EngineAppInfo, 'site'>;
   /** The per-operation budget; defaults to 30 s. */
   readonly timeoutMs?: number;
   /** Fields of the attempt context beside the defaults: secrets, trace sinks. */
@@ -271,7 +274,7 @@ export async function startWebSession(options: WebSessionOptions = {}): Promise<
       runId: 'run-web-session',
       targetName: 'web',
       projectRoot,
-      app: site === null ? {} : { site },
+      app: { ...options.app, ...(site === null ? {} : { site }) },
       env: {},
       headed: false,
       workerSlot: 0,
