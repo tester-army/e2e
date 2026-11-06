@@ -70,6 +70,20 @@ describe('checked and selected', () => {
     expect(await page.getByRole('option').allTextContents()).toEqual(['Visible', 'Disabled', 'No visibility', 'Restored']);
   });
 
+  it('lists a checkbox or radio its own label draws over no box as shown, with its checked state', async () => {
+    await page.setContent(`
+      <style>.shrunk { opacity: 0; width: 0; height: 0; margin: 0; position: absolute }</style>
+      <label><input class="shrunk" type="checkbox" data-testid="agree" checked>Agree</label>
+      <label><input class="shrunk" type="radio" data-testid="large">Large</label>
+      <input class="shrunk" type="checkbox" id="unlabelled" data-testid="hidden-label"><label for="unlabelled" style="display:none">Gone</label>
+    `);
+    const nodes = await captureByTestId();
+    expect(nodes.get('agree')).toMatchObject({ role: 'checkbox', name: 'Agree', states: { checked: true } });
+    expect(nodes.get('large')).toMatchObject({ role: 'radio', name: 'Large', states: { checked: false } });
+    for (const id of ['agree', 'large']) expect(nodes.get(id)?.states?.hidden).not.toBe(true);
+    expect(nodes.has('hidden-label')).toBe(false);
+  });
+
   it('applies the option limit to offered choices after hidden options are excluded', async () => {
     await page.setContent(`<select aria-label="Many choices">${'<option hidden>Excluded</option>'.repeat(60)}${Array.from({ length: 61 }, (_, index) => `<option data-testid="choice-${index}">Choice ${index}</option>`).join('')}</select>`);
     const nodes = await captureByTestId();
