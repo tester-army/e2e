@@ -27,8 +27,9 @@ import { releaseQuietly, unlessStale } from './errors.ts';
 import type { NodeTarget } from './frames.ts';
 import { invert, project } from './projection.ts';
 import { stillLocated } from './observe.ts';
-import { clickSources, dragPath, dragSources, dragStepMs, mouse, moveSources, typeSource, wheelSources, type ClickOptions } from './input.ts';
-import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
+import { clickSources, dragPath, dragStepMs, mouse, moveActions, moveSources, swipeSources, typeSource, type ClickOptions } from './input.ts';
+import { pressStroke } from './keyboard.ts';
+import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, elementShown, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from './page.ts';
 import { ElementRef } from './script.ts';
 import type { BidiSession } from './session.ts';
 
@@ -49,7 +50,8 @@ const NOT_YET = new Set(['element is not editable', 'element is not enabled', 'n
 /**
  * One action on a located or observed node; a `swipe` on the observation
  * root is the viewport swipe at the pointer. A located node acts only while
- * its locator still matches it alone (`stillLocated`).
+ * its locator still matches it alone (`stillLocated`), which its locate
+ * proved already when no input or test code ran since (`claimFresh`).
  */
 export async function perform(session: BidiSession, ref: NodeRef, action: LocatorAction, timeoutMs: number, signal: AbortSignal): Promise<void> {
   if (action.kind === 'swipe' && ref.id === ROOT_NODE_ID) {
@@ -58,7 +60,7 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
   }
   const deadline = new Deadline(timeoutMs);
   const target = session.refs.lookup(ref);
-  await stillLocated(session, target);
+  if (!session.refs.claimFresh(ref)) await stillLocated(session, target);
   const held = 'modifiers' in action && action.modifiers !== undefined ? { modifiers: action.modifiers } : {};
   switch (action.kind) {
     case 'tap':
@@ -71,7 +73,7 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
       return click(session, target, deadline, { holdMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }, signal);
     case 'hover': {
       const point = await pointerPoint(session, target, deadline, false, signal);
-      return session.sendInput(moveSources(point.x, point.y), signal);
+      return session.input.send(moveSources(point.x, point.y), signal);
     }
     case 'fill':
       return fill(session, target, action.value, deadline, signal);
@@ -79,7 +81,7 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
       return fill(session, target, '', deadline, signal);
     case 'press':
       await focusOn(session, target, signal);
-      return session.pressKey(action.key, signal);
+      return session.input.press(action.key, signal);
     case 'focus':
       return focusOn(session, target, signal);
     case 'scrollIntoView':
@@ -89,7 +91,7 @@ export async function perform(session: BidiSession, ref: NodeRef, action: Locato
       return setChecked(session, target, action.kind === 'check', deadline, signal);
     case 'selectOption': {
       const by = typeof action.value === 'string' ? { label: action.value } : action.value;
-      await settledPoint(session, target, deadline, { enabled: true, scroll: false, pointer: false }, signal);
+      await waitVisibleEnabled(session, target, deadline, signal);
       return mutateWhenReady(session, deadline, signal, 'selectOption: ', () => session.run(selectOption, [target.element, by], target.context));
     }
     case 'setInputFiles':
@@ -117,19 +119,19 @@ export async function performAt(session: BidiSession, point: ViewportPoint, acti
   const at = nearestPixel(point);
   switch (action.kind) {
     case 'tap':
-      return session.sendInput(clickSources(at.x, at.y), signal);
+      return session.input.send(clickSources(at.x, at.y), signal);
     case 'doubleTap':
-      return session.sendInput(clickSources(at.x, at.y, { clicks: 2 }), signal);
+      return session.input.send(clickSources(at.x, at.y, { clicks: 2 }), signal);
     case 'secondaryTap':
-      return session.sendInput(clickSources(at.x, at.y, { button: 2 }), signal);
+      return session.input.send(clickSources(at.x, at.y, { button: 2 }), signal);
     case 'longPress':
-      return session.sendInput(clickSources(at.x, at.y, { holdMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }), signal);
+      return session.input.send(clickSources(at.x, at.y, { holdMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }), signal);
     case 'hover':
-      return session.sendInput(moveSources(at.x, at.y), signal);
+      return session.input.send(moveSources(at.x, at.y), signal);
     case 'dragTo':
-      return drag(session, at, nearestPixel(action.target), 0, signal);
+      return drag(session, at, async () => nearestPixel(action.target), 0, signal);
     case 'swipeTo':
-      return drag(session, at, nearestPixel(action.target), action.durationMs ?? 0, signal);
+      return drag(session, at, async () => nearestPixel(action.target), action.durationMs ?? 0, signal);
     case 'swipe':
       return wheel(session, at, await session.viewportSize(), action.direction, action.momentum ?? 'none', signal);
   }
@@ -148,8 +150,8 @@ export async function typeText(session: BidiSession, text: string, replace: bool
     );
   }
   if (replace) {
-    await session.pressKey('ControlOrMeta+a', signal);
-    await session.pressKey('Delete', signal);
+    await session.input.key(pressStroke('ControlOrMeta+a'), signal);
+    await session.input.key(pressStroke('Delete'), signal);
   }
   await typeInto(session, text, signal);
 }
@@ -164,7 +166,7 @@ export async function typeInto(session: BidiSession, text: string, signal: Abort
   let run = '';
   const flush = async (): Promise<void> => {
     if (run === '') return;
-    await session.sendInput([typeSource(run)], signal);
+    await session.input.send([typeSource(run)], signal);
     run = '';
   };
   for (const { segment } of new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)) {
@@ -182,6 +184,37 @@ export async function typeInto(session: BidiSession, text: string, signal: Abort
   await flush();
 }
 
+/** A poll attempt's answer that the element is not ready yet, with the message the action fails with when the deadline passes now. */
+class Retry {
+  constructor(readonly message: string) {}
+}
+
+/** Not ready yet, in Playwright's words for why. */
+function notActionable(reason: string): Retry {
+  return new Retry(`element did not become actionable in time: ${reason}`);
+}
+
+/** The element left the document: retryable, so the harness locates it again. */
+function detached(): EngineError {
+  return new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });
+}
+
+/**
+ * Runs `attempt` until it answers anything but `Retry`, pausing between
+ * tries, and fails with the last retry's message once the deadline leaves
+ * no room for another; an attempt that throws ends the poll. Nothing runs
+ * once `signal` aborted.
+ */
+async function pollUntil<T>(deadline: Deadline, signal: AbortSignal, attempt: () => Promise<T | Retry>): Promise<T> {
+  for (;;) {
+    signal.throwIfAborted();
+    const result = await attempt();
+    if (!(result instanceof Retry)) return result;
+    if (deadline.remaining() <= POLL_MS) throw new EngineError('NOT_ACTIONABLE', result.message, { retryable: false });
+    await sleep(POLL_MS, undefined, { signal });
+  }
+}
+
 /**
  * Waits until the element can take a pointer action, then clicks it with
  * the page watching where the input lands (`armHitInterceptor`): input an
@@ -193,34 +226,34 @@ export async function typeInto(session: BidiSession, text: string, signal: Abort
  * reached.
  */
 async function click(session: BidiSession, target: NodeTarget, deadline: Deadline, options: ClickOptions, signal: AbortSignal): Promise<void> {
-  for (;;) {
-    const point = await pointerPoint(session, target, deadline, true, signal);
+  const aim = pointerAim(session, target, true);
+  await pollUntil(deadline, signal, async () => {
+    const point = await aim();
+    if (point instanceof Retry) return point;
     await session.run(armHitInterceptor, [target.element], target.context);
-    const dispatched = session.dispatches;
-    const sent = await session.sendInput(clickSources(point.x, point.y, options), signal).then(() => undefined, (cause: unknown) => ({ cause }));
-    const verdict = await unlessStale(session.run(hitInterceptorResult, [], target.context), null);
-    if (sent !== undefined) throw sent.cause;
-    if (verdict === null) return;
+    const verdict = await session.input.sendSuppressible(
+      clickSources(point.x, point.y, options),
+      signal,
+      () => unlessStale(session.run(hitInterceptorResult, [], target.context), null),
+      (seen) => seen !== null && seen !== 'unseen',
+    );
+    if (verdict === null) return undefined;
     if (verdict === 'unseen') {
       throw new EngineError('ACTION_MAY_HAVE_COMMITTED', 'the click reached no event in the element\'s document, so another document (an overlay in a parent frame) may have taken it', { retryable: false });
     }
-    session.dispatches = dispatched;
-    if (deadline.remaining() <= POLL_MS) throw new EngineError('NOT_ACTIONABLE', `element did not become actionable in time: ${verdict}`, { retryable: false });
-    await sleep(POLL_MS, undefined, { signal });
-  }
+    return notActionable(verdict);
+  });
 }
 
 /** Scrolls the element, and each frame holding it, into view as Playwright does, polling while it lays out no box or moves. */
 async function scrollIntoView(session: BidiSession, target: NodeTarget, deadline: Deadline, signal: AbortSignal): Promise<void> {
-  for (const frame of session.frames.chain(target.context)) await session.run(scrollIntoViewIfNeeded, [frame.element], frame.context);
-  for (;;) {
-    signal.throwIfAborted();
+  await pollUntil(deadline, signal, async () => {
+    await scrollFrames(session, target);
     const state = await session.run(scrollIntoViewIfNeeded, [target.element], target.context);
-    if (state === 'ok') return;
-    if (state === 'detached') throw new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });
-    if (deadline.remaining() <= POLL_MS) throw new EngineError('NOT_ACTIONABLE', `element did not become actionable in time: ${state === 'moving' ? 'element is not stable' : 'element is not visible'}`, { retryable: false });
-    await sleep(POLL_MS, undefined, { signal });
-  }
+    if (state === 'detached') throw detached();
+    if (state === 'ok') return undefined;
+    return notActionable(state === 'moving' ? 'element is not stable' : 'element is not visible');
+  });
 }
 
 /** Focuses the element, a page change its focus handlers may make; an element that takes no focus keeps the old one, as Playwright's `focus` leaves it. */
@@ -231,47 +264,63 @@ async function focusOn(session: BidiSession, target: NodeTarget, signal: AbortSi
 }
 
 /**
- * Polls the element's actionability (`actionPoint`) until it is ready or the
- * deadline passes, each frame holding it settled into view first, and
- * returns the point in its own document's viewport.
+ * Scrolls each frame holding the element into view, outermost first,
+ * without waiting for any to hold still: the element's own check waits
+ * for that, and the hit test at its point sees every frame.
  */
-async function settledPoint(
-  session: BidiSession,
-  target: NodeTarget,
-  deadline: Deadline,
-  checks: { enabled: boolean; scroll: boolean; pointer?: boolean; align?: NonNullable<(typeof SCROLL_ALIGNMENTS)[number]> },
-  signal: AbortSignal,
-): Promise<{ x: number; y: number }> {
-  if (checks.scroll) {
-    for (const frame of session.frames.chain(target.context)) {
-      await session.run(readActionPoint, [frame.element, { scroll: true, key: CLOSED_SHADOW_ROOTS_KEY }], frame.context);
-    }
-  }
-  for (;;) {
-    signal.throwIfAborted();
-    const { enabled, ...placing } = checks;
-    const disabled = enabled ? await session.reader('disabled', [target.element, readerOptions(session)], target.context) : false;
-    const point: ActionPoint = disabled === null ? { state: 'detached' } : disabled ? { state: 'disabled' } : await session.run(readActionPoint, [target.element, { ...placing, key: CLOSED_SHADOW_ROOTS_KEY }], target.context);
-    if (point.state === 'ok') return point;
-    if (point.state === 'detached') throw new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });
-    if (deadline.remaining() <= POLL_MS) throw new EngineError('NOT_ACTIONABLE', `element did not become actionable in time: ${blocker(point)}`, { retryable: false });
-    await sleep(POLL_MS, undefined, { signal });
+async function scrollFrames(session: BidiSession, target: NodeTarget): Promise<void> {
+  for (const frame of session.frames.chain(target.context)) {
+    await session.run(readActionPoint, [frame.element, { scroll: true, stable: false, key: CLOSED_SHADOW_ROOTS_KEY }], frame.context);
   }
 }
 
+/** Waits until the element shows and is enabled, for an action that types or selects: no pointer is involved, so neither stillness nor a point in view counts. */
+async function waitVisibleEnabled(session: BidiSession, target: NodeTarget, deadline: Deadline, signal: AbortSignal): Promise<void> {
+  await pollUntil(deadline, signal, async () => {
+    const disabled = await session.reader('disabled', [target.element, readerOptions(session)], target.context);
+    if (disabled === null) throw detached();
+    if (disabled) return notActionable(blocker({ state: 'disabled' }));
+    const shown = await session.run(elementShown, [target.element], target.context);
+    if (shown === 'detached') throw detached();
+    return shown === 'hidden' ? notActionable(blocker({ state: 'hidden' })) : undefined;
+  });
+}
+
 /**
- * The element's actionable point in the top-level viewport, once a pointer
- * event there reaches it: the whole-pixel point to be dispatched is projected
- * back through every frame holding the element, and the element is hit at
- * that point in its document, every iframe at it in its parent's. A
- * covered element is polled until the deadline, each retry scrolling it into
- * view another way (`SCROLL_ALIGNMENTS`), as Playwright does to get an
- * element out from under a sticky header.
+ * One check of the element's actionability (`actionPoint`), each frame
+ * holding it scrolled into view first: its point in its own document's
+ * viewport, or why not yet.
  */
+async function settledPoint(session: BidiSession, target: NodeTarget, enabled: boolean, align: (typeof SCROLL_ALIGNMENTS)[number]): Promise<{ x: number; y: number } | Retry> {
+  await scrollFrames(session, target);
+  const disabled = enabled ? await session.reader('disabled', [target.element, readerOptions(session)], target.context) : false;
+  if (disabled === null) throw detached();
+  if (disabled) return notActionable(blocker({ state: 'disabled' }));
+  const point = await session.run(readActionPoint, [target.element, { scroll: true, ...(align === undefined ? {} : { align }), key: CLOSED_SHADOW_ROOTS_KEY }], target.context);
+  if (point.state === 'detached') throw detached();
+  return point.state === 'ok' ? point : notActionable(blocker(point));
+}
+
+/** The element's actionable point in the top-level viewport (`pointerAim`), polled until the deadline. */
 async function pointerPoint(session: BidiSession, target: NodeTarget, deadline: Deadline, enabled: boolean, signal: AbortSignal): Promise<{ x: number; y: number }> {
-  for (let retry = 0; ; retry += 1) {
-    const align = SCROLL_ALIGNMENTS[retry % SCROLL_ALIGNMENTS.length];
-    const local = await settledPoint(session, target, deadline, { enabled, scroll: true, ...(align === undefined ? {} : { align }) }, signal);
+  return pollUntil(deadline, signal, pointerAim(session, target, enabled));
+}
+
+/**
+ * Checks of the element's actionable point in the top-level viewport, each
+ * answering the point once a pointer event there reaches it: the
+ * whole-pixel point to be dispatched is projected back through every frame
+ * holding the element, and the element is hit at that point in its
+ * document, every iframe at it in its parent's. Each check after one that
+ * found the element covered scrolls it into view another way
+ * (`SCROLL_ALIGNMENTS`), as Playwright does to get an element out from
+ * under a sticky header.
+ */
+function pointerAim(session: BidiSession, target: NodeTarget, enabled: boolean): () => Promise<{ x: number; y: number } | Retry> {
+  let covered = 0;
+  return async () => {
+    const local = await settledPoint(session, target, enabled, SCROLL_ALIGNMENTS[covered % SCROLL_ALIGNMENTS.length]);
+    if (local instanceof Retry) return local;
     const chain = session.frames.chain(target.context);
     const maps = await session.frames.frameMaps(session.connection, target.context, session.settings.browser);
     const inverses = maps?.map(invert);
@@ -292,9 +341,9 @@ async function pointerPoint(session: BidiSession, target: NodeTarget, deadline: 
     ];
     const blocked = (await Promise.all(checks)).find((reason) => reason !== null);
     if (blocked === undefined) return top;
-    if (deadline.remaining() <= POLL_MS) throw new EngineError('NOT_ACTIONABLE', `element did not become actionable in time: ${blocked}`, { retryable: false });
-    await sleep(POLL_MS, undefined, { signal });
-  }
+    covered += 1;
+    return notActionable(blocked);
+  };
 }
 
 /** What the shared reader takes besides its mode. */
@@ -320,28 +369,32 @@ function blocker(point: Exclude<ActionPoint, { state: 'ok' }>): string {
 
 /** Replaces the field's content with `value` in one edit, as a paste would, once it is visible, enabled, and editable (not still, nor in view: no pointer is involved); see the page's `fill`. */
 async function fill(session: BidiSession, target: NodeTarget, value: string, deadline: Deadline, signal: AbortSignal): Promise<void> {
-  await settledPoint(session, target, deadline, { enabled: true, scroll: false, pointer: false }, signal);
+  await waitVisibleEnabled(session, target, deadline, signal);
   return mutateWhenReady(session, deadline, signal, '', () => session.run(fillElement, [target.element, value, CLOSED_SHADOW_ROOTS_KEY], target.context));
 }
 
 /**
  * Runs a page mutation that reports why it refused, polling while the
  * refusal is one the app may lift (`NOT_YET`): such a refusal changed
- * nothing, so it does not count as dispatched. Nothing runs once `signal`
- * aborted.
+ * nothing, so it does not count as dispatched; a mutation that ran, or
+ * failed midway, does. Nothing runs once `signal` aborted.
  */
 async function mutateWhenReady(session: BidiSession, deadline: Deadline, signal: AbortSignal, prefix: string, mutate: () => Promise<string | null>): Promise<void> {
-  for (;;) {
-    signal.throwIfAborted();
-    const dispatched = session.dispatches;
-    session.mutated();
-    const problem = await mutate();
-    if (problem === null) return;
+  await pollUntil(deadline, signal, async () => {
+    let problem: string | null;
+    try {
+      problem = await mutate();
+    } catch (cause) {
+      session.mutated();
+      throw cause;
+    }
+    if (problem === null) {
+      session.mutated();
+      return undefined;
+    }
     if (!NOT_YET.has(problem)) throw new EngineError('NOT_ACTIONABLE', `${prefix}${problem}`, { retryable: false });
-    session.dispatches = dispatched;
-    if (deadline.remaining() <= POLL_MS) throw new EngineError('NOT_ACTIONABLE', `${prefix}${problem}`, { retryable: false });
-    await sleep(POLL_MS, undefined, { signal });
-  }
+    return new Retry(`${prefix}${problem}`);
+  });
 }
 
 /**
@@ -352,7 +405,7 @@ async function mutateWhenReady(session: BidiSession, deadline: Deadline, signal:
  */
 async function setChecked(session: BidiSession, target: NodeTarget, checked: boolean, deadline: Deadline, signal: AbortSignal): Promise<void> {
   const before = await session.run(checkState, [target.element], target.context);
-  if (before === 'detached') throw new EngineError('NODE_STALE', 'element is not attached to the DOM', { retryable: true });
+  if (before === 'detached') throw detached();
   if (before.checked === null) throw new EngineError('NOT_ACTIONABLE', 'Not a checkbox or radio button', { retryable: false });
   if (before.checked === checked) return;
   if (!checked && before.radio === 'native') {
@@ -360,18 +413,16 @@ async function setChecked(session: BidiSession, target: NodeTarget, checked: boo
   }
   const hint = !checked && before.radio === 'aria' ? '; a radio usually clears only when another radio in its group is selected' : '';
   await click(session, target, deadline, {}, signal);
-  for (let first = true; ; first = false) {
+  let first = true;
+  await pollUntil(deadline, signal, async () => {
     const after = await unlessStale(session.run(checkState, [target.element], target.context), 'detached');
-    if (after === 'detached') {
-      if (first) return;
+    if (after === 'detached' && !first) {
       throw new EngineError('NOT_ACTIONABLE', `${checked ? 'check' : 'uncheck'} clicked the control but its checked state did not change before the control was replaced`, { retryable: false });
     }
-    if (after.checked === checked) return;
-    if (deadline.remaining() <= POLL_MS) {
-      throw new EngineError('NOT_ACTIONABLE', `${checked ? 'check' : 'uncheck'} clicked the control but its checked state did not change${hint}`, { retryable: false });
-    }
-    await sleep(POLL_MS, undefined, { signal });
-  }
+    first = false;
+    if (after === 'detached' || after.checked === checked) return undefined;
+    return new Retry(`${checked ? 'check' : 'uncheck'} clicked the control but its checked state did not change${hint}`);
+  });
 }
 
 /**
@@ -448,58 +499,52 @@ async function setInputFiles(session: BidiSession, target: NodeTarget, paths: re
 }
 
 /**
- * Drags the source onto the target: the target is brought into view first,
- * then the source, and the target is read again where the source's scroll
- * left it, so neither end is a stale point. A target the source's scroll
- * pushed out of view fails rather than dropping beside it. A located target
- * must match its locator alone before the press and again after the drop,
- * as Playwright resolves the target only once the source is pressed: one
- * that turned ambiguous meanwhile leaves the drop uncertain.
+ * Drags the source onto the target as Playwright does: the source is
+ * pressed once it is actionable, and only then is the target resolved, a
+ * located one checked to still match its locator alone, then scrolled into
+ * view and hit at its point like any pointer target, so a target in any
+ * frame a tap reaches takes the drop.
  */
 async function dragTo(session: BidiSession, source: NodeTarget, target: NodeTarget, deadline: Deadline, signal: AbortSignal): Promise<void> {
-  await stillLocated(session, target);
-  await pointerPoint(session, target, deadline, false, signal);
   const from = await pointerPoint(session, source, deadline, true, signal);
-  const local = await session.run(readActionPoint, [target.element, { scroll: false, key: CLOSED_SHADOW_ROOTS_KEY }], target.context);
-  if (local.state !== 'ok') throw new EngineError('NOT_ACTIONABLE', `dragTo: the target cannot be shown with the source: ${blocker(local)}`, { retryable: false });
-  const box = await session.frames.viewportBox(session.connection, target.context);
-  if (box === null) throw new EngineError('NOT_ACTIONABLE', 'dragTo: the target is in a frame that lays out no box, or is rotated', { retryable: false });
-  const to = box === undefined ? local : { x: Math.round(box.origin.x + local.x * box.scale.x), y: Math.round(box.origin.y + local.y * box.scale.y) };
-  await drag(session, from, to, 0, signal, () => stillLocated(session, target));
+  await drag(session, from, async () => {
+    await stillLocated(session, target);
+    return pointerPoint(session, target, deadline, false, signal);
+  }, 0, signal);
 }
 
 /**
- * Presses at `from`, moves to `to` over `durationMs`, and releases there;
- * `afterPress` runs between the press and the first move, and its failure
- * releases the button where it was pressed. On Chromium a drag the page
- * starts carries its data to the drop (`chromiumDrag`). Firefox's remote
- * agent synthesizes no drop
+ * Presses at `from`, reads where the drag goes (`to`), moves there over
+ * `durationMs`, and releases there; a failure before the release lifts the
+ * button where the mouse last was. On Chromium a drag the page starts
+ * carries its data to the drop (`chromiumDrag`). Firefox's remote agent
+ * synthesizes no drop
  * (https://bugzilla.mozilla.org/show_bug.cgi?id=1515879), so there the
  * pointer moves alone.
  */
-async function drag(session: BidiSession, from: ViewportPoint, to: ViewportPoint, durationMs: number, signal: AbortSignal, afterPress?: () => Promise<void>): Promise<void> {
-  if (session.settings.browser !== 'chromium') {
-    const { press, release } = dragSources(from, to, durationMs);
-    await session.sendInput(press, signal);
-    let released = false;
-    try {
-      await afterPress?.();
-      await session.sendInput(release, signal);
-      released = true;
-    } finally {
-      if (!released) await releaseQuietly(session.sendInput([mouse([{ type: 'pointerUp', button: 0 }])]));
-    }
+async function drag(session: BidiSession, from: ViewportPoint, to: () => Promise<ViewportPoint>, durationMs: number, signal: AbortSignal): Promise<void> {
+  if (session.settings.browser === 'chromium') {
+    const context = session.requireContext();
+    const documents = await session.documentContexts(context);
+    await chromiumDrag(session.input, session.connection, context, documents, from, to, dragStepMs(durationMs), signal);
     return;
   }
-  const context = session.requireContext();
-  const documents = await session.documentContexts(context);
-  signal.throwIfAborted();
-  session.mutated();
-  await chromiumDrag(session.connection, context, documents, dragPath(from, to), dragStepMs(durationMs), signal, afterPress);
-  session.pointer = { x: to.x, y: to.y };
+  await session.input.send([mouse([{ type: 'pointerMove', x: from.x, y: from.y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }])], signal);
+  let released = false;
+  try {
+    const [, ...steps] = dragPath(from, await to());
+    await session.input.send([mouse([...moveActions(steps, dragStepMs(durationMs)), { type: 'pointerUp', button: 0 }])], signal);
+    released = true;
+  } finally {
+    if (!released) await releaseQuietly(session.input.send([mouse([{ type: 'pointerUp', button: 0 }])]));
+  }
 }
 
-/** Wheels at a viewport point by a swipe of `extent`'s size, then waits for the frame that renders it. */
+/**
+ * Moves the mouse to a viewport point and wheels there by a swipe of
+ * `extent`'s size, in one call, then waits for the frame that renders it:
+ * what the swipe scrolled is left hovered, as a person's swipe leaves it.
+ */
 async function wheel(
   session: BidiSession,
   at: ViewportPoint,
@@ -511,6 +556,6 @@ async function wheel(
   const distance = swipeDistance(direction === 'up' || direction === 'down' ? extent.height : extent.width, momentum);
   const [deltaX, deltaY] = wheelDelta(direction, distance);
   const point = nearestPixel(at);
-  await session.sendInput(wheelSources(point.x, point.y, deltaX, deltaY), signal);
+  await session.input.send(swipeSources(point.x, point.y, deltaX, deltaY), signal);
   await session.run(nextFrame, []);
 }

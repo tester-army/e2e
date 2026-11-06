@@ -1,79 +1,14 @@
 /**
  * Key presses Chromium takes as CDP `Input.dispatchKeyEvent` (through the
  * mapper's `goog:cdp` passthrough) because a WebDriver BiDi key action
- * cannot carry them: the media keys and Numpad5 with NumLock off, which
- * WebDriver gives no key value, and, on macOS, the combinations Chromium
+ * cannot carry them: the keys WebDriver gives no key value (the media
+ * keys, Numpad5 with NumLock off), and, on macOS, the combinations Chromium
  * runs an editing command for only when the key event names it, as
  * Playwright sends them. Every other key stays a BiDi key action.
  */
 
-import type { KeyModifier } from 'e2e/engine';
 import type { CdpCommand } from './cdp.ts';
-
-/** A modifier key as the page sees it; `ControlOrMeta` resolves to one of these first. */
-export type Modifier = Exclude<KeyModifier, 'ControlOrMeta'>;
-
-/** Whether a keyboard call presses and releases its key, only holds it, or only releases it. */
-export type KeyPhase = 'press' | 'keyDown' | 'keyUp';
-
-/** One key of a keyboard call: a Playwright key name or one character, its phase, and the modifiers a press holds around it. */
-export interface KeyStroke {
-  readonly name: string;
-  readonly phase: KeyPhase;
-  readonly chord: readonly Modifier[];
-}
-
-/** One key of Playwright's US layout: its key code and `key`, and both again with Shift held where Shift changes them. */
-interface KeyDefinition {
-  readonly keyCode: number;
-  readonly key: string;
-  readonly shiftKey?: string;
-  readonly shiftKeyCode?: number;
-  readonly location?: number;
-}
-
-/** The letter keys, `KeyA` to `KeyZ`. */
-const LETTERS: Readonly<Record<string, KeyDefinition>> = Object.fromEntries(
-  Array.from({ length: 26 }, (_, index) => {
-    const upper = String.fromCharCode(65 + index);
-    return [`Key${upper}`, { keyCode: 65 + index, key: upper.toLowerCase(), shiftKey: upper }];
-  }),
-);
-
-/** Playwright's US layout for every key this module may send, by `code`. */
-const KEYS: Readonly<Record<string, KeyDefinition>> = {
-  ...LETTERS,
-  Escape: { keyCode: 27, key: 'Escape' },
-  F5: { keyCode: 116, key: 'F5' },
-  Backspace: { keyCode: 8, key: 'Backspace' },
-  Tab: { keyCode: 9, key: 'Tab' },
-  Quote: { keyCode: 222, key: "'", shiftKey: '"' },
-  PageUp: { keyCode: 33, key: 'PageUp' },
-  PageDown: { keyCode: 34, key: 'PageDown' },
-  Delete: { keyCode: 46, key: 'Delete' },
-  Home: { keyCode: 36, key: 'Home' },
-  End: { keyCode: 35, key: 'End' },
-  ArrowLeft: { keyCode: 37, key: 'ArrowLeft' },
-  ArrowUp: { keyCode: 38, key: 'ArrowUp' },
-  ArrowRight: { keyCode: 39, key: 'ArrowRight' },
-  ArrowDown: { keyCode: 40, key: 'ArrowDown' },
-  Numpad5: { keyCode: 12, key: 'Clear', shiftKey: '5', shiftKeyCode: 101, location: 3 },
-  NumpadSubtract: { keyCode: 109, key: '-', location: 3 },
-  AudioVolumeMute: { keyCode: 173, key: 'AudioVolumeMute' },
-  AudioVolumeDown: { keyCode: 174, key: 'AudioVolumeDown' },
-  AudioVolumeUp: { keyCode: 175, key: 'AudioVolumeUp' },
-  MediaTrackNext: { keyCode: 176, key: 'MediaTrackNext' },
-  MediaTrackPrevious: { keyCode: 177, key: 'MediaTrackPrevious' },
-  MediaPlayPause: { keyCode: 179, key: 'MediaPlayPause' },
-};
-
-/** The left-hand modifier keys a chord presses, as the US layout names them. */
-const MODIFIER_KEYS: Readonly<Record<Modifier, { readonly code: string; readonly keyCode: number }>> = {
-  Shift: { code: 'ShiftLeft', keyCode: 16 },
-  Control: { code: 'ControlLeft', keyCode: 17 },
-  Alt: { code: 'AltLeft', keyCode: 18 },
-  Meta: { code: 'MetaLeft', keyCode: 91 },
-};
+import { isShifted, keyValue, MODIFIER_KEYS, type KeyStroke, type Modifier } from './keyboard.ts';
 
 /** Each modifier's bit in CDP's `modifiers` mask. */
 const MODIFIER_BITS: Readonly<Record<Modifier, number>> = { Alt: 1, Control: 2, Meta: 4, Shift: 8 };
@@ -190,17 +125,6 @@ export const MAC_EDITING_COMMANDS: Readonly<Record<string, readonly string[]>> =
   'Shift+Meta+KeyZ': ['redo'],
 };
 
-/** The media keys, which WebDriver gives no key value. */
-const MEDIA_KEYS: ReadonlySet<string> = new Set(['AudioVolumeMute', 'AudioVolumeDown', 'AudioVolumeUp', 'MediaTrackNext', 'MediaTrackPrevious', 'MediaPlayPause']);
-
-/**
- * Whether WebDriver has no key value for the Playwright key `name` pressed
- * with or without Shift: a media key, or Numpad5 with NumLock off (Clear).
- */
-export function lacksWebDriverValue(name: string, shifted: boolean): boolean {
-  return MEDIA_KEYS.has(name) || (name === 'Numpad5' && !shifted);
-}
-
 /** One CDP command of a key press. */
 export type CdpKeyCommand = CdpCommand<'Input.dispatchKeyEvent' | 'Input.cancelDragging'>;
 
@@ -210,23 +134,6 @@ export interface ChromiumKeyboard {
   /** Codes of the keys an earlier CDP key event holds down. */
   readonly pressed: ReadonlySet<string>;
   readonly mac: boolean;
-}
-
-/**
- * A key name as the US layout's `code`, and, for a character, whether it is
- * that key's shifted one, which Shift then does not change, as Playwright
- * reads a character; a code follows the Shift held. Undefined for a key this
- * module never sends. A character is never a numpad key.
- */
-function codeOf(name: string): { code: string; shifted?: boolean } | undefined {
-  if (Object.hasOwn(KEYS, name)) return { code: name };
-  if ([...name].length !== 1) return undefined;
-  for (const [code, definition] of Object.entries(KEYS)) {
-    if (definition.location !== undefined) continue;
-    if (definition.key === name) return { code, shifted: false };
-    if (definition.shiftKey === name) return { code, shifted: true };
-  }
-  return undefined;
 }
 
 /** The editing commands macOS binds to `code` under `modifiers`. */
@@ -251,19 +158,16 @@ function mask(modifiers: ReadonlySet<Modifier>): number {
  * the mapper's own modifier state is left as it was.
  */
 export function chromiumKeyCommands(stroke: KeyStroke, keyboard: ChromiumKeyboard): CdpKeyCommand[] | undefined {
-  const resolved = codeOf(stroke.name);
-  if (resolved === undefined) return undefined;
-  const { code } = resolved;
-  const definition = KEYS[code]!;
+  const { definition } = stroke;
+  const { code } = definition;
   const modifiers = new Set<Modifier>([...keyboard.held, ...(stroke.phase === 'press' ? stroke.chord : [])]);
-  const shifted = resolved.shifted ?? modifiers.has('Shift');
+  const shifted = isShifted(stroke, keyboard.held.has('Shift'));
   const commands = keyboard.mac ? macEditingCommands(code, modifiers) : [];
-  if (stroke.phase === 'keyUp' ? !keyboard.pressed.has(code) : !lacksWebDriverValue(code, shifted) && commands.length === 0) return undefined;
+  if (stroke.phase === 'keyUp' ? !keyboard.pressed.has(code) : keyValue(definition, shifted) !== undefined && commands.length === 0) return undefined;
   const key = shifted && definition.shiftKey !== undefined ? definition.shiftKey : definition.key;
   const keyCode = shifted && definition.shiftKeyCode !== undefined ? definition.shiftKeyCode : definition.keyCode;
   const typesText = [...key].length === 1 && !modifiers.has('Control') && !modifiers.has('Alt') && !modifiers.has('Meta');
-  const location = definition.location ?? 0;
-  const event = { windowsVirtualKeyCode: keyCode, code, key, location, isKeypad: location === 3 };
+  const event = { windowsVirtualKeyCode: keyCode, code, key, location: definition.location, isKeypad: definition.location === 3 };
   const down: CdpKeyCommand = {
     method: 'Input.dispatchKeyEvent',
     params: {
@@ -296,8 +200,8 @@ export function chromiumKeyCommands(stroke: KeyStroke, keyboard: ChromiumKeyboar
 
 /** The CDP event that presses or releases one modifier key, with the modifiers held after it. */
 function modifierEvent(modifier: Modifier, type: 'rawKeyDown' | 'keyUp', holding: ReadonlySet<Modifier>): CdpKeyCommand {
-  const { code, keyCode } = MODIFIER_KEYS[modifier];
-  return { method: 'Input.dispatchKeyEvent', params: { type, windowsVirtualKeyCode: keyCode, code, key: modifier, location: 1, isKeypad: false, modifiers: mask(holding) } };
+  const { code, keyCode, key, location } = MODIFIER_KEYS[modifier];
+  return { method: 'Input.dispatchKeyEvent', params: { type, windowsVirtualKeyCode: keyCode, code, key, location, isKeypad: false, modifiers: mask(holding) } };
 }
 
 /** Whether a CDP key command holds `code` down after it (true), releases it (false), or leaves it (undefined). */

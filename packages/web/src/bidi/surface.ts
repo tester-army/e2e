@@ -47,8 +47,7 @@ import { screenshot, startVideo, stopVideo } from './artifacts.ts';
 import { afterDispatch, classify, releaseQuietly } from './errors.ts';
 import { ContextTree } from './context-tree.ts';
 import { routeEvents, SESSION_EVENTS } from './events.ts';
-import { fixtureKeyStroke, strokeSource } from './input.ts';
-import type { KeyPhase } from './chromium-keys.ts';
+import { fixtureKeyStroke, type KeyPhase } from './keyboard.ts';
 import { connectBidiOverCdp, launchBidiBrowser, type BidiBrowser, type BidiBrowserName } from './launch.ts';
 import type { NetworkRoute } from './network.ts';
 import type { ObservedResponse } from './network-binding.ts';
@@ -470,20 +469,17 @@ export class BidiSurface {
 
   /** Presses one key of the contract grammar. */
   pressKey(key: string, operation: OperationContext): Promise<void> {
-    return this.guard(operation, 'keyboard.press', (session, budget) => session.pressKey(key, budget.signal), { input: true, traced: true });
+    return this.guard(operation, 'keyboard.press', (session, budget) => session.input.press(key, budget.signal), { input: true, traced: true });
   }
 
   /** One `browser.keyboard` call (`fixtureKeyStroke`); a key it holds stays held until its `keyboard.up`. */
   keyboard(label: string, key: string, phase: KeyPhase, operation: OperationContext): Promise<void> {
-    return this.guard(operation, label, (session, budget) => {
-      const stroke = fixtureKeyStroke(key, phase);
-      return session.sendKey(stroke, (shiftHeld) => strokeSource(stroke, shiftHeld), budget.signal);
-    }, { input: true });
+    return this.guard(operation, label, (session, budget) => session.input.key(fixtureKeyStroke(key, phase), budget.signal), { input: true });
   }
 
   /** Runs raw input sources from the `browser` fixture; a key or button they press without releasing stays held. */
   input(label: string, actions: Input.SourceActions[], operation: OperationContext): Promise<void> {
-    return this.guard(operation, label, (session, budget) => session.sendInput(actions, budget.signal), { input: true });
+    return this.guard(operation, label, (session, budget) => session.input.send(actions, budget.signal), { input: true });
   }
 
   /** Types `text` into whatever holds focus, inserting what no key types (`typeInto`). */
@@ -506,9 +502,12 @@ export class BidiSurface {
     return this.guard(operation, 'title', (session) => session.run(documentTitle, []));
   }
 
-  /** Calls a compiled page function (`compileEvaluation`) with `arg` and returns its whole result. */
+  /** Calls a compiled page function (`compileEvaluation`) with `arg` and returns its whole result; the test's code may change the page, as input would. */
   evaluate(declaration: string, arg: PageArgument | undefined, operation: OperationContext): Promise<PageValue> {
-    return this.guard(operation, 'evaluate', (session) => session.call(declaration, arg === undefined ? [] : [arg], { awaitPromise: true, maxObjectDepth: null }), { testCode: true });
+    return this.guard(operation, 'evaluate', (session) => {
+      session.mutated();
+      return session.call(declaration, arg === undefined ? [] : [arg], { awaitPromise: true, maxObjectDepth: null });
+    }, { testCode: true });
   }
 
   /** Runs `source` in every document the attempt opens from now on. */

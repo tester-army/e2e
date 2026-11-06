@@ -2,11 +2,16 @@
 
 import { describe, expect, it } from 'vitest';
 import { setCookieOf } from '../../src/bidi/browser.ts';
-import { fixtureKeySource } from '../../src/bidi/input.ts';
+import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/bidi/keyboard.ts';
 
 const SHIFT = '';
 
-describe('fixtureKeySource', () => {
+/** The BiDi key source of one `browser.keyboard` call, with Shift held before it or not. */
+function fixtureKeySource(key: string, phase: KeyPhase, shiftHeld: boolean) {
+  return strokeSource(fixtureKeyStroke(key, phase), shiftHeld);
+}
+
+describe('fixtureKeyStroke', () => {
   it('holds a bare modifier and upper-cases a letter while Shift is held', () => {
     expect(fixtureKeySource('Shift', 'keyDown', false).actions).toEqual([{ type: 'keyDown', value: SHIFT }]);
     expect(fixtureKeySource('KeyB', 'press', true).actions).toEqual([{ type: 'keyDown', value: 'B' }, { type: 'keyUp', value: 'B' }]);

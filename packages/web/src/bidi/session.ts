@@ -6,7 +6,7 @@
 
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
-import type { Emulation, Input, Storage } from 'webdriver-bidi-protocol';
+import type { Emulation, Storage } from 'webdriver-bidi-protocol';
 import { EngineError, obj, TestError, withTimeout, type AppLogEntry, type EngineSnapshot, type NodeRef, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../closed-shadow.ts';
 import { DialogRouter } from '../dialogs.ts';
@@ -14,12 +14,10 @@ import type { ConfiguredInitScripts } from '../init-scripts.ts';
 import type { WebMedia } from '../media.ts';
 import { cancelled, ErrorLatch, invalidState, sanitizeFilename } from '../support.ts';
 import type { WebScreencastOptions } from '../options.ts';
-import { ChromiumCdp } from './cdp.ts';
+import { BidiInput } from './bidi-input.ts';
 import { BidiError, type BidiConnection } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
 import { AttemptDownloads } from './downloads.ts';
-import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand, type KeyStroke } from './chromium-keys.ts';
-import { heldModifiers, MODIFIER_VALUES, pressSource, pressStroke, SHIFT_KEY } from './input.ts';
 import { releaseQuietly, unlessStale } from './errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser, BidiBrowserName } from './launch.ts';
@@ -95,6 +93,11 @@ class BidiRefs {
   private counter = 0;
   private observation = new Map<string, NodeTarget>();
   private readonly located = new Map<string, NodeTarget>();
+  /** The input count when each located id was minted, until an action claims it. */
+  private readonly minted = new Map<string, number>();
+
+  /** `dispatches` reads the attempt's input count. */
+  constructor(private readonly dispatches: () => number) {}
 
   /** Reserves ids before a document can stamp them. */
   reserveIds(count: number): number {
@@ -112,10 +115,23 @@ class BidiRefs {
   storeLocated(id: string, target: NodeTarget): void {
     this.located.delete(id);
     this.located.set(id, target);
+    this.minted.set(id, this.dispatches());
     for (const oldest of this.located.keys()) {
       if (this.located.size <= 2048) break;
       this.located.delete(oldest);
+      this.minted.delete(oldest);
     }
+  }
+
+  /**
+   * Whether `ref` is acted on for the first time with no input, page
+   * mutation, or test code since its locate proved it its locator's only
+   * match, so that proof still holds; claims it, so a later action checks again.
+   */
+  claimFresh(ref: NodeRef): boolean {
+    const mintedAt = this.minted.get(ref.id);
+    this.minted.delete(ref.id);
+    return mintedAt !== undefined && mintedAt === this.dispatches();
   }
 
   /** The element behind `ref`; `NODE_STALE` when no generation holds it. */
@@ -129,6 +145,7 @@ class BidiRefs {
   clear(): void {
     this.observation = new Map();
     this.located.clear();
+    this.minted.clear();
   }
 }
 
@@ -139,7 +156,9 @@ class BidiRefs {
 export class BidiSession {
   userContext = '';
   context: string | undefined;
-  readonly refs = new BidiRefs();
+  /** The tab's keyboard and mouse, the only sender of input. */
+  readonly input: BidiInput;
+  readonly refs = new BidiRefs(() => this.input.dispatches);
   readonly frames = new FrameRegistry();
   readonly latch = new ErrorLatch();
   readonly dialogs = new DialogRouter(this.latch);
@@ -150,16 +169,6 @@ export class BidiSession {
   video: BidiVideo | undefined;
   /** The browser provider's own recording, which takes the place of `video` when the provider records. */
   providerVideo: ProviderVideo | undefined;
-  /** The keys held down across calls, by WebDriver value. */
-  private readonly heldKeys = new Set<string>();
-  /** The keys a CDP key event holds down across calls (`sendKey`), by `code`. */
-  private readonly cdpHeldKeys = new Set<string>();
-  /** Where the mouse last moved, which a viewport swipe wheels at. */
-  pointer: ViewportPoint = { x: 0, y: 0 };
-  /** The mouse buttons held down across input calls, which a move carries as pressure. */
-  private readonly heldButtons = new Set<number>();
-  /** Input and page mutations dispatched so far: an action that fails after this moved may have reached the app. */
-  dispatches = 0;
   /** Navigations the driver itself has in flight, which the trace leaves to the step that started them. */
   ownNavigations = 0;
   /** One entry per navigation the driver has in flight, given the URL of the tab's document request a test route aborted. */
@@ -189,6 +198,7 @@ export class BidiSession {
   ) {
     this.media = settings.media;
     this.viewport = settings.viewport;
+    this.input = new BidiInput({ connection: browser.connection, browser: settings.browser, context: () => this.requireContext(), viewport: () => this.viewportSize() });
     this.network = new AttemptNetwork(browser.connection, {
       siteHeaders: settings.siteHeaders,
       credentials: attempt.credentials,
@@ -380,8 +390,7 @@ export class BidiSession {
     await this.network.addContext(context);
     if (this.viewport !== null) await connection.send('browsingContext.setViewport', { context, viewport: this.viewport });
     this.context = context;
-    this.pointer = { x: 0, y: 0 };
-    this.heldButtons.clear();
+    this.input.reset();
     await this.video?.contextOpened(context, await this.viewportSize());
     return context;
   }
@@ -477,108 +486,6 @@ export class BidiSession {
   }
 
   /**
-   * Runs input sources on the tab. A source releases what it pressed itself,
-   * and a modifier already held is neither pressed nor released again
-   * (`keepHeld`), so a key `keyboard.down` holds stays held across later
-   * input. Nothing is sent once `signal` aborted.
-   */
-  async sendInput(actions: Input.SourceActions[], signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted();
-    const context = this.requireContext();
-    const sent = actions.map((source) => (source.type === 'key' ? this.keepHeld(source) : source.type === 'pointer' ? this.withPressure(source) : source));
-    this.dispatches += 1;
-    await this.connection.send('input.performActions', { context, actions: sent });
-    this.trackPointer(sent);
-  }
-
-  /**
-   * A mouse source with the pressure a held button gives: 0.5 on a press and
-   * on every move while a button is down, as a real mouse reports it, so a
-   * page reading `PointerEvent.pressure` sees the same. Records which buttons
-   * stay held after it.
-   */
-  private withPressure(source: Input.PointerSourceActions): Input.PointerSourceActions {
-    const actions = source.actions.map((action): Input.PointerSourceAction => {
-      if (action.type === 'pointerDown') {
-        this.heldButtons.add(action.button);
-        return { pressure: 0.5, ...action };
-      }
-      if (action.type === 'pointerUp') this.heldButtons.delete(action.button);
-      if (action.type === 'pointerMove' && this.heldButtons.size > 0) return { pressure: 0.5, ...action };
-      return action;
-    });
-    return { ...source, actions };
-  }
-
-  /**
-   * A key source with the modifiers already held left alone: a chord or a
-   * modifier click presses and releases only the modifiers it adds, so one
-   * `keyboard.down` holds stays held. A press or release left out becomes a
-   * pause, so the source keeps its ticks beside a pointer's. Records what
-   * stays held after it.
-   */
-  private keepHeld(source: Input.KeySourceActions): Input.KeySourceActions {
-    const skipped = new Set<string>();
-    const kept = source.actions.map((action): Input.KeySourceAction => {
-      if (action.type === 'keyDown' && MODIFIER_VALUES.has(action.value) && this.heldKeys.has(action.value)) {
-        skipped.add(action.value);
-        return { type: 'pause' };
-      }
-      return action.type === 'keyUp' && skipped.has(action.value) ? { type: 'pause' } : action;
-    });
-    for (const action of kept) {
-      if (action.type === 'keyDown') this.heldKeys.add(action.value);
-      else if (action.type === 'keyUp') this.heldKeys.delete(action.value);
-    }
-    return { ...source, actions: kept };
-  }
-
-  /**
-   * Presses, holds, or releases one key: as CDP key events on Chromium when
-   * a BiDi key action cannot carry it (`chromiumKeyCommands`), else as the
-   * key source `source` builds, given whether Shift is held. The CDP
-   * events carry the modifiers held by BiDi key actions, and a key CDP holds
-   * is released through CDP, so either path sees the other's keyboard.
-   */
-  async sendKey(stroke: KeyStroke, source: (shiftHeld: boolean) => Input.KeySourceActions, signal?: AbortSignal): Promise<void> {
-    if (this.settings.browser === 'chromium') {
-      const keyboard = { held: heldModifiers((value) => this.heldKeys.has(value)), pressed: this.cdpHeldKeys, mac: process.platform === 'darwin' };
-      const commands = chromiumKeyCommands(stroke, keyboard);
-      if (commands !== undefined) return this.sendCdpKeys(commands, signal);
-    }
-    return this.sendInput([source(this.heldKeys.has(SHIFT_KEY))], signal);
-  }
-
-  /** Presses one key of the contract grammar (`pressSource`). */
-  pressKey(key: string, signal?: AbortSignal): Promise<void> {
-    return this.sendKey(pressStroke(key), () => pressSource(key), signal);
-  }
-
-  /**
-   * Sends CDP key commands to the tab's target in order, recording the keys
-   * they leave held. Nothing is sent once `signal` aborted; once the first
-   * went out the rest follow, so a chord never leaves a modifier held.
-   */
-  private async sendCdpKeys(commands: readonly CdpKeyCommand[], signal?: AbortSignal): Promise<void> {
-    signal?.throwIfAborted();
-    const context = this.requireContext();
-    const cdp = await ChromiumCdp.forContext(this.connection, context);
-    signal?.throwIfAborted();
-    this.dispatches += 1;
-    for (const command of commands) {
-      await cdp.send(command.method, command.params);
-      const held = holdsAfter(command);
-      if (held?.down === true) this.cdpHeldKeys.add(held.code);
-      else if (held?.down === false) this.cdpHeldKeys.delete(held.code);
-    }
-  }
-
-  /** Whether a key (by WebDriver value) is held down on the tab. */
-  isHeld(value: string): boolean {
-    return this.heldKeys.has(value);
-  }
-
-  /**
    * Forgets the tab, which closed or is closing: its refs, frames, and the
    * input state that died with it, so the next use opens a fresh one.
    */
@@ -586,24 +493,22 @@ export class BidiSession {
     this.context = undefined;
     this.refs.clear();
     this.frames.clear();
-    this.heldKeys.clear();
-    this.cdpHeldKeys.clear();
-    this.pointer = { x: 0, y: 0 };
-    this.heldButtons.clear();
+    this.input.reset();
   }
 
-  /** Counts a page mutation the driver made in the page (a fill, a select), which may have reached the app. */
+  /** Input sends and page mutations so far (`BidiInput.dispatches`). */
+  get dispatches(): number {
+    return this.input.dispatches;
+  }
+
+  /** Where the mouse last moved in the tab. */
+  get pointer(): ViewportPoint {
+    return this.input.pointer;
+  }
+
+  /** Counts a change the driver or the test's code made in the page (a fill, a select, an evaluate), which may have reached the app. */
   mutated(): void {
-    this.dispatches += 1;
-  }
-
-  /** Remembers where `actions` left the mouse. */
-  trackPointer(actions: readonly Input.SourceActions[]): void {
-    for (const source of actions) {
-      if (source.type !== 'pointer') continue;
-      const last = source.actions.findLast((action) => action.type === 'pointerMove');
-      if (last?.type === 'pointerMove') this.pointer = { x: last.x, y: last.y };
-    }
+    this.input.mutated();
   }
 
   /**

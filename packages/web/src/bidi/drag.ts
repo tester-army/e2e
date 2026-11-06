@@ -9,11 +9,11 @@
  */
 
 import type { Protocol } from 'devtools-protocol';
-import type { BidiConnection } from './connection.ts';
 import { raceAbort } from 'e2e/engine';
+import type { BidiInput } from './bidi-input.ts';
+import type { BidiConnection } from './connection.ts';
 import { releaseQuietly, unlessStale } from './errors.ts';
-import { ChromiumCdp } from './cdp.ts';
-import { mouse } from './input.ts';
+import { dragPath, mouse, moveActions } from './input.ts';
 import { callFunction } from './script.ts';
 
 type Point = { readonly x: number; readonly y: number };
@@ -47,39 +47,30 @@ function dragStarted(): Promise<boolean> | boolean {
 }
 
 /**
- * Presses at the path's first point, moves through the rest, and releases
- * at the last; a drag the page starts on the first move carries its data to
- * the drop. `stepMs` paces each move; `afterPress` runs between the press
- * and the first move, and its failure ends the drag. Once `signal` aborts, nothing more is
- * dispatched; however it ends, interception is off and the button is up
- * where the mouse last was, so a drag that failed midway drops nothing at
- * the target, and only the mouse is released, so keys the test holds stay
+ * Presses at `from`, then reads where the drag goes (`resolveTarget`), as
+ * Playwright resolves a drop target only once the source is pressed, moves
+ * there through `dragPath`, and releases; a drag the page starts on the
+ * first move carries its data to the drop. `stepMs` paces each move. Every
+ * input goes through `input`, the scripts and the drag event subscription
+ * through `connection`. Once `signal` aborts, nothing more is dispatched;
+ * however it ends, interception is off and the button is up where the
+ * mouse last was, so a drag that failed midway drops nothing at the
+ * target, and only the mouse is released, so keys the test holds stay
  * held.
  */
 export async function chromiumDrag(
+  input: BidiInput,
   connection: BidiConnection,
   context: string,
   documents: readonly string[],
-  path: readonly Point[],
+  from: Point,
+  resolveTarget: () => Promise<Point>,
   stepMs: number,
   signal: AbortSignal,
-  afterPress: () => Promise<void> = async () => undefined,
 ): Promise<void> {
-  const [from, first, ...rest] = path;
-  if (from === undefined || first === undefined) return;
-  const last = rest.at(-1) ?? first;
-  const cdp = await ChromiumCdp.forContext(connection, context);
-  const setInterceptDrags = (enabled: boolean): Promise<unknown> => {
-    signal.throwIfAborted();
-    return cdp.send('Input.setInterceptDrags', { enabled });
-  };
-  const pointer = (actions: Parameters<typeof mouse>[0]): Promise<unknown> => {
-    signal.throwIfAborted();
-    return connection.send('input.performActions', { context, actions: [mouse(actions)] });
-  };
   let intercepted: (data: Protocol.Input.DragData) => void = () => undefined;
   const dragData = new Promise<Protocol.Input.DragData>((resolve) => (intercepted = resolve));
-  const off = cdp.on('Input.dragIntercepted', (event) => intercepted(event.data));
+  const off = await input.onDragIntercepted((data) => intercepted(data));
   let subscription: string | undefined;
   let pressed = false;
   let intercepting = false;
@@ -87,37 +78,33 @@ export async function chromiumDrag(
     subscription = await connection.subscribeExtension(['goog:cdp.Input.dragIntercepted'], [context]);
     signal.throwIfAborted();
     pressed = true;
-    await pointer([{ type: 'pointerMove', x: from.x, y: from.y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }]);
-    await afterPress();
+    await input.send([mouse([{ type: 'pointerMove', x: from.x, y: from.y, origin: 'viewport' }, { type: 'pointerDown', button: 0 }])], signal);
+    const [, first, ...rest] = dragPath(from, await resolveTarget());
+    const last = rest.at(-1) ?? first!;
     // Armed after the press: armed before, it latches onto the move to the press point and misses the drag.
     await Promise.all(documents.map((each) => unlessStale(callFunction(connection, each, watchDrag), undefined)));
+    signal.throwIfAborted();
     intercepting = true;
-    await setInterceptDrags(true);
+    await input.interceptDrags(true);
     // One discrete move, as Playwright's: an interpolated one would be checked before it passed the drag threshold.
-    await pointer([{ type: 'pointerMove', x: first.x, y: first.y, origin: 'viewport' }]);
+    await input.send([mouse(moveActions([first!], 0))], signal);
     const started = await Promise.all(documents.map((each) => unlessStale(callFunction(connection, each, dragStarted, [], { awaitPromise: true }), false)));
     const data = started.includes(true) ? await raceAbort(dragData, signal, 'drag') : undefined;
-    await setInterceptDrags(false);
+    signal.throwIfAborted();
+    await input.interceptDrags(false);
     intercepting = false;
     if (data === undefined) {
-      await pointer([
-        ...rest.map((point) => ({ type: 'pointerMove' as const, x: point.x, y: point.y, origin: 'viewport' as const, ...(stepMs > 0 ? { duration: stepMs } : {}) })),
-        { type: 'pointerUp', button: 0 },
-      ]);
+      await input.send([mouse([...moveActions(rest, stepMs), { type: 'pointerUp', button: 0 }])], signal);
       pressed = false;
       return;
     }
-    const dispatch = (type: Protocol.Input.DispatchDragEventRequest['type'], point: Point): Promise<unknown> => {
-      signal.throwIfAborted();
-      return cdp.send('Input.dispatchDragEvent', { type, x: point.x, y: point.y, data });
-    };
-    await dispatch('dragEnter', first);
-    for (const point of rest) await dispatch('dragOver', point);
-    await dispatch('drop', last);
+    await input.dragEvent('dragEnter', first!, data, signal);
+    for (const point of rest) await input.dragEvent('dragOver', point, data, signal);
+    await input.dragEvent('drop', last, data, signal);
   } finally {
     off();
-    if (intercepting) await releaseQuietly(cdp.send('Input.setInterceptDrags', { enabled: false }));
-    if (pressed) await releaseQuietly(connection.send('input.performActions', { context, actions: [mouse([{ type: 'pointerUp', button: 0 }])] }));
+    if (intercepting) await releaseQuietly(input.interceptDrags(false));
+    if (pressed) await releaseQuietly(input.send([mouse([{ type: 'pointerUp', button: 0 }])]));
     if (subscription !== undefined) await releaseQuietly(connection.send('session.unsubscribe', { subscriptions: [subscription] }));
   }
 }

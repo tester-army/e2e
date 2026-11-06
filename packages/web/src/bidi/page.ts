@@ -30,8 +30,8 @@ export type ActionPoint =
 /** What `actionPoint` checks: `scroll` to bring the element into view first; `key` names the closed-roots registry. */
 export interface ActionPointOptions {
   readonly scroll: boolean;
-  /** False for an action that types or selects rather than points: then only visibility counts, not stability or a point in view. */
-  readonly pointer?: boolean;
+  /** False to skip waiting for the element to hold still, for a frame scrolled into view on the way to the element inside it. */
+  readonly stable?: boolean;
   /** How to scroll the element into view, for a retry after an overlay covered it; unset, only when its point is clipped. */
   readonly align?: { readonly block: ScrollLogicalPosition; readonly inline: ScrollLogicalPosition };
   readonly key: string;
@@ -41,7 +41,7 @@ export interface ActionPointOptions {
  * The checks Playwright runs before a pointer action, but the hit test and
  * the enabled check (the `disabled` reader): attached, visible, scrolled into view when its point is clipped by the
  * viewport or a scrolling ancestor (or as `align` says), and holding still
- * for a frame. The point is the centre of the element's first client rect
+ * for a frame (unless `stable` is false). The point is the centre of the element's first client rect
  * that shows at least a pixel, as Playwright's clickable point, in whole
  * pixels inside that rect: pointer input takes whole pixels, and a
  * rounded centre can miss a small element.
@@ -58,7 +58,6 @@ export async function actionPoint(element: Element, options: ActionPointOptions)
   };
   const box = rectsOf()[0] ?? element.getBoundingClientRect();
   if (box.width === 0 || box.height === 0 || style.visibility === 'hidden') return { state: 'hidden' };
-  if (options.pointer === false) return { state: 'ok', x: 0, y: 0 };
   type Area = { left: number; top: number; right: number; bottom: number };
   const viewport = (): { width: number; height: number } => ({
     width: visualViewport?.width || innerWidth,
@@ -111,13 +110,15 @@ export async function actionPoint(element: Element, options: ActionPointOptions)
     : ([...element.querySelectorAll('*')].find((child) => child.getClientRects().length > 0) ?? element.parentElement ?? element);
   if (options.scroll && options.align !== undefined) scrolled.scrollIntoView({ ...options.align, behavior: 'instant' });
   else if (options.scroll && !centred(visible())) scrolled.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
-  // Read in two frames whose animation time differs: a frame that repeats the time shows no motion.
-  const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
-  const first = await frame();
-  const before = rectsOf()[0] ?? element.getBoundingClientRect();
-  for (let tries = 0; tries < 5 && (await frame()) === first; tries += 1);
-  const after = rectsOf()[0] ?? element.getBoundingClientRect();
-  if (after.x !== before.x || after.y !== before.y || after.width !== before.width || after.height !== before.height) return { state: 'moving' };
+  if (options.stable !== false) {
+    // Read in two frames whose animation time differs: a frame that repeats the time shows no motion.
+    const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
+    const first = await frame();
+    const before = rectsOf()[0] ?? element.getBoundingClientRect();
+    for (let tries = 0; tries < 5 && (await frame()) === first; tries += 1);
+    const after = rectsOf()[0] ?? element.getBoundingClientRect();
+    if (after.x !== before.x || after.y !== before.y || after.width !== before.width || after.height !== before.height) return { state: 'moving' };
+  }
   const area = visible();
   if (area === null) return { state: 'outside' };
   const x = (area.left + area.right) / 2;
@@ -127,6 +128,24 @@ export async function actionPoint(element: Element, options: ActionPointOptions)
     if (inside(px, py)) return { state: 'ok', x: px, y: py };
   }
   return { state: 'ok', x: Math.round(x), y: Math.round(y) };
+}
+
+/**
+ * Whether the element shows, as `actionPoint` reads it before anything
+ * about a pointer: attached, laying out a box, and not `visibility: hidden`.
+ * For an action that types or selects, which needs no point.
+ */
+export function elementShown(element: Element): 'detached' | 'hidden' | 'ok' {
+  if (!element.isConnected) return 'detached';
+  const style = getComputedStyle(element);
+  let box: DOMRect | undefined = element.getClientRects()[0];
+  if (box === undefined && style.display === 'contents') {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    box = range.getClientRects()[0];
+  }
+  box ??= element.getBoundingClientRect();
+  return box.width === 0 || box.height === 0 || style.visibility === 'hidden' ? 'hidden' : 'ok';
 }
 
 /**

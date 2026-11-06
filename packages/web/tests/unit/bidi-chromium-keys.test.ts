@@ -1,8 +1,13 @@
 /** Which keys Chromium takes as CDP key events, and the events: media keys, Numpad5 with NumLock off, and macOS editing shortcuts with their commands. */
 
 import { describe, expect, it } from 'vitest';
-import { chromiumKeyCommands, lacksWebDriverValue, MAC_EDITING_COMMANDS, macEditingCommands, type ChromiumKeyboard, type Modifier } from '../../src/bidi/chromium-keys.ts';
-import { fixtureKeySource, fixtureKeyStroke } from '../../src/bidi/input.ts';
+import { chromiumKeyCommands, MAC_EDITING_COMMANDS, macEditingCommands, type ChromiumKeyboard } from '../../src/bidi/chromium-keys.ts';
+import { fixtureKeyStroke, KEYS, keyValue, strokeSource, type KeyPhase, type Modifier } from '../../src/bidi/keyboard.ts';
+
+/** The BiDi key source of one `browser.keyboard` call, with Shift held before it or not. */
+function source(key: string, phase: KeyPhase, shiftHeld: boolean) {
+  return strokeSource(fixtureKeyStroke(key, phase), shiftHeld);
+}
 
 /** A keyboard with `held` modifiers down and nothing else, on macOS or not. */
 function keyboard(mac: boolean, held: Modifier[] = [], pressed: string[] = []): ChromiumKeyboard {
@@ -24,7 +29,7 @@ describe('MAC_EDITING_COMMANDS', () => {
   it('has a key definition for every code it binds', () => {
     for (const shortcut of Object.keys(MAC_EDITING_COMMANDS)) {
       const parts = shortcut.split('+');
-      const stroke = { name: parts.at(-1)!, phase: 'keyDown' as const, chord: [] };
+      const stroke = fixtureKeyStroke(parts.at(-1)!, 'keyDown');
       expect(chromiumKeyCommands(stroke, keyboard(true, parts.slice(0, -1) as Modifier[])), shortcut).toBeDefined();
     }
   });
@@ -103,16 +108,16 @@ describe('chromiumKeyCommands', () => {
 
 describe('numpad keys on BiDi', () => {
   it('presses the NumLock-off key without Shift and the digit with it', () => {
-    expect(fixtureKeySource('NumpadDecimal', 'press', false).actions[0]).toEqual({ type: 'keyDown', value: '' });
-    expect(fixtureKeySource('NumpadDecimal', 'press', true).actions[0]).toEqual({ type: 'keyDown', value: '' });
-    expect(fixtureKeySource('Shift+Numpad1', 'press', false).actions[1]).toEqual({ type: 'keyDown', value: '' });
-    expect(fixtureKeySource('Numpad1', 'press', false).actions[0]).toEqual({ type: 'keyDown', value: '' });
+    expect(source('NumpadDecimal', 'press', false).actions[0]).toEqual({ type: 'keyDown', value: '' });
+    expect(source('NumpadDecimal', 'press', true).actions[0]).toEqual({ type: 'keyDown', value: '' });
+    expect(source('Shift+Numpad1', 'press', false).actions[1]).toEqual({ type: 'keyDown', value: '' });
+    expect(source('Numpad1', 'press', false).actions[0]).toEqual({ type: 'keyDown', value: '' });
   });
 
   it('refuses a key WebDriver has no value for', () => {
-    expect(lacksWebDriverValue('MediaPlayPause', false)).toBe(true);
-    expect(lacksWebDriverValue('Numpad5', true)).toBe(false);
-    expect(() => fixtureKeySource('MediaPlayPause', 'press', false)).toThrow('WebDriver defines no key value for "MediaPlayPause"');
-    expect(() => fixtureKeySource('Numpad5', 'press', false)).toThrow('with NumLock off (Clear)');
+    expect(keyValue(KEYS.get('MediaPlayPause')!, false)).toBeUndefined();
+    expect(keyValue(KEYS.get('Numpad5')!, true)).toBe('\uE01F');
+    expect(() => source('MediaPlayPause', 'press', false)).toThrow('WebDriver defines no key value for "MediaPlayPause"');
+    expect(() => source('Numpad5', 'press', false)).toThrow('"Numpad5" with NumLock off (key "Clear")');
   });
 });

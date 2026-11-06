@@ -7,7 +7,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { web, type WebOptions } from '../../src/index.ts';
-import { clickSources, pressSource, typeSource } from '../../src/bidi/input.ts';
+import { clickSources, typeSource } from '../../src/bidi/input.ts';
+import { pressStroke, strokeSource } from '../../src/bidi/keyboard.ts';
 
 describe('web()', () => {
   it('refuses the removed driver option and webkit, naming why', () => {
@@ -35,7 +36,7 @@ describe('web()', () => {
 
 describe('BiDi input sources', () => {
   it('presses a named key with its modifiers held around it', () => {
-    expect(pressSource('Shift+Tab').actions).toEqual([
+    expect(strokeSource(pressStroke('Shift+Tab'), false).actions).toEqual([
       { type: 'keyDown', value: '' },
       { type: 'keyDown', value: '' },
       { type: 'keyUp', value: '' },
