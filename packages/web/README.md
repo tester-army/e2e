@@ -126,16 +126,21 @@ cacheable:
 npx @e2e-dev/web install chromium --with-deps
 ```
 
-It downloads the builds this package pins: Chrome for Testing for `chromium`
-(the headless shell, plus full Chrome with `--headed`) and Firefox for
-`firefox`. Chromium also gets an ffmpeg to record video: `E2E_FFMPEG_PATH`,
-else a system `ffmpeg` with VP9, else a pinned download. Browsers go to
-`E2E_BROWSERS_PATH`, else the user cache (`~/Library/Caches/e2e/browsers`,
-`~/.cache/e2e/browsers`, or `%LOCALAPPDATA%\e2e\browsers`). Under pnpm, run
-the bin by name: `pnpm exec e2e-web install chromium --with-deps`.
+It downloads the builds this package pins, each checked against its SHA-256:
+Chrome for Testing for `chromium` (the headless shell; `--headed` installs
+the full Chrome a headed run launches instead, so run both commands to have
+both) and Firefox for `firefox`. Browsers go to `E2E_BROWSERS_PATH`, else the
+user cache (`~/Library/Caches/e2e/browsers`, `~/.cache/e2e/browsers`, or
+`%LOCALAPPDATA%\e2e\browsers`). Under pnpm, run the bin by name:
+`pnpm exec e2e-web install chromium --with-deps`.
+
+Chromium video needs an ffmpeg with VP9: `E2E_FFMPEG_PATH`, else a system
+`ffmpeg`, else a pinned build the first recording downloads. `install ffmpeg`
+fetches it ahead of time.
 
 `--with-deps` also installs the system libraries a slim Debian or Ubuntu image
-lacks.
+lacks. `E2E_BROWSERS_DOWNLOAD_HOST` names a mirror, and downloads honor
+`HTTPS_PROXY`, `HTTP_PROXY`, and `NO_PROXY`.
 
 ## Documentation
 

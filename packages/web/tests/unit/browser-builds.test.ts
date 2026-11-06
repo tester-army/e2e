@@ -1,9 +1,12 @@
-import { lstatSync, mkdtempSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { crc32 } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { browserPlatform, downloadUrl, executablePath, extractZip, type BrowserPlatform } from '../../src/browser-builds.ts';
+import { browserPlatform, downloadUrl, executablePath, extractZip, installBuild, type BrowserPlatform, type BuildInstall, type BuildName, type ExecRunner } from '../../src/browser-builds.ts';
+import { newOwner, withCacheLock, writeOwner } from '../../src/install-lock.ts';
+import { sha256Of, startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
 
 /** One entry of a generated zip: its name, its unix mode with the file type bits, and its content (a symlink's target). */
 interface ZipEntry {
@@ -183,5 +186,137 @@ describe('extractZip', () => {
     const archive = path.join(dir, 'fixture.zip');
     writeFileSync(archive, zipOf([{ name: 'a.txt', mode: FILE | 0o644, content: 'a' }]));
     await expect(extractZip(archive, path.join(dir, 'root'), AbortSignal.abort())).rejects.toThrow();
+  });
+});
+
+describe('installBuild', () => {
+  let cache = '';
+  let server: ArchiveServer;
+
+  beforeEach(async () => {
+    cache = mkdtempSync(path.join(tmpdir(), 'e2e-builds-'));
+    server = await startArchiveServer();
+  });
+
+  afterEach(async () => {
+    await server.close();
+    rmSync(cache, { recursive: true, force: true });
+  });
+
+  /** The path `downloadUrl` asks the mirror for. */
+  const served = (build: BuildName, buildId: string, platform: BrowserPlatform): string =>
+    decodeURIComponent(downloadUrl(build, buildId, platform, server.origin).slice(server.origin.length));
+
+  /** Serves `archive` for `build` on `platform` and installs it from the mirror. */
+  const install = async (build: BuildName, buildId: string, platform: BrowserPlatform, archive: Buffer, extra: Partial<BuildInstall> = {}): Promise<void> => {
+    server.route(served(build, buildId, platform), archive);
+    await installBuild({ build, buildId, platform, cacheDir: cache, sha256: sha256Of(archive), host: server.origin, owner: newOwner(), env: {}, ...extra });
+  };
+
+  /** Every file and directory left in the cache, relative to it. */
+  const leftovers = (): string[] => readdirSync(cache, { recursive: true, encoding: 'utf8' }).toSorted();
+
+  it('unpacks a verified zip into place and leaves no staging behind', async () => {
+    const zip = zipOf([{ name: 'chrome-headless-shell-linux64/chrome-headless-shell', mode: FILE | 0o755, content: 'shell' }]);
+    await install('chrome-headless-shell', '1.2.3', LINUX, zip);
+    expect(readFileSync(executablePath(cache, 'chrome-headless-shell', '1.2.3', LINUX), 'utf8')).toBe('shell');
+    expect(readdirSync(path.join(cache, 'chrome-headless-shell'))).toEqual(['linux-1.2.3']);
+  });
+
+  it.skipIf(process.platform === 'win32')('unpacks a tar.xz with tar', async () => {
+    const source = mkdtempSync(path.join(tmpdir(), 'e2e-tar-'));
+    try {
+      mkdirSync(path.join(source, 'firefox'));
+      writeFileSync(path.join(source, 'firefox', 'firefox'), 'fx', { mode: 0o755 });
+      execFileSync('tar', ['-cJf', path.join(source, 'firefox.tar.xz'), '-C', source, 'firefox']);
+      await install('firefox', 'stable_1.0', LINUX, readFileSync(path.join(source, 'firefox.tar.xz')));
+    } finally {
+      rmSync(source, { recursive: true, force: true });
+    }
+    const executable = executablePath(cache, 'firefox', 'stable_1.0', LINUX);
+    expect(readFileSync(executable, 'utf8')).toBe('fx');
+    expect(statSync(executable).mode & 0o111).not.toBe(0);
+  });
+
+  it('copies the app out of a mounted dmg and detaches it', async () => {
+    const calls: string[] = [];
+    const exec: ExecRunner = async (file, args) => {
+      calls.push(`${file} ${args[0] ?? ''}`);
+      if (file === 'hdiutil' && args[0] === 'attach') {
+        const mountpoint = args[args.indexOf('-mountpoint') + 1]!;
+        mkdirSync(path.join(mountpoint, 'Firefox.app', 'Contents', 'MacOS'), { recursive: true });
+        writeFileSync(path.join(mountpoint, 'Firefox.app', 'Contents', 'MacOS', 'firefox'), 'fx');
+      }
+      if (file === 'cp') cpSync(args[1]!, path.join(args[2]!, path.basename(args[1]!)), { recursive: true });
+    };
+    await install('firefox', 'stable_1.0', MAC_ARM, Buffer.from('dmg'), { exec });
+    expect(readFileSync(executablePath(cache, 'firefox', 'stable_1.0', MAC_ARM), 'utf8')).toBe('fx');
+    expect(calls).toEqual(['hdiutil attach', 'cp -R', 'hdiutil detach']);
+  });
+
+  it('runs the Windows installer with an extract directory as the invoking user', async () => {
+    let env: NodeJS.ProcessEnv | undefined;
+    const exec: ExecRunner = async (file, args, options) => {
+      expect(path.basename(file)).toBe('Firefox Setup 1.0.exe');
+      env = options.env;
+      const root = args[0]!.slice('/ExtractDir='.length);
+      mkdirSync(path.join(root, 'core'), { recursive: true });
+      writeFileSync(path.join(root, 'core', 'firefox.exe'), 'fx');
+    };
+    await install('firefox', 'stable_1.0', WIN, Buffer.from('exe'), { exec });
+    expect(readFileSync(executablePath(cache, 'firefox', 'stable_1.0', WIN), 'utf8')).toBe('fx');
+    expect(env?.['__compat_layer']).toBe('RunAsInvoker');
+  });
+
+  it('refuses an archive whose SHA-256 is not the pinned one, before unpacking it', async () => {
+    let ran = false;
+    server.route(served('firefox', 'stable_1.0', WIN), Buffer.from('tampered'));
+    const exec: ExecRunner = async () => {
+      ran = true;
+    };
+    await expect(installBuild({ build: 'firefox', buildId: 'stable_1.0', platform: WIN, cacheDir: cache, sha256: sha256Of(Buffer.from('exe')), host: server.origin, owner: newOwner(), env: {}, exec }))
+      .rejects.toMatchObject({ code: 'BROWSER_INSTALL_FAILED', message: expect.stringContaining(`expected ${sha256Of(Buffer.from('exe'))}`) });
+    expect(ran).toBe(false);
+    expect(leftovers()).toEqual(['firefox']);
+  });
+
+  it('fails an HTTP error naming the URL, and leaves nothing', async () => {
+    await expect(installBuild({ build: 'chrome', buildId: '1.2.3', platform: LINUX, cacheDir: cache, sha256: '0'.repeat(64), host: server.origin, owner: newOwner(), env: {} }))
+      .rejects.toMatchObject({ code: 'BROWSER_INSTALL_FAILED', message: `download of ${downloadUrl('chrome', '1.2.3', LINUX, server.origin)} failed: 404 Not Found` });
+    expect(leftovers()).toEqual(['chrome']);
+  });
+
+  it('leaves nothing when aborted mid-download', async () => {
+    const controller = new AbortController();
+    server.route(served('chrome', '1.2.3', LINUX), (_request, response) => {
+      response.writeHead(200, { 'content-length': '1000000' });
+      response.write(Buffer.alloc(1000), () => controller.abort());
+    });
+    await expect(installBuild({ build: 'chrome', buildId: '1.2.3', platform: LINUX, cacheDir: cache, sha256: '0'.repeat(64), host: server.origin, owner: newOwner(), env: {}, signal: controller.signal }))
+      .rejects.toThrow();
+    expect(leftovers()).toEqual(['chrome']);
+  });
+
+  it("removes a dead owner's staging and keeps a live one's", async () => {
+    const target = path.join(cache, 'chrome-headless-shell', 'linux-1.2.3');
+    mkdirSync(`${target}.partial-dead`, { recursive: true });
+    writeOwner(`${target}.partial-dead`, { ...newOwner(), pid: spawnSync(process.execPath, ['-e', '']).pid! });
+    mkdirSync(`${target}.partial-live`);
+    writeOwner(`${target}.partial-live`, newOwner());
+    await install('chrome-headless-shell', '1.2.3', LINUX, zipOf([{ name: 'chrome-headless-shell-linux64/chrome-headless-shell', mode: FILE | 0o755 }]));
+    expect(readdirSync(path.join(cache, 'chrome-headless-shell')).toSorted()).toEqual(['linux-1.2.3', 'linux-1.2.3.partial-live']);
+  });
+
+  it('downloads once when two installs of the same build start together', async () => {
+    const zip = zipOf([{ name: 'chrome-headless-shell-linux64/chrome-headless-shell', mode: FILE | 0o755, content: 'shell' }]);
+    server.route(served('chrome-headless-shell', '1.2.3', LINUX), zip);
+    const executable = executablePath(cache, 'chrome-headless-shell', '1.2.3', LINUX);
+    const installOnce = () => withCacheLock(cache, { log: () => {} }, async (owner) => {
+      if (existsSync(executable)) return;
+      await installBuild({ build: 'chrome-headless-shell', buildId: '1.2.3', platform: LINUX, cacheDir: cache, sha256: sha256Of(zip), host: server.origin, owner, env: {} });
+    });
+    await Promise.all([installOnce(), installOnce()]);
+    expect(server.requests).toHaveLength(1);
+    expect(readFileSync(executable, 'utf8')).toBe('shell');
   });
 });

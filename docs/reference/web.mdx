@@ -956,23 +956,32 @@ bunx @e2e-dev/web install chromium --with-deps
 ```
 </CodeGroup>
 
-- Name `chromium`, `firefox`, or both. With none named it installs
-  `chromium`.
-- `--headed` installs the full Chrome build a headed run launches.
+- Name `chromium`, `firefox`, `ffmpeg`, or several. With none named it
+  installs `chromium`.
+- `--headed` installs the full Chrome a headed run launches instead of the
+  headless shell; run both commands to have both.
 - `--with-deps` also installs the system libraries the browsers need on
   Debian and Ubuntu, with `apt-get`, through `sudo` when not run as root.
 - Browsers go to `E2E_BROWSERS_PATH`, else the user cache:
   `~/Library/Caches/e2e/browsers` on macOS, `$XDG_CACHE_HOME/e2e/browsers`
   or `~/.cache/e2e/browsers` on Linux, `%LOCALAPPDATA%\e2e\browsers` on
-  Windows. Every project on the machine shares it.
-- Downloads come from `storage.googleapis.com` (Chrome for Testing) and
-  `archive.mozilla.org` (Firefox). `E2E_BROWSERS_DOWNLOAD_HOST` names a
-  mirror that serves the same paths, such as `https://mirror.example.com`.
+  Windows. Every project on the machine shares it, and concurrent installs
+  wait for each other.
+- Downloads come from `storage.googleapis.com` (Chrome for Testing),
+  `archive.mozilla.org` (Firefox), and `github.com` (ffmpeg).
+  `E2E_BROWSERS_DOWNLOAD_HOST` names a mirror that serves the same paths,
+  such as `https://mirror.example.com`; plain `http` works only on
+  `localhost`. Every archive must match its pinned SHA-256, mirrored or not.
+- Downloads go through `HTTPS_PROXY` or `HTTP_PROXY`, minus the hosts in
+  `NO_PROXY`. On Node 22 and early Node 24 releases, also set
+  `NODE_USE_ENV_PROXY=1`.
 - On Linux, Firefox unpacks with `tar` and `xz`; `--with-deps` installs
   `xz-utils`.
-- `chromium` also needs an ffmpeg with `libvpx-vp9` to record video:
-  `E2E_FFMPEG_PATH`, else `ffmpeg` on the `PATH`, else a pinned download
-  into the browser cache.
+- `chromium` video needs an ffmpeg with `libvpx-vp9`: `E2E_FFMPEG_PATH`,
+  else `ffmpeg` on the `PATH`, else a pinned build the first recording
+  downloads into the browser cache. Install it ahead with `install ffmpeg`.
+  Windows on Arm has no pinned build: set `E2E_FFMPEG_PATH` to record
+  video there.
 - The command exits non-zero when an install fails. Ctrl-C or SIGTERM stops
   the download, removes the partial files, and exits 130 or 143.
 

@@ -1,18 +1,20 @@
 /**
  * The pinned browser builds on disk: where each platform's Chrome for
  * Testing and Firefox archives live, where their executables land in the
- * browsers cache, and how an archive is downloaded and unpacked into it.
+ * browsers cache, and how a verified archive is staged and unpacked into it.
  */
 
 import { execFile } from 'node:child_process';
-import { constants, createWriteStream, chmodSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
+import { constants, createWriteStream, chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
+import type { Readable } from 'node:stream';
 import { text } from 'node:stream/consumers';
 import { pipeline } from 'node:stream/promises';
 import { promisify } from 'node:util';
 import type { Entry, Options, ZipFile } from 'yauzl';
+import { downloadVerified } from './download.ts';
+import { removeAbandonedStaging, writeOwner, type LockOwner } from './install-lock.ts';
 
 /** A build the cache holds, by the directory it is kept under. */
 export type BuildName = 'chrome' | 'chrome-headless-shell' | 'firefox';
@@ -99,77 +101,110 @@ export function downloadUrl(build: BuildName, buildId: string, platform: Browser
   return `${host ?? DEFAULT_HOSTS.chrome}/chrome-for-testing-public/${buildId}/${platform.chrome}/${build}-${platform.chrome}.zip`;
 }
 
+/** Runs a tool to completion; `installBuild` takes one so the platform-specific unpacking can be exercised anywhere. */
+export type ExecRunner = (file: string, args: readonly string[], options: { readonly signal?: AbortSignal | undefined; readonly env?: NodeJS.ProcessEnv }) => Promise<void>;
+
+/** Runs `file` with `execFile`. */
+const runExec: ExecRunner = async (file, args, options) => {
+  await execFileAsync(file, args, options);
+};
+
+/** What `installArchive` downloads, how it unpacks it, and where the result goes. */
+export interface ArchiveInstall {
+  readonly url: string;
+  /** The SHA-256 the archive must have. */
+  readonly sha256: string;
+  /** The directory the unpacked archive becomes. */
+  readonly target: string;
+  /** Whether `target` already holds a complete install, as another process may have left it. */
+  readonly isInstalled: () => boolean;
+  /** Unpacks the verified `archive` into the empty directory `root`. */
+  readonly unpack: (archive: string, root: string) => Promise<void>;
+  /** Owns the staging directory: the install lock's holder. */
+  readonly owner: LockOwner;
+  /** The environment whose proxy variables route the download. */
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly signal?: AbortSignal | undefined;
+}
+
+/**
+ * Downloads and verifies an archive into a staging directory of its own
+ * beside `target`, unpacks it there, and renames the result into place, so
+ * an interrupted install leaves no half-unpacked tree behind. The staging
+ * directory records its owner and is removed on the way out; one left by an
+ * owner that died is removed by the next install. When another process put
+ * a complete install in place meanwhile, that one stays.
+ */
+export async function installArchive(job: ArchiveInstall): Promise<void> {
+  removeAbandonedStaging(job.target);
+  const staging = `${job.target}.partial-${job.owner.token}`;
+  mkdirSync(staging, { recursive: true });
+  writeOwner(staging, job.owner);
+  try {
+    const archive = path.join(staging, decodeURIComponent(job.url.slice(job.url.lastIndexOf('/') + 1)));
+    await downloadVerified(job.url, archive, { sha256: job.sha256, env: job.env, signal: job.signal });
+    const root = path.join(staging, 'root');
+    mkdirSync(root);
+    await job.unpack(archive, root);
+    job.signal?.throwIfAborted();
+    if (job.isInstalled()) return;
+    rmSync(job.target, { recursive: true, force: true });
+    try {
+      renameSync(root, job.target);
+    } catch (error) {
+      if (!job.isInstalled()) throw error;
+    }
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
+
 /** What `installBuild` downloads and where it puts it. */
 export interface BuildInstall {
   readonly build: BuildName;
   readonly buildId: string;
   readonly platform: BrowserPlatform;
   readonly cacheDir: string;
+  /** The SHA-256 of the build's archive for `platform`. */
+  readonly sha256: string;
   /** A mirror origin for the download, see `downloadUrl`. */
   readonly host?: string | undefined;
+  readonly owner: LockOwner;
+  readonly env: Readonly<Record<string, string | undefined>>;
   readonly signal?: AbortSignal | undefined;
+  /** Runs `tar`, `hdiutil`, `cp`, and the Windows Firefox installer; defaults to `execFile`. */
+  readonly exec?: ExecRunner | undefined;
 }
 
-/**
- * Downloads `build` and unpacks it beside its install directory, then
- * renames it into place, so an interrupted install leaves no half-unpacked
- * build behind: the partial directory is removed on the way out.
- */
+/** Downloads, verifies, and unpacks `build` into its install directory with `installArchive`. */
 export async function installBuild(install: BuildInstall): Promise<void> {
-  const target = installDirectory(install.cacheDir, install.build, install.buildId, install.platform);
-  const staging = `${target}.partial`;
-  rmSync(staging, { recursive: true, force: true });
-  mkdirSync(staging, { recursive: true });
-  try {
-    const url = downloadUrl(install.build, install.buildId, install.platform, install.host);
-    const archive = path.join(staging, decodeURIComponent(url.slice(url.lastIndexOf('/') + 1)));
-    await download(url, archive, install.signal);
-    const root = path.join(staging, 'root');
-    mkdirSync(root);
-    await unpack(archive, root, install.platform.os, install.signal);
-    rmSync(target, { recursive: true, force: true });
-    renameSync(root, target);
-  } finally {
-    rmSync(staging, { recursive: true, force: true });
-  }
-}
-
-/** Streams `url` into `file`, through a temporary name renamed once the body is complete. */
-async function download(url: string, file: string, signal: AbortSignal | undefined): Promise<void> {
-  try {
-    const response = await fetch(url, signal === undefined ? {} : { signal });
-    if (!response.ok || response.body === null) throw new Error(`${String(response.status)} ${response.statusText}`);
-    const partial = `${file}.download`;
-    await pipeline(Readable.from(response.body), createWriteStream(partial), signal === undefined ? {} : { signal });
-    renameSync(partial, file);
-  } catch (cause) {
-    if (signal?.aborted === true) throw cause;
-    throw new Error(`download of ${url} failed: ${failureOf(cause)}`, { cause });
-  }
-}
-
-/** An error's message with its cause's, which is where fetch keeps the network error behind "fetch failed". */
-function failureOf(error: unknown): string {
-  if (!(error instanceof Error)) return String(error);
-  return error.cause === undefined ? error.message : `${error.message} (${failureOf(error.cause)})`;
+  const exec = install.exec ?? runExec;
+  const executable = executablePath(install.cacheDir, install.build, install.buildId, install.platform);
+  await installArchive({
+    url: downloadUrl(install.build, install.buildId, install.platform, install.host),
+    sha256: install.sha256,
+    target: installDirectory(install.cacheDir, install.build, install.buildId, install.platform),
+    isInstalled: () => existsSync(executable),
+    unpack: (archive, root) => unpack(archive, root, install.platform.os, exec, install.signal),
+    owner: install.owner,
+    env: install.env,
+    signal: install.signal,
+  });
 }
 
 /** Unpacks `archive` into `root` with the tool its format needs. */
-async function unpack(archive: string, root: string, buildOs: BuildOs, signal: AbortSignal | undefined): Promise<void> {
+async function unpack(archive: string, root: string, buildOs: BuildOs, exec: ExecRunner, signal: AbortSignal | undefined): Promise<void> {
   if (archive.endsWith('.zip')) return extractZip(archive, root, signal);
-  if (archive.endsWith('.dmg')) return copyAppFromDmg(archive, root, signal);
-  if (archive.endsWith('.tar.xz')) return extractTarXz(archive, root, signal);
-  if (buildOs === 'win' && archive.endsWith('.exe')) {
-    await execFileAsync(archive, [`/ExtractDir=${root}`], { signal, env: { ...process.env, __compat_layer: 'RunAsInvoker' } });
-    return;
-  }
+  if (archive.endsWith('.dmg')) return copyAppFromDmg(archive, root, exec, signal);
+  if (archive.endsWith('.tar.xz')) return extractTarXz(archive, root, exec, signal);
+  if (buildOs === 'win' && archive.endsWith('.exe')) return exec(archive, [`/ExtractDir=${root}`], { signal, env: { ...process.env, __compat_layer: 'RunAsInvoker' } });
   throw new Error(`unsupported archive ${archive}`);
 }
 
 /** Unpacks a `.tar.xz` with the system `tar`, which hands the decompression to `xz`. */
-async function extractTarXz(archive: string, root: string, signal: AbortSignal | undefined): Promise<void> {
+async function extractTarXz(archive: string, root: string, exec: ExecRunner, signal: AbortSignal | undefined): Promise<void> {
   try {
-    await execFileAsync('tar', ['-xJf', archive, '-C', root], { signal });
+    await exec('tar', ['-xJf', archive, '-C', root], { signal });
   } catch (cause) {
     if (signal?.aborted === true) throw cause;
     const detail = (cause as { code?: unknown; stderr?: unknown }).code === 'ENOENT' ? 'tar was not found' : String((cause as { stderr?: unknown }).stderr ?? cause).trim();
@@ -178,17 +213,17 @@ async function extractTarXz(archive: string, root: string, signal: AbortSignal |
 }
 
 /** Mounts a Firefox `.dmg` read-only, copies its `.app` into `root`, and detaches it again. */
-async function copyAppFromDmg(archive: string, root: string, signal: AbortSignal | undefined): Promise<void> {
+async function copyAppFromDmg(archive: string, root: string, exec: ExecRunner, signal: AbortSignal | undefined): Promise<void> {
   const mountpoint = mkdtempSync(path.join(os.tmpdir(), 'e2e-dmg-'));
   let attached = false;
   try {
-    await execFileAsync('hdiutil', ['attach', '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mountpoint, archive], { signal });
+    await exec('hdiutil', ['attach', '-nobrowse', '-readonly', '-noautoopen', '-mountpoint', mountpoint, archive], { signal });
     attached = true;
     const app = readdirSync(mountpoint).find((name) => name.endsWith('.app'));
     if (app === undefined) throw new Error(`no .app in ${path.basename(archive)}`);
-    await execFileAsync('cp', ['-R', path.join(mountpoint, app), root], { signal });
+    await exec('cp', ['-R', path.join(mountpoint, app), root], { signal });
   } finally {
-    if (attached) await execFileAsync('hdiutil', ['detach', '-force', mountpoint]).catch(() => undefined);
+    if (attached) await exec('hdiutil', ['detach', '-force', mountpoint], {}).catch(() => undefined);
     rmSync(mountpoint, { recursive: true, force: true });
   }
 }

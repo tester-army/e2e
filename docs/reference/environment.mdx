@@ -172,8 +172,9 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | Variable | Example | Reading | Effect |
 | --- | --- | --- | --- |
 | `E2E_BROWSERS_PATH` | `E2E_BROWSERS_PATH=/opt/e2e-browsers` | value | Where `@e2e-dev/web` installs and launches its browsers. Unset, the user cache. See [Installing browsers](/reference/web#installing-browsers) |
-| `E2E_BROWSERS_DOWNLOAD_HOST` | `E2E_BROWSERS_DOWNLOAD_HOST=https://mirror.example.com` | value | A mirror `@e2e-dev/web` downloads browsers from, serving the paths of `storage.googleapis.com` and `archive.mozilla.org`. Unset, those hosts. See [Installing browsers](/reference/web#installing-browsers) |
-| `E2E_FFMPEG_PATH` | `E2E_FFMPEG_PATH=/usr/bin/ffmpeg` | value | The ffmpeg that encodes Chromium video, with `libvpx-vp9`. Unset, `ffmpeg` on `PATH` or a pinned download |
+| `E2E_BROWSERS_DOWNLOAD_HOST` | `E2E_BROWSERS_DOWNLOAD_HOST=https://mirror.example.com` | value | A mirror `@e2e-dev/web` downloads browsers and ffmpeg from, serving the paths of `storage.googleapis.com`, `archive.mozilla.org`, and `github.com`. `https`, or `http` on `localhost` only. Each archive must still match its pinned SHA-256. Unset, those hosts. See [Installing browsers](/reference/web#installing-browsers) |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | `HTTPS_PROXY=http://proxy.example.com:3128` | value | The proxy `@e2e-dev/web` downloads browsers and ffmpeg through, and the hosts it reaches directly. On Node 22 and early Node 24 releases, only with `NODE_USE_ENV_PROXY=1` |
+| `E2E_FFMPEG_PATH` | `E2E_FFMPEG_PATH=/usr/bin/ffmpeg` | value | The ffmpeg that encodes Chromium video, with `libvpx-vp9`. Unset, `ffmpeg` on `PATH`, else a pinned build the first recording downloads (none on Windows on Arm) |
 | `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with. Unset, the browser lease fails. See [Kernel](/integrations/kernel) |
 | `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with. Unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
 | [`EXPO_TOKEN`](#expo_token) | `EXPO_TOKEN=<token>` | value | The Expo access token `expoSimulators()` from `@e2e-dev/eas` uses |

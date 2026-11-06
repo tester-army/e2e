@@ -5,7 +5,7 @@
  * repaints, which ends at the last one). Chromium's mapper
  * does not implement that command, so its segment is the CDP screencast
  * reached through the mapper's `goog:cdp` passthrough, its JPEG frames
- * encoded to VP9 webm by ffmpeg (`ffmpegExecutable`).
+ * encoded to VP9 webm by ffmpeg (`ensureFfmpeg`, which downloads one on first use).
  */
 
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, renameSync, copyFileSync, rmSync } from 'node:fs
 import path from 'node:path';
 import { EngineError, type VideoFile } from 'e2e/engine';
 import { message } from '../support.ts';
-import { ffmpegExecutable } from '../install.ts';
+import { ensureFfmpeg } from '../install.ts';
 import { ChromiumCdp } from './cdp.ts';
 import type { BidiConnection } from './connection.ts';
 import { classify, isStale, releaseQuietly, unlessStale } from './errors.ts';
@@ -67,11 +67,11 @@ export class BidiVideo {
   /**
    * Starts recording `context`, unless a segment already records, and arms
    * the recorder for every tab opened after. Fails, leaving the recorder
-   * disarmed, when Chromium has no ffmpeg to encode with or the segment
-   * cannot start.
+   * disarmed, when Chromium gets no ffmpeg to encode with (it downloads one
+   * on first use) or the segment cannot start.
    */
   async arm(context: string | undefined, viewport: { width: number; height: number }): Promise<void> {
-    if (this.browser === 'chromium') this.ffmpeg ??= requireFfmpeg(this.env);
+    if (this.browser === 'chromium') this.ffmpeg ??= await ensureFfmpeg({ ...this.env });
     const generation = this.generation;
     if (this.current === undefined && context !== undefined) await this.tracked(this.begin(context, viewport, true));
     if (generation === this.generation) this.armed = true;
@@ -186,7 +186,7 @@ export class BidiVideo {
    * segment acquires is released when a later step of its start fails.
    */
   private async chromiumSegment(context: string, size: { width: number; height: number }, absolute: string): Promise<() => Promise<void>> {
-    const ffmpeg = this.ffmpeg ??= requireFfmpeg(this.env);
+    const ffmpeg = this.ffmpeg ??= await ensureFfmpeg({ ...this.env });
     const connection = this.connection;
     const cdp = await ChromiumCdp.forContext(connection, context);
     const encoder = new FrameEncoder(ffmpeg, size, absolute);
@@ -223,15 +223,6 @@ export class BidiVideo {
       if (unacknowledged !== undefined && !isStale(unacknowledged)) throw classify(unacknowledged, 'video');
     };
   }
-}
-
-/** The ffmpeg `env` names that encodes VP9; `ENGINE_FAILURE` naming how to get one when there is none. */
-function requireFfmpeg(env: Readonly<Record<string, string | undefined>>): string {
-  const ffmpeg = ffmpegExecutable(env);
-  if (ffmpeg === undefined) {
-    throw new EngineError('ENGINE_FAILURE', 'recording video on chromium needs ffmpeg with libvpx-vp9: run "npx @e2e-dev/web install chromium", or set E2E_FFMPEG_PATH', { retryable: false });
-  }
-  return ffmpeg;
 }
 
 /** The tab's viewport as it stands, as a JPEG in device pixels; the encoder scales it down to the segment's size. */

@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { main } from '../../src/cli.ts';
-import type { BrowserName } from '../../src/browser-names.ts';
+import type { InstallName } from '../../src/cli.ts';
 
 /** Runs `e2e-web` with recorded output and a fake installer that exits with `exitCode`. */
 async function run(args: readonly string[], exitCode = 0) {
-  const calls: { names: readonly BrowserName[]; withDeps: boolean; headed: boolean }[] = [];
+  const calls: { names: readonly InstallName[]; withDeps: boolean; headed: boolean }[] = [];
   let stdout = '';
   let stderr = '';
   const code = await main(args, {
@@ -29,6 +29,10 @@ describe('e2e-web', () => {
     ]);
   });
 
+  it('forwards ffmpeg, which installs no browser', async () => {
+    expect((await run(['install', 'ffmpeg'])).calls).toEqual([{ names: ['ffmpeg'], withDeps: false, headed: false }]);
+  });
+
   it("exits with the installer's code", async () => {
     expect((await run(['install'], 1)).code).toBe(1);
   });
@@ -38,7 +42,7 @@ describe('e2e-web', () => {
     async (args) => {
       const result = await run(args);
       expect(result).toMatchObject({ code: 0, calls: [] });
-      expect(result.stdout).toContain('Usage: npx @e2e-dev/web install [chromium|firefox ...] [--with-deps] [--headed]');
+      expect(result.stdout).toContain('Usage: npx @e2e-dev/web install [chromium|firefox|ffmpeg ...] [--with-deps] [--headed]');
       expect(result.stdout).toContain('pnpm exec e2e-web install');
     },
   );
@@ -47,7 +51,7 @@ describe('e2e-web', () => {
     [[], 'missing command'],
     [['show-report'], 'unknown command "show-report"'],
     [['install', '--force'], 'unknown option "--force"'],
-    [['install', 'webkit'], 'unknown browser "webkit"; expected one of chromium, firefox'],
+    [['install', 'webkit'], 'unknown browser "webkit"; expected one of chromium, firefox, ffmpeg'],
   ])('rejects %j with exit code 2', async (args, message) => {
     const result = await run(args);
     expect(result).toMatchObject({ code: 2, calls: [] });

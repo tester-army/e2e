@@ -1,19 +1,20 @@
 /**
  * Browser provisioning for the web engine: pinned Chrome for Testing and
  * Firefox builds in a per-user cache, downloaded on first use, and the
- * ffmpeg that encodes Chromium's screencast.
+ * ffmpeg that encodes Chromium's screencast, downloaded on first recording.
  */
 
 import { spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, createReadStream, createWriteStream, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
-import { gunzipSync } from 'node:zlib';
+import { pipeline } from 'node:stream/promises';
+import { createGunzip } from 'node:zlib';
 import { EngineError, InfrastructureError, type EngineDoctorCheck } from 'e2e/engine';
-import { browserPlatform, executablePath, installBuild, type BrowserPlatform, type BuildName } from './browser-builds.ts';
+import { browserPlatform, executablePath, installArchive, installBuild, type BrowserPlatform, type BuildName } from './browser-builds.ts';
 import type { BrowserName } from './browser-names.ts';
+import { mirrorOrigin } from './download.ts';
+import { cancelledCheck, withCacheLock } from './install-lock.ts';
 
 /** The Chrome for Testing build chromium runs: the headless shell headless, the full browser headed. */
 export const CHROMIUM_BUILD = '157.0.8103.38';
@@ -21,10 +22,42 @@ export const CHROMIUM_BUILD = '157.0.8103.38';
 /** The Firefox release firefox runs. */
 export const FIREFOX_BUILD = 'stable_159.0.1';
 
-/** The ffmpeg release that encodes Chromium's screencast when the system has none with VP9. */
-const FFMPEG_RELEASE = 'https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1';
+/**
+ * The SHA-256 of each pinned archive, by build and the vendor's platform
+ * name. Firefox's come from Mozilla's `SHA256SUMS` for the release; Chrome
+ * for Testing publishes none, so its were computed from the archives when
+ * the build was pinned. A bump of either build updates these.
+ */
+const ARCHIVE_SHA256: Readonly<Record<BuildName, Readonly<Record<string, string>>>> = {
+  'chrome-headless-shell': {
+    'mac-arm64': 'e6a6b13551aa12f951d0891d79282606b13742837c8fa0505e1272bae116ce82',
+    'mac-x64': '79821745d0a72d2ba752d981284ed0a9e6fa320dad133596941a17dba6186de3',
+    linux64: 'deafffa74660b34853a4119c361fd427ac8c9fcb62db51ddb8a797cd83a4ba2d',
+    'linux-arm64': 'b9b910a57b2a15eb3e55000a2339f93a973934a413ebfc6e585a50ec6c42fd6c',
+    win64: '1ff4540855478ba0848e03f1ef8d455f77d058b38285df91bc34273788a73446',
+  },
+  chrome: {
+    'mac-arm64': '3406b38b52b7d341d74450eb7b369be038c9fec9894c8b8a9e9e9f97333caf2f',
+    'mac-x64': 'c6fcc2869b0d5a421e880d7bcdabe96e4261c4100e125fc4e4daf6346474efa6',
+    linux64: '8cdeb344e9b2cefe59f4aea8d1d93d5d93054c03cde217665c16fc1f62e72a66',
+    'linux-arm64': '5517510e61657ff43ee9ab804ecd1a499b3d5bd3caf72f097516bd6565ba5a17',
+    win64: 'ae0deef27d449e1d7529df7705d609bab102de48464da13567ed3dd2ee1a0586',
+  },
+  firefox: {
+    mac: '0c214da4439c1eb4cea28a3c141ff112d511aa32c67f9d12e91116569c8d8dda',
+    'linux-x86_64': '469ce17120018e1c95411d254cf3c5f8db2dd1768a7acde5a2a089b00072ac65',
+    'linux-aarch64': '847651efd44351972a281afa54845708faffb358692f551af391dd77736bbd6b',
+    win64: '729af643b8e0a3809d6153a57a448cb96a01e6fa5e2e7ff782152ede6202eadd',
+  },
+};
 
-/** The SHA-256 of each platform's gzipped ffmpeg in `FFMPEG_RELEASE`, checked before it is kept. */
+/** The ffmpeg-static release that encodes Chromium's screencast when the system has none with VP9, as a path on `FFMPEG_HOST`. */
+const FFMPEG_RELEASE = '/eugeneware/ffmpeg-static/releases/download/b6.1.1';
+
+/** Where `FFMPEG_RELEASE` is downloaded from, unless `E2E_BROWSERS_DOWNLOAD_HOST` names a mirror. */
+const FFMPEG_HOST = 'https://github.com';
+
+/** The SHA-256 of each platform's gzipped ffmpeg in `FFMPEG_RELEASE`. */
 const FFMPEG_SHA256: Readonly<Record<string, string>> = {
   'darwin-arm64': '8923876afa8db5585022d7860ec7e589af192f441c56793971276d450ed3bbfa',
   'darwin-x64': '929b375c1182d956c51f7ac25e0b2b0411fb01f6f407aa15c9758efeb4242106',
@@ -33,16 +66,22 @@ const FFMPEG_SHA256: Readonly<Record<string, string>> = {
   'win32-x64': '8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77',
 };
 
-/** How long an install waits for another process's install of the same cache to finish. */
-const LOCK_WAIT_MS = 10 * 60_000;
-
-/** A lock older than this was left by a process that died mid-install. */
-const STALE_LOCK_MS = 15 * 60_000;
+/** Writes a progress line to stderr, where a command line install narrates. */
+const logToStderr = (line: string): void => {
+  process.stderr.write(`${line}\n`);
+};
 
 /** The build `name` runs in this mode. */
 function buildOf(name: BrowserName, headed: boolean): { readonly browser: BuildName; readonly buildId: string } {
   if (name === 'firefox') return { browser: 'firefox', buildId: FIREFOX_BUILD };
   return { browser: headed ? 'chrome' : 'chrome-headless-shell', buildId: CHROMIUM_BUILD };
+}
+
+/** The pinned SHA-256 of `browser`'s archive on `platform`. */
+function archiveSha256(browser: BuildName, platform: BrowserPlatform): string {
+  const sha256 = ARCHIVE_SHA256[browser][browser === 'firefox' ? platform.firefox : platform.chrome];
+  if (sha256 === undefined) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `no pinned SHA-256 for ${browser} on ${platform.chrome}`);
+  return sha256;
 }
 
 /**
@@ -64,37 +103,29 @@ function requirePlatform(): BrowserPlatform {
   return platform;
 }
 
-/** The mirror origin `E2E_BROWSERS_DOWNLOAD_HOST` names for browser downloads, without a trailing slash. */
-function downloadHost(env: NodeJS.ProcessEnv): string | undefined {
-  const host = env['E2E_BROWSERS_DOWNLOAD_HOST'];
-  return host === undefined || host === '' ? undefined : host.replace(/\/+$/, '');
-}
-
-/** The executable of the build `name` runs in this mode, whether or not it is installed yet. */
-export async function browserExecutable(name: BrowserName, headed: boolean, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+/** The executable of the build `name` runs in this mode. */
+function executableOf(name: BrowserName, headed: boolean, env: NodeJS.ProcessEnv): string {
   const { browser, buildId } = buildOf(name, headed);
   return executablePath(browsersPath(env), browser, buildId, requirePlatform());
 }
 
+/** The executable of the build `name` runs in this mode, whether or not it is installed yet. */
+export async function browserExecutable(name: BrowserName, headed: boolean, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+  return executableOf(name, headed, env);
+}
+
 /** Whether the build `name` runs in this mode is on disk. */
-async function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): Promise<boolean> {
+function isBrowserInstalled(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): boolean {
   try {
-    return existsSync(await browserExecutable(name, headed, env));
+    return existsSync(executableOf(name, headed, env));
   } catch {
     return false;
   }
 }
 
 /** The `browser` check of `e2e doctor`: whether the build the run launches is installed. */
-export async function browserCheck(
-  name: BrowserName,
-  env: NodeJS.ProcessEnv,
-  headed: boolean,
-  isInstalled: (name: BrowserName) => boolean | undefined | Promise<boolean | undefined> = (browser) => isBrowserInstalled(browser, env, headed),
-): Promise<EngineDoctorCheck[]> {
-  const installed = await isInstalled(name);
-  if (installed === undefined) return [];
-  if (installed) return [{ id: 'browser', status: 'pass', message: `${name} is installed` }];
+export async function browserCheck(name: BrowserName, env: NodeJS.ProcessEnv, headed: boolean): Promise<EngineDoctorCheck[]> {
+  if (isBrowserInstalled(name, env, headed)) return [{ id: 'browser', status: 'pass', message: `${name} is installed` }];
   return [
     {
       id: 'browser',
@@ -125,10 +156,6 @@ export interface EnsureBrowsersOptions {
    * the reporter rather than underneath it.
    */
   readonly log?: (line: string) => void;
-  /** Injected detection for tests; defaults to an executable existence check. */
-  readonly isInstalled?: (name: BrowserName) => boolean | undefined | Promise<boolean | undefined>;
-  /** Injected installer for tests; defaults to `installBrowsers`. */
-  readonly install?: (names: readonly BrowserName[], context: InstallContext) => Promise<void>;
   /** Aborts a download in progress; the run's interrupt owns it. */
   readonly signal?: AbortSignal;
   /** The run's environment; defaults to this process's. */
@@ -138,51 +165,40 @@ export interface EnsureBrowsersOptions {
 }
 
 /**
- * Ensures the given browsers are installed, downloading any missing ones,
- * and for chromium the ffmpeg that encodes its screencast.
+ * Ensures the given browsers are installed, downloading any missing ones.
  * Called from the engine's `prepare`, once per run before any worker starts,
  * so a download is never charged against a launch timeout and never runs
- * once per worker. Concurrent installs (two runs at once) are serialized by
- * a lock in the cache.
+ * once per worker.
  */
-export async function ensureBrowsersInstalled(
-  names: readonly BrowserName[],
-  options: EnsureBrowsersOptions = {},
-): Promise<void> {
+export async function ensureBrowsersInstalled(names: readonly BrowserName[], options: EnsureBrowsersOptions = {}): Promise<void> {
   const env = options.env ?? process.env;
   const headed = options.headed ?? false;
-  const isInstalled = options.isInstalled ?? ((name: BrowserName) => isBrowserInstalled(name, env, headed));
-  const verdicts = new Map(await Promise.all([...new Set(names)].map(async (name) => [name, await isInstalled(name)] as const)));
-  const missing = [...verdicts.keys()].filter((name) => verdicts.get(name) !== true);
-  if (options.install === undefined && names.includes('chromium') && ffmpegExecutable(env) === undefined) {
-    await installFfmpeg({ log: options.log ?? ((line: string) => process.stderr.write(`${line}\n`)), signal: options.signal, env });
-  }
+  const missing = [...new Set(names)].filter((name) => !isBrowserInstalled(name, env, headed));
   if (missing.length === 0) return;
-  const knownMissing = missing.every((name) => verdicts.get(name) === false);
-  const log = options.log ?? ((line: string) => process.stderr.write(`${line}\n`));
-  if (knownMissing) log(`Downloading missing browsers (first run): ${missing.join(', ')}...`);
-  const install = options.install ?? installBrowsers;
-  await install(missing, { log, signal: options.signal, env, headed });
-  if (knownMissing) log('Browser download complete.');
+  const log = options.log ?? logToStderr;
+  log(`Downloading missing browsers (first run): ${missing.join(', ')}...`);
+  await installBrowsers(missing, { log, signal: options.signal, env, headed });
+  log('Browser download complete.');
 }
 
 /**
- * Downloads and unpacks `names` into the browsers cache, skipping any build
- * already there. Holds the cache's lock for the whole install, so two runs
- * that start at once download each build once.
+ * Downloads, verifies, and unpacks `names` into the browsers cache, skipping
+ * any build already there. Holds the cache's install lock for the whole
+ * install, so two runs that start at once download each build once.
  */
 export async function installBrowsers(names: readonly BrowserName[], context: InstallContext): Promise<void> {
   const cacheDir = browsersPath(context.env);
   const platform = requirePlatform();
-  await withCacheLock(cacheDir, context.signal, async () => {
+  const host = mirrorOrigin(context.env);
+  await withCacheLock(cacheDir, context, async (owner) => {
     if (context.withDeps === true) installSystemDeps(names, context.log);
     for (const name of new Set(names)) {
+      if (isBrowserInstalled(name, context.env, context.headed)) continue;
       const { browser, buildId } = buildOf(name, context.headed);
-      if (existsSync(await browserExecutable(name, context.headed, context.env))) continue;
       cancelledCheck(context.signal);
       context.log(`Downloading ${browser} ${buildId} into ${cacheDir}`);
       try {
-        await installBuild({ build: browser, buildId, platform, cacheDir, host: downloadHost(context.env), signal: context.signal });
+        await installBuild({ build: browser, buildId, platform, cacheDir, sha256: archiveSha256(browser, platform), host, owner, env: context.env, signal: context.signal });
       } catch (cause) {
         cancelledCheck(context.signal);
         throw new InfrastructureError(
@@ -232,40 +248,6 @@ function installSystemDeps(names: readonly BrowserName[], log: (line: string) =>
   }
 }
 
-/** Rejects with `CANCELLED` once `signal` aborted. */
-function cancelledCheck(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) throw new EngineError('CANCELLED', 'browser install cancelled', { retryable: false });
-}
-
-/**
- * Runs `work` holding the cache's install lock, a directory only one process
- * can create. A lock older than `STALE_LOCK_MS` was left by a process that
- * died mid-install and is taken over.
- */
-async function withCacheLock<T>(cacheDir: string, signal: AbortSignal | undefined, work: () => Promise<T>): Promise<T> {
-  mkdirSync(cacheDir, { recursive: true });
-  const lock = path.join(cacheDir, '.install.lock');
-  const giveUp = Date.now() + LOCK_WAIT_MS;
-  for (;;) {
-    cancelledCheck(signal);
-    try {
-      mkdirSync(lock);
-      break;
-    } catch {
-      if (existsSync(lock) && Date.now() - statSync(lock).mtimeMs > STALE_LOCK_MS) {
-        rmSync(lock, { recursive: true, force: true });
-        continue;
-      }
-      if (Date.now() > giveUp) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `another install still holds ${lock}`);
-      await sleep(500);
-    }
-  }
-  try {
-    return await work();
-  } finally {
-    rmSync(lock, { recursive: true, force: true });
-  }
-}
 
 /** Whether `executable` runs and lists the VP9 encoder the screencast needs. */
 function encodesVp9(executable: string): boolean {
@@ -273,9 +255,14 @@ function encodesVp9(executable: string): boolean {
   return result.status === 0 && result.stdout.includes('libvpx-vp9');
 }
 
+/** The cached ffmpeg's directory. */
+function cachedFfmpegDirectory(env: NodeJS.ProcessEnv): string {
+  return path.join(browsersPath(env), 'ffmpeg-b6.1.1');
+}
+
 /** The cached ffmpeg's path for this platform. */
 function cachedFfmpeg(env: NodeJS.ProcessEnv): string {
-  return path.join(browsersPath(env), 'ffmpeg-b6.1.1', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+  return path.join(cachedFfmpegDirectory(env), process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 }
 
 /** The ffmpeg found on the system, memoized: `E2E_FFMPEG_PATH`, else `ffmpeg` on the PATH, when it encodes VP9. */
@@ -283,7 +270,7 @@ let systemFfmpeg: string | null | undefined;
 
 /**
  * The ffmpeg that encodes Chromium's screencast: `E2E_FFMPEG_PATH`, else a
- * system `ffmpeg` with VP9, else the one `installFfmpeg` cached; undefined
+ * system `ffmpeg` with VP9, else the one `ensureFfmpeg` cached; undefined
  * when there is none yet.
  */
 export function ffmpegExecutable(env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -295,31 +282,58 @@ export function ffmpegExecutable(env: NodeJS.ProcessEnv = process.env): string |
   return systemFfmpeg ?? undefined;
 }
 
+/** What `ensureFfmpeg` reports to and stops on. */
+export interface FfmpegContext {
+  /** Receives what it downloads; silent when omitted. */
+  readonly log?: ((line: string) => void) | undefined;
+  readonly signal?: AbortSignal | undefined;
+}
+
 /**
- * Downloads the pinned ffmpeg for this platform into the browsers cache,
- * checking its SHA-256, unless one is already there or on the system.
+ * The ffmpeg that encodes Chromium's screencast, downloading the pinned
+ * build into the browsers cache when the system has none: from the
+ * `E2E_BROWSERS_DOWNLOAD_HOST` mirror when set, checked against its
+ * SHA-256, under the cache's install lock. Throws `UNSUPPORTED_CAPABILITY`
+ * on a platform with no pinned build, and `BROWSER_INSTALL_FAILED` when the
+ * download fails.
  */
-export async function installFfmpeg(context: Pick<InstallContext, 'log' | 'signal' | 'env'>): Promise<string> {
-  const existing = ffmpegExecutable(context.env);
+export async function ensureFfmpeg(env: NodeJS.ProcessEnv, context: FfmpegContext = {}): Promise<string> {
+  const existing = ffmpegExecutable(env);
   if (existing !== undefined) return existing;
   const key = `${process.platform}-${process.arch}`;
   const sha256 = FFMPEG_SHA256[key];
-  if (sha256 === undefined) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `no ffmpeg build for ${key}; set E2E_FFMPEG_PATH to an ffmpeg with libvpx-vp9`);
-  const target = cachedFfmpeg(context.env);
-  return withCacheLock(browsersPath(context.env), context.signal, async () => {
-    if (existsSync(target)) return target;
-    const url = `${FFMPEG_RELEASE}/ffmpeg-${key}.gz`;
-    context.log(`Downloading ffmpeg from ${url}`);
-    const response = await fetch(url, context.signal === undefined ? {} : { signal: context.signal });
-    if (!response.ok) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `ffmpeg download failed: ${response.status} ${url}`);
-    const archive = Buffer.from(await response.arrayBuffer());
-    const digest = createHash('sha256').update(archive).digest('hex');
-    if (digest !== sha256) throw new InfrastructureError('BROWSER_INSTALL_FAILED', `ffmpeg download from ${url} has SHA-256 ${digest}, expected ${sha256}`);
-    mkdirSync(path.dirname(target), { recursive: true });
-    const partial = `${target}.partial`;
-    writeFileSync(partial, gunzipSync(archive));
-    chmodSync(partial, 0o755);
-    renameSync(partial, target);
-    return target;
+  if (sha256 === undefined) {
+    throw new EngineError('UNSUPPORTED_CAPABILITY', `recording video on chromium needs an ffmpeg with libvpx-vp9, and none is pinned for ${key}: set E2E_FFMPEG_PATH`, { retryable: false });
+  }
+  const executable = cachedFfmpeg(env);
+  const log = context.log ?? (() => undefined);
+  await withCacheLock(browsersPath(env), { log, signal: context.signal }, async (owner) => {
+    if (existsSync(executable)) return;
+    const url = `${mirrorOrigin(env) ?? FFMPEG_HOST}${FFMPEG_RELEASE}/ffmpeg-${key}.gz`;
+    log(`Downloading ffmpeg from ${url}`);
+    try {
+      await installArchive({
+        url,
+        sha256,
+        target: cachedFfmpegDirectory(env),
+        isInstalled: () => existsSync(executable),
+        unpack: async (archive, root) => {
+          const file = path.join(root, path.basename(executable));
+          await pipeline(createReadStream(archive), createGunzip(), createWriteStream(file), context.signal === undefined ? {} : { signal: context.signal });
+          chmodSync(file, 0o755);
+        },
+        owner,
+        env,
+        signal: context.signal,
+      });
+    } catch (cause) {
+      cancelledCheck(context.signal);
+      throw new InfrastructureError(
+        'BROWSER_INSTALL_FAILED',
+        `could not install ffmpeg: ${cause instanceof Error ? cause.message : String(cause)}; run "npx @e2e-dev/web install ffmpeg", or set E2E_FFMPEG_PATH to an ffmpeg with libvpx-vp9`,
+        { cause },
+      );
+    }
   });
+  return executable;
 }
