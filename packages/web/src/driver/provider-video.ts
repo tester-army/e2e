@@ -6,8 +6,8 @@
  */
 
 import { stopProviderRecording, type VideoSegment } from 'e2e/engine';
-import { abortError } from '../operation-budget.ts';
 import type { LeaseRecording } from '../provider.ts';
+import { abortError } from '../errors.ts';
 
 /** How long a recording that started after its attempt gave up gets to stop. */
 const LATE_STOP_MS = 10_000;

@@ -6,9 +6,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BidiConnection } from '../../src/driver/connection.ts';
 import { readerCall, readerInstallCall, READERS_INIT_SCRIPT } from '../../src/in-page/readers.ts';
 import { byTestId, startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { BidiConnection } from '../../src/driver/connection.ts';
 
 /** Records every page function the driver calls; with `dropReaders`, the readers' preload installs nothing. */
 function recordCalls(dropReaders: boolean): string[] {

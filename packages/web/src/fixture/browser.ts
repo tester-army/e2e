@@ -1,25 +1,47 @@
 /**
- * The `browser` fixture on the BiDi driver: the shared declaration and
- * matchers, the route contract (`route-handler.ts`), and the argument checks
- * (`fixture-arguments.ts`), over the BiDi surface's calls.
+ * The `browser` fixture over the driver's surface: each method's step
+ * declaration, the matchers (`expectation.ts`), the route contract
+ * (`routes.ts`), and the argument checks (`arguments.ts`). Every async
+ * method runs as a harness-recorded `browser.<method>` step;
+ * `expect(browser)` reaches the matchers attached through
+ * `context.expectable`.
+ *
+ * Layering rule: validation (`resolveUrl`, JSON checks, cookie URLs, the
+ * download trigger) runs outside the surface's guard, so a runner error
+ * keeps its classification and only driver faults are translated. The URL
+ * rule is never re-implemented here: `context.app.resolveUrl` is the one
+ * place that says which URLs a test may open.
  */
 
 import type { Network, Storage } from 'webdriver-bidi-protocol';
 import type { Expectable, JsonValue } from 'e2e';
-import { Deadline, rejectUnknownOptions, stepTimeout, TestError, toTextPattern, type EngineFixtureContext, type OperationContext } from 'e2e/engine';
-import { createBrowserExpectation, declareBrowserFixture, frameScreen, requireSelector, type Browser, type BrowserExpectation, type Cookie, type WebResponse } from './types.ts';
+import {
+  Deadline,
+  rejectUnknownOptions,
+  stepTimeout,
+  TestError,
+  toTextPattern,
+  type EngineFixtureContext,
+  type FixtureOperation,
+  type FixtureOperations,
+  type LocatorExpression,
+  type OperationContext,
+} from 'e2e/engine';
+import { createBrowserExpectation } from './expectation.ts';
+import type { Browser, BrowserExpectation, Cookie, FrameScreen, WebResponse } from './types.ts';
+import { initScriptLabel, testInitScriptSource } from '../init-scripts.ts';
+import { mediaLabel } from '../options.ts';
 import { evaluateInPage } from '../in-page/evaluation.ts';
-import { testInitScriptSource } from '../init-scripts.ts';
 import { routePatternMatches, routePatternsEqual } from '../driver/route-pattern.ts';
 import { cookieTargets, requireCookieFilter, requireDownloadCount, requireMedia } from './arguments.ts';
 import { moveSources, pressDownSources, releaseSources, wheelSources } from '../driver/input-sources.ts';
 import type { InterceptedRequest } from '../driver/network.ts';
 import { readResponseBody, runRouteHandler, waitedResponse, webResponse } from './routes.ts';
-import type { PageArgument } from '../driver/script.ts';
 import type { AttemptScope, BidiSurface } from '../driver/surface.ts';
+import type { PageArgument } from '../driver/script.ts';
 
-/** Builds the attempt's `browser` fixture over the BiDi surface. */
-export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFixtureContext): Browser {
+/** Builds the attempt's `browser` fixture over the driver's surface. */
+export function createBrowserFixture(surface: BidiSurface, context: EngineFixtureContext): Browser {
   const navigation = (api: string, options: { timeout?: number } | undefined): OperationContext =>
     context.operation(stepTimeout(options?.timeout, api) ?? context.timeouts.test);
   const currentUrl = (deadline?: Deadline): Promise<string> => surface.url(context.operation(deadline?.remaining()));
@@ -151,7 +173,51 @@ export function createBidiBrowserFixture(surface: BidiSurface, context: EngineFi
       up: () => surface.input('mouse.up', releaseSources(), context.operation()),
     },
   };
-  return declareBrowserFixture(context, browser, expectation);
+  return declareFixture(context, browser, expectation);
+}
+
+/**
+ * Declares a built `browser` object as the fixture: each method's step kind,
+ * label, and timeout, and `expect(browser)` wired to `expectation`.
+ */
+function declareFixture(
+  context: EngineFixtureContext,
+  browser: Omit<Browser, keyof Expectable<BrowserExpectation>>,
+  expectation: BrowserExpectation,
+): Browser {
+  const action: FixtureOperation = { kind: 'resource' };
+  const navigationCall = { kind: 'resource', timeout: false } as const;
+  const matchers: FixtureOperations<BrowserExpectation> = {
+    toHaveURL: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
+    toHaveTitle: { kind: 'assertion', timeout: false, label: (expected) => String(expected) },
+    toHaveClass: { kind: 'assertion', timeout: false, label: (_target, expected) => String(expected) },
+    get not() { return matchers; },
+  };
+  return context.fixture('browser', context.expectable(browser, () => context.fixture('expect', expectation, matchers)), {
+    goto: { ...navigationCall, label: (url) => url },
+    reload: navigationCall,
+    back: navigationCall,
+    forward: navigationCall,
+    url: action,
+    title: action,
+    waitForURL: { ...navigationCall, verifies: true, label: patternLabel },
+    evaluate: action,
+    addInitScript: { ...action, label: (script) => initScriptLabel(script) },
+    route: { ...action, label: patternLabel },
+    unroute: { ...action, label: patternLabel },
+    unrouteAll: action,
+    waitForResponse: { ...action, timeout: (_pattern, options) => options?.timeout, label: patternLabel },
+    cookies: action,
+    setCookies: action,
+    clearCookies: action,
+    setViewport: action,
+    emulateMedia: { ...action, label: (media) => mediaLabel(media) },
+    onDialog: action,
+    waitForDownload: { ...action, timeout: false },
+    waitForDownloads: { ...action, timeout: false },
+    keyboard: { down: { ...action, label: (key) => key }, up: { ...action, label: (key) => key }, press: { ...action, label: (key) => key }, type: { ...action, label: (text) => `${text.length} chars` } },
+    mouse: { move: action, wheel: action, down: action, up: action },
+  });
 }
 
 /**
@@ -259,4 +325,33 @@ function toCookie(cookie: Network.Cookie): Cookie {
     secure: cookie.secure,
     ...(cookie.sameSite === 'default' ? {} : { sameSite: (cookie.sameSite[0]!.toUpperCase() + cookie.sameSite.slice(1)) as NonNullable<Cookie['sameSite']> }),
   };
+}
+
+/** The selector a locator method was given, refused unless it is a nonempty string. */
+function requireSelector(method: string, selector: unknown): string {
+  if (typeof selector !== 'string' || selector.length === 0) {
+    throw new TestError('INVALID_LOCATOR', `${method}() requires a nonempty selector`);
+  }
+  return selector;
+}
+
+/** A URL pattern as steps and errors name it: a string quoted, a RegExp as its literal. */
+function patternLabel(pattern: string | RegExp): string {
+  return typeof pattern === 'string' ? JSON.stringify(pattern) : String(pattern);
+}
+
+/**
+ * The scope for the innermost of `frames` (outermost first). Every query and
+ * both escape hatches compile through the same `frame` chain, so a `locator`
+ * inside it resolves against the innermost document.
+ */
+function frameScreen(context: EngineFixtureContext, frames: readonly string[]): FrameScreen {
+  const scope = (expression: LocatorExpression): LocatorExpression =>
+    frames.reduceRight<LocatorExpression>((source, selector) => ({ kind: 'frame', selector, source }), expression);
+  return Object.assign(context.screen(scope), {
+    locator: (selector: string) =>
+      context.locator(scope({ kind: 'selector', selector: requireSelector('locator', selector) })),
+    frameLocator: (selector: string) =>
+      frameScreen(context, [...frames, requireSelector('frameLocator', selector)]),
+  });
 }

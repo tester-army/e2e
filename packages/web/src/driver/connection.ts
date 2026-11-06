@@ -2,6 +2,7 @@
 
 import type { Commands, Event as BidiEvent, Message } from 'webdriver-bidi-protocol';
 import { EngineError } from 'e2e/engine';
+import { BidiError } from '../errors.ts';
 
 /** A text transport carrying BiDi messages: a WebSocket, or the Chromium mapper's process. */
 export interface BidiTransport {
@@ -24,19 +25,6 @@ interface Pending {
   readonly method: string;
   readonly resolve: (result: unknown) => void;
   readonly reject: (cause: Error) => void;
-}
-
-/** A BiDi error response, with the protocol's error code kept for classification. */
-export class BidiError extends Error {
-  constructor(
-    readonly method: string,
-    readonly error: string,
-    /** The browser's own words, apart from the method and code. */
-    readonly detail: string,
-  ) {
-    super(`${method}: ${error}${detail === '' ? '' : `: ${detail}`}`);
-    this.name = 'BidiError';
-  }
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * The keyboard model of the BiDi driver: Playwright's US layout, one entry
+ * The driver's keyboard model: Playwright's US layout, one entry
  * per key `code` with the WebDriver key value of each key, and the two key
  * grammars (the contract's `press` keys and the `browser` fixture's
  * Playwright key names) parsed onto it as key strokes.

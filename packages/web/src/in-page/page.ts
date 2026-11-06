@@ -1,5 +1,5 @@
 /**
- * Page functions the BiDi surface calls with `script.callFunction`. Each is a
+ * Page functions the driver calls with `script.callFunction`. Each is a
  * self-contained function serialized with `toString()`, so none closes over
  * module scope; those that share DOM helpers take them through `withDom`.
  * The readers a document keeps live in `readers.ts`.
@@ -620,3 +620,48 @@ export const insertFocusedText = withDom((domOf, text: string): boolean => {
   if (active === null || active.nodeName === 'IFRAME' || active.nodeName === 'FRAME') return false;
   return document.execCommand('insertText', false, text);
 });
+
+/**
+ * Whether the focused element of this document takes keystrokes, following
+ * focus into open and recorded closed shadow roots. Runs in the page, so it
+ * stays self-contained; `key` names the closed-roots registry.
+ */
+export function focusTakesKeys(key: string): boolean {
+  const recorded: WeakMap<Element, ShadowRoot> | undefined = Reflect.get(globalThis, Symbol.for(key));
+  let active = document.activeElement;
+  while (active !== null) {
+    const root = active.shadowRoot ?? recorded?.get(active);
+    const leaf = root?.activeElement;
+    if (leaf === undefined || leaf === null) break;
+    active = leaf;
+  }
+  if (active === null || active === document.body || active === document.documentElement) return false;
+  if (active instanceof HTMLInputElement) {
+    return !active.disabled && !active.readOnly && !['button', 'submit', 'reset', 'checkbox', 'radio', 'file', 'image', 'range', 'color'].includes(active.type);
+  }
+  if (active instanceof HTMLTextAreaElement) return !active.disabled && !active.readOnly;
+  if (active instanceof HTMLSelectElement || active instanceof HTMLButtonElement || active instanceof HTMLAnchorElement ||
+      active instanceof HTMLIFrameElement || active instanceof HTMLFrameElement) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Where a frame element's content box, the box its document's viewport
+ * fills, sits inside its border box: past the border and the padding. Runs in
+ * the page.
+ */
+export function frameContentInset(element: Element): { x: number; y: number; width: number; height: number } {
+  const style = getComputedStyle(element);
+  const left = Number.parseFloat(style.paddingLeft) || 0;
+  const top = Number.parseFloat(style.paddingTop) || 0;
+  const right = Number.parseFloat(style.paddingRight) || 0;
+  const bottom = Number.parseFloat(style.paddingBottom) || 0;
+  return {
+    x: element.clientLeft + left,
+    y: element.clientTop + top,
+    width: Math.max(0, element.clientWidth - left - right),
+    height: Math.max(0, element.clientHeight - top - bottom),
+  };
+}

@@ -1,5 +1,5 @@
 /**
- * One attempt on the BiDi driver: its user context, the tab it drives, the
+ * One attempt: its user context, the tab it drives, the
  * refs it minted, and the network, downloads, dialogs, and video scoped to
  * it, with the primitives every other module drives the page through.
  */
@@ -11,23 +11,21 @@ import { EngineError, obj, TestError, withTimeout, type AppLogEntry, type Engine
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../in-page/closed-shadow.ts';
 import { DialogRouter } from './dialogs.ts';
 import type { ConfiguredInitScripts } from '../init-scripts.ts';
-import type { WebMedia } from '../media.ts';
-import { cancelled, ErrorLatch, invalidState, sanitizeFilename } from '../support.ts';
-import type { WebScreencastOptions } from '../options.ts';
+import type { WebMedia, WebScreencastOptions } from '../options.ts';
 import { BidiInput } from './input.ts';
-import { BidiError, type BidiConnection } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
 import { AttemptDownloads } from './downloads.ts';
-import { releaseQuietly, unlessStale } from '../errors.ts';
+import { BidiError, cancelled, ErrorLatch, invalidState, releaseQuietly, ScriptError, unlessStale } from '../errors.ts';
 import { FrameRegistry, type NodeTarget } from './frames.ts';
 import type { BidiBrowser } from './launch.ts';
 import { AttemptNetwork } from './network.ts';
 import { HIT_INTERCEPTOR_INIT_SCRIPT, viewportSize } from '../in-page/page.ts';
 import { BUILTINS_INIT_SCRIPT, readerCall, readerInstallCall, READERS_INIT_SCRIPT, READERS_MISSING, type ReaderArgs, type ReaderName, type ReaderResult } from '../in-page/readers.ts';
-import { callFunction, ScriptError, type CallOptions, type ElementRef, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 import type { BidiVideo } from './video.ts';
 import type { ProviderVideo } from './provider-video.ts';
 import type { LeaseDownloads } from '../provider.ts';
+import type { BidiConnection } from './connection.ts';
+import { callFunction, type CallOptions, type ElementRef, type PageArgument, type PageValue, type TypedPageFunction, type Wire } from './script.ts';
 
 /** How long one step of closing an attempt may take before the next runs. */
 const CLOSE_STEP_MS = 10_000;
@@ -681,4 +679,9 @@ async function settleEach(steps: readonly (() => unknown)[]): Promise<PromiseSet
     }
   }
   return results;
+}
+
+/** Constrains a caller-supplied artifact label to a safe filename. */
+export function sanitizeFilename(name: string): string {
+  return name.replaceAll(/[^A-Za-z0-9._-]/g, '_').slice(0, 64) || 'artifact';
 }

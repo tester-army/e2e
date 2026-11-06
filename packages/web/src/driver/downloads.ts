@@ -1,5 +1,5 @@
 /**
- * Downloads on the BiDi driver: the attempt's user context saves every
+ * Downloads: the attempt's user context saves every
  * download into a directory of its own (`browser.setDownloadBehavior`), on
  * this machine or, for a provider that serves downloads, on the browser's,
  * and a wait pairs `browsingContext.downloadWillBegin` with `downloadEnd` by

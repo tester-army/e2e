@@ -8,9 +8,9 @@
 
 import type { Network } from 'webdriver-bidi-protocol';
 import { raceAbort } from 'e2e/engine';
-import { BidiError, type BidiConnection, type BidiEventParams } from './connection.ts';
 import type { ContextTree } from './context-tree.ts';
-import { releaseQuietly } from '../errors.ts';
+import { BidiError, releaseQuietly } from '../errors.ts';
+import type { BidiConnection, BidiEventParams } from './connection.ts';
 
 /** A finished response as a response wait reports it. */
 export interface ObservedResponse {

@@ -18,12 +18,12 @@ import type {
   OperationContext,
   SemanticNode,
 } from 'e2e/engine';
-import { BidiConnection } from '../../src/driver/connection.ts';
 import type { Browser } from '../../src/index.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { decodePng } from '../helpers/png.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 import { browserFixture, startPageServer, testWeb as web, type PageServer } from '../helpers/web-session.ts';
+import { BidiConnection } from '../../src/driver/connection.ts';
 
 /** The segments as files: a local recording never links, so a link here is a failure. */
 function videoFiles(segments: readonly VideoSegment[]): VideoFile[] {

@@ -1,10 +1,10 @@
 /** A screenshot must not edit the form elements a server-rendered app hydrates. */
 
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
-import { BidiConnection } from '../../src/driver/connection.ts';
-import { callFunction } from '../../src/driver/script.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { startWebSession, type WebSession } from '../helpers/web-session.ts';
+import { BidiConnection } from '../../src/driver/connection.ts';
+import { callFunction } from '../../src/driver/script.ts';
 
 let app: FixtureApp;
 let session: WebSession;

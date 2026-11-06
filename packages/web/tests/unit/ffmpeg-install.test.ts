@@ -7,8 +7,9 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { browserExecutable, ensureBrowsersInstalled, ensureFfmpeg } from '../../src/install/provision.ts';
 import { startArchiveServer, type ArchiveServer } from '../helpers/archive-server.ts';
+import { browserExecutable, ensureBrowsersInstalled } from '../../src/install/provision.ts';
+import { ensureFfmpeg } from '../../src/install/ffmpeg.ts';
 
 const KEY = `${process.platform}-${process.arch}`;
 const PINNED = ['darwin-arm64', 'darwin-x64', 'linux-x64', 'linux-arm64', 'win32-x64'].includes(KEY);

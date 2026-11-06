@@ -10,8 +10,8 @@ import { DialogRouter } from '../../src/driver/dialogs.ts';
 import { routeEvents } from '../../src/driver/events.ts';
 import { ContextTree } from '../../src/driver/context-tree.ts';
 import type { BidiSession } from '../../src/driver/session.ts';
-import { ErrorLatch } from '../../src/support.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
+import { ErrorLatch } from '../../src/errors.ts';
 
 /** The parts of a session the event router reads, owning `userContext`'s contexts. */
 function attempt(owners: ContextTree, userContext: string) {

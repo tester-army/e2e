@@ -1,7 +1,7 @@
 /** Route decision validation that a browser round trip cannot observe. */
 
 import { describe, expect, it } from 'vitest';
-import { parseContinue, parseFulfill } from '../../src/route-options.ts';
+import { parseContinue, parseFulfill } from '../../src/fixture/routes.ts';
 
 const resolveUrl = (url: string): string => new URL(url, 'http://127.0.0.1/').href;
 

@@ -1,5 +1,5 @@
 /**
- * Saved sessions on the BiDi driver: a user context's cookies, and the
+ * Saved sessions: a user context's cookies, and the
  * localStorage and IndexedDB of every web origin its documents were at.
  * Each origin's storage is read and written from a blank document served at
  * that origin in a scratch tab, so the app's server sees no request and the
@@ -9,8 +9,8 @@
 import type { Network } from 'webdriver-bidi-protocol';
 import { EngineError, type EngineState } from 'e2e/engine';
 import { releaseQuietly } from '../errors.ts';
-import type { PageJson } from './script.ts';
 import { SCRATCH_PARAM, type BidiSession } from './session.ts';
+import type { PageJson } from './script.ts';
 
 const STATE_FORMAT = 'bidi-storage-state';
 

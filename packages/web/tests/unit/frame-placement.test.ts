@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeBoxInFrame } from '../../src/observation.ts';
+import { placeBoxInFrame } from '../../src/driver/observe.ts';
 
 const FRAME = { x: 40, y: 30, width: 300, height: 150 };
 

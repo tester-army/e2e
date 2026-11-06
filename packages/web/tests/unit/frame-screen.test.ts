@@ -9,8 +9,8 @@ import { describe, expect, it } from 'vitest';
 import type { EngineFixtureContext, LocatorExpression } from 'e2e/engine';
 import type { Locator, Screen } from 'e2e';
 import type { BidiSurface } from '../../src/driver/surface.ts';
-import { createBidiBrowserFixture } from '../../src/fixture/browser.ts';
-import { ErrorLatch } from '../../src/support.ts';
+import { createBrowserFixture } from '../../src/fixture/browser.ts';
+import { ErrorLatch } from '../../src/errors.ts';
 
 function browserWithRecordingContext() {
   const minted: LocatorExpression[] = [];
@@ -37,7 +37,7 @@ function browserWithRecordingContext() {
   } as unknown as EngineFixtureContext;
     // The frame scopes mint locators only; the surface is never driven.
   const surface = { attemptScope: () => ({ latch: new ErrorLatch() }) } as unknown as BidiSurface;
-  const browser = createBidiBrowserFixture(surface, context);
+  const browser = createBrowserFixture(surface, context);
   return { browser, minted };
 }
 

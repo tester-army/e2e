@@ -6,9 +6,9 @@
 
 import { launchBidiBrowser, type BidiBrowser } from '../../src/driver/launch.ts';
 import type { BrowserName } from '../../src/browsers.ts';
+import { startPageServer, type PageServer } from './web-session.ts';
 import type { BidiConnection } from '../../src/driver/connection.ts';
 import { callFunction, type PageArgument, type PageFunction, type PageValue } from '../../src/driver/script.ts';
-import { startPageServer, type PageServer } from './web-session.ts';
 
 /** How to open the tab. */
 export interface BidiPageOptions {

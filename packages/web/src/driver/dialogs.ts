@@ -5,7 +5,7 @@
  */
 
 import { EngineError } from 'e2e/engine';
-import { ErrorLatch, isClassified, message } from '../support.ts';
+import { ErrorLatch, isClassified, message } from '../errors.ts';
 
 /** A native dialog as a test's handler sees it. */
 export interface Dialog {

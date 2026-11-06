@@ -7,8 +7,8 @@ import { fixtureKeyStroke, strokeSource, type KeyPhase } from '../../src/driver/
 import { BidiSession } from '../../src/driver/session.ts';
 import { BROWSER_TRAITS, type BrowserName } from '../../src/browsers.ts';
 import type { NodeRef } from 'e2e/engine';
-import type { ElementRef } from '../../src/driver/script.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
+import type { ElementRef } from '../../src/driver/script.ts';
 
 const SHIFT = '';
 

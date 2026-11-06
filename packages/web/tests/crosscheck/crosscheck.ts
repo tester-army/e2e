@@ -15,9 +15,9 @@ import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT, type SemanticNode } from 'e2e
 import { readerInstallCall } from '../../src/in-page/readers.ts';
 import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT, CLOSED_SHADOW_ROOTS_KEY } from '../../src/in-page/closed-shadow.ts';
 import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
-import { assembleTree } from '../../src/observation.ts';
 import { SECURE_FIELD_SELECTOR, type RawObservedNode } from '../../src/in-page/read-node.ts';
 import { openBidiPage, type BidiPage } from '../helpers/bidi-page.ts';
+import { assembleTree } from '../../src/driver/observe.ts';
 
 /** One field on which the engine and an oracle read a node differently. */
 export interface Disagreement {

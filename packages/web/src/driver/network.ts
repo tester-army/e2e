@@ -1,5 +1,5 @@
 /**
- * One attempt's network on the BiDi driver: request interception for the
+ * One attempt's network: request interception for the
  * test's routes and the configured site headers (`network.addIntercept` and
  * its continue, provide, and fail commands), basic-auth answers
  * (`authRequired` and `continueWithAuth`), the in-flight request count a
@@ -13,15 +13,14 @@ import { readFile } from 'node:fs/promises';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import type { Network } from 'webdriver-bidi-protocol';
-import { EngineError, type TextPattern } from 'e2e/engine';
-import { BidiError, type BidiConnection, type BidiEventParams } from './connection.ts';
+import { EngineError, type JsonValue, type TextPattern } from 'e2e/engine';
 import type { ContextTree } from './context-tree.ts';
 import type { BrowserTraits } from '../browsers.ts';
 import { lowercaseNames } from '../protected-app.ts';
-import type { ContinueDecision, FulfillDecision } from '../route-options.ts';
 import { routePatternMatches } from './route-pattern.ts';
-import { releaseQuietly } from '../errors.ts';
+import { BidiError, releaseQuietly } from '../errors.ts';
 import { NetworkBinding, alreadyGone, bytesText, headerRecord, stripHash, type NetworkWants, type ObservedResponse } from './network-binding.ts';
+import type { BidiConnection, BidiEventParams } from './connection.ts';
 
 /** A request the browser holds for a route to decide. */
 export interface InterceptedRequest {
@@ -38,6 +37,30 @@ export interface InterceptedRequest {
   readonly bodyUnavailable?: boolean;
   /** The cookies the browser sends with it, as one `cookie` header value. */
   readonly cookie?: string;
+}
+
+/** What `route.fulfill` hands the driver once the response is validated. */
+export interface FulfillDecision {
+  readonly status: number;
+  readonly headers: Record<string, string>;
+  readonly contentType?: string;
+  readonly json?: JsonValue;
+  /** A `Buffer` for bytes, sent unchanged. */
+  readonly body?: string | Buffer;
+  /** Absolute; the driver reads it and derives `Content-Type` from its extension when none is given. */
+  readonly path?: string;
+}
+
+/**
+ * What `route.continue` hands the driver once the overrides are validated;
+ * `headers` before the site's are merged in, a header set to `undefined`
+ * left out so the request goes without it.
+ */
+export interface ContinueDecision {
+  readonly url?: string;
+  readonly method?: string;
+  readonly headers?: Record<string, string>;
+  readonly postData?: string;
 }
 
 /** What a route does with one held request; exactly one of these runs. */

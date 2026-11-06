@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ConfigurationError, EngineError, TestError } from 'e2e/engine';
-import { isTestErrorCode } from '../../src/support.ts';
+import { isTestErrorCode } from '../../src/errors.ts';
 
 /** A runner error the way it arrives from a copy of `e2e` this module never imported. */
 function foreignTestError(code: string): Error {

@@ -1,10 +1,10 @@
+import { BidiConnection, type BidiTransport } from '../../src/driver/connection.ts';
 /**
  * A scripted WebDriver BiDi peer for unit tests: answers each command with
  * the handler registered for its method, records every command sent, and
  * emits events on demand.
  */
 
-import { BidiConnection, type BidiTransport } from '../../src/driver/connection.ts';
 
 /** One command the driver sent. */
 export interface SentCommand {

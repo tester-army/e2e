@@ -1,16 +1,14 @@
-/** Evidence on the BiDi driver: masked screenshots and the attempt's video. */
+/** Evidence: masked screenshots and the attempt's video. */
 
 import { writeFileSync } from 'node:fs';
 import type { VideoSegment } from 'e2e/engine';
 import { ProviderVideo } from './provider-video.ts';
 import type { LeaseRecording } from '../provider.ts';
 import { releaseQuietly } from '../errors.ts';
+import { DEFAULT_VIEWPORT } from '../options.ts';
 import { maskedPixels } from './observe.ts';
 import type { BidiSession } from './session.ts';
 import { BidiVideo } from './video.ts';
-
-/** The viewport a video starts at before any tab exists: the configured one, else 1280 by 720. */
-const DEFAULT_VIDEO_SIZE = { width: 1280, height: 720 };
 
 /** Writes a masked viewport screenshot under the attempt directory and returns its relative path. */
 export async function screenshot(session: BidiSession, label: string | undefined, signal: AbortSignal): Promise<string> {
@@ -34,7 +32,7 @@ export async function startVideo(session: BidiSession, recorder: ((signal: Abort
     return;
   }
   session.video ??= new BidiVideo(session.connection, session.browser.traits, session.attempt.artifactsDir, session.settings.screencast, session.settings.env);
-  const size = session.context === undefined ? (session.settings.viewport ?? DEFAULT_VIDEO_SIZE) : await session.viewportSize();
+  const size = session.context === undefined ? (session.settings.viewport ?? DEFAULT_VIEWPORT) : await session.viewportSize();
   await session.video.arm(session.context, size);
   if (signal.aborted) {
     await releaseQuietly(session.video.stop());

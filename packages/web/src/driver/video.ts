@@ -1,5 +1,5 @@
 /**
- * The attempt's recording on the BiDi driver, one segment per tab the
+ * The attempt's recording, one segment per tab the
  * attempt shows. Firefox records
  * natively (`browsingContext.startScreencast`, a VP8 webm of the page's
  * repaints, which ends at the last one). Chromium's mapper
@@ -12,12 +12,11 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdirSync, renameSync, copyFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { EngineError, type VideoFile } from 'e2e/engine';
-import { message } from '../support.ts';
-import { ensureFfmpeg } from '../install/provision.ts';
 import { ChromiumCdp } from './cdp.ts';
-import type { BidiConnection } from './connection.ts';
-import { classify, isStale, releaseQuietly, unlessStale } from '../errors.ts';
+import { classify, isStale, message, releaseQuietly, unlessStale } from '../errors.ts';
 import type { BrowserTraits } from '../browsers.ts';
+import type { BidiConnection } from './connection.ts';
+import { ensureFfmpeg } from '../install/ffmpeg.ts';
 
 /** Frames a second of the encoded video. */
 const FPS = 25;
@@ -37,7 +36,7 @@ interface Segment {
 }
 
 /**
- * The attempt's video on the BiDi driver: one segment per tab it shows, and
+ * The attempt's video: one segment per tab it shows, and
  * the first segment it lost. A segment that fails to start or to finish
  * never fails the step that opened or closed its tab: `stop` reports it,
  * where the harness applies the video policy.

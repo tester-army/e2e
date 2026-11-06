@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readPngSize } from '../../src/observe.ts';
+import { readPngSize } from '../../src/driver/observe.ts';
 
 /** A 2x2 PNG; only its IHDR header matters to these tests. */
 const PNG_2X2 = Uint8Array.from(

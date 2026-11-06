@@ -5,7 +5,7 @@
 
 import { ConfigurationError, obj, rejectUnknownOptions, TestError, type EngineFixtureContext } from 'e2e/engine';
 import type { Browser, CookieFilter } from './types.ts';
-import { MEDIA_KEYS, mediaProblem, type WebMedia } from '../media.ts';
+import { MEDIA_KEYS, mediaProblem, type WebMedia } from '../options.ts';
 
 /** Where one cookie is set: on the URL it names, or on its domain and path. */
 export type CookieTarget = { readonly url: string } | { readonly domain: string; readonly path: string };

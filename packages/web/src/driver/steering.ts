@@ -1,9 +1,8 @@
-/** Navigation on the BiDi driver: open, history, reload, and the attempt's restart and reset. */
+/** Navigation: open, history, reload, and the attempt's restart and reset. */
 
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Deadline, EngineError, raceAbort, TestError } from 'e2e/engine';
-import { isClassified, message } from '../support.ts';
-import { isStale } from '../errors.ts';
+import { isClassified, isStale, message } from '../errors.ts';
 import { historyEntry, readyState } from '../in-page/page.ts';
 import type { BidiSession } from './session.ts';
 

@@ -2,8 +2,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { validateJsonValue } from 'e2e/engine';
-import { callFunction, ElementRef, UnreadableValue, WindowRef } from '../../src/driver/script.ts';
 import { FakeBidi } from '../helpers/bidi-fake.ts';
+import { callFunction, ElementRef, UnreadableValue, WindowRef } from '../../src/driver/script.ts';
 
 /** A peer whose page function returns `result`. */
 function returning(result: unknown) {

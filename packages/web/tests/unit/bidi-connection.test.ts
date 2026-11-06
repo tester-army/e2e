@@ -5,8 +5,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BidiError } from '../../src/driver/connection.ts';
 import { FakeBidi, settle } from '../helpers/bidi-fake.ts';
+import { BidiError } from '../../src/errors.ts';
 
 describe('BidiConnection', () => {
   it('resolves each command with its own response, whatever order they answer in', async () => {

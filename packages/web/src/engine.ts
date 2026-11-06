@@ -21,14 +21,12 @@ import {
 } from 'e2e/engine';
 import { createRequire } from 'node:module';
 import { asBrowserProvider, LeasedBrowsers } from './provider.ts';
-import type { WebOptions } from './options.ts';
+import { DEFAULT_VIEWPORT, MEDIA_KEYS, mediaProblem, type WebOptions } from './options.ts';
 import { BidiSurface } from './driver/surface.ts';
 import { cdpSource, launchSource, leaseSource, type BrowserSource } from './driver/browser-source.ts';
 import type { Browser } from './fixture/types.ts';
-import { createBidiBrowserFixture } from './fixture/browser.ts';
+import { createBrowserFixture } from './fixture/browser.ts';
 import { ConfiguredInitScripts, validateInitScripts } from './init-scripts.ts';
-import { DEFAULT_VIEWPORT } from './support.ts';
-import { MEDIA_KEYS, mediaProblem } from './media.ts';
 import { FIELD_VALUE_CONTROL, headerProblem } from './protected-app.ts';
 import { BROWSER_TRAITS, isBrowserName, type BrowserName } from './browsers.ts';
 
@@ -154,7 +152,7 @@ export function createWeb(options: WebOptions, attachTo?: BrowserSource): Engine
         }
       : {}),
     fixtures: {
-      browser: (context) => createBidiBrowserFixture(surface, context),
+      browser: (context) => createBrowserFixture(surface, context),
     },
   });
 }

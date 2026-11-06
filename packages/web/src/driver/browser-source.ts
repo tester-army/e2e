@@ -18,16 +18,15 @@ import {
   type EnginePrepareInfo,
   type EnginePrepareResult,
 } from 'e2e/engine';
-import { browserCheck, ensureBrowsersInstalled } from '../install/provision.ts';
-import type { WebMedia } from '../media.ts';
 import type { LeasedBrowsers, LeaseDownloads, LeaseRecording } from '../provider.ts';
-import { cancelled } from '../support.ts';
 import { ContextTree } from './context-tree.ts';
-import { releaseQuietly } from '../errors.ts';
+import { cancelled, releaseQuietly } from '../errors.ts';
 import { routeEvents, SESSION_EVENTS } from './events.ts';
 import { connectBidiOverCdp, launchBidiBrowser, type BidiBrowser } from './launch.ts';
 import type { BrowserName } from '../browsers.ts';
 import type { BidiSession, UserContextMode } from './session.ts';
+import type { WebMedia } from '../options.ts';
+import { browserCheck, ensureBrowsersInstalled } from '../install/provision.ts';
 
 /** How long each stage of opening a browser (launch, attach, subscribe) may take. */
 export const BROWSER_OPEN_TIMEOUT_MS = 60_000;

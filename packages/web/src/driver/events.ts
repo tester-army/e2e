@@ -7,10 +7,10 @@
 import type { Script } from 'webdriver-bidi-protocol';
 import type { AppLogEntry } from 'e2e/engine';
 import type { NativeDialog } from './dialogs.ts';
-import type { BidiConnection } from './connection.ts';
-import { callFunction } from './script.ts';
 import type { ContextTree } from './context-tree.ts';
 import type { BidiSession } from './session.ts';
+import type { BidiConnection } from './connection.ts';
+import { callFunction } from './script.ts';
 
 /** The events every session subscribes to for as long as the browser runs. */
 export const SESSION_EVENTS = [

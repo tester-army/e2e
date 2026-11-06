@@ -11,10 +11,10 @@ import type { Input } from 'webdriver-bidi-protocol';
 import { TestError, type ViewportPoint, type ViewportSize } from 'e2e/engine';
 import { ChromiumCdp } from './cdp.ts';
 import { chromiumKeyCommands, holdsAfter, type CdpKeyCommand } from './chromium-keys.ts';
-import type { BidiConnection } from './connection.ts';
 import { codeOfValue, MODIFIER_CODES, pressStroke, strokeSource, type KeyStroke, type Modifier } from './keyboard.ts';
 import type { BrowserTraits } from '../browsers.ts';
 import { nextFrame, shownFrame } from '../in-page/page.ts';
+import type { BidiConnection } from './connection.ts';
 import { callFunction } from './script.ts';
 
 /** A key held down, and how: a BiDi key action with its value, which its release repeats, or a CDP key event, which only CDP releases. */

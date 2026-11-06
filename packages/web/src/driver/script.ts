@@ -2,6 +2,7 @@
 
 import type { Script } from 'webdriver-bidi-protocol';
 import { EngineError } from 'e2e/engine';
+import { ScriptError } from '../errors.ts';
 import type { BidiConnection } from './connection.ts';
 
 /**
@@ -76,14 +77,6 @@ export async function callFunction(
   });
   if (result.type === 'exception') throw new ScriptError(result.exceptionDetails.text);
   return fromRemoteValue(result.result);
-}
-
-/** A page function that threw; its message is the page's own. */
-export class ScriptError extends Error {
-  constructor(text: string) {
-    super(text);
-    this.name = 'ScriptError';
-  }
 }
 
 /** One argument as a BiDi local value. */

@@ -2,7 +2,8 @@
 
 import os from 'node:os';
 import { BROWSER_NAMES, isBrowserName, type BrowserName } from './browsers.ts';
-import { ensureFfmpeg, installBrowsers } from './install/provision.ts';
+import { ensureFfmpeg } from './install/ffmpeg.ts';
+import { installBrowsers } from './install/provision.ts';
 
 /** What `e2e-web install` installs: a browser, or ffmpeg. */
 export type InstallName = BrowserName | 'ffmpeg';

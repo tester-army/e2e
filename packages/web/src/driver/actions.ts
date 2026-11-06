@@ -1,5 +1,5 @@
 /**
- * Actions on the BiDi driver: one locator action on a node, one pointer
+ * Actions: one locator action on a node, one pointer
  * action at a point, and keyboard input, each after the actionability
  * checks Playwright runs, with points placed in the top-level viewport.
  */
@@ -19,19 +19,16 @@ import {
 } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_KEY } from '../in-page/closed-shadow.ts';
 import { SECURE_FIELD_SELECTOR } from '../in-page/read-node.ts';
-import { ROOT_NODE_ID } from '../observation.ts';
-import { focusTakesKeys } from '../focus.ts';
-import { nearestPixel, swipeDistance, wheelDelta } from '../support.ts';
 import { chromiumDrag } from './drag.ts';
 import { releaseQuietly, unlessStale } from '../errors.ts';
 import type { NodeTarget } from './frames.ts';
 import { invert, project } from './projection.ts';
-import { stillLocated } from './observe.ts';
-import { clickSources, dragPath, dragStepMs, mouse, moveActions, moveSources, swipeSources, typeSource, type ClickOptions } from './input-sources.ts';
+import { ROOT_NODE_ID, stillLocated } from './observe.ts';
+import { type ClickOptions, clickSources, dragPath, dragStepMs, mouse, moveActions, moveSources, nearestPixel, swipeDistance, swipeSources, typeSource, wheelDelta } from './input-sources.ts';
 import { pressStroke } from './keyboard.ts';
-import { actionPoint as readActionPoint, armHitInterceptor, hitInterceptorResult, scrollIntoViewIfNeeded, boxSize, checkState, elementShown, fileInput, fill as fillElement, focus, directoryInput, hitBlocker, insertFocusedText, nextFrame, selectOption, wheelAim, type ActionPoint } from '../in-page/page.ts';
-import { ElementRef } from './script.ts';
+import { type ActionPoint, actionPoint as readActionPoint, armHitInterceptor, boxSize, checkState, directoryInput, elementShown, fileInput, fill as fillElement, focus, focusTakesKeys, hitBlocker, hitInterceptorResult, insertFocusedText, nextFrame, scrollIntoViewIfNeeded, selectOption, wheelAim } from '../in-page/page.ts';
 import type { BidiSession } from './session.ts';
+import { ElementRef } from './script.ts';
 
 /** How long a long press holds the button when the action names no duration. */
 const DEFAULT_LONG_PRESS_MS = 500;

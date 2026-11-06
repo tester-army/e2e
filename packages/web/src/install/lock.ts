@@ -11,7 +11,7 @@ import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, uti
 import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { EngineError } from 'e2e/engine';
+import { cancelled } from '../errors.ts';
 
 /** Who holds a lock or a staging directory. */
 export interface LockOwner {
@@ -83,7 +83,7 @@ function ageOf(file: string): number | undefined {
 
 /** Rejects with `CANCELLED` once `signal` aborted. */
 export function cancelledCheck(signal: AbortSignal | undefined): void {
-  if (signal?.aborted === true) throw new EngineError('CANCELLED', 'browser install cancelled', { retryable: false });
+  if (signal?.aborted === true) throw cancelled('browser install cancelled');
 }
 
 /** The lock's holder as a waiter sees it: its record, and how long since its heartbeat. */

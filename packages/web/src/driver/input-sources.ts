@@ -1,7 +1,7 @@
 /** Typed text and pointer gestures as WebDriver BiDi `input.performActions` sources. */
 
 import type { Input } from 'webdriver-bidi-protocol';
-import type { KeyModifier } from 'e2e/engine';
+import type { KeyModifier, Momentum, ScrollDirection, ViewportPoint } from 'e2e/engine';
 import { KEYS, keyValue, modifierValue } from './keyboard.ts';
 
 /** Enter's WebDriver value, which a typed newline presses. */
@@ -118,4 +118,34 @@ function withModifiers(pointer: Input.PointerSourceActions, modifiers: readonly 
   ];
   const lead: Input.PointerSourceAction[] = codes.map(() => ({ type: 'pause' }));
   return [{ type: 'key', id: 'keyboard', actions: keys }, { ...pointer, actions: [...lead, ...pointer.actions] }];
+}
+
+/**
+ * The browser truncates a fractional pointer coordinate, so a point composed
+ * from a fractional box (`tap({ position })` on a node at y 148.875) would
+ * land on the pixel before the one asked for; it is rounded to the nearest
+ * CSS pixel instead.
+ */
+export function nearestPixel(point: ViewportPoint): ViewportPoint {
+  return { x: Math.round(point.x), y: Math.round(point.y) };
+}
+
+/** How far one swipe scrolls across an `extent` of CSS pixels at `momentum`. */
+export function swipeDistance(extent: number, momentum: Momentum): number {
+  const ratio = momentum === 'fast' ? 1.5 : momentum === 'slow' ? 0.75 : 0.5;
+  return Math.round(extent * ratio);
+}
+
+/** The wheel deltas that scroll `distance` pixels toward `direction`. */
+export function wheelDelta(direction: ScrollDirection, distance: number): [number, number] {
+  switch (direction) {
+    case 'down':
+      return [0, distance];
+    case 'up':
+      return [0, -distance];
+    case 'right':
+      return [distance, 0];
+    case 'left':
+      return [-distance, 0];
+  }
 }

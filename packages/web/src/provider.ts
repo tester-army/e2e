@@ -24,8 +24,7 @@ import {
   type ProviderRecordContext,
   type ProviderRecording,
 } from 'e2e/engine';
-import { abortError } from './operation-budget.ts';
-import { invalidState, message } from './support.ts';
+import { abortError, cancelled, invalidState, message } from './errors.ts';
 
 /**
  * How long a lease lives. `worker` (the default) is one browser per worker
@@ -491,7 +490,7 @@ export class LeasedBrowsers {
     const lease = await this.acquire({ runId: run.runId, targetName: run.targetName, slot: run.slot, slots: run.slots, env: run.env, signal, log: run.log });
     if (signal.aborted || this.tenure !== tenure) {
       await this.provider.release(lease, this.releaseContext(run, signal)).catch(discard);
-      throw new EngineError('CANCELLED', `browser lease from "${this.provider.name}" arrived after the worker gave up; released`, { retryable: false });
+      throw cancelled(`browser lease from "${this.provider.name}" arrived after the worker gave up; released`);
     }
     this.current = { lease, owned: true };
     this.attached = true;
@@ -521,7 +520,7 @@ export class LeasedBrowsers {
     });
     if (context.signal.aborted || this.opened !== opened) {
       await this.provider.release(lease, this.releaseContext(run, context.signal)).catch(discard);
-      throw new EngineError('CANCELLED', `browser lease from "${this.provider.name}" arrived after the attempt ended; released`, { retryable: false });
+      throw cancelled(`browser lease from "${this.provider.name}" arrived after the attempt ended; released`);
     }
     this.attempt = lease;
     return lease;
@@ -620,7 +619,7 @@ export class LeasedBrowsers {
       lease = await provider.acquire(request);
     } catch (cause) {
       if (request.signal.aborted) {
-        throw new EngineError('CANCELLED', `browser lease from "${provider.name}" cancelled`, { retryable: false, cause });
+        throw cancelled(`browser lease from "${provider.name}" cancelled`, cause);
       }
       throw new EngineError('ENGINE_FAILURE', `browser provider "${provider.name}" could not lease a browser: ${message(cause)}`, { retryable: false, cause });
     }

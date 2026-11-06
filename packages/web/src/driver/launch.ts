@@ -14,13 +14,12 @@ import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { EngineError, raceAbort, withTimeout } from 'e2e/engine';
 import { BROWSER_TRAITS, type BrowserName, type BrowserTraits } from '../browsers.ts';
-import { browserExecutable } from '../install/provision.ts';
-import { cancelled } from '../support.ts';
 import { watchdogArgs } from './browser-watchdog.ts';
 import { ChromiumCdp } from './cdp.ts';
-import { BidiConnection, webSocketTransport, type BidiTransport } from './connection.ts';
-import { releaseQuietly } from '../errors.ts';
+import { cancelled, releaseQuietly } from '../errors.ts';
 import { MAPPER_READY } from './mapper-process.ts';
+import { BidiConnection, type BidiTransport, webSocketTransport } from './connection.ts';
+import { browserExecutable } from '../install/provision.ts';
 
 /** One launched browser with its open BiDi session. */
 export interface BidiBrowser {

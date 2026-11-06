@@ -10,9 +10,8 @@ import type { Browser } from './fixture/types.ts';
 
 export { web } from './engine.ts';
 export { attachBrowser, type AttachBrowserOptions, type AttachedBrowser } from './attach.ts';
-export type { WebBasicAuth, WebConnectOptions, WebOptions, WebScreencastOptions } from './options.ts';
+export type { WebBasicAuth, WebConnectOptions, WebMedia, WebOptions, WebScreencastOptions } from './options.ts';
 export type { WebInitScript } from './init-scripts.ts';
-export type { WebMedia } from './media.ts';
 export type {
   BrowserDownloadContext,
   BrowserLease,

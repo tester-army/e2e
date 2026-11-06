@@ -1,5 +1,5 @@
 /**
- * Nested documents on the BiDi driver. An iframe's document is its own
+ * Nested documents. An iframe's document is its own
  * browsing context, reached through the iframe element's `contentWindow`;
  * the surface remembers, for each child context it entered, the iframe
  * element that holds it, so a box measured inside the child can be placed in
@@ -8,13 +8,13 @@
 
 import { EngineError, TestError, type LocatorExpression, type SemanticNode } from 'e2e/engine';
 import { CLOSED_SHADOW_ROOTS_KEY } from '../in-page/closed-shadow.ts';
-import { frameContentInset } from '../observation.ts';
-import type { BidiConnection } from './connection.ts';
 import { ChromiumCdp } from './cdp.ts';
-import { callFunction, ElementRef, WindowRef } from './script.ts';
 import type { BrowserTraits } from '../browsers.ts';
 import { compose, IDENTITY, invert, rectToQuad, scaleThenTranslate, type Projection } from './projection.ts';
 import { chainParts, cssChains, type CssStep } from './selector-tokens.ts';
+import { frameContentInset } from '../in-page/page.ts';
+import type { BidiConnection } from './connection.ts';
+import { callFunction, ElementRef, WindowRef } from './script.ts';
 
 /** An element and the browsing context whose document holds it. */
 export interface NodeTarget {
