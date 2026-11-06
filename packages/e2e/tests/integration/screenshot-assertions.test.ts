@@ -7,7 +7,7 @@
 
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { PNG } from 'pngjs';
+import { JsColorType, Transformer } from '@napi-rs/image';
 import { describe, expect, it } from 'vitest';
 import type { EngineObserveOptions, ObservationPixels, SemanticNode } from '../../src/engine/index.ts';
 import type { E2EConfig } from '../../src/index.ts';
@@ -36,20 +36,20 @@ const TREE: SemanticNode = {
 function screenPng(background: Rgb, button: Rgb, scale = 1): ObservationPixels {
   const width = WIDTH * scale;
   const height = HEIGHT * scale;
-  const png = new PNG({ width, height });
+  const rgba = new Uint8Array(width * height * 4);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const inButton =
         x >= BUTTON.x * scale && x < (BUTTON.x + BUTTON.width) * scale && y >= BUTTON.y * scale && y < (BUTTON.y + BUTTON.height) * scale;
       const color = inButton ? button : background;
       const at = (y * width + x) * 4;
-      png.data[at] = color[0];
-      png.data[at + 1] = color[1];
-      png.data[at + 2] = color[2];
-      png.data[at + 3] = 255;
+      rgba[at] = color[0];
+      rgba[at + 1] = color[1];
+      rgba[at + 2] = color[2];
+      rgba[at + 3] = 255;
     }
   }
-  return { data: new Uint8Array(PNG.sync.write(png)), mediaType: 'image/png', width, height, scale };
+  return { data: new Uint8Array(Transformer.fromRgbaPixels(rgba, width, height).pngSync()), mediaType: 'image/png', width, height, scale };
 }
 
 const WHITE: Rgb = [255, 255, 255];
@@ -97,8 +97,12 @@ function attemptOf(outcome: RunOutcome, title: string) {
   return result.attempts.at(-1)!;
 }
 
-function readPng(file: string): PNG {
-  return PNG.sync.read(readFileSync(file));
+/** The PNG at `file` as RGBA, which is how the runner writes every screenshot it stores. */
+function readPng(file: string): { width: number; height: number; data: Uint8Array } {
+  const image = new Transformer(readFileSync(file));
+  const { width, height, colorType } = image.metadataSync();
+  if (colorType !== JsColorType.Rgba8) throw new Error(`${file} is not an 8-bit RGBA PNG: color type ${colorType}`);
+  return { width, height, data: image.rawPixelsSync() };
 }
 
 const SCREEN_TEST = `import { test, expect } from 'e2e';
@@ -412,9 +416,7 @@ test('threshold', async ({ app, screen }) => {
       const { project } = await runProject({ 'tests/edges.e2e.ts': test }, options);
       try {
         const directory = path.join(project.dir, 'tests', 'edges.e2e.ts-snapshots');
-        const small = new PNG({ width: 10, height: 10 });
-        small.data.fill(255);
-        writeFileSync(path.join(directory, `small${SUFFIX}.png`), PNG.sync.write(small));
+        writeFileSync(path.join(directory, `small${SUFFIX}.png`), Transformer.fromRgbaPixels(new Uint8Array(10 * 10 * 4).fill(255), 10, 10).pngSync());
 
         screen = screenPng(WHITE, [0, 0, 250]);
         const outcome = await runExisting(project, options);

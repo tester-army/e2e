@@ -26,10 +26,9 @@
   },
   "devDependencies": {
     "@ai-sdk/devtools": "1.0.66",
+    "@napi-rs/image": "1.16.0",
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
     "ai": "7.0.163",
-    "pngjs": "7.0.0",
     "typescript": "7.0.2",
     "zod": "4.6.7"
   }

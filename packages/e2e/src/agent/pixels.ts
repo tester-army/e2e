@@ -10,6 +10,7 @@
  */
 
 import type { ObservationPixels } from '../engine/surface.ts';
+import { InfrastructureError } from '../internal/errors.ts';
 import { decodePng, encodePng, resampleImage, type RgbaImage } from '../internal/image.ts';
 
 /**
@@ -32,7 +33,8 @@ export function sizeForModel<P extends ObservationPixels>(pixels: P): P {
  * Resamples the image so its longer side is at most `maxLongSide`, with a
  * box filter over the source pixels each target pixel covers. Returns the
  * input untouched when it already fits or cannot be decoded; whatever else
- * the caller's pixels carry (a masked-region count) rides along unchanged.
+ * the caller's pixels carry (a masked-region count) rides along unchanged. A
+ * codec that cannot load throws: that is the install's fault, not the image's.
  */
 export function downscalePixels<P extends ObservationPixels>(pixels: P, maxLongSide: number): P {
   const longSide = Math.max(pixels.width, pixels.height);
@@ -43,7 +45,8 @@ export function downscalePixels<P extends ObservationPixels>(pixels: P, maxLongS
   let source: RgbaImage;
   try {
     source = decodePng(pixels.data);
-  } catch {
+  } catch (cause) {
+    if (cause instanceof InfrastructureError) throw cause;
     return pixels;
   }
   const data = encodePng(resampleImage(source, width, height));
