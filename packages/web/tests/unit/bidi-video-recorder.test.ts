@@ -67,7 +67,7 @@ describe('BidiVideo', () => {
     return index === 1 ? 'video.webm' : `video-part${String(index)}.webm`;
   }
 
-  const video = (options: VideoOptions = {}) => new BidiVideo(bidi.connection, 'firefox', artifactsDir, options);
+  const video = (options: VideoOptions = {}) => new BidiVideo(bidi.connection, 'firefox', artifactsDir, options, {});
   const started = () => bidi.commands('browsingContext.startScreencast').map((command) => command.params);
   const stops = () => bidi.commands('browsingContext.stopScreencast').length;
   const paths = (segments: readonly { path: string }[]) => segments.map((segment) => segment.path);
@@ -141,7 +141,7 @@ describe('BidiVideo', () => {
     expect(paths(await recorder.stop())).toEqual(['video/video.webm']);
   });
 
-  it.fails('stays disarmed when the first segment cannot start (bug: arm sets armed before the start, so a later tab records)', async () => {
+  it('stays disarmed when the first segment cannot start, so a later tab does not record', async () => {
     scripts.set('tab-1', { startError: 'screencast unavailable' });
     const recorder = video();
     await expect(recorder.arm('tab-1', VIEWPORT)).rejects.toThrow('screencast unavailable');
