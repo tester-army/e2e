@@ -1376,7 +1376,8 @@ export class AgentDeviceSurface {
         case 'uncheck': {
           const wanted = action.kind === 'check';
           const checked = target.node.states?.checked;
-          // A toggle whose state the tree does not expose (Android switches)
+          // A toggle whose state the tree does not expose (a radio or checkbox
+          // the app gives no checked state)
           // cannot be set, only flipped; flipping blind could undo a correct state.
           if (checked === undefined) {
             throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);
