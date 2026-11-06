@@ -91,10 +91,8 @@ const THREE_TESTS = {
   'tests/gamma.e2e.ts': testFile('gamma'),
 } as const;
 
-/** A test file declaring one test that throws. */
-function failingFile(title: string): string {
-  return `import { test } from 'e2e';\ntest(${JSON.stringify(title)}, async () => { throw new Error(${JSON.stringify(`${title} broke`)}); });\n`;
-}
+/** A test file declaring one test, `gamma`, that throws. */
+const FAILING_GAMMA = "import { test } from 'e2e';\ntest('gamma', async () => { throw new Error('gamma broke'); });\n";
 
 /** A candidate's own title: the last of its title path. */
 function titleOf(test: TestFilterCandidate): string {
@@ -663,7 +661,7 @@ describe('starting the likeliest tests first', () => {
   });
 
   it('reaches the failing test first, so --max-failures 1 stops the run before the others start', async () => {
-    const files = { ...THREE_TESTS, 'tests/gamma.e2e.ts': failingFile('gamma') };
+    const files = { ...THREE_TESTS, 'tests/gamma.e2e.ts': FAILING_GAMMA };
     const control = await started(files, [keepOnly('areas', ['alpha', 'beta', 'gamma'])], { maxFailures: 1 });
     expect(control.titles).toEqual(['alpha', 'beta', 'gamma']);
     expect(row(control.report, 'gamma').status).toBe('failed');
@@ -680,7 +678,7 @@ describe('starting the likeliest tests first', () => {
   it('applies to a file-backed config run by the CLI, and says nothing of ranking on e2e list, which starts nothing', () => {
     const project = fixture({
       ...THREE_TESTS,
-      'tests/gamma.e2e.ts': failingFile('gamma'),
+      'tests/gamma.e2e.ts': FAILING_GAMMA,
       'e2e.config.ts': cliConfig(`[
     { name: 'areas', filter(tests) {
       return { exclude: {}, relevance: Object.fromEntries(tests.filter((test) => test.titlePath.at(-1) === 'gamma').map((test) => [test.id, 1])) };
