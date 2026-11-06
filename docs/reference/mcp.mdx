@@ -652,8 +652,8 @@ Several sessions can be open at once, up to `--max-sessions`, each on its
 own attempt and its own browser or device. Parallel agents, such as a
 coding agent's subagents, share one server this way: each opens a session
 and passes its id to every `tools`, `call`, and `close_session`.
-[Bug bashes](/bug-bash) use this: every verifying subagent drives its own
-session.
+[Bug bashes](/bug-bash) use this: a verifying subagent that hardens a repro
+into a scripted test drives its own session.
 
 | Throws | When |
 | --- | --- |
