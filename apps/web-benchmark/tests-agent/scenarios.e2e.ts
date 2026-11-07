@@ -3,9 +3,9 @@
  * accessibility tree. Each step gets the catalog description as its goal and
  * reads the rest off the page; the deterministic check on the scenario's
  * success message decides the test. Scenarios that need pixels (canvas, image
- * and CSS-content UIs, the aria-hidden flow, the onboarding wizard), native
- * dialogs, a second tab, or a file the agent first downloads are left out:
- * the grammar has no verb for them yet.
+ * and CSS-content UIs, the aria-hidden flow, the onboarding wizard), a typed
+ * answer to a native prompt, a second tab, or a file the agent first
+ * downloads are left out: the grammar has no verb for them yet.
  */
 
 import { test } from '@e2e-dev/web';
@@ -129,6 +129,12 @@ const SCENARIOS: readonly Scenario[] = [
     slug: 'gift-card-purchase',
     goal: 'buy a gift card for friend@example.com and complete the purchase',
     success: 'Gift card sent to friend@example.com',
+  },
+  {
+    // The confirm opens 900 ms after the click, and the engine accepts it for the agent, replay included.
+    slug: 'deferred-dialog',
+    goal: 'submit the report and accept the confirmation that follows',
+    success: 'Report submitted after deferred confirmation',
   },
 ];
 

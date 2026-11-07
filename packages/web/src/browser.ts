@@ -461,7 +461,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     run: (operation: OperationContext) => Promise<void>,
   ): Promise<void> => {
     const operation = context.operation(stepTimeout(options?.timeout, api) ?? context.timeouts.test);
-    return surface.guard(operation, 'navigation', run);
+    return surface.guardAction(operation, 'navigation', run);
   };
 
   /** An assertion-style budget: the given timeout or the assertion timeout, clamped to the test. */
@@ -519,7 +519,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       const input: unknown = arg;
       // A handle, not a value: the boundary resolves to a string, which Playwright
       // keeps out of its in-page serializer when it is taken back from a handle.
-      const report = await surface.guard(context.operation(), 'evaluate', async (operation) => {
+      const report = await surface.guardAction(context.operation(), 'evaluate', async (operation) => {
         const page = surface.requirePage();
         try {
           const handle = await page.evaluateHandle(evaluate, input);
@@ -743,7 +743,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       return surface.guard(context.operation(), 'clearCookies', () => surface.requireContext().clearCookies(options));
     },
     setViewport: (size) =>
-      surface.guard(context.operation(), 'setViewport', async () => {
+      surface.guardAction(context.operation(), 'setViewport', async () => {
         await surface.setViewport(size);
         context.attachViewport({ width: size.width, height: size.height, scale: 1 });
       }),
@@ -758,7 +758,7 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       }
       // Read once, so a test that changes its object later changes nothing here.
       const requested = obj({ colorScheme: media.colorScheme, reducedMotion: media.reducedMotion });
-      await surface.guard(context.operation(), 'emulateMedia', () => surface.emulateMedia(requested));
+      await surface.guardAction(context.operation(), 'emulateMedia', () => surface.emulateMedia(requested));
     },
     // Async so the harness records the registration as a `browser.onDialog` step.
     async onDialog(handler: DialogHandler) {
@@ -779,21 +779,21 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
     },
     keyboard: {
       down: (key) =>
-        surface.guard(context.operation(), 'keyboard.down', () => surface.requirePage().keyboard.down(key), classifyInputError),
+        surface.guardAction(context.operation(), 'keyboard.down', () => surface.requirePage().keyboard.down(key), classifyInputError),
       up: (key) =>
-        surface.guard(context.operation(), 'keyboard.up', () => surface.requirePage().keyboard.up(key), classifyInputError),
+        surface.guardAction(context.operation(), 'keyboard.up', () => surface.requirePage().keyboard.up(key), classifyInputError),
       press: (key) =>
-        surface.guard(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key), classifyInputError),
+        surface.guardAction(context.operation(), 'keyboard.press', () => surface.requirePage().keyboard.press(key), classifyInputError),
       type: (text) =>
-        surface.guard(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text), classifyInputError),
+        surface.guardAction(context.operation(), 'keyboard.type', () => surface.requirePage().keyboard.type(text), classifyInputError),
     },
     mouse: {
       move: (x, y) =>
-        surface.guard(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y), classifyInputError),
+        surface.guardAction(context.operation(), 'mouse.move', () => surface.requirePage().mouse.move(x, y), classifyInputError),
       wheel: (deltaX, deltaY) =>
-        surface.guard(context.operation(), 'mouse.wheel', () => surface.requirePage().mouse.wheel(deltaX, deltaY), classifyInputError),
-      down: () => surface.guard(context.operation(), 'mouse.down', () => surface.requirePage().mouse.down(), classifyInputError),
-      up: () => surface.guard(context.operation(), 'mouse.up', () => surface.requirePage().mouse.up(), classifyInputError),
+        surface.guardAction(context.operation(), 'mouse.wheel', () => surface.requirePage().mouse.wheel(deltaX, deltaY), classifyInputError),
+      down: () => surface.guardAction(context.operation(), 'mouse.down', () => surface.requirePage().mouse.down(), classifyInputError),
+      up: () => surface.guardAction(context.operation(), 'mouse.up', () => surface.requirePage().mouse.up(), classifyInputError),
     },
   };
 

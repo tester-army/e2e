@@ -202,7 +202,7 @@ export class StepAccounting {
     );
   }
 
-  /** Every operation inside a replayed span is the test's, navigation included; outside it, the agent's. */
+  /** Every operation inside a replayed span acts with the test's origin, navigation included, and is still the agent step's; outside it, the agent's. */
   private stamped(operation: OperationContext): OperationContext {
     return this.inReplay ? { ...operation, origin: 'test' } : operation;
   }

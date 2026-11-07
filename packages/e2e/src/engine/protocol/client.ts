@@ -584,6 +584,7 @@ function encodeOperation(link: Link, operation: OperationContext): WireOperation
     runId: operation.runId,
     attemptId: operation.attemptId,
     origin: operation.origin,
+    ...(operation.agentStep === true ? { agentStep: true as const } : {}),
   };
 }
 

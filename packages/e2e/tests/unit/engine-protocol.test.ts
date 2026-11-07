@@ -86,6 +86,16 @@ describe('engine protocol', () => {
     expect(Object.keys(remote.session ?? {}).toSorted()).toEqual(['open', 'reset']);
   });
 
+  it("carries whether an operation is an agent step's, and leaves it out when it is not", async () => {
+    const received: OperationContext[] = [];
+    const { remote } = overLoopback(toy({ actions: ['tap'], perform: async (_ref, _action, seen) => void received.push(seen) }));
+    await remote.init!(initInfo());
+    await remote.perform!({ id: 'n1', revision: '' }, { kind: 'tap' }, { ...operation(), agentStep: true });
+    await remote.perform!({ id: 'n1', revision: '' }, { kind: 'tap' }, operation());
+    expect(received.map((seen) => [seen.origin, seen.agentStep])).toEqual([['test', true], ['test', undefined]]);
+    expect('agentStep' in received[1]!).toBe(false);
+  });
+
   it('carries a snapshot with its pixels byte for byte', async () => {
     const data = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255, 7]);
     const { remote } = overLoopback(

@@ -268,6 +268,7 @@ class EngineServer {
       runId: wire.runId,
       attemptId: wire.attemptId,
       origin: wire.origin,
+      ...(wire.agentStep === true ? { agentStep: true } : {}),
     };
   }
 

@@ -4,16 +4,23 @@
  */
 
 import type { Dialog as PwDialog } from 'playwright-core';
-import { TestError } from 'e2e/engine';
+import { TestError, type AppLogEntry } from 'e2e/engine';
 import { describe, expect, it, vi } from 'vitest';
 import { DialogRouter } from '../../src/dialogs.ts';
 import { ErrorLatch } from '../../src/support.ts';
 
-function fakeDialog(text = 'are you sure?') {
+function fakeDialog(text = 'are you sure?', type = 'confirm') {
   const accept = vi.fn(async (_text?: string) => undefined);
   const dismiss = vi.fn(async () => undefined);
-  const dialog = { type: () => 'confirm', message: () => text, accept, dismiss } as unknown as PwDialog;
+  const dialog = { type: () => type, message: () => text, accept, dismiss } as unknown as PwDialog;
   return { dialog, accept, dismiss };
+}
+
+/** A router whose surface reports who acted last, with the app log it tells. */
+function routerFor(actor: 'agent' | 'test') {
+  const log: AppLogEntry[] = [];
+  const router = new DialogRouter(new ErrorLatch(), { agentActed: () => actor === 'agent', log: (entry) => log.push(entry) });
+  return { router, log };
 }
 
 describe('DialogRouter', () => {
@@ -148,6 +155,60 @@ describe('DialogRouter', () => {
     const router = new DialogRouter(latch);
     await router.dispatch(fakeDialog().dialog);
     expect(() => latch.throwPending()).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    expect(() => router.throwPending()).not.toThrow();
+  });
+});
+
+describe('a dialog no handler takes', () => {
+  it.each([
+    ['alert', 'Saved', 'alert dialog "Saved" accepted for the agent'],
+    ['confirm', 'Delete this label?', 'confirm dialog "Delete this label?" accepted for the agent'],
+    ['beforeunload', '', 'beforeunload dialog accepted for the agent'],
+  ] as const)('after an agent operation: accepts the %s, tells the app log, and fails nothing', async (type, text, line) => {
+    const { router, log } = routerFor('agent');
+    const native = fakeDialog(text, type);
+    await router.dispatch(native.dialog);
+    expect(native.accept).toHaveBeenCalledOnce();
+    expect(native.dismiss).not.toHaveBeenCalled();
+    expect(log).toEqual([{ source: 'system', level: 'info', text: line }]);
+    expect(() => router.throwPending()).not.toThrow();
+  });
+
+  it('after an agent operation: dismisses a prompt, whose text the agent cannot see to answer', async () => {
+    const { router, log } = routerFor('agent');
+    const native = fakeDialog('New name?\n(max 20 characters)', 'prompt');
+    await router.dispatch(native.dialog);
+    expect(native.dismiss).toHaveBeenCalledOnce();
+    expect(native.accept).not.toHaveBeenCalled();
+    expect(log).toEqual([{ source: 'system', level: 'info', text: 'prompt dialog "New name? (max 20 characters)" dismissed for the agent' }]);
+    expect(() => router.throwPending()).not.toThrow();
+  });
+
+  it('after a test operation: dismisses it and latches INVALID_STATE, as with no surface to ask', async () => {
+    const { router, log } = routerFor('test');
+    const native = fakeDialog('unexpected');
+    await router.dispatch(native.dialog);
+    expect(native.dismiss).toHaveBeenCalledOnce();
+    expect(log).toEqual([]);
+    expect(() => router.throwPending()).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+  });
+
+  it("leaves a registered handler in charge after an agent operation", async () => {
+    const { router, log } = routerFor('agent');
+    router.add('dismiss');
+    const native = fakeDialog('Delete this label?');
+    await router.dispatch(native.dialog);
+    expect(native.dismiss).toHaveBeenCalledOnce();
+    expect(native.accept).not.toHaveBeenCalled();
+    expect(log).toEqual([]);
+  });
+
+  it('tells nothing and fails nothing when the dialog is gone before the agent answer lands', async () => {
+    const { router, log } = routerFor('agent');
+    const native = fakeDialog('Saved', 'alert');
+    native.accept.mockRejectedValueOnce(new Error('Target page, context or browser has been closed'));
+    await router.dispatch(native.dialog);
+    expect(log).toEqual([]);
     expect(() => router.throwPending()).not.toThrow();
   });
 });

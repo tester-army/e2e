@@ -341,6 +341,13 @@ export interface OperationContext {
    * transition to end first.
    */
   readonly origin: 'test' | 'agent';
+  /**
+   * The operation is part of an agent step: the agent chose it just now, or
+   * the replay cache repeats a choice it made in an earlier run, whose
+   * `origin` is then `test`. An engine answers for the agent what the agent
+   * cannot see, such as a native dialog its action opens.
+   */
+  readonly agentStep?: boolean;
 }
 ```
 
