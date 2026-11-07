@@ -950,7 +950,8 @@ See [Models](/models) and [`ModelInstance`](#modelinstance).
 
 #### `judge`
 
-The model for `assert`, `waitFor`, and `extract`.
+The model for non-exploring `assert`, `waitFor`, and `extract`. Built-in
+exploring assertions use `agents.<name>.model`, even when `judge` is set.
 
 ```ts
 judge: gateway('anthropic/claude-opus-5'), // default: model

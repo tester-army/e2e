@@ -17,7 +17,7 @@ import { requireKey } from '../internal/keys.ts';
 import { clampToViewport, requireFinitePoint, requireViewportSize, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { ActionEvent, ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
-import { PROJECT_TOOL_EVENT_PREFIX, type GrammarActionName } from './action-names.ts';
+import { PROJECT_TOOL_EVENT_PREFIX, READ_ONLY_GRAMMAR, type GrammarActionName } from './action-names.ts';
 import { actionEvent, containerKey, describeAction, type PlacedPoint, type Placement, type RecordableAction } from './actions.ts';
 import { describePosition } from '../cache/relocate.ts';
 import { appNavigation } from '../cache/route.ts';
@@ -45,6 +45,9 @@ import { SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 import { authorizeUploadPaths } from './upload-paths.ts';
+
+/** Actions available during assertions, shared by every dispatcher. */
+const ASSERTION_ACTIONS = new Set<string>(Object.values(READ_ONLY_GRAMMAR).flat());
 
 /**
  * How many times a targeted action re-finds its node after the engine reports
@@ -111,6 +114,8 @@ function requireClickModifiers(value: readonly KeyModifier[], verb: NodeActionNa
 }
 
 export interface ActionDispatcherOptions {
+  /** Whether this step may only inspect the app. */
+  readonly readOnly?: boolean;
   readonly instruction: string;
   readonly params: Readonly<Record<string, JsonValue>> | undefined;
   /** Secrets declared in the step's params, by stable name; the only ones `typeSecret` may fill. */
@@ -357,6 +362,7 @@ export class ActionDispatcher {
       this.accounting.checkpoint();
       if (this.accounting.closed) throw new AgentError('CANCELLED', 'the step has ended');
       if (call.mutates) {
+        this.assertAllowed('tool');
         this.accounting.reserveAction();
         await this.before();
         this.options.trace()?.recordGap(call.name);
@@ -675,7 +681,15 @@ export class ActionDispatcher {
     return this.queue.run(() => this.runActionNow(name, body));
   }
 
+  /** Assertions may move the viewport but cannot interact with application state. */
+  private assertAllowed(name: string): void {
+    if (this.options.readOnly === true && !ASSERTION_ACTIONS.has(name)) {
+      throw this.accounting.fatalize(new AgentError('POLICY_DENIED', `agent.assert cannot perform ${name}`));
+    }
+  }
+
   private async runActionNow(name: GrammarActionName, body: () => Promise<RecordableAction>): Promise<void> {
+    this.assertAllowed(name);
     this.accounting.reserveAction();
     await this.before();
     const redaction = { redact: this.runtime.redact, redactCut: this.runtime.redactCut };
