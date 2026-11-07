@@ -943,7 +943,7 @@ prove a fallback screenshot safe.
 
 `getByRole` on a device matches the role each element type maps to. A type
 not listed keeps its own name in lower kebab case (`picker-wheel`), so it
-matches a `getByRole` role only when that name is one (`Group`, `Table`).
+matches a `getByRole` role only when that name is one (`group`, `table`).
 A node the platform reports editable is a `textbox`, unless it already maps
 to `combobox`.
 
@@ -982,7 +982,9 @@ accessibility value on iOS (`checkbox, unchecked`) and into the role
 description on Android (`Tab List`). A node with one of these descriptions
 takes the role in place of its type's: `alert`, `checkbox`, `combo box`,
 `menu`, `menu bar`, `menu item`, `progress bar`, `radio button`,
-`radio group`, `spin button`, `switch`, `tab`, `tab list`, and `tool bar`.
+`radio group`, `scroll bar`, `spin button`, `switch`, `tab`, `tab list`,
+`timer`, and `tool bar`. The `scrollbar` and `timer` roles that `scroll bar`
+and `timer` give are not `getByRole` roles.
 On iOS only an `Other` carries one, and the state words after the role set
 `checked` and `expanded`; only what follows them is the node's value.
 
