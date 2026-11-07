@@ -455,8 +455,8 @@ importers:
         specifier: 26.6.6
         version: 26.6.6
       e2b:
-        specifier: 2.62.1
-        version: 2.62.1
+        specifier: 2.63.0
+        version: 2.63.0
       e2e:
         specifier: workspace:*
         version: link:../e2e
@@ -3315,6 +3315,10 @@ packages:
 
   e2b@2.62.1:
     resolution: {integrity: sha512-8TxPojt1659LmX9SX8zSet6fdefWxeSZoh+obad8DuC5wdRQdMbzN6ahEKNGzjrCNJFR26YeRZWOboXsy9UDYA==}
+    engines: {node: '>=22.19.0'}
+
+  e2b@2.63.0:
+    resolution: {integrity: sha512-csMG2Oiq94QS8KUhlkRRfBKh9GIhcijLKTpDbcq8u7W+DAGdpzl+6iHNizPLz8KCFCOWTeB1G2711EQJc01tgA==}
     engines: {node: '>=22.19.0'}
 
   ee-first@1.1.1:
@@ -7801,6 +7805,20 @@ snapshots:
   dnssd-advertise@1.1.6: {}
 
   e2b@2.62.1:
+    dependencies:
+      '@bufbuild/protobuf': 2.17.0
+      '@connectrpc/connect': 2.3.0(@bufbuild/protobuf@2.17.0)
+      '@connectrpc/connect-web': 2.3.0(@bufbuild/protobuf@2.17.0)(@connectrpc/connect@2.3.0(@bufbuild/protobuf@2.17.0))
+      '@e2b/dockerfile-utils': 0.1.1
+      chalk: 5.6.2
+      compare-versions: 6.1.1
+      glob: 14.0.3
+      openapi-fetch: 0.17.0
+      platform: 1.3.6
+      tar: 7.5.22
+      undici: 8.12.4
+
+  e2b@2.63.0:
     dependencies:
       '@bufbuild/protobuf': 2.17.0
       '@connectrpc/connect': 2.3.0(@bufbuild/protobuf@2.17.0)
