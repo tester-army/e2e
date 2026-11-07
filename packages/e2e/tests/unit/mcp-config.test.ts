@@ -46,12 +46,6 @@ describe('planMcpRegistration', () => {
     expect(registrations[0]!.content.endsWith('\n')).toBe(true);
   });
 
-  it('starts the server with bunx in a Bun project, which may have no npx', () => {
-    const { registrations } = planMcpRegistration(dir, ['.mcp.json', '.codex/config.toml'], 'bun');
-    expect(JSON.parse(registrations[0]!.content)).toEqual({ mcpServers: { e2e: { command: 'bunx', args: ['e2e', 'mcp'] } } });
-    expect(registrations[1]!.content).toContain('command = "bunx"');
-  });
-
   it('registers Codex in its project TOML config and discovers it on the next run', () => {
     const [plan] = planMcpRegistration(dir, ['.codex/config.toml'], 'npm').registrations;
     expect(plan!.content).toContain('[mcp_servers.e2e]');

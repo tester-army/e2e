@@ -29,11 +29,6 @@ export const MCP_LOCATIONS = [
 
 const MCP_SERVER_NAME = 'e2e';
 
-/** How clients start the server from the project with e2e installed: `bunx` in a Bun project, which may have no Node.js and so no `npx`. */
-function serverEntry(manager: PackageManager): { readonly command: string; readonly args: readonly string[] } {
-  return { command: manager === 'bun' ? 'bunx' : 'npx', args: ['e2e', 'mcp'] };
-}
-
 export interface McpRegistration {
   /** Project-relative file, e.g. `.mcp.json`. */
   readonly relative: string;
@@ -120,11 +115,11 @@ export function findRegisteredMcpFiles(cwd: string): string[] {
  * merged in; one whose entry already matches needs nothing and is left out.
  * Extra settings on the e2e entry, other servers, other keys, and the file's
  * indentation are preserved. A file reached through a symlink is never read;
- * it is returned among `links` for the caller to report and skip. The
- * entry starts the server through `manager`'s runner.
+ * it is returned among `links` for the caller to report and skip.
  */
 export function planMcpRegistration(cwd: string, files: readonly string[], manager: PackageManager): McpPlan {
-  const launch = serverEntry(manager);
+  // How clients start the server from the project with e2e installed; a Bun project may have no Node.js, so no npx.
+  const launch = { command: manager === 'bun' ? 'bunx' : 'npx', args: ['e2e', 'mcp'] };
   const registrations: McpRegistration[] = [];
   const links: McpLink[] = [];
   for (const file of files) {
