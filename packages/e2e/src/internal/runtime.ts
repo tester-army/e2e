@@ -76,7 +76,11 @@ function unsupportedBunMessage(current: string): string | undefined {
   return `e2e requires Bun ${BUN_FLOOR.join('.')} or newer; this is Bun ${current}. Upgrade Bun (bun upgrade), or run the CLI with Node.js (npx e2e).`;
 }
 
-/** Explains a Bun or Node.js e2e cannot run on, or undefined for one it can. */
-export function unsupportedRuntimeMessage(versions: Pick<NodeJS.ProcessVersions, 'node'> & { readonly bun?: string | undefined } = process.versions): string | undefined {
+/** Explains a runtime e2e cannot run on, or undefined for one it can. */
+export function unsupportedRuntimeMessage(
+  versions: Pick<NodeJS.ProcessVersions, 'node'> & { readonly bun?: string | undefined; readonly deno?: string | undefined } = process.versions,
+): string | undefined {
+  // Deno implements module.registerHooks, but not the require() of a native addon from inside a hook that oxc needs.
+  if (versions.deno !== undefined) return `e2e runs on Node.js or Bun, not Deno ${versions.deno}: run the CLI with Node.js (npx e2e).`;
   return versions.bun === undefined ? unsupportedNodeMessage(versions.node) : unsupportedBunMessage(versions.bun);
 }

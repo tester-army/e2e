@@ -37,4 +37,8 @@ describe('unsupportedRuntimeMessage', () => {
       `e2e requires Bun 1.4.3 or newer; this is Bun ${bun}. Upgrade Bun (bun upgrade), or run the CLI with Node.js (npx e2e).`,
     );
   });
+
+  it('refuses Deno, whatever Node.js it reports', () => {
+    expect(unsupportedRuntimeMessage({ node: '26.3.0', deno: '2.9.4' })).toBe('e2e runs on Node.js or Bun, not Deno 2.9.4: run the CLI with Node.js (npx e2e).');
+  });
 });

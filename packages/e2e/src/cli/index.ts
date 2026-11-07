@@ -585,7 +585,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addOption(new Option('--headless').hideHelp())
     .option(
       '--max-sessions <n>',
-      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default})`,
+      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default}; 1 on Bun)`,
       parseBoundedInt(SESSION_BOUNDS),
     )
     .addHelpText(

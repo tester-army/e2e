@@ -197,11 +197,20 @@ describe.runIf(bun !== undefined && (supported || Boolean(process.env['E2E_BUN']
   it('reloads an edited config graph on a graph load, and only the config file otherwise', async () => {
     createTypeScriptProject(dir, { type: 'module' }, {
       ...BUN_FILES,
-      // A dotted alias and an import with a query, which Bun keeps in the module's identity.
-      'e2e.config.ts': "import { first } from '@lib/value.config';\nimport { second } from './lib/queried.ts?v=1';\nexport default { targets: [{ name: `${first}-${second}`, platform: 'test' }] };\n",
+      // A dotted alias, an import with a query, which Bun keeps in the module's identity, an import in a .js file holding JSX, and a data file.
+      'e2e.config.ts':
+        "import { first } from '@lib/value.config';\nimport { second } from './lib/queried.ts?v=1';\nimport { third } from './lib/view.js';\nimport data from './lib/data.toml';\nexport default { targets: [{ name: `${first}-${second}-${third}-${data.fourth}`, platform: 'test' }] };\n",
+      'lib/view.js': "/** @jsxRuntime classic */\n/** @jsx h */\nexport { third } from './third.ts';\nconst h = (tag) => tag;\nexport const view = () => <b />;\n",
     });
     const helpers = (value: string): string =>
-      ['value.config.ts', 'queried.ts'].map((file, index) => `writeFileSync(${JSON.stringify(path.join(dir, 'lib', file))}, "export const ${index === 0 ? 'first' : 'second'}: string = '${value}';\\n");`).join('\n');
+      Object.entries({
+        'value.config.ts': `export const first: string = '${value}';`,
+        'queried.ts': `export const second: string = '${value}';`,
+        'third.ts': `export const third: string = '${value}';`,
+        'data.toml': `fourth = "${value}"`,
+      })
+        .map(([file, text]) => `writeFileSync(${JSON.stringify(path.join(dir, 'lib', file))}, ${JSON.stringify(`${text}\n`)});`)
+        .join('\n');
     writeFiles(dir, {
       'reload.mjs': `import { writeFileSync } from 'node:fs';
 const { loadConfigModule } = await import(${JSON.stringify(pathToFileURL(path.join(PACKAGE_ROOT, 'dist', 'config', 'load.js')).href)});
@@ -219,7 +228,7 @@ process.stdout.write(JSON.stringify(seen));
     expect(stderr).toBe('');
     expect(code).toBe(0);
     // A graph shares its copy of a helper across loads under one name; a new name evaluates it afresh.
-    expect(JSON.parse(stdout)).toEqual(['a-a', 'a-a', 'a-a', 'b-b', 'b-b', 'b-b', 'c-c']);
+    expect(JSON.parse(stdout)).toEqual(['a', 'a', 'a', 'b', 'b', 'b', 'c'].map((value) => Array(4).fill(value).join('-')));
   });
 
   it('refuses e2e/runner, which needs Node.js', async () => {
@@ -244,7 +253,11 @@ process.stdout.write(JSON.stringify(outcomes));
   });
 
   it('serves e2e mcp, one session at a time, whose run_tests runs the CLI on Bun', async () => {
-    createTypeScriptProject(dir, { type: 'module' }, BUN_FILES);
+    createTypeScriptProject(dir, { type: 'module' }, {
+      ...BUN_FILES,
+      // A target with an engine, which a session needs.
+      'kiosk.config.ts': `import { createFakeEngine } from ${JSON.stringify(path.join(PACKAGE_ROOT, 'tests', 'helpers', 'fake-engine.ts'))};\n\nexport default { targets: [{ name: 'kiosk', platform: 'kiosk', engine: createFakeEngine().engine }] };\n`,
+    });
     const transport = new StdioClientTransport({ command: path.join(bin, 'bun'), args: [CLI, 'mcp', '--max-sessions', '3'], cwd: dir, env: env as Record<string, string>, stderr: 'pipe' });
     let stderr = '';
     transport.stderr?.on('data', (chunk: Buffer) => {
@@ -261,6 +274,13 @@ process.stdout.write(JSON.stringify(outcomes));
       expect(result.isError).not.toBe(true);
       // Sessions would share Bun's one instance of each project module.
       expect(stderr).toContain('--max-sessions 3 ignored: on Bun, one session is open at a time');
+      const open = async (): Promise<{ content: { text?: string }[]; isError?: boolean }> =>
+        (await client.callTool({ name: 'open_session', arguments: { config: 'kiosk.config.ts' } }, { timeout: 60_000 })) as { content: { text?: string }[]; isError?: boolean };
+      const first = await open();
+      expect(first.isError, first.content.map((part) => part.text).join('\n')).not.toBe(true);
+      const second = await open();
+      expect(second.isError).toBe(true);
+      expect(second.content.map((part) => part.text ?? '').join('\n')).toContain('no session slot is free (e2e mcp --max-sessions 1)');
     } finally {
       await client.close();
     }

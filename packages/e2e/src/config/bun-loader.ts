@@ -11,11 +11,12 @@
  * - A load evaluates its file afresh; the files it imports keep their
  *   instance.
  * - A load in a fresh graph also evaluates afresh every project file the
- *   module reaches by path, `#` import, or tsconfig alias that the graph has
+ *   module imports by path, `#` import, or tsconfig alias that the graph has
  *   not loaded yet: Bun's transpiler lists each file's imports and Bun's
- *   resolver finds them. A package reached by name stays one shared instance.
- *   Bun keeps one instance of each module, so the process holds one graph: a
- *   load in another graph starts it afresh.
+ *   resolver finds them. A package reached by name, and a file an import
+ *   reaches through a computed specifier, stay one shared instance. Bun keeps
+ *   one instance of each module, so the process holds one graph: a load in
+ *   another graph starts it afresh.
  * - Loads run one at a time: each deletes modules from the registry the
  *   others load from.
  *
@@ -44,13 +45,13 @@ interface BunApi {
   resolveSync(specifier: string, directory: string): string;
 }
 
-/** The extensions whose imports a fresh graph follows. */
+/** The extensions whose imports a fresh graph follows, each read as Bun runs it: a `.js` file may hold JSX. */
 const SCANNED: Readonly<Record<string, ScanLoader>> = {
   '.ts': 'ts',
   '.mts': 'ts',
   '.cts': 'ts',
   '.tsx': 'tsx',
-  '.js': 'js',
+  '.js': 'jsx',
   '.mjs': 'js',
   '.cjs': 'js',
   '.jsx': 'jsx',
@@ -133,9 +134,10 @@ function projectImports(id: string): string[] {
 
 /**
  * The project module `specifier`, written in `importer`, reaches by path,
- * `#` import, or tsconfig alias, as Bun resolves it; undefined for a package,
- * a builtin, a file that is not a module (an addon, an asset), or a specifier
- * Bun cannot resolve, which the load itself reports.
+ * `#` import, or tsconfig alias, as Bun resolves it: code or a data file
+ * (`.json`, `.toml`, `.txt`, ...). Undefined for a package, a builtin, a
+ * native addon, or a specifier Bun cannot resolve, which the load itself
+ * reports.
  */
 function projectModule(specifier: string, importer: string): string | undefined {
   let resolved: string;
@@ -145,8 +147,7 @@ function projectModule(specifier: string, importer: string): string | undefined 
     return undefined;
   }
   const file = resolved.split('?')[0]!;
-  const extension = path.extname(file);
-  if (!path.isAbsolute(file) || INSTALLED.test(file) || (SCANNED[extension] === undefined && extension !== '.json')) return undefined;
+  if (!path.isAbsolute(file) || INSTALLED.test(file) || path.extname(file) === '.node') return undefined;
   if (isPathSpecifier(specifier, false) || isPathSpecifier(specifier, true) || specifier.startsWith('#')) return resolved;
   return isAlias(specifier, importer, resolved) ? resolved : undefined;
 }

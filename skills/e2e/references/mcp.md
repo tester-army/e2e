@@ -22,7 +22,7 @@ The server ships with the project's `e2e` dependency, separately from the
 skills-only plugin. `e2e init` offers to register it for Claude Code,
 Cursor, and Codex. Reuse an existing registration; when adding one, use the project's
 config so it starts in the project it drives. Install dependencies and start
-the MCP client in that directory so `npx` uses the installed e2e version.
+the MCP client in that directory so `npx` (`bunx` in a Bun project) uses the installed e2e version.
 
 For an existing setup, `e2e init --yes --skills none --mcp .codex/config.toml` adds Codex.
 Codex reads `.codex/config.toml` in a trusted project:
@@ -57,7 +57,7 @@ Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
 simulator when the engine supports it in sessions that do not set `headed`
 (sessions are headless by default, as in `e2e run`), `--max-sessions <n>`
-sets how many sessions may be open at once (default 4, 1 through 16).
+sets how many sessions may be open at once (default 4, 1 through 16; one on Bun).
 
 ## Tools
 
