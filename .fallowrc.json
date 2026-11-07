@@ -47,6 +47,7 @@
     "@oxc-project/runtime",
     "@agent-device/testmu"
   ],
+  "ignoreBinaries": ["eas"],
   "ignoreExports": [
     {
       "file": "packages/e2e/src/types.ts",
