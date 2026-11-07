@@ -256,12 +256,21 @@ describe('e2e doctor', () => {
   });
 
   it('reports a config still loading at Ctrl-C as cancelled', async () => {
-    const project = createProject({ 'e2e.config.ts': "process.stderr.write('loading\\n');\nawait new Promise((resolve) => setTimeout(resolve, 60_000));\nexport default {};\n" });
+    // fd 2 directly: the CLI holds what a loading config prints through process.stderr until the load ends.
+    const project = createProject({ 'e2e.config.ts': "import { writeSync } from 'node:fs';\nwriteSync(2, 'loading\\n');\nawait new Promise((resolve) => setTimeout(resolve, 60_000));\nexport default {};\n" });
     projects.push(project);
     const child = spawn(process.execPath, [CLI, 'doctor', '--json'], { cwd: project.dir, env: { ...process.env, CI: '', NO_COLOR: '1' } });
     let stdout = '';
     child.stdout.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
-    setTimeout(() => child.kill('SIGINT'), 2000);
+    // The config prints 'loading' after the CLI armed its Ctrl-C handler; a fixed delay could signal before that under load.
+    let stderr = '';
+    const interrupt = (chunk: Buffer): void => {
+      stderr += chunk.toString();
+      if (!stderr.includes('loading')) return;
+      child.stderr.off('data', interrupt);
+      child.kill('SIGINT');
+    };
+    child.stderr.on('data', interrupt);
     const code = await new Promise<number | null>((resolve) => child.once('close', resolve));
     expect(code).toBe(130);
     expect((JSON.parse(stdout) as DoctorReport).checks.at(-1)).toMatchObject({ id: 'config', status: 'fail', code: 'CANCELLED' });

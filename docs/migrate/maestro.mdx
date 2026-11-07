@@ -60,7 +60,7 @@ The reference pages hold the details: [screen](/reference/screen),
 | `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) |
 | `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config |
 | `maestro test -c`, Maestro Studio | Not yet. `npx e2e mcp` gives a coding agent a live session on the device, see [MCP server](/mcp-server) |
-| `maestro hierarchy` | Not yet. `device.locator` takes agent-device selectors for nodes `screen` cannot name |
+| `maestro hierarchy` | Not yet. `device.unstable_raw.client.capture.snapshot({})` returns agent-device's node tree, see [`unstable_raw`](/reference/mobile#unstable_raw); `device.locator` takes agent-device selectors for nodes `screen` cannot name |
 | Maestro Cloud | your CI, see [Continuous integration](/ci) |
 
 ## Rewrite one flow
@@ -120,7 +120,7 @@ purpose.
 | `stopApp`, then `launchApp` | `app.restart()` |
 | `clearKeychain` | `device.clearKeychain()`, the whole simulator's keychain; iOS only |
 | `openLink` | `device.openLink(url, { app })`; on iOS the link opens into `app`, default the pinned app |
-| `addMedia` | Not yet |
+| `addMedia` | Not yet. On an iOS simulator, run `xcrun simctl addmedia` on `device.unstable_raw.deviceId` before `app.open()` |
 | `back` | `app.back()`, or `device.back()` |
 
 </Accordion>
@@ -227,8 +227,10 @@ Four differences from Maestro's selectors cause most edits.
 
 ## What differs on purpose
 
-- Tests get no agent-device client. Every call goes through `screen`, `app`,
-  `device`, or the agent, so e2e records and redacts it.
+- e2e records and redacts the calls on `screen`, `app`, `device`, and the
+  agent. `device.unstable_raw` hands a test agent-device's client for what
+  those don't cover; its calls aren't steps and nothing redacts their
+  arguments.
 - A device has no `test.setup` or `{ session }`, see
   [what differs from the web](/mobile#what-differs-from-the-web).
 
