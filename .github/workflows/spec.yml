@@ -17,10 +17,7 @@ on:
 # The repository's own runs are not usage: the CLI sends no telemetry from CI here.
 env:
   E2E_TELEMETRY_DISABLED: '1'
-  # The ubuntu-2404 runners restrict unprivileged user namespaces, so
-  # Chromium cannot start with its sandbox on; the web engine defaults to
-  # sandboxed launches, and CI opts out explicitly rather than failing at
-  # browser launch.
+  # The ubuntu-2404 runners block the user namespaces Chromium's sandbox needs, so CI opts out explicitly.
   E2E_CHROMIUM_SANDBOX: '0'
 
 permissions:

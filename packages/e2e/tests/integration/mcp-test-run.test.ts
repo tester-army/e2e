@@ -391,8 +391,6 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         configPath,
       }),
       loadEngineConfig: () => Promise.reject(new Error('these sessions open on the config')),
-      // The run's environment carries the sandbox flag: on a host whose
-      // sandbox cannot start, the workflow sets E2E_CHROMIUM_SANDBOX=0.
       env: { E2E_CHROMIUM_SANDBOX: process.env['E2E_CHROMIUM_SANDBOX'] },
       headed: false,
       log: () => undefined,

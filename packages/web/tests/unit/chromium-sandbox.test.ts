@@ -43,7 +43,7 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser();
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire('chromium', false, 1_000, true);
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
     expect(launchOf(chromiumLaunch)).toEqual({
       headless: true,
       timeout: 1_000,
@@ -58,7 +58,7 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser();
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire('chromium', true, 1_000, true);
+    await connection.acquire({ name: 'chromium', headed: true, timeoutMs: 1_000, chromiumSandbox: true });
     expect(launchOf(chromiumLaunch)).toMatchObject({ headless: false, chromiumSandbox: true });
     await connection.dispose();
   });
@@ -67,7 +67,7 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser();
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire('chromium', false, 1_000, false);
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
     expect(launchOf(chromiumLaunch)).toMatchObject({ chromiumSandbox: false });
     await connection.dispose();
   });
@@ -77,10 +77,34 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser(() => connected);
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire('chromium', false, 1_000, false);
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
     connected = false;
-    await connection.acquire('chromium', false, 1_000, false);
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
     expect(chromiumLaunch).toHaveBeenCalledTimes(2);
+    for (const call of chromiumLaunch.mock.calls) {
+      expect(call[0]).toMatchObject({ chromiumSandbox: false });
+    }
+    await connection.dispose();
+  });
+
+  it('keeps the opt-out when a relaunch fails while another caller is waiting', async () => {
+    let connected = true;
+    const { browser: first } = fakeBrowser(() => connected);
+    const { browser: third } = fakeBrowser();
+    chromiumLaunch
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new Error('browserType.launch: Chromium sandboxing failed!'))
+      .mockResolvedValueOnce(third);
+    const connection = new BrowserConnection();
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
+    connected = false;
+    const [relaunch, waiter] = await Promise.allSettled([
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false }),
+    ]);
+    expect(relaunch.status).toBe('rejected');
+    expect(waiter.status).toBe('fulfilled');
+    expect(chromiumLaunch).toHaveBeenCalledTimes(3);
     for (const call of chromiumLaunch.mock.calls) {
       expect(call[0]).toMatchObject({ chromiumSandbox: false });
     }
@@ -92,11 +116,11 @@ describe('BrowserConnection', () => {
     firefoxLaunch.mockResolvedValue(browser);
     webkitLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire('firefox', false, 1_000, true);
+    await connection.acquire({ name: 'firefox', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
     await connection.dispose();
     expect(launchOf(firefoxLaunch)).not.toHaveProperty('chromiumSandbox');
     const second = new BrowserConnection();
-    await second.acquire('webkit', false, 1_000, true);
+    await second.acquire({ name: 'webkit', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
     await second.dispose();
     expect(launchOf(webkitLaunch)).not.toHaveProperty('chromiumSandbox');
   });

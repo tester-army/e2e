@@ -39,13 +39,34 @@ export function isBrowserName(name: string): name is BrowserName {
 const RUNNER_OWNS_SIGNALS = { handleSIGINT: false, handleSIGTERM: false } as const;
 
 /**
- * The `E2E_CHROMIUM_SANDBOX` flag's value when it is set and not blank,
- * lowercased; undefined otherwise. `0` and `false` turn the sandbox off, the
- * same way `CI` is read; anything else leaves it on.
+ * Whether a locally launched Chromium runs with its sandbox on: an explicit
+ * option wins, then the run's environment, then on. `0` and `false` turn it
+ * off, the same way `CI` is read; anything else leaves it on. The run's
+ * environment is the only environment read here: an in-process worker shares
+ * its process with the runner and every other target, so the process
+ * environment never decides a launch.
  */
-export function readChromiumSandboxFlag(env: Readonly<Record<string, string | undefined>>): string | undefined {
+export function resolveChromiumSandbox(
+  configured: boolean | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (configured !== undefined) return configured;
   const value = env['E2E_CHROMIUM_SANDBOX']?.trim().toLowerCase();
-  return value !== undefined && value !== '' ? value : undefined;
+  return value === undefined || value === '' || (value !== '0' && value !== 'false');
+}
+
+/** What `BrowserConnection.acquire` launches or attaches to. */
+export interface BrowserAcquireOptions {
+  /** Which browser to launch. */
+  readonly name: BrowserName;
+  /** Whether the browser opens headed. */
+  readonly headed: boolean;
+  /** How long a launch or attach may take. */
+  readonly timeoutMs: number;
+  /** Whether a Chromium launch keeps its OS sandbox on; other browsers ignore it. */
+  readonly chromiumSandbox: boolean;
+  /** Attaches to a remote browser instead of launching one, when given. */
+  readonly connect?: () => Promise<Browser>;
 }
 
 /**
@@ -68,18 +89,13 @@ export class BrowserConnection {
    * option, the run's environment, or on. Only a Chromium launch takes it,
    * and a relaunch keeps the value the first launch used.
    */
-  async acquire(
-    name: BrowserName,
-    headed: boolean,
-    timeoutMs: number,
-    chromiumSandbox: boolean,
-    connect?: () => Promise<Browser>,
-  ): Promise<Browser> {
+  async acquire(options: BrowserAcquireOptions): Promise<Browser> {
+    const { name, headed, timeoutMs, chromiumSandbox, connect } = options;
     const cached = this.pending;
     if (cached !== undefined) {
       const browser = await cached.catch(() => null);
       if (browser !== null && browser.isConnected()) return browser;
-      if (this.pending !== cached) return this.acquire(name, headed, timeoutMs, chromiumSandbox, connect);
+      if (this.pending !== cached) return this.acquire(options);
       this.pending = undefined;
     }
     // Set before anything awaits: the first call loads Playwright, and a `dispose`
