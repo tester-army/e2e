@@ -143,7 +143,7 @@ leaves out on purpose.
 | `device.launchApp({ newInstance: false })` | `device.openApp(id)` without `relaunch` |
 | `device.launchApp({ url })`, `device.openURL({ url })` | `device.openLink(url)` |
 | `device.terminateApp()` | `device.closeApp()` |
-| `device.uninstallApp()` | Not yet. `device.installApp(path, { reinstall: true })` installs with no data |
+| `device.uninstallApp()` | Not yet. `device.unstable_raw.client.apps.uninstall({ ...device.unstable_raw.selection, app: 'com.example.app' })` removes it, see [`unstable_raw`](/reference/mobile#unstable_raw); `device.installApp(path, { reinstall: true })` installs with no data |
 | `device.resetContentAndSettings()` | Not yet. `app.clearState()` resets the app; on iOS, `device.clearKeychain()` clears the simulator keychain for every app |
 | `device.reloadReactNative()` | No equivalent. `app.restart()` is the nearest |
 | `device.sendToHome()`, `device.pressBack()` | `device.home()`, `device.back()` |
