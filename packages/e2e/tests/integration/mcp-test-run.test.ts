@@ -390,7 +390,7 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         ...resolveConfig({ ...config, targets: [webTarget('web', app.url)] } as E2EConfig as never, { projectRoot: project.dir, env: {}, configPath }),
         configPath,
       }),
-      env: {},
+      env: { E2E_CHROMIUM_SANDBOX: process.env['E2E_CHROMIUM_SANDBOX'] },
       headed: false,
       log: () => undefined,
     });

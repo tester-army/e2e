@@ -54,7 +54,11 @@ The model acts only through tools. The runner checks each call against a
 closed schema before it runs, and never evaluates model text as code. A call
 that breaks a rule, such as a navigation to `file:`, fails with
 `POLICY_DENIED`. There is no origin allowlist: the agent can follow the app
-to another site and use the step's secrets there.
+to another site and use the step's secrets there. Chromium launches with its
+OS sandbox on, so a renderer exploit on a page the agent reaches stays
+contained by the sandbox instead of running as the user running `e2e run`;
+`web({ chromiumSandbox: false })` or `E2E_CHROMIUM_SANDBOX=0` turns it off on
+a host where the sandbox cannot start.
 
 ## What runs with your permissions
 

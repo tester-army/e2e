@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Page } from 'playwright-core';
 import type { OperationContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { decodePng } from '../helpers/png.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -54,7 +55,7 @@ describe('surface.screenshot while navigating', () => {
   beforeAll(async () => {
     ({ server, origin } = await startHoppingServer());
     await surface.init({ runId: 'shots', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-      env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
   beforeEach(async () => {

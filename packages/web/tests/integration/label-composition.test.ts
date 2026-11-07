@@ -12,6 +12,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { EngineCleanupContext, EngineHandle, LocatorExpression, OperationContext, TextPattern } from 'e2e/engine';
 import { web } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -48,7 +49,7 @@ async function boot(engine: EngineHandle, app: FixtureApp): Promise<void> {
     targetName: 'web',
     projectRoot: process.cwd(),
     app: { site: new URL(app.url).hostname },
-    env: {},
+    env: browserTestEnv(),
     headed: false,
     workerSlot: 0,
     log: () => undefined,

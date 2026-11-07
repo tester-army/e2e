@@ -11,6 +11,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { AppPermissionState, EngineCleanupContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { web, surfaceOf } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -41,7 +42,7 @@ describe('app permissions', () => {
     const engine = web();
     await engine.init!({
       runId: 'run-permissions', targetName: 'web', projectRoot: process.cwd(),
-      app: { site: new URL(app.url).hostname, ...(permissions === undefined ? {} : { permissions }) }, env: {}, headed: false,
+      app: { site: new URL(app.url).hostname, ...(permissions === undefined ? {} : { permissions }) }, env: browserTestEnv(), headed: false,
       workerSlot: 0, log: () => undefined, signal: new AbortController().signal,
     });
     await engine.startAttempt!({ attemptId: 'p1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });

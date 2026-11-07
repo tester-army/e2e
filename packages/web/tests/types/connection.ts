@@ -70,3 +70,7 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, W
 ({ screencast: { size: { width: 1280, height: 720 }, quality: 80 } }) satisfies WebOptions;
 // @ts-expect-error web({ video }) was renamed web({ screencast }).
 ({ video: { quality: 80 } }) satisfies WebOptions;
+// Chromium launches with its OS sandbox on; the opt-out is a boolean.
+({ chromiumSandbox: false }) satisfies WebOptions;
+// @ts-expect-error chromiumSandbox is a boolean.
+({ chromiumSandbox: 'yes' }) satisfies WebOptions;
