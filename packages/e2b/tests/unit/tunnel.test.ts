@@ -153,7 +153,11 @@ describe('tunnel', () => {
     received.length = 0;
     const client = netConnect(Number(new URL(tunnel.url).port), '127.0.0.1');
     client.on('error', () => {});
-    client.write(`GET /devtools/browser/b6 HTTP/1.1\r\nHost: 127.0.0.1:${new URL(tunnel.url).port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nfirst-frame`);
+    // Corked, so the request and the bytes after it leave as one segment and reach the tunnel as its upgrade `head`.
+    client.cork();
+    client.write(`GET /devtools/browser/b6 HTTP/1.1\r\nHost: 127.0.0.1:${new URL(tunnel.url).port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n`);
+    client.write('first-frame');
+    client.uncork();
     // TCP may hand the upstream these bytes with the head or after it; either way they must all arrive.
     await expect.poll(() => received[0]).toBe('first-frame');
     client.destroy();

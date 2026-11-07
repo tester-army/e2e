@@ -60,7 +60,7 @@ const START_TIMEOUT_MS = 60_000;
  */
 const FIND_CHROMIUM = [
   `mkdir -p ${DOWNLOADS_DIR}`,
-  'chrome=$(find /ms-playwright -maxdepth 3 -type f -name chrome | head -n 1)',
+  'chrome=$(find /ms-playwright -maxdepth 3 -type f -name chrome 2>/dev/null | head -n 1)',
   '[ -x "$chrome" ] || { echo "Playwright Chromium is missing from the sandbox template: no /ms-playwright/*/chrome-linux*/chrome" >&2; exit 1; }',
   'printf %s "$chrome"',
 ].join('\n');

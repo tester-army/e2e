@@ -20,8 +20,10 @@ const sdk = vi.hoisted(() => {
   const state = {
     /** Commands run to completion, as opposed to `started` ones left running. */
     ran: [] as string[],
-    /** Whether the template lacks Playwright's Chromium. */
+    /** Whether the template lacks Playwright's Chromium: the lookup then runs for real, here, where `/ms-playwright` does not exist. */
     noChromium: false,
+    /** What the Chromium lookup prints. */
+    chromiumPath: '/ms-playwright/chromium-1248/chrome-linux64/chrome',
     created: [] as { template: string; opts: Record<string, unknown> }[],
     started: [] as { command: string; opts: Record<string, unknown> }[],
     written: [] as { path: string; content: string }[],
@@ -45,8 +47,13 @@ const sdk = vi.hoisted(() => {
         if (opts['background'] !== true) {
           state.ran.push(command);
           if (!command.includes('find /ms-playwright')) return { exitCode: 0, stdout: state.log };
-          if (state.noChromium) throw new CommandExitError(1, '', 'Playwright Chromium is missing from the sandbox template: no /ms-playwright/*/chrome-linux*/chrome');
-          return { exitCode: 0, stdout: '/ms-playwright/chromium-1248/chrome-linux64/chrome' };
+          if (state.noChromium) {
+            const { spawnSync } = await import('node:child_process');
+            const lookup = spawnSync('bash', ['-c', command.replaceAll('/tmp/e2e-downloads', '"$(mktemp -d)"')], { encoding: 'utf8' });
+            if (lookup.status !== 0) throw new CommandExitError(lookup.status ?? 1, lookup.stdout, lookup.stderr);
+            return { exitCode: 0, stdout: lookup.stdout };
+          }
+          return { exitCode: 0, stdout: state.chromiumPath };
         }
         state.started.push({ command, opts });
         return { wait: async () => ({ exitCode: 0 }), kill: async () => true, disconnect: async () => void state.disconnected.push(command) };
@@ -126,6 +133,7 @@ beforeEach(() => {
   sdk.state.counter = 0;
   sdk.state.ran.length = 0;
   sdk.state.noChromium = false;
+  sdk.state.chromiumPath = '/ms-playwright/chromium-1248/chrome-linux64/chrome';
   sdk.state.log = '';
   sdk.state.killFails.length = 0;
   tunnels.open.clear();
@@ -173,6 +181,13 @@ describe('e2bBrowsers()', () => {
     expect(version).not.toHaveBeenCalled();
     expect(sdk.state.killed).toEqual(['sbx1']);
     expect(tunnels.closed).toEqual(['9222-sbx1.e2b.test']);
+  });
+
+  it.each(['', '/ms-playwright/x/chrome; rm -rf /', '/usr/bin/chrome'])('refuses %j as the Chromium path before starting anything', async (path) => {
+    sdk.state.chromiumPath = path;
+    await expect(e2bBrowsers().acquire(request())).rejects.toThrow(/unexpected Chromium path/);
+    expect(sdk.state.started).toEqual([]);
+    expect(sdk.state.killed).toEqual(['sbx1']);
   });
 
   it('waits for Chromium to answer through the tunnel', async () => {

@@ -54,7 +54,12 @@ const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 function setupScript(agentDeviceVersion: string): string {
   return [
     'set -eu',
-    `command -v node >/dev/null || { curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz -o /tmp/node.tar.gz && echo "${NODE_SHA256}  /tmp/node.tar.gz" | sha256sum -c --quiet - && sudo tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1; }`,
+    // One command per line: under `set -e` a failed step inside an `&&` chain would not stop the script.
+    'if ! command -v node >/dev/null; then',
+    `  curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz -o /tmp/node.tar.gz`,
+    `  echo "${NODE_SHA256}  /tmp/node.tar.gz" | sha256sum -c --quiet -`,
+    '  sudo tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1',
+    'fi',
     `sudo npm install --global --no-fund --no-audit --loglevel=error agent-device@${agentDeviceVersion}`,
     `adb connect ${SERIAL} >/dev/null`,
     `until [ "$(adb -s ${SERIAL} shell getprop sys.boot_completed | tr -d '\\r')" = 1 ]; do sleep 1; done`,

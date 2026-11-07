@@ -189,8 +189,8 @@ describe('e2b()', () => {
     const [setup, proxy] = sdk.state.commands;
     expect(setup!.command).toContain('agent-device@0.21.31');
     expect(setup!.command).toContain('sys.boot_completed');
-    // The Node tarball is checked against the SHA-256 nodejs.org publishes before it is unpacked.
-    expect(setup!.command).toMatch(/echo "[0-9a-f]{64}  \/tmp\/node\.tar\.gz" \| sha256sum -c --quiet - && sudo tar/);
+    // The Node tarball is checked against the SHA-256 nodejs.org publishes for v24.11.1 before it is unpacked.
+    expect(setup!.command).toContain('\n  echo "58a5ff5cc8f2200e458bea22e329d5c1994aa1b111d499ca46ec2411d58239ca  /tmp/node.tar.gz" | sha256sum -c --quiet -\n  sudo tar');
     expect(proxy!.command).toContain('agent-device proxy --host 0.0.0.0 --port 4310');
     const token = (proxy!.opts['envs'] as { PROXY_TOKEN: string }).PROXY_TOKEN;
     expect(token).toMatch(/^[0-9a-f]{64}$/);
@@ -316,15 +316,21 @@ describe('e2b()', () => {
     expect(tunnels.opened).toEqual([]);
   });
 
-  it('bounds setup with a budget of its own, not only the run\'s interrupt', async () => {
-    const timeout = vi.spyOn(AbortSignal, 'timeout');
+  it('ends a setup that outlives its own budget, closing the tunnel and killing the sandbox', async () => {
+    // The proxy never answers, and the run is never interrupted: only the 300s budget can end the lease.
+    health.mockImplementation(async () => new Response('', { status: 502 }));
+    const budget = new AbortController();
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => (ms === 300_000 ? budget.signal : timeout(ms)));
     try {
-      await e2b().acquire(request());
-      expect(timeout).toHaveBeenCalledWith(300_000);
-      const [setup] = sdk.state.commands;
-      expect(setup!.opts['timeoutMs']).toBe(300_000);
+      const pending = e2b().acquire(request());
+      setTimeout(() => budget.abort(new Error('budget spent')), 1_200);
+      await expect(pending).rejects.toThrow(/agent-device proxy at .* did not answer/);
+      expect(sdk.state.commands[0]!.opts['timeoutMs']).toBe(300_000);
+      expect(tunnels.closed).toEqual(['4310-sbx1.e2b.test']);
+      expect(sdk.state.killed.map((kill) => kill.id)).toEqual(['sbx1']);
     } finally {
-      timeout.mockRestore();
+      spy.mockRestore();
     }
   });
 
