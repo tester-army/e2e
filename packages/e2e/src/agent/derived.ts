@@ -36,6 +36,7 @@
  */
 
 import type { DerivedReason } from '../cache/trace.ts';
+import { CLOCK_TIME, DAY_MONTH_DATE, ISO_DATE, MONTH_DAY_DATE } from '../internal/dates.ts';
 import type { JsonValue } from '../types.ts';
 
 /** What the step showed the model, which a typed value may have been read off. */
@@ -112,21 +113,17 @@ function hasWord(text: string, needle: string): boolean {
 
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
-/** A month by name or abbreviation, with or without a trailing period. */
-const MONTH = String.raw`(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\.?`;
-const DAY = String.raw`\d{1,2}(?:st|nd|rd|th)?`;
-
 /**
  * A date in ISO, numeric, or month-name form, or a clock time: the model
  * reckons these from today, which moves.
  */
 const DATE_OR_TIME = new RegExp(
   [
-    String.raw`\b\d{4}-\d{2}-\d{2}\b`,
+    ISO_DATE.source,
     String.raw`\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b`,
-    String.raw`\b\d{1,2}:\d{2}(?::\d{2})?\b`,
-    String.raw`\b${MONTH} ${DAY}(?:,? \d{4})?\b`,
-    String.raw`\b${DAY} ${MONTH}(?:,? \d{4})?\b`,
+    CLOCK_TIME.source,
+    MONTH_DAY_DATE.source,
+    DAY_MONTH_DATE.source,
   ].join('|'),
   'i',
 );
