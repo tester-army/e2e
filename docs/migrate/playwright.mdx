@@ -190,6 +190,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | renamed |
 | `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | renamed |
 | `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, which takes no positions; for `sourcePosition` or `targetPosition`, `screen.swipe({ from, to })` with each `boundingBox()` origin plus its offset | renamed |
+| `page.mouse.dblclick(x, y)` | `browser.mouse.dblclick(x, y)` | web only |
 | `page.mouse.move`, `wheel`, `down`, `up` | `browser.mouse.*` | web only |
 
 </Accordion>
