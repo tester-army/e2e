@@ -97,14 +97,14 @@ Put words that many goals use in the agent's [`context`](/agents).
 ## Assertions
 
 An assertion judges the screen. The model sees the statement, a redacted
-text snapshot of the current screen, and the agent's context. It does not
+text snapshot of the current screen, its location, and the agent's context. It does not
 see the earlier steps or the summaries of `act`.
 
 - `agent.assert` examines the screen now. A false statement fails with
   `ASSERTION_FAILED`. When the evidence is not enough, it fails with
   `ASSERTION_INCONCLUSIVE`.
 - `agent.waitFor` waits until a condition is true. It calls the model only
-  when the screen changes.
+  when the screen or its location changes.
 - `agent.extract` reads data from the screen into a
   [Standard Schema](https://standardschema.dev) type, for example Zod.
 

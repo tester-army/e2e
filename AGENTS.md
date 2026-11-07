@@ -553,14 +553,14 @@ trees, on both platforms, without a device.
   serves `act`; the judgment calls (`assert`, `waitFor`, `extract`) use its
   `judge` when one is configured, else `model`. A judgment never sees the
   prior-step ledger or the acting agent's summaries; it sees the instruction, its
-  params, the agent's context, and the current screen. Without a model, the first `agent` acquisition in a run
+  params, the agent's context, and the current screen with its location. Without a model, the first `agent` acquisition in a run
   reports one run-level `MODEL_UNAVAILABLE` and stops the run (exit 2). A
   custom executor handles `act` and `assert` through `runStep` and needs no
   model; its `waitFor` and `extract` still use the built-in judgments. No implicit target either: `targets` is required and
   each names its engine.
 - Security invariants (fail closed when one cannot be enforced):
   - Secret values never reach model input, digests, logs, reports, or
-    artifacts as text. Model input is the redacted semantic tree (as text
+    artifacts as text. Model input is the redacted location, the redacted semantic tree (as text
     or, on request, the redacted node tree), masked pixels only when masking
     is proven, and the sanitized prior-step records. Pixels mask secure
     fields only, before and after a secret fill: a value the app shows
