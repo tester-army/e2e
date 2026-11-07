@@ -202,9 +202,15 @@ mobile({ platform: 'android', snapshot: 'interactive' }); // default: 'full'
 
 ```ts
 /**
- * UI stability window after a tap, fill, screen scroll, or back, in
- * milliseconds. Default 150. Raise it for slow transitions. `0` keeps only
- * the first re-observation; `false` skips the wait.
+ * How long the UI must hold still after a tap, fill, screen scroll, or
+ * back before the action counts as landed, in milliseconds; `false` skips
+ * the wait. The wait keeps the observation that follows an action off a
+ * transition frame; the runner's own polling (`expect`, actions waiting
+ * for their node) covers the rest, so a short window suffices. Default
+ * 150. Every frame of a running animation changes the tree, so a 150 ms
+ * window still catches a transition in flight; raise it for slow devices
+ * or apps that settle in stages, or lower it to 0 to keep only the first
+ * re-observation.
  */
 readonly settle?: number | false | undefined;
 ```
@@ -251,10 +257,11 @@ custom-drawn field (Compose Multiplatform, Flutter) can read that way.
 
 ```ts
 /**
- * Whether video recordings draw agent-device's touch indicator where a
- * test tapped. Default `true`. `false` records the plain screen and skips
- * drawing the indicator when the recording stops, which on a hosted daemon
- * such as Expo Simulators' can outlast `cleanupTimeout`.
+ * Whether a video recording draws agent-device's touch indicator where a
+ * test tapped. Default `true`. `false` records the plain screen, and skips
+ * the pass that draws the indicator once the recording stops: on a hosted
+ * daemon such as Expo Simulators' that pass can outlast the attempt's
+ * `cleanupTimeout`.
  */
 readonly videoTouches?: boolean | undefined;
 ```
@@ -841,10 +848,12 @@ await device.alert('accept');
  * one (Android, iPad), else the way a user does it on an iPhone, a short
  * drag that a scroll view turns into a dismissal, horizontal first and
  * vertical second, stopping as soon as the keyboard is gone. Each drag
- * starts at the point nearest the centre of the screen that no control
- * covers, inside a scroll view when the screen has one, so it never presses
- * a button or toggles a checkbox. The simulator's "Speed up your typing" tip
- * goes through its Continue button first. A screen with no clear point
+ * starts at the point nearest the centre of the screen that no control in
+ * the captured accessibility tree covers, inside a scroll view when the
+ * screen has one, to avoid pressing a button or toggling a checkbox. A
+ * control the tree leaves out, such as pressable text, can still be hit.
+ * The simulator's "Speed up your typing" tip goes through its Continue
+ * button first. A screen with no clear point
  * above the keyboard, or a keyboard that outlives both drags, fails with
  * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
  * own Done or close control, or pressing Enter on the field).
