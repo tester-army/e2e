@@ -78,7 +78,9 @@ back as an opt-in. Chromium launches with its OS sandbox on, so a renderer
 exploit on a page the agent reaches stays contained by the sandbox instead
 of running as the user running `e2e run`; `web({ chromiumSandbox: false })`
 or `E2E_CHROMIUM_SANDBOX=0` turns it off on a host where the sandbox cannot
-start.
+start. That covers a locally launched Chromium only: a connected browser
+(`web({ connect })`) or a browser-provider browser is launched by its host,
+so this setting does not reach it.
 
 Two things still key on the site of the target's `url`, its registrable
 domain: the browser engine's `headers` reach the site and no other host, and
