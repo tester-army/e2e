@@ -57,6 +57,7 @@ describe('runner <-> engine contract', () => {
       expect(fake.inits).toHaveLength(1);
       const info = fake.inits[0]!;
       expect(info.app.site).toBe('127.0.0.1');
+      expect(info.app.origin).toBe(new URL(APP_URL).origin);
       expect((info.app as { baseUrl?: unknown }).baseUrl).toBeUndefined();
       expect((info as { testIdAttribute?: unknown }).testIdAttribute).toBeUndefined();
       expect(info.headed).toBe(false);

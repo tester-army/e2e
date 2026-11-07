@@ -58,7 +58,7 @@
     "playwright-core": "1.65.0"
   },
   "peerDependencies": {
-    "e2e": ">=0.22.1 <1"
+    "e2e": ">=0.23.1 <1"
   },
   "devDependencies": {
     "@napi-rs/image": "1.16.0",
