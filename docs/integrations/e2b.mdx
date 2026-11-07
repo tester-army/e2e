@@ -18,12 +18,9 @@ provider fails with `INVALID_CONFIG`.
 
 ## Run Android targets
 
-Each worker gets its own Android sandbox. The provider installs your
-`.apk` through agent-device, the same way `device.installApp()` does, and
-deletes the sandbox when the run ends. Each sandbox installs Node and
-agent-device and boots Android, so preparing the target (creating the
-sandbox, that setup, and installing the `.apk`) takes about 15 to 45
-seconds.
+Each worker gets its own Android sandbox, ready with your `.apk` in about
+15 to 45 seconds. The provider installs the `.apk` through agent-device,
+like `device.installApp()`, and deletes the sandbox when the run ends.
 
 <Tip>
 No Android SDK, emulator, or `adb` on the machine that runs e2e.
