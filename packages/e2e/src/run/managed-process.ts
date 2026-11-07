@@ -144,6 +144,8 @@ export interface ManagedProcessHooks {
   readonly starting?: (label: string, url: string | undefined) => void;
   /** `reused` when the process attached to one already serving the URL instead of spawning. */
   readonly ready?: (label: string, url: string | undefined, durationMs: number, reused: boolean) => void;
+  /** The owned command exited after URL readiness and before `stop` was requested. */
+  readonly unexpectedExit?: (cause: InfrastructureError) => void;
 }
 
 /**
@@ -153,6 +155,7 @@ export interface ManagedProcessHooks {
  */
 export class ManagedProcess {
   private child: ChildProcess | null = null;
+  private watching = false;
   private reusedExisting = false;
   private spawnedProcess = false;
   /** Hides `command.env` and `inheritEnv` values in a quoted startup failure; built at spawn. */
@@ -266,6 +269,11 @@ export class ManagedProcess {
       child.once('exit', (code, exitSignal) => {
         exit = { code, signal: exitSignal };
         resolve();
+        const unexpected = this.watching;
+        this.watching = false;
+        if (unexpected) {
+          this.hooks.unexpectedExit?.(this.unreachable(`${this.label} ${describeExit(exit)} after becoming ready`, logOffset));
+        }
       });
     });
 
@@ -316,6 +324,8 @@ export class ManagedProcess {
         readyUrl !== undefined &&
         (await answers(readyUrl, Math.min(READY_PROBE_TIMEOUT_MS, remaining, untilHalf), signal))
       ) {
+        if (exit !== undefined || aborted()) continue;
+        this.watching = true;
         return;
       }
       // The exit event wakes the wait early so an exit is seen at once, not on the next poll.
@@ -412,6 +422,7 @@ export class ManagedProcess {
   /** Gracefully terminates the whole process group, then force-kills. A reused process was never ours to stop. */
   async stop(): Promise<void> {
     if (this.reusedExisting) return;
+    this.watching = false;
     const child = this.child;
     this.child = null;
     if (child === null) return;

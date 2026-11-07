@@ -518,11 +518,18 @@ command: {
   is dropped.
 - `startupTimeout` is the budget of the [`readyUrl`](#readyurl) probe.
 - `shutdownTimeout` is the grace period before force-kill.
+- In `e2e run`, a command that exits after readiness fails the run with `APP_UNREACHABLE` if a dependent target has unfinished work.
+  This includes exit code 0 and termination by a signal.
+  The runner interrupts active tests and skips queued tests only for those targets.
+  Targets that have finished their work ignore the exit.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
-- A startup failure quotes the last 20 lines appended since the command
-  started, with `command.env` and `inheritEnv` values replaced by
-  `<secret:NAME>` markers.
+- Startup timeouts and command exits quote a bounded tail of up to 20 lines appended since the command started when `log` is set.
+  An empty or unreadable log produces `no output in <log>`.
+  A shared log can include lines from other processes.
+  The quote replaces `command.env` and `inheritEnv` values of at least 4 characters with `<secret:NAME>` markers.
+  Without `log`, these errors ask you to set one.
+  A command that fails to spawn reports the spawn error instead.
 - `reuseExisting`: when the readiness URL already answers before the command
   starts, the runner uses that process. It starts nothing and stops nothing.
   CI ignores it, with a notice, and always starts the command.
@@ -537,7 +544,7 @@ command: {
 | `INVALID_CONFIG` | `reuseExisting` on an app whose `url` asks for port 0: a process already running cannot serve the port the run assigns. |
 | `APP_URL_REQUIRED` | An `app.command` with neither `app.url` nor `app.readyUrl`, at config load. |
 | `APP_ALREADY_RUNNING` | Without `reuseExisting`, a `readyUrl` that already answers. |
-| `APP_UNREACHABLE` | `startupTimeout` expires. |
+| `APP_UNREACHABLE` | `startupTimeout` expires, the command exits before readiness, or it exits unexpectedly during `e2e run`. |
 
 <Warning>
 `log` holds the raw, unredacted output. Keep it in an ignored directory.

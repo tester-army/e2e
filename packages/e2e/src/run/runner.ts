@@ -51,7 +51,7 @@ import { createRunEventEmitter, toEventResult, type RunEventSink, type RunExitCo
 import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
-import { runUnits } from './scheduler.ts';
+import { runUnits, type TargetFailure } from './scheduler.ts';
 import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
@@ -554,6 +554,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    * `RUN_TIMEOUT`'s, never 130.
    */
   let stoppedEarly = false;
+  let appExitTargets: ReadonlySet<string> = new Set();
   const stopEarly = (failures: number, limit: number): void => {
     stoppedEarly = true;
     emit({ type: 'run-stopped', failures, limit });
@@ -568,7 +569,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const currentExitCode = (): RunExitCode =>
     combineExitCodes(
       [
-        ...verdictExitCodes(results, serialGroups),
+        ...verdictExitCodes(results, serialGroups, appExitTargets),
         ...(loaded.config?.failOnSkippedFailure === true && someSkippedAfterFailure(results, serialGroups) ? [1] : []),
         ...runErrors.map((runError) => exitCodeForCategory(runError.error.category)),
         ...(interruptController.signal.aborted ? [130] : []),
@@ -956,10 +957,15 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // one setup step, named with the URL it answers on; a reused process or
     // an ignored `reuseExisting` narrates as a run notice.
     const appStep = (label: string, url: string | undefined) => ({ kind: 'app' as const, label, ...(url === undefined ? {} : { url: printableUrl(url) }) });
-    const processHooks = () => ({
+    const pendingAppFailures: TargetFailure[] = [];
+    let receiveAppFailure = (failure: TargetFailure): void => { pendingAppFailures.push(failure); };
+    const processHooks = {
       ci: isCiMode(env),
       env,
       notice: (message: string) => emit({ type: 'notice', target: 'app', message }),
+      commandExited: (targetNames: readonly string[], cause: InfrastructureError) => {
+        receiveAppFailure({ targetNames, error: serializeError(cause) });
+      },
       starting: (label: string, url: string | undefined) => emit({ type: 'setup', step: appStep(label, url), state: 'started' }),
       ready: (label: string, url: string | undefined, durationMs: number, reused: boolean) =>
         emit({
@@ -969,7 +975,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           durationMs,
           ...(reused ? { outcome: 'reused' as const } : {}),
         }),
-    });
+    };
     processes = hasWork ? await startDeclaredProcesses(targets, config.projectRoot, processHooks, interrupted, debug) : undefined;
     // A run cancelled while the app was starting runs no test: the interrupt
     // alone decides the outcome.
@@ -1048,7 +1054,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
           });
 
     pendingNonRun = [];
-    await debug.time('scheduler', () =>
+    appExitTargets = await debug.time('scheduler', () =>
       runUnits({
         plans,
         workers: runWorkers,
@@ -1059,6 +1065,11 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         interruptSignal: interrupted,
         forceSignal: forceController.signal,
         forceGraceMs: config.cleanupTimeout + FORCE_KILL_MARGIN_MS,
+        subscribeTargetFailures: (receive) => {
+          receiveAppFailure = receive;
+          for (const failure of pendingAppFailures.splice(0)) receive(failure);
+          return () => { receiveAppFailure = () => undefined; };
+        },
         events: {
           onResult: recordResult,
           onSerialGroup: (group) => {
@@ -1395,7 +1406,7 @@ function statusOf(exitCode: RunExitCode): Exclude<RunStatus, 'blocked'> {
  *
  * An attempt whose cleanup failed adds its cleanup errors' codes, even when the test passed.
  */
-function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[]): number[] {
+function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readonly SerialGroupRecord[], appExitTargets: ReadonlySet<string>): number[] {
   const codes: number[] = [0];
   for (const verdict of [...results, ...serialGroups]) {
     switch (verdict.status) {
@@ -1407,7 +1418,7 @@ function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readon
         }
         break;
       case 'interrupted':
-        codes.push(130);
+        if (!appExitTargets.has('target' in verdict ? verdict.target.name : verdict.targetId)) codes.push(130);
         break;
       default:
         break;
