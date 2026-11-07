@@ -165,7 +165,21 @@ export interface Device {
   back(): Promise<void>;
   /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
-  /** Dismisses the soft keyboard. */
+  /**
+   * Dismisses the soft keyboard: the keyboard's own dismiss key where it has
+   * one (Android, iPad), else the way a user does it on an iPhone, a short
+   * drag that a scroll view turns into a dismissal, horizontal first and
+   * vertical second, stopping as soon as the keyboard is gone. Each drag
+   * starts at the point nearest the centre of the screen that no control in
+   * the captured accessibility tree covers, inside a scroll view when the
+   * screen has one, to avoid pressing a button or toggling a checkbox. A
+   * control the tree leaves out, such as pressable text, can still be hit.
+   * The simulator's "Speed up your typing" tip goes through its Continue
+   * button first. A screen with no clear point
+   * above the keyboard, or a keyboard that outlives both drags, fails with
+   * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
+   * own Done or close control, or pressing Enter on the field).
+   */
   dismissKeyboard(): Promise<void>;
   /** Reads the clipboard. */
   clipboard(): Promise<string>;

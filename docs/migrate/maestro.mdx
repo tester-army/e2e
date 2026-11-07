@@ -141,7 +141,8 @@ purpose.
 | `hideKeyboard` | `device.dismissKeyboard()` |
 | `pressKey: Enter` | `.press('Enter')` on the field |
 | `pressKey: Home`, `back` | `device.home()`, `device.back()` |
-| `pressKey: lock`, `power`, `volume up`, TV remote keys | Not yet |
+| `pressKey: lock`, `power`, `volume up`, `volume down` | Not yet. `device.unstable_raw.client.command.hardwareButton({ button })` presses one: `'power'`, `'volume-up'`, or `'volume-down'` on Android; on iOS only the volume keys, on a physical device, not a simulator |
+| TV remote keys | Not yet |
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
 | `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it. Neither works on an Android build with no clipboard shell command |
 | `label: "..."` on a command | Not yet. Every `screen`, `device`, and `agent` call is a report step named by the call |
@@ -229,8 +230,9 @@ Four differences from Maestro's selectors cause most edits.
 
 - e2e records and redacts the calls on `screen`, `app`, `device`, and the
   agent. `device.unstable_raw` hands a test agent-device's client for what
-  those don't cover; its calls aren't steps and nothing redacts their
-  arguments.
+  those don't cover. Its calls aren't steps: the report and trace leave them
+  out, the agent cache doesn't replay them, nothing redacts their arguments,
+  and nothing waits for the screen to settle after one.
 - A device has no `test.setup` or `{ session }`, see
   [what differs from the web](/mobile#what-differs-from-the-web).
 
