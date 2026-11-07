@@ -175,16 +175,18 @@ export interface WebOptions {
    */
   readonly browser?: BrowserName | BrowserProvider;
   /**
-   * Whether Chromium launches with its OS sandbox on, `true` by default.
+   * Whether a locally launched Chromium runs with its OS sandbox on, `true` by default.
    * The agent can follow the app to another origin, so a renderer exploit
    * on a page it reaches stays contained by the sandbox instead of running
    * as the user running `e2e run`. Set `false` only on a host where the
-   * sandbox cannot start (root, a container, or Ubuntu 23.10+ with
+   * sandbox cannot start (root, a container that blocks the required sandbox
+   * mechanisms, or Ubuntu 23.10+ with
    * `kernel.apparmor_restrict_unprivileged_userns=1`): leaving it on there
    * fails the launch with Playwright's "Chromium sandboxing failed!" error.
    * The same opt-out is `E2E_CHROMIUM_SANDBOX=0` in the run's environment,
    * and an explicit option wins over the variable. Firefox and WebKit
-   * ignore it.
+   * ignore it, as do a connected browser (`connect`) and a browser-provider
+   * browser, which are launched by their host.
    */
   readonly chromiumSandbox?: boolean;
   /**

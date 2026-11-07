@@ -101,7 +101,9 @@ web({ browser: 'firefox' }); // default: 'chromium'
 
 #### `chromiumSandbox`
 
-Whether Chromium launches with its OS sandbox on.
+Whether a locally launched Chromium runs with its OS sandbox on. A
+connected browser (`connect`) or a browser-provider browser is launched by
+its host, so the setting does not reach it.
 
 ```ts
 web({ chromiumSandbox: false }); // default: true
@@ -111,7 +113,8 @@ web({ chromiumSandbox: false }); // default: true
   page it reaches stays contained by the sandbox instead of running as the
   user running `e2e run`.
 - Set `false` only on a host where the sandbox cannot start (root, a
-  container, or Ubuntu 23.10+ with `kernel.apparmor_restrict_unprivileged_userns=1`):
+  container that blocks the required sandbox mechanisms, or Ubuntu 23.10+
+  with `kernel.apparmor_restrict_unprivileged_userns=1`):
   leaving it on there fails the launch with Playwright's "Chromium sandboxing failed!"
   error. `E2E_CHROMIUM_SANDBOX=0` in the environment is the same
   opt-out; an explicit option wins over the variable.
