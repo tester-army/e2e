@@ -196,6 +196,34 @@ describe('a control gone before the click', () => {
   });
 });
 
+describe('a locator that matches another control after the state read', () => {
+  it('clicks the control it read, not the one the locator matches now', async () => {
+    await page.setContent(`
+      <label><input type="checkbox" id="first" data-pick>First</label>
+      <label><input type="checkbox" id="second">Second</label>`);
+    const locator = page.locator('[data-pick]');
+    const moved = new Proxy(locator, {
+      get(real, property) {
+        if (property === 'elementHandle') {
+          return async (options?: { timeout?: number }) => {
+            const element = await real.elementHandle(options);
+            await page.evaluate(() => {
+              document.getElementById('first')!.removeAttribute('data-pick');
+              document.getElementById('second')!.setAttribute('data-pick', '');
+            });
+            return element;
+          };
+        }
+        const value: unknown = Reflect.get(real, property);
+        return typeof value === 'function' ? value.bind(real) : value;
+      },
+    });
+    expect(await perform({ kind: 'locator', locator: moved }, { kind: 'check' })).toBeUndefined();
+    expect(await page.isChecked('#first')).toBe(true);
+    expect(await page.isChecked('#second')).toBe(false);
+  });
+});
+
 const ELEMENT_PLUS_CSS = `
 .el-radio-button{outline:none;display:inline-block;position:relative}
 .el-radio-button__original-radio{opacity:0;z-index:-1;outline:none;position:absolute}
@@ -237,6 +265,19 @@ describe.each(KINDS)('a control its own label covers, through the %s target', (k
     await page.setContent(ELEMENT_PLUS_PAGE);
     expect(await perform(await targetOf(kind, selector), { kind: 'tap' })).toBeUndefined();
     expect(await page.isChecked(selector)).toBe(true);
+  });
+
+  it('unchecks an Element Plus checkbox, and refuses an Element Plus radio without clicking it', async () => {
+    await page.setContent(`${COUNT_CLICKS}${ELEMENT_PLUS_PAGE}`);
+    await page.evaluate(() => {
+      for (const id of ['agree', 'large']) (document.getElementById(id) as HTMLInputElement).checked = true;
+    });
+    expect(await perform(await targetOf(kind, '#agree'), { kind: 'uncheck' })).toBeUndefined();
+    expect(await page.isChecked('#agree')).toBe(false);
+    const before = await clicks();
+    expect(await perform(await targetOf(kind, '#large'), { kind: 'uncheck' })).toMatchObject({ code: 'NOT_ACTIONABLE' });
+    expect(await page.isChecked('#large')).toBe(true);
+    expect(await clicks()).toBe(before);
   });
 
   it.each(ELEMENT_PLUS_CASES)('still refuses an Element Plus %s under a modal', async (_, selector) => {
