@@ -345,20 +345,36 @@ const PERMISSION_STATES: readonly string[] = Object.keys({ grant: true, deny: tr
  * skips it.
  */
 export function assertPermissions(label: string, permissions: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
-  const fail = (message: string): never => {
-    throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
-  };
   // A Map or class instance carries no own keys to check, and the preset would apply none of it.
   const prototype: unknown = typeof permissions === 'object' && permissions !== null ? Object.getPrototypeOf(permissions) : undefined;
   if (prototype !== Object.prototype && prototype !== null) {
-    fail(`${label} must be a plain object of permission names to ${PERMISSION_STATES.join(', ')}`);
+    permissionError(code, `${label} must be a plain object of permission names to ${PERMISSION_STATES.join(', ')}`);
   }
   rejectUnknownKeys(label, permissions as object, DEVICE_PERMISSIONS, code);
   for (const [name, state] of Object.entries(permissions as Record<string, unknown>)) {
-    if (state !== undefined && !PERMISSION_STATES.includes(state as string)) {
-      fail(`${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
-    }
+    if (state !== undefined) assertPermission(label, name, state, code);
   }
+}
+
+/**
+ * Refuses one permission before any device command: a name that is not a
+ * string or not one agent-device sets, naming the nearest, or a state other
+ * than grant, deny, or reset, `undefined` included. The one owner of the
+ * permission messages, for `assertPermissions` and `device.setPermission`.
+ */
+function assertPermission(label: string, name: unknown, state: unknown, code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT'): void {
+  if (typeof name !== 'string') {
+    permissionError(code, `${label} permission must be one of ${DEVICE_PERMISSIONS.join(', ')}, got type ${typeof name}`);
+  }
+  if (!(DEVICE_PERMISSIONS as readonly string[]).includes(name)) rejectUnknownKeys(label, { [name]: state }, DEVICE_PERMISSIONS, code);
+  if (!PERMISSION_STATES.includes(state as string)) {
+    permissionError(code, `${label}.${name} must be one of ${PERMISSION_STATES.join(', ')}, got ${typeof state === 'string' ? `"${state}"` : String(state)}`);
+  }
+}
+
+/** Throws a permission refusal as the error class its code belongs to. */
+function permissionError(code: 'INVALID_CONFIG' | 'INVALID_ARGUMENT', message: string): never {
+  throw code === 'INVALID_CONFIG' ? new ConfigurationError(code, message) : new TestError(code, message);
 }
 
 /** Resolves the `transition` option: the default budget or a custom one. */
@@ -832,21 +848,10 @@ export class AgentDeviceSurface {
   /**
    * One permission change for `device.setPermission`: on the pinned app, else
    * on the app agent-device's session is on. The name and state are checked
-   * the way `openApp` checks its map, before any device command; a name that
-   * is not a string and a missing state are refused rather than skipped.
+   * before any device command, a missing state refused rather than skipped.
    */
   async setPermission(permission: DevicePermission, state: PermissionState, signal: AbortSignal): Promise<void> {
-    // A symbol key or an object with a matching toString() would pass the map check below.
-    if (typeof permission !== 'string') {
-      throw new TestError(
-        'INVALID_ARGUMENT',
-        `device.setPermission permission must be one of ${DEVICE_PERMISSIONS.join(', ')}, got type ${typeof permission}`,
-      );
-    }
-    assertPermissions('device.setPermission', { [permission]: state }, 'INVALID_ARGUMENT');
-    if ((state as PermissionState | undefined) === undefined) {
-      throw new TestError('INVALID_ARGUMENT', `device.setPermission.${permission} must be one of ${PERMISSION_STATES.join(', ')}, got undefined`);
-    }
+    assertPermission('device.setPermission', permission, state, 'INVALID_ARGUMENT');
     await this.permission(permission, state, this.pinnedApp, signal);
   }
 

@@ -320,7 +320,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
   return context.fixture('device', device, {
     setNetwork: { ...action, label: (state) => state },
     setAirplaneMode: action,
-    setPermission: { ...action, label: (permission) => String(permission) },
+    setPermission: { ...action, label: (permission) => permission },
     setLocation: action,
     clearLocation: action,
     setAppearance: { ...action, label: (mode) => mode },
