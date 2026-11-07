@@ -441,6 +441,8 @@ environment: 'staging', // default: 'test' for a local host or no URL, else 'pro
 
 - `'test'`, `'staging'`, or `'production'`.
 - A local host is a loopback, `.localhost`, or `.test` host.
+- It sets nothing in the app's process environment. Pass values a device app
+  reads at launch with [`launchArguments`](#launcharguments).
 
 #### `launchArguments`
 

@@ -119,7 +119,9 @@ export interface OpenAppOptions {
   readonly relaunch?: boolean;
   /**
    * Arguments this launch hands the app: its process arguments on iOS,
-   * `am start` arguments on Android. Replaces the target's
+   * `am start` arguments on Android. Pass them with `relaunch: true`: a
+   * running app keeps the arguments it started with, and passing them
+   * without `relaunch` is deprecated. Replaces the target's
    * `app.launchArguments` for a relaunch of the pinned app.
    */
   readonly launchArguments?: readonly string[];

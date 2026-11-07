@@ -6,6 +6,7 @@
  */
 
 import type { EngineFixtureContext, Locator } from 'e2e/engine';
+import { assertInstallAppArguments, assertOpenAppOptions } from './device-options.ts';
 import { linkLabel, linkTarget } from './links.ts';
 import type { AgentDeviceClient, DevicePermission, MobilePlatform, PermissionState } from './options.ts';
 import type { DeviceSelection } from './pool.ts';
@@ -119,13 +120,16 @@ export interface Device {
    * plain install replaces the binary and keeps its data. Resolves to the
    * identity to `openApp` it by, which becomes the app `app.open()` launches
    * when the target's build is installed and no `app.bundleId` is pinned.
+   * It launches nothing, so it takes no launch arguments: those go on the
+   * target's `app.launchArguments` or `openApp`'s `launchArguments`.
    */
   installApp(appPath?: string, options?: InstallAppOptions): Promise<InstalledApp>;
   /**
    * Brings an app to the foreground; `relaunch` restarts it fresh.
-   * `launchArguments` and `permissions` apply to this launch alone; the
-   * target's `app.launchArguments` and `app.permissions` apply to a
-   * `relaunch` of the pinned app, and to no foreground-only open.
+   * `launchArguments` and `permissions` apply to this launch alone; pass
+   * `launchArguments` with `relaunch`, since a running app keeps the ones it
+   * started with. The target's `app.launchArguments` and `app.permissions`
+   * apply to a `relaunch` of the pinned app, and to no foreground-only open.
    */
   openApp(app: string, options?: OpenAppOptions): Promise<void>;
   /**
@@ -270,9 +274,11 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
       );
     },
     async installApp(appPath, options) {
+      assertInstallAppArguments(appPath, options ?? {});
       return surface.installApp(appPath, options ?? {}, context.signal);
     },
     async openApp(app, options) {
+      assertOpenAppOptions(options ?? {});
       await surface.openApp(app, options ?? {}, context.signal);
     },
     async openLink(url, options) {
@@ -328,7 +334,7 @@ export function createDeviceFixture(surface: AgentDeviceSurface, context: Engine
     fold: { ...action, label: (pose) => pose },
     setBiometrics: action,
     enrollBiometrics: action,
-    installApp: { ...action, label: (appPath) => appPath ?? surface.appPath ?? 'appPath' },
+    installApp: { ...action, label: (appPath) => (typeof appPath === 'string' ? appPath : (surface.appPath ?? 'appPath')) },
     openApp: { ...action, label: (app) => linkLabel(app) },
     openLink: { ...action, label: (url) => linkLabel(url) },
     closeApp: action,

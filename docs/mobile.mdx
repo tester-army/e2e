@@ -69,17 +69,29 @@ To run the suite in CI, see [Mobile jobs](/ci#mobile-jobs).
 ### Launch arguments and permissions
 
 `app.launchArguments` and `app.permissions` apply to every fresh launch.
+`device.installApp()` only installs the build, so put launch arguments on
+the target:
 
 ```ts
 app: {
   bundleId: 'com.example.app',
-  launchArguments: ['-e2e', 'YES'],
+  appPath: './build/MyApp.app',
+  launchArguments: ['-e2e', 'YES', '-apiUrl', 'http://localhost:8080'],
   permissions: { camera: 'grant', notifications: 'deny', location: 'reset' },
 },
 ```
 
+```ts
+await device.installApp(); // installs the build, launches nothing
+await app.open(); // launches the app with app.launchArguments
+```
+
 - Launch arguments are the process arguments on iOS and `am start`
-  arguments on Android.
+  arguments on Android. On iOS, a `-key value` pair also reads as a
+  `UserDefaults` value.
+- e2e sets no environment variables on the app process, and
+  [`app.environment`](/reference/config#environment) is not one. Pass what
+  the app reads as launch arguments.
 - Permissions are set before the launch, so no system prompt appears.
   `app.clearState()` resets them with the data, then sets them again.
 - `deny` on iOS tells the app no without a prompt. On Android it revokes
@@ -89,13 +101,15 @@ app: {
 - Arguments that select a build mode change what the app is. Give each mode
   its own `app.identity` so its recordings stay apart.
 
-To launch one test with its own, use `device.openApp`. Each option it passes
-replaces the target's whole value: `permissions: { camera: 'deny' }` drops
-the target's other permissions. On a relaunch of the target's app, options
-it doesn't pass keep the target's values:
+To launch one test with its own, use `device.openApp` with
+`relaunch: true`. A running app keeps the arguments it started with, so
+`launchArguments` without `relaunch` is deprecated. Each option it passes replaces
+the target's whole value: `permissions: { camera: 'deny' }` drops the
+target's other permissions. On a relaunch of the target's app, options it
+doesn't pass keep the target's values:
 
 ```ts
-await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
+await device.openApp('com.example.app', { relaunch: true, launchArguments: ['-e2e', 'NO'] });
 ```
 
 ### Expo development builds

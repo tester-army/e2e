@@ -343,7 +343,9 @@ export default {
   `device.installApp()` once per device (no path installs `app.appPath`).
   `app.launchArguments` and `app.permissions` ride every fresh launch:
   arguments reach the app process (iOS) or `am start` (Android), permissions
-  are set first.
+  are set first. `installApp` takes no launch option, and no environment
+  variable reaches the app (`app.environment` is not one). One launch
+  with its own: `device.openApp(app, { relaunch: true, launchArguments })`.
 - Expo development build on an iOS simulator: `app.launchArguments:
   ['--initialUrl', 'http://localhost:8081', '-EXDevMenuShowsAtLaunch', 'NO',
   '-EXDevMenuIsOnboardingFinished', 'YES', '-EXDevMenuShowFloatingActionButton',
