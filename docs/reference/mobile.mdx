@@ -920,7 +920,8 @@ target has no `app.bundleId`, and nothing has installed its `app.appPath`
 build yet (no `device.installApp()`, no device provider install); with
 `INVALID_ARGUMENT` when it names an app that is not installed or a link; and
 with `POLICY_DENIED` for a link with a forbidden scheme. Any tool fails with
-`INVALID_STATE` when called outside a test, or while several devices are open.
+`INVALID_STATE` when no device attempt is running, or when several device
+attempts are running in one worker.
 
 The grammar verbs need no tool pack. The engine's declared actions give the
 agent:
