@@ -405,6 +405,13 @@ export default {
   agent-device `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
+- Code that imports agent-device (a custom tool's types, error helpers)
+  imports it from `@e2e-dev/mobile/agent-device`, not from `agent-device`.
+  Do not add `agent-device` to the project: a second copy has to match the
+  engine's version exactly, or it cannot share the daemon. Inside a test,
+  use `device.unstable_raw.client`. A client built from the factory misses
+  the engine's daemon, lease, and per-worker session. Unstable like
+  `unstable_raw`.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.

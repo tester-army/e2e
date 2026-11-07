@@ -48,6 +48,10 @@
     "./lease": {
       "types": "./dist/lease/index.d.ts",
       "default": "./dist/lease/index.js"
+    },
+    "./agent-device": {
+      "types": "./dist/agent-device.d.ts",
+      "default": "./dist/agent-device.js"
     }
   },
   "files": [
