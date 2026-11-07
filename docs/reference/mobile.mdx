@@ -544,6 +544,10 @@ await app.open();
 - `permission` is a [`DevicePermission`](#device-fixture); `state` is
   `grant`, `deny`, or `reset`.
 
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A permission name outside `DevicePermission` (naming the nearest one when it is a likely typo), or a state other than `grant`, `deny`, or `reset`. Fails before any device command. |
+
 #### `setLocation`
 
 ```ts
@@ -867,6 +871,10 @@ clipboard(): Promise<string>;
 const copied = await device.clipboard();
 ```
 
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | The Android build has no shell command for the clipboard service. |
+
 #### `setClipboard`
 
 ```ts
@@ -877,6 +885,10 @@ setClipboard(text: string): Promise<void>;
 ```ts
 await device.setClipboard('SAVE20');
 ```
+
+| Throws | When |
+| --- | --- |
+| `UNSUPPORTED_CAPABILITY` | The Android build has no shell command for the clipboard service. |
 
 ### Agent tools
 
