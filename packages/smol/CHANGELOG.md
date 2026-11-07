@@ -1,5 +1,11 @@
 # @e2e-dev/smol
 
+## 0.1.3
+
+### Patch Changes
+
+- [#1609](https://github.com/tester-army/e2e/pull/1609) [`34a260c`](https://github.com/tester-army/e2e/commit/34a260cc59d7ebd1d414fd2716f955bd2a51795f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump playwright-core to 1.65.0 and commander to 15.1.0. `fill` no longer rejects malformed date, time, color, and range values, and actions wait for an element to leave an `inert` subtree. Smol sandboxes use the Playwright 1.65.0 image.
+
 ## 0.1.2
 
 ### Patch Changes
