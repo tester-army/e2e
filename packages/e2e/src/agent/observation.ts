@@ -519,7 +519,7 @@ export function observationShape(observation: AgentObservation): string | undefi
       const stable = states.split(' ').filter((state) => state !== 'focused');
       return stable.length === 0 ? '' : ` [${stable.join(' ')}]`;
     })
-    .replaceAll(CLOCK_PATTERN, '<time>');
+    .replaceAll(CLOCK_PATTERN, CLOCK_MASK);
   // A capture taken with pixels is shaped by them too: on a canvas, a map, or
   // a game the tree never moves, and without the pixels every action would
   // wait out the whole change window and then be reported as having done
@@ -540,6 +540,16 @@ export function pixelDigest(bytes: Uint8Array): string {
 
 /** `12:05`, `0:59`, `23:59:59`: a value that changes on its own once a second or minute. */
 const CLOCK_PATTERN = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
+const CLOCK_MASK = '<time>';
+
+/**
+ * The text with its clock-like values masked, so two looks at a screen that
+ * has not moved read the same however the clock ticked. `observationShape`
+ * and `readPage` both compare screens through it.
+ */
+export function maskClocks(text: string): string {
+  return text.replaceAll(CLOCK_PATTERN, CLOCK_MASK);
+}
 
 /**
  * The shape an action's effect is waited for against. On a screen the tree
@@ -596,6 +606,13 @@ export interface SettleOptions<T> {
    * past the change wait as it is.
    */
   readonly stableWaitMs: number;
+  /**
+   * Whether a capture is already the settled screen, so the stability proof
+   * is not spent on it: asked once, of the capture past the change wait. The
+   * caller owns the evidence (a scroll to a text compares the page with the
+   * one before it); a capture it declines gets the stability check.
+   */
+  readonly settledWhen?: ((value: T) => boolean) | undefined;
   readonly pollMs?: number | undefined;
 }
 
@@ -641,6 +658,7 @@ export async function settleObservation<T>(
       if (shape === undefined) return value;
     }
   }
+  if (options.settledWhen?.(value) === true) return value;
   const deadlineMs = Date.now() + options.stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);
