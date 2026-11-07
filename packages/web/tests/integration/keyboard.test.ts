@@ -6,6 +6,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import type { EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 describe('held keyboard input', () => {
   const surface = new PlaywrightSurface({});
@@ -13,7 +14,7 @@ describe('held keyboard input', () => {
   const signal = new AbortController().signal;
   let browser: Browser;
   beforeAll(async () => {
-    await surface.init({ runId: 'held', targetName: 'web', projectRoot, app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+    await surface.init({ runId: 'held', targetName: 'web', projectRoot, app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
   });
   beforeEach(async () => {
     await surface.startAttempt({ attemptId: 'held', artifactsDir: projectRoot, signal, resolveSecret: noSecrets, ...ignoreTrace });

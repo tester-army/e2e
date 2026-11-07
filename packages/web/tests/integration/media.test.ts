@@ -12,6 +12,7 @@ import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { EngineCleanupContext, EngineFixtureContext, EngineHandle, OperationContext } from 'e2e/engine';
 import { web, surfaceOf, type Browser, type WebMedia, type WebOptions } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -54,7 +55,7 @@ describe('media emulation', () => {
     const engine = web(options);
     await engine.init!({
       runId: 'run-media', targetName: 'web', projectRoot: process.cwd(),
-      app: { site: new URL(app.url).hostname }, env: {}, headed: false,
+      app: { site: new URL(app.url).hostname }, env: browserTestEnv(), headed: false,
       workerSlot: 0, log: () => undefined, signal: new AbortController().signal,
     });
     await engine.startAttempt!({ attemptId: 'm1', artifactsDir, signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });

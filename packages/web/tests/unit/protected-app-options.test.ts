@@ -223,7 +223,7 @@ describe('web() option keys', () => {
       refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
     expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, credentialOrigins, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
+      refused('web() has unknown key "launchOptions"; expected one of browser, chromiumSandbox, viewport, screencast, connect, headers, basicAuth, credentialOrigins, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
     );
   });
 

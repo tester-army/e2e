@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
 import { web, surfaceOf } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { decodePng } from '../helpers/png.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -20,7 +21,7 @@ describe('masked fallback after a stalled semantic reader', () => {
     const operation = { signal, timeoutMs: 2_000, runId: 'fallback', attemptId: 'attempt', origin: 'agent' as const };
     const cleanup = { signal, timeoutMs: 30_000 };
     try {
-      await engine.init!({ runId: 'fallback', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      await engine.init!({ runId: 'fallback', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
       await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
       await engine.session!.open!('about:blank', operation);
       const page = surfaceOf(engine)!.page();
@@ -59,7 +60,7 @@ describe('masked fallback after a stalled semantic reader', () => {
     const operation = { signal, timeoutMs: 5_000, runId: 'ids', attemptId: 'attempt', origin: 'agent' as const };
     const cleanup = { signal, timeoutMs: 30_000 };
     try {
-      await engine.init!({ runId: 'ids', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      await engine.init!({ runId: 'ids', targetName: 'fixture', projectRoot: process.cwd(), app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
       await engine.startAttempt!({ attemptId: 'attempt', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
       await engine.session!.open!('about:blank', operation);
       const page = surfaceOf(engine)!.page();

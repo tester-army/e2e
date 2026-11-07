@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { secrets } from 'e2e';
 import type { EngineCleanupContext, EngineHandle, OperationContext, Secret } from 'e2e/engine';
 import { web, surfaceOf } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { PROTECTED_CREDENTIAL, startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -39,7 +40,7 @@ async function boot(
     targetName: 'web',
     projectRoot: process.cwd(),
     app: { origin: new URL(app.url).origin, site: new URL(app.url).hostname },
-    env: {},
+    env: browserTestEnv(),
     headed: false,
     workerSlot: 0,
     log: () => undefined,

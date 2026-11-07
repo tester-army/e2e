@@ -14,7 +14,9 @@ let context: BrowserContext;
 
 beforeAll(async () => {
   app = await startFixtureApp();
-  const browser: Browser = await connection.acquire('chromium', false, 30_000);
+  // These tests exercise pixels, not the sandbox, and they launch the
+  // browser directly, bypassing the surface that resolves the default.
+  const browser: Browser = await connection.acquire('chromium', false, 30_000, false);
   context = await browser.newContext({ viewport: { width: 320, height: 200 } });
   await context.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
 });
