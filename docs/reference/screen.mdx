@@ -760,6 +760,10 @@ check(options?: ActionOptions): Promise<void>;
 await screen.getByRole('checkbox', 'Remember me').check();
 ```
 
+On the web engine, a checkbox or radio hidden under its own label (as in
+Element Plus) is clicked through that label. Anything else on top of the
+point the click lands on still fails `ACTION_FAILED`.
+
 #### `uncheck`
 
 ```ts
