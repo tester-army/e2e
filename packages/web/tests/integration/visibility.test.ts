@@ -11,6 +11,7 @@
 import { chromium, type Browser, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SemanticNode } from 'e2e/engine';
+import { CLOSED_SHADOW_ROOTS_INIT_SCRIPT } from '../../src/closed-shadow.ts';
 import { captureDocument } from '../../src/observation.ts';
 import { readSemanticsFunction } from '../../src/in-page/read-semantics.ts';
 import { SECURE_FIELD_SELECTOR } from '../../src/read-node.ts';
@@ -105,6 +106,29 @@ describe('visibility where Playwright reads a range box alone', () => {
   it('hides text under a display: contents element whose visibility is hidden, which Playwright calls visible', async () => {
     await page.setContent('<div id="contents-hidden-text" style="display:contents;visibility:hidden">Invisible text</div>');
     expect(await hiddenOf('#contents-hidden-text')).toEqual({ reader: true, playwright: false });
+  });
+});
+
+describe('visibility through shadow slots', () => {
+  it.each([
+    ['closed', 'skipped content', '<div style="content-visibility:hidden"><slot></slot></div>', true],
+    ['closed', 'closed details', '<details><summary>More</summary><slot></slot></details>', true],
+    ['open', 'closed details', '<details><summary>More</summary><slot></slot></details>', true],
+    ['closed', 'a closed details summary', '<details><summary><slot></slot></summary></details>', false],
+    ['closed', 'open details', '<details open><summary>More</summary><slot></slot></details>', false],
+    ['closed', 'nested closed details', '<details><summary>Outer</summary><details open><summary><slot></slot></summary></details></details>', true],
+  ] as const)('%s root: %s', async (mode, _case, html, hidden) => {
+    await page.addInitScript(CLOSED_SHADOW_ROOTS_INIT_SCRIPT);
+    await page.goto('about:blank');
+    await page.setContent('<x-host><button data-testid="slotted">Slotted</button></x-host>');
+    await page.evaluate(({ content, rootMode }) => {
+      document.querySelector('x-host')!.attachShadow({ mode: rootMode }).innerHTML = content;
+    }, { content: html, rootMode: mode });
+    const button = page.getByTestId('slotted');
+    const raw = await button.evaluate(readSemanticsFunction<typeof READ_OPTIONS.mode>, READ_OPTIONS);
+    expect(raw.states.hidden).toBe(hidden);
+    expect(await button.evaluate((el) => el.checkVisibility())).toBe(!hidden);
+    expect((await captureTree()).some((node) => node.testId === 'slotted')).toBe(!hidden);
   });
 });
 
