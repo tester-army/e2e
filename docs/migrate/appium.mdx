@@ -8,7 +8,7 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 export const migrationPrompt = `Migrate this project's Appium tests to e2e, one test at a time. Docs: \`https://e2e.com/docs/migrate/appium.md\` and \`https://e2e.com/docs/mobile.md\`
 
 1. Read the migration guide above. It maps Appium capabilities, selectors, and commands to e2e and marks what has no equivalent. The mobile guide covers devices and app builds.
-2. e2e tests are TypeScript. If the Appium suite is Java, Python, or another language, or the project has no \`package.json\`, create the test project in an \`e2e/\` folder beside the app.
+2. e2e tests run in Node, in TypeScript by default or in JavaScript. If the Appium suite is Java, Python, or another language, or the project has no \`package.json\`, create the test project in an \`e2e/\` folder beside the app.
 3. If the test project has no e2e config (\`e2e.config.ts\`, \`.mts\`, \`.js\`, or \`.mjs\`), run \`npx e2e init --yes --engine mobile\` (or the pnpm or bun equivalent) there. It writes a mobile config with one target for this machine's platform and an example test against the Settings app, and installs nothing yet. Rewrite \`tests/example.e2e.ts\` for your app or delete it.
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
@@ -274,8 +274,8 @@ declares `requires: ['device']` on those tests.
 | `driver.setOrientation('LANDSCAPE')` | `device.setOrientation('landscape-left')` |
 | `mobile: setAppearance` | `device.setAppearance('dark')` |
 | `driver.setClipboard(t)`, `driver.getClipboard()` | `device.setClipboard(t)`, `device.clipboard()`, plain text where Appium uses base64. Neither works on an Android build with no clipboard shell command |
-| `driver.toggleWiFi(false)`, `mobile: setConnectivity` | `device.setNetwork('offline')`; Android only |
-| `driver.toggleAirplaneMode()` | `device.setAirplaneMode(true)`; Android 11 or later |
+| `driver.toggleWiFi(false)`, `mobile: setConnectivity` with `wifi: false` | `device.setNetwork('offline')`, which turns off Wi-Fi only; Android only |
+| `driver.toggleAirplaneMode()`, `mobile: setConnectivity` with `airplaneMode: true` | `device.setAirplaneMode(true)`, Wi-Fi and cellular; Android 11 or later |
 | `mobile: enrollBiometric` | `device.enrollBiometrics('faceid', true)` |
 | `mobile: sendBiometricMatch`, `driver.fingerPrint(1)` | `device.setBiometrics('faceid', 'match')`, `device.setBiometrics('fingerprint', 'match')` |
 | `pressKeyCode` for Home | `device.home()` |
