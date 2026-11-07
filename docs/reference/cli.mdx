@@ -1347,11 +1347,8 @@ that differs from Node.js:
   file.
 - `e2e run --watch` and `e2e mcp` read `tsconfig.json` one time. Restart them
   after you edit it, or after you add a file that an import did not find.
-- `e2e mcp` sessions that are open at the same time share one copy of each
-  project file that their tests import.
-- After a top-level `await` on I/O or a timer in a config, `secrets.get()`
-  reads the secrets of an open `e2e mcp` session instead of returning a
-  reference.
+- `e2e mcp` opens one session at a time and ignores `--max-sessions`.
+- [`e2e/runner`](/reference/runner) needs Node.js.
 - An app `command` with `executable: 'node'` needs Node.js, unless `bun run`
   or `bunx` started the CLI. They put a `node` on `PATH` that runs Bun.
 - A test that a helper declares after an `await` reports the line in the

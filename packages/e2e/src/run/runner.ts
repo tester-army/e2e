@@ -56,6 +56,7 @@ import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWo
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
+import { refuseBun } from './public-ownership.ts';
 import { registerStaticSecrets } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
 import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
@@ -356,6 +357,7 @@ export interface ListResult {
  * `filter` and `reason`, and a selection they leave empty resolves.
  */
 export async function list(options: ListOptions = {}): Promise<ListResult> {
+  refuseBun();
   return listSelection(options, () => undefined);
 }
 
