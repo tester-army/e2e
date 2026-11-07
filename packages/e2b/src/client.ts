@@ -34,7 +34,7 @@ export interface E2BCreateParams {
   readonly maskRequestHost?: string | undefined;
 }
 
-interface CommandOptions {
+interface StartOptions {
   /** Environment variables for the command only, such as a token kept out of the command text E2B receives. */
   readonly envs?: Record<string, string> | undefined;
   readonly signal: AbortSignal;
@@ -46,9 +46,9 @@ export interface E2BSandbox {
   /** The token E2B wants on every request to a sandbox port: sandboxes refuse public traffic. */
   readonly trafficToken: string;
   /** Runs a shell command to completion and resolves to its stdout; rejects when it exits non-zero, with its output in the message. */
-  run(command: string, options: CommandOptions & { timeoutMs: number }): Promise<string>;
+  run(command: string, options: { readonly timeoutMs: number; readonly signal: AbortSignal }): Promise<string>;
   /** Starts a shell command and leaves it running. */
-  start(command: string, options: CommandOptions): Promise<void>;
+  start(command: string, options: StartOptions): Promise<void>;
   /** The public host a port inside the sandbox answers on, without the scheme. */
   host(port: number): string;
 }
@@ -125,10 +125,10 @@ function e2bSandboxes(connection: E2BConnection): E2BSandboxes {
     return {
       sandboxId: sandbox.sandboxId,
       trafficToken,
-      async run(command, { envs, timeoutMs, signal }) {
+      async run(command, { timeoutMs, signal }) {
         try {
           // Aborting ends only the SDK's stream; the process dies with the sandbox the failed lease kills.
-          const result = await sandbox.commands.run(command, { timeoutMs, signal, ...(envs === undefined ? {} : { envs }) });
+          const result = await sandbox.commands.run(command, { timeoutMs, signal });
           return result.stdout;
         } catch (cause) {
           if (signal.aborted) throw signal.reason;

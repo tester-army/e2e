@@ -24,6 +24,8 @@ const sdk = vi.hoisted(() => {
     /** What `tail` of a log in the sandbox prints, with `TOKEN` standing for the proxy's token. */
     log: '',
     proxyToken: '',
+    /** Whether setup hangs until its signal ends, as the SDK's command does. */
+    setupHangs: false,
     /** Aborted when setup finishes, as a run interrupted right then would be. */
     abortAfterSetup: undefined as AbortController | undefined,
     killFails: false,
@@ -51,6 +53,10 @@ const sdk = vi.hoisted(() => {
             if (runOpts['background'] !== true) {
               if (command.startsWith('tail ')) return { exitCode: 0, stdout: state.log.replaceAll('TOKEN', state.proxyToken) };
               if (state.setupFails) throw new CommandExitError(1, '', 'npm ERR! 404');
+              if (state.setupHangs) {
+                const signal = runOpts['signal'] as AbortSignal;
+                await new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+              }
               state.abortAfterSetup?.abort(new Error('interrupted'));
               return { exitCode: 0, stdout: '' };
             }
@@ -147,6 +153,7 @@ beforeEach(() => {
   sdk.state.log = '';
   sdk.state.proxyToken = '';
   sdk.state.abortAfterSetup = undefined;
+  sdk.state.setupHangs = false;
   sdk.state.killFails = false;
   sdk.state.noTrafficToken = false;
   sdk.state.selfKilled.length = 0;
@@ -328,6 +335,21 @@ describe('e2b()', () => {
       await expect(pending).rejects.toThrow(/agent-device proxy at .* did not answer/);
       expect(sdk.state.commands[0]!.opts['timeoutMs']).toBe(300_000);
       expect(tunnels.closed).toEqual(['4310-sbx1.e2b.test']);
+      expect(sdk.state.killed.map((kill) => kill.id)).toEqual(['sbx1']);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('names the setup step when it outlives its budget', async () => {
+    sdk.state.setupHangs = true;
+    const budget = new AbortController();
+    const timeout = AbortSignal.timeout.bind(AbortSignal);
+    const spy = vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => (ms === 300_000 ? budget.signal : timeout(ms)));
+    try {
+      const pending = e2b().acquire(request());
+      setTimeout(() => budget.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError')), 50);
+      await expect(pending).rejects.toThrow('Android setup did not finish within 300s: installing Node and agent-device, or waiting for Android to boot');
       expect(sdk.state.killed.map((kill) => kill.id)).toEqual(['sbx1']);
     } finally {
       spy.mockRestore();

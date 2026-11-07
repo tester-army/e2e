@@ -48,8 +48,9 @@ const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 
 /**
  * Installs Node and the engine's agent-device in the sandbox and waits for
- * Android to finish booting. Custom templates built on `android-16` do not
- * boot Android, so this runs on every sandbox instead of being baked in.
+ * Android to finish booting. It runs on every sandbox because it cannot be
+ * baked into a template: custom templates built on `android-16` do not boot
+ * Android.
  */
 function setupScript(agentDeviceVersion: string): string {
   return [
@@ -117,7 +118,13 @@ export function e2b(options: E2BOptions = {}): DeviceProvider {
   async function ready(sandbox: E2BSandbox, baseUrl: string, request: DeviceRequest): Promise<DeviceLease> {
     request.log(`sandbox ${sandbox.sandboxId}`);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(SETUP_TIMEOUT_MS)]);
-    await sandbox.run(setupScript(request.agentDeviceVersion), { timeoutMs: SETUP_TIMEOUT_MS, signal });
+    await sandbox.run(setupScript(request.agentDeviceVersion), { timeoutMs: SETUP_TIMEOUT_MS, signal }).catch((cause: unknown) => {
+      // The setup's own budget, not the run's interrupt: say which step ran out of time.
+      if (signal.aborted && !request.signal.aborted) {
+        throw new Error(`Android setup did not finish within ${SETUP_TIMEOUT_MS / 1000}s: installing Node and agent-device, or waiting for Android to boot`, { cause });
+      }
+      throw cause;
+    });
     const daemon = { baseUrl, authToken: randomBytes(32).toString('hex') };
     // Through `envs`, so the token is not in the command E2B receives. Not AGENT_DEVICE_DAEMON_AUTH_TOKEN:
     // the daemon the proxy starts would inherit it. The proxy prints its token, so stdout is dropped.

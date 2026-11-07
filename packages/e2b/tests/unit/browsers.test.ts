@@ -26,7 +26,6 @@ const sdk = vi.hoisted(() => {
     chromiumPath: '/ms-playwright/chromium-1248/chrome-linux64/chrome',
     created: [] as { template: string; opts: Record<string, unknown> }[],
     started: [] as { command: string; opts: Record<string, unknown> }[],
-    written: [] as { path: string; content: string }[],
     read: [] as { id: string; path: string }[],
     killed: [] as string[],
     disconnected: [] as string[],
@@ -60,9 +59,6 @@ const sdk = vi.hoisted(() => {
       },
     },
     files: {
-      write: async (path: string, content: string) => {
-        state.written.push({ path, content });
-      },
       read: async (path: string) => {
         state.read.push({ id: sandboxId, path });
         return new TextEncoder().encode('file bytes');
@@ -129,7 +125,7 @@ function context(): BrowserReleaseContext {
 }
 
 beforeEach(() => {
-  for (const list of [sdk.state.created, sdk.state.started, sdk.state.written, sdk.state.read, sdk.state.killed, sdk.state.disconnected, sdk.state.listed, sdk.state.running]) list.length = 0;
+  for (const list of [sdk.state.created, sdk.state.started, sdk.state.read, sdk.state.killed, sdk.state.disconnected, sdk.state.listed, sdk.state.running]) list.length = 0;
   sdk.state.counter = 0;
   sdk.state.ran.length = 0;
   sdk.state.noChromium = false;
@@ -163,7 +159,6 @@ describe('e2bBrowsers()', () => {
         }),
       },
     ]);
-    expect(sdk.state.written).toEqual([]);
     expect(sdk.state.ran).toEqual([expect.stringContaining('find /ms-playwright')]);
     expect(sdk.state.started.map((started) => started.command)).toEqual([expect.stringMatching(/^exec \/ms-playwright\/chromium-1248\/chrome-linux64\/chrome .*--remote-debugging-port=9222/)]);
     // Chromium keeps running; only the SDK's output stream for it is closed.

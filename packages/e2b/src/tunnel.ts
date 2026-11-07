@@ -34,7 +34,7 @@ export interface Tunnel {
   close(): Promise<void>;
 }
 
-/** The request's headers for the sandbox: its own `Host`, the traffic token, nothing hop-by-hop the proxy itself answered. */
+/** The request's headers for the sandbox, with its own `Host` and the traffic token, less `proxy-connection`, which only a proxy reads. */
 function forwardedHeaders(req: IncomingMessage, target: TunnelTarget): OutgoingHttpHeaders {
   const headers: OutgoingHttpHeaders = { ...req.headers, host: target.host, [TRAFFIC_TOKEN_HEADER]: target.trafficToken };
   delete headers['proxy-connection'];
