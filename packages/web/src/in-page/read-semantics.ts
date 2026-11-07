@@ -1110,7 +1110,8 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
    * such an input, and without it the model reads the label text with no
    * checked state. A tap clicks the label in its place (`pickStandIn` in
    * `actions.ts`), which needs a box (so not `display: contents`) and refuses
-   * a link or other control inside the label, so neither counts here.
+   * when the label's centre lands on a link or other control. This rule is
+   * stricter: a label that is one, or holds one anywhere, does not count.
    */
   const isDrawnByLabel = (el: Element, style: CSSStyleDeclaration | undefined): boolean => {
     if (!(el instanceof HTMLInputElement) || (el.type !== 'checkbox' && el.type !== 'radio')) return false;
@@ -1120,6 +1121,7 @@ export const readSemanticsFunction = <Mode extends SemanticMode>(
       (label) =>
         styleOf(label)?.display !== 'contents' &&
         !isHidden(label) &&
+        !label.matches(INTERACTIVE) &&
         !Array.from(label.querySelectorAll(INTERACTIVE)).some((inner) => inner !== el),
     );
   };
