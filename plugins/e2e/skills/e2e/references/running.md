@@ -164,7 +164,10 @@ hosted service's video by URL.
   run: a signal, `--max-failures`, `--max-duration`, a run-level error; not a failure), `flaky`, and `skipped` add up
   to `selected`; `discovered - selected` were left out.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
-  terminal output.
+  terminal output. A case with a failure screenshot links it as
+  `<system-out>[[ATTACHMENT|<path>]]</system-out>`, relative to
+  `$CI_PROJECT_DIR` (else the project root), which GitLab shows in the
+  test report.
 - Every run that reaches its tests also writes a trace page per failed,
   timed-out, interrupted, or flaky test, `results/<test>/trace.md` (the
   `trace` mode, default `retain-on-failure`): every step with what
