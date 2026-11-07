@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -487,6 +487,43 @@ describe('acp', () => {
     const run = executor.runStep(step.ctx);
     step.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+  });
+
+  it('removes the session directory only after the agent exits', async () => {
+    const { executor, log } = scripted([[pass]], { env: { ACP_EXIT_DELAY_MS: '1500' } });
+    const step = context();
+    cleanups.push(step.end);
+    await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
+    const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
+    const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
+    const cwd = session.cwd;
+    step.end();
+    // The agent is still stopping: the directory must still be there. On
+    // Windows removing a directory a live process holds as its working
+    // directory throws EPERM and takes the worker down, so the old teardown,
+    // which removed it at once, failed the test this way.
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    expect(existsSync(cwd)).toBe(true);
+    await eventually(() => {
+      expect(() => process.kill(pid, 0)).toThrow();
+      expect(existsSync(cwd)).toBe(false);
+    });
+  });
+
+  it('removes the session directory at once when the agent already exited', async () => {
+    const { executor, log } = scripted([[pass]]);
+    const step = context();
+    cleanups.push(step.end);
+    await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
+    const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
+    const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
+    const cwd = session.cwd;
+    process.kill(pid, 'SIGKILL');
+    await eventually(() => expect(() => process.kill(pid, 0)).toThrow());
+    // Let the exit event land, so the already-exited branch is the one taken.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    step.end();
+    await eventually(() => expect(existsSync(cwd)).toBe(false));
   });
 
   it('reports an agent that does not start', async () => {

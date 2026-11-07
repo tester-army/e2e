@@ -57,6 +57,14 @@ const log = (entry: unknown) => {
 log({ pid: process.pid });
 log({ env: Object.keys(process.env).filter((name) => name.toUpperCase().startsWith('E2E_')).toSorted(), codexConfig: process.env['CODEX_CONFIG'] ?? null });
 
+/** `ACP_EXIT_DELAY_MS` holds the agent in place after SIGTERM, so a test can watch the session directory while the child is still alive. */
+const exitDelayMs = Number(process.env['ACP_EXIT_DELAY_MS'] ?? '0');
+if (exitDelayMs > 0) {
+  process.on('SIGTERM', () => {
+    setTimeout(() => process.exit(0), exitDelayMs);
+  });
+}
+
 let mcp: Client | undefined;
 /** The screen lines the agent read this turn, newest first: each tool result's changes, then the prompt's screen. */
 let screen = '';

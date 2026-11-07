@@ -155,7 +155,25 @@ export async function startSession(
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }, 3_000).unref();
     void serving.then((started) => started.close(), () => undefined);
-    rmSync(cwd, { recursive: true, force: true });
+    // Windows cannot remove a directory while a process still has it as its
+    // working directory, so the removal waits for the child to exit; a
+    // leftover temp directory is harmless, so a failed removal never throws.
+    let removed = false;
+    const removeCwd = () => {
+      if (removed) return;
+      removed = true;
+      try {
+        rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+      } catch {
+        // A leftover temp directory is harmless.
+      }
+    };
+    if (child.exitCode !== null || child.signalCode !== null) removeCwd();
+    else {
+      child.once('exit', removeCwd);
+      // A child that never started may emit 'close' without 'exit'.
+      child.once('close', removeCwd);
+    }
   };
 
   let initialize: InitializeResponse;
