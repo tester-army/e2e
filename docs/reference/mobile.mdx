@@ -94,7 +94,7 @@ declaration.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | An empty `device` list, a blank `device` name, or a list entry that is not a non-blank string. |
+| `INVALID_CONFIG` | An empty `device` list, a blank `device` name, or a blank or non-string list entry. |
 | `INVALID_CONFIG` | A `device` value that is neither a string, a list, nor a valid provider: a provider without a non-empty `name`, without `acquire()` or `release()`, or with a `record` that is not a function. |
 | `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
 | `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
@@ -920,8 +920,7 @@ target has no `app.bundleId`, and nothing has installed its `app.appPath`
 build yet (no `device.installApp()`, no device provider install); with
 `INVALID_ARGUMENT` when it names an app that is not installed or a link; and
 with `POLICY_DENIED` for a link with a forbidden scheme. Any tool fails with
-`INVALID_STATE` when no device attempt is running in the worker, or more than
-one is.
+`INVALID_STATE` when called outside a test, or while several devices are open.
 
 The grammar verbs need no tool pack. The engine's declared actions give the
 agent:
