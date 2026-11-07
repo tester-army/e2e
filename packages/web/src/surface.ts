@@ -42,7 +42,7 @@ import {
 } from 'e2e/engine';
 import { matchesText } from 'e2e/engine';
 import { classifyActionError, classifyInputError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
-import { BrowserConnection, connectCdp, readChromiumSandboxFlag, type BrowserName } from './browser-connection.ts';
+import { BrowserConnection, connectCdp, resolveChromiumSandbox, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
@@ -173,17 +173,7 @@ export interface WebOptions {
   readonly browser?: BrowserName | BrowserProvider;
   /**
    * Whether a locally launched Chromium runs with its OS sandbox on, `true` by default.
-   * The agent can follow the app to another origin, so a renderer exploit
-   * on a page it reaches stays contained by the sandbox instead of running
-   * as the user running `e2e run`. Set `false` only on a host where the
-   * sandbox cannot start (root, a container that blocks the required sandbox
-   * mechanisms, or Ubuntu 23.10+ with
-   * `kernel.apparmor_restrict_unprivileged_userns=1`): leaving it on there
-   * fails the launch with Playwright's "Chromium sandboxing failed!" error.
-   * The same opt-out is `E2E_CHROMIUM_SANDBOX=0` in the run's environment,
-   * and an explicit option wins over the variable. Firefox and WebKit
-   * ignore it, as do a connected browser (`connect`) and a browser-provider
-   * browser, which are launched by their host.
+   * See [Security](/security) for why it defaults on and when to turn it off.
    */
   readonly chromiumSandbox?: boolean;
   /**
@@ -283,22 +273,6 @@ export interface WebOptions {
 /** The test-id attribute when the options name none. */
 const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
 
-/**
- * Whether Chromium launches with its sandbox on: an explicit option wins,
- * then the run's environment, then on. The run's environment is the only
- * environment read here: an in-process worker shares its process with the
- * runner and every other target, so the process environment never decides
- * a launch.
- */
-function resolveChromiumSandbox(
-  configured: boolean | undefined,
-  env: Readonly<Record<string, string | undefined>>,
-): boolean {
-  if (configured !== undefined) return configured;
-  const value = readChromiumSandboxFlag(env);
-  return value === undefined || (value !== '0' && value !== 'false');
-}
-
 export class PlaywrightSurface {
   /**
    * Errors raised where nobody awaits them (dialog routing, route handlers)
@@ -309,10 +283,8 @@ export class PlaywrightSurface {
 
   private readonly browserName: BrowserName;
   private readonly connection = new BrowserConnection();
-  /** The sandbox opt-out the options name, if any; the run's environment decides the rest at `init`. */
-  private readonly configuredChromiumSandbox: boolean | undefined;
-  /** Whether the shared Chromium launches with its sandbox on, resolved at `init`. */
-  private chromiumSandbox = true;
+  /** Whether the shared Chromium launches with its sandbox on: the option, then the run's environment, then on, resolved at `init`. */
+  private chromiumSandbox: boolean | undefined;
   private readonly connect: WebConnectOptions | undefined;
   /** The provider's browsers, when `browser` names one; the runner and worker halves of the lease bookkeeping. */
   private readonly leases: LeasedBrowsers | undefined;
@@ -353,7 +325,7 @@ export class PlaywrightSurface {
 
   constructor(options: WebOptions) {
     this.browserName = typeof options.browser === 'string' ? options.browser : 'chromium';
-    this.configuredChromiumSandbox = options.chromiumSandbox;
+    this.chromiumSandbox = options.chromiumSandbox;
     this.leases = typeof options.browser === 'object' && options.browser !== null ? new LeasedBrowsers(options.browser) : undefined;
     this.connect = options.connect;
     this.viewport = options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport;
@@ -406,7 +378,7 @@ export class PlaywrightSurface {
     this.app = info.app;
     this.projectRoot = info.projectRoot;
     this.headed = info.headed;
-    this.chromiumSandbox = resolveChromiumSandbox(this.configuredChromiumSandbox, info.env);
+    this.chromiumSandbox = resolveChromiumSandbox(this.chromiumSandbox, info.env);
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
@@ -433,20 +405,33 @@ export class PlaywrightSurface {
   private async acquireBrowser(signal: AbortSignal): Promise<Browser> {
     const verb = this.connect === undefined && this.leases === undefined ? 'launch' : 'connect';
     if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
+    const connect = this.connector(signal);
     try {
       return await raceAbort(
-        this.connection.acquire(
-          this.browserName,
-          this.headed,
-          BROWSER_LAUNCH_TIMEOUT_MS,
-          this.chromiumSandbox,
-          this.connector(signal),
-        ),
+        this.connection.acquire({
+          name: this.browserName,
+          headed: this.headed,
+          timeoutMs: BROWSER_LAUNCH_TIMEOUT_MS,
+          // `init` resolves this before any launch; the fallback never runs.
+          chromiumSandbox: this.chromiumSandbox ?? true,
+          ...(connect === undefined ? {} : { connect }),
+        }),
         signal,
         `browser ${verb}`,
       );
     } catch (cause) {
       if (cause instanceof EngineError) throw cause;
+      if (verb === 'launch' && message(cause).includes('Chromium sandboxing failed!')) {
+        // Playwright's error carries the whole launch call log and only hints
+        // at the option; a CI user needs the environment opt-out instead.
+        // No `cause`: the runner follows the chain into the surfaced message,
+        // which would put the call log back.
+        throw new EngineError(
+          'ENGINE_FAILURE',
+          'Chromium failed to launch because its sandbox cannot start on this host. Set E2E_CHROMIUM_SANDBOX=0 in the run environment, or pass web({ chromiumSandbox: false }), to launch without the sandbox.',
+          { retryable: false },
+        );
+      }
       throw new EngineError('ENGINE_FAILURE', `browser ${verb} failed: ${message(cause)}`, {
         retryable: false,
         cause,

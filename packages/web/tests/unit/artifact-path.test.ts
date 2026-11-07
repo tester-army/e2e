@@ -48,9 +48,6 @@ describe('artifact paths', () => {
   it('writes a server-chosen download name as one counted file inside the attempt downloads folder', async () => {
     directory = mkdtempSync(path.join(tmpdir(), 'e2e-artifact-path-'));
     const surface = new PlaywrightSurface({});
-    // The run's lifecycle inits the surface before the attempt, which is
-    // where the run's environment reaches the browser launch; without it
-    // the launch takes the default on a host that cannot sandbox.
     await surface.init({
       runId: 'run',
       targetName: 'web',
