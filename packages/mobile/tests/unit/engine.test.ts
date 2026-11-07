@@ -2011,6 +2011,19 @@ describe('device fixture', () => {
       expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot']);
     });
 
+    it('keeps the native dismissal when nothing is open on an unmanaged target', async () => {
+      const h = harness({}, false);
+      await openAttempt(h);
+      const device = fixture(h);
+      h.fake.respond('capture.snapshot', () => {
+        throw new AppError('SESSION_NOT_FOUND', 'no agent-device session');
+      });
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'command.keyboard']);
+      expect(h.fake.lastArgs('command.keyboard')).toEqual({ action: 'dismiss' });
+    });
+
     it('still drags on a fresh look when an unknown state meets a keyboard with no dismiss key', async () => {
       const h = harness();
       await openAttempt(h);

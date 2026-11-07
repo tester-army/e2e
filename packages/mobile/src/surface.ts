@@ -1538,6 +1538,9 @@ export class AgentDeviceSurface {
     let raw: RawSnapshot;
     try {
       raw = await this.snapshot(signal, false, input);
+      // The capture advanced the ref generation: project it so bindings
+      // re-resolve against it instead of submitting a superseded @ref.
+      this.project(raw);
     } catch (cause) {
       if (!this.managesApp && cause instanceof EngineError && cause.code === 'INVALID_STATE') raw = {};
       else throw cause;
