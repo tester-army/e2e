@@ -556,6 +556,14 @@ describe('renderJunitReport', () => {
     );
   });
 
+  it('links the failure screenshot of an errored test after its <error>', () => {
+    const crashed = reportError({ category: 'infrastructure', code: 'DRIVER_CRASHED', message: 'gone' });
+    const xml = render(failedWithShot({ error: crashed }), { artifactsDir: '.e2e' });
+    expect(xml).toContain(
+      '<error message="gone" type="DRIVER_CRASHED">DRIVER_CRASHED: gone</error>\n      <system-out>[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>',
+    );
+  });
+
   it('links the failure screenshot of a timed-out test', () => {
     const xml = render(failedWithShot({ status: 'timed-out' }, { status: 'timed-out' }), { artifactsDir: '.e2e' });
     expect(xml).toContain('<system-out>[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>');
