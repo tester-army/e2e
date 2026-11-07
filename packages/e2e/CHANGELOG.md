@@ -1,5 +1,23 @@
 # e2e
 
+## 0.23.1
+
+### Patch Changes
+
+- [#1609](https://github.com/tester-army/e2e/pull/1609) [`34a260c`](https://github.com/tester-army/e2e/commit/34a260cc59d7ebd1d414fd2716f955bd2a51795f) Thanks [@okwasniewski](https://github.com/okwasniewski)! - Bump playwright-core to 1.65.0 and commander to 15.1.0. `fill` no longer rejects malformed date, time, color, and range values, and actions wait for an element to leave an `inert` subtree. Smol sandboxes use the Playwright 1.65.0 image.
+
+- [#1586](https://github.com/tester-army/e2e/pull/1586) [`3c902b0`](https://github.com/tester-army/e2e/commit/3c902b0c865bba6e149d8dd088e13e61cbdc7d1e) Thanks [@kdy1](https://github.com/kdy1)! - Register the MCP server in Codex project settings during `e2e init`. Preserve existing Codex settings and comments when updating the server entry.
+
+- [#1208](https://github.com/tester-army/e2e/pull/1208) [`cc94232`](https://github.com/tester-army/e2e/commit/cc942320058d2da01de6d4018fa45ef17b80fa18) Thanks [@piotrpasztor](https://github.com/piotrpasztor)! - A step whose effect or click target is a node identified only by a generated test id (a uuid, hex id, cuid, or timestamp) no longer fails replay on every run.
+
+- [#1587](https://github.com/tester-army/e2e/pull/1587) [`34ccc5f`](https://github.com/tester-army/e2e/commit/34ccc5f38820befd2cc77795dd463507aaccd8ea) Thanks [@kdy1](https://github.com/kdy1)! - PNG decoding and encoding now run on `@napi-rs/image`, a native addon with a prebuilt binary per platform, in place of `fast-png` and `pngjs`: decoding is 8 to 15 times faster, encoding 5 to 8 times, and a `toHaveScreenshot` capture 4 to 12 times. Stored screenshots decode to the same pixels as before. A screenshot the runner writes (a new baseline, or one rewritten because the screen changed) has the same pixels in different bytes: a Chromium capture comes out about 15% larger and a device screenshot about 20% smaller. The binary adds about 15 to 21 MB to an install, depending on the platform, and the package publishes none for Linux on ppc64, s390x, or riscv64. `e2e` loads it when the first screenshot is read or written, so `--version` and a run that takes none never need it, and a missing binding fails that call with `IMAGE_CODEC_UNAVAILABLE`; `@e2e-dev/mobile` and `@e2e-dev/decision` load it when they are imported. Gray PNGs with 1, 2, or 4 bits per sample now decode, and a 16-bit gray or RGB PNG with a transparent color now compares pixels to it at 16 bits, so a pixel that only rounds to it at 8 bits stays opaque.
+
+- [#1570](https://github.com/tester-army/e2e/pull/1570) [`34f85c3`](https://github.com/tester-army/e2e/commit/34f85c3a1675b71bf76567bd35640ce1739de0e7) Thanks [@kdy1](https://github.com/kdy1)! - `scroll_to({ text })` is faster: it reads each page once when the swipe visibly landed, instead of waiting for a second look to confirm it. A clock ticking beside a list no longer delays the end of the list: the call fails with `LOCATOR_NOT_FOUND` after a few swipes, not 800 screens later.
+
+- [#1591](https://github.com/tester-army/e2e/pull/1591) [`937ea15`](https://github.com/tester-army/e2e/commit/937ea1537dabeb297066f65c3638f4170c5d898a) Thanks [@kacperkapusciak](https://github.com/kacperkapusciak)! - The bundled e2e skill's GitHub Actions workflow now caches the Playwright browsers between runs.
+
+- [#1511](https://github.com/tester-army/e2e/pull/1511) [`d784448`](https://github.com/tester-army/e2e/commit/d78444892c8a177313643e415a5bbdc2f8dfab5d) Thanks [@Mohsintl](https://github.com/Mohsintl)! - A replay no longer skips text like `Marketing 12` as a date when checking its end state.
+
 ## 0.23.0
 
 ### Minor Changes
