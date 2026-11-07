@@ -74,7 +74,11 @@ against a model mistake at the cost of configuring every sign-in flow that
 leaves the app's domain. Treat a target whose app can send the agent
 elsewhere as one the agent may follow there, with the secrets the step was
 given. If a threat model ever calls for an origin allowlist again, it comes
-back as an opt-in.
+back as an opt-in. Chromium launches with its OS sandbox on, so a renderer
+exploit on a page the agent reaches stays contained by the sandbox instead
+of running as the user running `e2e run`; `web({ chromiumSandbox: false })`
+or `E2E_CHROMIUM_SANDBOX=0` turns it off on a host where the sandbox cannot
+start.
 
 Two things still key on the site of the target's `url`, its registrable
 domain: the browser engine's `headers` reach the site and no other host, and

@@ -12,7 +12,7 @@ function fakeBrowser() {
 it('closes the browser a first launch produces when dispose arrives before that launch settles', async () => {
   const { browser, close } = fakeBrowser();
   const connection = new BrowserConnection();
-  const acquiring = connection.acquire('chromium', false, 1_000, async () => browser);
+  const acquiring = connection.acquire('chromium', false, 1_000, true, async () => browser);
   await connection.dispose();
   await acquiring;
   expect(close).toHaveBeenCalledOnce();
@@ -23,8 +23,8 @@ it('launches once for two callers that ask before the first launch settles', asy
   const connect = vi.fn(async () => browser);
   const connection = new BrowserConnection();
   const [first, second] = await Promise.all([
-    connection.acquire('chromium', false, 1_000, connect),
-    connection.acquire('chromium', false, 1_000, connect),
+    connection.acquire('chromium', false, 1_000, true, connect),
+    connection.acquire('chromium', false, 1_000, true, connect),
   ]);
   expect(connect).toHaveBeenCalledOnce();
   expect(second).toBe(first);

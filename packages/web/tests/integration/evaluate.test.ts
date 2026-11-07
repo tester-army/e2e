@@ -6,6 +6,7 @@ import type { Page } from 'playwright-core';
 import type { EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 describe('browser.evaluate error boundaries', () => {
@@ -17,7 +18,7 @@ describe('browser.evaluate error boundaries', () => {
 
   beforeAll(async () => {
     await surface.init({ runId: 'evaluate', targetName: 'web', projectRoot: process.cwd(),
-      app: {}, env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      app: {}, env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
   beforeEach(async () => {

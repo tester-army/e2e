@@ -15,6 +15,7 @@ import { secrets } from 'e2e';
 import type { EngineCleanupContext, EngineFixtureContext, OperationContext } from 'e2e/engine';
 import { createBrowserFixture, type Browser } from '../../src/browser.ts';
 import { PlaywrightSurface, type WebOptions } from '../../src/surface.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 declare global {
@@ -61,7 +62,7 @@ describe('init scripts', () => {
     const artifactsDir = mkdtempSync(path.join(tmpdir(), 'e2e-init-scripts-artifacts-'));
     try {
       await surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-        env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+        env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
       await surface.startAttempt({ attemptId: 'a', artifactsDir, signal, resolveSecret: noSecrets, ...ignoreTrace });
       const browser = createBrowserFixture(surface, {
         operation,
@@ -143,9 +144,9 @@ describe('init scripts', () => {
 
   it('fails the run, and a worker, with INVALID_CONFIG when a configured file cannot be read', async () => {
     const surface = new PlaywrightSurface({ initScripts: [{ path: 'nope.js' }] });
-    await expect(surface.prepare({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, slots: 1, env: {},
+    await expect(surface.prepare({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, slots: 1, env: browserTestEnv(),
       signal, headed: false, log: () => undefined })).rejects.toMatchObject({ code: 'INVALID_CONFIG', message: expect.stringMatching(/nope\.js \(ENOENT\)/) });
-    await expect(surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, env: {}, headed: false,
+    await expect(surface.init({ runId: 'init-scripts', targetName: 'web', projectRoot, app: {}, env: browserTestEnv(), headed: false,
       workerSlot: 0, signal, log: () => undefined })).rejects.toMatchObject({
       code: 'INVALID_CONFIG',
       message: expect.stringMatching(/web\(\{ initScripts \}\)\[0\] path cannot be read: .*nope\.js \(ENOENT\)/),

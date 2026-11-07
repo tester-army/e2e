@@ -19,6 +19,7 @@ import type { Download, Page } from 'playwright-core';
 import { TestError, type EngineFixtureContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { createBrowserFixture, type Browser, type WebRoute } from '../../src/browser.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 interface Echo {
@@ -109,7 +110,7 @@ describe('browser.route decisions', () => {
     otherSite = `http://localhost:${started.port}`;
     writeFileSync(path.join(projectRoot, 'quote.json'), '{"cents":4200}\n');
     await surface.init({ runId: 'routes', targetName: 'web', projectRoot, app: { site: '127.0.0.1' },
-      env: {}, headed: false, workerSlot: 0, signal, log: () => undefined });
+      env: browserTestEnv(), headed: false, workerSlot: 0, signal, log: () => undefined });
   });
 
   beforeEach(async () => {

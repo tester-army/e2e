@@ -16,6 +16,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Locator } from 'e2e';
 import type { EngineFixtureContext, EngineHandle, LocatorExpression, NodeRef, OperationContext } from 'e2e/engine';
 import { web, type BrowserExpectation } from '../../src/index.ts';
+import { browserTestEnv } from '../helpers/environment.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const BUDGET_MS = 1_000;
@@ -107,7 +108,7 @@ describe('operations on a hung page', () => {
       targetName: 'web',
       projectRoot: process.cwd(),
       app: { site: '127.0.0.1' },
-      env: {},
+      env: browserTestEnv(),
       headed: false,
       workerSlot: 0,
       log: () => undefined,

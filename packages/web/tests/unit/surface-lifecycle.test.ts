@@ -11,7 +11,8 @@ import { createBrowserFixture } from '../../src/browser.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
 const acquire = vi.hoisted(() => vi.fn());
-vi.mock('../../src/browser-connection.ts', () => ({
+vi.mock('../../src/browser-connection.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/browser-connection.ts')>()),
   BrowserConnection: class { acquire = acquire; dispose = async () => undefined; },
   connectCdp: vi.fn(),
 }));

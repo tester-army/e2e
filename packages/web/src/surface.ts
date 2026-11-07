@@ -42,7 +42,7 @@ import {
 } from 'e2e/engine';
 import { matchesText } from 'e2e/engine';
 import { classifyActionError, classifyInputError, dispatchLocatorAction, dispatchPointerAction } from './actions.ts';
-import { BrowserConnection, connectCdp, type BrowserName } from './browser-connection.ts';
+import { BrowserConnection, connectCdp, readChromiumSandboxFlag, type BrowserName } from './browser-connection.ts';
 import { AttemptSession, type StorageState } from './attempt-session.ts';
 import type { CdpEndpointResolver } from './cdp-recovery.ts';
 import { LeasedBrowsers, type BrowserProvider, type LeaseDownloads } from './provider.ts';
@@ -172,6 +172,19 @@ export interface WebOptions {
    */
   readonly browser?: BrowserName | BrowserProvider;
   /**
+   * Whether Chromium launches with its OS sandbox on, `true` by default.
+   * The agent can follow the app to another origin, so a renderer exploit
+   * on a page it reaches stays contained by the sandbox instead of running
+   * as the user running `e2e run`. Set `false` only on a host where the
+   * sandbox cannot start (root, a container, or Ubuntu 23.10+ with
+   * `kernel.apparmor_restrict_unprivileged_userns=1`): leaving it on there
+   * fails the launch with Playwright's "Chromium sandboxing failed!" error.
+   * The same opt-out is `E2E_CHROMIUM_SANDBOX=0` in the run's environment,
+   * and an explicit option wins over the variable. Firefox and WebKit
+   * ignore it.
+   */
+  readonly chromiumSandbox?: boolean;
+  /**
    * Initial viewport of every attempt's page; default 1280 by 720. `null`
    * emulates no size: the page fills the browser window, whatever size the
    * window has (a hosted browser's live view, a headed run), and
@@ -268,6 +281,22 @@ export interface WebOptions {
 /** The test-id attribute when the options name none. */
 const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
 
+/**
+ * Whether Chromium launches with its sandbox on: an explicit option wins,
+ * then the run's environment, then on. The run's environment is the only
+ * environment read here: an in-process worker shares its process with the
+ * runner and every other target, so the process environment never decides
+ * a launch.
+ */
+function resolveChromiumSandbox(
+  configured: boolean | undefined,
+  env: Readonly<Record<string, string | undefined>>,
+): boolean {
+  if (configured !== undefined) return configured;
+  const value = readChromiumSandboxFlag(env);
+  return value === undefined || (value !== '0' && value !== 'false');
+}
+
 export class PlaywrightSurface {
   /**
    * Errors raised where nobody awaits them (dialog routing, route handlers)
@@ -278,6 +307,10 @@ export class PlaywrightSurface {
 
   private readonly browserName: BrowserName;
   private readonly connection = new BrowserConnection();
+  /** The sandbox opt-out the options name, if any; the run's environment decides the rest at `init`. */
+  private readonly configuredChromiumSandbox: boolean | undefined;
+  /** Whether the shared Chromium launches with its sandbox on, resolved at `init`. */
+  private chromiumSandbox = true;
   private readonly connect: WebConnectOptions | undefined;
   /** The provider's browsers, when `browser` names one; the runner and worker halves of the lease bookkeeping. */
   private readonly leases: LeasedBrowsers | undefined;
@@ -318,6 +351,7 @@ export class PlaywrightSurface {
 
   constructor(options: WebOptions) {
     this.browserName = typeof options.browser === 'string' ? options.browser : 'chromium';
+    this.configuredChromiumSandbox = options.chromiumSandbox;
     this.leases = typeof options.browser === 'object' && options.browser !== null ? new LeasedBrowsers(options.browser) : undefined;
     this.connect = options.connect;
     this.viewport = options.viewport === undefined ? DEFAULT_VIEWPORT : options.viewport;
@@ -370,6 +404,7 @@ export class PlaywrightSurface {
     this.app = info.app;
     this.projectRoot = info.projectRoot;
     this.headed = info.headed;
+    this.chromiumSandbox = resolveChromiumSandbox(this.configuredChromiumSandbox, info.env);
     this.leases?.init(info);
     // The browser was installed in `prepare`; a launch or attach is the one
     // boot step left that can outlive a launch budget, and it honours the
@@ -398,7 +433,13 @@ export class PlaywrightSurface {
     if (signal.aborted) throw cancelled(`browser ${verb} cancelled`);
     try {
       return await raceAbort(
-        this.connection.acquire(this.browserName, this.headed, BROWSER_LAUNCH_TIMEOUT_MS, this.connector(signal)),
+        this.connection.acquire(
+          this.browserName,
+          this.headed,
+          BROWSER_LAUNCH_TIMEOUT_MS,
+          this.chromiumSandbox,
+          this.connector(signal),
+        ),
         signal,
         `browser ${verb}`,
       );

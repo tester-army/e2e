@@ -390,7 +390,9 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         ...resolveConfig({ ...config, targets: [webTarget('web', app.url)] } as E2EConfig as never, { projectRoot: project.dir, env: {}, configPath }),
         configPath,
       }),
-      env: {},
+      // The run's environment carries the sandbox flag: on a host whose
+      // sandbox cannot start, the workflow sets E2E_CHROMIUM_SANDBOX=0.
+      env: { E2E_CHROMIUM_SANDBOX: process.env['E2E_CHROMIUM_SANDBOX'] },
       headed: false,
       log: () => undefined,
     });

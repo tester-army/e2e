@@ -33,6 +33,16 @@ export function isBrowserName(name: string): name is BrowserName {
 const RUNNER_OWNS_SIGNALS = { handleSIGINT: false, handleSIGTERM: false } as const;
 
 /**
+ * The `E2E_CHROMIUM_SANDBOX` flag's value when it is set and not blank,
+ * lowercased; undefined otherwise. `0` and `false` turn the sandbox off, the
+ * same way `CI` is read; anything else leaves it on.
+ */
+export function readChromiumSandboxFlag(env: Readonly<Record<string, string | undefined>>): string | undefined {
+  const value = env['E2E_CHROMIUM_SANDBOX']?.trim().toLowerCase();
+  return value !== undefined && value !== '' ? value : undefined;
+}
+
+/**
  * Launching a browser process costs hundreds of milliseconds; per-attempt
  * isolation lives in browser contexts, so every attempt a worker runs can
  * share the process. The connection relaunches a browser that crashed or
@@ -47,19 +57,23 @@ export class BrowserConnection {
    * When `connect` is given the connection attaches to a remote browser through it
    * instead of launching a local one; `connect` is re-invoked on a relaunch,
    * so a caller that resolves a fresh per-run endpoint reconnects cleanly
-   * after a dropped session.
+   * after a dropped session. `chromiumSandbox` is Chromium's sandbox, and
+   * the caller passes the resolved value: the `web({ chromiumSandbox })`
+   * option, the run's environment, or on. Only a Chromium launch takes it,
+   * and a relaunch keeps the value the first launch used.
    */
   async acquire(
     name: BrowserName,
     headed: boolean,
     timeoutMs: number,
+    chromiumSandbox: boolean,
     connect?: () => Promise<Browser>,
   ): Promise<Browser> {
     const cached = this.pending;
     if (cached !== undefined) {
       const browser = await cached.catch(() => null);
       if (browser !== null && browser.isConnected()) return browser;
-      if (this.pending !== cached) return this.acquire(name, headed, timeoutMs, connect);
+      if (this.pending !== cached) return this.acquire(name, headed, timeoutMs, chromiumSandbox, connect);
       this.pending = undefined;
     }
     // Set before anything awaits: the first call loads Playwright, and a `dispose`
@@ -68,7 +82,14 @@ export class BrowserConnection {
     const launching = registerSelectorEngines().then(() =>
       connect !== undefined
         ? connect()
-        : browserType(name).then((type) => type.launch({ headless: !headed, timeout: timeoutMs, ...RUNNER_OWNS_SIGNALS })),
+        : browserType(name).then((type) =>
+            type.launch({
+              headless: !headed,
+              timeout: timeoutMs,
+              ...RUNNER_OWNS_SIGNALS,
+              ...(name === 'chromium' ? { chromiumSandbox } : {}),
+            }),
+          ),
     );
     this.pending = launching;
     try {

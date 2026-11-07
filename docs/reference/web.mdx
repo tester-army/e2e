@@ -48,6 +48,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | Option | Type | Default |
 | --- | --- | --- |
 | [`browser`](#browser) | `BrowserName \| BrowserProvider` | `'chromium'` |
+| [`chromiumSandbox`](#chromiumsandbox) | `boolean` | `true` |
 | [`viewport`](#viewport) | `ViewportSize \| null` | 1280 by 720 |
 | [`screencast`](#screencast) | `WebScreencastOptions` | the viewport's size |
 | [`connect`](#connect) | `WebConnectOptions` | launches locally |
@@ -96,6 +97,28 @@ web({ browser: 'firefox' }); // default: 'chromium'
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | `browser: provider` together with `connect`. |
+
+#### `chromiumSandbox`
+
+Whether Chromium launches with its OS sandbox on.
+
+```ts
+web({ chromiumSandbox: false }); // default: true
+```
+
+- The agent can follow the app to another origin, so a renderer exploit on a
+  page it reaches stays contained by the sandbox instead of running as the
+  user running `e2e run`.
+- Set `false` only on a host where the sandbox cannot start (root, a
+  container, or Ubuntu 23.10+ with `kernel.apparmor_restrict_unprivileged_userns=1`):
+  leaving it on there fails the launch with Playwright's "Chromium sandboxing failed!"
+  error. `E2E_CHROMIUM_SANDBOX=0` in the environment is the same
+  opt-out; an explicit option wins over the variable.
+- Firefox and WebKit ignore it.
+
+| Throws | When |
+| --- | --- |
+| `INVALID_CONFIG` | Any value that is not a boolean, at config load. |
 
 #### `viewport`
 
