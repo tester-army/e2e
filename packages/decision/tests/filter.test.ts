@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import type { TestFilterCandidate } from 'e2e';
 import { APICallError, gateway } from 'ai';
 import { describe, expect, it } from 'vitest';
 import { decisionFilter } from '../src/index.ts';
@@ -39,6 +40,11 @@ function sent(request: DecideRequest | undefined): Record<string, string> {
   return (request?.state as { testFiles: Record<string, string> } | undefined)?.testFiles ?? {};
 }
 
+/** `score` for each of `tests`, by id: what a result's `relevance` holds when the model gave them all one answer. */
+function scored(tests: readonly TestFilterCandidate[], score: number): Record<string, number> {
+  return Object.fromEntries(tests.map((test) => [test.id, score]));
+}
+
 /** A test file of about `size` characters with one test titled `title`. */
 function sized(title: string, size: number): string {
   return `test('${title}', async () => {});\n// ${'x'.repeat(size)}\n`;
@@ -52,7 +58,7 @@ describe('decisionFilter', () => {
     const filter = decisionFilter({ model });
     expect(filter.name).toBe('decision');
     const result = await filter.filter([ADDS, SIGNS_IN, REMOVES], context);
-    expect(result).toEqual({ exclude: {}, note: '1 call, 10 tokens' });
+    expect(result).toEqual({ exclude: {}, relevance: scored([ADDS, SIGNS_IN, REMOVES], 0.9), note: '1 call, 10 tokens' });
     expect(logs).toEqual(['asking scripted-judge about 3 tests in 2 files']);
     expect(requests.map((request) => request.instructions)).toEqual([
       { t0: asked(CART, 'cart', 'adds an item'), t1: asked(CART, 'cart', 'removes an item'), t2: asked(LOGIN, 'signs in') },
@@ -89,7 +95,7 @@ describe('decisionFilter', () => {
     const result = await decisionFilter({ model }).filter(tests, filterContext(cartRepo()).context);
     expect(requests.map((request) => Object.keys(request.instructions).length).toSorted()).toEqual([200, 200, 50]);
     expect(requests.map((request) => Object.keys(sent(request)))).toEqual([[CART], [CART], [CART]]);
-    expect(result).toEqual({ exclude: { [tests[449]!.id]: '0% likely affected' }, note: '3 calls, 30 tokens' });
+    expect(result).toEqual({ exclude: { [tests[449]!.id]: '0% likely affected' }, relevance: { ...scored(tests, 0.9), [tests[449]!.id]: 0 }, note: '3 calls, 30 tokens' });
   });
 
   it('makes at most 8 calls at once', async () => {
@@ -123,9 +129,11 @@ describe('decisionFilter', () => {
       { 'src/cart.ts': 'export const total = 2;\n' },
     );
     const { model, requests } = scriptedJudge(() => 0);
-    const result = await decisionFilter({ model }).filter([candidate(huge, 'scrolls'), SIGNS_IN], filterContext(repo).context);
+    const scrolls = candidate(huge, 'scrolls');
+    const result = await decisionFilter({ model }).filter([scrolls, SIGNS_IN], filterContext(repo).context);
     expect(result).toEqual({
       exclude: { [SIGNS_IN.id]: '0% likely affected' },
+      relevance: { [scrolls.id]: 0.5, [SIGNS_IN.id]: 0 },
       note: 'scripted-judge did not judge 1 test in 1 file: tests/huge.e2e.ts is too large to send with the diff; 1 call, 10 tokens',
     });
     expect(requests.map((request) => Object.keys(sent(request)))).toEqual([[LOGIN]]);
@@ -135,8 +143,10 @@ describe('decisionFilter', () => {
     const huge = 'tests/huge.e2e.ts';
     const repo = changedRepo({ 'src/cart.ts': 'export const total = 1;\n', [huge]: sized('scrolls', 90_000) }, { 'src/cart.ts': 'export const total = 2;\n' });
     const { model, requests } = scriptedJudge(() => 0);
-    expect(await decisionFilter({ model }).filter([candidate(huge, 'scrolls')], filterContext(repo).context)).toEqual({
+    const scrolls = candidate(huge, 'scrolls');
+    expect(await decisionFilter({ model }).filter([scrolls], filterContext(repo).context)).toEqual({
       exclude: {},
+      relevance: { [scrolls.id]: 0.5 },
       note: 'scripted-judge did not judge 1 test in 1 file: tests/huge.e2e.ts is too large to send with the diff',
     });
     expect(requests).toEqual([]);
@@ -276,7 +286,7 @@ describe('decisionFilter', () => {
     const { context } = filterContext(cartRepo());
     const { model, requests } = scriptedJudge(() => 0);
     const result = await decisionFilter({ model }).filter([ADDS], { ...context, changes: { ...context.changes, files: [] } });
-    expect(result).toEqual({ exclude: {}, note: 'git printed no diff of the changed files, so the decision filter left nothing out' });
+    expect(result).toEqual({ exclude: {}, relevance: { [ADDS.id]: 0.5 }, note: 'git printed no diff of the changed files, so the decision filter left nothing out' });
     expect(requests).toEqual([]);
   });
 
@@ -292,13 +302,25 @@ describe('decisionFilter', () => {
     for (const file of ['e2e.config.ts', 'apps/web/e2e.config.mjs', 'pnpm-lock.yaml', 'ios/Podfile.lock', 'go.sum', 'gradle/libs.versions.toml']) {
       const { model, requests } = scriptedJudge(() => 0);
       const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(cartRepo({ [file]: 'changed\n' })).context);
-      expect(result, file).toEqual({ exclude: {}, note: `${file} changed, so the decision filter left nothing out` });
+      expect(result, file).toEqual({ exclude: {}, relevance: scored([ADDS, SIGNS_IN], 0.5), note: `${file} changed, so the decision filter left nothing out` });
       expect(requests, file).toEqual([]);
     }
     const { model, requests } = scriptedJudge(() => 0);
     const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo({ 'docs/pnpm-lock.yaml.md': 'about locks\n' })).context);
     expect(result.exclude).toEqual({ [SIGNS_IN.id]: '0% likely affected' });
     expect(requests).toHaveLength(1);
+  });
+
+  it('still scores the tests the change touches when a lockfile or the config leaves nothing out, so they start first', async () => {
+    const { model, requests } = scriptedJudge(() => 0);
+    const repo = cartRepo({ 'pnpm-lock.yaml': 'changed\n', [LOGIN]: "test('signs in', async () => { /* edited */ });\n" });
+    const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context);
+    expect(result).toEqual({
+      exclude: {},
+      relevance: { [ADDS.id]: 0.5, [SIGNS_IN.id]: 1 },
+      note: 'pnpm-lock.yaml changed, so the decision filter left nothing out',
+    });
+    expect(requests).toEqual([]);
   });
 
   it('keeps the tests whose test file, setup file, or stored screenshots changed without asking, and asks about the rest', async () => {
@@ -320,7 +342,11 @@ describe('decisionFilter', () => {
     const { model, requests } = scriptedJudge(() => 0);
     const { context, logs } = filterContext(repo);
     const result = await decisionFilter({ model }).filter(tests, context);
-    expect(result).toEqual({ exclude: { [other.id]: '0% likely affected' }, note: '3 tests ran without asking: the test file, setup file, or stored screenshots changed; 1 call, 10 tokens' });
+    expect(result).toEqual({
+      exclude: { [other.id]: '0% likely affected' },
+      relevance: { [ADDS.id]: 1, [SIGNS_IN.id]: 1, [FINDS.id]: 1, [other.id]: 0 },
+      note: '3 tests ran without asking: the test file, setup file, or stored screenshots changed; 1 call, 10 tokens',
+    });
     expect(logs).toEqual(['asking scripted-judge about 1 test in 1 file']);
     expect(requests.map((request) => Object.keys(sent(request)))).toEqual([['tests/other.e2e.ts']]);
   });
@@ -328,7 +354,7 @@ describe('decisionFilter', () => {
   it('makes no call when the change touched every test it was given', async () => {
     const { model, requests } = scriptedJudge(() => 0);
     const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo({ [LOGIN]: "test('signs in', async () => { /* edited */ });\n" })).context);
-    expect(result).toEqual({ exclude: {}, note: '1 test ran without asking: the test file, setup file, or stored screenshots changed' });
+    expect(result).toEqual({ exclude: {}, relevance: { [SIGNS_IN.id]: 1 }, note: '1 test ran without asking: the test file, setup file, or stored screenshots changed' });
     expect(requests).toEqual([]);
   });
 
@@ -369,7 +395,7 @@ describe('decisionFilter', () => {
     for (const file of [`${project}/e2e.config.ts`, `${project}/ios/Podfile.lock`, 'apps/pnpm-lock.yaml', 'pnpm-lock.yaml']) {
       const { model, requests } = scriptedJudge(() => 0);
       const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(changedRepo(base, { [file]: 'changed\n' }, { project })).context);
-      expect(result, file).toEqual({ exclude: {}, note: `${file} changed, so the decision filter left nothing out` });
+      expect(result, file).toEqual({ exclude: {}, relevance: { [SIGNS_IN.id]: 0.5 }, note: `${file} changed, so the decision filter left nothing out` });
       expect(requests, file).toEqual([]);
     }
     for (const file of ['apps/admin/e2e.config.ts', 'apps/admin/pnpm-lock.yaml', 'docs/examples/e2e.config.ts', 'apps/web-old/yarn.lock']) {
@@ -387,7 +413,7 @@ describe('decisionFilter', () => {
     for (const [file, configFile] of [[loaded, loaded], ['config/caf\u00E9.config.ts', 'config/cafe\u0301.config.ts']] as const) {
       const { model, requests } = scriptedJudge(() => 0);
       const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(changedRepo(base, { [file]: 'changed\n' }, { project }), configFile).context);
-      expect(result, file).toEqual({ exclude: {}, note: `${file} changed, so the decision filter left nothing out` });
+      expect(result, file).toEqual({ exclude: {}, relevance: { [SIGNS_IN.id]: 0.5 }, note: `${file} changed, so the decision filter left nothing out` });
       expect(requests, file).toEqual([]);
     }
     // Another config of the project, one an e2e without `configFile` loaded, goes to the model unless it is named like an e2e config.
@@ -423,7 +449,7 @@ describe('decisionFilter', () => {
     );
     const { model, requests } = scriptedJudge(() => 0.1);
     const result = await decisionFilter({ model }).filter([ADDS], filterContext(repo).context);
-    expect(result).toEqual({ exclude: { [ADDS.id]: '10% likely affected' }, note: '1 call, 10 tokens' });
+    expect(result).toEqual({ exclude: { [ADDS.id]: '10% likely affected' }, relevance: { [ADDS.id]: 0.1 }, note: '1 call, 10 tokens' });
     const state = requests[0]?.state as { diff: string };
     expect(state.diff).toContain('+++ b/libs/shared/cart.ts\n');
     expect(state.diff).toContain('+export const total = 2;\n');
@@ -440,13 +466,19 @@ describe('decisionFilter', () => {
     const setupAsked = `Can the diff break the e2e setup in ${SETUP}, or the session it saves for the tests that use it? testFiles["${SETUP}"] is its file.`;
     const tests = [withSetup(ADDS, SETUP), withSetup(REMOVES, SETUP), FINDS];
     const { model, requests } = scriptedJudge((text) => (text === setupAsked ? 0.6 : 0.1));
-    expect(await decisionFilter({ model }).filter(tests, filterContext(repo).context)).toEqual({ exclude: { [FINDS.id]: '10% likely affected' }, note: '1 call, 10 tokens' });
+    expect(await decisionFilter({ model }).filter(tests, filterContext(repo).context)).toEqual({
+      exclude: { [FINDS.id]: '10% likely affected' },
+      // A test is as likely to fail as the likelier of itself and its setup.
+      relevance: { [ADDS.id]: 0.6, [REMOVES.id]: 0.6, [FINDS.id]: 0.1 },
+      note: '1 call, 10 tokens',
+    });
     expect(Object.values(requests[0]?.instructions ?? {}).filter((text) => text === setupAsked)).toHaveLength(1);
     expect(Object.keys(sent(requests[0]))).toEqual([CART, SEARCH, SETUP]);
 
     const unlikely = scriptedJudge((text) => (text === setupAsked ? 0.1 : 0.05));
     expect(await decisionFilter({ model: unlikely.model }).filter(tests, filterContext(repo).context)).toMatchObject({
       exclude: { [ADDS.id]: '10% likely affected', [REMOVES.id]: '10% likely affected', [FINDS.id]: '5% likely affected' },
+      relevance: { [ADDS.id]: 0.1, [REMOVES.id]: 0.1, [FINDS.id]: 0.05 },
     });
   });
 
@@ -466,7 +498,28 @@ describe('decisionFilter', () => {
     const repo = changedRepo({ 'src/login.ts': 'export const ok = 1;\n', [CART]: sized('adds an item', 45_000), [SETUP]: sized('signs in', size) }, { 'src/login.ts': 'export const ok = 2;\n' });
     const { model } = scriptedJudge(() => 0, (_call, request) => before(request));
     const result = await decisionFilter({ model }).filter([withSetup(ADDS, SETUP)], filterContext(repo).context);
-    expect(result).toEqual({ exclude: {}, note: `scripted-judge did not judge 1 test in 1 file: ${why}` });
+    expect(result).toEqual({ exclude: {}, relevance: { [ADDS.id]: 0.5 }, note: `scripted-judge did not judge 1 test in 1 file: ${why}` });
+  });
+
+  it('scores a test whose setup the model did not judge as the likelier of its own answer and one in the middle', async () => {
+    const SETUP = 'tests/auth.setup.e2e.ts';
+    const repo = changedRepo({ 'src/login.ts': 'export const ok = 1;\n', [CART]: sized('adds an item', 45_000), [SETUP]: sized('signs in', 90_000) }, { 'src/login.ts': 'export const ok = 2;\n' });
+    const { model } = scriptedJudge((instructions) => (instructions.includes('adds') ? 0.9 : 0.1));
+    const result = await decisionFilter({ model }).filter([withSetup(ADDS, SETUP), withSetup(REMOVES, SETUP)], filterContext(repo).context);
+    expect(result.exclude).toEqual({});
+    expect(result.relevance).toEqual({ [ADDS.id]: 0.9, [REMOVES.id]: 0.5 });
+  });
+
+  it('scores every test it is handed: 1 for one the change touches, the model\'s answer for one it judged, and 0.5 for one it did not', async () => {
+    const huge = 'tests/huge.e2e.ts';
+    const repo = changedRepo(
+      { 'src/cart.ts': 'export const total = 1;\n', [CART]: "test('adds an item', async () => {});\n", [LOGIN]: "test('signs in', async () => {});\n", [huge]: sized('scrolls', 90_000) },
+      { 'src/cart.ts': 'export const total = 2;\n', [CART]: "test('adds an item', async () => { /* edited */ });\n" },
+    );
+    const scrolls = candidate(huge, 'scrolls');
+    const { model } = scriptedJudge(() => 0.35);
+    const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN, scrolls], filterContext(repo).context);
+    expect(result.relevance).toEqual({ [ADDS.id]: 1, [SIGNS_IN.id]: 0.35, [scrolls.id]: 0.5 });
   });
 
   it('sends the provider options it is given with every call', async () => {
@@ -479,7 +532,7 @@ describe('decisionFilter', () => {
   it('leaves out a test under 20% likely affected and keeps one at 20%', async () => {
     const { model } = scriptedJudge((instructions) => (instructions.includes('adds') ? 0.19 : 0.2));
     const result = await decisionFilter({ model }).filter([ADDS, REMOVES], filterContext(cartRepo()).context);
-    expect(result).toEqual({ exclude: { [ADDS.id]: '19% likely affected' }, note: '1 call, 10 tokens' });
+    expect(result).toEqual({ exclude: { [ADDS.id]: '19% likely affected' }, relevance: { [ADDS.id]: 0.19, [REMOVES.id]: 0.2 }, note: '1 call, 10 tokens' });
   });
 
   it("adds up what the calls spent: their tokens, and the AI Gateway's cost", async () => {
@@ -489,13 +542,13 @@ describe('decisionFilter', () => {
     );
     const { model } = scriptedJudge(() => 0.9, undefined, { inputTokens: 12_400, providerMetadata: { gateway: { cost: '0.0021', marketCost: '0.0042' } } });
     const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN, FINDS], filterContext(repo).context);
-    expect(result).toEqual({ exclude: {}, note: '3 calls, 37.2k tokens, $0.0063' });
+    expect(result).toEqual({ exclude: {}, relevance: scored([ADDS, SIGNS_IN, FINDS], 0.9), note: '3 calls, 37.2k tokens, $0.0063' });
   });
 
   it('counts the list price when the AI Gateway bills a route on your own provider key', async () => {
     const { model } = scriptedJudge(() => 0.9, undefined, { providerMetadata: { gateway: { cost: '0', marketCost: '0.25' } } });
     const result = await decisionFilter({ model }).filter([SIGNS_IN], filterContext(cartRepo()).context);
-    expect(result).toEqual({ exclude: {}, note: '1 call, 10 tokens, $0.25' });
+    expect(result).toEqual({ exclude: {}, relevance: { [SIGNS_IN.id]: 0.9 }, note: '1 call, 10 tokens, $0.25' });
   });
 
   it('shows no cost when a call that answered reported none, rather than a partial sum', async () => {
@@ -506,7 +559,7 @@ describe('decisionFilter', () => {
     const { model, requests } = scriptedJudge(() => 0.9, undefined, { providerMetadata: (call) => (call === 0 ? { gateway: { cost: '0.5' } } : undefined) });
     const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context);
     expect(requests).toHaveLength(2);
-    expect(result).toEqual({ exclude: {}, note: '2 calls, 20 tokens' });
+    expect(result).toEqual({ exclude: {}, relevance: scored([ADDS, SIGNS_IN], 0.9), note: '2 calls, 20 tokens' });
   });
 
   it.each([
@@ -516,7 +569,7 @@ describe('decisionFilter', () => {
   ])('makes no call and leaves nothing out when %s puts the diff over 60 kB', async (_name, change) => {
     const { model, requests } = scriptedJudge(() => 0);
     const result = await decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(cartRepo(change)).context);
-    expect(result).toEqual({ exclude: {}, note: 'the diff is over 60 kB, so the decision filter left nothing out' });
+    expect(result).toEqual({ exclude: {}, relevance: scored([ADDS, SIGNS_IN], 0.5), note: 'the diff is over 60 kB, so the decision filter left nothing out' });
     expect(requests).toEqual([]);
   });
 
@@ -536,6 +589,7 @@ describe('decisionFilter', () => {
     const result = await decisionFilter({ model }).filter(tests, filterContext(repo).context);
     expect(result).toEqual({
       exclude: { [tests[0]!.id]: '0% likely affected', [tests[2]!.id]: '0% likely affected', [tests[3]!.id]: '0% likely affected' },
+      relevance: { [tests[0]!.id]: 0, [tests[1]!.id]: 0.5, [tests[2]!.id]: 0, [tests[3]!.id]: 0 },
       note: 'scripted-judge did not judge 1 test in 1 file: Refused: content policy; 3 calls, 30 tokens',
     });
     expect(requests).toHaveLength(4);

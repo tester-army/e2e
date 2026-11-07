@@ -36,7 +36,7 @@
   },
   "peerDependencies": {
     "ai": "^7.0.134",
-    "e2e": ">=0.21.3 <1"
+    "e2e": ">=0.23.1 <1"
   },
   "devDependencies": {
     "@ai-sdk/openai": "4.0.110",
