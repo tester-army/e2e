@@ -165,7 +165,7 @@ export interface Device {
   back(): Promise<void>;
   /** Accepts or dismisses the visible system alert. */
   alert(action: 'accept' | 'dismiss'): Promise<void>;
-  /** Dismisses the soft keyboard. */
+  /** Dismisses the soft keyboard; a no-op when the screen measured none. */
   dismissKeyboard(): Promise<void>;
   /** Reads the clipboard. */
   clipboard(): Promise<string>;

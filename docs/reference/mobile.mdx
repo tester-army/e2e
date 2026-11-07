@@ -844,7 +844,10 @@ await device.alert('accept');
  * goes through its Continue button first. A screen with no clear point
  * above the keyboard, or a keyboard that outlives both drags, fails with
  * `UNSUPPORTED_CAPABILITY`; the message names the alternatives (the app's
- * own Done or close control, or pressing Enter on the field).
+ * own Done or close control, or pressing Enter on the field). A fresh
+ * capture that measured no keyboard on screen — an explicit absence, or a
+ * measured band entirely outside the viewport — makes it a no-op; a state
+ * the producer could not measure keeps the native dismissal.
  */
 dismissKeyboard(): Promise<void>;
 ```

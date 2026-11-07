@@ -1082,7 +1082,7 @@ describe('observation', () => {
       });
       const keyboardUp = { ...SETTINGS_SNAPSHOT, viewport: { width: 390, height: 844 }, keyboard: { kind: 'visible', frame: { x: 0, y: 583, width: 390, height: 261 } } };
       let snapshots = 0;
-      h.fake.respond('capture.snapshot', () => (snapshots++ === 0 ? keyboardUp : new Promise(() => undefined)));
+      h.fake.respond('capture.snapshot', () => (snapshots++ < 2 ? keyboardUp : new Promise(() => undefined)));
       const dismiss = h.engine.keyboard!.dismiss!({ ...operation(), timeoutMs: 1_000 });
       const assertion = expect(dismiss).rejects.toMatchObject({ code: 'ACTION_MAY_HAVE_COMMITTED' });
       await vi.advanceTimersByTimeAsync(1_000);
@@ -1679,10 +1679,11 @@ describe('device fixture', () => {
       await observed(h, 'Back');
       const device = fixture(h);
       h.fake.respond('command.keyboard', NO_DISMISS_KEY);
-      captures(h, [KEYBOARD_UP, KEYBOARD_GONE]);
+      captures(h, [KEYBOARD_UP, KEYBOARD_UP, KEYBOARD_GONE]);
       const before = h.fake.calls.length;
       await device.dismissKeyboard();
       expect(h.fake.methods().slice(before)).toEqual([
+        'capture.snapshot',
         'command.keyboard',
         'capture.snapshot',
         'interactions.swipe',
@@ -1708,6 +1709,7 @@ describe('device fixture', () => {
       ];
       captures(h, [
         { ...KEYBOARD_UP, viewport: { width: 844, height: 390 }, nodes: landscape, keyboard: { kind: 'visible', frame: { x: 0, y: 230, width: 844, height: 160 } } },
+        { ...KEYBOARD_UP, viewport: { width: 844, height: 390 }, nodes: landscape, keyboard: { kind: 'visible', frame: { x: 0, y: 230, width: 844, height: 160 } } },
         KEYBOARD_GONE,
       ]);
       await device.dismissKeyboard();
@@ -1723,7 +1725,7 @@ describe('device fixture', () => {
       await observed(h, 'Back');
       const device = fixture(h);
       h.fake.respond('command.keyboard', NO_DISMISS_KEY);
-      captures(h, [KEYBOARD_UP, KEYBOARD_UP, KEYBOARD_GONE]);
+      captures(h, [KEYBOARD_UP, KEYBOARD_UP, KEYBOARD_UP, KEYBOARD_GONE]);
       await device.dismissKeyboard();
       const swipes = h.fake.calls.filter((call) => call.method === 'interactions.swipe').map((call) => call.args);
       expect(swipes).toEqual([
@@ -1746,7 +1748,7 @@ describe('device fixture', () => {
           { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'text-field', label: 'Notes', rect: { x: 20, y: 150, width: 350, height: 44 } },
         ],
       };
-      captures(h, [header, KEYBOARD_GONE]);
+      captures(h, [header, header, KEYBOARD_GONE]);
       await device.dismissKeyboard();
       // The centre is clear but outside the scroll view, which ends at y 300: the drag starts on its lowest row of the grid instead.
       expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 195, y: expect.closeTo(295.25, 2) } });
@@ -1765,7 +1767,7 @@ describe('device fixture', () => {
           { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'static-text', label: 'Terms', rect: { x: 16, y: 120, width: 370, height: 460 } },
         ],
       };
-      captures(h, [paragraphs, KEYBOARD_GONE]);
+      captures(h, [paragraphs, paragraphs, KEYBOARD_GONE]);
       await device.dismissKeyboard();
       expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 195, y: 422 } });
     });
@@ -1783,7 +1785,7 @@ describe('device fixture', () => {
           { ref: '@e3', index: 2, parentIndex: 1, depth: 2, type: 'other', rect: { x: 0, y: 100, width: 390, height: 744 } },
         ],
       };
-      captures(h, [flattened, KEYBOARD_GONE]);
+      captures(h, [flattened, flattened, KEYBOARD_GONE]);
       await device.dismissKeyboard();
       expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { x: 195, y: 422 } });
     });
@@ -1837,7 +1839,7 @@ describe('device fixture', () => {
           { ref: '@e21', index: 11, parentIndex: 10, depth: 2, type: 'Key', label: 'q', rect: { x: 2, y: 600, width: 36, height: 44 } },
         ],
       };
-      captures(h, [withKeys, SETTINGS_SNAPSHOT]);
+      captures(h, [withKeys, withKeys, SETTINGS_SNAPSHOT]);
       await device.dismissKeyboard();
       expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(1);
     });
@@ -1855,7 +1857,7 @@ describe('device fixture', () => {
           { ref: '@e20', index: 10, parentIndex: 0, depth: 1, type: 'XCUIElementTypeKeyboard', rect: { x: 0, y: 583, width: 390, height: 261 } },
         ],
       };
-      captures(h, [withKeys, SETTINGS_SNAPSHOT]);
+      captures(h, [withKeys, withKeys, SETTINGS_SNAPSHOT]);
       await device.dismissKeyboard();
       expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(1);
     });
@@ -1868,11 +1870,12 @@ describe('device fixture', () => {
       const device = fixture(h);
       h.fake.respond('command.keyboard', NO_DISMISS_KEY);
       const sparse = { nodes: [{ ref: '@e1', type: 'application' }], snapshotQuality: { state: 'sparse' } };
-      captures(h, [KEYBOARD_UP, sparse, KEYBOARD_UP, KEYBOARD_GONE]);
+      captures(h, [KEYBOARD_UP, KEYBOARD_UP, sparse, KEYBOARD_UP, KEYBOARD_GONE]);
       const before = h.fake.calls.length;
       await device.dismissKeyboard();
       // The sparse tree after the first drag is retried, not trusted: the keyboard it hid is still up, so the second drag follows.
       expect(h.fake.methods().slice(before)).toEqual([
+        'capture.snapshot',
         'command.keyboard',
         'capture.snapshot',
         'interactions.swipe',
@@ -1897,10 +1900,10 @@ describe('device fixture', () => {
           { ref: '@e31', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Continue', rect: { x: 95, y: 700, width: 200, height: 44 } },
         ],
       };
-      captures(h, [withTip, KEYBOARD_GONE]);
+      captures(h, [withTip, withTip, KEYBOARD_GONE]);
       const before = h.fake.calls.length;
       await device.dismissKeyboard();
-      expect(h.fake.methods().slice(before)).toEqual(['command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
       expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 195, y: 722 });
     });
 
@@ -1914,6 +1917,118 @@ describe('device fixture', () => {
       });
       await expect(device.dismissKeyboard()).rejects.toMatchObject({ code: 'ENGINE_FAILURE' });
       expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(0);
+    });
+  });
+
+  describe('dismissing a keyboard the capture measured away', () => {
+    const VIEWPORT = { width: 390, height: 844 };
+
+    it('sends nothing when the capture reports the keyboard absent', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, viewport: VIEWPORT, keyboard: { kind: 'absent' } }));
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot']);
+    });
+
+    it('sends nothing when the measured keyboard frame lies entirely below the viewport', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('capture.snapshot', () => ({
+        ...SETTINGS_SNAPSHOT,
+        viewport: VIEWPORT,
+        keyboard: { kind: 'visible', frame: { x: 0, y: 869, width: 390, height: 227 } },
+      }));
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot']);
+    });
+
+    it('sends nothing when a derived keyboard frame lies entirely above the viewport', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('capture.snapshot', () => ({
+        ...SETTINGS_SNAPSHOT,
+        viewport: VIEWPORT,
+        keyboard: { kind: 'derived', derivation: 'docked-tree', frame: { x: 0, y: -120, width: 390, height: 120 } },
+      }));
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot']);
+    });
+
+    it('keeps the native dismissal when the measured frame still intersects the viewport', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('capture.snapshot', () => ({
+        ...SETTINGS_SNAPSHOT,
+        viewport: VIEWPORT,
+        keyboard: { kind: 'visible', frame: { x: 0, y: 800, width: 390, height: 100 } },
+      }));
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'command.keyboard']);
+      expect(h.fake.lastArgs('command.keyboard')).toEqual({ action: 'dismiss' });
+    });
+
+    it('keeps the native dismissal when the keyboard state is unknown', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('capture.snapshot', () => ({
+        ...SETTINGS_SNAPSHOT,
+        viewport: VIEWPORT,
+        keyboard: { kind: 'unmeasurable', reason: 'keyboard-frame-query-timeout' },
+      }));
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot', 'command.keyboard']);
+      expect(h.fake.lastArgs('command.keyboard')).toEqual({ action: 'dismiss' });
+    });
+
+    it('reads the viewport off the nodes when the capture omits it', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      const { viewport: _viewport, ...noViewport } = SETTINGS_SNAPSHOT as { viewport?: unknown } & Record<string, unknown>;
+      h.fake.respond('capture.snapshot', () => ({
+        ...noViewport,
+        keyboard: { kind: 'visible', frame: { x: 0, y: 869, width: 390, height: 227 } },
+      }));
+      const before = h.fake.calls.length;
+      await device.dismissKeyboard();
+      expect(h.fake.methods().slice(before)).toEqual(['capture.snapshot']);
+    });
+
+    it('still drags on a fresh look when an unknown state meets a keyboard with no dismiss key', async () => {
+      const h = harness();
+      await openAttempt(h);
+      await observed(h, 'Back');
+      const device = fixture(h);
+      h.fake.respond('command.keyboard', () => {
+        throw new AppError(
+          'UNSUPPORTED_OPERATION',
+          'Unable to dismiss the iOS keyboard: the keyboard exposes no dismiss key, and background taps are never attempted',
+        );
+      });
+      const unknown = { ...SETTINGS_SNAPSHOT, viewport: VIEWPORT, keyboard: { kind: 'unmeasurable', reason: 'keyboard-frame-query-timeout' } };
+      const keyboardUp = { ...SETTINGS_SNAPSHOT, viewport: VIEWPORT, keyboard: { kind: 'visible', frame: { x: 0, y: 583, width: 390, height: 261 } } };
+      const keyboardGone = { ...SETTINGS_SNAPSHOT, viewport: VIEWPORT, keyboard: { kind: 'absent' } };
+      let taken = 0;
+      h.fake.respond('capture.snapshot', () => [unknown, keyboardUp, keyboardGone][Math.min(taken++, 2)]);
+      await device.dismissKeyboard();
+      expect(h.fake.calls.filter((call) => call.method === 'interactions.swipe')).toHaveLength(1);
     });
   });
 
@@ -2044,6 +2159,7 @@ describe('device fixture', () => {
       ['command.home', { platform: 'ios' }],
       ['command.back', { settle: true, settleQuietMs: 150 }],
       ['command.alert', { platform: 'ios', action: 'accept' }],
+      ['capture.snapshot', { interactiveOnly: false }],
       ['command.keyboard', { action: 'dismiss' }],
       ['command.clipboard', { platform: 'ios', action: 'read' }],
       ['command.clipboard', { platform: 'ios', action: 'write', text: 'x' }],

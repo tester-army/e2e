@@ -57,6 +57,7 @@ import {
   ROOT_ID,
   screenRoot,
   screenTitle,
+  viewportOf,
   type ProjectedNode,
   type ProjectedSnapshot,
 } from './nodes.ts';
@@ -186,6 +187,24 @@ function measuredKeyboard(raw: RawSnapshot): boolean | undefined {
  */
 function keyboardShowing(raw: RawSnapshot): boolean {
   return measuredKeyboard(raw) ?? (raw.nodes ?? []).some((node) => KEYBOARD_TYPES.has(normalizeKind(node.type ?? '')));
+}
+
+/**
+ * Whether the producer measured no keyboard on screen: an explicit `absent`,
+ * or a measured band lying entirely outside the viewport. A fact that only
+ * estimates visibility (`visibility-only`, `tree-rejected`), cannot measure
+ * (`unmeasurable`), or is missing altogether is unknown, not absent, and
+ * keeps the native dismissal.
+ */
+function keyboardMeasuredAway(raw: RawSnapshot): boolean {
+  const keyboard = raw.keyboard;
+  if (keyboard === undefined) return false;
+  if (keyboard.kind === 'absent') return true;
+  if (keyboard.kind !== 'visible' && keyboard.kind !== 'derived') return false;
+  const viewport = raw.viewport ?? viewportOf(raw.nodes ?? []);
+  if (viewport === undefined) return false;
+  const { frame } = keyboard;
+  return frame.y >= viewport.height || frame.y + frame.height <= 0 || frame.x >= viewport.width || frame.x + frame.width <= 0;
 }
 
 /**
@@ -1504,7 +1523,10 @@ export class AgentDeviceSurface {
   }
 
   /**
-   * Hides the soft keyboard, so a control it covered can be reached.
+   * Hides the soft keyboard, so a control it covered can be reached. A fresh
+   * capture that measured no keyboard on screen — an explicit `absent`, or a
+   * measured band entirely outside the viewport — makes it a no-op; a state
+   * the producer could not measure keeps the native dismissal.
    * agent-device presses the keyboard's own dismiss key and refuses when the
    * keyboard has none (an iPhone), because a touch outside the keyboard is a
    * guess about the screen it never makes on a caller's behalf. The engine
@@ -1513,6 +1535,14 @@ export class AgentDeviceSurface {
    */
   async dismissKeyboard(signal: AbortSignal, input: InputBudget): Promise<void> {
     const before = this.latestScreen;
+    let raw: RawSnapshot;
+    try {
+      raw = await this.snapshot(signal, false, input);
+    } catch (cause) {
+      if (!this.managesApp && cause instanceof EngineError && cause.code === 'INVALID_STATE') raw = {};
+      else throw cause;
+    }
+    if (keyboardMeasuredAway(raw)) return;
     try {
       await this.command('keyboard.dismiss', (client) => input.send(() => client.command.keyboard({ action: 'dismiss' })), signal);
     } catch (cause) {
