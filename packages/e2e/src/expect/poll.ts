@@ -4,7 +4,7 @@ import { ConfigurationError, isE2EError, TestError } from '../internal/errors.ts
 import { abortError, cancelledError, Deadline, POLL_INTERVAL_MS, sleep, withAbort, withTimeout } from '../internal/time.ts';
 import type { PollExpectation, PollOptions, ValueExpectation, ValueMatcherName } from '../types.ts';
 import { currentAttempt } from './attempt.ts';
-import { currentPollScope } from './poll-scope.ts';
+import { currentPollScope, pollRead } from './poll-scope.ts';
 import { createValueExpectation } from './values.ts';
 
 /** Outside an attempt (a standalone script) there is no config to read `assertionTimeout` from. */
@@ -61,7 +61,7 @@ function sample(
   deadline: Deadline,
   signal: AbortSignal | undefined,
 ): Promise<unknown> {
-  const bounded = withTimeout((async () => read())(), deadline.remaining(), () => new ReadHung());
+  const bounded = withTimeout(pollRead(async () => read()), deadline.remaining(), () => new ReadHung());
   return signal === undefined ? bounded : withAbort(bounded, signal, () => new ReadAborted());
 }
 
