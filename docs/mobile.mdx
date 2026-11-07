@@ -169,6 +169,7 @@ on Android. Each UI framework sets them its own way:
 | --- | --- | --- |
 | React Native | `testID` | [with-expo](https://github.com/tester-army/e2e/tree/main/examples/with-expo) |
 | SwiftUI | `.accessibilityIdentifier()` | [with-swiftui](https://github.com/tester-army/e2e/tree/main/examples/with-swiftui) |
+| UIKit | `view.accessibilityIdentifier`, or Identifier in Interface Builder's Identity inspector | - |
 | Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/tester-army/e2e/tree/main/examples/with-compose) |
 | Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform) |
 | Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/tester-army/e2e/tree/main/examples/with-flutter) |
@@ -183,6 +184,11 @@ on Android. Each UI framework sets them its own way:
   `Modifier.semantics { testTagsAsResourceId = true }`. Without it,
   `getByTestId` finds nothing. iOS reads a Compose Multiplatform tag as is,
   so a shared screen sets the flag in its Android activity.
+- In SwiftUI, an `.accessibilityIdentifier()` on a container such as a
+  `VStack` replaces the ids of every element inside it. `getByTestId` then
+  fails with `LOCATOR_AMBIGUOUS` on the container's id and finds nothing for
+  the children's ids. Put `.accessibilityElement(children: .contain)` before
+  the identifier to keep both.
 - In Flutter, wrap a button's `Semantics` in `MergeSemantics` so the id and
   the button role land on one node.
 - In NativeScript, `testID` and `accessibilityIdentifier` set the same id:
