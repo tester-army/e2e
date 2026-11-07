@@ -2,627 +2,632 @@
   "nodes": [
     {
       "enabled": true,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 874,
+        "y": 0
+      },
+      "label": "e2e Benchmark",
+      "type": "Application",
       "hittable": false,
       "index": 0,
-      "label": "e2e Benchmark",
-      "rect": {
-        "y": 0,
-        "width": 402,
-        "x": 0,
-        "height": 874
-      },
       "depth": 0,
-      "type": "Application",
       "ref": "e1",
       "kind": "application"
     },
     {
       "enabled": true,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 874,
+        "y": 0
+      },
+      "label": "Benchmark Examples",
+      "type": "Other",
       "hittable": true,
       "index": 1,
-      "label": "Benchmark Examples",
-      "rect": {
-        "y": 0,
-        "width": 402,
-        "x": 0,
-        "height": 874
-      },
       "depth": 1,
       "parentIndex": 0,
-      "type": "Other",
       "ref": "e2",
       "kind": "other"
     },
     {
       "enabled": true,
-      "index": 2,
-      "label": "Benchmark Examples",
-      "hittable": true,
       "rect": {
-        "y": 62,
-        "width": 402,
         "x": 0,
-        "height": 54
+        "width": 402,
+        "height": 54,
+        "y": 62
       },
-      "depth": 2,
+      "label": "Benchmark Examples",
       "identifier": "Benchmark Examples",
-      "parentIndex": 1,
       "type": "NavigationBar",
+      "hittable": true,
+      "index": 2,
+      "depth": 2,
+      "parentIndex": 1,
       "ref": "e3",
       "kind": "navigation-bar"
     },
     {
       "enabled": true,
+      "rect": {
+        "x": 115.33333333333331,
+        "width": 171.33333333333331,
+        "height": 20.66666666666667,
+        "y": 73.66666666666666
+      },
+      "label": "Benchmark Examples",
+      "type": "StaticText",
       "hittable": true,
       "index": 3,
-      "label": "Benchmark Examples",
-      "rect": {
-        "y": 73.66666666666666,
-        "width": 171.33333333333331,
-        "x": 115.33333333333331,
-        "height": 20.66666666666667
-      },
       "depth": 3,
       "parentIndex": 2,
-      "type": "StaticText",
       "ref": "e4",
       "kind": "text"
     },
     {
-      "hittable": true,
-      "rect": {
-        "y": 116,
-        "width": 402,
-        "x": 0,
-        "height": 758
-      },
       "enabled": true,
-      "index": 4,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 758,
+        "y": 116
+      },
       "label": "Vertical scroll bar, 1 page",
-      "depth": 2,
       "type": "Other",
+      "hittable": true,
+      "index": 4,
+      "depth": 2,
       "parentIndex": 1,
       "ref": "e5",
       "kind": "other"
     },
     {
-      "hittable": true,
-      "rect": {
-        "y": 116,
-        "width": 402,
-        "x": 0,
-        "height": 758
-      },
       "enabled": true,
-      "index": 5,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 758,
+        "y": 116
+      },
       "label": "Login Form. Fill credentials, handle validation errors, reach the logged-in state.",
-      "depth": 3,
+      "identifier": "e2e-screen:Benchmark Examples",
       "type": "Other",
+      "hittable": true,
+      "index": 5,
+      "depth": 3,
       "parentIndex": 4,
       "ref": "e6",
       "kind": "other"
     },
     {
-      "hittable": true,
-      "rect": {
-        "y": 116,
-        "width": 402,
-        "x": 0,
-        "height": 758
-      },
       "enabled": true,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 758,
+        "y": 116
+      },
+      "type": "ScrollView",
+      "hittable": true,
       "index": 6,
       "depth": 4,
-      "type": "ScrollView",
       "parentIndex": 5,
       "ref": "e7",
       "kind": "scroll-area",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "rect": {
-        "y": 116,
-        "width": 402,
-        "x": 0,
-        "height": 572
-      },
       "enabled": true,
+      "rect": {
+        "x": 0,
+        "width": 402,
+        "height": 572,
+        "y": 116
+      },
+      "type": "Other",
+      "hittable": true,
       "index": 7,
       "depth": 5,
-      "type": "Other",
       "parentIndex": 6,
       "ref": "e8",
       "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
       "enabled": true,
-      "index": 8,
       "rect": {
-        "y": 116,
-        "width": 201,
         "x": 0,
-        "height": 44
+        "width": 201,
+        "height": 44,
+        "y": 116
       },
-      "depth": 6,
       "identifier": "Login Form",
       "type": "Other",
+      "hittable": true,
+      "index": 8,
+      "depth": 6,
       "parentIndex": 7,
       "ref": "e9",
       "kind": "other",
       "inheritsLabel": true
     },
     {
-      "hittable": true,
-      "label": "Infinite Scroll List. Scroll a paginated list until a target item deep in the list is found.",
       "enabled": true,
-      "index": 9,
       "rect": {
-        "y": 116,
-        "width": 201,
         "x": 201,
-        "height": 44
+        "width": 201,
+        "height": 44,
+        "y": 116
       },
-      "depth": 6,
+      "label": "Infinite Scroll List. Scroll a paginated list until a target item deep in the list is found.",
       "identifier": "Infinite Scroll List",
       "type": "Other",
+      "hittable": true,
+      "index": 9,
+      "depth": 6,
       "parentIndex": 7,
       "ref": "e10",
       "kind": "other"
     },
     {
-      "hittable": true,
-      "label": "Modal Flow. Open a modal, confirm a native alert, and land on the success state.",
       "enabled": true,
-      "index": 10,
       "rect": {
-        "y": 160,
-        "width": 201,
         "x": 0,
-        "height": 44
+        "width": 201,
+        "height": 44,
+        "y": 160
       },
-      "depth": 6,
+      "label": "Modal Flow. Open a modal, confirm a native alert, and land on the success state.",
       "identifier": "Modal Flow",
       "type": "Other",
+      "hittable": true,
+      "index": 10,
+      "depth": 6,
       "parentIndex": 7,
       "ref": "e11",
       "kind": "other"
     },
     {
-      "hittable": true,
-      "label": "Bottom Tabs. Navigate between tabs and complete an action on the last tab.",
       "enabled": true,
-      "index": 11,
       "rect": {
-        "y": 160,
-        "width": 201,
         "x": 201,
-        "height": 44
+        "width": 201,
+        "height": 44,
+        "y": 160
       },
-      "depth": 6,
+      "label": "Bottom Tabs. Navigate between tabs and complete an action on the last tab.",
       "identifier": "Bottom Tabs",
       "type": "Other",
+      "hittable": true,
+      "index": 11,
+      "depth": 6,
       "parentIndex": 7,
       "ref": "e12",
       "kind": "other"
     },
     {
+      "rect": {
+        "x": 0,
+        "width": 201,
+        "height": 44,
+        "y": 204
+      },
+      "parentIndex": 7,
+      "identifier": "Text Input Variations",
       "hittable": true,
       "label": "Text Input Variations. Fill secure, multiline, and numeric inputs to unlock the submit button.",
-      "enabled": true,
       "index": 12,
-      "rect": {
-        "y": 204,
-        "width": 201,
-        "x": 0,
-        "height": 44
-      },
-      "depth": 6,
-      "identifier": "Text Input Variations",
       "type": "Other",
-      "parentIndex": 7,
+      "depth": 6,
+      "enabled": true,
       "ref": "e13",
       "kind": "other"
     },
     {
+      "rect": {
+        "x": 201,
+        "width": 201,
+        "height": 44,
+        "y": 204
+      },
+      "parentIndex": 7,
+      "identifier": "Broken Accessibility",
       "hittable": true,
       "label": "Broken Accessibility. Whole screen merged into one a11y node (accessible=true) — snapshot is useless, vision required.",
-      "enabled": true,
       "index": 13,
-      "rect": {
-        "y": 204,
-        "width": 201,
-        "x": 201,
-        "height": 44
-      },
-      "depth": 6,
-      "identifier": "Broken Accessibility",
       "type": "Other",
-      "parentIndex": 7,
+      "depth": 6,
+      "enabled": true,
       "ref": "e14",
       "kind": "other"
     },
     {
+      "rect": {
+        "x": 0,
+        "width": 201,
+        "height": 44,
+        "y": 248
+      },
+      "parentIndex": 7,
+      "identifier": "Vision Only",
       "hittable": true,
       "label": "Vision Only. A11y tree fully hidden like a canvas-rendered (Flutter-style) app — pure pixel-driven flow.",
-      "enabled": true,
       "index": 14,
-      "rect": {
-        "y": 248,
-        "width": 201,
-        "x": 0,
-        "height": 44
-      },
-      "depth": 6,
-      "identifier": "Vision Only",
       "type": "Other",
-      "parentIndex": 7,
+      "depth": 6,
+      "enabled": true,
       "ref": "e15",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 248,
+        "x": 201,
         "width": 201,
-        "x": 201
+        "height": 44,
+        "y": 248
       },
-      "enabled": true,
-      "index": 15,
-      "label": "Gestures. Long-press, swipe left, and double-tap targets in sequence.",
-      "depth": 6,
-      "identifier": "Gestures",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Gestures",
+      "hittable": true,
+      "label": "Gestures. Long-press, swipe left, and double-tap targets in sequence.",
+      "index": 15,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e16",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 292,
+        "x": 0,
         "width": 201,
-        "x": 0
+        "height": 44,
+        "y": 292
       },
-      "enabled": true,
-      "index": 16,
-      "label": "Async States. Wait out a loading screen, pull to refresh, and catch a transient toast.",
-      "depth": 6,
-      "identifier": "Async States",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Async States",
+      "hittable": true,
+      "label": "Async States. Wait out a loading screen, pull to refresh, and catch a transient toast.",
+      "index": 16,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e17",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 292,
+        "x": 201,
         "width": 201,
-        "x": 201
+        "height": 44,
+        "y": 292
       },
-      "enabled": true,
-      "index": 17,
-      "label": "Debounced Search. Type into a debounced search field, wait for async results, select the target.",
-      "depth": 6,
-      "identifier": "Debounced Search",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Debounced Search",
+      "hittable": true,
+      "label": "Debounced Search. Type into a debounced search field, wait for async results, select the target.",
+      "index": 17,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e18",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 336,
+        "x": 0,
         "width": 201,
-        "x": 0
+        "height": 44,
+        "y": 336
       },
-      "enabled": true,
-      "index": 18,
-      "label": "Huge Virtualized List. 600 preloaded virtualized rows — the target sits ~28,000px down and off-screen rows never enter the a11y tree, so the agent must size long scroll jumps from the scroll extent.",
-      "depth": 6,
-      "identifier": "Huge Virtualized List",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Huge Virtualized List",
+      "hittable": true,
+      "label": "Huge Virtualized List. 600 preloaded virtualized rows — the target sits ~28,000px down and off-screen rows never enter the a11y tree, so the agent must size long scroll jumps from the scroll extent.",
+      "index": 18,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e19",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 336,
         "width": 201,
-        "x": 201
+        "height": 44,
+        "x": 201,
+        "y": 336
       },
-      "enabled": true,
-      "index": 19,
-      "label": "Flattened Registration Form. Multi-field registration form merged into one a11y node (accessible=true) — fields must be focused from vision and typed into via focused typing.",
-      "depth": 6,
-      "identifier": "Flattened Registration Form",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Flattened Registration Form",
+      "hittable": true,
+      "label": "Flattened Registration Form. Multi-field registration form merged into one a11y node (accessible=true) — fields must be focused from vision and typed into via focused typing.",
+      "index": 19,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e20",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 380,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 380
       },
-      "enabled": true,
-      "index": 20,
-      "label": "Flattened Login. Login form merged into one a11y node (accessible=true) - credentials must be filled from vision via focused fill, success visible only in pixels.",
-      "depth": 6,
-      "identifier": "Flattened Login",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Flattened Login",
+      "hittable": true,
+      "label": "Flattened Login. Login form merged into one a11y node (accessible=true) - credentials must be filled from vision via focused fill, success visible only in pixels.",
+      "index": 20,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e21",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 380,
         "width": 201,
-        "x": 201
+        "x": 201,
+        "height": 44,
+        "y": 380
       },
-      "enabled": true,
-      "index": 21,
-      "label": "Sticky Chrome Target. Accept button ~3 screens down in a non-virtualized scroll (present as an off-screen ref) under a sticky footer — tapping it must scroll it clear of the footer.",
-      "depth": 6,
-      "identifier": "Sticky Chrome Target",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Sticky Chrome Target",
+      "hittable": true,
+      "label": "Sticky Chrome Target. Accept button ~3 screens down in a non-virtualized scroll (present as an off-screen ref) under a sticky footer — tapping it must scroll it clear of the footer.",
+      "index": 21,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e22",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 424,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 424
       },
-      "enabled": true,
-      "index": 22,
-      "label": "WebView Accessibility. Read a coupon code inside a WebView, fill the web form, accept the terms, and apply it.",
-      "depth": 6,
-      "identifier": "WebView Accessibility",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "WebView Accessibility",
+      "hittable": true,
+      "label": "WebView Accessibility. Read a coupon code inside a WebView, fill the web form, accept the terms, and apply it.",
+      "index": 22,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e23",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 424,
         "width": 201,
-        "x": 201
+        "x": 201,
+        "height": 44,
+        "y": 424
       },
-      "enabled": true,
-      "index": 23,
-      "label": "Permission Prompt. Trigger the microphone permission request and handle the OS dialog to reach the granted state.",
-      "depth": 6,
-      "identifier": "Permission Prompt",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Permission Prompt",
+      "hittable": true,
+      "label": "Permission Prompt. Trigger the microphone permission request and handle the OS dialog to reach the granted state.",
+      "index": 23,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e24",
       "kind": "other"
     },
     {
-      "hittable": true,
       "rect": {
-        "height": 44,
-        "y": 468,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 468
       },
-      "enabled": true,
-      "index": 24,
-      "label": "Photo Picker. Open the system photo picker (outside the app a11y tree), select the seeded receipt photo, land back with it attached.",
-      "depth": 6,
-      "identifier": "Photo Picker",
-      "type": "Other",
       "parentIndex": 7,
+      "identifier": "Photo Picker",
+      "hittable": true,
+      "label": "Photo Picker. Open the system photo picker (outside the app a11y tree), select the seeded receipt photo, land back with it attached.",
+      "index": 24,
+      "type": "Other",
+      "depth": 6,
+      "enabled": true,
       "ref": "e25",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 468,
         "width": 201,
-        "x": 201
+        "x": 201,
+        "height": 44,
+        "y": 468
       },
       "parentIndex": 7,
+      "identifier": "Product Catalog",
       "hittable": true,
       "label": "Product Catalog. Disambiguate near-identical cards, drill into Trail Mix 500 g, set quantity 2, add to cart, review it.",
-      "identifier": "Product Catalog",
       "index": 25,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e26",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 512,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 512
       },
       "parentIndex": 7,
+      "identifier": "Error Recovery",
       "hittable": true,
       "label": "Error Recovery. Recover from a failed load via retry, then delete a draft through a destructive-confirm modal.",
-      "identifier": "Error Recovery",
       "index": 26,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e27",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 512,
         "width": 201,
-        "x": 201
+        "x": 201,
+        "height": 44,
+        "y": 512
       },
       "parentIndex": 7,
+      "identifier": "Choice Controls",
       "hittable": true,
       "label": "Choice Controls. Select the exact size, toppings, and switch combination, dismiss the keyboard, place the order.",
-      "identifier": "Choice Controls",
       "index": 27,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e28",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 556,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 556
       },
       "parentIndex": 7,
+      "identifier": "Stripe PaymentSheet",
       "hittable": true,
       "label": "Stripe PaymentSheet. Complete Stripe's SDK-provided test-mode PaymentSheet while native focus, keyboard, and field refs shift.",
-      "identifier": "Stripe PaymentSheet",
       "index": 28,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e29",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 556,
         "width": 201,
-        "x": 201
+        "x": 201,
+        "height": 44,
+        "y": 556
       },
       "parentIndex": 7,
+      "identifier": "Sequential Onboarding",
       "hittable": true,
       "label": "Sequential Onboarding. Multi-step signup wizard where each step auto-focuses a field, so the keyboard covers the Continue button (and the second name field) from the moment the screen opens — occluded taps land on keyboard keys and corrupt the values, and the success screen echoes them exactly.",
-      "identifier": "Sequential Onboarding",
       "index": 29,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e30",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 600,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 600
       },
       "parentIndex": 7,
+      "identifier": "Apple Pay",
       "hittable": true,
       "label": "Apple Pay. Start an Apple Pay payment and authorize it inside the out-of-process PassKit sheet.",
-      "identifier": "Apple Pay",
       "index": 30,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e31",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 600,
         "width": 201,
-        "x": 201
+        "x": 201,
+        "height": 44,
+        "y": 600
       },
       "parentIndex": 7,
+      "identifier": "Apple Pay Billing Address",
       "hittable": true,
       "label": "Apple Pay Billing Address. PassKit requires a billing address before authorizing — fill the in-sheet address form from vision, then pay.",
-      "identifier": "Apple Pay Billing Address",
       "index": 31,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e32",
       "kind": "other"
     },
     {
       "rect": {
-        "height": 44,
-        "y": 644,
         "width": 201,
-        "x": 0
+        "x": 0,
+        "height": 44,
+        "y": 644
       },
       "parentIndex": 7,
+      "identifier": "Control Inventory",
       "hittable": true,
       "label": "Control Inventory. The deterministic contract surface: plain controls with every state exposed, one exercise per runner verb. Not a hard surface.",
-      "identifier": "Control Inventory",
       "index": 32,
-      "enabled": true,
       "type": "Other",
       "depth": 6,
+      "enabled": true,
       "ref": "e33",
       "kind": "other"
     },
     {
-      "rect": {
-        "height": 668,
-        "y": 144,
-        "width": 30,
-        "x": 369
-      },
-      "parentIndex": 6,
-      "hittable": true,
-      "label": "Vertical scroll bar, 1 page",
       "index": 33,
+      "label": "Vertical scroll bar, 1 page",
       "enabled": true,
-      "value": "0%",
-      "type": "Other",
+      "hittable": true,
+      "rect": {
+        "width": 30,
+        "x": 369,
+        "height": 668,
+        "y": 144
+      },
       "depth": 5,
+      "type": "Other",
+      "value": "0%",
+      "parentIndex": 6,
       "ref": "e34",
       "kind": "other"
     },
     {
-      "rect": {
-        "height": 30,
-        "y": 807,
-        "width": 278,
-        "x": 62
-      },
-      "parentIndex": 6,
-      "hittable": true,
-      "label": "Horizontal scroll bar, 1 page",
       "index": 34,
+      "label": "Horizontal scroll bar, 1 page",
       "enabled": true,
-      "value": "0%",
-      "type": "Other",
+      "hittable": true,
+      "rect": {
+        "width": 278,
+        "x": 62,
+        "height": 30,
+        "y": 807
+      },
       "depth": 5,
+      "type": "Other",
+      "value": "0%",
+      "parentIndex": 6,
       "ref": "e35",
       "kind": "other"
     }
   ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
   "truncated": false,
   "appName": "dev.e2e.benchmark",
   "appBundleId": "dev.e2e.benchmark"

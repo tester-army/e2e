@@ -1,0 +1,5 @@
+screen
+  group
+    group #e2e-screen:Underlay
+    group #e2e-screen:Cover
+    text "Cover"

@@ -11,6 +11,7 @@ screen
                     group
                       group
                         heading "Home"
+                        group #e2e-screen:Home tab
                         text "Home" #home-tab-content
                         text "Go to the Actions tab and press the button there."
                         group

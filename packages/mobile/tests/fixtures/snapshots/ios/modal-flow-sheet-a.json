@@ -1,0 +1,165 @@
+{
+  "nodes": [
+    {
+      "rect": {
+        "width": 402,
+        "y": 0,
+        "height": 874,
+        "x": 0
+      },
+      "depth": 0,
+      "hittable": false,
+      "type": "Application",
+      "enabled": true,
+      "label": "e2e Benchmark",
+      "index": 0,
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "x": 0,
+        "y": 0
+      },
+      "depth": 1,
+      "label": "Benchmark modal",
+      "enabled": true,
+      "hittable": true,
+      "type": "Window",
+      "parentIndex": 0,
+      "index": 1,
+      "ref": "e2",
+      "kind": "window"
+    },
+    {
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "x": 0,
+        "y": 0
+      },
+      "depth": 2,
+      "label": "Benchmark modal",
+      "enabled": true,
+      "hittable": true,
+      "type": "Other",
+      "parentIndex": 1,
+      "index": 2,
+      "ref": "e3",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 402,
+        "height": 874,
+        "x": 0,
+        "y": 0
+      },
+      "depth": 3,
+      "hittable": true,
+      "enabled": true,
+      "type": "Other",
+      "parentIndex": 2,
+      "identifier": "e2e-screen:Benchmark modal",
+      "index": 3,
+      "ref": "e4",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 402,
+        "height": 209,
+        "x": 0,
+        "y": 665
+      },
+      "depth": 3,
+      "hittable": true,
+      "enabled": true,
+      "type": "Other",
+      "parentIndex": 2,
+      "identifier": "modal-card",
+      "index": 4,
+      "ref": "e5",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 354,
+        "height": 21.66668701171875,
+        "x": 24,
+        "y": 689
+      },
+      "depth": 3,
+      "label": "Benchmark modal",
+      "enabled": true,
+      "hittable": true,
+      "type": "StaticText",
+      "parentIndex": 2,
+      "index": 5,
+      "ref": "e6",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "width": 354,
+        "height": 18,
+        "x": 24,
+        "y": 722.6666679382324
+      },
+      "depth": 3,
+      "label": "Tap Continue, then accept the native alert to finish.",
+      "enabled": true,
+      "hittable": true,
+      "type": "StaticText",
+      "parentIndex": 2,
+      "index": 6,
+      "ref": "e7",
+      "kind": "text"
+    },
+    {
+      "rect": {
+        "width": 354,
+        "height": 43.33331298828125,
+        "x": 24,
+        "y": 752.6666641235352
+      },
+      "depth": 3,
+      "label": "Continue",
+      "enabled": true,
+      "type": "Other",
+      "hittable": true,
+      "parentIndex": 2,
+      "identifier": "continue-button",
+      "index": 7,
+      "ref": "e8",
+      "kind": "other"
+    },
+    {
+      "rect": {
+        "width": 354,
+        "y": 808,
+        "height": 42,
+        "x": 24
+      },
+      "depth": 3,
+      "label": "Close",
+      "type": "Other",
+      "enabled": true,
+      "hittable": true,
+      "parentIndex": 2,
+      "identifier": "close-modal-button",
+      "index": 8,
+      "ref": "e9",
+      "kind": "other"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

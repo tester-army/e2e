@@ -1,0 +1,14 @@
+screen
+  application "e2e Benchmark"
+    other "Home, tab, 1 of 3"
+      other "Complete action"
+        other "Actions"
+          other "Actions"
+            other "Actions"
+              text "Actions"
+          other #e2e-screen:Actions tab
+          other "Complete action" #complete-action-button
+      other "Home, tab, 1 of 3"
+        button "Home, tab, 1 of 3" #tab-home
+        button "Feed, tab, 2 of 3" #tab-feed
+        button "Actions, tab, 3 of 3" [selected] #tab-actions

@@ -1,0 +1,15 @@
+screen
+  group
+    group
+      group #android:id/content
+        group
+          group
+            group
+              group #e2e-screen:Benchmark modal
+              group #modal-card
+              text "Benchmark modal"
+              text "Tap Continue, then accept the native alert to finish."
+              group "Continue" #continue-button
+                text "Continue"
+              group "Close" #close-modal-button
+                text "Close"

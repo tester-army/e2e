@@ -4,7 +4,7 @@ screen
       navigation "Benchmark Examples" #Benchmark Examples
         text "Benchmark Examples"
       other "Vertical scroll bar, 1 page"
-        other "Login Form. Fill credentials, handle validation errors, reach the logged-in state."
+        other "Login Form. Fill credentials, handle validation errors, reach the logged-in state." #e2e-screen:Benchmark Examples
           scroll-view
             other
               other #Login Form

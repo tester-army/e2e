@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { projectSnapshot, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
+import type { ViewportSize } from 'e2e/engine';
+import { projectSnapshot, screenName, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
 import { SETTINGS_NODES } from '../helpers/fake-client.ts';
 
-function project(nodes: readonly RawNode[]) {
+function project(nodes: readonly RawNode[], viewport?: ViewportSize) {
   let counter = 0;
   return projectSnapshot(nodes, {
     mintId: () => {
       counter += 1;
       return `n${counter}`;
     },
+    viewport,
   });
 }
 
@@ -591,5 +593,90 @@ describe('snapshot projection', () => {
   it("never reads an Android toolbar's resource id as its title", () => {
     const untitled = project([{ ref: 'e1', type: 'android.view.ViewGroup', identifier: 'com.example:id/toolbar' }]);
     expect(screenTitle(untitled)).toBeUndefined();
+  });
+});
+
+describe('screen marker', () => {
+  const SCREEN = { x: 0, y: 0, width: 402, height: 874 };
+  const PREFIX = 'e2e-screen:';
+  const viewOf = (snapshot: ReturnType<typeof project>): ViewportSize =>
+    snapshot.viewport ?? { width: SCREEN.width, height: SCREEN.height };
+  const titled = (snapshot: ReturnType<typeof project>) => screenName(snapshot, { viewport: viewOf(snapshot) });
+  const marked = (snapshot: ReturnType<typeof project>, screenIdPrefix = PREFIX) =>
+    screenName(snapshot, { screenIdPrefix, viewport: viewOf(snapshot) });
+
+  it('reads the screen a React Native testID declares on iOS when no navigation bar names it', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Driver', rect: SCREEN },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'Other', identifier: 'e2e-screen:Offers', rect: SCREEN },
+      { ref: 'e3', index: 2, parentIndex: 1, depth: 2, type: 'StaticText', label: 'Offers', rect: { x: 16, y: 62, width: 80, height: 24 } },
+    ]);
+    expect(titled(projected)).toBeUndefined();
+    expect(marked(projected)).toBe('Offers');
+  });
+
+  it('reads the resource id React Native sets from testID on Android, and a native one past its package', () => {
+    const rn = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', rect: SCREEN },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: 'e2e-screen:Route Details', rect: SCREEN },
+    ]);
+    expect(marked(rn)).toBe('Route Details');
+    const native = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', rect: SCREEN },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: 'com.example.app:id/screen_home', rect: SCREEN },
+    ]);
+    expect(marked(native, 'screen_')).toBe('home');
+  });
+
+  it('names the screen by its marker ahead of the navigation bar title', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Application', label: 'Settings', rect: SCREEN },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'NavigationBar', identifier: 'General', rect: { x: 0, y: 0, width: 402, height: 100 } },
+      { ref: 'e4', index: 3, parentIndex: 1, depth: 2, type: 'StaticText', label: 'General', rect: { x: 160, y: 40, width: 80, height: 20 } },
+      { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'Other', identifier: 'e2e-screen:General Settings', rect: SCREEN },
+    ]);
+    expect(titled(projected)).toBe('General');
+    expect(marked(projected)).toBe('General Settings');
+  });
+
+  it('names the screen on top of a stack: hidden and off-screen markers are skipped, the last one on screen wins', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'android.widget.FrameLayout', rect: SCREEN },
+      { ref: 'e2', index: 1, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: 'e2e-screen:Home', rect: SCREEN },
+      { ref: 'e3', index: 2, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: 'e2e-screen:Offers', rect: SCREEN },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: 'e2e-screen:Earnings', rect: SCREEN, visibleToUser: false },
+      { ref: 'e5', index: 4, parentIndex: 0, depth: 1, type: 'android.view.ViewGroup', identifier: 'e2e-screen:Account', rect: { ...SCREEN, x: 402 } },
+    ], { width: SCREEN.width, height: SCREEN.height });
+    expect(marked(projected)).toBe('Offers');
+  });
+
+  it('skips a zero-size marker, which shows nothing', () => {
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'Other', identifier: 'e2e-screen:Offers', rect: SCREEN },
+      { ref: 'e2', index: 1, depth: 0, type: 'Other', identifier: 'e2e-screen:Collapsed', rect: { x: 10, y: 10, width: 0, height: 0 } },
+    ], { width: SCREEN.width, height: SCREEN.height });
+    expect(marked(projected)).toBe('Offers');
+  });
+
+  it('names the screen by its marker, else its title bar, against the viewport the observation resolved', () => {
+    const resolved = { width: SCREEN.width, height: SCREEN.height };
+    const projected = project([
+      { ref: 'e1', index: 0, depth: 0, type: 'NavigationBar', identifier: 'General', rect: { x: 0, y: 0, width: 402, height: 100 } },
+      { ref: 'e4', index: 3, parentIndex: 0, depth: 1, type: 'StaticText', label: 'General', rect: { x: 160, y: 40, width: 80, height: 20 } },
+      { ref: 'e2', index: 1, depth: 0, type: 'Other', identifier: 'e2e-screen:Offers', rect: SCREEN },
+      { ref: 'e3', index: 2, depth: 0, type: 'Other', identifier: 'e2e-screen:Account', rect: { ...SCREEN, x: 402 } },
+    ]);
+    expect(projected.viewport).toEqual({ width: 804, height: SCREEN.height });
+    expect(titled(projected)).toBe('General');
+    expect(marked(projected)).toBe('Account');
+    expect(screenName(projected, { screenIdPrefix: PREFIX, viewport: resolved })).toBe('Offers');
+    const offscreenOnly = project([projected.index[0]!.raw, projected.index[1]!.raw, projected.index[3]!.raw]);
+    expect(screenName(offscreenOnly, { screenIdPrefix: PREFIX, viewport: resolved })).toBe('General');
+  });
+
+  it('falls back to the title bar with no marker, an empty value, or only another prefix', () => {
+    expect(marked(project(SETTINGS_NODES))).toBe('General');
+    expect(marked(project([{ ref: 'e1', type: 'Other', identifier: 'e2e-screen:  ', rect: SCREEN }]))).toBeUndefined();
+    expect(marked(project([{ ref: 'e1', type: 'Other', identifier: 'screen-Offers', rect: SCREEN }]))).toBeUndefined();
   });
 });

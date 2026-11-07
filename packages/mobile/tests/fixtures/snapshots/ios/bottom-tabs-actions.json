@@ -1,0 +1,236 @@
+{
+  "nodes": [
+    {
+      "depth": 0,
+      "label": "e2e Benchmark",
+      "type": "Application",
+      "rect": {
+        "width": 402,
+        "y": 0,
+        "x": 0,
+        "height": 874
+      },
+      "hittable": false,
+      "enabled": true,
+      "index": 0,
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
+      "depth": 1,
+      "label": "Home, tab, 1 of 3",
+      "type": "Other",
+      "rect": {
+        "height": 874,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "parentIndex": 0,
+      "enabled": true,
+      "hittable": true,
+      "index": 1,
+      "ref": "e2",
+      "kind": "other"
+    },
+    {
+      "depth": 2,
+      "label": "Complete action",
+      "type": "Other",
+      "rect": {
+        "height": 791,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "parentIndex": 1,
+      "enabled": true,
+      "hittable": true,
+      "index": 2,
+      "ref": "e3",
+      "kind": "other"
+    },
+    {
+      "depth": 3,
+      "label": "Actions",
+      "type": "Other",
+      "rect": {
+        "height": 791,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "parentIndex": 2,
+      "enabled": true,
+      "hittable": true,
+      "index": 3,
+      "ref": "e4",
+      "kind": "other"
+    },
+    {
+      "depth": 4,
+      "label": "Actions",
+      "type": "Other",
+      "rect": {
+        "height": 100.66666412353516,
+        "x": 0,
+        "y": 0,
+        "width": 402
+      },
+      "parentIndex": 3,
+      "enabled": true,
+      "hittable": true,
+      "index": 4,
+      "ref": "e5",
+      "kind": "other"
+    },
+    {
+      "depth": 5,
+      "label": "Actions",
+      "type": "Other",
+      "rect": {
+        "height": 38.666664123535156,
+        "x": 171,
+        "y": 62,
+        "width": 60
+      },
+      "parentIndex": 4,
+      "enabled": true,
+      "hittable": true,
+      "index": 5,
+      "ref": "e6",
+      "kind": "other"
+    },
+    {
+      "depth": 6,
+      "label": "Actions",
+      "type": "StaticText",
+      "rect": {
+        "height": 20.333335876464844,
+        "x": 171,
+        "y": 71,
+        "width": 60
+      },
+      "parentIndex": 5,
+      "enabled": true,
+      "hittable": true,
+      "index": 6,
+      "ref": "e7",
+      "kind": "text"
+    },
+    {
+      "depth": 4,
+      "identifier": "e2e-screen:Actions tab",
+      "type": "Other",
+      "rect": {
+        "height": 690.3333129882812,
+        "x": 0,
+        "y": 100.66666412353516,
+        "width": 402
+      },
+      "parentIndex": 3,
+      "hittable": true,
+      "enabled": true,
+      "index": 7,
+      "ref": "e8",
+      "kind": "other"
+    },
+    {
+      "depth": 4,
+      "identifier": "complete-action-button",
+      "label": "Complete action",
+      "type": "Other",
+      "rect": {
+        "height": 43.33331298828125,
+        "x": 115,
+        "y": 424.3333206176758,
+        "width": 172.33334350585938
+      },
+      "parentIndex": 3,
+      "enabled": true,
+      "hittable": true,
+      "index": 8,
+      "ref": "e9",
+      "kind": "other"
+    },
+    {
+      "depth": 2,
+      "label": "Home, tab, 1 of 3",
+      "type": "Other",
+      "rect": {
+        "height": 83,
+        "x": 0,
+        "y": 791,
+        "width": 402
+      },
+      "parentIndex": 1,
+      "enabled": true,
+      "hittable": true,
+      "index": 9,
+      "ref": "e10",
+      "kind": "other"
+    },
+    {
+      "depth": 3,
+      "identifier": "tab-home",
+      "label": "Home, tab, 1 of 3",
+      "type": "Button",
+      "rect": {
+        "height": 48.66668701171875,
+        "x": 0,
+        "y": 791.3333333432674,
+        "width": 134
+      },
+      "parentIndex": 9,
+      "enabled": true,
+      "hittable": true,
+      "index": 10,
+      "ref": "e11",
+      "kind": "button"
+    },
+    {
+      "depth": 3,
+      "identifier": "tab-feed",
+      "label": "Feed, tab, 2 of 3",
+      "type": "Button",
+      "rect": {
+        "x": 134,
+        "height": 48.66668701171875,
+        "y": 791.3333333432674,
+        "width": 134
+      },
+      "parentIndex": 9,
+      "enabled": true,
+      "hittable": true,
+      "index": 11,
+      "ref": "e12",
+      "kind": "button"
+    },
+    {
+      "depth": 3,
+      "identifier": "tab-actions",
+      "label": "Actions, tab, 3 of 3",
+      "selected": true,
+      "type": "Button",
+      "rect": {
+        "x": 268,
+        "y": 791.3333333432674,
+        "width": 134,
+        "height": 48.66668701171875
+      },
+      "parentIndex": 9,
+      "enabled": true,
+      "hittable": true,
+      "index": 12,
+      "ref": "e13",
+      "kind": "button"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

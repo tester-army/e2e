@@ -23,7 +23,7 @@ export default function ModalFlow() {
   };
 
   return (
-    <View style={styles.container}>
+    <View testID="e2e-screen:Modal Flow" style={styles.container}>
       {confirmed ? (
         <Text testID="success-message" style={styles.successText}>
           Flow completed
@@ -43,7 +43,7 @@ export default function ModalFlow() {
         transparent
         onRequestClose={() => setModalVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <View testID="e2e-screen:Benchmark modal" style={styles.modalBackdrop}>
           <View style={styles.modalCard} testID="modal-card">
             <Text style={styles.modalTitle}>Benchmark modal</Text>
             <Text style={styles.modalBody}>

@@ -6,4 +6,5 @@ screen
         text "Modal Flow"
       other "Open modal"
         other "Open modal"
+          other #e2e-screen:Modal Flow
           other "Open modal" #open-modal-button

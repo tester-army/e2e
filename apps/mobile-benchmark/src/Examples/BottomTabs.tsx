@@ -4,7 +4,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 function HomeTab() {
   return (
-    <View style={styles.container}>
+    <View testID="e2e-screen:Home tab" style={styles.container}>
       <Text testID="home-tab-content" style={styles.title}>
         Home
       </Text>
@@ -15,7 +15,7 @@ function HomeTab() {
 
 function FeedTab() {
   return (
-    <View style={styles.container}>
+    <View testID="e2e-screen:Feed tab" style={styles.container}>
       <Text testID="feed-tab-content" style={styles.title}>
         Feed
       </Text>
@@ -26,7 +26,7 @@ function FeedTab() {
 function ActionsTab() {
   const [done, setDone] = useState(false);
   return (
-    <View style={styles.container}>
+    <View testID="e2e-screen:Actions tab" style={styles.container}>
       {done ? (
         <Text testID="success-message" style={styles.successText}>
           Action completed

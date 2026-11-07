@@ -1,0 +1,112 @@
+{
+  "nodes": [
+    {
+      "label": "e2e Benchmark",
+      "hittable": false,
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "enabled": true,
+      "index": 0,
+      "depth": 0,
+      "type": "Application",
+      "ref": "e1",
+      "kind": "application"
+    },
+    {
+      "label": "Underlay",
+      "hittable": true,
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "enabled": true,
+      "index": 1,
+      "parentIndex": 0,
+      "depth": 1,
+      "type": "Other",
+      "ref": "e2",
+      "kind": "other"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "height": 874,
+        "width": 402,
+        "x": 0,
+        "y": 0
+      },
+      "identifier": "e2e-screen:Underlay",
+      "enabled": true,
+      "index": 2,
+      "parentIndex": 1,
+      "depth": 2,
+      "type": "Other",
+      "ref": "e3",
+      "kind": "other"
+    },
+    {
+      "label": "Underlay",
+      "hittable": true,
+      "rect": {
+        "height": 17,
+        "width": 354,
+        "x": 24,
+        "y": 24
+      },
+      "enabled": true,
+      "index": 3,
+      "parentIndex": 1,
+      "depth": 2,
+      "type": "StaticText",
+      "ref": "e4",
+      "kind": "text"
+    },
+    {
+      "hittable": true,
+      "rect": {
+        "width": 354,
+        "x": 24,
+        "y": 785,
+        "height": 65
+      },
+      "identifier": "e2e-screen:Cover",
+      "enabled": true,
+      "index": 4,
+      "parentIndex": 1,
+      "depth": 2,
+      "type": "Other",
+      "ref": "e5",
+      "kind": "other"
+    },
+    {
+      "label": "Cover",
+      "hittable": true,
+      "rect": {
+        "width": 306,
+        "x": 48,
+        "y": 809,
+        "height": 17
+      },
+      "enabled": true,
+      "index": 5,
+      "parentIndex": 1,
+      "depth": 2,
+      "type": "StaticText",
+      "ref": "e6",
+      "kind": "text"
+    }
+  ],
+  "viewport": {
+    "width": 402,
+    "height": 874
+  },
+  "truncated": false,
+  "appName": "dev.e2e.benchmark",
+  "appBundleId": "dev.e2e.benchmark"
+}

@@ -11,7 +11,7 @@ screen
                     text "Benchmark Examples"
                     group
                       group
-                        group
+                        group #e2e-screen:Benchmark Examples
                           group
                             group "Login Form. Fill credentials, handle validation errors, reach the logged-in state." #Login Form
                               text "Login Form"

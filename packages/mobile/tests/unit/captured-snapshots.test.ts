@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode, ViewportSize } from 'e2e/engine';
-import { projectSnapshot, screenRoot, screenTitle, type RawNode } from '../../src/nodes.ts';
+import { projectSnapshot, screenName, screenRoot, screenTitle, type RawNode } from '../../src/nodes.ts';
 
 const ROOT = path.join(import.meta.dirname, '../fixtures/snapshots');
 const UPDATE = process.env['E2E_GOLDEN_UPDATE'] === '1';
@@ -47,6 +47,7 @@ const IOS_TITLES: Record<string, string | undefined> = {
   'apple-pay-billing-address': 'Apple Pay Billing Address',
   'async-states': 'Async States',
   'bottom-tabs': undefined,
+  'bottom-tabs-actions': undefined,
   'broken-accessibility': 'Broken Accessibility',
   'choice-controls': 'Choice Controls',
   'control-inventory': 'Control Inventory',
@@ -58,8 +59,11 @@ const IOS_TITLES: Record<string, string | undefined> = {
   home: 'Benchmark Examples',
   'huge-virtualized-list': 'Huge Virtualized List',
   'infinite-scroll-list': 'Infinite Scroll List',
+  'layered-markers': undefined,
   'login-form': 'Login Form',
   'modal-flow': 'Modal Flow',
+  'modal-flow-sheet-a': undefined,
+  'modal-flow-sheet-b': undefined,
   'permission-prompt': 'Permission Prompt',
   'photo-picker': 'Photo Picker',
   'product-catalog': 'Product Catalog',
@@ -122,4 +126,56 @@ describe('captured device snapshots', () => {
       });
     });
   }
+});
+
+describe('screen names from captured root-view markers', () => {
+  const nameOf = (platform: string, capture: string) => {
+    const { projected } = project(path.join(ROOT, platform, `${capture}.json`));
+    return screenName(projected, { screenIdPrefix: 'e2e-screen:', viewport: projected.viewport ?? { width: 0, height: 0 } });
+  };
+
+  it.each([
+    ['home', 'Benchmark Examples'],
+    ['modal-flow', 'Modal Flow'],
+    ['bottom-tabs', 'Home tab'],
+    ['bottom-tabs-actions', 'Actions tab'],
+    ['modal-flow-sheet-a', 'Benchmark modal'],
+    ['modal-flow-sheet-b', 'Benchmark modal'],
+  ])('android %s is named %j', (capture, name) => {
+    expect(nameOf('android', capture)).toBe(name);
+  });
+
+  it.each([
+    ['home', 'Benchmark Examples'],
+    ['modal-flow', 'Modal Flow'],
+    ['bottom-tabs', 'Home tab'],
+    ['bottom-tabs-actions', 'Actions tab'],
+    ['modal-flow-sheet-a', 'Benchmark modal'],
+    ['modal-flow-sheet-b', 'Benchmark modal'],
+  ])('ios %s is named %j', (capture, name) => {
+    expect(nameOf('ios', capture)).toBe(name);
+  });
+
+  it.each(['android', 'ios'])('names the same untitled sheet the same on both presentations, not after the screen under it, on %s', (platform) => {
+    expect(nameOf(platform, 'modal-flow-sheet-a')).toBe(nameOf(platform, 'modal-flow-sheet-b'));
+    expect(nameOf(platform, 'modal-flow-sheet-a')).not.toBe(nameOf(platform, 'modal-flow'));
+  });
+
+  it.each(['android', 'ios'])('picks the cover from two visible markers in the %s capture', platform => {
+    const file = path.join(ROOT, platform, 'layered-markers.json');
+    const { projected } = project(file);
+    const markers = projected.index.filter(entry => entry.raw.identifier?.includes('e2e-screen:'));
+    expect(markers.map(entry => entry.raw.identifier)).toEqual(
+      expect.arrayContaining([expect.stringContaining('Underlay'), expect.stringContaining('Cover')])
+    );
+    expect(markers).toHaveLength(2);
+    const viewport = projected.viewport ?? { width: 0, height: 0 };
+    const options = { screenIdPrefix: 'e2e-screen:', viewport };
+    expect(screenName(projected, options)).toBe('Cover');
+    const withoutCover = {
+      ...projected,
+      index: projected.index.filter(entry => !entry.raw.identifier?.endsWith('e2e-screen:Cover')),
+    };
+    expect(screenName(withoutCover, options)).toBe('Underlay');
+  });
 });

@@ -14,5 +14,6 @@ screen
                         text "Modal Flow"
                     group
                       group
+                        group #e2e-screen:Modal Flow
                         group "Open modal" #open-modal-button
                           text "Open modal"
