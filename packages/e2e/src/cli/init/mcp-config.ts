@@ -9,6 +9,7 @@
 
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { PackageManager } from '../../internal/package-manager.ts';
 import { realpathOfExisting } from '../../internal/paths.ts';
 import { readCodexConfig, updateCodexConfig } from './codex-config.ts';
 
@@ -28,8 +29,10 @@ export const MCP_LOCATIONS = [
 
 const MCP_SERVER_NAME = 'e2e';
 
-/** How clients start the server from the project with e2e installed. */
-const SERVER_ENTRY = { command: 'npx', args: ['e2e', 'mcp'] } as const;
+/** How clients start the server from the project with e2e installed: `bunx` in a Bun project, which may have no Node.js and so no `npx`. */
+function serverEntry(manager: PackageManager): { readonly command: string; readonly args: readonly string[] } {
+  return { command: manager === 'bun' ? 'bunx' : 'npx', args: ['e2e', 'mcp'] };
+}
 
 export interface McpRegistration {
   /** Project-relative file, e.g. `.mcp.json`. */
@@ -117,9 +120,11 @@ export function findRegisteredMcpFiles(cwd: string): string[] {
  * merged in; one whose entry already matches needs nothing and is left out.
  * Extra settings on the e2e entry, other servers, other keys, and the file's
  * indentation are preserved. A file reached through a symlink is never read;
- * it is returned among `links` for the caller to report and skip.
+ * it is returned among `links` for the caller to report and skip. The
+ * entry starts the server through `manager`'s runner.
  */
-export function planMcpRegistration(cwd: string, files: readonly string[]): McpPlan {
+export function planMcpRegistration(cwd: string, files: readonly string[], manager: PackageManager): McpPlan {
+  const launch = serverEntry(manager);
   const registrations: McpRegistration[] = [];
   const links: McpLink[] = [];
   for (const file of files) {
@@ -137,8 +142,8 @@ export function planMcpRegistration(cwd: string, files: readonly string[]): McpP
         : {};
     const existing = servers[MCP_SERVER_NAME];
     const entry = typeof existing === 'object' && existing !== null && !Array.isArray(existing)
-      ? { ...existing, ...SERVER_ENTRY }
-      : SERVER_ENTRY;
+      ? { ...existing, ...launch }
+      : launch;
     if (JSON.stringify(existing) === JSON.stringify(entry)) continue;
     const merged: McpConfigDocument = { ...document, mcpServers: { ...servers, [MCP_SERVER_NAME]: entry } };
     const original = existsSync(absolute) ? readFileSync(absolute, 'utf8') : undefined;
@@ -147,7 +152,7 @@ export function planMcpRegistration(cwd: string, files: readonly string[]): McpP
       relative: file,
       existing: original !== undefined,
       absolute,
-      content: file.endsWith('.toml') ? updateCodexConfig(original ?? '', SERVER_ENTRY) : `${JSON.stringify(merged, null, indent)}\n`,
+      content: file.endsWith('.toml') ? updateCodexConfig(original ?? '', launch) : `${JSON.stringify(merged, null, indent)}\n`,
     });
   }
   return { registrations, links };
