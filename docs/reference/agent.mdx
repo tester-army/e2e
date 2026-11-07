@@ -331,7 +331,7 @@ click, as a Shift-click extends a selection.
 | `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
 | `scroll_to({ target })` or `scroll_to({ text, direction?, target? })` | `scrollIntoView`; with `text`, `swipe` | With `target` alone, brings one listed node into the viewport, for a node the tree lists below or above the fold. With `text`, pages the list (`target`, else the viewport) screen by screen in `direction` (down by default) until a node reading that text shows, then brings it in when the engine can. That is for a row deep in a long or windowed list the tree has not rendered yet. The node's label must be the text, or hold it with no part of a word on either side, so `Row 12` never stops at `Row 120`. When `target` names a list, the node must be inside it, so a heading elsewhere reading the same does not end the paging. One action however many screens, up to 800; a screen that stops moving or the cap is `LOCATOR_NOT_FOUND`. Each form is offered only with its action kind. |
 | `drag({ target, to })` | `dragTo` | Drags one node and drops it on another: reordering, kanban columns, drop zones. |
-| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input, or to a visible control that opens a native file chooser. Paths are project-relative; see the policy below. |
+| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input, or to a visible control that opens a native file chooser. Paths are project-relative or name a `sample:` file; see the policy below. |
 | `navigate({ url })` | `session.open` | Opens a URL or an app-relative path. |
 | `back()` | `session.back` | Goes back once: browser history on a page, the in-app back on a device. |
 | `resize_viewport({ width, height })` | `session.resize` | Sets the viewport size in CSS pixels, 200 to 4096 per side, to check a layout at another width. The size holds until the next resize. Engines with `session.resize`, such as web. |
@@ -354,6 +354,10 @@ node into view. Replay follows the same rule.
   `.e2e`, is refused with `POLICY_DENIED`.
 - A path that names no regular file is `INVALID_ARGUMENT`, an ordinary action
   failure the model reads and corrects.
+- `sample:photo.png`, `sample:photo.jpg`, `sample:document.pdf`,
+  `sample:notes.txt`, `sample:table.csv`, and `sample:empty.txt` name small
+  files e2e ships, so the agent can try an upload when the project has no
+  file to give it. The tool lists them.
 - Every refusal and the final allow is a `policy` event named `upload.path`
   on the step. Nothing reaches the engine until every path passes.
 

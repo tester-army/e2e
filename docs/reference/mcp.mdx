@@ -264,12 +264,13 @@ changed on screen.
 | Input | Does |
 | --- | --- |
 | A node id | From the newest observation. |
-| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, `width` and `height`, or secret name | What the verb needs. |
+| The value, key, `checked` state, direction, drop target, project-relative or `sample:` `files`, URL, `width` and `height`, or secret name | What the verb needs. |
 | `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
 
 - A verb the engine does not declare is not in the catalog.
 - `upload` refuses a path outside the project, a hidden file, or a file
-  under a hidden directory with `POLICY_DENIED`.
+  under a hidden directory with `POLICY_DENIED`. A `sample:` file has no
+  test line: save a file in the project for one.
 - `type_secret` is listed when the config declares `credentials` or
   `secrets` and the engine declares the `fill` action. The plaintext never
   reaches the agent as text; see
