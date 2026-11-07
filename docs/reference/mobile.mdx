@@ -95,7 +95,7 @@ declaration.
 | Throws | When |
 | --- | --- |
 | `INVALID_CONFIG` | An empty `device` list, a blank `device` name, or a list entry that is not a non-blank string. |
-| `INVALID_CONFIG` | A `device` that is neither a string nor a list, or a provider with no non-empty `name`, no `acquire()` or `release()` function, or a `record` that is not a function. |
+| `INVALID_CONFIG` | A `device` value that is neither a string, a list, nor a valid provider: a provider without a non-empty `name`, without `acquire()` or `release()`, or with a `record` that is not a function. |
 | `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
 | `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
 
