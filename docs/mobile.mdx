@@ -688,6 +688,10 @@ export function cloudDevices(options: { provider: string; device: string; osVers
   detector a window of 350 ms or more.
 - On iOS, `device.foregroundApp()` still names the session's app after
   `device.home()`. Check the screen instead.
+- On an Android build with no shell command for the clipboard service (the
+  Android 16 emulator is one), `device.clipboard()` and
+  `device.setClipboard()` throw `UNSUPPORTED_CAPABILITY`. To check a copy,
+  paste into a field and read the field back.
 - On an iPhone Duo, `--video` records the display that was lit when the
   recording started. After `device.fold` moves the app to the other display,
   the rest of the video is black.

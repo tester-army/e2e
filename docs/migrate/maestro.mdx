@@ -143,7 +143,7 @@ purpose.
 | `pressKey: Home`, `back` | `device.home()`, `device.back()` |
 | `pressKey: lock`, `power`, `volume up`, TV remote keys | Not yet |
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
-| `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it |
+| `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it. Neither works on an Android build with no clipboard shell command |
 | `label: "..."` on a command | Not yet. Every `screen`, `device`, and `agent` call is a report step named by the call |
 
 </Accordion>
