@@ -779,9 +779,20 @@ if (runEvent.type === 'setup' && runEvent.step.kind === 'filter') runEvent.step.
 
 // An explore run's events narrow to the exploration's progress.
 if (runEvent.type === 'explore') {
-  runEvent.progress.phase satisfies 'started' | 'planning' | 'step-started' | 'step-finished' | 'finding' | 'finished';
+  runEvent.progress.phase satisfies 'started' | 'planning' | 'step-started' | 'step-finished' | 'finding' | 'finished' | 'merge';
   if (runEvent.progress.phase === 'finding') runEvent.progress.finding.severity satisfies 1 | 2 | 3 | 4 | 5;
+  // Parallel explorers tag their moments with the explorer, one-based; the merge carries the merged findings.
+  runEvent.explorer satisfies number | undefined;
+  if (runEvent.progress.phase === 'merge') {
+    runEvent.progress.findings[0]?.merged?.[0]?.id satisfies string | undefined;
+    runEvent.progress.merge.model?.inputTokens satisfies number | undefined;
+  }
 }
+// A parallel exploration's record: each finding and step names its explorer, and the explorers their focus.
+report.run.explore?.findings[0]?.explorer satisfies number | undefined;
+report.run.explore?.steps[0]?.explorer satisfies number | undefined;
+report.run.explore?.explorers?.[0]?.focus satisfies string | undefined;
+report.run.explore?.merge?.status satisfies 'merged' | 'failed' | 'interrupted' | undefined;
 
 // e2e/oauth/*: a constructor takes the model id alone; the login comes from e2e login or E2E_OAUTH_CREDENTIALS.
 chatgpt('gpt-5.6-luna') satisfies LanguageModelV4;

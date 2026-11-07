@@ -104,6 +104,8 @@ export function report(
     /** What the test filters decided and the change they judged; the fixture's own are never inherited either. */
     readonly filters?: ReportRun['filters'];
     readonly changes?: ReportRun['changes'];
+    /** An exploration's record; the fixture's own is never inherited, so a report is a test run unless it says otherwise. */
+    readonly explore?: ReportRun['explore'];
   } = {},
 ): Report {
   const status = input.status ?? 'passed';
@@ -125,6 +127,7 @@ export function report(
       carried: input.carried,
       filters: input.filters,
       changes: input.changes,
+      explore: input.explore,
     },
   };
 }

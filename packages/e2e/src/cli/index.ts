@@ -17,7 +17,7 @@ import type { Shard, TagMode } from '../collect/select.ts';
 import { listSelection, run, type ListedPair, type RunOptions, type RunOutcome } from '../run/runner.ts';
 import { claimRunnerOutput } from './run-output.ts';
 import { writeTerminal } from '../run/process-output.ts';
-import { STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/bounds.ts';
+import { PARALLEL_BOUNDS, STEP_BOUNDS, TIMEOUT_BOUNDS } from '../explore/bounds.ts';
 import { BUILTIN_REPORTERS, isBuiltinReporter } from '../report/builtin.ts';
 import { bounded, failureLine } from '../report/format.ts';
 import type { BuiltinReporter, RecordingMode } from '../types.ts';
@@ -785,10 +785,20 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     )
     .option(
       '--timeout <ms>',
-      `wall clock in milliseconds, ${TIMEOUT_BOUNDS.min} through ${TIMEOUT_BOUNDS.max} (default: ${TIMEOUT_BOUNDS.default})`,
+      `each explorer's time budget in milliseconds, ${TIMEOUT_BOUNDS.min} through ${TIMEOUT_BOUNDS.max} (default: ${TIMEOUT_BOUNDS.default})`,
       parseBoundedInt(TIMEOUT_BOUNDS),
     )
     .optionsGroup('Execution:')
+    .option(
+      '--parallel <n>',
+      `explorers at once, ${PARALLEL_BOUNDS.min} through ${PARALLEL_BOUNDS.max}, each with the whole goal, its own focus, and the budgets above; findings are merged (default: ${PARALLEL_BOUNDS.default})`,
+      parseBoundedInt(PARALLEL_BOUNDS),
+    )
+    .option(
+      '--focus <text>',
+      `an explorer's own focus, repeatable, up to ${PARALLEL_BOUNDS.max}: replaces the built-in focuses, one explorer each; --parallel, if given, must match the count`,
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
     .option('--headed', 'show the UI while the agent explores, when the engine supports it')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
@@ -808,6 +818,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'e2e explore --target web --max-steps 4 --headed',
           "e2e explore --agent ux 'Review onboarding as a first-time user'",
           "e2e explore --session admin 'Explore the admin settings and find bugs'",
+          "e2e explore --parallel 3 'Explore the issue tracker and find bugs'",
+          "e2e explore --focus 'sharing and permissions' --focus 'offline use' 'Explore the notes app'",
           "e2e explore 'Hunt for broken forms and dead links' --video",
         ]),
         '',
@@ -826,6 +838,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           session?: string;
           maxSteps?: number;
           timeout?: number;
+          parallel?: number;
+          focus?: string[];
           headed?: boolean;
           reporter?: Reporter[];
           output?: string;
@@ -847,6 +861,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             session: options.session,
             maxSteps: options.maxSteps,
             timeoutMs: options.timeout,
+            parallel: options.parallel,
+            focuses: options.focus,
             headed: options.headed,
             reporters: options.reporter,
             output: options.output,

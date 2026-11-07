@@ -211,6 +211,12 @@ export type RunEventFact =
        */
       readonly type: 'explore';
       readonly progress: ExploreProgress;
+      /**
+       * The parallel explorer the moment belongs to, one-based (`e2e explore
+       * --parallel`); absent with one explorer, and for the merge of their
+       * findings.
+       */
+      readonly explorer?: number | undefined;
     }
   | { readonly type: 'run-error'; readonly error: SerializedError }
   | {

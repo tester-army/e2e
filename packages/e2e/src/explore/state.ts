@@ -2,7 +2,7 @@
  * The record of one exploration: the goal, its budgets, the steps the agent
  * planned and ran, and the findings it reported. One instance is shared by
  * the planner, the explorer's finding tool, the exploration body, and the
- * run's event spine, and its snapshot becomes `run.explore` in the report.
+ * run's event spine; the runner records it as `run.explore` (`ExploreRecord`).
  * The state is the report boundary: every free text is bounded to the
  * schema's ceilings here, and nowhere else. Each change is announced to the
  * listeners `subscribe` registered, as `ExploreProgress`.
@@ -10,6 +10,7 @@
 
 import { timestamp, uuidv7 } from '../internal/ids.ts';
 import type { ReportExplore, ReportExploreFinding, ReportExploreStep } from '../report/build.ts';
+import type { ExploreFocus } from './focus.ts';
 import type { ExploreBudgets, ExploreListener, ExploreProgress, OpenedStep } from './progress.ts';
 
 export type { ExploreBudgets, OpenedStep } from './progress.ts';
@@ -43,6 +44,10 @@ export class ExploreState {
     readonly goal: string,
     readonly budgets: ExploreBudgets,
     private readonly now: () => number = Date.now,
+    /** A parallel explorer's focus; undefined when the exploration runs one explorer. */
+    readonly focus?: ExploreFocus,
+    /** Every parallel explorer's focus label, in order, this one's included. */
+    readonly focuses: readonly string[] = [],
   ) {}
 
   /** Why exploration stopped; `aborted` until `end` says otherwise. */
@@ -66,7 +71,12 @@ export class ExploreState {
 
   /** Announces the exploration beginning: the goal and its budgets. */
   start(): void {
-    this.#notify({ phase: 'started', goal: this.goal, budgets: { maxSteps: this.budgets.maxSteps, timeoutMs: this.budgets.timeoutMs } });
+    this.#notify({
+      phase: 'started',
+      goal: this.goal,
+      budgets: { maxSteps: this.budgets.maxSteps, timeoutMs: this.budgets.timeoutMs },
+      ...(this.focus === undefined ? {} : { focus: this.focus.label, focuses: this.focuses }),
+    });
   }
 
   /** Announces that the planner is deciding what comes next: a step, or the closing assessment. */
@@ -159,17 +169,6 @@ export class ExploreState {
       count += 1;
     }
     return count;
-  }
-
-  snapshot(): ReportExplore {
-    return {
-      goal: this.goal,
-      budgets: { maxSteps: this.budgets.maxSteps, timeoutMs: this.budgets.timeoutMs },
-      ended: this.#ended,
-      ...(this.#summary === undefined ? {} : { summary: this.#summary }),
-      steps: [...this.steps],
-      findings: [...this.findings],
-    };
   }
 }
 

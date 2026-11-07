@@ -853,7 +853,9 @@ bunx e2e explore 'Hunt for broken forms and dead links' --agent thorough --video
 | `--agent <name>` | The configured agent to explore as. Default: `default`. Its model, `system`, tools, and context are reused. The built-in agent replaces a hand-rolled `StepExecutor`, with a notice. An entry with no model, a custom executor's included, is `MODEL_UNAVAILABLE` before anything starts. An unknown name is `INVALID_CONFIG`. |
 | `--session <name>` | Starts signed in. The setup test in the config's test files that declares this session runs first. The exploration restores what it saved, as a test with `{ session }` does. No other test runs. A name no setup test declares is `COLLECTION_ERROR`, naming the declared ones, before any app process starts. See [Start signed in](/explore#start-signed-in). |
 | `--max-steps <n>` | Exploration steps at most, an integer 1-100. Default: `8`. Out of range exits 2. |
-| `--timeout <ms>` | The run's wall clock, an integer 180000-7200000. Default: `600000`. The last minute is kept for the closing assessment. Out of range exits 2. |
+| `--timeout <ms>` | Each explorer's time budget, an integer 180000-7200000. Default: `600000`. The last minute is kept for the closing assessment. The run takes longer: setup, explorers waiting for a worker, the merge of parallel explorers' findings (up to 2 minutes), and cleanup come on top. Out of range exits 2. |
+| `--parallel <n>` | Explorers at once, an integer 1-5. Default: `1`, or the number of `--focus` flags. Each explorer gets the whole goal, its own focus, and the step and time budgets above. Findings that describe the same failure are merged after the run. See [Run several explorers](/explore#run-several-explorers). Out of range exits 2. |
+| `--focus <text>` | An explorer's own focus, repeatable, up to 5. Replaces the built-in focuses, one explorer per focus; the label in the report is the text's first clause, shortened. With `--parallel`, the counts must match, else exit 2. |
 | `--headed` | Requests visible UI when the engine supports it. |
 | `--reporter <ids>` | As for `run`. Default: the resolved config value. `list` prints the exploration rows under its summary, `json` carries the record in the report, and `markdown` writes the findings to `<output>/summary.md`. |
 | `--output <dir>` | As for `run`. Default: the config, else `.e2e`. A finding's evidence screenshot is an attempt artifact under `<output>/results`. |
@@ -871,7 +873,8 @@ flag, or write `--trace=<mode>` or `--video=<mode>`.
 ##### Report
 
 - The run has one result, under the virtual file `explore`, titled by the
-  goal.
+  goal. With `--parallel <n>` it has one result per explorer, under
+  `explore/1` to `explore/<n>`.
 - The exploration opens the app first: the target's `app.url`, or on a device
   the [pinned app](/mobile#point-at-your-app), launched fresh. It installs no
   build, so a local device target needs `app.bundleId`.
@@ -884,6 +887,14 @@ flag, or write `--trace=<mode>` or `--video=<mode>`.
 - `<output>/report.json` gains `run.explore`: the goal, the budgets, why the
   run ended (`finished`, `step-limit`, `time`, `stuck`, or `aborted`), the
   assessment, the steps, and the findings.
+  With `--parallel`, it also holds `explorers` (each one's focus, ending, and
+  assessment), each step and finding names its `explorer`, a merged finding
+  lists the findings it absorbed in `merged` (`id`, `title`, `explorer`, `step`, `artifactId`), and `merge` records the merge call when
+  one was made (at least two findings, run not interrupted): `status`
+  (`merged`; `failed` when the call failed or its grouping was invalid;
+  `interrupted` when an interrupt landed during the call; every finding is
+  kept unless `merged`), `reported`, and, once the call answered, `model`, its
+  usage, which the run's `usage` includes. `ended` is then the least complete ending of the explorers.
 - Artifacts go to a directory named from the goal's first words and a digest
   of the goal, target, and agent, such as
   `<output>/results/explore-check-the-cart-totals-1a2b3c4d5e6f7a8b/`. A rerun

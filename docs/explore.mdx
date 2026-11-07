@@ -113,7 +113,7 @@ reaches the model. See
 
 ## If the run stops too early
 
-A run stops after 8 steps or 10 minutes. To reach further into the flow,
+An explorer stops after 8 steps or 10 minutes. To reach further into the flow,
 raise `--max-steps <n>` (up to 100) or `--timeout <ms>` (up to `7200000`, 2
 hours).
 
@@ -121,6 +121,61 @@ A run with time left after the main flows returns to them with edge-case
 inputs, combined filters, reloads, and, with more than one account configured
 and no `--session`, another account. It finishes early only when nothing new
 is reachable.
+
+## Run several explorers
+
+One explorer finds the easy bugs. Add `--parallel <n>` (up to 5) to run
+several at once on the same goal, each with a different focus:
+
+<CodeGroup>
+```bash npm
+npx e2e explore --parallel 3 'Explore the issue tracker and find bugs'
+```
+
+```bash pnpm
+pnpm exec e2e explore --parallel 3 'Explore the issue tracker and find bugs'
+```
+
+```bash bun
+bunx e2e explore --parallel 3 'Explore the issue tracker and find bugs'
+```
+</CodeGroup>
+
+Each focus is a kind of defect. Explorer 1 takes the first, explorer 2 the
+second, and so on:
+
+1. Wrong results: what the app shows and keeps after an action, on every screen that shows the same data.
+2. Input and validation.
+3. State and navigation: combined controls, back, reload or relaunch, and changes other screens depend on.
+4. Layout and environment, for the target's platform: tablet and phone widths in a browser; rotation, background and resume, the keyboard, permission prompts, and deep links on a device. With several accounts configured and no `--session`, other roles too.
+5. Errors and recovery: empty, loading, and error states, double submits, and the controls the main flows skip.
+
+To hunt your own kinds of defects, pass `--focus` once per explorer. Your
+focuses replace the built-in ones, and the explorer count is their number:
+
+<CodeGroup>
+```bash npm
+npx e2e explore --focus 'sharing and permissions' --focus 'offline use and sync' 'Explore the notes app'
+```
+
+```bash pnpm
+pnpm exec e2e explore --focus 'sharing and permissions' --focus 'offline use and sync' 'Explore the notes app'
+```
+
+```bash bun
+bunx e2e explore --focus 'sharing and permissions' --focus 'offline use and sync' 'Explore the notes app'
+```
+</CodeGroup>
+
+Up to 5 focuses. With `--parallel` too, it must match the number of focuses.
+
+Each explorer has its own step and time budget, and its own browser or
+device. When the engine provides fewer, the other explorers wait for a free
+one. The app command and a `--session` setup run once, and all explorers
+share that app and its data. After the run, one model call (up to 2 minutes)
+merges the findings that describe the same failure, and each finding names
+the explorer that reported it. If that call fails, the report keeps every
+finding.
 
 ## Choose the target and agent
 

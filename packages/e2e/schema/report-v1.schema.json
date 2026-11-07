@@ -820,7 +820,25 @@
         "path": { "type": "string", "maxLength": 2048 },
         "observationRevision": { "type": "string", "minLength": 1 },
         "reportedAt": { "$ref": "#/$defs/timestamp" },
-        "artifactId": { "type": "string", "minLength": 1 }
+        "artifactId": { "type": "string", "minLength": 1 },
+        "explorer": { "type": "integer", "minimum": 1, "description": "The parallel explorer that reported the finding (explorers[].index); absent with one explorer." },
+        "merged": {
+          "type": "array",
+          "minItems": 1,
+          "description": "The findings merged into this one as the same failure: their id, title, explorer, step, and evidence screenshot.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+              "explorer": { "type": "integer", "minimum": 1 },
+              "step": { "type": "integer", "minimum": 1 },
+              "artifactId": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
       }
     },
     "exploreStep": {
@@ -835,7 +853,20 @@
         "summary": { "type": "string", "maxLength": 4000 },
         "errorCode": { "type": "string", "minLength": 1 },
         "startedAt": { "$ref": "#/$defs/timestamp" },
-        "durationMs": { "type": "integer", "minimum": 0 }
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "explorer": { "type": "integer", "minimum": 1, "description": "The parallel explorer that ran the step; index counts within it. Absent with one explorer." }
+      }
+    },
+    "explorer": {
+      "description": "One of several parallel explorers: the focus it explored the goal with, and how it ended.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["index", "focus", "ended"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 1 },
+        "focus": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "ended": { "enum": ["finished", "step-limit", "time", "stuck", "aborted"] },
+        "summary": { "type": "string", "maxLength": 4000 }
       }
     },
     "explore": {
@@ -857,8 +888,299 @@
         "ended": { "enum": ["finished", "step-limit", "time", "stuck", "aborted"] },
         "summary": { "type": "string", "maxLength": 4000 },
         "steps": { "type": "array", "items": { "$ref": "#/$defs/exploreStep" } },
-        "findings": { "type": "array", "items": { "$ref": "#/$defs/exploreFinding" } }
-      }
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/exploreFinding" } },
+        "explorers": {
+          "description": "The parallel explorers, in order; absent with one.",
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/explorer" }
+        },
+        "merge": {
+          "description": "The merge of parallel explorers' findings, when one was attempted: merged when the model grouped them, failed when its call failed or its grouping was invalid, interrupted when the run was interrupted during the call; every finding is kept unless merged. reported counts the findings before the merge; model is the call's provenance and usage, once it answered.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reported"],
+          "if": { "properties": { "status": { "const": "merged" } } },
+          "then": { "required": ["model"] },
+          "properties": {
+            "status": { "enum": ["merged", "failed", "interrupted"] },
+            "reported": { "type": "integer", "minimum": 2 },
+            "model": { "$ref": "#/$defs/model" }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "explorers"
+            ]
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": {
+                  "required": [
+                    "explorer"
+                  ]
+                }
+              },
+              "findings": {
+                "items": {
+                  "required": [
+                    "explorer"
+                  ],
+                  "properties": {
+                    "merged": {
+                      "items": {
+                        "required": [
+                          "explorer"
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "else": {
+            "not": {
+              "required": [
+                "merge"
+              ]
+            },
+            "properties": {
+              "steps": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "explorer"
+                    ]
+                  }
+                }
+              },
+              "findings": {
+                "items": {
+                  "not": {
+                    "required": [
+                      "explorer"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "explorers"
+            ],
+            "properties": {
+              "explorers": {
+                "maxItems": 2
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 2
+                    }
+                  }
+                }
+              },
+              "findings": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 2
+                    },
+                    "merged": {
+                      "items": {
+                        "properties": {
+                          "explorer": {
+                            "maximum": 2
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "explorers": {
+                "items": {
+                  "properties": {
+                    "index": {
+                      "maximum": 2
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "explorers"
+            ],
+            "properties": {
+              "explorers": {
+                "maxItems": 3
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 3
+                    }
+                  }
+                }
+              },
+              "findings": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 3
+                    },
+                    "merged": {
+                      "items": {
+                        "properties": {
+                          "explorer": {
+                            "maximum": 3
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "explorers": {
+                "items": {
+                  "properties": {
+                    "index": {
+                      "maximum": 3
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "explorers"
+            ],
+            "properties": {
+              "explorers": {
+                "maxItems": 4
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 4
+                    }
+                  }
+                }
+              },
+              "findings": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 4
+                    },
+                    "merged": {
+                      "items": {
+                        "properties": {
+                          "explorer": {
+                            "maximum": 4
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "explorers": {
+                "items": {
+                  "properties": {
+                    "index": {
+                      "maximum": 4
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "explorers"
+            ],
+            "properties": {
+              "explorers": {
+                "maxItems": 5
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "steps": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 5
+                    }
+                  }
+                }
+              },
+              "findings": {
+                "items": {
+                  "properties": {
+                    "explorer": {
+                      "maximum": 5
+                    },
+                    "merged": {
+                      "items": {
+                        "properties": {
+                          "explorer": {
+                            "maximum": 5
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "explorers": {
+                "items": {
+                  "properties": {
+                    "index": {
+                      "maximum": 5
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

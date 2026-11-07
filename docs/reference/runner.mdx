@@ -143,6 +143,8 @@ console.log(result.status, result.explore.ended, result.explore.findings.length)
 | `session` | `'loggedIn'` | `string` | - |
 | `maxSteps` | `4` | `number` | `8` |
 | `timeoutMs` | `300_000` | `number` | `600_000` |
+| `parallel` | `3` | `number` | `1`, or the number of `focuses` |
+| `focuses` | `['offline use']` | `string[]` | the built-in focuses |
 | `interruptSignal` | `controller.signal` | `AbortSignal` | - |
 | `onEvent` | `(event) => {}` | `RunEventSink` | - |
 
@@ -150,6 +152,11 @@ console.log(result.status, result.explore.ended, result.explore.findings.length)
 - `session` names a session a [setup test](/authentication) saves. That setup
   runs first, and the exploration starts from it, as `--session` does.
 - `maxSteps` is from 1 to 100. `timeoutMs` is from `180000` to `7200000`.
+- `parallel` is from 1 to 5, as [`--parallel`](/reference/cli#e2e-explore)
+  does. With a config value instead of a file, the explorers run one after
+  another, with a notice.
+- `focuses` replaces the built-in focuses, one explorer each, up to 5, as
+  `--focus` does; with `parallel` too, the counts must match.
 - `onEvent` receives the same events as for `run`, plus an `explore` event
   for each planning decision, step, and finding. What `e2e explore` prints
   before the run starts, such as the target it chose, arrives as a `notice`
@@ -169,6 +176,7 @@ record `report.run.explore` also holds.
 | `explore.summary` | The agent's closing assessment, when it gave one. |
 | `explore.steps` | Each step the agent planned and ran, with its status: `passed`, `failed`, `blocked`, or `exhausted`. |
 | `explore.findings` | Each finding: `kind`, `severity` from 1 to 5, `title`, `expected`, `actual`, and `reproduction`. An `issue` fails the run; a `warning` does not. |
+| `explore.explorers`, `explore.merge` | With `parallel` above 1: each explorer's `focus`, `ended`, and `summary` (when it gave one), and `merge` when a merge call was made (at least two findings, not interrupted), with its `status` (`merged`, `failed`, or `interrupted`) and the call's usage in `model`. Steps and findings name their `explorer`; a merged finding lists the findings it absorbed in `merged`, each with its `id` and `title`, and its `explorer`, `step`, and `artifactId` when known. |
 
 Once the exploration starts, findings, failures, and interruption resolve
 with their status in the report. Options or a config that cannot start one
@@ -177,7 +185,7 @@ reject first, as the matching `e2e explore` flags do. Recognize them with
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | `goal`, `maxSteps`, or `timeoutMs` is out of range, or `agent` names no configured agent. |
+| `INVALID_CONFIG` | `goal`, `maxSteps`, `timeoutMs`, `parallel`, or `focuses` is out of range, `parallel` does not match the number of `focuses`, or `agent` names no configured agent. |
 | `UNKNOWN_TARGET` | `target` names no configured target. |
 | `MODEL_UNAVAILABLE` | The agent has no model. |
 | `RUNNER_BUSY` | A suite or an exploration is running, or a host is open. |
