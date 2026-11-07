@@ -14,7 +14,7 @@ Android emulator, or phone.
   skill and feature map on top of e2e. Invoke it with
   `/e2e:create-verification-skill` in Claude Code or
   `$e2e:create-verification-skill` in Codex. It loads only when invoked.
-- **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Detox, Maestro,
+- **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Appium, Detox, Maestro,
   or TesterArmy suite to e2e one slice at a time, with the old suite running beside the
   new one and a `MIGRATION.md` file the next session resumes from.
 
