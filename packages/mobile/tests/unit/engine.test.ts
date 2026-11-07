@@ -1917,6 +1917,23 @@ describe('device fixture', () => {
     });
   });
 
+  it('gives a screen swipe the remaining transition budget after an alert is dismissed', async () => {
+    autoAdvanceTimers();
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    await screenRootOf(h);
+    await fixture(h).alert('accept');
+    const dismissedAt = Date.now();
+    const screen = await screenRootOf(h);
+    await sleep(30);
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...operation(), origin: 'test' });
+
+    expect(Date.now() - dismissedAt).toBe(120);
+    expect(h.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down' });
+  });
+
   it('counts a back, home, alert, keyboard, rotation, or fold as an action, so a control that arrives with it waits out the transition budget', async () => {
     autoAdvanceTimers();
     const h = harness({ transition: 120 });
@@ -3050,6 +3067,126 @@ describe('deterministic actions', () => {
   const test = (): OperationContext => ({ ...operation(), origin: 'test' });
 
   beforeEach(autoAdvanceTimers);
+
+  it('keeps agent-origin screen swipes immediate with driver settling', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const startedAt = Date.now();
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, operation());
+
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.lastArgs('interactions.scroll')).toEqual({ direction: 'down', settle: true, settleQuietMs: 150 });
+  });
+
+  it('counts captures between consecutive screen swipes toward the transition budget', async () => {
+    const h = harness({ transition: 120 });
+    await openAttempt(h);
+    await sleep(150);
+    const screen = await screenRootOf(h);
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, test());
+    const firstSwipeAt = Date.now();
+    h.fake.respond('capture.snapshot', async () => { await sleep(50); return SETTINGS_SNAPSHOT; });
+    const nextScreen = await screenRootOf(h);
+
+    await h.engine.perform!(nextScreen.ref, { kind: 'swipe', direction: 'down' }, test());
+
+    expect(Date.now() - firstSwipeAt).toBe(120);
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(2);
+  });
+
+  it('does not dispatch a screen swipe whose transition wait was cancelled', async () => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const controller = new AbortController();
+    const pending = h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), signal: controller.signal });
+    setTimeout(() => controller.abort(), 20);
+
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
+  it('rejects an already cancelled screen swipe without starting its transition wait', async () => {
+    const h = harness({ transition: 300 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const controller = new AbortController();
+    controller.abort();
+    const startedAt = Date.now();
+
+    await expect(h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), signal: controller.signal })).rejects.toMatchObject({ code: 'CANCELLED' });
+
+    expect(Date.now()).toBe(startedAt);
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
+  it('ends a screen-swipe transition at its action budget without sending a gesture', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const startedAt = Date.now();
+
+    await expect(h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), timeoutMs: 20 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    expect(Date.now() - startedAt).toBe(20);
+    await sleep(200);
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
+  it.each([20, 20.5])('does not send a %s ms capped screen swipe when its timer wakes before the wall-clock deadline', async (timeoutMs) => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const timerNow = Date.now;
+    const startedAt = timerNow();
+    // The timer fires while the clock the budget reads still lags it by 1 ms.
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => startedAt + Math.max(0, timerNow() - startedAt - 1));
+    try {
+      await expect(h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), timeoutMs })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
+      expect(Date.now() - startedAt).toBeLessThan(timeoutMs);
+      expect(h.fake.methods()).not.toContain('interactions.scroll');
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('sends a screen swipe when its action budget can accommodate the full transition', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const startedAt = Date.now();
+
+    await h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), timeoutMs: 200 });
+
+    expect(Date.now() - startedAt).toBe(160);
+    expect(h.fake.calls.filter((call) => call.method === 'interactions.scroll')).toHaveLength(1);
+  });
+
+  it('reports cancellation when the caller aborts a capped transition wait', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const screen = await screenRootOf(h);
+    const controller = new AbortController();
+    const pending = h.engine.perform!(screen.ref, { kind: 'swipe', direction: 'down' }, { ...test(), signal: controller.signal, timeoutMs: 20 });
+    setTimeout(() => controller.abort(), 10);
+
+    await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+    expect(h.fake.methods()).not.toContain('interactions.scroll');
+  });
+
+  it('ends an arriving control transition at its action budget without tapping', async () => {
+    const h = harness({ transition: 160 });
+    await openAttempt(h);
+    const about = await observed(h, 'About');
+    const startedAt = Date.now();
+
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, { ...test(), timeoutMs: 20 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
+
+    expect(Date.now() - startedAt).toBe(20);
+    expect(h.fake.methods()).not.toContain('interactions.press');
+  });
 
   /**
    * Taps under a stopped clock. The fake client records a dispatch the moment
