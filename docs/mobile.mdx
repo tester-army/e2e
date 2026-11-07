@@ -258,8 +258,9 @@ next launch. It is iOS only.
 
 For anything `device` doesn't cover, `device.unstable_raw` has an
 [agent-device](https://github.com/callstack/agent-device) client
-bound to the test's session, plus the session name and the device's id and
-name. It is unstable and may change or go away in any release:
+bound to the test's session, plus the session name, the device's id and
+name, and a `selection` to spread into a client call. It is unstable and
+may change or go away in any release:
 
 ```ts
 const { client, deviceId } = device.unstable_raw;
@@ -269,6 +270,35 @@ const { nodes } = await client.capture.snapshot({});
 Client calls aren't steps: the report and trace leave them out, the agent
 cache doesn't replay them, secrets passed to them aren't redacted, and
 nothing waits for the screen to settle after one.
+
+<Accordion title="Text size and animations">
+`device` has no method for the system text size or animations, so set them
+through `unstable_raw`. Change the text size before `app.open()`. A running
+app can keep the old size until it launches again, so call `app.restart()`
+after a change mid-test:
+
+```ts
+import { afterEach, test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+afterEach(async ({ device }) => {
+  const { client, selection } = device.unstable_raw;
+  await client.settings.update({ ...selection, setting: 'text-size', state: 'large' });
+});
+
+test('the checkout button shows at the largest text size', async ({ app, device, screen }) => {
+  const { client, selection } = device.unstable_raw;
+  await client.settings.update({ ...selection, setting: 'text-size', state: 'accessibility-extra-extra-extra-large' });
+  await app.open();
+  await expect(screen.getByRole('button', 'Checkout')).toBeVisible();
+});
+```
+
+`text-size` works on iOS simulators and Android; `large` is the default on
+both. `setting: 'animations'` with `state: 'off'` or `'on'` is Android only
+and fails on iOS. On Android it sets the window, transition, and animator
+scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach`.
+</Accordion>
 
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
