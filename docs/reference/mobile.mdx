@@ -544,6 +544,10 @@ await app.open();
 - `permission` is a [`DevicePermission`](#device-fixture); `state` is
   `grant`, `deny`, or `reset`.
 
+| Throws | When |
+| --- | --- |
+| `INVALID_ARGUMENT` | A permission name outside `DevicePermission` (naming the nearest one when it is a likely typo), or a state other than `grant`, `deny`, or `reset`. Fails before any device command. |
+
 #### `setLocation`
 
 ```ts
