@@ -3,7 +3,7 @@
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { settleStagedTraces, type AgentCacheContext, type ClaimedKey } from '../../src/cache/context.ts';
 import { instructionDigest, paramsDigest } from '../../src/cache/identity.ts';
 import { StoredRecordings } from '../../src/cache/rekeyed.ts';
@@ -13,6 +13,7 @@ import { failedStepOutcome, recordedVerdictOf, StepTraceSession, type StepCacheH
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import type { SettleMode } from '../../src/agent/settle-policy.ts';
+import type { SemanticScreen } from '../../src/agent/replay.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { redacted, redactedNodes } from '../helpers/redacted.ts';
@@ -74,6 +75,20 @@ function fakeContext(read: AgentCacheContext['store']['read']): AgentCacheContex
   };
 }
 
+/** `host` keeping each screen its `observe` returned and when, as the feed does; assigned, so a `traceEligible` getter stays live. */
+function withLooks(host: Omit<StepCacheHost, 'looksSince'>): StepCacheHost {
+  const looks: { readonly atMs: number; readonly screen: SemanticScreen }[] = [];
+  const observe = host.observe;
+  return Object.assign(host, {
+    observe: async (mode: SettleMode) => {
+      const screen = await observe(mode);
+      if (screen.kind === 'semantic') looks.push({ atMs: Date.now(), screen });
+      return screen;
+    },
+    looksSince: (sinceMs: number) => looks.filter((look) => look.atMs >= sinceMs),
+  });
+}
+
 /**
  * A host whose location reads come from `paths` in order (undefined once
  * exhausted — a surface without a URL) and whose screens come from `screens`
@@ -93,7 +108,7 @@ function makeHost(
       ...(path === undefined ? {} : { path }),
     };
   };
-  return {
+  return withLooks({
     observe: nextScreen,
     actions: { navigate: async () => undefined } as unknown as ExecutorActions,
     signal: new AbortController().signal,
@@ -101,7 +116,7 @@ function makeHost(
     remainingMs: () => 50,
     traceEligible: true,
     replaying: () => undefined,
-  };
+  });
 }
 
 function makeSession(cache: AgentCacheContext, host: StepCacheHost, overrides: Partial<StepCacheOptions> = {}): StepTraceSession {
@@ -568,7 +583,7 @@ describe('StepTraceSession', () => {
         const paths = ['/pricing', '/customers'];
         let currentPath: string | undefined;
         // This test host holds the replay on its end route while the fake clock settles it.
-        const host: StepCacheHost = {
+        const host: StepCacheHost = withLooks({
           observe: async () => {
             const nextPath = paths.shift();
             if (nextPath !== undefined) currentPath = nextPath;
@@ -584,7 +599,7 @@ describe('StepTraceSession', () => {
           remainingMs: () => 600_000,
           traceEligible: true,
           replaying: () => undefined,
-        };
+        });
         session = makeSession(context, host);
         await session.begin();
         expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
@@ -620,7 +635,7 @@ describe('StepTraceSession', () => {
     const screens: (readonly SemanticNode[])[] = [[], [savedMarker]];
     let currentPath: string | undefined;
     // This test host holds the failed replay on its route for staging.
-    const host: StepCacheHost = {
+    const host: StepCacheHost = withLooks({
       observe: async () => {
         const nextPath = paths.shift();
         if (nextPath !== undefined) currentPath = nextPath;
@@ -642,7 +657,7 @@ describe('StepTraceSession', () => {
       remainingMs: () => 600_000,
       traceEligible: true,
       replaying: () => undefined,
-    };
+    });
     session = makeSession(context, host);
     await session.begin();
     expect(session.replayedPrefix?.stopReason).toBe('action-failed');
@@ -1098,6 +1113,11 @@ describe('StepTraceSession', () => {
 });
 
 /** A context whose store always hits with one navigate-opening trace. */
+/** `context` under `cache.strict`, which is read-only whatever the configured mode (`createAgentCacheContext`). */
+function asStrict(context: AgentCacheContext): AgentCacheContext {
+  return { ...context, mode: 'read-only', strict: { advice: 're-record it' } };
+}
+
 function entryContext(overrides: Partial<ActionTrace>): AgentCacheContext {
   const payload: ActionTrace = {
     actions: [{ name: 'navigate', summary: 'navigate to "/customers"', url: '/customers' }],
@@ -1163,6 +1183,139 @@ describe('destination path settling', () => {
     const verdict = await session.begin();
     expect(verdict).toBeUndefined();
     expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+  });
+});
+
+describe('the end wait', () => {
+  /** A host on /billing showing the saved marker while `shown` says so. */
+  const billingHost = (shown: () => boolean, remainingMs = 120_000, record?: (url: string) => void): StepCacheHost =>
+    withLooks({
+      observe: async () => ({ kind: 'semantic', nodes: nodeMap(shown() ? [savedMarker] : []), viewport: { width: 1280, height: 720 }, path: '/billing' }),
+      actions: { navigate: async (url: string) => record?.(url) } as unknown as ExecutorActions,
+      signal: new AbortController().signal,
+      remainingMs: () => remainingMs,
+      traceEligible: true,
+      replaying: () => undefined,
+    });
+
+  /** An entry for /billing whose end state is the saved marker, waiting `endWaitMs` when given. */
+  const billingEntry = (endWaitMs?: number) => entryContext({ endPath: '/billing', endAnchors: [savedAnchor], ...(endWaitMs === undefined ? {} : { endWaitMs }) });
+
+  /** The wait a recording stages after one executor navigate and `afterAction`, which shows the end state with `show`. */
+  async function recordedWait(afterAction: (look: () => Promise<unknown>, show: () => void) => Promise<void>): Promise<number | undefined> {
+    const context = fakeContext(async () => ({ status: 'miss' }));
+    let shown = false;
+    let session: StepTraceSession | undefined;
+    const host = billingHost(() => shown, 120_000, (url) => session?.record({ name: 'navigate', url }));
+    session = makeSession(context, host);
+    await session.begin();
+    await host.actions.navigate('/billing');
+    await afterAction(() => host.observe('held-still'), () => { shown = true; });
+    await session.conclude('passed', 'billing is open');
+    return stagedTrace(context).endWaitMs;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setTimerTickMode('nextTimerAsync');
+  });
+
+  it('dates the recorded wait by the first look that showed the end state, not by the verdict', async () => {
+    const endWaitMs = await recordedWait(async (look, show) => {
+      await vi.advanceTimersByTimeAsync(700);
+      show();
+      await look();
+      // The model's last turn: it read the end state, then called complete_step.
+      await vi.advanceTimersByTimeAsync(8_000);
+    });
+    expect(endWaitMs).toBe(700 + END_WAIT_MARGIN_MS);
+  });
+
+  it('keeps the time an end state took to show when the looks before it missed it', async () => {
+    const endWaitMs = await recordedWait(async (look, show) => {
+      await vi.advanceTimersByTimeAsync(1_000);
+      await look();
+      await vi.advanceTimersByTimeAsync(19_000);
+      show();
+      await look();
+      await vi.advanceTimersByTimeAsync(5_000);
+    });
+    expect(endWaitMs).toBe(20_000 + END_WAIT_MARGIN_MS);
+  });
+
+  it("dates the end state by staging's own look when the executor never looked after acting", async () => {
+    const endWaitMs = await recordedWait(async (_look, show) => {
+      await vi.advanceTimersByTimeAsync(3_000);
+      show();
+    });
+    expect(endWaitMs).toBe(3_000 + END_WAIT_MARGIN_MS);
+  });
+
+  it('hands a replay whose end state never shows off when the recorded wait runs out', async () => {
+    const session = makeSession(billingEntry(10_718), billingHost(() => false));
+    const startedMs = Date.now();
+    await expect(session.begin()).resolves.toBeUndefined();
+    expect(session.replayedPrefix?.stopReason).toBe('end-mismatch');
+    expect(Date.now() - startedMs).toBe(10_718);
+  });
+
+  it('waits 15 s for an entry recorded without a wait', async () => {
+    const session = makeSession(billingEntry(), billingHost(() => false));
+    const startedMs = Date.now();
+    await expect(session.begin()).resolves.toBeUndefined();
+    expect(Date.now() - startedMs).toBe(15_000);
+  });
+
+  it('waits at least 15 s under cache.strict, where giving up fails the step', async () => {
+    let showsFrom = Date.now() + 13_000;
+    const lenient = makeSession(billingEntry(11_000), billingHost(() => Date.now() >= showsFrom));
+    let startedMs = Date.now();
+    await expect(lenient.begin()).resolves.toBeUndefined();
+    expect(Date.now() - startedMs).toBe(11_000);
+
+    showsFrom = Date.now() + 13_000;
+    const verdict = await makeSession(asStrict(billingEntry(11_000)), billingHost(() => Date.now() >= showsFrom)).begin();
+    expect(verdict?.status).toBe('passed');
+
+    startedMs = Date.now();
+    await expect(makeSession(asStrict(billingEntry(11_000)), billingHost(() => false)).begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
+    expect(Date.now() - startedMs).toBe(15_000);
+  });
+
+  it('keeps the step clock a hand-off needs, and under cache.strict only enough to fail as stale', async () => {
+    let startedMs = Date.now();
+    await expect(makeSession(billingEntry(30_000), billingHost(() => false, 25_000)).begin()).resolves.toBeUndefined();
+    expect(Date.now() - startedMs).toBe(5_000);
+
+    startedMs = Date.now();
+    await expect(makeSession(asStrict(billingEntry(30_000)), billingHost(() => false, 25_000)).begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
+    expect(Date.now() - startedMs).toBe(23_000);
+  });
+
+  it('still sees an end state that renders right after the last action when the step clock is short', async () => {
+    const showsFrom = Date.now() + 300;
+    const verdict = await makeSession(billingEntry(10_718), billingHost(() => Date.now() >= showsFrom, 15_000)).begin();
+    expect(verdict?.status).toBe('passed');
+  });
+
+  it('counts the strict minimum from the recorded route, so a slow navigation does not shorten it', async () => {
+    const routeFrom = Date.now() + 3_000;
+    const showsFrom = Date.now() + 16_000;
+    const host = withLooks({
+      observe: async () => ({
+        kind: 'semantic',
+        nodes: nodeMap(Date.now() >= showsFrom ? [savedMarker] : []),
+        viewport: { width: 1280, height: 720 },
+        path: Date.now() >= routeFrom ? '/billing' : '/pricing',
+      }),
+      actions: { navigate: async () => undefined } as unknown as ExecutorActions,
+      signal: new AbortController().signal,
+      remainingMs: () => 120_000,
+      traceEligible: true,
+      replaying: () => undefined,
+    });
+    const verdict = await makeSession(asStrict(billingEntry(11_000)), host).begin();
+    expect(verdict?.status).toBe('passed');
   });
 });
 
@@ -1281,11 +1434,8 @@ describe('settleStagedTraces and a re-recorded flow', () => {
 });
 
 describe('cache.strict', () => {
-  // A strict context is read-only whatever the configured mode (`createAgentCacheContext`).
-  const strict = (context: AgentCacheContext): AgentCacheContext => ({ ...context, mode: 'read-only', strict: { advice: 're-record it' } });
-
   it('fails a step whose recording diverged instead of handing it off, and keeps the cache detail', async () => {
-    const context = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
+    const context = asStrict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
     const session = makeSession(context, makeHost(['/pricing', '/customers']));
     await expect(session.begin()).rejects.toMatchObject({ code: 'REPLAY_STALE', category: 'configuration' });
     expect(session.cacheInfo).toMatchObject({ mode: 'agent-concluded', reason: 'end-mismatch' });
@@ -1293,18 +1443,18 @@ describe('cache.strict', () => {
 
   it('fails an entry it cannot read and a recording made on another screen', async () => {
     const malformed = { schemaVersion: 'trace-1', payload: { actions: 'not a list' } } as unknown as TraceEntry;
-    const unreadable = makeSession(strict(fakeContext(async () => ({ status: 'hit', entry: malformed, bytes: 1 }))), makeHost(['/']));
+    const unreadable = makeSession(asStrict(fakeContext(async () => ({ status: 'hit', entry: malformed, bytes: 1 }))), makeHost(['/']));
     await expect(unreadable.begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
-    const elsewhere = makeSession(strict(entryContext({ startPath: '/pricing', actions: [{ name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } }] })), makeHost(['/billing']));
+    const elsewhere = makeSession(asStrict(entryContext({ startPath: '/pricing', actions: [{ name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } }] })), makeHost(['/billing']));
     await expect(elsewhere.begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
     expect(elsewhere.cacheInfo).toMatchObject({ mode: 'missed', reason: 'wrong-context' });
   });
 
   it('still runs live a step with no recording and a recording too long to replay', async () => {
-    await expect(makeSession(strict(fakeContext(async () => ({ status: 'miss' }))), makeHost(['/'])).begin()).resolves.toBeUndefined();
+    await expect(makeSession(asStrict(fakeContext(async () => ({ status: 'miss' }))), makeHost(['/'])).begin()).resolves.toBeUndefined();
     const tapUpgrade = { name: 'tap', summary: 'tap button "Upgrade"', target: { role: 'button', name: 'Upgrade' } } as const;
     const truncated = makeSession(
-      strict(entryContext({ actions: Array.from({ length: 50 }, () => tapUpgrade), startPath: '/pricing', truncated: true })),
+      asStrict(entryContext({ actions: Array.from({ length: 50 }, () => tapUpgrade), startPath: '/pricing', truncated: true })),
       makeHost(['/pricing']),
     );
     await expect(truncated.begin()).resolves.toBeUndefined();
@@ -1312,7 +1462,7 @@ describe('cache.strict', () => {
 
   it('keeps the stale entry it failed on, so the next strict run fails on it too', async () => {
     const deleted: string[] = [];
-    const base = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
+    const base = asStrict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
     const context: AgentCacheContext = { ...base, store: { ...base.store, delete: async (key) => { deleted.push(key); } } };
     const session = makeSession(context, makeHost(['/pricing', '/customers']));
     await expect(session.begin()).rejects.toMatchObject({ code: 'REPLAY_STALE' });
@@ -1321,13 +1471,13 @@ describe('cache.strict', () => {
   });
 
   it('runs live when the store read rejects, since nothing says a recording exists', async () => {
-    const session = makeSession(strict(fakeContext(async () => { throw new Error('redis is down'); })), makeHost(['/']));
+    const session = makeSession(asStrict(fakeContext(async () => { throw new Error('redis is down'); })), makeHost(['/']));
     await expect(session.begin()).resolves.toBeUndefined();
     expect(session.cacheInfo).toMatchObject({ mode: 'missed', reason: 'invalid-entry' });
   });
 
   it('replays a recording that still holds as it always does', async () => {
-    const context = strict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
+    const context = asStrict(entryContext({ endPath: '/customers', endAnchors: [savedAnchor] }));
     const verdict = await makeSession(context, makeHost(['/pricing', '/customers'], [[savedMarker]])).begin();
     expect(verdict?.status).toBe('passed');
   });

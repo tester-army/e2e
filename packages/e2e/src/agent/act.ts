@@ -33,9 +33,9 @@ import type { AgentContext, AgentSelection } from './invocation.ts';
 import { projectPriorSteps, serializeLedger } from './ledger.ts';
 import { tokenUpperBound } from './model/adapter.ts';
 import { instantiateLanguageModel, isUnservedModelError, unservedModelError } from './model/sdk.ts';
-import type { AgentObservation } from './observation.ts';
+import type { AgentObservation, SemanticAgentObservation } from './observation.ts';
 import { ObservationFeed } from './observation-feed.ts';
-import type { ObservedScreen } from './replay.ts';
+import type { ObservedScreen, SemanticScreen } from './replay.ts';
 import { appLocation } from '../cache/route.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { StepAccounting } from './step-accounting.ts';
@@ -498,6 +498,7 @@ class ActDispatch {
     return {
       get traceEligible() { return feed.traceEligible; },
       observe: async (mode) => screenOf(await this.feed.probe(mode), this.runtime.app.base?.origin),
+      looksSince: (sinceMs) => feed.looksSince(sinceMs).map(({ atMs, observation }) => ({ atMs, screen: screenOf(observation, this.runtime.app.base?.origin) })),
       actions: this.dispatcher.actions,
       signal: this.accounting.signal,
       remainingMs: () => this.accounting.remainingMs(),
@@ -556,6 +557,8 @@ class ActDispatch {
 }
 
 /** The replay engine's view of a capture: the nodes, and the viewport a recorded point is checked against. */
+function screenOf(observation: SemanticAgentObservation, appOrigin: string | undefined): SemanticScreen;
+function screenOf(observation: AgentObservation, appOrigin: string | undefined): ObservedScreen;
 function screenOf(observation: AgentObservation, appOrigin: string | undefined): ObservedScreen {
   const metadata = {
     viewport: { width: observation.viewport.width, height: observation.viewport.height },

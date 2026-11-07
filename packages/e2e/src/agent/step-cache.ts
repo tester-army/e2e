@@ -12,7 +12,7 @@
  * when replay performed no action.
  */
 
-import { deltaEvidenced, deltaMismatch, describeDelta, type DeltaMismatch } from '../cache/anchors.ts';
+import { deltaEvidenced, deltaMismatch, describeDelta, type DeltaMismatch, type RecordedDelta } from '../cache/anchors.ts';
 import type { AgentCacheContext, ClaimedKey } from '../cache/context.ts';
 import { decideTraceReplay, opensWithNavigate, type TraceReplayMissReason } from '../cache/decide.ts';
 import { sameRoute } from '../cache/route.ts';
@@ -51,6 +51,14 @@ export interface StepCacheHost extends ReplayHost {
    * work instead of a model turn.
    */
   replaying(active: boolean): void;
+  /** The step's recent looks since `sinceMs`, the executor's too, oldest first. */
+  looksSince(sinceMs: number): readonly TimedLook[];
+}
+
+/** One look the step took at the screen and when it was captured. */
+interface TimedLook {
+  readonly atMs: number;
+  readonly screen: SemanticScreen;
 }
 
 /** What the session needs from the dispatch beyond the host itself. */
@@ -135,8 +143,14 @@ const STALE_REASONS: ReadonlySet<StepCacheInfo['reason']> = new Set<StepCacheInf
   'end-mismatch',
 ]);
 
-/** Margin added to a recorded step's duration when replay waits for its end state. */
+/** Margin added to the time a recorded step's end state took to show when replay waits for it. */
 const END_WAIT_MARGIN_MS = 10_000;
+/** The shortest end wait under `cache.strict`, and the wait of an entry recorded without one. */
+const STRICT_END_WAIT_MS = 15_000;
+/** Step clock kept back from the end wait, so a hand-off still has room to act. */
+const HAND_OFF_RESERVE_MS = 20_000;
+/** Step clock kept back from the end wait under `cache.strict`, so the step fails as stale, not timed out. */
+const STRICT_RESERVE_MS = 2_000;
 /**
  * How long a replay waits for a recorded destination path to be the current
  * one. The replayed tap that starts a navigation returns before the new
@@ -485,6 +499,8 @@ export class StepTraceSession {
    * last look the wait took on the recorded end route.
    */
   private async endStateMatches(trace: ActionTrace, start: SemanticScreen, screens: readonly ObservedScreen[]): Promise<EndStateCheck> {
+    // The replay's last action just returned; the end wait counts from here.
+    const sinceMs = Date.now();
     if (!this.host.traceEligible) return { matches: false };
     const arrived = await this.endScreen(trace);
     if (arrived === undefined) return { matches: false };
@@ -503,15 +519,22 @@ export class StepTraceSession {
     // screen that moved on after the route first matched is another screen.
     let mismatch: DeltaMismatch | undefined;
     const holds = (screen: SemanticScreen) => {
-      if (trace.endPath !== undefined && screen.path !== undefined && !sameRoute(screen.path, trace.endPath)) return false;
+      if (offEndRoute(trace.endPath, screen)) return false;
       mismatch = deltaMismatch(trace, screen.nodes, beforeNodes);
       return mismatch === undefined;
     };
-    const matches = (await verifyEndState(this.host, holds, {
-      initial: arrived,
-      ...(trace.endWaitMs === undefined ? {} : { waitMs: trace.endWaitMs }),
-    })) && this.host.traceEligible;
+    const matches = (await verifyEndState(this.host, holds, { initial: arrived, sinceMs, ...this.endWait(trace) })) && this.host.traceEligible;
     return matches ? { matches } : { matches, ...(mismatch === undefined ? {} : { failure: mismatch }) };
+  }
+
+  /** The recorded end wait, at least `STRICT_END_WAIT_MS` under `cache.strict`, where giving up fails the step. */
+  private endWait(trace: ActionTrace): { readonly waitMs: number; readonly minWaitMs: number; readonly reserveMs: number } {
+    const strict = this.cache.strict !== false;
+    return {
+      waitMs: trace.endWaitMs ?? 0,
+      minWaitMs: strict || trace.endWaitMs === undefined ? STRICT_END_WAIT_MS : 0,
+      reserveMs: strict ? STRICT_RESERVE_MS : HAND_OFF_RESERVE_MS,
+    };
   }
 
   /**
@@ -579,6 +602,15 @@ export class StepTraceSession {
     return this.executorCompletedMs ?? this.handedOffMs;
   }
 
+  /** From the baseline to the first look that showed the end state, plus margin; the executor's later turns don't count. */
+  private measuredEndWaitMs(recorder: TraceRecorder, endPath: string | undefined, delta: RecordedDelta, startNodes: ObservedNodes): number {
+    const baselineMs = this.endWaitBaselineMs(recorder);
+    const shown = this.host.looksSince(baselineMs).find(({ screen }) =>
+      !offEndRoute(endPath, screen) && deltaMismatch(delta, redactNodesAgain(screen.nodes, this.redaction), startNodes) === undefined,
+    );
+    return Math.max(0, (shown?.atMs ?? Date.now()) - baselineMs) + END_WAIT_MARGIN_MS;
+  }
+
   /**
    * Stages the recorded trace for attempt-end settlement. The write is
    * deferred, not immediate: the trace is confirmed or evicted at attempt end
@@ -618,14 +650,7 @@ export class StepTraceSession {
       ...(endPath === undefined ? {} : { endPath }),
       endAnchors: delta.appeared,
       goneAnchors: delta.gone,
-      // How long the app took to show its end state after the last action,
-      // plus room for a slower day: the budget a replay waits for the anchors
-      // to return. Measured from the last action, not the step's start: the
-      // model's thinking time before that action is no reason for a replay,
-      // which does not think, to wait. After a hand-off, the executor's last
-      // action is the baseline when it acted; otherwise its completion is the
-      // baseline. The replay and executor turn are not app settling time.
-      endWaitMs: Date.now() - this.endWaitBaselineMs(recorder) + END_WAIT_MARGIN_MS,
+      endWaitMs: this.measuredEndWaitMs(recorder, endPath, { endAnchors: delta.appeared, goneAnchors: delta.gone }, startNodes),
       keyedBy: this.claim.context,
     });
     if (trace === undefined) return 'skipped';
@@ -756,10 +781,15 @@ function inputTargets(trace: ActionTrace): TraceTargetDescriptor[] {
 function baselineScreen(screens: readonly ObservedScreen[], endPath: string | undefined): SemanticScreen | undefined {
   let baseline: SemanticScreen | undefined;
   for (const screen of screens) {
-    if (endPath !== undefined && screen.path !== undefined && !sameRoute(screen.path, endPath)) baseline = undefined;
+    if (offEndRoute(endPath, screen)) baseline = undefined;
     else if (screen.kind === 'semantic') baseline ??= screen;
   }
   return baseline;
+}
+
+/** True when a look is on another route than the recorded end; a look or an end without a location never is. */
+function offEndRoute(endPath: string | undefined, screen: ObservedScreen): boolean {
+  return endPath !== undefined && screen.path !== undefined && !sameRoute(screen.path, endPath);
 }
 
 /**
