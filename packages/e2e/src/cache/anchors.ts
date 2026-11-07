@@ -25,6 +25,7 @@
 
 import type { RedactedNode } from '../agent/observation.ts';
 import { describeTarget } from '../agent/actions.ts';
+import { CLOCK_TIME, DAY_MONTH_DATE, ISO_DATE, MONTH_DAY_DATE } from '../internal/dates.ts';
 import { bound, collapseText } from '../internal/text.ts';
 import { descriptorTiers, fieldsEqual, tierView, type DescriptorField, type DescriptorTier } from './relocate.ts';
 import {
@@ -150,10 +151,10 @@ const VOLATILE_TEXT: readonly RegExp[] = [
   /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}(?::?\d{2})?)?/,
   /\b(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{12,}\b/,
   /\b\d+\s*(?:ms|s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|weeks?|months?|years?)\b/i,
-  /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{4})?\b/i,
-  /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:\s+\d{4})?\b/i,
-  /\b\d{4}-\d{2}-\d{2}\b/,
-  /\b\d{1,2}:\d{2}(?::\d{2})?\b/,
+  MONTH_DAY_DATE,
+  DAY_MONTH_DATE,
+  ISO_DATE,
+  CLOCK_TIME,
 ];
 
 /**

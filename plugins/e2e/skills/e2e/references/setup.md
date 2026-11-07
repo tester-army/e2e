@@ -423,6 +423,10 @@ export default {
 - `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, and
   `modifiers` on `tap` or `doubleTap` are `UNSUPPORTED_CAPABILITY` on a
   device.
+- `device.clipboard()` and `device.setClipboard()` are
+  `UNSUPPORTED_CAPABILITY` on an Android build with no clipboard shell
+  command (the Android 16 emulator is one); check a copy by pasting into a
+  field and reading it back.
 - React Native on iOS: checkbox and radio role and state come off the
   accessibility value (`getByRole`, `check()`, `toBeChecked` work); a tab is
   `other` with `selected`, query by test id or label; a plain `View` is a
