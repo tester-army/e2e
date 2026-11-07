@@ -503,8 +503,12 @@ function realPath(file: string): string {
   }
 }
 
-/** `at name (location:line:column)` or `at location:line:column`, either one after `async` for an awaiting caller. */
-const STACK_FRAME = /^at (?:async )?(?:[^(]*? \()?(.+?):(\d+):(\d+)\)?$/;
+/**
+ * `at name (location:line:column)` or `at location:line:column`, either one
+ * after `async` for an awaiting caller. JavaScriptCore (Bun) can leave the
+ * column out of a module's top-level frame.
+ */
+const STACK_FRAME = /^at (?:async )?(?:[^(]*? \()?(.+?):(\d+)(?::(\d+))?\)?$/;
 
 /**
  * Every frame of the current stack as a source location, the async frames
@@ -520,7 +524,9 @@ function stackLocations(): SourceLocation[] {
     if (match === null) return [];
     // An ES module names itself by URL, the loader's cache-busting query included; a mapped frame or CommonJS by path.
     const file = match[1]!.startsWith('file:') ? fileURLToPath(match[1]!) : match[1]!;
-    return [{ file, line: Number(match[2]), column: Number(match[3]) }];
+    // A runtime's own code is no file: Bun names its builtins `native`.
+    if (!path.isAbsolute(file)) return [];
+    return [{ file, line: Number(match[2]), column: Number(match[3] ?? 1) }];
   });
 }
 

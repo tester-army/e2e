@@ -7,8 +7,9 @@ description: Run e2e on GitHub Actions, Expo Workflows, Bitrise, Codemagic, Norr
 ---
 
 e2e runs on each CI service that can run Node 24.8 or later (22.22.3 or
-later on Node 22). Each job installs the dependencies, starts the app or a
-device, runs `npx e2e run`, and uploads `.e2e/`.
+later on Node 22), or [Bun](/reference/cli#bun) 1.4.3 or later. Each job
+installs the dependencies, starts the app or a device, runs `npx e2e run`,
+and uploads `.e2e/`.
 
 ## Pick your CI service
 
