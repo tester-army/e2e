@@ -72,6 +72,7 @@ jobs:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
           E2E_USER_ADMIN_PASSWORD: ${{ secrets.E2E_USER_ADMIN_PASSWORD }}
+          E2E_CHROMIUM_SANDBOX: '0'
 
       - name: Upload report
         if: ${{ !cancelled() }}
@@ -98,6 +99,11 @@ jobs:
 for the engine's pinned Playwright version, with their system libraries; the
 cache step skips the download until the lockfile changes. A
 test that passed on retry keeps its failed attempt's evidence in the upload.
+
+Chromium launches with its sandbox on by default, and the `ubuntu-latest`
+runners block the user namespaces it needs, so the workflow opts out with
+`E2E_CHROMIUM_SANDBOX: '0'`. On a runner where the sandbox starts, leave it
+out. See [Security](/security) for why it defaults on.
 
 ## iOS and Android
 
