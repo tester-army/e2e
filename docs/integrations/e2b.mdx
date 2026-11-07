@@ -22,8 +22,8 @@ Each worker gets its own Android sandbox. The provider installs your
 `.apk` through agent-device, the same way `device.installApp()` does, and
 deletes the sandbox when the run ends. Each sandbox installs Node and
 agent-device and boots Android, so preparing the target (creating the
-sandbox, that setup, and installing the `.apk`) took 15 to 45 seconds in
-our runs.
+sandbox, that setup, and installing the `.apk`) takes about 15 to 45
+seconds.
 
 <Tip>
 No Android SDK, emulator, or `adb` on the machine that runs e2e.
