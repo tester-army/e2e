@@ -94,8 +94,8 @@ declaration.
 
 | Throws | When |
 | --- | --- |
-| `INVALID_CONFIG` | An empty `device` list, or a `device` name that is not a string or is blank, alone or in a list. |
-| `INVALID_CONFIG` | A `device` provider with no non-empty `name`, no `acquire()` or `release()` function, or a `record` that is not a function. |
+| `INVALID_CONFIG` | An empty `device` list, a blank `device` name, or a list entry that is not a non-blank string. |
+| `INVALID_CONFIG` | A `device` that is neither a string nor a list, or a provider with no non-empty `name`, no `acquire()` or `release()` function, or a `record` that is not a function. |
 | `INVALID_CONFIG` | An option `mobile()` does not take, such as `mobile({ app })` and the other old app options. The message names the nearest known option for a likely typo, else every option. |
 | `INVALID_CONFIG` | `settle` or `transition` is not a non-negative integer of milliseconds (`settle` may also be `false`). |
 
@@ -911,14 +911,17 @@ tools: mobileTools(iphone, pixel),
 
 | Throws | When |
 | --- | --- |
-| `INVALID_STATE` | An engine that `mobile()` did not return. In the config this fails the load as `CONFIG_LOAD_FAILED` with the same message. |
+| `INVALID_STATE` | An engine that `mobile()` did not return. In the config this fails the load as `CONFIG_LOAD_FAILED`, whose message includes this one. |
 
-A tool that fails during a step returns its error to the model as the call's
-result and does not fail the step. `open_app` fails with `INVALID_STATE` when
-it names no app and the target pins none (no `app.bundleId` or `app.appPath`),
-and with `INVALID_ARGUMENT` when it names an app that is not installed. Any
-tool fails with `INVALID_STATE` when no device attempt is running in the
-worker, or more than one is.
+A tool that fails during a built-in agent step returns
+`Tool "<name>" failed: <message>` to the model as the call's result; the step
+goes on. `open_app` fails with `INVALID_STATE` when it names no app, the
+target has no `app.bundleId`, and nothing has installed its `app.appPath`
+build yet (no `device.installApp()`, no device provider install); with
+`INVALID_ARGUMENT` when it names an app that is not installed or a link; and
+with `POLICY_DENIED` for a link with a forbidden scheme. Any tool fails with
+`INVALID_STATE` when no device attempt is running in the worker, or more than
+one is.
 
 The grammar verbs need no tool pack. The engine's declared actions give the
 agent:
