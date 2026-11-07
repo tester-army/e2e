@@ -59,7 +59,7 @@ const APP_LOG_SOURCES: ReadonlySet<unknown> = new Set(['console', 'error', 'netw
 const APP_LOG_LEVELS: ReadonlySet<unknown> = new Set(['error', 'warning', 'info']);
 
 /** Whether an engine handed `appLog` an entry of the contract's shape. */
-function isAppLogEntry(value: unknown): value is AppLogEntry {
+export function isAppLogEntry(value: unknown): value is AppLogEntry {
   if (typeof value !== 'object' || value === null) return false;
   const { source, level, text } = value as Partial<Record<keyof AppLogEntry, unknown>>;
   return APP_LOG_SOURCES.has(source) && APP_LOG_LEVELS.has(level) && typeof text === 'string' && text.trim() !== '';
