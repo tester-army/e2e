@@ -281,9 +281,10 @@ after a change mid-test:
 import { afterEach, test } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
-afterEach(async ({ device }) => {
+afterEach(async ({ app, device }) => {
   const { client, selection } = device.unstable_raw;
   await client.settings.update({ ...selection, setting: 'text-size', state: 'large' });
+  await app.restart();
 });
 
 test('the checkout button shows at the largest text size', async ({ app, device, screen }) => {
@@ -297,7 +298,7 @@ test('the checkout button shows at the largest text size', async ({ app, device,
 `text-size` works on iOS simulators and Android; `large` is the default on
 both. `setting: 'animations'` with `state: 'off'` or `'on'` is Android only
 and fails on iOS. On Android it sets the window, transition, and animator
-scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach`.
+scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach` and restart the app so the next test doesn't inherit the old size.
 </Accordion>
 
 <Accordion title="Foldable simulators and emulators">
