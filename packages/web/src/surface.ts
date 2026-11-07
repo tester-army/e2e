@@ -217,6 +217,14 @@ export interface WebOptions {
    */
   readonly testIdAttribute?: string;
   /**
+   * Node budget for one observation, shared across the main document and its
+   * frames: how many nodes the semantic capture lists before it reports
+   * `truncated`. Default 3,000, at most 1,000,000. Raise it for a known
+   * dense target whose controls fall past the default cutoff; every extra
+   * node costs tokens on each observation.
+   */
+  readonly observationNodeBudget?: number;
+  /**
    * The `User-Agent` every attempt's context sends and `navigator.userAgent`
    * reports, as Playwright's own `userAgent` context option sets it: for an
    * app that switches into a test mode on a marker in the agent string.
@@ -267,6 +275,8 @@ export interface WebOptions {
 
 /** The test-id attribute when the options name none. */
 const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
+/** Shared node budget across the main document and its frames; `observationNodeBudget` overrides it per target. */
+const DEFAULT_OBSERVATION_NODE_BUDGET = 3_000;
 
 export class PlaywrightSurface {
   /**
@@ -289,6 +299,7 @@ export class PlaywrightSurface {
   private readonly headers: Readonly<Record<string, string>> | undefined;
   private readonly basicAuth: WebBasicAuth | undefined;
   private readonly testIdAttribute: string;
+  private readonly observationNodeBudget: number;
   private readonly userAgent: string | undefined;
   private readonly locale: string | undefined;
   private readonly timezoneId: string | undefined;
@@ -325,6 +336,7 @@ export class PlaywrightSurface {
     this.headers = options.headers === undefined ? undefined : lowercaseNames(options.headers);
     this.basicAuth = options.basicAuth;
     this.testIdAttribute = options.testIdAttribute ?? DEFAULT_TEST_ID_ATTRIBUTE;
+    this.observationNodeBudget = options.observationNodeBudget ?? DEFAULT_OBSERVATION_NODE_BUDGET;
     this.userAgent = options.userAgent;
     this.locale = options.locale;
     this.timezoneId = options.timezoneId;
@@ -487,7 +499,7 @@ export class PlaywrightSurface {
     const persistent = await this.persistentBinding(context);
     this.artifactsDir = context.artifactsDir;
     this.artifactCounter = 0;
-    this.trace = new TraceFeed(context, () => this.openPage(), () => this.session?.refs, { testIdAttribute: this.testIdAttribute, site: this.app.site });
+    this.trace = new TraceFeed(context, () => this.openPage(), () => this.session?.refs, { testIdAttribute: this.testIdAttribute, site: this.app.site, nodeBudget: this.observationNodeBudget });
     const routes: StoredRoute[] = [];
     const initScripts = this.configuredInitScripts.forAttempt();
     // `validateApp` admitted only grants.
@@ -1219,7 +1231,7 @@ export class PlaywrightSurface {
     const page = this.requirePage();
     const capture = refs.beginCapture();
     const captured = await captureObservation(page, refs, {
-      testIdAttribute: this.testIdAttribute, site: this.app.site,
+      testIdAttribute: this.testIdAttribute, site: this.app.site, nodeBudget: this.observationNodeBudget,
     }, operation, options);
     const { snapshot, generation } = captured;
     try {
