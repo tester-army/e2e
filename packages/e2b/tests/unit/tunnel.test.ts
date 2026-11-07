@@ -9,9 +9,9 @@
 
 import { createHash } from 'node:crypto';
 import { createServer, request as httpRequest, type IncomingHttpHeaders, type Server } from 'node:http';
-import { createServer as createNetServer, connect as netConnect, type Socket } from 'node:net';
+import { createServer as createNetServer, connect as netConnect, Server as NetServer, type Socket } from 'node:net';
 import type { Duplex } from 'node:stream';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { openTunnel, type Tunnel } from '../../src/tunnel.ts';
 
 const HOST = 'localhost';
@@ -22,6 +22,8 @@ let port: number;
 let tunnel: Tunnel;
 const seen: { path: string; headers: IncomingHttpHeaders }[] = [];
 const upgraded: Duplex[] = [];
+/** The bytes each upgrade carried past its head, as the upstream received them. */
+const heads: string[] = [];
 /** Resolves when the upstream sees the hanging request's connection close. */
 let hangClosed: Promise<void> = Promise.resolve();
 
@@ -57,9 +59,10 @@ beforeAll(async () => {
     }
     res.writeHead(200, { 'content-type': 'text/plain' }).end('upstream body');
   });
-  upstream.on('upgrade', (req, socket) => {
+  upstream.on('upgrade', (req, socket, head: Buffer) => {
     seen.push({ path: req.url ?? '', headers: req.headers });
     upgraded.push(socket);
+    heads.push(head.toString());
     const accept = createHash('sha1').update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   });
@@ -76,9 +79,22 @@ afterAll(async () => {
 });
 
 describe('tunnel', () => {
-  it('listens on loopback only, with no secret in its URL', () => {
+  it('has no secret in its URL', () => {
     expect(tunnel.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     expect(tunnel.url).not.toContain(TRAFFIC_TOKEN);
+  });
+
+  it('binds to loopback only, so nothing on the network reaches the token it adds', async () => {
+    const listen = vi.spyOn(NetServer.prototype, 'listen');
+    const own = await openTunnel({ host: HOST, trafficToken: TRAFFIC_TOKEN, port, tls: false });
+    try {
+      expect(listen).toHaveBeenCalledTimes(1);
+      expect(listen.mock.calls[0]![1]).toBe('127.0.0.1');
+      expect((listen.mock.contexts[0] as NetServer).address()).toMatchObject({ address: '127.0.0.1' });
+    } finally {
+      listen.mockRestore();
+      await own.close();
+    }
   });
 
   it('forwards a request with the sandbox host and the traffic token', async () => {
@@ -130,6 +146,16 @@ describe('tunnel', () => {
     await expect.poll(() => seen.some((one) => one.path === '/hang')).toBe(true);
     req.destroy();
     await hangClosed;
+  });
+
+  it('forwards the bytes a client sent with its upgrade request', async () => {
+    heads.length = 0;
+    const client = netConnect(Number(new URL(tunnel.url).port), '127.0.0.1');
+    client.on('error', () => {});
+    client.write(`GET /devtools/browser/b6 HTTP/1.1\r\nHost: 127.0.0.1:${new URL(tunnel.url).port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nfirst-frame`);
+    await expect.poll(() => heads.length).toBe(1);
+    expect(heads[0]).toBe('first-frame');
+    client.destroy();
   });
 
   it('ends the upstream socket when a WebSocket client goes away before it connects', async () => {

@@ -2,8 +2,9 @@
 
 import type { BrowserLease, BrowserProvider, BrowserProviderScope, BrowserReleaseContext, BrowserRequest } from '@e2e-dev/web';
 import { rejectUnknownKeys } from 'e2e/engine';
-import { createAndServe, leaseMetadata, leaseTunnels, messageOf, poll, sandboxClients, templateOption, timeoutOption, withLog, type E2BSandbox } from './sandbox.ts';
-import { openTunnel, type Tunnel } from './tunnel.ts';
+import { sandboxClients, type E2BSandbox } from './client.ts';
+import { leaseMetadata, messageOf, poll, sandboxLeases, templateOption, timeoutOption, withLog } from './lease.ts';
+import type { Tunnel } from './tunnel.ts';
 
 export interface E2BBrowsersOptions {
   /**
@@ -53,15 +54,32 @@ const CHROMIUM_LOG = '/tmp/e2e-chromium.log';
 /** Bounds Chromium's start and its first answer from outside, together. */
 const START_TIMEOUT_MS = 60_000;
 
-/** Starts the template's Playwright Chromium headless, with DevTools on loopback. */
-const START_CHROMIUM = [
+/**
+ * Finds the template's Playwright Chromium and prints its path, run in the foreground so a
+ * template without it fails the lease at once, with this message, instead of at the start timeout.
+ */
+const FIND_CHROMIUM = [
   `mkdir -p ${DOWNLOADS_DIR}`,
   'chrome=$(find /ms-playwright -maxdepth 3 -type f -name chrome | head -n 1)',
-  '[ -x "$chrome" ] || { echo "Playwright Chromium is missing from the sandbox template" >&2; exit 1; }',
+  '[ -x "$chrome" ] || { echo "Playwright Chromium is missing from the sandbox template: no /ms-playwright/*/chrome-linux*/chrome" >&2; exit 1; }',
+  'printf %s "$chrome"',
+].join('\n');
+
+/** A path `find` printed for Chromium, as the only shape that reaches the start command. */
+const CHROMIUM_PATH = /^\/ms-playwright\/[\w./-]+$/;
+
+/** Starts Chromium at `chrome` headless, with DevTools on loopback. */
+function startChromium(chrome: string): string {
+  if (!CHROMIUM_PATH.test(chrome)) throw new Error(`unexpected Chromium path ${JSON.stringify(chrome)} in the sandbox template`);
   // A history restore from Chromium's back/forward cache emits no load event
   // over CDP, so Playwright goBack({ waitUntil: 'load' }) otherwise hangs.
-  `exec "$chrome" --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --no-default-browser-check --disable-features=BackForwardCache --remote-debugging-port=${CHROMIUM_CDP_PORT} --user-data-dir=/tmp/e2e-chromium about:blank > ${CHROMIUM_LOG} 2>&1`,
-].join('\n');
+  return `exec ${chrome} --headless=new --no-sandbox --disable-gpu --disable-dev-shm-usage --no-first-run --no-default-browser-check --disable-features=BackForwardCache --remote-debugging-port=${CHROMIUM_CDP_PORT} --user-data-dir=/tmp/e2e-chromium about:blank > ${CHROMIUM_LOG} 2>&1`;
+}
+
+/** The browser WebSocket URL in a `/json/version` answer, or `undefined`. */
+function debuggerUrl(body: unknown): unknown {
+  return typeof body === 'object' && body !== null && 'webSocketDebuggerUrl' in body ? body.webSocketDebuggerUrl : undefined;
+}
 
 /**
  * Polls Chromium through the tunnel until it answers, and resolves to its
@@ -73,7 +91,7 @@ function browserEndpoint(tunnel: Tunnel, signal: AbortSignal): Promise<string> {
   return poll('Chromium did not answer through the sandbox tunnel', signal, async (attempt) => {
     const response = await fetch(`${tunnel.url}/json/version`, { signal: attempt });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const endpoint: unknown = Reflect.get((await response.json()) ?? {}, 'webSocketDebuggerUrl');
+    const endpoint = debuggerUrl(await response.json());
     const path = typeof endpoint === 'string' && URL.canParse(endpoint) ? new URL(endpoint).pathname : '';
     if (!path.startsWith('/devtools/browser/')) throw new Error('no WebSocket endpoint in /json/version');
     return `${tunnel.url.replace(/^http:/, 'ws:')}${path}`;
@@ -96,20 +114,18 @@ export function e2bBrowsers(options: E2BBrowsersOptions = {}): BrowserProvider {
   const template = templateOption('e2bBrowsers()', options.template, DEFAULT_TEMPLATE);
   const timeoutMs = timeoutOption('e2bBrowsers()', options.timeoutMs, DEFAULT_TIMEOUT_MS);
   const clientFor = sandboxClients();
-  const leases = leaseTunnels(clientFor);
+  const leases = sandboxLeases(clientFor);
 
-  /** Starts Chromium and the tunnel, and resolves to the endpoint a worker attaches to. */
-  async function serve(sandbox: E2BSandbox, request: BrowserRequest): Promise<BrowserLease> {
+  /** Starts Chromium and resolves to the endpoint a worker attaches to, through the lease's tunnel. */
+  async function ready(sandbox: E2BSandbox, tunnel: Tunnel, request: BrowserRequest): Promise<BrowserLease> {
     request.log(`browser sandbox ${sandbox.sandboxId}`);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(START_TIMEOUT_MS)]);
-    await sandbox.start(START_CHROMIUM, { signal });
-    const tunnel = await openTunnel({ host: sandbox.host(CHROMIUM_CDP_PORT), trafficToken: sandbox.trafficToken });
-    return leases.hold(tunnel, async () => {
-      const cdpEndpoint = await browserEndpoint(tunnel, signal).catch(async (cause: unknown) => {
-        throw await withLog(sandbox, CHROMIUM_LOG, cause);
-      });
-      return { id: sandbox.sandboxId, cdpEndpoint };
+    const chrome = await sandbox.run(FIND_CHROMIUM, { timeoutMs: START_TIMEOUT_MS, signal });
+    await sandbox.start(startChromium(chrome.trim()), { signal });
+    const cdpEndpoint = await browserEndpoint(tunnel, signal).catch(async (cause: unknown) => {
+      throw await withLog(sandbox, CHROMIUM_LOG, cause);
     });
+    return { id: sandbox.sandboxId, cdpEndpoint };
   }
 
   return {
@@ -117,7 +133,7 @@ export function e2bBrowsers(options: E2BBrowsersOptions = {}): BrowserProvider {
     ...(options.scope === undefined ? {} : { scope: options.scope }),
     async acquire(request: BrowserRequest): Promise<BrowserLease> {
       const metadata = { ...leaseMetadata(request), ...(request.attemptId === undefined ? {} : { e2e_attempt: request.attemptId }) };
-      return createAndServe(clientFor(request.env), { template, timeoutMs, metadata, maskRequestHost: MASKED_HOST }, request.signal, (sandbox) => serve(sandbox, request));
+      return leases.acquire(request, { template, timeoutMs, metadata, maskRequestHost: MASKED_HOST, port: CHROMIUM_CDP_PORT }, (sandbox, tunnel) => ready(sandbox, tunnel, request));
     },
     release: (lease: BrowserLease, context: BrowserReleaseContext) => leases.release(lease.id, context),
     async sweep(context: BrowserReleaseContext): Promise<readonly string[]> {

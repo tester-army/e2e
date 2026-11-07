@@ -1,15 +1,13 @@
 /**
- * What both providers share: the slice of the E2B SDK they use, loaded on
- * first use so a config load never pays for it; option checks; and the lease
- * lifecycle, from creating a sandbox to killing it and closing its tunnel.
+ * The slice of the E2B SDK both providers use, loaded on first use so a
+ * config load never pays for it, and the connection the run's environment
+ * names.
  */
 
 import { randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { setTimeout as sleep } from 'node:timers/promises';
 import type { Sandbox } from 'e2b';
 import { ConfigurationError } from 'e2e/engine';
-import type { Tunnel } from './tunnel.ts';
 
 /**
  * Where sandboxes are reached, every field from the run's environment. The
@@ -73,63 +71,19 @@ export interface E2BSandboxes {
 /** Bounds one creation request: E2B answers in seconds, so a minute means it is not coming. */
 const CREATE_TIMEOUT_MS = 60_000;
 
-/** Bounds the kill of a sandbox whose lease failed. */
-const KILL_TIMEOUT_MS = 30_000;
-
 /**
  * Appended to the `User-Agent` of every E2B request, so E2B can tell this integration's traffic apart.
  * The version is this package's, not e2e's.
  */
 const INTEGRATION = `e2e-e2b/${(createRequire(import.meta.url)('../package.json') as { version: string }).version}`;
 
-/** How often `poll` asks, and how long one answer may take. */
-const POLL_INTERVAL_MS = 500;
-const PROBE_TIMEOUT_MS = 5_000;
-
-/** Bounds the read of a log for an error message. */
-const LOG_TIMEOUT_MS = 10_000;
-
 /** How much of a failed command's output its error keeps: enough to name what failed without flooding the run's error line. */
 const OUTPUT_TAIL_CHARS = 600;
 
 /** The last `OUTPUT_TAIL_CHARS` of a command's output. */
-function tail(text: string | undefined): string {
+export function tail(text: string | undefined): string {
   const trimmed = (text ?? '').trim();
   return trimmed.length > OUTPUT_TAIL_CHARS ? `...${trimmed.slice(-OUTPUT_TAIL_CHARS)}` : trimmed;
-}
-
-/**
- * `cause` with the last lines of `log` in the sandbox, for a service that never answered: the log says
- * why. `secret` is cut from them. Reading the log is best-effort and bounded on its own clock.
- */
-export async function withLog(sandbox: E2BSandbox, log: string, cause: unknown, secret?: string): Promise<Error> {
-  const read = await sandbox.run(`tail -n 20 ${log} 2>/dev/null || true`, { timeoutMs: LOG_TIMEOUT_MS, signal: AbortSignal.timeout(LOG_TIMEOUT_MS) }).catch(() => '');
-  const lines = tail(secret === undefined ? read : read.replaceAll(secret, '<redacted>'));
-  if (lines === '') return cause instanceof Error ? cause : new Error(messageOf(cause));
-  return new Error(`${messageOf(cause)}; ${log}: ${lines}`, { cause });
-}
-
-/** The message of a thrown value, for an error line. */
-export function messageOf(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
-
-/**
- * Calls `probe` every `POLL_INTERVAL_MS`, each call bounded to
- * `PROBE_TIMEOUT_MS`, until it resolves, and resolves to its value. When
- * `signal` ends first, fails with `what` and the last probe's error.
- */
-export async function poll<T>(what: string, signal: AbortSignal, probe: (signal: AbortSignal) => Promise<T>): Promise<T> {
-  let last = 'no answer';
-  while (true) {
-    if (signal.aborted) throw new Error(`${what}: ${last}`, { cause: signal.reason });
-    try {
-      return await probe(AbortSignal.any([signal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]));
-    } catch (cause) {
-      if (!signal.aborted) last = messageOf(cause);
-    }
-    await sleep(POLL_INTERVAL_MS, undefined, { signal }).catch(() => {});
-  }
 }
 
 /**
@@ -148,6 +102,9 @@ async function untilSettled<T>(signal: AbortSignal, settled: (signal: AbortSigna
     signal.removeEventListener('abort', onAbort);
   }
 }
+
+/** The SDK client for a run's environment. */
+export type ClientFor = (env: Readonly<Record<string, string | undefined>>) => E2BSandboxes;
 
 /** E2B sandboxes for one connection, through the SDK. */
 function e2bSandboxes(connection: E2BConnection): E2BSandboxes {
@@ -170,7 +127,7 @@ function e2bSandboxes(connection: E2BConnection): E2BSandboxes {
       trafficToken,
       async run(command, { envs, timeoutMs, signal }) {
         try {
-          // Aborting ends only the SDK's stream; the process dies with the sandbox `createAndServe` kills.
+          // Aborting ends only the SDK's stream; the process dies with the sandbox the failed lease kills.
           const result = await sandbox.commands.run(command, { timeoutMs, signal, ...(envs === undefined ? {} : { envs }) });
           return result.stdout;
         } catch (cause) {
@@ -254,7 +211,7 @@ function connectionFor(env: Readonly<Record<string, string | undefined>>): E2BCo
 }
 
 /** One SDK client per connection, shared by every request a provider serves. */
-export function sandboxClients(): (env: Readonly<Record<string, string | undefined>>) => E2BSandboxes {
+export function sandboxClients(): ClientFor {
   const clients = new Map<string, E2BSandboxes>();
   return (env) => {
     const connection = connectionFor(env);
@@ -265,87 +222,5 @@ export function sandboxClients(): (env: Readonly<Record<string, string | undefin
       clients.set(key, client);
     }
     return client;
-  };
-}
-
-/** A template option: a non-empty name, or the provider's default when absent. */
-export function templateOption(factory: string, template: unknown, fallback: string): string {
-  if (template === undefined) return fallback;
-  if (typeof template !== 'string' || template.trim() === '') {
-    throw new ConfigurationError('INVALID_CONFIG', `${factory}: template must be a non-empty template name`);
-  }
-  return template;
-}
-
-/** A sandbox lifetime option: a positive integer of milliseconds, or the provider's default when absent. */
-export function timeoutOption(factory: string, timeoutMs: unknown, fallback: number): number {
-  if (timeoutMs === undefined) return fallback;
-  if (typeof timeoutMs !== 'number' || !Number.isInteger(timeoutMs) || timeoutMs <= 0) {
-    throw new ConfigurationError('INVALID_CONFIG', `${factory}: timeoutMs must be a positive integer of milliseconds`);
-  }
-  return timeoutMs;
-}
-
-/**
- * Creates a sandbox and hands it to `serve` inside one cleanup boundary:
- * every failure after the id is known kills the sandbox, including a run
- * interrupted while the creation request was in flight.
- */
-export async function createAndServe<T>(
-  client: E2BSandboxes,
-  params: E2BCreateParams,
-  signal: AbortSignal,
-  serve: (sandbox: E2BSandbox) => Promise<T>,
-): Promise<T> {
-  signal.throwIfAborted();
-  const sandbox = await client.create(params);
-  try {
-    signal.throwIfAborted();
-    return await serve(sandbox);
-  } catch (cause) {
-    try {
-      await client.kill(sandbox.sandboxId, AbortSignal.timeout(KILL_TIMEOUT_MS));
-    } catch (cleanup) {
-      throw new AggregateError(
-        [cause, cleanup],
-        `E2B lease failed: ${messageOf(cause)}; killing sandbox ${sandbox.sandboxId} also failed, so E2B ends it after timeoutMs: ${messageOf(cleanup)}`,
-        { cause: cleanup },
-      );
-    }
-    throw cause;
-  }
-}
-
-/** The tags every sandbox carries, so a sweep or a person can find a run's sandboxes. */
-export function leaseMetadata(request: { readonly runId: string; readonly targetName: string; readonly slot: number }): Record<string, string> {
-  return { e2e_run: request.runId, e2e_target: request.targetName, e2e_slot: String(request.slot) };
-}
-
-/**
- * The open tunnel of each lease one provider acquired. `hold` keeps the
- * tunnel of the lease `serve` resolves to, and closes it when `serve` fails;
- * `release` kills the lease's sandbox and closes its tunnel.
- */
-export function leaseTunnels(clientFor: (env: Readonly<Record<string, string | undefined>>) => E2BSandboxes) {
-  const tunnels = new Map<string, Tunnel>();
-  return {
-    async hold<T extends { readonly id: string }>(tunnel: Tunnel, serve: () => Promise<T>): Promise<T> {
-      try {
-        const lease = await serve();
-        tunnels.set(lease.id, tunnel);
-        return lease;
-      } catch (cause) {
-        await tunnel.close();
-        throw cause;
-      }
-    },
-    async release(id: string, context: { readonly env: Readonly<Record<string, string | undefined>>; readonly signal: AbortSignal }): Promise<void> {
-      try {
-        await clientFor(context.env).kill(id, context.signal);
-      } finally {
-        await tunnels.get(id)?.close();
-        tunnels.delete(id);
-      }
-    },
   };
 }

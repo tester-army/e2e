@@ -12,7 +12,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { e2bBrowsers } from '../../src/web.ts';
 
 const sdk = vi.hoisted(() => {
+  class CommandExitError extends Error {
+    constructor(readonly exitCode: number, readonly stdout: string, readonly stderr: string) {
+      super(`exit ${exitCode}`);
+    }
+  }
   const state = {
+    /** Commands run to completion, as opposed to `started` ones left running. */
+    ran: [] as string[],
+    /** Whether the template lacks Playwright's Chromium. */
+    noChromium: false,
     created: [] as { template: string; opts: Record<string, unknown> }[],
     started: [] as { command: string; opts: Record<string, unknown> }[],
     written: [] as { path: string; content: string }[],
@@ -33,8 +42,13 @@ const sdk = vi.hoisted(() => {
     getHost: (port: number) => `${port}-${sandboxId}.e2b.test`,
     commands: {
       run: async (command: string, opts: Record<string, unknown>) => {
+        if (opts['background'] !== true) {
+          state.ran.push(command);
+          if (!command.includes('find /ms-playwright')) return { exitCode: 0, stdout: state.log };
+          if (state.noChromium) throw new CommandExitError(1, '', 'Playwright Chromium is missing from the sandbox template: no /ms-playwright/*/chrome-linux*/chrome');
+          return { exitCode: 0, stdout: '/ms-playwright/chromium-1248/chrome-linux64/chrome' };
+        }
         state.started.push({ command, opts });
-        if (opts['background'] !== true) return { exitCode: 0, stdout: state.log };
         return { wait: async () => ({ exitCode: 0 }), kill: async () => true, disconnect: async () => void state.disconnected.push(command) };
       },
     },
@@ -74,10 +88,10 @@ const sdk = vi.hoisted(() => {
       };
     },
   };
-  return { state, Sandbox };
+  return { state, Sandbox, CommandExitError };
 });
 
-vi.mock('e2b', () => ({ Sandbox: sdk.Sandbox, CommandExitError: class extends Error {}, ConnectionConfig: { setIntegration: () => {} } }));
+vi.mock('e2b', () => ({ Sandbox: sdk.Sandbox, CommandExitError: sdk.CommandExitError, ConnectionConfig: { setIntegration: () => {} } }));
 
 const tunnels = vi.hoisted(() => ({
   open: new Map<string, { host: string; trafficToken: string }>(),
@@ -110,6 +124,8 @@ function context(): BrowserReleaseContext {
 beforeEach(() => {
   for (const list of [sdk.state.created, sdk.state.started, sdk.state.written, sdk.state.read, sdk.state.killed, sdk.state.disconnected, sdk.state.listed, sdk.state.running]) list.length = 0;
   sdk.state.counter = 0;
+  sdk.state.ran.length = 0;
+  sdk.state.noChromium = false;
   sdk.state.log = '';
   sdk.state.killFails.length = 0;
   tunnels.open.clear();
@@ -140,13 +156,23 @@ describe('e2bBrowsers()', () => {
       },
     ]);
     expect(sdk.state.written).toEqual([]);
-    expect(sdk.state.started.map((started) => started.command)).toEqual([expect.stringContaining('--remote-debugging-port=9222')]);
+    expect(sdk.state.ran).toEqual([expect.stringContaining('find /ms-playwright')]);
+    expect(sdk.state.started.map((started) => started.command)).toEqual([expect.stringMatching(/^exec \/ms-playwright\/chromium-1248\/chrome-linux64\/chrome .*--remote-debugging-port=9222/)]);
     // Chromium keeps running; only the SDK's output stream for it is closed.
     expect(sdk.state.disconnected).toEqual(sdk.state.started.map((started) => started.command));
     expect([...tunnels.open.values()]).toEqual([{ host: '9222-sbx1.e2b.test', trafficToken: 'tat-sbx1' }]);
     expect(lease).toEqual({ id: 'sbx1', cdpEndpoint: 'ws://tunnel.9222-sbx1.e2b.test/devtools/browser/b1' });
     expect(JSON.stringify(lease)).not.toContain('tat-sbx1');
     expect(lines).toEqual(['browser sandbox sbx1']);
+  });
+
+  it('fails at once, naming what is missing, when the template has no Playwright Chromium', async () => {
+    sdk.state.noChromium = true;
+    await expect(e2bBrowsers().acquire(request())).rejects.toThrow(/exited 1: Playwright Chromium is missing from the sandbox template/);
+    expect(sdk.state.started).toEqual([]);
+    expect(version).not.toHaveBeenCalled();
+    expect(sdk.state.killed).toEqual(['sbx1']);
+    expect(tunnels.closed).toEqual(['9222-sbx1.e2b.test']);
   });
 
   it('waits for Chromium to answer through the tunnel', async () => {

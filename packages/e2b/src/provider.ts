@@ -4,8 +4,8 @@ import { randomBytes } from 'node:crypto';
 import { createAgentDeviceClient } from 'agent-device';
 import type { DeviceLease, DeviceProvider, DeviceReleaseContext, DeviceRequest } from '@e2e-dev/mobile';
 import { ConfigurationError, rejectUnknownKeys } from 'e2e/engine';
-import { createAndServe, leaseMetadata, leaseTunnels, poll, sandboxClients, templateOption, timeoutOption, withLog, type E2BSandbox } from './sandbox.ts';
-import { openTunnel } from './tunnel.ts';
+import { sandboxClients, type E2BSandbox } from './client.ts';
+import { leaseMetadata, poll, sandboxLeases, templateOption, timeoutOption, withLog } from './lease.ts';
 
 export interface E2BOptions {
   /** Sandbox template that boots Android, `android-16` by default. */
@@ -37,6 +37,9 @@ const PROXY_LOG = '/tmp/agent-device-proxy.log';
 /** The template ships no Node; agent-device needs one. */
 const NODE_VERSION = '24.11.1';
 
+/** The SHA-256 nodejs.org publishes for that version's linux-x64 tarball (`SHASUMS256.txt`). */
+const NODE_SHA256 = '58a5ff5cc8f2200e458bea22e329d5c1994aa1b111d499ca46ec2411d58239ca';
+
 /** Bounds the in-sandbox setup, Android's boot, the proxy's first answer, and the build's install, together. */
 const SETUP_TIMEOUT_MS = 300_000;
 
@@ -51,7 +54,7 @@ const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 function setupScript(agentDeviceVersion: string): string {
   return [
     'set -eu',
-    `command -v node >/dev/null || curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz | sudo tar -xz -C /usr/local --strip-components=1`,
+    `command -v node >/dev/null || { curl -fsSL https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz -o /tmp/node.tar.gz && echo "${NODE_SHA256}  /tmp/node.tar.gz" | sha256sum -c --quiet - && sudo tar -xzf /tmp/node.tar.gz -C /usr/local --strip-components=1; }`,
     `sudo npm install --global --no-fund --no-audit --loglevel=error agent-device@${agentDeviceVersion}`,
     `adb connect ${SERIAL} >/dev/null`,
     `until [ "$(adb -s ${SERIAL} shell getprop sys.boot_completed | tr -d '\\r')" = 1 ]; do sleep 1; done`,
@@ -103,28 +106,21 @@ export function e2b(options: E2BOptions = {}): DeviceProvider {
   rejectUnknownKeys('e2b()', options, OPTION_KEYS);
   const template = templateOption('e2b()', options.template, DEFAULT_TEMPLATE);
   const timeoutMs = timeoutOption('e2b()', options.timeoutMs, DEFAULT_TIMEOUT_MS);
-  const clientFor = sandboxClients();
-  const leases = leaseTunnels(clientFor);
+  const leases = sandboxLeases(sandboxClients());
 
-  /** Starts agent-device behind its proxy and resolves to the daemon a worker connects to. */
-  async function serve(sandbox: E2BSandbox, request: DeviceRequest): Promise<DeviceLease> {
+  /** Sets the sandbox up, starts agent-device behind its proxy, installs the build, and resolves to the lease. */
+  async function ready(sandbox: E2BSandbox, baseUrl: string, request: DeviceRequest): Promise<DeviceLease> {
     request.log(`sandbox ${sandbox.sandboxId}`);
     const signal = AbortSignal.any([request.signal, AbortSignal.timeout(SETUP_TIMEOUT_MS)]);
     await sandbox.run(setupScript(request.agentDeviceVersion), { timeoutMs: SETUP_TIMEOUT_MS, signal });
-    const authToken = randomBytes(32).toString('hex');
+    const daemon = { baseUrl, authToken: randomBytes(32).toString('hex') };
     // Through `envs`, so the token is not in the command E2B receives. Not AGENT_DEVICE_DAEMON_AUTH_TOKEN:
     // the daemon the proxy starts would inherit it. The proxy prints its token, so stdout is dropped.
     await sandbox.start(`exec agent-device proxy --host 0.0.0.0 --port ${PROXY_PORT} --daemon-auth-token "$PROXY_TOKEN" >/dev/null 2>${PROXY_LOG}`, {
-      envs: { PROXY_TOKEN: authToken },
+      envs: { PROXY_TOKEN: daemon.authToken },
       signal,
     });
-    const tunnel = await openTunnel({ host: sandbox.host(PROXY_PORT), trafficToken: sandbox.trafficToken });
-    return leases.hold(tunnel, () => connect(sandbox, request, { baseUrl: tunnel.url, authToken }, signal));
-  }
-
-  /** Waits for the proxy behind the tunnel, installs the build through it, and resolves to the lease. */
-  async function connect(sandbox: E2BSandbox, request: DeviceRequest, daemon: { baseUrl: string; authToken: string }, signal: AbortSignal): Promise<DeviceLease> {
-    await waitForProxy(daemon.baseUrl, signal).catch(async (cause: unknown) => {
+    await waitForProxy(baseUrl, signal).catch(async (cause: unknown) => {
       throw await withLog(sandbox, PROXY_LOG, cause, daemon.authToken);
     });
     const installedApp = request.appPath === undefined ? undefined : await installBuild(sandbox, request, request.appPath, daemon, signal);
@@ -138,8 +134,7 @@ export function e2b(options: E2BOptions = {}): DeviceProvider {
         throw new ConfigurationError('INVALID_CONFIG', `e2b() serves Android only; target "${request.targetName}" asks for ${request.platform}`);
       }
       if (!SEMVER.test(request.agentDeviceVersion)) throw new Error(`unexpected agent-device version ${JSON.stringify(request.agentDeviceVersion)}`);
-      const metadata = leaseMetadata(request);
-      return createAndServe(clientFor(request.env), { template, timeoutMs, metadata }, request.signal, (sandbox) => serve(sandbox, request));
+      return leases.acquire(request, { template, timeoutMs, metadata: leaseMetadata(request), port: PROXY_PORT }, (sandbox, tunnel) => ready(sandbox, tunnel.url, request));
     },
     release: (lease: DeviceLease, context: DeviceReleaseContext) => leases.release(lease.id, context),
   };

@@ -27,6 +27,10 @@ const sdk = vi.hoisted(() => {
     /** Aborted when setup finishes, as a run interrupted right then would be. */
     abortAfterSetup: undefined as AbortController | undefined,
     killFails: false,
+    /** Whether E2B creates the next sandbox without a traffic access token. */
+    noTrafficToken: false,
+    /** Sandboxes killed through their own handle, as `create` does with one it cannot use. */
+    selfKilled: [] as string[],
     counter: 0,
   };
   const Sandbox = {
@@ -36,7 +40,8 @@ const sdk = vi.hoisted(() => {
       const sandboxId = `sbx${state.counter}`;
       return {
         sandboxId,
-        trafficAccessToken: `tat-${sandboxId}`,
+        trafficAccessToken: state.noTrafficToken ? undefined : `tat-${sandboxId}`,
+        kill: async () => void state.selfKilled.push(sandboxId),
         getHost: (port: number) => `${port}-${sandboxId}.e2b.test`,
         commands: {
           run: async (command: string, runOpts: Record<string, unknown>) => {
@@ -143,6 +148,8 @@ beforeEach(() => {
   sdk.state.proxyToken = '';
   sdk.state.abortAfterSetup = undefined;
   sdk.state.killFails = false;
+  sdk.state.noTrafficToken = false;
+  sdk.state.selfKilled.length = 0;
   tunnels.opened.length = 0;
   tunnels.closed.length = 0;
   integration.tags.length = 0;
@@ -182,6 +189,8 @@ describe('e2b()', () => {
     const [setup, proxy] = sdk.state.commands;
     expect(setup!.command).toContain('agent-device@0.21.31');
     expect(setup!.command).toContain('sys.boot_completed');
+    // The Node tarball is checked against the SHA-256 nodejs.org publishes before it is unpacked.
+    expect(setup!.command).toMatch(/echo "[0-9a-f]{64}  \/tmp\/node\.tar\.gz" \| sha256sum -c --quiet - && sudo tar/);
     expect(proxy!.command).toContain('agent-device proxy --host 0.0.0.0 --port 4310');
     const token = (proxy!.opts['envs'] as { PROXY_TOKEN: string }).PROXY_TOKEN;
     expect(token).toMatch(/^[0-9a-f]{64}$/);
@@ -298,6 +307,25 @@ describe('e2b()', () => {
     sdk.state.killFails = true;
     await expect(provider.release(lease, releaseContext())).rejects.toThrow();
     expect(tunnels.closed).toEqual(['4310-sbx1.e2b.test']);
+  });
+
+  it('kills a sandbox E2B created without a traffic access token', async () => {
+    sdk.state.noTrafficToken = true;
+    await expect(e2b().acquire(request())).rejects.toThrow('E2B created sandbox sbx1 without a traffic access token');
+    expect(sdk.state.selfKilled).toEqual(['sbx1']);
+    expect(tunnels.opened).toEqual([]);
+  });
+
+  it('bounds setup with a budget of its own, not only the run\'s interrupt', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    try {
+      await e2b().acquire(request());
+      expect(timeout).toHaveBeenCalledWith(300_000);
+      const [setup] = sdk.state.commands;
+      expect(setup!.opts['timeoutMs']).toBe(300_000);
+    } finally {
+      timeout.mockRestore();
+    }
   });
 
   it('kills the sandbox on release with the run key and domain', async () => {
