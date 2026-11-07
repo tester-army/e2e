@@ -78,7 +78,7 @@
   },
   "devDependencies": {
     "@types/node": "26.6.6",
-    "ai": "7.0.163",
+    "ai": "7.0.164",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
