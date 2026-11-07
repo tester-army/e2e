@@ -38,7 +38,7 @@ import { resolveScrollTarget } from './scroll-target.ts';
 import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
-import { nodeReading, normalizeReading, readingShape } from './reading.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
 import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
 import { SETTLE_AFTER } from './settle-policy.ts';
@@ -548,7 +548,7 @@ export class ActionDispatcher {
     await this.runAction('scrollUntil', async () => {
       let observation = this.feed.requireLatest();
       let paged: Pick<Extract<RecordableAction, { name: 'scrollUntil' }>, 'node' | 'spans'> = {};
-      let previous: string | undefined;
+      let previous: PageReading | undefined;
       let still = 0;
       let within = list;
       for (let screens = 0; ; screens += 1) {
@@ -568,20 +568,28 @@ export class ActionDispatcher {
           if (isInViewport(found.rect, observation.viewport)) return { name: 'scrollUntil', text, direction, screens, ...paged };
         }
         if (screens >= MAX_SCROLL_UNTIL_SCREENS) throw notFound(`within ${String(MAX_SCROLL_UNTIL_SCREENS)} screens ${direction}`);
-        const shape = observation.kind === 'semantic' ? readingShape(observation) : undefined;
-        still = shape !== undefined && shape === previous ? still + 1 : 0;
+        const reading = observation.kind === 'semantic' ? readPage(observation) : undefined;
+        still = reading !== undefined && previous !== undefined && !pageMoved(previous, reading) ? still + 1 : 0;
         if (still >= SCROLL_UNTIL_STILL_PAGES) throw notFound(`before the screen stopped moving ${direction}, after ${String(screens)} screens`);
         if (still >= SCROLL_UNTIL_WRONG_LIST_PAGES && within !== undefined) {
           within = undefined;
           still = 0;
         }
-        previous = shape;
+        previous = reading;
         const turned = await this.page(direction, within);
         paged = turned.paged;
         within = turned.within;
         // A settled look: a browser scrolls on a later frame than the wheel
-        // event, and a raw read right after it sees the page as it was.
-        observation = await this.feed.look('held-still');
+        // event, and a raw read right after it sees the page as it was. A page
+        // at least a third (two lines at least) of whose lines are new and
+        // that is no sparser has landed, so it is read once; one that reads
+        // the same (not rendered yet, or the end), differs by a line or two
+        // (a counter), or is thinner (rows still drawing) is read until it
+        // holds.
+        observation = await this.feed.look(
+          'held-still',
+          (seen) => previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen)),
+        );
       }
     });
   }

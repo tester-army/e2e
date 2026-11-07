@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import type { RedactedNode } from '../../src/agent/observation.ts';
-import { nodeReading, normalizeReading, readingShape } from '../../src/agent/reading.ts';
+import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage } from '../../src/agent/reading.ts';
 import { redacted } from '../helpers/redacted.ts';
 
 function node(id: string, extra: Partial<SemanticNode> = {}): SemanticNode {
@@ -51,14 +51,117 @@ describe('nodeReading', () => {
   });
 });
 
-describe('readingShape', () => {
+describe('readPage', () => {
   it('changes when a row keeps its name and its place but its text moves on', () => {
     const rect = { x: 0, y: 100, width: 300, height: 40 };
     const before = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 1', rect }));
     const after = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 2', rect }));
     const same = indexOf(node('r', { role: 'listitem', name: 'Product', text: 'Product 1', rect }));
-    expect(readingShape(before)).not.toBe(readingShape(after));
-    expect(readingShape(before)).toBe(readingShape(same));
-    expect(readingShape(indexOf(node('box', { role: 'group', rect })))).toBe('');
+    expect(pageMoved(readPage(before), readPage(after))).toBe(true);
+    expect(pageMoved(readPage(before), readPage(same))).toBe(false);
+    expect(readPage(indexOf(node('box', { role: 'group', rect }))).lines).toEqual([]);
+  });
+});
+
+describe('a clock on the screen', () => {
+  const clock = (time: string) => node('clock', { role: 'status', name: 'Clock', text: time, rect: { x: 0, y: 0, width: 100, height: 20 } });
+  const row = (text: string) => node('r', { role: 'listitem', text, rect: { x: 0, y: 40, width: 300, height: 40 } });
+
+  it('is not a page that moved, however it ticked', () => {
+    const before = readPage(indexOf(clock('12:05'), row('Row 1')));
+    for (const time of ['12:06', '9:59:59']) {
+      const after = readPage(indexOf(clock(time), row('Row 1')));
+      expect(pageMoved(before, after)).toBe(false);
+      expect(pageLanded(before, after)).toBe(false);
+    }
+  });
+
+  it('still lets a page that moved read differently', () => {
+    const rows = (...texts: string[]) => texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } }));
+    const before = readPage(indexOf(clock('12:05'), ...rows('Row 1', 'Row 2')));
+    const after = readPage(indexOf(clock('12:06'), ...rows('Row 3', 'Row 4')));
+    expect(pageMoved(before, after)).toBe(true);
+    expect(pageLanded(before, after)).toBe(true);
+  });
+});
+
+describe('rows that differ by a clock-like value alone', () => {
+  const slots = (...times: string[]) =>
+    readPage(indexOf(...times.map((text, at) => node(`s${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: at * 40, width: 300, height: 40 } }))));
+  const header = node('h', { role: 'heading', name: 'Pick a time', rect: { x: 0, y: 0, width: 300, height: 40 } });
+  const slot = (id: string, text: string, at: number) => node(id, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } });
+
+  it('is a page that moved, a time picker turning over', () => {
+    expect(pageMoved(slots('9:00', '9:30', '10:00'), slots('10:30', '11:00', '11:30'))).toBe(true);
+    expect(pageMoved(readPage(indexOf(header, slot('a', '9:00', 0), slot('b', '9:30', 1))), readPage(indexOf(header, slot('a', '10:00', 0), slot('b', '10:30', 1))))).toBe(true);
+  });
+
+  it('is not one a swipe has landed on, since a clock beside the stale screen reads the same', () => {
+    expect(pageLanded(slots('9:00', '9:30', '10:00'), slots('10:30', '11:00', '11:30'))).toBe(false);
+  });
+
+  it('is the same page when none changed, and not one when a single value changed', () => {
+    expect(pageMoved(slots('9:00', '9:30'), slots('9:00', '9:30'))).toBe(false);
+    expect(pageMoved(slots('9:00', '9:30'), slots('9:00', '9:31'))).toBe(false);
+  });
+
+  it('is a page that moved when its one line is the value, a pager or carousel with nothing beside it', () => {
+    expect(pageMoved(slots('10:30'), slots('11:00'))).toBe(true);
+    expect(pageMoved(slots('10:30'), slots('10:30'))).toBe(false);
+    expect(pageMoved(slots(), slots())).toBe(false);
+  });
+});
+
+describe('pageLanded', () => {
+  const rows = (...texts: string[]) => readPage(indexOf(...texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: at * 40, width: 300, height: 40 } }))));
+
+  it('accepts a page that reads differently and is no sparser', () => {
+    expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows('Row 4', 'Row 5', 'Row 6'))).toBe(true);
+    expect(pageLanded(rows('Row 1', 'Row 2'), rows('Row 3', 'Row 4', 'Row 5'))).toBe(true);
+  });
+
+  it('declines a page that reads the same, as the scroll not rendered yet or the end of the list', () => {
+    expect(pageLanded(rows('Row 1', 'Row 2'), rows('Row 1', 'Row 2'))).toBe(false);
+  });
+
+  it('declines a thinner page, a windowed list between the scroll and the rows it draws', () => {
+    expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows('Row 4'))).toBe(false);
+    expect(pageLanded(rows('Row 1', 'Row 2', 'Row 3'), rows())).toBe(false);
+  });
+
+  describe('with a status line beside the list', () => {
+    const listed = (status: string, ...texts: string[]) =>
+      readPage(
+        indexOf(
+          node('status', { role: 'status', name: 'Inbox', text: status, rect: { x: 0, y: 0, width: 300, height: 20 } }),
+          ...texts.map((text, at) => node(`r${String(at)}`, { role: 'listitem', text, rect: { x: 0, y: 40 + at * 40, width: 300, height: 40 } })),
+        ),
+      );
+    const eight = ['Row 1', 'Row 2', 'Row 3', 'Row 4', 'Row 5', 'Row 6', 'Row 7', 'Row 8'];
+
+    it('declines a stale list when only the status line changed', () => {
+      expect(pageLanded(listed('3 unread', ...eight), listed('4 unread', ...eight))).toBe(false);
+    });
+
+    it('declines a short screen where the status line is the only new line', () => {
+      expect(pageLanded(listed('3 unread', 'Row 1'), listed('4 unread', 'Row 1'))).toBe(false);
+      expect(pageLanded(listed('3 unread', 'Row 1', 'Row 2'), listed('4 unread', 'Row 1', 'Row 2'))).toBe(false);
+    });
+
+    it('accepts a scrolled list, with the status line the same or changed', () => {
+      const scrolled = ['Row 7', 'Row 8', 'Row 9', 'Row 10', 'Row 11', 'Row 12', 'Row 13', 'Row 14'];
+      expect(pageLanded(listed('3 unread', ...eight), listed('3 unread', ...scrolled))).toBe(true);
+      expect(pageLanded(listed('3 unread', ...eight), listed('4 unread', ...scrolled))).toBe(true);
+    });
+
+    it('accepts a list scrolled by a row, whose rows each move to the slot above', () => {
+      expect(pageLanded(listed('3 unread', ...eight), listed('3 unread', ...eight.slice(1), 'Row 9'))).toBe(true);
+    });
+  });
+
+  it('wants a third of the lines to be new', () => {
+    const nine = ['Row 1', 'Row 2', 'Row 3', 'Row 4', 'Row 5', 'Row 6', 'Row 7', 'Row 8', 'Row 9'];
+    expect(pageLanded(rows(...nine), rows(...nine.slice(0, 6), 'Row 10', 'Row 11', 'Row 12'))).toBe(true);
+    expect(pageLanded(rows(...nine), rows(...nine.slice(0, 7), 'Row 10', 'Row 11'))).toBe(false);
   });
 });
