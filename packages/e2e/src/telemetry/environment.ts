@@ -12,7 +12,6 @@ import os from 'node:os';
 import { isCiMode } from '../config/resolve.ts';
 import { envValue } from '../internal/env.ts';
 import { detectPackageManager } from '../internal/package-manager.ts';
-import { runtimeOf } from '../internal/runtime.ts';
 import { plainToken } from './token.ts';
 
 export interface TelemetryEnvironment {
@@ -155,8 +154,11 @@ export function statedIdentity(env: NodeJS.ProcessEnv): string | undefined {
 
 /** The runtime executing this process: Bun and Deno each announce themselves in `process.versions`. */
 function runtime(versions: NodeJS.ProcessVersions): { readonly runtime: JsRuntime; readonly runtime_version: string } {
-  const { name, version } = runtimeOf(versions);
-  return { runtime: name, runtime_version: version };
+  const bun = versions['bun'];
+  if (bun !== undefined) return { runtime: 'bun', runtime_version: bun };
+  const deno = versions['deno'];
+  if (deno !== undefined) return { runtime: 'deno', runtime_version: deno };
+  return { runtime: 'node', runtime_version: versions.node };
 }
 
 

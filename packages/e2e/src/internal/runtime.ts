@@ -5,8 +5,6 @@
  * otherwise surface as an unrelated TypeError deep inside a run.
  */
 
-import nodeModule from 'node:module';
-
 type Version = readonly [major: number, minor: number, patch: number];
 
 /**
@@ -14,9 +12,6 @@ type Version = readonly [major: number, minor: number, patch: number];
  * else that release and every later line.
  */
 type ReleaseRange = { readonly line: number; readonly since: Version } | { readonly since: Version };
-
-/** What a runtime reports in `process.versions`: Bun and Deno name themselves beside the Node.js they emulate. */
-type RuntimeVersions = Pick<NodeJS.ProcessVersions, 'node'> & { readonly bun?: string | undefined; readonly deno?: string | undefined };
 
 function parse(version: string): Version {
   const [major = 0, minor = 0, patch = 0] = version
@@ -58,22 +53,15 @@ export const SUPPORTED_NODE_RANGE = SUPPORTED.map((range) => `${'line' in range 
  * files load through Bun's own module loader there (`config/bun-loader.ts`).
  * Before 1.4.3, a CommonJS file that requires an ES module of a graph still
  * waiting on top-level await throws `require() async module ... is
- * unsupported`, depending on load timing.
+ * unsupported`.
  */
 const BUN_FLOOR: Version = [1, 4, 3];
 
 /** The Bun releases e2e runs on. */
 export const SUPPORTED_BUN_RANGE = `>=${BUN_FLOOR.join('.')}`;
 
-/** Whether this process runs on Bun, whose own module loader compiles TypeScript. */
+/** Whether this process runs on Bun, which reports a Node.js version it emulates beside its own. */
 export const onBun: boolean = process.versions['bun'] !== undefined;
-
-/** The runtime `versions` describes, this process's by default, and its own version. */
-export function runtimeOf(versions: RuntimeVersions = process.versions): { readonly name: 'node' | 'bun' | 'deno'; readonly version: string } {
-  if (versions.bun !== undefined) return { name: 'bun', version: versions.bun };
-  if (versions.deno !== undefined) return { name: 'deno', version: versions.deno };
-  return { name: 'node', version: versions.node };
-}
 
 /** Explains a Node.js outside `SUPPORTED_NODE_RANGE`, or undefined for one inside it. */
 function unsupportedNodeMessage(current: string): string | undefined {
@@ -88,24 +76,7 @@ function unsupportedBunMessage(current: string): string | undefined {
   return `e2e requires Bun ${BUN_FLOOR.join('.')} or newer; this is Bun ${current}. Upgrade Bun (bun upgrade), or run the CLI with Node.js (npx e2e).`;
 }
 
-/**
- * Explains a runtime e2e cannot run on, or undefined for one it can: a Bun
- * older than `SUPPORTED_BUN_RANGE`, Deno, a Node.js outside
- * `SUPPORTED_NODE_RANGE`, or a runtime that reports a supported Node.js
- * without the `module.registerHooks` e2e's TypeScript loader runs on there.
- */
-export function unsupportedRuntimeMessage(
-  versions: RuntimeVersions = process.versions,
-  hasRegisterHooks: boolean = typeof nodeModule.registerHooks === 'function',
-): string | undefined {
-  // Deno implements module.registerHooks, but not the require() of a native addon from inside a hook that oxc needs.
-  if (versions.deno !== undefined) return `e2e runs on Node.js and Bun, not Deno ${versions.deno}: run the CLI with Node.js (npx e2e) or Bun (bunx --bun e2e).`;
-  // Bun loads TypeScript itself, so the Node.js version it reports does not matter.
-  if (versions.bun !== undefined) return unsupportedBunMessage(versions.bun);
-  const unsupportedNode = unsupportedNodeMessage(versions.node);
-  if (unsupportedNode !== undefined) return unsupportedNode;
-  if (!hasRegisterHooks) {
-    return `e2e runs on Node.js and Bun: this runtime reports Node.js ${versions.node} but has no module.registerHooks, which e2e's TypeScript loader needs. Run the CLI with Node.js (npx e2e) or Bun (bunx --bun e2e).`;
-  }
-  return undefined;
+/** Explains a Bun or Node.js e2e cannot run on, or undefined for one it can. */
+export function unsupportedRuntimeMessage(versions: Pick<NodeJS.ProcessVersions, 'node'> & { readonly bun?: string | undefined } = process.versions): string | undefined {
+  return versions.bun === undefined ? unsupportedNodeMessage(versions.node) : unsupportedBunMessage(versions.bun);
 }

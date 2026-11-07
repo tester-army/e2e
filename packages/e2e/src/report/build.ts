@@ -11,7 +11,7 @@ import type { ErrorCategory, ErrorDetails, ErrorPhase, HookScope, SerializedErro
 import { resultId, timestamp } from '../internal/ids.ts';
 import { obj } from '../internal/objects.ts';
 import { packageVersion } from '../internal/package-version.ts';
-import { runtimeOf } from '../internal/runtime.ts';
+import { onBun } from '../internal/runtime.ts';
 import { projectRelativePath } from '../internal/source.ts';
 import type { VcsInfo } from '../internal/vcs.ts';
 import type { SkipInfo } from '../collect/select.ts';
@@ -819,12 +819,6 @@ function computeUsage(options: {
   };
 }
 
-/** The runtime a report names: `node v24.8.0`, or `bun v1.4.3` on Bun. */
-function reportedRuntime(): string {
-  const { name, version } = runtimeOf();
-  return `${name} v${version}`;
-}
-
 /** Builds the complete report-1 document. */
 export function buildReport(options: BuildReportOptions): Report1Document {
   const { config } = options;
@@ -870,7 +864,7 @@ export function buildReport(options: BuildReportOptions): Report1Document {
         trustNoticeShown: false,
         os: `${os.platform()} ${os.release()}`,
         arch: os.arch(),
-        runtime: reportedRuntime(),
+        runtime: onBun ? `bun v${process.versions['bun']}` : `node ${process.version}`,
       },
       ...(options.vcs === undefined ? {} : { vcs: options.vcs }),
       targets,
