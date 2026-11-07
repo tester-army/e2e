@@ -566,7 +566,7 @@ export function changeShape(observation: AgentObservation): string | undefined {
 }
 
 /** Poll interval for shape-stability settling. */
-const SETTLE_POLL_MS = 75;
+export const SETTLE_POLL_MS = 75;
 
 /** What a settle loop needs from its step: the remaining clock and cancellation. */
 interface SettleClock {
