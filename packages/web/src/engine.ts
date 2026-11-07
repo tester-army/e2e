@@ -85,6 +85,7 @@ export function web(options: WebOptions = {}): EngineHandle {
   if (options.headers !== undefined) validateHeaders(options.headers);
   if (options.basicAuth !== undefined) validateBasicAuth(options.basicAuth);
   if (options.testIdAttribute !== undefined) validateTestIdAttribute(options.testIdAttribute);
+  if (options.observationNodeBudget !== undefined) validateObservationNodeBudget(options.observationNodeBudget);
   if (options.userAgent !== undefined) validateUserAgent(options.userAgent, options.headers);
   if (options.locale !== undefined) validateLocale(options.locale, options.headers);
   if (options.timezoneId !== undefined) validateTimezoneId(options.timezoneId);
@@ -170,6 +171,7 @@ const WEB_OPTION_KEYS: readonly string[] = Object.keys({
   headers: true,
   basicAuth: true,
   testIdAttribute: true,
+  observationNodeBudget: true,
   userAgent: true,
   locale: true,
   timezoneId: true,
@@ -402,6 +404,16 @@ function validateTestIdAttribute(attribute: unknown): void {
     throw new ConfigurationError(
       'INVALID_CONFIG',
       `web({ testIdAttribute }) must be an attribute name such as "data-testid", got ${JSON.stringify(attribute)}`,
+    );
+  }
+}
+
+/** Refuses an observation node budget no capture could spend, at config load. */
+function validateObservationNodeBudget(budget: unknown): void {
+  if (typeof budget !== 'number' || !Number.isSafeInteger(budget) || budget <= 0) {
+    throw new ConfigurationError(
+      'INVALID_CONFIG',
+      `web({ observationNodeBudget }) must be a positive safe integer, got ${JSON.stringify(budget)}`,
     );
   }
 }

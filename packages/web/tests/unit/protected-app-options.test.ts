@@ -66,6 +66,15 @@ describe('web({ basicAuth })', () => {
   });
 });
 
+describe('web({ observationNodeBudget })', () => {
+  it('rejects anything but a positive safe integer as INVALID_CONFIG', () => {
+    for (const budget of [0, -1, 1.5, Number.NaN, '8000']) {
+      expect(() => web({ observationNodeBudget: budget as unknown as number })).toThrowError(/observationNodeBudget.*positive safe integer/);
+    }
+    expect(() => web({ observationNodeBudget: 8_000 })).not.toThrow();
+  });
+});
+
 describe('web({ testIdAttribute })', () => {
   it('rejects anything that is not an attribute name as INVALID_CONFIG', () => {
     for (const attribute of ['', 'data qa', 'data="qa"']) {
@@ -190,7 +199,7 @@ describe('web() option keys', () => {
       refused('web() has unknown key "viewprt"; did you mean "viewport"?'),
     );
     expect(() => web({ launchOptions: {} } as unknown as Parameters<typeof web>[0])).toThrow(
-      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
+      refused('web() has unknown key "launchOptions"; expected one of browser, viewport, screencast, connect, headers, basicAuth, testIdAttribute, observationNodeBudget, userAgent, locale, timezoneId, colorScheme, reducedMotion, initScripts'),
     );
   });
 

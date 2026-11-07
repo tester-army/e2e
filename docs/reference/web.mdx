@@ -54,6 +54,7 @@ web({ viewport: { width: 390, height: 844 }, locale: 'de-DE' });
 | [`headers`](#headers) | `Record<string, string>` | - |
 | [`basicAuth`](#basicauth) | `WebBasicAuth` | - |
 | [`testIdAttribute`](#testidattribute) | `string` | `'data-testid'` |
+| [`observationNodeBudget`](#observationnodebudget) | `number` | `3000` |
 | [`userAgent`](#useragent) | `string` | the browser's own |
 | [`locale`](#locale) | `string` | the browser's own |
 | [`timezoneId`](#timezoneid) | `string` | the machine's |
@@ -302,6 +303,14 @@ The attribute that carries an element's test id: what the `testId` query
 ```ts
 web({ testIdAttribute: 'data-test' }); // default: 'data-testid'
 ```
+
+#### `observationNodeBudget`
+
+```ts
+web({ observationNodeBudget: 8_000 }); // default: 3_000
+```
+
+Node budget for one observation, shared across the main document and its frames: how many nodes the semantic capture lists before it reports `truncated`. Raise it for a known dense target whose controls fall past the default cutoff; every extra node costs tokens on each observation.
 
 #### `userAgent`
 
