@@ -68,10 +68,20 @@ describe('web({ basicAuth })', () => {
 
 describe('web({ observationNodeBudget })', () => {
   it('rejects anything but a positive safe integer as INVALID_CONFIG', () => {
-    for (const budget of [0, -1, 1.5, Number.NaN, '8000']) {
-      expect(() => web({ observationNodeBudget: budget as unknown as number })).toThrowError(/observationNodeBudget.*positive safe integer/);
+    for (const budget of [0, -1, 1.5, Number.NaN, '8000', Number.MAX_SAFE_INTEGER] as unknown[]) {
+      expect(() => web({ observationNodeBudget: budget as number })).toThrowError(/observationNodeBudget.*positive safe integer/);
     }
     expect(() => web({ observationNodeBudget: 8_000 })).not.toThrow();
+  });
+
+  it('rejects non-number values as INVALID_CONFIG, not a stringify TypeError', () => {
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    for (const budget of [10n, circular, ['x']]) {
+      expect(() => web({ observationNodeBudget: budget as unknown as number })).toThrowError(
+        expect.objectContaining({ code: 'INVALID_CONFIG' }),
+      );
+    }
   });
 });
 

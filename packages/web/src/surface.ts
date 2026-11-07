@@ -219,9 +219,9 @@ export interface WebOptions {
   /**
    * Node budget for one observation, shared across the main document and its
    * frames: how many nodes the semantic capture lists before it reports
-   * `truncated`. Default 3,000. Raise it for a known dense target whose
-   * controls fall past the default cutoff; every extra node costs tokens on
-   * each observation.
+   * `truncated`. Default 3,000, at most 1,000,000. Raise it for a known
+   * dense target whose controls fall past the default cutoff; every extra
+   * node costs tokens on each observation.
    */
   readonly observationNodeBudget?: number;
   /**

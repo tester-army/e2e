@@ -408,12 +408,20 @@ function validateTestIdAttribute(attribute: unknown): void {
   }
 }
 
+/**
+ * The largest observation node budget `web()` accepts. Ref ids are sequential
+ * integers reserved up to the budget per capture, so the cap keeps `mintId`
+ * exact no matter how many observations a run takes.
+ */
+const MAX_OBSERVATION_NODE_BUDGET = 1_000_000;
+
 /** Refuses an observation node budget no capture could spend, at config load. */
 function validateObservationNodeBudget(budget: unknown): void {
-  if (typeof budget !== 'number' || !Number.isSafeInteger(budget) || budget <= 0) {
+  if (typeof budget !== 'number' || !Number.isSafeInteger(budget) || budget <= 0 || budget > MAX_OBSERVATION_NODE_BUDGET) {
+    const shown = typeof budget === 'number' ? String(budget) : kindOf(budget);
     throw new ConfigurationError(
       'INVALID_CONFIG',
-      `web({ observationNodeBudget }) must be a positive safe integer, got ${JSON.stringify(budget)}`,
+      `web({ observationNodeBudget }) must be a positive safe integer up to ${MAX_OBSERVATION_NODE_BUDGET.toLocaleString('en-US')}, got ${shown}`,
     );
   }
 }

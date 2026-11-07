@@ -307,7 +307,7 @@ web({ testIdAttribute: 'data-test' }); // default: 'data-testid'
 #### `observationNodeBudget`
 
 ```ts
-web({ observationNodeBudget: 8_000 }); // default: 3_000
+web({ observationNodeBudget: 8_000 }); // default: 3,000, at most 1,000,000
 ```
 
 Node budget for one observation, shared across the main document and its frames: how many nodes the semantic capture lists before it reports `truncated`. Raise it for a known dense target whose controls fall past the default cutoff; every extra node costs tokens on each observation.
