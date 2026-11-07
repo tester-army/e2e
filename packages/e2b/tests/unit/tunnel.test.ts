@@ -22,8 +22,8 @@ let port: number;
 let tunnel: Tunnel;
 const seen: { path: string; headers: IncomingHttpHeaders }[] = [];
 const upgraded: Duplex[] = [];
-/** The bytes each upgrade carried past its head, as the upstream received them. */
-const heads: string[] = [];
+/** Every byte each upgraded socket received past its request head, whether it came with the head or after it. */
+const received: string[] = [];
 /** Resolves when the upstream sees the hanging request's connection close. */
 let hangClosed: Promise<void> = Promise.resolve();
 
@@ -62,7 +62,8 @@ beforeAll(async () => {
   upstream.on('upgrade', (req, socket, head: Buffer) => {
     seen.push({ path: req.url ?? '', headers: req.headers });
     upgraded.push(socket);
-    heads.push(head.toString());
+    const index = received.push(head.toString()) - 1;
+    socket.on('data', (chunk: Buffer) => (received[index] += chunk.toString()));
     const accept = createHash('sha1').update(`${req.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`).digest('base64');
     socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\n\r\n`);
   });
@@ -149,12 +150,12 @@ describe('tunnel', () => {
   });
 
   it('forwards the bytes a client sent with its upgrade request', async () => {
-    heads.length = 0;
+    received.length = 0;
     const client = netConnect(Number(new URL(tunnel.url).port), '127.0.0.1');
     client.on('error', () => {});
     client.write(`GET /devtools/browser/b6 HTTP/1.1\r\nHost: 127.0.0.1:${new URL(tunnel.url).port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\nfirst-frame`);
-    await expect.poll(() => heads.length).toBe(1);
-    expect(heads[0]).toBe('first-frame');
+    // TCP may hand the upstream these bytes with the head or after it; either way they must all arrive.
+    await expect.poll(() => received[0]).toBe('first-frame');
     client.destroy();
   });
 
