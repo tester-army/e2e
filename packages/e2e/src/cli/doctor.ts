@@ -19,7 +19,7 @@ import type { ResolvedTarget } from '../config/targets.ts';
 import { selectTargets } from '../collect/select.ts';
 import type { EngineDoctorCheck } from '../engine/index.ts';
 import { classifyError, InfrastructureError } from '../internal/errors.ts';
-import { SUPPORTED_NODE_RANGE } from '../internal/node-version.ts';
+import { onBun, SUPPORTED_BUN_RANGE, SUPPORTED_NODE_RANGE } from '../internal/runtime.ts';
 import { budgetText, cancelledError, NEVER_ABORTS, withAbort, withinCleanupBudget } from '../internal/time.ts';
 import { loginOf } from '../oauth/login-model.ts';
 import { apiKeyFor, getProvider, loginHint, type ProviderId } from '../oauth/providers.ts';
@@ -167,9 +167,10 @@ function errorOutcome(cause: unknown): { readonly code: string; readonly message
   return { code, message };
 }
 
-/** The runtime, which passed: `bin.ts` reports the one it refuses before this module loads. */
+/** The runtime, which passed: `bin.ts` reports the one it refuses before this module loads. Its id stays `node` on Bun too. */
 function nodeCheck(): DoctorCheck {
-  return { id: 'node', status: 'pass', message: `Node.js ${process.versions.node} (${SUPPORTED_NODE_RANGE})` };
+  const message = onBun ? `Bun ${process.versions['bun']} (${SUPPORTED_BUN_RANGE})` : `Node.js ${process.versions.node} (${SUPPORTED_NODE_RANGE})`;
+  return { id: 'node', status: 'pass', message };
 }
 
 /** Loads and resolves the config the way `e2e run` does. */

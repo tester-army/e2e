@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { unsupportedRuntimeMessage } from '../internal/node-version.ts';
+import { unsupportedRuntimeMessage } from '../internal/runtime.ts';
 import { packageVersion } from '../internal/package-version.ts';
 import { ignoreBrokenPipes } from './broken-pipe.ts';
 import type { DoctorReport } from './doctor.ts';
