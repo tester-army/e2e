@@ -22,10 +22,10 @@
  */
 
 import { engineBrand } from '../internal/brands.ts';
-import type { NodeReadOptions, NodeReadResult } from './node-read.ts';
+import type { ComputedStyleProperty, ComputedStyleValues } from './node-read.ts';
 
 export { COMPUTED_STYLE_PROPERTIES, validateNodeReadOptions } from './node-read.ts';
-export type { ComputedStyleProperty, NodeReadOptions, NodeReadResult } from './node-read.ts';
+export type { ComputedStyleProperty, ComputedStyleValues, NodeReadOptions, NodeReadResult } from './node-read.ts';
 
 // Semantics the spec requires every engine and contributed fixture to
 // reproduce exactly, exported so an engine never carries its own copy: the
@@ -94,7 +94,7 @@ export { isSecret } from '../secrets.ts';
  */
 export type EngineCapability =
   | 'observation'
-  | 'read'
+  | 'computedStyle'
   | 'actions'
   | 'location'
   | 'pointer'
@@ -785,12 +785,12 @@ export interface Engine {
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
   /**
-   * capability: read, requires observation. Reads only requested, allow-listed
+   * capability: computedStyle, requires observation. Reads only requested, allow-listed
    * rendered properties of a node this engine minted, without changing app
    * state. Throw NODE_STALE if the node no longer binds. Values cross the
    * protocol as JSON and are redacted by the harness before a tool sees them.
    */
-  read?(ref: NodeRef, options: NodeReadOptions, context: OperationContext): Promise<NodeReadResult>;
+  readStyle?(ref: NodeRef, properties: readonly ComputedStyleProperty[], context: OperationContext): Promise<ComputedStyleValues>;
   /**
    * capability: actions - requires observation. Performs exactly one action
    * on a ref this engine minted, from the newest observation or from

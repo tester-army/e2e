@@ -216,11 +216,11 @@ describe('web engine lifecycle', () => {
       'actions',
       'artifacts',
       'browser',
+      'computedStyle',
       'keyboard',
       'location',
       'observation',
       'pointer',
-      'read',
       'state',
     ]);
     expect(engine.name).toBe('web');

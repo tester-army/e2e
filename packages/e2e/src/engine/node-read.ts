@@ -15,9 +15,12 @@ export interface NodeReadOptions {
   readonly style: readonly ComputedStyleProperty[];
 }
 
+/** Computed CSS strings keyed by the properties requested from an engine. */
+export type ComputedStyleValues = Readonly<Partial<Record<ComputedStyleProperty, string>>>;
+
 export interface NodeReadResult {
   /** Only the requested properties, as computed strings. The harness redacts values before returning them to tools. */
-  readonly style: Readonly<Partial<Record<ComputedStyleProperty, string>>>;
+  readonly style: ComputedStyleValues;
 }
 
 /** Checks and copies the requested properties before any engine or page access. */

@@ -500,10 +500,10 @@ describe('project tool dispatch', () => {
 
   it('reads only requested style values, redacts secrets, and uses no action slot', async () => {
     const sentinel = 'style-secret-2718';
-    const read = vi.fn(async () => ({ style: { color: sentinel, opacity: '0.5', content: sentinel } }));
+    const read = vi.fn(async () => ({ color: sentinel, opacity: '0.5', content: sentinel }));
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
       observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status', text: 'Error' }]),
-      read,
+      readStyle: read,
     });
     let result: unknown;
     const model = installFakeLoopModel(({ turn }) => turn === 1
@@ -523,9 +523,12 @@ describe('project tool dispatch', () => {
       await fixtures.agent.act('inspect');
       expect(result).toEqual({ style: { color: '<secret:member.password>', opacity: '0.5' } });
       expect(read).toHaveBeenCalledExactlyOnceWith(
-        { id: 'message', revision: expect.any(String) }, { style: ['color', 'opacity'] }, expect.objectContaining({ origin: 'agent' }),
+        { id: 'message', revision: expect.any(String) }, ['color', 'opacity'], expect.objectContaining({ origin: 'agent' }),
       );
       expect(steps.all()[0]?.metrics?.actionSteps).toBe(0);
+      expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({
+        kind: 'observation', status: 'passed', detail: 'style: color, opacity',
+      });
       expect(JSON.stringify(steps.all())).not.toContain(sentinel);
     } finally {
       setSecretRegistry(undefined);
@@ -533,8 +536,8 @@ describe('project tool dispatch', () => {
   });
 
   it('denies property reads inside a mutating project tool before reaching the engine', async () => {
-    const read = vi.fn(async () => ({ style: { color: 'red' } }));
-    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]), read });
+    const read = vi.fn(async () => ({ color: 'red' }));
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1, observe: async () => snapshot([]), readStyle: read });
     let failure: unknown;
     const model = installFakeLoopModel(({ turn }) => turn === 1
       ? [{ toolName: 'inspect', input: {} }]
@@ -551,20 +554,20 @@ describe('project tool dispatch', () => {
 
   it('refuses missing and old observation ids and reads behind queued observations', async () => {
     let generation = 0;
-    const read = vi.fn(async () => ({ style: { color: 'red' } }));
+    const read = vi.fn(async () => ({ color: 'red' }));
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => snapshot([{ ref: { id: `message-${++generation}`, revision: '' }, role: 'status', text: 'Error' }]), read,
+      observe: async () => snapshot([{ ref: { id: `message-${++generation}`, revision: '' }, role: 'status', text: 'Error' }]), readStyle: read,
     });
     const failures: unknown[] = [];
     const executor: StepExecutor = { name: 'test', async runStep(context) {
       const first = await context.observe({ tree: true });
       const old = first.tree!.id;
       const fresh = context.observe({ tree: true });
-      const pending = context.read!({ id: old }, { style: ['color'] }).catch((cause: unknown) => failures.push(cause));
+      const pending = context.read({ id: old }, { style: ['color'] }).catch((cause: unknown) => failures.push(cause));
       const latest = await fresh;
       await pending;
-      await context.read!({ id: 'absent' }, { style: ['color'] }).catch((cause: unknown) => failures.push(cause));
-      await context.read!({ id: latest.tree!.id }, { style: ['color'] });
+      await context.read({ id: 'absent' }, { style: ['color'] }).catch((cause: unknown) => failures.push(cause));
+      await context.read({ id: latest.tree!.id }, { style: ['color'] });
       return { status: 'passed', summary: 'looked' };
     } };
     await runtime(engine, { agents: { default: { executor } } }).fixtures.agent.act('inspect');
@@ -579,56 +582,83 @@ describe('project tool dispatch', () => {
     });
     const executor: StepExecutor = { name: 'test', async runStep(context) {
       await context.observe();
-      await context.read!({ id: 'message' }, { style: ['color'] }).catch((cause: unknown) => { failure = cause; });
+      await context.read({ id: 'message' }, { style: ['color'] }).catch((cause: unknown) => { failure = cause; });
       return { status: 'passed', summary: 'looked' };
     } };
     await runtime(engine, { agents: { default: { executor } } }).fixtures.agent.act('inspect');
     expect(failure).toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
   });
 
-  it('fails closed on missing engine values and bounds values after redaction', async () => {
+  it.each(['before', 'after'] as const)('refuses a value when the step deadline expires %s the engine read', async (expires) => {
+    const past = Date.now() + 5_000;
+    const clock = vi.spyOn(Date, 'now');
     let failure: unknown;
     let value: unknown;
-    let valid = false;
+    const readStyle = vi.fn(async () => {
+      if (expires === 'after') clock.mockReturnValue(past);
+      return { color: 'rgb(255, 0, 0)' };
+    });
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
-      read: async () => ({ style: valid ? { color: 'x'.repeat(2048) } : {} }),
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]), readStyle,
     });
     const executor: StepExecutor = { name: 'test', async runStep(context) {
       await context.observe();
-      await context.read!({ id: 'message' }, { style: ['color'] }).catch((cause: unknown) => { failure = cause; });
-      valid = true;
-      value = await context.read!({ id: 'message' }, { style: ['color'] });
+      if (expires === 'before') clock.mockReturnValue(past);
+      try { value = await context.read({ id: 'message' }, { style: ['color'] }); }
+      catch (cause) { failure = cause; }
       return { status: 'passed', summary: 'looked' };
     } };
-    await runtime(engine, { agents: { default: { executor } } }).fixtures.agent.act('inspect');
-    expect(failure).toMatchObject({ code: 'INVALID_STATE' });
-    expect(value).toEqual({ style: { color: 'x'.repeat(1024) } });
+    try {
+      const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
+      await expect(fixtures.agent.act('read within the deadline', { timeout: 1_000 })).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+      expect(failure).toMatchObject({ code: 'STEP_TIMEOUT' });
+      expect(value).toBeUndefined();
+      expect(readStyle).toHaveBeenCalledTimes(expires === 'before' ? 0 : 1);
+      if (expires === 'after') {
+        expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: 'STEP_TIMEOUT' });
+      }
+    } finally { clock.mockRestore(); }
   });
 
-  it('preserves complete style values that resemble a secret prefix and redacts before clipping', async () => {
-    const overflow = 'style-secret-2718';
-    let value: unknown;
+  it('fails closed when the engine omits a requested property', async () => {
     let failure: unknown;
-    const read = vi.fn(async () => ({ style: { color: 'x'.repeat(1020) + overflow, opacity: '0.5' } }));
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
-      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]), read,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
+      readStyle: async () => ({}),
     });
     const executor: StepExecutor = { name: 'test', async runStep(context) {
       await context.observe();
-      await context.read!({ id: 'message' }, { style: ['content'] } as never).catch((cause: unknown) => { failure = cause; });
-      value = await context.read!({ id: 'message' }, { style: ['color', 'opacity'] });
+      await context.read({ id: 'message' }, { style: ['color'] }).catch((cause: unknown) => { failure = cause; });
+      return { status: 'passed', summary: 'looked' };
+    } };
+    const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
+    await fixtures.agent.act('inspect');
+    expect(failure).toMatchObject({ code: 'INVALID_STATE' });
+    expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: 'INVALID_STATE' });
+  });
+
+  it('preserves complete style values that resemble a secret prefix', async () => {
+    let value: unknown;
+    let failure: unknown;
+    const read = vi.fn(async () => ({ opacity: '0.5' }));
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]), readStyle: read,
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      await context.read({ id: 'message' }, { style: ['content'] } as never).catch((cause: unknown) => { failure = cause; });
+      value = await context.read({ id: 'message' }, { style: ['opacity'] });
       return { status: 'passed', summary: 'looked' };
     } };
     const { fixtures, config } = runtime(engine, {
-      secrets: { prefix: '0.5abc', overflow }, agents: { default: { executor } },
+      secrets: { prefix: '0.5abc' }, agents: { default: { executor } },
     });
     setSecretRegistry(config);
     try {
       await fixtures.agent.act('inspect');
       expect(failure).toMatchObject({ code: 'INVALID_ARGUMENT' });
       expect(read).toHaveBeenCalledOnce();
-      expect(value).toEqual({ style: { color: 'x'.repeat(1020) + '<sec', opacity: '0.5' } });
+      expect(value).toEqual({ style: { opacity: '0.5' } });
     } finally { setSecretRegistry(undefined); }
   });
 

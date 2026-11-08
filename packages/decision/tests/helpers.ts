@@ -167,6 +167,7 @@ export function context(options: {
     attachTranscript: (text) => { transcripts.push(text); }, attachTurns: (seen) => { turns.push(...seen); }, attachScreenshot: async () => 'screenshot',
     budgets: { maxActions: 25, maxModelCalls: options.maxModelCalls ?? 25, remainingMs: () => 60000, actionsUsed: () => 0, recordModelCall: (call) => { usage.push(call ?? {}); }, runTool: (_call, body) => body() },
     ...(options.replayedPrefix === undefined ? {} : { replayedPrefix: options.replayedPrefix }),
+    read: async () => { throw new Error('unexpected style read'); },
   };
   return { ctx, usage, observe, actions, turns, transcripts };
 }

@@ -20,7 +20,6 @@ import { ScreenPresenter } from './screen-update.ts';
 import { compactScreenHistory, compactScreenshotHistory } from './transcript-compaction.ts';
 import { createToolLoopExecutor, type ToolLoopHelpers } from './tool-loop.ts';
 import { toolAppliesTo, withToolContext } from './tool.ts';
-import { TestError } from '../internal/errors.ts';
 import { boundToolOutput } from './tool-output.ts';
 import type { AgentTool } from '../types.ts';
 
@@ -251,7 +250,6 @@ export function projectTools(
             attachScreenshot: (pixels, label) => context.attachScreenshot(pixels, label),
             read: (target, options) => {
               if (mutates) throw new AgentError('POLICY_DENIED', 'only read-only tools may read node properties');
-              if (context.read === undefined) throw new TestError('UNSUPPORTED_CAPABILITY', 'this executor host cannot read node properties');
               return context.read(target, options);
             },
           })),

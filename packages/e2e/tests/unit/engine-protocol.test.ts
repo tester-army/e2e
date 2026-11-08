@@ -73,15 +73,15 @@ const toy = (extra: Partial<Engine> = {}): Engine => ({
 
 describe('engine protocol', () => {
   it('carries a read request and computed values through JSON-RPC', async () => {
-    const read = vi.fn(async () => ({ style: { color: 'rgb(255, 0, 0)' } }));
-    const { remote } = overLoopback(toy({ read }));
-    expect(remote.capabilities.has('read')).toBe(true);
+    const read = vi.fn(async () => ({ color: 'rgb(255, 0, 0)' }));
+    const { remote } = overLoopback(toy({ readStyle: read }));
+    expect(remote.capabilities.has('computedStyle')).toBe(true);
     await remote.init!(initInfo());
     const ref = { id: 'n1', revision: '1' };
-    await expect(remote.read!(ref, { style: ['color'] }, operation())).resolves.toEqual({ style: { color: 'rgb(255, 0, 0)' } });
-    expect(read).toHaveBeenCalledExactlyOnceWith(ref, { style: ['color'] }, expect.objectContaining({ origin: 'test' }));
+    await expect(remote.readStyle!(ref, ['color'], operation())).resolves.toEqual({ color: 'rgb(255, 0, 0)' });
+    expect(read).toHaveBeenCalledExactlyOnceWith(ref, ['color'], expect.objectContaining({ origin: 'test' }));
     await remote.dispose!(cleanup);
-    expect(() => defineEngine({ name: 'bad', version: '1', spiVersion: 1, read })).toThrow(/read without observe/);
+    expect(() => defineEngine({ name: 'bad', version: '1', spiVersion: 1, readStyle: read })).toThrow(/readStyle without observe/);
   });
   it('declares the same capabilities over the protocol as the engine itself', () => {
     const { local, remote } = overLoopback(
@@ -534,7 +534,7 @@ describe('engine protocol', () => {
     const base = { name: 'x', version: '1', spiVersion: 1 };
     for (const refused of [
       { ...base, methods: ['engine/observe', 'engine/teleport'] },
-      { ...base, methods: ['engine/read'] },
+      { ...base, methods: ['engine/readStyle'] },
       { ...base, methods: ['engine/observe'], actions: ['tap'] },
       { ...base, methods: ['engine/observe'], tapModifiers: true },
       { ...base, methods: ['engine/observe'], pointerActions: ['tap'] },

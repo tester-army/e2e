@@ -59,6 +59,8 @@ export interface PhaseSpec {
   readonly kind: StepEvent['kind'];
   readonly phase: 'agent.observe' | 'agent.model' | 'agent.action' | 'agent.cache';
   readonly name?: string;
+  /** Keep the original engine error for APIs that expose engine capability and staleness codes. */
+  readonly preserveError?: boolean;
 }
 
 /** The live activity a phase announces as it begins; a cache probe announces nothing. */
@@ -110,7 +112,7 @@ export async function instrumentPhase<Value>(
       // What went wrong, not only its code: the tool result the model read said it too.
       ...(error.message.trim() === '' ? {} : { detail: `${spec.name === undefined ? '' : `${spec.name}: `}${error.message.split('\n')[0]!.trim()}` }),
     });
-    throw error;
+    throw spec.preserveError === true ? cause : error;
   } finally {
     host.debug?.record(spec.phase, Date.now() - startedMs);
   }

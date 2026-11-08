@@ -33,8 +33,8 @@ import {
   type LocatorAction,
   type LocatorExpression,
   type NodeRef,
-  type NodeReadOptions,
-  type NodeReadResult,
+  type ComputedStyleProperty,
+  type ComputedStyleValues,
   validateNodeReadOptions,
   type OperationContext,
   type PointerAction,
@@ -874,22 +874,22 @@ export class PlaywrightSurface {
   }
 
   /** Reads computed styles from the element behind a node ref, without input or actionability waits. */
-  async read(ref: NodeRef, options: NodeReadOptions, operation: OperationContext): Promise<NodeReadResult> {
-    const checked = validateNodeReadOptions(options);
+  async readStyle(ref: NodeRef, properties: readonly ComputedStyleProperty[], operation: OperationContext): Promise<ComputedStyleValues> {
+    const checked = validateNodeReadOptions({ style: properties });
     return this.guard(operation, 'read node properties', async (currentOperation) => {
       const target = await this.requireSession().refs.lookup(ref);
       currentOperation.signal.throwIfAborted();
-      const read = (element: Element, properties: NodeReadOptions['style']) => {
+      const read = (element: Element, requested: readonly ComputedStyleProperty[]) => {
         const view = element.ownerDocument.defaultView;
         if (!element.isConnected || view === null) return null;
         const computed = view.getComputedStyle(element);
-        return Object.fromEntries(properties.map((property) => [property, computed.getPropertyValue(property)]));
+        return Object.fromEntries(requested.map((property) => [property, computed.getPropertyValue(property)]));
       };
       const style = target.kind === 'element'
         ? await target.element.evaluate(read, checked.style)
         : await target.locator.evaluate(read, checked.style, { timeout: currentOperation.timeoutMs });
       if (style === null) throw new EngineError('NODE_STALE', 'node is detached; observe again before reading', { retryable: true });
-      return { style };
+      return style;
     }, navigationStaleOr);
   }
 

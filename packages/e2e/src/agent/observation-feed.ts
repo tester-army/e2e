@@ -52,8 +52,6 @@ const MAX_RECENT_OBSERVATIONS = 8;
  * the oldest dropped first past this many.
  */
 const MAX_SHOWN_TEXTS = 4_096;
-/** Maximum characters of a computed property returned to a tool, after redaction. */
-const MAX_STYLE_VALUE_CHARS = 1024;
 
 /** A target resolved to a node of the observation it was found in. */
 export interface Resolved {
@@ -187,20 +185,27 @@ export class ObservationFeed {
     const checked = validateNodeReadOptions(options);
     return this.queue.run(async () => {
       this.accounting.checkpoint();
-      const { id, observation } = this.currentTarget(target);
-      const node = observation.nodes.get(id);
-      if (node === undefined) throw nodeGone(id, observation);
-      const result = await this.runtime.engine.session.readNode(node.ref, checked, this.accounting.operation());
-      this.accounting.checkpoint();
-      const style: Partial<Record<ComputedStyleProperty, string>> = {};
-      for (const property of checked.style) {
-        const value = result?.style?.[property];
-        if (typeof value !== 'string') {
-          throw new EngineError('INVALID_STATE', 'engine read must return a string for every requested style property', { retryable: false });
-        }
-        style[property] = this.runtime.redact(value).slice(0, MAX_STYLE_VALUE_CHARS);
-      }
-      return { style };
+      return instrumentPhase(
+        this.runtime,
+        { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'readStyle', preserveError: true },
+        async () => {
+          const { id, observation } = this.currentTarget(target);
+          const node = observation.nodes.get(id);
+          if (node === undefined) throw nodeGone(id, observation);
+          const result = await this.runtime.engine.session.readStyle(node.ref, checked.style, this.accounting.operation());
+          this.accounting.checkpoint();
+          const style: Partial<Record<ComputedStyleProperty, string>> = {};
+          for (const property of checked.style) {
+            const value = result?.[property];
+            if (typeof value !== 'string') {
+              throw new EngineError('INVALID_STATE', 'engine readStyle must return a string for every requested style property', { retryable: false });
+            }
+            style[property] = this.runtime.redact(value);
+          }
+          return { style };
+        },
+        () => ({ detail: `style: ${checked.style.join(', ')}` }),
+      );
     });
   }
 

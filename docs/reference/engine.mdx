@@ -89,9 +89,9 @@ rules:
 | `spiVersion` | Anything but `1`. |
 | `platform` | Empty. |
 | `workers` | Not a positive safe integer. |
-| `observe`, `read`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
+| `observe`, `readStyle`, `locate`, `perform`, `performAt`, `prepare`, `finish`, `doctor`, `init`, `startAttempt`, `settleAttempt`, `endAttempt`, `dispose`, `validateApp` | Not a function. |
 | any other top-level key | On an object literal, `app` included: declare the app on the target and check it in `validateApp`. A class instance's own fields are not checked. |
-| `read`, `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
+| `readStyle`, `perform`, `locate`, `performAt`, `keyboard` | Declared without `observe`. |
 | `perform`, `actions` | One without the other. An `actions` list that is empty, repeats a kind, or names one outside `LOCATOR_ACTION_KINDS`. |
 | `performAt`, `pointerActions` | One without the other. A `pointerActions` list that is empty, repeats a kind, or names one outside `POINTER_ACTION_KINDS`. |
 | `tapModifiers` | Not a boolean, or `true` without `perform`. |
@@ -119,7 +119,7 @@ The body of one target. Every member but `name`, `version`, and
 | `platform` | `string` |
 | `workers` | `number` |
 | [`observe`](#observation) | method |
-| [`read`](#rendered-node-properties) | method |
+| [`readStyle`](#rendered-node-properties) | method |
 | [`perform`, `actions`](#actions) | method, kinds |
 | [`locate`](#capabilities) | method |
 | [`performAt`, `pointerActions`](#pointer-actions) | method, kinds |
@@ -164,8 +164,8 @@ export interface Engine {
   readonly workers?: number;
   /** capability: observation. */
   observe?(context: OperationContext, options?: EngineObserveOptions): Promise<EngineSnapshot>;
-  /** capability: read, requires observation. Read-only rendered properties of a node ref. */
-  read?(ref: NodeRef, options: NodeReadOptions, context: OperationContext): Promise<NodeReadResult>;
+  /** capability: computedStyle, requires observation. Read-only rendered properties of a node ref. */
+  readStyle?(ref: NodeRef, properties: readonly ComputedStyleProperty[], context: OperationContext): Promise<ComputedStyleValues>;
   /**
    * Performs one action on a ref from the newest observation or `locate`,
    * with the platform's actionability checks. Both agent tools and locator
@@ -364,7 +364,7 @@ member. Three gaps end differently:
 | Member | Capability | Requires | Unlocks |
 | --- | --- | --- | --- |
 | `observe` | `observation` | - | The judgment tier, prompt snapshots, trace replay, the viewport swipe's root. |
-| `read` | `read` | `observe` | Allow-listed rendered properties for read-only project tools. |
+| `readStyle` | `computedStyle` | `observe` | Allow-listed rendered properties for read-only project tools. |
 | `perform` + `actions` | `actions` | `observe` | Node actions of the declared kinds, with platform actionability checks. |
 | `locate` | `location` | `observe` | `screen`, `Locator`, `expect(locator)`. |
 | `tapModifiers: true` | - | `perform` | `modifiers` on `tap`, `doubleTap`, and `secondaryTap`. |
@@ -378,33 +378,24 @@ member. Three gaps end differently:
 
 #### Rendered node properties
 
-`read(ref, options, context)` measures the current rendered properties of the
-element behind a node reference, without input, scrolling, or other mutations.
-It must return every requested property as a computed CSS string and no
-unrequested data. Throw retryable `NODE_STALE` when the element no longer binds.
-The harness applies secret redaction before returning values to project tools.
+`readStyle(ref, properties, context)` returns computed CSS strings for the requested
+properties without changing app state. Its `computedStyle` capability requires
+`observe`. Return only requested keys; throw retryable `NODE_STALE` if the node
+no longer binds. The harness redacts values before returning them to tools.
 
 ```ts
 export type ComputedStyleProperty =
   | 'color' | 'background-color' | 'font-size' | 'font-weight' | 'font-style'
   | 'text-align' | 'text-decoration-line' | 'display' | 'visibility' | 'opacity';
 
-export interface NodeReadOptions {
-  readonly style: readonly ComputedStyleProperty[];
-}
-
-export interface NodeReadResult {
-  readonly style: Readonly<Partial<Record<ComputedStyleProperty, string>>>;
-}
+export type ComputedStyleValues = Readonly<Partial<Record<ComputedStyleProperty, string>>>;
 ```
 
-`COMPUTED_STYLE_PROPERTIES` exports this allowlist as a frozen array.
-`validateNodeReadOptions(options)` checks and copies it, removing duplicates.
-It rejects unknown option keys, empty lists, more than 10 entries, and
-properties outside the allowlist with `INVALID_ARGUMENT` before page access.
-An engine implementing `read` calls this validator before reading the element.
-The web engine supports it; engines that omit it fail with `UNSUPPORTED_CAPABILITY`.
-See [Project tools](/tools#read-a-nodes-computed-style) for the tool-facing API.
+`COMPUTED_STYLE_PROPERTIES` exports the allow-list as a frozen array.
+`validateNodeReadOptions({ style: properties })` validates and copies 1 to 10
+entries, deduplicating them. Engines call it before page access; invalid or
+unknown options and properties are `INVALID_ARGUMENT`.
+See [Project tools](/tools#read-a-nodes-computed-style) for `ToolContext.read`.
 
 #### Agent verbs
 
@@ -501,7 +492,7 @@ engine. A target with `app.url` has `browser`, and one with `app.bundleId` or
  */
 export type EngineCapability =
   | 'observation'
-  | 'read'
+  | 'computedStyle'
   | 'actions'
   | 'location'
   | 'pointer'

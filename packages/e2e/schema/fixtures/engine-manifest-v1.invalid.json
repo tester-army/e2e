@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "spiVersion": 1,
   "methods": [
-    "engine/read"
+    "engine/readStyle"
   ]
 }

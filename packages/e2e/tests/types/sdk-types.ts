@@ -72,7 +72,6 @@ import {
 import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import type { Report } from '../../src/index.ts';
 import type { ToolSet } from 'ai';
-
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 import { chatgpt } from '../../src/oauth/chatgpt.ts';
 import { copilot } from '../../src/oauth/copilot.ts';
@@ -409,6 +408,7 @@ finishedRun.lastRun satisfies FinishedRun['report'] | undefined;
 // @ts-expect-error the exit codes are the closed set a run ends with
 5 satisfies RunExitCode;
 declare const executorContext: StepExecutorContext;
+void executorContext.read({ id: 'n1' }, { style: ['color'] });
 executorContext.target.verbs satisfies ReadonlySet<ExecutorVerb>;
 executorContext.attempt.titlePath satisfies readonly string[];
 'tapAt' satisfies ExecutorVerb;

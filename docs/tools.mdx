@@ -124,12 +124,9 @@ return result.style;
 Pass the node's ID from the newest observation. The result contains only
 requested properties, with secret values redacted as in the tree.
 Values use the browser's computed CSS format, such as `rgb(255, 0, 0)` for red.
-Each value is capped at 1024 characters after redaction.
 
-The allowed properties are `color`, `background-color`, `font-size`,
-`font-weight`, `font-style`, `text-align`, `text-decoration-line`, `display`,
-`visibility`, and `opacity`. Request 1 to 10 properties per call.
-Custom properties, URLs, generated content, selectors, and page code are not accepted.
+Request 1 to 10 properties from the [computed-style allow-list](/reference/engine#rendered-node-properties).
+Custom properties, generated content, selectors, and page code are rejected.
 
 Reads use the step's deadline and run in order with observations and actions,
 without taking an action slot. They measure the current value on the original
@@ -143,7 +140,10 @@ another element covers it or an ancestor makes it invisible.
 | `INVALID_ARGUMENT` | The options or property names are invalid. |
 | `LOCATOR_NOT_FOUND` | No semantic observation exists, or the latest one does not list the ID. |
 | `NODE_STALE` | The element detached or the engine no longer holds its reference. Observe again before reading. |
-| `UNSUPPORTED_CAPABILITY` | The engine has no `read` method, including the mobile engine. |
+| `UNSUPPORTED_CAPABILITY` | The engine has no `readStyle` method, including the mobile engine. |
+
+Use `requires: ['computedStyle']` on a test to skip targets without style reads.
+Read events name the requested properties without recording their values.
 
 ## Device toolkits
 
