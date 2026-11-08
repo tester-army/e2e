@@ -242,6 +242,9 @@ importers:
 
   apps/testbed:
     dependencies:
+      '@e2e-dev/browser-run':
+        specifier: workspace:*
+        version: link:../../packages/browser-run
       '@e2e-dev/decision':
         specifier: workspace:*
         version: link:../../packages/decision

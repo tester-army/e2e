@@ -52,9 +52,9 @@
   "devDependencies": {
     "@e2e-dev/web": "workspace:*",
     "@types/node": "26.6.6",
+    "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "vitest": "5.1.0",
-    "e2e": "workspace:*"
+    "vitest": "5.1.0"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"
