@@ -29,12 +29,12 @@ describe('browserRun', () => {
   it('reads credentials from the run and returns a token-free endpoint with handshake headers', async () => {
     const fetch = vi.fn().mockResolvedValue(Response.json({ sessionId: id, webSocketDebuggerUrl: 'wss://untrusted.example' }));
     vi.stubGlobal('fetch', fetch);
-    const provider = browserRun({ keepAlive: 100_000, lab: true });
+    const provider = browserRun({ keepAlive: 100_000 });
     const request = context();
     const lease = await provider.acquire(request);
     expect(lease.cdpEndpoint).toBe(`wss://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/browser-rendering/devtools/browser/${id}`);
     expect(lease.cdpHeaders).toEqual({ Authorization: 'Bearer synthetic-secret' });
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('keep_alive=100000&lab=true'), expect.objectContaining({
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining('keep_alive=100000'), expect.objectContaining({
       method: 'POST', redirect: 'error', headers: lease.cdpHeaders, signal: expect.any(AbortSignal),
     }));
     expect(request.log).toHaveBeenCalledWith(`browser ${id}`);

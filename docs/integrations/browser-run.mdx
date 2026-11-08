@@ -53,7 +53,6 @@ Use a public HTTPS app URL. A hosted browser cannot reach the runner's `localhos
 | --- | --- | --- |
 | `scope` | `'worker'` | One browser per worker slot. `'attempt'` leases a fresh browser for every attempt and retry. |
 | `keepAlive` | `60000` | Inactivity timeout in milliseconds, from `10000` to `1200000`. |
-| `lab` | `false` | Use Cloudflare's experimental browser pool. |
 | `liveView` | `false` | Log a read-only viewing link for the test's actual tab. |
 
 Worker scope creates an isolated context for every attempt.

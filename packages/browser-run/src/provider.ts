@@ -11,8 +11,6 @@ export interface BrowserRunOptions {
   readonly scope?: BrowserProviderScope | undefined;
   /** Inactivity timeout in milliseconds, from 10,000 to 1,200,000. Default: 60,000. */
   readonly keepAlive?: number | undefined;
-  /** Uses Cloudflare's experimental browser pool. Default: false. */
-  readonly lab?: boolean | undefined;
   /** Logs a read-only Live View link for each test page. Default: false. */
   readonly liveView?: boolean | undefined;
 }
@@ -72,15 +70,13 @@ async function release(lease: BrowserLease, context: BrowserReleaseContext): Pro
  * The engine owns isolation, screenshots, and per-attempt screencast video.
  */
 export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
-  const { scope, keepAlive = 60_000, lab, liveView = false } = options;
+  const { scope, keepAlive = 60_000, liveView = false } = options;
 
   if (!Number.isInteger(keepAlive) || keepAlive < 10_000 || keepAlive > 1_200_000) {
     throw new Error('browserRun keepAlive must be an integer from 10000 to 1200000 milliseconds');
   }
 
   if (scope !== undefined && scope !== 'worker' && scope !== 'attempt') throw new Error('browserRun scope must be worker or attempt');
-
-  if (lab !== undefined && lab !== true && lab !== false) throw new Error('browserRun lab must be a boolean');
 
   if (liveView !== true && liveView !== false) throw new Error('browserRun liveView must be a boolean');
 
@@ -92,7 +88,6 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       const url = new URL(base);
       url.searchParams.set('keep_alive', String(keepAlive));
 
-      if (lab !== undefined) url.searchParams.set('lab', String(lab));
       const response = await request(url.href, 'POST', headers, context.signal);
       const result = await resultOf(response, isSessionResult, 'Cloudflare Browser Run returned no valid sessionId');
       // Construct the endpoint ourselves so a response cannot send the token to another origin.

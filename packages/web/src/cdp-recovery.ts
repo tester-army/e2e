@@ -57,7 +57,7 @@ export async function attachPersistent(
   if (typeof endpoint !== 'string' || endpoint.trim() === '') throw recoveryFailed('the endpoint is empty');
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new EngineError('OPERATION_TIMEOUT', 'CDP connection timed out', { retryable: false });
-  const browser = headers === undefined ? await connectCdp(endpoint, remaining) : await connectCdp(endpoint, remaining, headers);
+  const browser = await connectCdp(endpoint, remaining, headers);
   const detach = () => { void browser.close().catch(() => undefined); };
   signal.addEventListener('abort', detach, { once: true });
   try {

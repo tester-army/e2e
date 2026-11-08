@@ -456,9 +456,7 @@ export class PlaywrightSurface {
 
       const headers = this.leases?.cdpHeaders();
 
-      const browser = headers === undefined
-        ? await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS)
-        : await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS, headers);
+      const browser = await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS, headers);
 
       if (signal.aborted) {
         await browser.close().catch(() => undefined);
@@ -765,7 +763,7 @@ export class PlaywrightSurface {
   back(operation: OperationContext): Promise<void> {
     return this.acted(operation, this.guard(operation, 'navigation', (currentOperation) =>
       this.navigating(async () => {
-        await this.requirePage().goBack({ waitUntil: 'commit', timeout: currentOperation.timeoutMs });
+        await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
       }),
     ));
   }
