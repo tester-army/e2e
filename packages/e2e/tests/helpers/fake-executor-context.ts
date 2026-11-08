@@ -88,7 +88,7 @@ export function fakeExecutorContext(options: FakeExecutorContextOptions = {}): F
     attachTranscript: () => undefined,
     attachTurns: () => undefined,
     attachScreenshot: async () => 'screenshot',
-    read: async () => { throw new Error('unexpected style read'); },
+    read: refuse('read'),
   };
   return { context, dispatched };
 }

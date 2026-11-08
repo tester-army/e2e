@@ -380,8 +380,10 @@ member. Three gaps end differently:
 
 `readStyle(ref, properties, context)` returns computed CSS strings for the requested
 properties without changing app state. Its `computedStyle` capability requires
-`observe`. Return only requested keys; throw retryable `NODE_STALE` if the node
-no longer binds. The harness redacts values before returning them to tools.
+`observe`. Return a string for every requested property and no unrequested keys.
+An omitted value fails with non-retryable `INVALID_STATE`. Throw retryable
+`NODE_STALE` if the node no longer binds. The harness redacts values before
+returning them to tools.
 
 ```ts
 export type ComputedStyleProperty =
