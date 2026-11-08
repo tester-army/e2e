@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -500,14 +500,21 @@ describe('acp', () => {
     const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
     const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
     const cwd = session.cwd;
+    // The immediate removal has to fail for this test to reach the fallback:
+    // a live agent does not hold the directory on POSIX, so a file in a
+    // read-only directory makes the removal fail instead.
+    writeFileSync(join(cwd, 'held'), '');
+    chmodSync(cwd, 0o555);
     step.end();
-    // The agent is still stopping: the directory must still be there. On
-    // Windows, a process the agent started in the session directory still
-    // holds it, so removing it early throws EPERM and takes the worker
-    // down; the old teardown, which removed it at once, failed the test
-    // this way.
+    // The agent is still stopping and the removal waits for it, so the
+    // directory must still be there.
     expect(() => process.kill(pid, 0)).not.toThrow();
     expect(existsSync(cwd)).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(() => process.kill(pid, 0)).not.toThrow();
+    expect(existsSync(cwd)).toBe(true);
+    // Let the fallback removal succeed once the agent is gone.
+    chmodSync(cwd, 0o755);
     await eventually(() => {
       expect(() => process.kill(pid, 0)).toThrow();
       expect(existsSync(cwd)).toBe(false);

@@ -156,15 +156,13 @@ export async function startSession(
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }, 3_000).unref();
     void serving.then((started) => started.close(), () => undefined);
-    // The directory comes down only once the agent is gone: on Windows a
-    // process the agent started in the session directory still holds it,
-    // so removing it early throws EPERM. The removal is async, so a retry
-    // loop never blocks the event loop, and a failed removal never throws:
-    // a leftover temp directory is harmless. `exited` is already settled
-    // when the child is gone, and settles on spawn errors too.
-    void exited
-      .catch(() => rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }))
-      .catch(() => undefined);
+    // Try at once, then once the agent is gone: on Windows a process the
+    // agent started in the directory still holds it, so early removal throws EPERM.
+    void rm(cwd, { recursive: true, force: true }).catch(() =>
+      exited
+        .catch(() => rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }))
+        .catch(() => undefined),
+    );
   };
 
   let initialize: InitializeResponse;
