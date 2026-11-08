@@ -506,7 +506,6 @@ command: {
 | `reuseExisting` | `true` | `false` |
 
 - `executable` is resolved with `PATH` and never shell-interpreted.
-- On Windows, `executable` must name a real executable file: `npm` fails with `spawn npm ENOENT` because npm is `npm.cmd`. Use `node` with the tool's JavaScript entry point instead, for example `node_modules/vite/bin/vite.js`.
 - `args` pass verbatim. `{port}` in `args` and `env` values expands to the
   port of `url`.
 - `cwd` resolves from the project root.

@@ -489,7 +489,10 @@ describe('acp', () => {
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
   });
 
-  it('removes the session directory only after the agent exits', async () => {
+  // The delay handler cannot run on Windows: Node terminates the child
+  // immediately for SIGTERM, so the test would see an exited child instead
+  // of the live process it expects. This checks the ordering on POSIX only.
+  it.skipIf(process.platform === 'win32')('removes the session directory only after the agent exits', async () => {
     const { executor, log } = scripted([[pass]], { env: { ACP_EXIT_DELAY_MS: '1500' } });
     const step = context();
     cleanups.push(step.end);
@@ -499,9 +502,10 @@ describe('acp', () => {
     const cwd = session.cwd;
     step.end();
     // The agent is still stopping: the directory must still be there. On
-    // Windows removing a directory a live process holds as its working
-    // directory throws EPERM and takes the worker down, so the old teardown,
-    // which removed it at once, failed the test this way.
+    // Windows, a process the agent started in the session directory still
+    // holds it, so removing it early throws EPERM and takes the worker
+    // down; the old teardown, which removed it at once, failed the test
+    // this way.
     expect(() => process.kill(pid, 0)).not.toThrow();
     expect(existsSync(cwd)).toBe(true);
     await eventually(() => {
@@ -520,7 +524,7 @@ describe('acp', () => {
     const cwd = session.cwd;
     process.kill(pid, 'SIGKILL');
     await eventually(() => expect(() => process.kill(pid, 0)).toThrow());
-    // Let the exit event land, so the already-exited branch is the one taken.
+    // Let the exit event land, so the removal runs from the already-settled exit promise.
     await new Promise((resolve) => setTimeout(resolve, 50));
     step.end();
     await eventually(() => expect(existsSync(cwd)).toBe(false));

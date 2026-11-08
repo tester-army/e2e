@@ -11,7 +11,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable, Writable } from 'node:stream';
@@ -155,25 +156,15 @@ export async function startSession(
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }, 3_000).unref();
     void serving.then((started) => started.close(), () => undefined);
-    // Windows cannot remove a directory while a process still has it as its
-    // working directory, so the removal waits for the child to exit; a
-    // leftover temp directory is harmless, so a failed removal never throws.
-    let removed = false;
-    const removeCwd = () => {
-      if (removed) return;
-      removed = true;
-      try {
-        rmSync(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-      } catch {
-        // A leftover temp directory is harmless.
-      }
-    };
-    if (child.exitCode !== null || child.signalCode !== null) removeCwd();
-    else {
-      child.once('exit', removeCwd);
-      // A child that never started may emit 'close' without 'exit'.
-      child.once('close', removeCwd);
-    }
+    // The directory comes down only once the agent is gone: on Windows a
+    // process the agent started in the session directory still holds it,
+    // so removing it early throws EPERM. The removal is async, so a retry
+    // loop never blocks the event loop, and a failed removal never throws:
+    // a leftover temp directory is harmless. `exited` is already settled
+    // when the child is gone, and settles on spawn errors too.
+    void exited
+      .catch(() => rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }))
+      .catch(() => undefined);
   };
 
   let initialize: InitializeResponse;
