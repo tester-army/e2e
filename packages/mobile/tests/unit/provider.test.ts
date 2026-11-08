@@ -69,6 +69,7 @@ const finishInfo = (log: (line: string) => void = () => undefined) => ({
 describe('device provider', () => {
   it('rejects a provider without a name or the two methods', () => {
     expect(() => harness({ device: { name: '' } as unknown as DeviceProvider })).toThrow(/non-empty `name`/);
+    expect(() => harness({ device: null as unknown as DeviceProvider })).toThrow(/non-empty `name`/);
     expect(() => harness({ device: { name: 'x', acquire: async () => ({}) } as unknown as DeviceProvider })).toThrow(
       /provider "x" must implement release\(\)/,
     );
