@@ -14,8 +14,12 @@ test('reaches the row', async ({ app, agent }) => {
 
 const PER_PAGE = 3;
 
-/** How a swipe turns the page: now, late, or through a thinner page first. */
-type Turning = 'now' | 'late' | 'drawn-late' | 'never';
+/**
+ * How a swipe turns the page: now, late (inside one settle poll), deferred
+ * (after the poll that used to call the page unchanged), through a thinner
+ * page first, or never.
+ */
+type Turning = 'now' | 'late' | 'deferred' | 'drawn-late' | 'never';
 
 interface Paged {
   /** Engine observations between each swipe and the next one, the last one up to the end of the scroll. */
@@ -73,6 +77,8 @@ async function scrollTo(text: string, turning: Turning, withClock = false, textO
       const next = turning === 'never' ? page : page + 1;
       if (turning === 'now') turn(next);
       if (turning === 'late') setTimeout(() => turn(page + 1), 40);
+      // Past the 75ms settle poll, inside the one-second beat an unchanged page is re-read for.
+      if (turning === 'deferred') setTimeout(() => turn(page + 1), 400);
       if (turning === 'drawn-late') {
         turn(next, 1);
         setTimeout(() => turn(next), 60);
@@ -118,6 +124,13 @@ describe('scroll_to a text, reads per page', () => {
     expect(result.found).toContain('Row 13');
     expect(result.swipes).toBe(4);
     expect(result.capturesPerPage).toEqual([1, 1, 1, 1]);
+  });
+
+  it('keeps reading a page that turns after the stability poll, instead of ending the list', async () => {
+    const result = await scrollTo('Row 7', 'deferred');
+    expect(result.error).toBeUndefined();
+    expect(result.found).toContain('Row 7');
+    expect(result.swipes).toBe(2);
   });
 
   it('keeps reading a page the swipe had not turned yet, and does not page past it', async () => {
