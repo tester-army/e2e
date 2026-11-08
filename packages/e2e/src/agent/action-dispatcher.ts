@@ -14,6 +14,7 @@ import { isKeyModifier, KEY_MODIFIERS, type KeyModifier } from '../engine/contra
 import type { LocatorAction, LocatorActionKind, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import { asEngineError, TestError } from '../internal/errors.ts';
 import { requireKey } from '../internal/keys.ts';
+import { sleep } from '../internal/time.ts';
 import { clampToViewport, requireFinitePoint, requireViewportSize, viewportShare } from '../internal/geometry.ts';
 import { resolveNavigationUrl } from '../internal/urls.ts';
 import type { ActionEvent, ActionHook, BeforeActionHook, ClickOptions, JsonValue, Momentum, ScrollDirection, Secret } from '../types.ts';
@@ -39,9 +40,9 @@ import type { OperationQueue } from './operation-queue.ts';
 import { instrumentPhase, recordPolicyEvent } from './phases.ts';
 import { describePointAction, describePointDrag, describePointHit, hitTest, POINT_VERBS, type PointProse } from './point-tap.ts';
 import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
-import type { AgentObservation, RedactedNode, SemanticAgentObservation } from './observation.ts';
+import { SETTLE_POLL_MS, type AgentObservation, type RedactedNode, type SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { SETTLE_AFTER } from './settle-policy.ts';
+import { HELD_STILL_MS, SETTLE_AFTER } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 import { authorizeUploadPaths } from './upload-paths.ts';
@@ -579,19 +580,40 @@ export class ActionDispatcher {
         const turned = await this.page(direction, within);
         paged = turned.paged;
         within = turned.within;
-        // A settled look: a browser scrolls on a later frame than the wheel
-        // event, and a raw read right after it sees the page as it was. A page
-        // at least a third (two lines at least) of whose lines are new and
-        // that is no sparser has landed, so it is read once; one that reads
-        // the same (not rendered yet, or the end), differs by a line or two
-        // (a counter), or is thinner (rows still drawing) is read until it
-        // holds.
-        observation = await this.feed.look(
-          'held-still',
-          (seen) => previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen)),
-        );
+        // A page at least a third (two lines at least) of whose lines are new,
+        // and no sparser, has landed and is read once. Anything else is read
+        // until it holds. A screen that still matches the one before the swipe
+        // is not done holding after two polls: a list that appends when it
+        // reaches the end does so after that, and those polls would call the
+        // list ended. It is re-read for the held-still beat.
+        observation = await this.readScrolledPage(previous);
       }
     });
+  }
+
+  /**
+   * The screen after one page of a scroll to text. A landed page, or one that
+   * changed and then held, is returned as the held-still look reads it. A page
+   * that has not moved at all is re-read until it does, or the beat runs out.
+   */
+  private async readScrolledPage(previous: PageReading | undefined): Promise<AgentObservation> {
+    const landed = (seen: AgentObservation): boolean =>
+      previous !== undefined && seen.kind === 'semantic' && pageLanded(previous, readPage(seen));
+    /** The screen still reads as the one from before the swipe, so a late append may still be coming. */
+    const stillThere = (seen: AgentObservation): boolean =>
+      previous !== undefined && seen.kind === 'semantic' && !pageMoved(previous, readPage(seen));
+    let observation = await this.feed.look('held-still', landed);
+    // The beat starts when that look returns. The look can itself spend a
+    // second on a shape that never settles, and that second is not the wait
+    // for a list that appends after the screen has held.
+    const beatEnds = Date.now() + HELD_STILL_MS;
+    while (stillThere(observation) && this.accounting.remainingMs() > SETTLE_POLL_MS) {
+      const pause = Math.min(SETTLE_POLL_MS, beatEnds - Date.now());
+      if (pause <= 0) break;
+      await sleep(pause, this.accounting.signal);
+      observation = await this.feed.look('raw');
+    }
+    return observation;
   }
 
   /**
