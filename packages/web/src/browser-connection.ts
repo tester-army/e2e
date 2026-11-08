@@ -41,6 +41,23 @@ export function isBrowserName(name: string): name is BrowserName {
 const RUNNER_OWNS_SIGNALS = { handleSIGINT: false, handleSIGTERM: false } as const;
 
 /**
+ * Whether a locally launched Chromium runs with its sandbox on, and where
+ * the value came from. One object carries both, so the launch and its
+ * error cannot disagree about which opt-out set the value.
+ */
+export interface ChromiumSandbox {
+  /** Whether a locally launched Chromium runs with its OS sandbox on. */
+  readonly enabled: boolean;
+  /**
+   * Whether the value came from the `web({ chromiumSandbox })` option
+   * rather than the run's environment. The launch error names the
+   * environment opt-out only when the option did not set the value, since
+   * an explicit option wins over the variable.
+   */
+  readonly fromOption: boolean;
+}
+
+/**
  * Whether a locally launched Chromium runs with its sandbox on: an explicit
  * option wins, then the run's environment, then on. `0` and `false` turn it
  * off, the same way `CI` is read; anything else leaves it on. The run's
@@ -51,10 +68,10 @@ const RUNNER_OWNS_SIGNALS = { handleSIGINT: false, handleSIGTERM: false } as con
 export function resolveChromiumSandbox(
   configured: boolean | undefined,
   env: Readonly<Record<string, string | undefined>>,
-): boolean {
-  if (configured !== undefined) return configured;
+): ChromiumSandbox {
+  if (configured !== undefined) return { enabled: configured, fromOption: true };
   const value = env['E2E_CHROMIUM_SANDBOX']?.trim().toLowerCase();
-  return value !== '0' && value !== 'false';
+  return { enabled: value !== '0' && value !== 'false', fromOption: false };
 }
 
 /** What `BrowserConnection.acquire` launches or attaches to. */
@@ -65,15 +82,8 @@ export interface BrowserAcquireOptions {
   readonly headed: boolean;
   /** How long a launch or attach may take. */
   readonly timeoutMs: number;
-  /** Whether a Chromium launch keeps its OS sandbox on; other browsers ignore it. */
-  readonly chromiumSandbox: boolean;
-  /**
-   * Whether the sandbox value came from the `web({ chromiumSandbox })`
-   * option rather than the run's environment. The launch error names the
-   * environment opt-out only when the option did not set the value, since
-   * an explicit option wins over the variable.
-   */
-  readonly chromiumSandboxConfigured?: boolean;
+  /** Whether a Chromium launch keeps its OS sandbox on, and where the value came from; other browsers ignore it. */
+  readonly chromiumSandbox: ChromiumSandbox;
   /** Attaches to a remote browser instead of launching one, when given. */
   readonly connect?: () => Promise<Browser>;
 }
@@ -95,11 +105,12 @@ export class BrowserConnection {
    * so a caller that resolves a fresh per-run endpoint reconnects cleanly
    * after a dropped session. The caller passes the resolved sandbox value:
    * the `web({ chromiumSandbox })` option, the run's environment, or on.
-   * Only a Chromium launch takes it, and a relaunch keeps the value the
-   * first launch used.
+   * Only a Chromium launch takes it, and a launch takes the value its own
+   * call passes, so a caller that passes the same value on every call keeps
+   * it across relaunches.
    */
   async acquire(options: BrowserAcquireOptions): Promise<Browser> {
-    const { name, headed, timeoutMs, chromiumSandbox, chromiumSandboxConfigured, connect } = options;
+    const { connect } = options;
     const cached = this.pending;
     if (cached !== undefined) {
       const browser = await cached.catch(() => null);
@@ -111,9 +122,7 @@ export class BrowserConnection {
     // that arrives meanwhile must close the browser this launch produces, while a
     // second caller waits for it instead of launching another.
     const launching = registerSelectorEngines().then(() =>
-      connect !== undefined
-        ? connect()
-        : this.launchLocal(name, headed, timeoutMs, chromiumSandbox, chromiumSandboxConfigured),
+      connect !== undefined ? connect() : this.launchLocal(options),
     );
     this.pending = launching;
     try {
@@ -132,28 +141,23 @@ export class BrowserConnection {
    * set the value, since an explicit option wins over the variable. Any
    * other launch failure passes through unchanged.
    */
-  private async launchLocal(
-    name: BrowserName,
-    headed: boolean,
-    timeoutMs: number,
-    chromiumSandbox: boolean,
-    chromiumSandboxConfigured: boolean | undefined,
-  ): Promise<Browser> {
+  private async launchLocal(options: BrowserAcquireOptions): Promise<Browser> {
+    const { name, headed, timeoutMs, chromiumSandbox } = options;
     const type = await browserType(name);
     try {
       return await type.launch({
         headless: !headed,
         timeout: timeoutMs,
         ...RUNNER_OWNS_SIGNALS,
-        ...(name === 'chromium' ? { chromiumSandbox } : {}),
+        ...(name === 'chromium' ? { chromiumSandbox: chromiumSandbox.enabled } : {}),
       });
     } catch (cause) {
-      if (name === 'chromium' && chromiumSandbox && message(cause).includes('Chromium sandboxing failed!')) {
+      if (name === 'chromium' && chromiumSandbox.enabled && message(cause).includes('Chromium sandboxing failed!')) {
         // No `cause`: the runner follows the chain into the surfaced
         // message, which would put the call log back.
         throw new EngineError(
           'ENGINE_FAILURE',
-          chromiumSandboxConfigured === true
+          chromiumSandbox.fromOption
             ? 'Chromium failed to launch because its sandbox cannot start on this host. Pass web({ chromiumSandbox: false }) to launch without the sandbox.'
             : 'Chromium failed to launch because its sandbox cannot start on this host. Set E2E_CHROMIUM_SANDBOX=0 in the run environment, or pass web({ chromiumSandbox: false }), to launch without the sandbox.',
           { retryable: false },

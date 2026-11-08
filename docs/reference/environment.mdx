@@ -173,6 +173,7 @@ What is sent and how to read it is on the [Telemetry](/telemetry) page.
 | --- | --- | --- | --- |
 | `PLAYWRIGHT_BROWSERS_PATH` | `PLAYWRIGHT_BROWSERS_PATH=~/.cache/ms-playwright` | value | Playwright's browser cache, honored by the engine's `prepare` hook |
 | `PLAYWRIGHT_SKIP_BROWSER_GC` | `PLAYWRIGHT_SKIP_BROWSER_GC=0` | value | Defaults to `1` for the engine's browser install, which keeps other browsers in the cache. `0` lets the install remove them |
+| `E2E_CHROMIUM_SANDBOX` | `E2E_CHROMIUM_SANDBOX=0` | flag | `0` turns the Chromium sandbox off unless `web({ chromiumSandbox })` is set |
 | `KERNEL_API_KEY` | `KERNEL_API_KEY=<key>` | value | The API key `kernel()` from `@e2e-dev/kernel` creates browsers with. Unset, the browser lease fails. See [Kernel](/integrations/kernel) |
 | `LIGHTPANDA_PATH` | `LIGHTPANDA_PATH=/opt/lightpanda` | value | The binary `lightpanda()` from `@e2e-dev/lightpanda` starts a CDP server with. Unset, `lightpanda` on `PATH`, `~/.lightpanda`, or `~/.local/bin`. See [Lightpanda](/integrations/lightpanda) |
 | [`EXPO_TOKEN`](#expo_token) | `EXPO_TOKEN=<token>` | value | The Expo access token `expoSimulators()` from `@e2e-dev/eas` uses |

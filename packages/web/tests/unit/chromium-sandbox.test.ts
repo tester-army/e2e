@@ -43,7 +43,7 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser();
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
     expect(launchOf(chromiumLaunch)).toEqual({
       headless: true,
       timeout: 1_000,
@@ -58,7 +58,7 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser();
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'chromium', headed: true, timeoutMs: 1_000, chromiumSandbox: true });
+    await connection.acquire({ name: 'chromium', headed: true, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
     expect(launchOf(chromiumLaunch)).toMatchObject({ headless: false, chromiumSandbox: true });
     await connection.dispose();
   });
@@ -67,7 +67,7 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser();
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: false, fromOption: false } });
     expect(launchOf(chromiumLaunch)).toMatchObject({ chromiumSandbox: false });
     await connection.dispose();
   });
@@ -77,9 +77,9 @@ describe('BrowserConnection', () => {
     const { browser } = fakeBrowser(() => connected);
     chromiumLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: false, fromOption: false } });
     connected = false;
-    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: false, fromOption: false } });
     expect(chromiumLaunch).toHaveBeenCalledTimes(2);
     for (const call of chromiumLaunch.mock.calls) {
       expect(call[0]).toMatchObject({ chromiumSandbox: false });
@@ -96,11 +96,11 @@ describe('BrowserConnection', () => {
       .mockRejectedValueOnce(new Error('browserType.launch: Chromium sandboxing failed!'))
       .mockResolvedValueOnce(third);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
     connected = false;
     const [relaunch, waiter] = await Promise.allSettled([
-      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true }),
-      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } }),
     ]);
     expect(relaunch.status).toBe('rejected');
     expect(waiter.status).toBe('fulfilled');
@@ -108,6 +108,36 @@ describe('BrowserConnection', () => {
     for (const call of chromiumLaunch.mock.calls) {
       expect(call[0]).toMatchObject({ chromiumSandbox: true });
     }
+    await connection.dispose();
+  });
+
+  it('keeps the sandbox on when a waiter joins a relaunch that is still in flight', async () => {
+    let connected = true;
+    const { browser: first } = fakeBrowser(() => connected);
+    const { browser: third } = fakeBrowser();
+    chromiumLaunch
+      .mockResolvedValueOnce(first)
+      .mockImplementationOnce(
+        () =>
+          new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error('browserType.launch: Chromium sandboxing failed!')), 20);
+          }),
+      )
+      .mockResolvedValueOnce(third);
+    const connection = new BrowserConnection();
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
+    connected = false;
+    // The relaunch is still in flight when the waiter joins it, so the
+    // waiter goes through the re-acquire once: a flip there cannot cancel
+    // out against a second one.
+    const relaunch = connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const waiter = connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
+    const [relaunchResult, waiterResult] = await Promise.allSettled([relaunch, waiter]);
+    expect(relaunchResult.status).toBe('rejected');
+    expect(waiterResult.status).toBe('fulfilled');
+    expect(chromiumLaunch).toHaveBeenCalledTimes(3);
+    expect(chromiumLaunch.mock.calls.map((call) => (call[0] as { chromiumSandbox: unknown }).chromiumSandbox)).toEqual([true, true, true]);
     await connection.dispose();
   });
 
@@ -121,13 +151,14 @@ describe('BrowserConnection', () => {
       ),
     );
     const connection = new BrowserConnection();
-    let error: (Error & { code?: unknown; cause?: unknown }) | undefined;
+    let error: (Error & { code?: unknown; cause?: unknown; retryable?: unknown }) | undefined;
     try {
-      await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+      await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
     } catch (caught) {
-      error = caught as Error & { code?: unknown; cause?: unknown };
+      error = caught as Error & { code?: unknown; cause?: unknown; retryable?: unknown };
     }
     expect(error?.code).toBe('ENGINE_FAILURE');
+    expect(error?.retryable).toBe(false);
     expect(error?.message).toContain('E2E_CHROMIUM_SANDBOX=0');
     expect(error?.message).toContain('web({ chromiumSandbox: false })');
     expect(error?.message).not.toContain('Call log');
@@ -145,8 +176,7 @@ describe('BrowserConnection', () => {
         name: 'chromium',
         headed: false,
         timeoutMs: 1_000,
-        chromiumSandbox: true,
-        chromiumSandboxConfigured: true,
+        chromiumSandbox: { enabled: true, fromOption: true },
       });
     } catch (caught) {
       error = caught as Error & { code?: unknown };
@@ -162,7 +192,7 @@ describe('BrowserConnection', () => {
     chromiumLaunch.mockRejectedValueOnce(failure);
     const connection = new BrowserConnection();
     await expect(
-      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } }),
     ).rejects.toBe(failure);
     await connection.dispose();
   });
@@ -176,11 +206,11 @@ describe('BrowserConnection', () => {
       .mockRejectedValueOnce(new Error('browserType.launch: Chromium sandboxing failed!'))
       .mockResolvedValueOnce(third);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false });
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: false, fromOption: false } });
     connected = false;
     const [relaunch, waiter] = await Promise.allSettled([
-      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false }),
-      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: false }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: false, fromOption: false } }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: false, fromOption: false } }),
     ]);
     expect(relaunch.status).toBe('rejected');
     expect(waiter.status).toBe('fulfilled');
@@ -196,11 +226,11 @@ describe('BrowserConnection', () => {
     firefoxLaunch.mockResolvedValue(browser);
     webkitLaunch.mockResolvedValue(browser);
     const connection = new BrowserConnection();
-    await connection.acquire({ name: 'firefox', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+    await connection.acquire({ name: 'firefox', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
     await connection.dispose();
     expect(launchOf(firefoxLaunch)).not.toHaveProperty('chromiumSandbox');
     const second = new BrowserConnection();
-    await second.acquire({ name: 'webkit', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+    await second.acquire({ name: 'webkit', headed: false, timeoutMs: 1_000, chromiumSandbox: { enabled: true, fromOption: false } });
     await second.dispose();
     expect(launchOf(webkitLaunch)).not.toHaveProperty('chromiumSandbox');
   });

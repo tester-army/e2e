@@ -2,6 +2,7 @@
 import type { Browser } from 'playwright-core';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { EngineError, type EngineInitInfo } from 'e2e/engine';
+import type { ChromiumSandbox } from '../../src/browser-connection.ts';
 import { PlaywrightSurface, type WebOptions } from '../../src/surface.ts';
 
 const acquire = vi.hoisted(() => vi.fn());
@@ -16,8 +17,8 @@ vi.mock('../../src/browser-connection.ts', async (importOriginal) => ({
 
 let surfaces: PlaywrightSurface[] = [];
 
-/** Inits a surface for the options and environment, returning the sandbox flag its launch took. */
-async function launchedSandbox(options: WebOptions, env: Readonly<Record<string, string | undefined>>): Promise<unknown> {
+/** Inits a surface for the options and environment, returning the sandbox value its launch took. */
+async function launchedSandbox(options: WebOptions, env: Readonly<Record<string, string | undefined>>): Promise<ChromiumSandbox> {
   const browser = {} as unknown as Browser;
   acquire.mockReset();
   acquire.mockResolvedValue(browser);
@@ -36,7 +37,7 @@ async function launchedSandbox(options: WebOptions, env: Readonly<Record<string,
   };
   await surface.init(info);
   expect(acquire).toHaveBeenCalledOnce();
-  return (acquire.mock.calls[0]![0] as { chromiumSandbox: unknown }).chromiumSandbox;
+  return (acquire.mock.calls[0]![0] as { chromiumSandbox: ChromiumSandbox }).chromiumSandbox;
 }
 
 afterEach(async () => {
@@ -51,44 +52,38 @@ beforeEach(() => {
 });
 
 it('launches with the sandbox on when neither the option nor the environment says otherwise', async () => {
-  await expect(launchedSandbox({}, {})).resolves.toBe(true);
+  await expect(launchedSandbox({}, {})).resolves.toEqual({ enabled: true, fromOption: false });
 });
 
 it('launches with the sandbox off when the option says so', async () => {
-  await expect(launchedSandbox({ chromiumSandbox: false }, {})).resolves.toBe(false);
+  await expect(launchedSandbox({ chromiumSandbox: false }, {})).resolves.toEqual({ enabled: false, fromOption: true });
 });
 
 it('launches with the sandbox off when the environment says so', async () => {
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: '0' })).resolves.toBe(false);
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: 'false' })).resolves.toBe(false);
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: '0' })).resolves.toEqual({ enabled: false, fromOption: false });
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: 'false' })).resolves.toEqual({ enabled: false, fromOption: false });
 });
 
 it('leaves the sandbox on for any other environment value', async () => {
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: '1' })).resolves.toBe(true);
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: '' })).resolves.toBe(true);
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: '1' })).resolves.toEqual({ enabled: true, fromOption: false });
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: '' })).resolves.toEqual({ enabled: true, fromOption: false });
 });
 
 it('trims and lowercases the environment value', async () => {
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: ' 0 ' })).resolves.toBe(false);
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: 'FALSE' })).resolves.toBe(false);
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: ' False ' })).resolves.toBe(false);
-  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: ' TRUE ' })).resolves.toBe(true);
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: ' 0 ' })).resolves.toEqual({ enabled: false, fromOption: false });
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: 'FALSE' })).resolves.toEqual({ enabled: false, fromOption: false });
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: ' False ' })).resolves.toEqual({ enabled: false, fromOption: false });
+  await expect(launchedSandbox({}, { E2E_CHROMIUM_SANDBOX: ' TRUE ' })).resolves.toEqual({ enabled: true, fromOption: false });
 });
 
 it('lets an explicit option win over the environment either way', async () => {
-  await expect(launchedSandbox({ chromiumSandbox: false }, { E2E_CHROMIUM_SANDBOX: '1' })).resolves.toBe(false);
-  await expect(launchedSandbox({ chromiumSandbox: true }, { E2E_CHROMIUM_SANDBOX: '0' })).resolves.toBe(true);
+  await expect(launchedSandbox({ chromiumSandbox: false }, { E2E_CHROMIUM_SANDBOX: '1' })).resolves.toEqual({ enabled: false, fromOption: true });
+  await expect(launchedSandbox({ chromiumSandbox: true }, { E2E_CHROMIUM_SANDBOX: '0' })).resolves.toEqual({ enabled: true, fromOption: true });
 });
 
 it('tells the connection whether the option set the sandbox', async () => {
-  await launchedSandbox({ chromiumSandbox: true }, {});
-  expect(
-    (acquire.mock.calls[0]![0] as { chromiumSandboxConfigured: unknown }).chromiumSandboxConfigured,
-  ).toBe(true);
-  await launchedSandbox({}, {});
-  expect(
-    (acquire.mock.calls[0]![0] as { chromiumSandboxConfigured: unknown }).chromiumSandboxConfigured,
-  ).toBe(false);
+  await expect(launchedSandbox({ chromiumSandbox: true }, {})).resolves.toEqual({ enabled: true, fromOption: true });
+  await expect(launchedSandbox({}, {})).resolves.toEqual({ enabled: true, fromOption: false });
 });
 
 it('does not read the flag from the process environment', async () => {
@@ -96,7 +91,7 @@ it('does not read the flag from the process environment', async () => {
   // shares its process with the runner and every other target.
   vi.stubEnv('E2E_CHROMIUM_SANDBOX', '0');
   try {
-    await expect(launchedSandbox({}, {})).resolves.toBe(true);
+    await expect(launchedSandbox({}, {})).resolves.toEqual({ enabled: true, fromOption: false });
   } finally {
     vi.unstubAllEnvs();
   }

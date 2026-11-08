@@ -255,7 +255,7 @@ jobs:
         env:
           # ubuntu-latest blocks the user namespaces Chromium needs, so the
           # sandbox cannot start there. Leave it out on a runner where it
-          # starts; see [Security](/security) for why it defaults on.
+          # starts; see [Security](https://e2e.com/docs/security) for why it defaults on.
           E2E_CHROMIUM_SANDBOX: '0'
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           E2E_USER_ADMIN_USERNAME: ${{ secrets.E2E_USER_ADMIN_USERNAME }}
