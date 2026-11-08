@@ -72,6 +72,8 @@ export interface BrowserLease {
   readonly id: string;
   /** `ws://`, `wss://`, or `http://` DevTools endpoint to attach to over CDP. */
   readonly cdpEndpoint: string;
+  /** Headers for the CDP handshake only. Kept out of page requests and endpoint URLs. */
+  readonly cdpHeaders?: Readonly<Record<string, string>> | undefined;
   /**
    * Endpoint to reattach to the same browser after a transport drop, when it
    * differs from `cdpEndpoint`; only meaningful for a per-attempt lease.
@@ -113,6 +115,13 @@ export interface BrowserProviderDownloads {
   read(lease: BrowserLease, file: string, context: BrowserDownloadContext): Promise<Uint8Array>;
 }
 
+/** Identifies the test's actual page, including pages in worker-scoped incognito contexts. */
+export interface BrowserPageContext extends BrowserReleaseContext {
+  readonly attemptId: string;
+  /** CDP target ID of the page the attempt drives. */
+  readonly targetId: string;
+}
+
 /** The downloads of the browser an attempt rides, read through its provider. */
 export interface LeaseDownloads {
   /** The provider as error messages name it: `browser provider "kernel"`. */
@@ -147,6 +156,8 @@ export interface BrowserProvider {
   readonly scope?: BrowserProviderScope | undefined;
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
+  /** Called when an attempt opens its active page, for provider features such as live-view links. */
+  onPage?(lease: BrowserLease, context: BrowserPageContext): Promise<void>;
   /**
    * Records the leased browser for an attempt that records video, in place
    * of the engine's screencast of the page: the service's own recording of
@@ -169,8 +180,8 @@ export interface BrowserProvider {
    * in the runner, after every worker exited and the leases `prepare` made
    * were released: whatever it finds is a lease a worker acquired (a
    * per-attempt browser, a replacement) and never gave back, because the
-   * worker died before it could. Find them by what `acquire` tagged them
-   * with at the service: the run id and the target.
+   * worker died before it could. Find them by service tags or a shared
+   * journal scoped to the run id and target.
    */
   sweep?(context: BrowserReleaseContext): Promise<readonly string[]>;
 }
@@ -188,7 +199,8 @@ export function asBrowserProvider(browser: object): BrowserProvider {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" must implement ${member}()`);
     }
   }
-  for (const member of ['record', 'sweep'] as const) {
+
+  for (const member of ['record', 'sweep', 'onPage'] as const) {
     if (candidate[member] !== undefined && typeof candidate[member] !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a ${member} that is not a function`);
     }
@@ -217,11 +229,25 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim() !== '';
 }
 
+/** Header values must be strings without line breaks before reaching the CDP handshake. */
+function isCdpHeader(value: unknown): value is string {
+  return typeof value === 'string' && !/[\r\n]/.test(value);
+}
+
+/** Checks provider headers without treating them as page request headers. */
+function isCdpHeaders(value: unknown): value is Readonly<Record<string, string>> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+
+  return Object.entries(value).every(([name, entry]) => name.trim() !== '' && !/[\r\n]/.test(name) && isCdpHeader(entry));
+}
+
 /** A lease as a provider returned it or as JSON parsed it back, checked field by field: the engine trusts nothing it did not write. */
 function isBrowserLease(value: unknown): value is BrowserLease {
   if (typeof value !== 'object' || value === null) return false;
-  const { id, cdpEndpoint, reconnectEndpoint } = value as Record<keyof BrowserLease, unknown>;
-  return isNonEmptyString(id) && isNonEmptyString(cdpEndpoint) && (reconnectEndpoint === undefined || isNonEmptyString(reconnectEndpoint));
+
+  return 'id' in value && isNonEmptyString(value.id) && 'cdpEndpoint' in value && isNonEmptyString(value.cdpEndpoint) &&
+    (!('reconnectEndpoint' in value) || value.reconnectEndpoint === undefined || isNonEmptyString(value.reconnectEndpoint)) &&
+    (!('cdpHeaders' in value) || value.cdpHeaders === undefined || isCdpHeaders(value.cdpHeaders));
 }
 
 /**
@@ -255,7 +281,7 @@ function handoffVariable(targetName: string): string {
 function encodeHandoff(handoff: Handoff): string {
   const encoded = JSON.stringify({
     slots: handoff.slots,
-    leases: handoff.leases.map((lease) => obj({ id: lease.id, cdpEndpoint: lease.cdpEndpoint, reconnectEndpoint: lease.reconnectEndpoint })),
+    leases: handoff.leases.map((lease) => obj({ id: lease.id, cdpEndpoint: lease.cdpEndpoint, reconnectEndpoint: lease.reconnectEndpoint, cdpHeaders: lease.cdpHeaders })),
   });
   const bytes = Buffer.byteLength(encoded);
   if (bytes > MAX_HANDOFF_ENV_BYTES) {
@@ -476,6 +502,26 @@ export class LeasedBrowsers {
       );
     }
     this.current = { lease, owned: false };
+  }
+
+  /** The current lease's CDP handshake headers, read after resolving its endpoint. */
+  cdpHeaders(): Readonly<Record<string, string>> | undefined {
+    return this.current?.lease.cdpHeaders;
+  }
+
+  /** Notifies an interested provider once the attempt's actual CDP page target exists. */
+  pageObserver(attemptId: string): ((targetId: string, signal: AbortSignal) => Promise<void>) | undefined {
+    const onPage = this.provider.onPage?.bind(this.provider);
+
+    if (onPage === undefined) return undefined;
+
+    return async (targetId, signal) => {
+      const run = this.requireRun();
+      const lease = this.scope === 'attempt' ? this.attempt : this.current?.lease;
+
+      if (lease === undefined) throw invalidState(`browser provider "${this.name}" has no lease for the page`);
+      await raceAbort(() => onPage(lease, { ...this.releaseContext(run, signal), attemptId, targetId }), signal, 'notifying browser provider of a page');
+    };
   }
 
   /**

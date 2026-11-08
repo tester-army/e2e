@@ -604,11 +604,11 @@ export function createBrowserFixture(surface: PlaywrightSurface, context: Engine
       })),
     back: (options) =>
       navigation('browser.back', options, (operation) => surface.navigating(async () => {
-        await surface.requirePage().goBack({ waitUntil: 'load', timeout: operation.timeoutMs });
+        await surface.requirePage().goBack({ waitUntil: 'commit', timeout: operation.timeoutMs });
       })),
     forward: (options) =>
       navigation('browser.forward', options, (operation) => surface.navigating(async () => {
-        await surface.requirePage().goForward({ waitUntil: 'load', timeout: operation.timeoutMs });
+        await surface.requirePage().goForward({ waitUntil: 'commit', timeout: operation.timeoutMs });
       })),
     url: () => currentUrl(),
     title: () => currentTitle(),

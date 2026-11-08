@@ -22,7 +22,8 @@
     "e2b": "2.63.0",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
-    "zod": "4.6.7"
+    "zod": "4.6.7",
+    "@e2e-dev/browser-run": "workspace:*"
   },
   "engines": {
     "node": "^22.22.3 || >=24.8.0"

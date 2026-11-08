@@ -1,6 +1,6 @@
 /** Shares one browser process connection across a worker's attempts. */
 
-import type { Browser, BrowserType } from 'playwright-core';
+import type { Browser, BrowserType, ConnectOverCDPOptions } from 'playwright-core';
 import { SELECTOR_ENGINES } from './selector-engines.ts';
 
 /**
@@ -105,10 +105,28 @@ export async function browserType(name: BrowserName): Promise<BrowserType> {
  * the endpoint itself and hands it here. `browser.close()` on the result
  * detaches the CDP session without killing the remote process the host owns.
  */
-export async function connectCdp(endpoint: string, timeoutMs: number): Promise<Browser> {
+export async function connectCdp(endpoint: string, timeoutMs: number, headers?: Readonly<Record<string, string>>): Promise<Browser> {
   await registerSelectorEngines();
   const { chromium } = await loadPlaywright();
-  return chromium.connectOverCDP(endpoint, { timeout: timeoutMs });
+  const options: ConnectOverCDPOptions = { timeout: timeoutMs };
+
+  if (headers !== undefined) options.headers = { ...headers };
+
+  try {
+    return await chromium.connectOverCDP(endpoint, options);
+  } catch (cause) {
+    if (headers === undefined) throw cause;
+    let detail = cause instanceof Error ? cause.message : String(cause);
+
+    for (const value of Object.values(headers)) {
+      for (const secret of [value, value.replace(/^(?:Bearer|Basic) /i, '')]) {
+        if (secret !== '') detail = detail.split(secret).join('[redacted]');
+      }
+    }
+
+    // oxlint-disable-next-line preserve-caught-error -- the original error can contain CDP credentials in its message, stack, or cause
+    throw new Error(detail);
+  }
 }
 
 /** Registration is process-wide and rejected twice; one shared promise serves every connection. */

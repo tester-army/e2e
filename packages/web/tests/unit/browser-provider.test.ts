@@ -155,6 +155,27 @@ beforeEach(() => {
   vi.mocked(connectCdp).mockImplementation(async (endpoint) => fakeBrowser(`context-${endpoint}`).browser);
 });
 
+it.each(['worker', 'attempt'] as const)('passes the %s lease and exact page target to the provider page hook', async (scope) => {
+  const cloud = provider({ scope });
+  const onPage = vi.fn(async () => undefined);
+  const impl = { ...cloud.impl, onPage };
+  const runner = new LeasedBrowsers(impl);
+  const handoff = await runner.prepare(prepareInfo(1));
+  const worker = new LeasedBrowsers(impl);
+  worker.init(initInfo(0, handoff.env));
+
+  if (scope === 'attempt') await worker.startAttempt(attempt('a1'));
+  else await worker.endpoint(new AbortController().signal);
+  const signal = new AbortController().signal;
+  await worker.pageObserver('a1')!('test-page-target', signal);
+  expect(onPage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'lease-0' }), expect.objectContaining({
+    attemptId: 'a1', targetId: 'test-page-target', runId: 'run-1', targetName: 'web', signal,
+  }));
+  await worker.endAttempt(cleanup());
+  await worker.dispose(cleanup());
+  await runner.finish(finishInfo());
+});
+
 describe('web({ browser: provider })', () => {
   it('rejects a provider without a name, the two methods, or a known scope', () => {
     expect(() => web({ browser: { name: '' } as unknown as BrowserProvider })).toThrow(/non-empty `name`/);
@@ -926,4 +947,30 @@ describe('recording', () => {
       await worker.dispose(cleanup());
     }
   });
+});
+
+
+it.each(['worker', 'attempt'] as const)('hands CDP headers through the worker boundary in %s scope', async (scope) => {
+  const headers = { Authorization: 'Bearer synthetic-cdp-token' };
+  const toy = provider({ scope });
+  const cloud = { ...toy.impl, acquire: async (request: BrowserRequest) => ({ ...await toy.impl.acquire(request), cdpHeaders: headers }) };
+  const { runner, env } = await prepared(cloud, 1);
+  const worker = new PlaywrightSurface({ browser: cloud });
+  await worker.init(initInfo(0, env));
+  await worker.startAttempt(attempt('with-headers'));
+  expect(connectCdp).toHaveBeenCalledWith('wss://0.example', expect.any(Number), headers);
+  await worker.endAttempt(cleanup());
+  await worker.dispose(cleanup());
+  await runner.finish(finishInfo());
+});
+
+it('rejects malformed CDP headers in leases without printing the header value', async () => {
+  for (const cdpHeaders of [[], { Authorization: 42 }, { Authorization: 'secret\r\n' }]) {
+    const toy = provider();
+    // SAFETY: deliberately violates the provider contract to exercise lease validation at the engine boundary.
+    const cloud = { ...toy.impl, acquire: async (request: BrowserRequest) => ({ ...await toy.impl.acquire(request), cdpHeaders }) as BrowserLease };
+    const runner = new PlaywrightSurface({ browser: cloud });
+    await expect(runner.prepare(prepareInfo(1))).rejects.toMatchObject({ code: 'ENGINE_FAILURE', message: expect.not.stringContaining('secret') });
+    await runner.finish(finishInfo());
+  }
 });

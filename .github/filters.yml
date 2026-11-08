@@ -25,6 +25,7 @@ runner: &runner
 web:
   - *runner
   - 'packages/web/**'
+  - 'packages/browser-run/**'
   - 'packages/github/**'
   - 'apps/web-benchmark/**'
   - '.github/workflows/benchmark.yml'

@@ -1,6 +1,6 @@
 /** Compile-time assertions for endpoint provisioning, transport recovery, and the browser provider seam. */
 import { secrets } from 'e2e';
-import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
+import type { BrowserLease, BrowserPageContext, BrowserProvider, WebConnectOptions, WebInitScript, WebOptions } from '../../src/index.ts';
 
 ({ cdpEndpoint: () => 'ws://localhost:9222', reconnectEndpoint: async (signal) => {
   signal.throwIfAborted();
@@ -14,7 +14,33 @@ import type { BrowserLease, BrowserProvider, WebConnectOptions, WebInitScript, W
 
 ({ name: 'hosted', scope: 'attempt', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined }) satisfies BrowserProvider;
 ({ id: 's', cdpEndpoint: 'ws://localhost:9222', reconnectEndpoint: undefined }) satisfies BrowserLease;
+
+({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: { Authorization: 'Bearer token' } }) satisfies BrowserLease;
+
+({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: undefined }) satisfies BrowserLease;
+
+// @ts-expect-error CDP handshake headers carry string values.
+({ id: 's', cdpEndpoint: 'ws://localhost:9222', cdpHeaders: { Authorization: 42 } }) satisfies BrowserLease;
+
 ({ browser: { name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://localhost:9222' }), release: async () => undefined } }) satisfies WebOptions;
+
+({
+  name: 'hosted',
+  acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }),
+  release: async () => undefined,
+  onPage: async (lease, context) => {
+    const page: BrowserPageContext = context;
+    const ids: readonly string[] = [lease.id, page.targetId, page.attemptId, page.runId, page.targetName];
+    void ids;
+    page.signal.throwIfAborted();
+
+    // @ts-expect-error the engine owns the active target identity.
+    page.targetId = 'replacement';
+  },
+}) satisfies BrowserProvider;
+
+// @ts-expect-error a page notification resolves without returning a session or URL.
+({ name: 'hosted', acquire: async () => ({ id: 's', cdpEndpoint: 'ws://x' }), release: async () => undefined, onPage: async () => 'url' }) satisfies BrowserProvider;
 
 // @ts-expect-error a lease names its endpoint; a browser object or a page is not one.
 ({ id: 's', cdpEndpoint: 9222 }) satisfies BrowserLease;

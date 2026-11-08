@@ -479,3 +479,9 @@ while repairing its launch command. A current registration is left unchanged.
 Codex reads `.codex/config.toml` only in trusted projects; start a new session
 after installing dependencies. To add Codex to an existing setup, run the
 installed CLI with `e2e init --yes --skills none --mcp .codex/config.toml`.
+
+
+For Cloudflare Browser Run, install `@e2e-dev/browser-run` and use
+`web({ browser: browserRun() })`. Read `docs/integrations/browser-run.mdx`
+for account credentials, scopes, and current limitations. Hosted browsers
+need a reachable app URL; the runner's localhost is not reachable remotely.

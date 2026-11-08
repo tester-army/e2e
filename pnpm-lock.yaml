@@ -258,6 +258,9 @@ importers:
       '@ai-sdk/devtools':
         specifier: 1.0.73
         version: 1.0.73(zod@4.6.7)
+      '@e2e-dev/browser-run':
+        specifier: workspace:*
+        version: link:../../packages/browser-run
       '@napi-rs/image':
         specifier: 1.16.0
         version: 1.16.0
@@ -316,6 +319,9 @@ importers:
       '@ai-sdk/typesafe-ai':
         specifier: 3.0.38
         version: 3.0.38(zod@4.6.7)
+      '@e2e-dev/browser-run':
+        specifier: workspace:*
+        version: link:../packages/browser-run
       '@e2e-dev/browserstack':
         specifier: workspace:*
         version: link:../packages/browserstack
@@ -386,6 +392,24 @@ importers:
       vitest:
         specifier: 5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
+  packages/browser-run:
+    devDependencies:
+      '@e2e-dev/web':
+        specifier: workspace:*
+        version: link:../web
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@26.6.6)(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/browserstack:
     devDependencies:

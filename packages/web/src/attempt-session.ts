@@ -24,11 +24,14 @@ interface SessionOptions {
   readonly contextOptions: BrowserContextOptions;
   readonly acquire: (signal: AbortSignal) => Promise<Browser>;
   readonly configure: (context: BrowserContext) => Promise<void>;
+  /** Provider notification for the actual tab, after it is configured. */
+  readonly pageOpened?: ((targetId: string, signal: AbortSignal) => Promise<void>) | undefined;
   /** Starts the browser provider's own recording of the attempt's browser, when it records; the attempt records the screencast otherwise. */
   readonly record?: ((signal: AbortSignal) => Promise<LeaseRecording>) | undefined;
   readonly persistent?: {
     readonly provision: CdpEndpointResolver;
     readonly reconnect: CdpEndpointResolver;
+    readonly headers?: Readonly<Record<string, string>> | undefined;
     /**
      * The default contexts earlier attempts rode, for an endpoint that could
      * hand one back (a `connect` resolver). Absent for a provider's lease,
@@ -168,7 +171,8 @@ export class AttemptSession {
           const context = await browser.newContext(this.options.contextOptions);
           return { browser, context, page: null };
         }
-        const binding = await attachPersistent(persistent.provision, remaining());
+
+        const binding = await attachPersistent(persistent.provision, remaining(), undefined, persistent.headers);
         const { usedContexts } = persistent;
         if (usedContexts === undefined) return binding;
         const contextId = binding.identity.contextId;
@@ -207,7 +211,8 @@ export class AttemptSession {
         this.observed = false;
         await this.transition(previous, remaining(), async () => {
           await this.video.pageClosing();
-          return attachPersistent(persistent.reconnect, remaining(), previous.identity);
+
+          return attachPersistent(persistent.reconnect, remaining(), previous.identity, persistent.headers);
         }, true);
       });
     }
@@ -291,9 +296,14 @@ export class AttemptSession {
       const size = this.requestedViewport ?? (identity === undefined ? null : this.options.viewport);
       if (size !== null) await page.setViewportSize(size);
       await (this.emulated.get(page) ?? this.applyMedia(page));
-      if (identity !== undefined) identity = { ...identity, target: await targetIdentity(page) };
+      const target = identity !== undefined || this.options.pageOpened !== undefined ? await targetIdentity(page) : undefined;
+
+      if (identity !== undefined && target !== undefined) identity = { ...identity, target };
       this.check(token);
       await this.video.pageOpened(page);
+      this.check(token);
+
+      if (target !== undefined) await this.options.pageOpened?.(target.targetId, this.lifetime.signal);
       this.check(token);
       this.state = { kind: 'ready', binding: { ...binding, page, ...(identity === undefined ? {} : { identity }) } };
       this.adopt(page, undefined, identity?.target).shownAt = ++this.shown;

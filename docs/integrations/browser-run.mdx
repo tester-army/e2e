@@ -1,0 +1,95 @@
+---
+title: Cloudflare Browser Run
+sidebarTitle: Browser Run
+description: Run web targets in Cloudflare's hosted Chromium with the browserRun() browser provider.
+---
+
+`browserRun()` from `@e2e-dev/browser-run` gives each worker slot, or each test attempt, a Cloudflare-hosted Chromium browser.
+Tests use the same web engine and fixtures.
+
+## Connect your account
+
+Create a [Cloudflare API token](https://developers.cloudflare.com/browser-run/cdp/) with `Browser Rendering - Edit` permission for your account.
+Set `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN` in the environment where `e2e run` starts.
+
+Install the provider alongside `e2e` and `@e2e-dev/web`:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev @e2e-dev/browser-run
+```
+
+```bash pnpm
+pnpm add -D @e2e-dev/browser-run
+```
+
+```bash bun
+bun add -d @e2e-dev/browser-run
+```
+</CodeGroup>
+
+Set the target's browser:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { browserRun } from '@e2e-dev/browser-run';
+
+export default {
+  targets: [{
+    name: 'cloudflare',
+    engine: web({ browser: browserRun() }),
+    app: { url: 'https://staging.example.com' },
+  }],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+Use a public HTTPS app URL. A hosted browser cannot reach the runner's `localhost`; expose local apps through a tunnel.
+
+## Set browser lifetime
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `scope` | `'worker'` | One browser per worker slot. `'attempt'` leases a fresh browser for every attempt and retry. |
+| `keepAlive` | `60000` | Inactivity timeout in milliseconds, from `10000` to `1200000`. |
+| `lab` | `false` | Use Cloudflare's experimental browser pool. |
+| `liveView` | `false` | Log a read-only viewing link for the test's actual tab. |
+
+Worker scope creates an isolated context for every attempt.
+Attempt scope uses the fresh browser's default context and supports reconnecting to that browser after a transport drop.
+The [per-attempt provider limits](/browser#hosted-browsers) apply.
+
+Normal teardown explicitly deletes every acquired session.
+The provider journals session IDs in the host's temporary directory, so the parent can release browsers left by a crashed worker, including per-attempt and replacement browsers.
+The journal contains no API tokens or browser connection headers and is scoped to the account, run, and target.
+If the entire runner dies, or a session is created before its receipt can be written, the inactivity timeout is the fallback.
+
+## Watch a test
+
+Set `browserRun({ liveView: true })` to print a viewing link when each test tab opens.
+The link allows read-only viewing and must be opened within five minutes; an established connection lasts while the browser stays alive.
+It grants access to visible page data, so share it only with trusted viewers.
+Failure to create a viewing link prints a warning and does not fail the test.
+
+## Check compatibility
+
+History navigation finishes at commit, so cached page restores do not wait for a new load event.
+Chromium, navigation, locators, network routes, cookies, screenshots, and the web engine's screencast video use CDP.
+CDP authorization headers authenticate the browser connection and do not become page request headers.
+
+Remote file downloads are not supported by this prototype. Browser Run exposes no browser filesystem API for the provider to read.
+Cloudflare-native session recordings are not attached to reports.
+The engine records per-attempt video instead.
+
+Keep `workers` within your account's [concurrency and acquisition limits](https://developers.cloudflare.com/browser-run/limits/).
+An HTTP `401` or `403` names the token permission to check.
+Rate-limited calls retry up to three times, honoring `Retry-After` or using backoff, within one 30-second budget and the caller's cancellation signal.
+Network failures and other HTTP errors do not retry session creation, because the service may already have created a browser.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Hosted browsers" href="/browser#hosted-browsers">Understand provider scopes and isolation.</Card>
+  <Card title="Web engine" href="/web">Configure viewports, app access, and video.</Card>
+</CardGroup>

@@ -453,7 +453,13 @@ export class PlaywrightSurface {
           retryable: false,
         });
       }
-      const browser = await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS);
+
+      const headers = this.leases?.cdpHeaders();
+
+      const browser = headers === undefined
+        ? await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS)
+        : await connectCdp(endpoint, BROWSER_LAUNCH_TIMEOUT_MS, headers);
+
       if (signal.aborted) {
         await browser.close().catch(() => undefined);
         throw cancelled('browser connect cancelled');
@@ -488,14 +494,15 @@ export class PlaywrightSurface {
    */
   private async persistentBinding(
     context: EngineAttemptContext,
-  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts?: Set<string> } | undefined> {
+  ): Promise<{ provision: CdpEndpointResolver; reconnect: CdpEndpointResolver; usedContexts?: Set<string>; headers?: Readonly<Record<string, string>> | undefined } | undefined> {
     const { connect, usedContexts } = this;
     if (connect?.reconnectEndpoint !== undefined) {
       return { provision: connect.cdpEndpoint, reconnect: connect.reconnectEndpoint, usedContexts };
     }
     if (this.leases?.scope !== 'attempt') return undefined;
     const lease = await this.leases.startAttempt(context);
-    return { provision: () => lease.cdpEndpoint, reconnect: () => lease.reconnectEndpoint ?? lease.cdpEndpoint };
+
+    return { provision: () => lease.cdpEndpoint, reconnect: () => lease.reconnectEndpoint ?? lease.cdpEndpoint, headers: lease.cdpHeaders };
   }
 
   /** Opens one attempt owner before setup starts, so cleanup can cancel pending attachment. */
@@ -558,6 +565,7 @@ export class PlaywrightSurface {
       },
       ...(persistent === undefined ? {} : { persistent }),
       record: this.leases?.recorder(context.attemptId),
+      pageOpened: this.leases?.pageObserver(context.attemptId),
     });
     this.session = session;
     await session.start(context.signal);
@@ -757,7 +765,7 @@ export class PlaywrightSurface {
   back(operation: OperationContext): Promise<void> {
     return this.acted(operation, this.guard(operation, 'navigation', (currentOperation) =>
       this.navigating(async () => {
-        await this.requirePage().goBack({ waitUntil: 'load', timeout: currentOperation.timeoutMs });
+        await this.requirePage().goBack({ waitUntil: 'commit', timeout: currentOperation.timeoutMs });
       }),
     ));
   }
