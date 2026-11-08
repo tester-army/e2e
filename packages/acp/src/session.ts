@@ -156,8 +156,10 @@ export async function startSession(
       if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     }, 3_000).unref();
     void serving.then((started) => started.close(), () => undefined);
-    // Try at once, then once the agent is gone: on Windows a process the
-    // agent started in the directory still holds it, so early removal throws EPERM.
+    // Try at once, then once the agent is gone: removing at once avoids
+    // leaking the directory when the worker exits before the agent does,
+    // and on Windows a process the agent started in the directory still
+    // holds it, so early removal throws EPERM.
     void rm(cwd, { recursive: true, force: true }).catch(() =>
       exited
         .catch(() => rm(cwd, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }))

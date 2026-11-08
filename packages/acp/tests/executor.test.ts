@@ -492,7 +492,47 @@ describe('acp', () => {
   // The delay handler cannot run on Windows: Node terminates the child
   // immediately for SIGTERM, so the test would see an exited child instead
   // of the live process it expects. This checks the ordering on POSIX only.
-  it.skipIf(process.platform === 'win32')('removes the session directory only after the agent exits', async () => {
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'retries the session directory removal after the agent exits when the first try fails',
+    async () => {
+      const { executor, log } = scripted([[pass]], { env: { ACP_EXIT_DELAY_MS: '1500' } });
+      const step = context();
+      cleanups.push(step.end);
+      await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
+      const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
+      const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
+      const cwd = session.cwd;
+      // The immediate removal has to fail for this test to reach the fallback:
+      // a live agent does not hold the directory on POSIX, so a file in a
+      // read-only directory makes the removal fail instead. Restore the
+      // permissions on the way out, so a failing test leaves no undeletable dir.
+      writeFileSync(join(cwd, 'held'), '');
+      chmodSync(cwd, 0o555);
+      cleanups.push(() => {
+        try {
+          chmodSync(cwd, 0o755);
+        } catch {
+          // Already removed.
+        }
+      });
+      step.end();
+      // The agent is still stopping and the removal waits for it, so the
+      // directory must still be there.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      expect(() => process.kill(pid, 0)).not.toThrow();
+      expect(existsSync(cwd)).toBe(true);
+      // Let the fallback removal succeed once the agent is gone.
+      chmodSync(cwd, 0o755);
+      await eventually(() => {
+        expect(() => process.kill(pid, 0)).toThrow();
+        expect(existsSync(cwd)).toBe(false);
+      });
+    },
+  );
+
+  // Same POSIX-only delay handler as the test above: on Windows the child
+  // exits at once for SIGTERM, so there is no live agent to watch.
+  it.skipIf(process.platform === 'win32')('removes the session directory at once while the agent is still alive', async () => {
     const { executor, log } = scripted([[pass]], { env: { ACP_EXIT_DELAY_MS: '1500' } });
     const step = context();
     cleanups.push(step.end);
@@ -500,41 +540,12 @@ describe('acp', () => {
     const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
     const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
     const cwd = session.cwd;
-    // The immediate removal has to fail for this test to reach the fallback:
-    // a live agent does not hold the directory on POSIX, so a file in a
-    // read-only directory makes the removal fail instead.
-    writeFileSync(join(cwd, 'held'), '');
-    chmodSync(cwd, 0o555);
     step.end();
-    // The agent is still stopping and the removal waits for it, so the
-    // directory must still be there.
-    expect(() => process.kill(pid, 0)).not.toThrow();
-    expect(existsSync(cwd)).toBe(true);
+    // The immediate removal runs at once on POSIX, so the directory is gone
+    // while the agent is still stopping (it exits 1500ms after SIGTERM).
     await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(existsSync(cwd)).toBe(false);
     expect(() => process.kill(pid, 0)).not.toThrow();
-    expect(existsSync(cwd)).toBe(true);
-    // Let the fallback removal succeed once the agent is gone.
-    chmodSync(cwd, 0o755);
-    await eventually(() => {
-      expect(() => process.kill(pid, 0)).toThrow();
-      expect(existsSync(cwd)).toBe(false);
-    });
-  });
-
-  it('removes the session directory at once when the agent already exited', async () => {
-    const { executor, log } = scripted([[pass]]);
-    const step = context();
-    cleanups.push(step.end);
-    await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
-    const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
-    const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
-    const cwd = session.cwd;
-    process.kill(pid, 'SIGKILL');
-    await eventually(() => expect(() => process.kill(pid, 0)).toThrow());
-    // Let the exit event land, so the removal runs from the already-settled exit promise.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    step.end();
-    await eventually(() => expect(existsSync(cwd)).toBe(false));
   });
 
   it('reports an agent that does not start', async () => {
