@@ -71,20 +71,46 @@ describe('error translation', () => {
   });
 
   // Each refusal as agent-device 0.21.21 sends it: the typed reason, and the message the reason replaces.
+  // Only a refusal that proves nothing reached the device (`dispatched: 'no'`)
+  // is a retryable stale node: the ref was refused at admission, before the gesture.
   it.each([
     ['ref_not_found', 'Ref @e12 not found', 'no'],
     ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'no'],
     ['ref_generation_mismatch', 'Ref @e12 was minted from a superseded snapshot generation', 'no'],
     ['plain_ref_requires_complete_frame', 'Ref @e12 needs a complete snapshot — the current frame only authorizes its emitted refs', 'no'],
     ['ref_not_issued', 'Ref @e12 was not issued by the current ref frame', 'no'],
-    // After Android blocking-dialog recovery, a drag refuses its stale ref before the gesture but reports it as `unknown`.
-    ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'unknown'],
-  ] as const)('maps the stale-ref refusal %s (dispatched: %s) to retryable NODE_STALE', (reason, text, dispatched) => {
+  ] as const)('maps the stale-ref refusal %s (dispatched: no) to retryable NODE_STALE', (reason, text, dispatched) => {
     const refused = new AppError('COMMAND_FAILED', text, { reason, dispatched });
     expect(staleOr(refused, 'perform tap')).toMatchObject({ code: 'NODE_STALE', retryable: true, message: `perform tap: ${text}` });
     // Outside an action path the same refusal stays an engine failure.
     expect(translateError(refused, 'observe')).toMatchObject({ code: 'ENGINE_FAILURE' });
   });
+
+  // A stale-ref refusal that cannot prove nothing was dispatched is a possibly
+  // committed action, never a retryable stale node: the gesture may already
+  // have landed (a tap that opened a drawer, with the stale report arriving
+  // during the post-tap settle), so the harness must not send it again.
+  // That includes the Android blocking-dialog recovery shape, a drag refused
+  // before the gesture but reported as `dispatched: unknown`: the engine
+  // cannot prove the drag never ran, so it fails closed the same way.
+  it.each([
+    ['ref_frame_expired', 'Ref @e12 belongs to an expired ref frame — a device action since the snapshot invalidated it', 'unknown'],
+    ['ref_generation_mismatch', 'Ref @e12 was minted from a superseded snapshot generation', undefined],
+  ] as const)(
+    'reports a stale-ref refusal with unproven dispatch as ACTION_MAY_HAVE_COMMITTED (%s, %s)',
+    (reason, text, dispatched) => {
+      const refused = new AppError('COMMAND_FAILED', text, {
+        reason,
+        ...(dispatched === undefined ? {} : { dispatched }),
+      });
+      expect(staleOr(refused, 'perform tap')).toMatchObject({
+        code: 'ACTION_MAY_HAVE_COMMITTED',
+        retryable: false,
+        cause: refused,
+        message: `perform tap: ${text}; the action may already have reached the device, so it was not sent again`,
+      });
+    },
+  );
 
   it.each(['no', 'unknown', undefined] as const)('retries a moving target only when no input was dispatched (%s)', (dispatched) => {
     const cause = new AppError('COMMAND_FAILED', 'Target position was not confirmed', {

@@ -1372,7 +1372,7 @@ describe('perform', () => {
     ]);
   });
 
-  it('refuses what a device surface cannot express, and reports daemon ref misses as retryable', async () => {
+  it('refuses what a device surface cannot express, and classifies daemon ref misses by whether the press was sent', async () => {
     const h = harness();
     await openAttempt(h);
     const about = await observed(h, 'About');
@@ -1406,6 +1406,17 @@ describe('perform', () => {
       code: 'NODE_STALE',
       retryable: true,
     });
+    // A stale ref reported after the press was sent: the tap may have landed
+    // (a drawer toggle, with the stale report arriving during the post-tap
+    // settle), so the engine reports the action as possibly committed and the
+    // runner never sends it again.
+    h.fake.respond('interactions.press', () => {
+      throw new AppError('COMMAND_FAILED', 'Ref @e4 belongs to an expired ref frame', { reason: 'ref_frame_expired', dispatched: 'unknown' });
+    });
+    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, operation())).rejects.toMatchObject({
+      code: 'ACTION_MAY_HAVE_COMMITTED',
+      retryable: false,
+    });
     h.fake.respond('interactions.press', () => {
       throw new AppError('COMMAND_FAILED', 'XCTest lost the runner');
     });
@@ -1413,6 +1424,8 @@ describe('perform', () => {
       code: 'ENGINE_FAILURE',
       retryable: false,
     });
+    // One press per perform: the engine never retries a possibly committed tap itself.
+    expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(3);
   });
 });
 
