@@ -140,6 +140,7 @@ another element covers it or an ancestor makes it invisible.
 | `INVALID_ARGUMENT` | The options or property names are invalid. |
 | `LOCATOR_NOT_FOUND` | No semantic observation exists, or the latest one does not list the ID. |
 | `NODE_STALE` | The element detached or the engine no longer holds its reference. Observe again before reading. |
+| `STEP_TIMEOUT` | The read exhausted the step's remaining time, including an engine timeout at the deadline. Catching the read error cannot make the step pass. |
 | `UNSUPPORTED_CAPABILITY` | The engine has no `readStyle` method, including the mobile engine. |
 
 Use `requires: ['computedStyle']` on a test to skip targets without style reads.

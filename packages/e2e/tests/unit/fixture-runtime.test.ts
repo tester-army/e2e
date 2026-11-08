@@ -620,6 +620,38 @@ describe('project tool dispatch', () => {
     } finally { clock.mockRestore(); }
   });
 
+  it.each([
+    { label: 'operation timeout near the deadline', remainingMs: 50, code: 'OPERATION_TIMEOUT', expected: 'STEP_TIMEOUT' },
+    { label: 'stale node after the deadline', remainingMs: -50, code: 'NODE_STALE', expected: 'STEP_TIMEOUT' },
+    { label: 'operation timeout with time remaining', remainingMs: 1_000, code: 'OPERATION_TIMEOUT', expected: 'OPERATION_TIMEOUT' },
+  ] as const)('accounts for a rejected style read: $label', async ({ remainingMs, code, expected }) => {
+    const clock = vi.spyOn(Date, 'now');
+    let rejectsAt = 0;
+    let failure: unknown;
+    const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,
+      observe: async () => snapshot([{ ref: { id: 'message', revision: '' }, role: 'status' }]),
+      readStyle: async () => {
+        clock.mockReturnValue(rejectsAt);
+        throw new EngineError(code, 'style read failed', { retryable: false });
+      },
+    });
+    const executor: StepExecutor = { name: 'test', async runStep(context) {
+      await context.observe();
+      rejectsAt = Date.now() + context.budgets.remainingMs() - remainingMs;
+      try { await context.read({ id: 'message' }, { style: ['color'] }); }
+      catch (cause) { failure = cause; }
+      return { status: 'passed', summary: 'caught the read failure' };
+    } };
+    try {
+      const { fixtures, steps } = runtime(engine, { agents: { default: { executor } } });
+      const act = fixtures.agent.act('handle a rejected style read', { timeout: 5_000 });
+      if (expected === 'STEP_TIMEOUT') await expect(act).rejects.toMatchObject({ code: expected });
+      else await act;
+      expect(failure).toMatchObject({ code: expected });
+      expect(steps.all()[0]?.events.find((event) => event.name === 'readStyle')).toMatchObject({ status: 'failed', code: expected });
+    } finally { clock.mockRestore(); }
+  });
+
   it('fails closed when the engine omits a requested property', async () => {
     let failure: unknown;
     const engine = defineEngine({ name: 'fake', version: '1', spiVersion: 1,

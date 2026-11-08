@@ -192,7 +192,10 @@ export class ObservationFeed {
           const { id, observation } = this.currentTarget(target);
           const node = observation.nodes.get(id);
           if (node === undefined) throw nodeGone(id, observation);
-          const result = await this.runtime.engine.session.readStyle(node.ref, checked.style, this.accounting.operation());
+          const result = await this.runtime.engine.session.readStyle(node.ref, checked.style, this.accounting.operation()).catch((cause: unknown) => {
+            this.accounting.checkpoint(cause);
+            throw cause;
+          });
           this.accounting.checkpoint();
           const style: Partial<Record<ComputedStyleProperty, string>> = {};
           for (const property of checked.style) {
