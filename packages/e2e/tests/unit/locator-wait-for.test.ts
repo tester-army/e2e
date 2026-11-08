@@ -5,10 +5,11 @@
  * unimplemented state read as `hidden` would pass at once on an absent node.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EngineError, resolveExpression, type SemanticNode } from '../../src/engine/index.ts';
 import { expect as expectFixture } from '../../src/expect/index.ts';
 import { sleep, withTimeout } from '../../src/internal/time.ts';
+import { LocatorEngine } from '../../src/locator/engine.ts';
 import type { Locator } from '../../src/types.ts';
 import { invalid } from '../helpers/invalid.ts';
 import { screenOver } from '../helpers/screen-over.ts';
@@ -93,6 +94,25 @@ describe('locator.waitFor states', () => {
       code: 'LOCATOR_NOT_FOUND',
       message: `locator did not become ${state}: getByTestId("banner")`,
     });
+  });
+
+  it('includes deadline setup in the reported wait duration', async () => {
+    const { banner: locator } = changingScreen([], []);
+    const deadline = LocatorEngine.prototype.deadline;
+    const setup = vi.spyOn(LocatorEngine.prototype, 'deadline').mockImplementation(function (this: LocatorEngine, timeout) {
+      const result = deadline.call(this, timeout);
+      // Force the millisecond boundary that real deadline setup can cross.
+      vi.advanceTimersByTime(1);
+      return result;
+    });
+    try {
+      await expect(locator.waitFor({ timeout: 300 })).rejects.toMatchObject({
+        code: 'LOCATOR_NOT_FOUND',
+        details: { waitedMs: 300 },
+      });
+    } finally {
+      setup.mockRestore();
+    }
   });
 
   it('fails every state at once on several matches', async () => {

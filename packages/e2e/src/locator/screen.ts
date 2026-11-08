@@ -627,8 +627,8 @@ class LocatorImpl extends ScreenImpl implements Locator {
     }
     await this.context.steps.run('locator', 'locator.waitFor', `${this.label} → ${state}`, async () => {
       const { engine } = this.context;
-      const deadline = engine.deadline(options?.timeout);
       const startedMs = Date.now();
+      const deadline = engine.deadline(options?.timeout);
       const samples = new SampleHistory('waitFor', (text) => engine.redact(text));
       await samples.record(engine, () =>
         pollReads({

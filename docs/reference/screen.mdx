@@ -1130,7 +1130,8 @@ await screen.getByTestId('spinner').waitFor({ state: 'hidden' }); // default sta
 | `'detached'` | No match. |
 | `'hidden'` | A hidden match, or none. |
 
-`timeout` defaults to `config.actionTimeout`.
+`timeout` defaults to `config.actionTimeout`. On timeout, the error's
+`details.waitedMs` includes the time spent setting up the deadline.
 
 | Throws | When |
 | --- | --- |
