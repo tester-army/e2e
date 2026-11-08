@@ -275,7 +275,7 @@ export interface WebOptions {
 
 /** The test-id attribute when the options name none. */
 const DEFAULT_TEST_ID_ATTRIBUTE = 'data-testid';
-/** Shared node budget across the main document and its frames; `observationNodeBudget` overrides it per target. */
+/** The observation node budget when the options name none. */
 const DEFAULT_OBSERVATION_NODE_BUDGET = 3_000;
 
 export class PlaywrightSurface {

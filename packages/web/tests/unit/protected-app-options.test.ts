@@ -1,5 +1,5 @@
 /**
- * The `headers`, `basicAuth`, `testIdAttribute`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
+ * The `headers`, `basicAuth`, `testIdAttribute`, `observationNodeBudget`, `userAgent`, `locale`, `timezoneId`, `colorScheme`, `reducedMotion`, `initScripts`, and `screencast` options are checked at
  * config load, so a header the browser could never send or an attribute no
  * element could carry fails the run before a browser launches. What the
  * browser does with valid ones is in tests/integration.

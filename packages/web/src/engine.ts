@@ -409,13 +409,15 @@ function validateTestIdAttribute(attribute: unknown): void {
 }
 
 /**
- * The largest observation node budget `web()` accepts. Ref ids are sequential
- * integers reserved up to the budget per capture, so the cap keeps `mintId`
- * exact no matter how many observations a run takes.
+ * The largest observation node budget `web()` accepts. Each capture reserves
+ * ref ids up to the budget through `RefRegistry.reserveIds`, and the counter
+ * stays an exact integer only while its running total remains below 2^53:
+ * at this cap a run would need over nine billion full-budget captures to
+ * approach that.
  */
 const MAX_OBSERVATION_NODE_BUDGET = 1_000_000;
 
-/** Refuses an observation node budget no capture could spend, at config load. */
+/** Refuses an observation node budget outside 1 to 1,000,000, at config load. */
 function validateObservationNodeBudget(budget: unknown): void {
   if (typeof budget !== 'number' || !Number.isSafeInteger(budget) || budget <= 0 || budget > MAX_OBSERVATION_NODE_BUDGET) {
     const shown = typeof budget === 'number' ? String(budget) : kindOf(budget);
