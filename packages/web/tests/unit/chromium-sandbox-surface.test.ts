@@ -1,7 +1,7 @@
 /** The surface resolves the Chromium sandbox from the option first, the run's environment second, and on by default. */
 import type { Browser } from 'playwright-core';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { EngineInitInfo } from 'e2e/engine';
+import { EngineError, type EngineInitInfo } from 'e2e/engine';
 import { PlaywrightSurface, type WebOptions } from '../../src/surface.ts';
 
 const acquire = vi.hoisted(() => vi.fn());
@@ -80,6 +80,17 @@ it('lets an explicit option win over the environment either way', async () => {
   await expect(launchedSandbox({ chromiumSandbox: true }, { E2E_CHROMIUM_SANDBOX: '0' })).resolves.toBe(true);
 });
 
+it('tells the connection whether the option set the sandbox', async () => {
+  await launchedSandbox({ chromiumSandbox: true }, {});
+  expect(
+    (acquire.mock.calls[0]![0] as { chromiumSandboxConfigured: unknown }).chromiumSandboxConfigured,
+  ).toBe(true);
+  await launchedSandbox({}, {});
+  expect(
+    (acquire.mock.calls[0]![0] as { chromiumSandboxConfigured: unknown }).chromiumSandboxConfigured,
+  ).toBe(false);
+});
+
 it('does not read the flag from the process environment', async () => {
   // The process environment never decides a launch: an in-process worker
   // shares its process with the runner and every other target.
@@ -115,21 +126,16 @@ async function launchFailure(cause: Error): Promise<unknown> {
   throw new Error('expected init to throw');
 }
 
-it('turns a sandbox launch failure into a friendly error naming both opt-outs', async () => {
-  const error = (await launchFailure(
-    new Error(
-      'browserType.launch: Target page, context or browser has been closed\n' +
-        'Chromium sandboxing failed!\n' +
-        'Call log:\n' +
-        '  - launching Chromium with --no-sandbox --flag-a --flag-b',
-    ),
-  )) as Error & { code?: unknown };
-  expect(error.code).toBe('ENGINE_FAILURE');
-  expect(error.message).toContain('E2E_CHROMIUM_SANDBOX=0');
-  expect(error.message).toContain('web({ chromiumSandbox: false })');
-  expect(error.message).not.toContain('Call log');
-  expect(error.message).not.toContain('--flag-a');
-  expect(error.cause).toBeUndefined();
+it('rethrows a sandbox launch failure from the connection unchanged', async () => {
+  // The connection turns Playwright's sandbox failure into this friendly
+  // error; the surface passes an EngineError through as is.
+  const friendly = new EngineError(
+    'ENGINE_FAILURE',
+    'Chromium failed to launch because its sandbox cannot start on this host. Set E2E_CHROMIUM_SANDBOX=0 in the run environment, or pass web({ chromiumSandbox: false }), to launch without the sandbox.',
+    { retryable: false },
+  );
+  const error = await launchFailure(friendly);
+  expect(error).toBe(friendly);
 });
 
 it('keeps any other launch failure wrapped as before', async () => {

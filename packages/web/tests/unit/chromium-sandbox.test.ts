@@ -87,6 +87,86 @@ describe('BrowserConnection', () => {
     await connection.dispose();
   });
 
+  it('keeps the sandbox on when a relaunch fails while another caller is waiting', async () => {
+    let connected = true;
+    const { browser: first } = fakeBrowser(() => connected);
+    const { browser: third } = fakeBrowser();
+    chromiumLaunch
+      .mockResolvedValueOnce(first)
+      .mockRejectedValueOnce(new Error('browserType.launch: Chromium sandboxing failed!'))
+      .mockResolvedValueOnce(third);
+    const connection = new BrowserConnection();
+    await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+    connected = false;
+    const [relaunch, waiter] = await Promise.allSettled([
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true }),
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true }),
+    ]);
+    expect(relaunch.status).toBe('rejected');
+    expect(waiter.status).toBe('fulfilled');
+    expect(chromiumLaunch).toHaveBeenCalledTimes(3);
+    for (const call of chromiumLaunch.mock.calls) {
+      expect(call[0]).toMatchObject({ chromiumSandbox: true });
+    }
+    await connection.dispose();
+  });
+
+  it('turns a sandbox launch failure into a friendly error naming both opt-outs', async () => {
+    chromiumLaunch.mockRejectedValueOnce(
+      new Error(
+        'browserType.launch: Target page, context or browser has been closed\n' +
+          'Chromium sandboxing failed!\n' +
+          'Call log:\n' +
+          '  - launching Chromium with --no-sandbox --flag-a --flag-b',
+      ),
+    );
+    const connection = new BrowserConnection();
+    let error: (Error & { code?: unknown; cause?: unknown }) | undefined;
+    try {
+      await connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true });
+    } catch (caught) {
+      error = caught as Error & { code?: unknown; cause?: unknown };
+    }
+    expect(error?.code).toBe('ENGINE_FAILURE');
+    expect(error?.message).toContain('E2E_CHROMIUM_SANDBOX=0');
+    expect(error?.message).toContain('web({ chromiumSandbox: false })');
+    expect(error?.message).not.toContain('Call log');
+    expect(error?.message).not.toContain('--flag-a');
+    expect(error?.cause).toBeUndefined();
+    await connection.dispose();
+  });
+
+  it('names only the option in the launch error when the option set the sandbox', async () => {
+    chromiumLaunch.mockRejectedValueOnce(new Error('browserType.launch: Chromium sandboxing failed!'));
+    const connection = new BrowserConnection();
+    let error: (Error & { code?: unknown }) | undefined;
+    try {
+      await connection.acquire({
+        name: 'chromium',
+        headed: false,
+        timeoutMs: 1_000,
+        chromiumSandbox: true,
+        chromiumSandboxConfigured: true,
+      });
+    } catch (caught) {
+      error = caught as Error & { code?: unknown };
+    }
+    expect(error?.code).toBe('ENGINE_FAILURE');
+    expect(error?.message).toContain('web({ chromiumSandbox: false })');
+    expect(error?.message).not.toContain('E2E_CHROMIUM_SANDBOX');
+    await connection.dispose();
+  });
+
+  it('passes any other launch failure through unchanged', async () => {
+    const failure = new Error('browserType.launch: executable does not exist');
+    chromiumLaunch.mockRejectedValueOnce(failure);
+    const connection = new BrowserConnection();
+    await expect(
+      connection.acquire({ name: 'chromium', headed: false, timeoutMs: 1_000, chromiumSandbox: true }),
+    ).rejects.toBe(failure);
+    await connection.dispose();
+  });
+
   it('keeps the opt-out when a relaunch fails while another caller is waiting', async () => {
     let connected = true;
     const { browser: first } = fakeBrowser(() => connected);

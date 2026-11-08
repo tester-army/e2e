@@ -1,7 +1,9 @@
 /** Shares one browser process connection across a worker's attempts. */
 
 import type { Browser, BrowserType, ConnectOverCDPOptions } from 'playwright-core';
+import { EngineError } from 'e2e/engine';
 import { SELECTOR_ENGINES } from './selector-engines.ts';
+import { message } from './support.ts';
 
 /**
  * Playwright, imported the first time a browser is looked up, launched, or
@@ -52,7 +54,7 @@ export function resolveChromiumSandbox(
 ): boolean {
   if (configured !== undefined) return configured;
   const value = env['E2E_CHROMIUM_SANDBOX']?.trim().toLowerCase();
-  return value === undefined || value === '' || (value !== '0' && value !== 'false');
+  return value !== '0' && value !== 'false';
 }
 
 /** What `BrowserConnection.acquire` launches or attaches to. */
@@ -65,6 +67,13 @@ export interface BrowserAcquireOptions {
   readonly timeoutMs: number;
   /** Whether a Chromium launch keeps its OS sandbox on; other browsers ignore it. */
   readonly chromiumSandbox: boolean;
+  /**
+   * Whether the sandbox value came from the `web({ chromiumSandbox })`
+   * option rather than the run's environment. The launch error names the
+   * environment opt-out only when the option did not set the value, since
+   * an explicit option wins over the variable.
+   */
+  readonly chromiumSandboxConfigured?: boolean;
   /** Attaches to a remote browser instead of launching one, when given. */
   readonly connect?: () => Promise<Browser>;
 }
@@ -84,13 +93,13 @@ export class BrowserConnection {
    * When `connect` is given the connection attaches to a remote browser through it
    * instead of launching a local one; `connect` is re-invoked on a relaunch,
    * so a caller that resolves a fresh per-run endpoint reconnects cleanly
-   * after a dropped session. `chromiumSandbox` is Chromium's sandbox, and
-   * the caller passes the resolved value: the `web({ chromiumSandbox })`
-   * option, the run's environment, or on. Only a Chromium launch takes it,
-   * and a relaunch keeps the value the first launch used.
+   * after a dropped session. The caller passes the resolved sandbox value:
+   * the `web({ chromiumSandbox })` option, the run's environment, or on.
+   * Only a Chromium launch takes it, and a relaunch keeps the value the
+   * first launch used.
    */
   async acquire(options: BrowserAcquireOptions): Promise<Browser> {
-    const { name, headed, timeoutMs, chromiumSandbox, connect } = options;
+    const { name, headed, timeoutMs, chromiumSandbox, chromiumSandboxConfigured, connect } = options;
     const cached = this.pending;
     if (cached !== undefined) {
       const browser = await cached.catch(() => null);
@@ -104,20 +113,52 @@ export class BrowserConnection {
     const launching = registerSelectorEngines().then(() =>
       connect !== undefined
         ? connect()
-        : browserType(name).then((type) =>
-            type.launch({
-              headless: !headed,
-              timeout: timeoutMs,
-              ...RUNNER_OWNS_SIGNALS,
-              ...(name === 'chromium' ? { chromiumSandbox } : {}),
-            }),
-          ),
+        : this.launchLocal(name, headed, timeoutMs, chromiumSandbox, chromiumSandboxConfigured),
     );
     this.pending = launching;
     try {
       return await launching;
     } catch (cause) {
       if (this.pending === launching) this.pending = undefined;
+      throw cause;
+    }
+  }
+
+  /**
+   * Launches a local browser. A Chromium launch whose sandbox cannot start
+   * fails with Playwright's "Chromium sandboxing failed!" error and the
+   * whole launch call log; the engine error names the opt-outs that apply
+   * instead. The environment opt-out is named only when the option did not
+   * set the value, since an explicit option wins over the variable. Any
+   * other launch failure passes through unchanged.
+   */
+  private async launchLocal(
+    name: BrowserName,
+    headed: boolean,
+    timeoutMs: number,
+    chromiumSandbox: boolean,
+    chromiumSandboxConfigured: boolean | undefined,
+  ): Promise<Browser> {
+    const type = await browserType(name);
+    try {
+      return await type.launch({
+        headless: !headed,
+        timeout: timeoutMs,
+        ...RUNNER_OWNS_SIGNALS,
+        ...(name === 'chromium' ? { chromiumSandbox } : {}),
+      });
+    } catch (cause) {
+      if (name === 'chromium' && chromiumSandbox && message(cause).includes('Chromium sandboxing failed!')) {
+        // No `cause`: the runner follows the chain into the surfaced
+        // message, which would put the call log back.
+        throw new EngineError(
+          'ENGINE_FAILURE',
+          chromiumSandboxConfigured === true
+            ? 'Chromium failed to launch because its sandbox cannot start on this host. Pass web({ chromiumSandbox: false }) to launch without the sandbox.'
+            : 'Chromium failed to launch because its sandbox cannot start on this host. Set E2E_CHROMIUM_SANDBOX=0 in the run environment, or pass web({ chromiumSandbox: false }), to launch without the sandbox.',
+          { retryable: false },
+        );
+      }
       throw cause;
     }
   }
