@@ -19,6 +19,7 @@
 
 import type { ObservationPixels, SemanticNode, ViewportPoint, ViewportSize } from '../engine/surface.ts';
 import type { VisionDegradation, StepTurn } from '../run/steps.ts';
+import type { NodeReadOptions, NodeReadResult } from '../engine/node-read.ts';
 import type {
   AgentErrorCode,
   ClickOptions,
@@ -497,6 +498,8 @@ export interface StepExecutorContext {
    * own view of the screen asks for exactly the material it uses.
    */
   observe(options?: ExecutorObserveOptions): Promise<ExecutorObservation>;
+  /** Reads allow-listed rendered properties of a node in the newest observation; absent on older executor hosts. */
+  read?(target: ExecutorTarget, options: NodeReadOptions): Promise<NodeReadResult>;
   readonly actions: ExecutorActions;
   /**
    * Attaches the executor's model transcript to the step. Persisted as a

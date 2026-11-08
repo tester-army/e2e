@@ -486,6 +486,17 @@ before writing the AI trace.
 - `tools: { seedCart }` on an agents entry adds AI SDK tools wrapped with
   `defineTool(tool({ ... }), { mutates: true })` from `e2e/agent` for a
   test API a flow calls mid-step.
+- A `mutates: false` tool can use `getToolContext(options).observe()` and
+  `.read({ id }, { style: ['color', 'font-weight'] })` on a node listed in
+  the newest observation. Web reads return `{ style }` with computed CSS
+  strings, secret-redacted, without an action slot. Only `color`,
+  `background-color`, `font-size`, `font-weight`, `font-style`, `text-align`,
+  `text-decoration-line`, `display`, `visibility`, and `opacity` are allowed,
+  1 to 10 per call. Reads measure the current element without polling or
+  observing again. Detached nodes are `NODE_STALE`, unlisted IDs are
+  `LOCATOR_NOT_FOUND`, and engines without reads are `UNSUPPORTED_CAPABILITY`.
+  Mutating tools cannot read properties (`POLICY_DENIED`). See
+  https://e2e.com/docs/tools#read-a-nodes-computed-style.
 - `createToolLoopExecutor` keeps the loop and replaces prompt and tool
   vocabulary; spread `createGrammarTools(ctx, { guard })` into its tools and
   start its `system` with `BASE_RULES` to keep the built-in actions.

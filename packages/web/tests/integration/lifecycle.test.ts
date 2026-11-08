@@ -220,6 +220,7 @@ describe('web engine lifecycle', () => {
       'location',
       'observation',
       'pointer',
+      'read',
       'state',
     ]);
     expect(engine.name).toBe('web');

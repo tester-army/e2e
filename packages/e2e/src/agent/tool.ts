@@ -1,7 +1,8 @@
 /** Project tools declare mutation and platform scope; the harness owns dispatch and accounting. */
 
 import type { Tool, ToolExecutionOptions } from 'ai';
-import type { StepExecutorContext } from './executor.ts';
+import type { ExecutorTarget, StepExecutorContext } from './executor.ts';
+import type { NodeReadOptions, NodeReadResult } from '../engine/node-read.ts';
 import { TestError } from '../internal/errors.ts';
 
 /** Cross-realm identity marker for defined tools. */
@@ -72,10 +73,13 @@ export function isDefinedTool(value: unknown): value is DefinedTool {
 
 /**
  * The harness capabilities a project tool reaches through `getToolContext`:
- * observing the screen (read-only tools only) and keeping what it saw as a
- * screenshot artifact of the step.
+ * observing the screen and reading rendered node properties (read-only
+ * tools only), and keeping a screenshot artifact of the step.
  */
-export type ToolContext = Pick<StepExecutorContext, 'observe' | 'attachScreenshot'>;
+export interface ToolContext extends Pick<StepExecutorContext, 'observe' | 'attachScreenshot'> {
+  /** Reads requested rendered properties of a listed node; read-only tools only. */
+  read(target: ExecutorTarget, options: NodeReadOptions): Promise<NodeReadResult>;
+}
 
 /** The capabilities the built-in agent supplied to the running tool. */
 export function getToolContext(options: object): ToolContext {
@@ -83,7 +87,13 @@ export function getToolContext(options: object): ToolContext {
   if (context === undefined || typeof context.observe !== 'function') {
     throw new TestError('INVALID_ARGUMENT', 'this tool needs the observation context the built-in agent supplies');
   }
-  return { observe: context.observe, attachScreenshot: context.attachScreenshot };
+  return {
+    observe: context.observe,
+    read: typeof context.read === 'function' ? context.read : async () => {
+      throw new TestError('UNSUPPORTED_CAPABILITY', 'this tool host cannot read node properties');
+    },
+    attachScreenshot: context.attachScreenshot,
+  };
 }
 
 const TOOL_CONTEXT = Symbol.for('e2e.tool-context.v1');

@@ -64,6 +64,7 @@ import {
   createToolLoopExecutor,
   createVerdictTool,
   defineTool,
+  getToolContext,
   isRuntimeHardStop,
   VERDICT_RULES,
   type ScreenOutput,
@@ -71,6 +72,7 @@ import {
 import { connectEngine, socketTransport, type EngineManifest } from '../../src/engine/index.ts';
 import type { Report } from '../../src/index.ts';
 import type { ToolSet } from 'ai';
+
 import type { LanguageModelV2, LanguageModelV3, LanguageModelV4 } from '@ai-sdk/provider';
 import { chatgpt } from '../../src/oauth/chatgpt.ts';
 import { copilot } from '../../src/oauth/copilot.ts';
@@ -135,6 +137,16 @@ declare const remoteStore: CacheStore;
 declare const renamedStore: import('../../src/index.ts').TraceCacheStore;
 renamedStore;
 declare const artifactStore: ArtifactStore;
+const toolContext = getToolContext({});
+void toolContext.read({ id: 'n1' }, { style: ['color', 'font-weight', 'visibility', 'opacity'] });
+// @ts-expect-error arbitrary CSS properties, URLs and generated content are not readable
+void toolContext.read({ id: 'n1' }, { style: ['content'] });
+// @ts-expect-error custom properties are not readable
+void toolContext.read({ id: 'n1' }, { style: ['--token'] });
+// @ts-expect-error reads address listed nodes, never selectors
+void toolContext.read('body', { style: ['color'] });
+// @ts-expect-error reads cannot evaluate code
+void toolContext.read({ id: 'n1' }, { style: ['color'], evaluate: 'document.cookie' });
 declare const asyncExpectation: AsyncExpectation;
 declare const screen: Screen;
 declare const engine: EngineHandle;

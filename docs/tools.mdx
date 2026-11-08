@@ -65,7 +65,7 @@ grammar verb (`tap`, `screenshot`) or a tool the harness adds:
 | Annotation | Meaning |
 | --- | --- |
 | `mutates: true` | Changes state. The call takes a slot of the step's action budget before it runs, failed or not, and runs in order with the other actions. The [replay cache](/cache) can't replay it, so the agent runs that part of the step live. |
-| `mutates: false` | Read-only. Runs without an action slot and may observe the screen. |
+| `mutates: false` | Read-only. Runs without an action slot and may observe the screen or read node properties. |
 | `platforms: ['ios', 'android']` | Offers the tool only on those platforms. Omit it to offer the tool on every target. |
 
 ## Observe from a tool
@@ -106,6 +106,44 @@ const captureEvidence = defineTool(
   Observe in a separate read-only tool.
 - `attachScreenshot(pixels, label)` adds the image to the step's artifacts
   and returns its artifact id. A reused label overwrites the earlier image.
+
+## Read a node's computed style
+
+In a read-only tool, use `context.read` to measure a listed node's rendered
+style on the web engine:
+
+```ts
+const context = getToolContext(executionOptions);
+await context.observe();
+const result = await context.read({ id: nodeId }, {
+  style: ['color', 'font-weight', 'visibility', 'opacity'],
+});
+return result.style;
+```
+
+Pass the node's ID from the newest observation. The result contains only
+requested properties, with secret values redacted as in the tree.
+Values use the browser's computed CSS format, such as `rgb(255, 0, 0)` for red.
+Each value is capped at 1024 characters after redaction.
+
+The allowed properties are `color`, `background-color`, `font-size`,
+`font-weight`, `font-style`, `text-align`, `text-decoration-line`, `display`,
+`visibility`, and `opacity`. Request 1 to 10 properties per call.
+Custom properties, URLs, generated content, selectors, and page code are not accepted.
+
+Reads use the step's deadline and run in order with observations and actions,
+without taking an action slot. They measure the current value on the original
+element, and do not refresh the observation or wait for a value to change.
+Computed `visibility` and `opacity` describe the element's CSS, not whether
+another element covers it or an ancestor makes it invisible.
+
+| Error | When |
+| --- | --- |
+| `POLICY_DENIED` | A `mutates: true` tool calls `read`. |
+| `INVALID_ARGUMENT` | The options or property names are invalid. |
+| `LOCATOR_NOT_FOUND` | No semantic observation exists, or the latest one does not list the ID. |
+| `NODE_STALE` | The element detached or the engine no longer holds its reference. Observe again before reading. |
+| `UNSUPPORTED_CAPABILITY` | The engine has no `read` method, including the mobile engine. |
 
 ## Device toolkits
 

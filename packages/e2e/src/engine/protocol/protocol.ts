@@ -49,6 +49,7 @@ const lifecycle = (member: LifecycleMethod['member']): LifecycleMethod => ({ kin
  */
 export const METHODS = {
   'engine/observe': operation('observe', ['operation', 'options'], 'snapshot'),
+  'engine/read': operation('read', ['ref', 'options', 'operation']),
   'engine/locate': operation('locate', ['expression', 'operation']),
   'engine/perform': operation('perform', ['ref', 'action', 'operation']),
   'engine/performAt': operation('performAt', ['point', 'action', 'operation']),

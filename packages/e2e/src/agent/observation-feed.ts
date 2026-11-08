@@ -8,7 +8,8 @@
  * the engine; the dispatcher and the pixel tier ask the feed.
  */
 
-import type { SemanticNode } from '../engine/surface.ts';
+import { EngineError, type SemanticNode } from '../engine/surface.ts';
+import { validateNodeReadOptions, type ComputedStyleProperty, type NodeReadOptions, type NodeReadResult } from '../engine/node-read.ts';
 import { relocateDescriptor } from '../cache/relocate.ts';
 import { TestError } from '../internal/errors.ts';
 import { isEditable } from '../internal/roles.ts';
@@ -51,6 +52,8 @@ const MAX_RECENT_OBSERVATIONS = 8;
  * the oldest dropped first past this many.
  */
 const MAX_SHOWN_TEXTS = 4_096;
+/** Maximum characters of a computed property returned to a tool, after redaction. */
+const MAX_STYLE_VALUE_CHARS = 1024;
 
 /** A target resolved to a node of the observation it was found in. */
 export interface Resolved {
@@ -179,6 +182,28 @@ export class ObservationFeed {
     });
   }
 
+  /** Reads a currently listed node in queue order, under the step deadline and secret redactor. */
+  async read(target: ExecutorTarget, options: NodeReadOptions): Promise<NodeReadResult> {
+    const checked = validateNodeReadOptions(options);
+    return this.queue.run(async () => {
+      this.accounting.checkpoint();
+      const { id, observation } = this.currentTarget(target);
+      const node = observation.nodes.get(id);
+      if (node === undefined) throw nodeGone(id, observation);
+      const result = await this.runtime.engine.session.readNode(node.ref, checked, this.accounting.operation());
+      this.accounting.checkpoint();
+      const style: Partial<Record<ComputedStyleProperty, string>> = {};
+      for (const property of checked.style) {
+        const value = result?.style?.[property];
+        if (typeof value !== 'string') {
+          throw new EngineError('INVALID_STATE', 'engine read must return a string for every requested style property', { retryable: false });
+        }
+        style[property] = this.runtime.redact(value).slice(0, MAX_STYLE_VALUE_CHARS);
+      }
+      return { style };
+    });
+  }
+
   /** Projects one capture, including its permitted screenshot whenever semantic evidence is unavailable. */
   private view(observation: AgentObservation, options: ExecutorObserveOptions): ExecutorObservation {
     const metadata = {
@@ -234,6 +259,12 @@ export class ObservationFeed {
    * (`scroll-target.ts`) starts here.
    */
   lookup(target: ExecutorTarget): Lookup {
+    const { id, observation } = this.currentTarget(target);
+    return { id, node: observation.nodes.get(id) ?? this.refound(id, observation), observation };
+  }
+
+  /** Normalizes a target against the current semantic screen, without relocating its id. */
+  private currentTarget(target: ExecutorTarget): Pick<Lookup, 'id' | 'observation'> {
     if (typeof target?.id !== 'string' || target.id === '') {
       throw new TestError('INVALID_ARGUMENT', 'action target must be { id: string }');
     }
@@ -242,7 +273,7 @@ export class ObservationFeed {
     if (latest.kind === 'pixels') {
       throw new AgentError('LOCATOR_NOT_FOUND', 'semantic capture is unavailable; previous node ids are no longer valid, so use the current screenshot');
     }
-    return { id, node: latest.nodes.get(id) ?? this.refound(id, latest), observation: latest };
+    return { id, observation: latest };
   }
 
   /** What `id` named in the most recent observation that carried it. */
