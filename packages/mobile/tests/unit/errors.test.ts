@@ -300,13 +300,15 @@ describe('automation runner failures through the engine', () => {
     await expect(h.prepare(prepareInfo(lines))).rejects.toMatchObject({
       message: expect.stringContaining('npx agent-device daemon stop'),
     });
-    expect(lines).toEqual(['booting iPhone 17 Pro (1 of 1)', 'booting iPhone 17 Pro (1 of 1)']);
+    // A failed open is timed too: the step times are logged as the error propagates.
+    const stepTimes = expect.stringMatching(/^iPhone 17 Pro: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/);
+    expect(lines).toEqual(['booting iPhone 17 Pro (1 of 1)', stepTimes, 'booting iPhone 17 Pro (1 of 1)', stepTimes]);
 
     h.fake.respond('apps.open', () => {
       throw new Error('runner still installing');
     });
     await h.prepare(prepareInfo(lines));
-    expect(lines[3]).toMatch(/Settings did not open.*runner still installing/);
+    expect(lines[5]).toMatch(/Settings did not open.*runner still installing/);
   });
 
   it('closes every session a failed warm-up opened at finish, and still releases the leases when a close fails', async () => {
