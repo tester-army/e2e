@@ -29,8 +29,9 @@ from the directory it runs in.
   the two Apple Pay scenarios.
 - `e2e.config.ts` + `tests/`: the deterministic suite, locators only.
 - `e2e.agent.config.ts` + `tests-agent/`: the agentic suite, derived from the
-  deterministic config. One `agent.act` per scenario with the catalog
-  description as its goal and a deterministic check on the success message.
+  deterministic config. One `agent.act` per scenario (Control Inventory
+  excepted) with the catalog description as its goal and a deterministic
+  check on the success message.
   A scenario whose tree is merged or hidden on purpose tells the model so
   and is judged from a screenshot; one whose surface renders out of process
   (PassKit, the photo picker) says the sheet is not in the tree, and the
@@ -110,6 +111,11 @@ accessibility tree is intact, the terminal element carries
 Vision Only, Flattened Registration Form, Flattened Login) omit test ids and
 hide or merge the tree on purpose, so success is only visible in pixels.
 
+Control Inventory is the exception: it is not a hard surface and has no
+success state. It holds plain controls with every state exposed, for the
+deterministic suite (`tests/controls.e2e.ts`, `tests/device-fixture.e2e.ts`);
+the agentic suite leaves it out.
+
 The Login Form and Flattened Login account is declared as the `benchmark`
 credential in `e2e.config.ts`, so tests reach it through
 `credentials.user('benchmark')`.
@@ -140,6 +146,7 @@ credential in `e2e.config.ts`, so tests reach it through
 | Sequential Onboarding       | Auto-focused wizard steps where the keyboard covers Continue                |
 | Apple Pay (iOS)             | Out-of-process PassKit sheet the agent must authorize                       |
 | Apple Pay Billing (iOS)     | PassKit sheet requiring a billing address filled from vision before paying  |
+| Control Inventory           | Plain controls, one exercise per runner verb, read, and matcher             |
 
 ### Apple Pay fixture
 
