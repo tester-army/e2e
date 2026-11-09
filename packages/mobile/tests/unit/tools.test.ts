@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defineEngine } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
-import { mobileTools } from '../../src/tools.ts';
+import { deviceSession, mobileTools } from '../../src/tools.ts';
 import { createFakeClient, type FakeClient } from '../helpers/fake-client.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -71,6 +71,35 @@ describe('agent tool pack', () => {
     await ios.startAttempt!(attempt('a2'));
     expect(await run('open_app', { app: 'Reminders' })).toBe('Opened Reminders.');
     expect(iosFake.lastArgs('apps.open')).toEqual({ app: 'Reminders', platform: 'ios' });
+  });
+
+  it('hands a custom tool the running attempt\'s session and client', async () => {
+    const iosFake = createFakeClient();
+    const androidFake = createFakeClient();
+    const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => iosFake.client));
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android', device: 'emulator-5554' }, () => androidFake.client));
+    for (const [engine, targetName] of [[ios, 'ios'], [android, 'android']] as const) {
+      await engine.init!({
+        runId: 'r',
+        targetName,
+        projectRoot: '/project',
+        app: {},
+        headed: false,
+        workerSlot: 0,
+        log: () => undefined,
+        env: {},
+        signal: new AbortController().signal,
+      });
+    }
+
+    expect(() => deviceSession(ios, android)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    const foreign = defineEngine({ name: 'other', version: '1', spiVersion: 1 });
+    expect(() => deviceSession(foreign)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+
+    await android.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    const session = deviceSession(ios, android);
+    expect(session).toMatchObject({ platform: 'android', session: 'e2e-android-0' });
+    expect(session.client).toBe(androidFake.client);
   });
 
   it('refuses a link the model hands to open_app before the device sees it', async () => {

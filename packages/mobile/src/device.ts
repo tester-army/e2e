@@ -174,20 +174,25 @@ export interface Device {
 }
 
 /** Builds the device fixture for one attempt. */
+/** The agent-device session a surface is bound to: `device.unstable_raw`, and what `deviceSession()` hands a custom tool. */
+export function rawSession(surface: AgentDeviceSurface): DeviceSession {
+  const { session, deviceId, deviceName } = surface.boundDevice;
+  return {
+    platform: surface.options.platform,
+    session,
+    deviceId,
+    deviceName,
+    selection: surface.selection(),
+    get client() {
+      return surface.requireClient();
+    },
+  };
+}
+
 export function createDeviceFixture(surface: AgentDeviceSurface, context: EngineFixtureContext): Device {
   const device: Device = {
     get unstable_raw() {
-      const { session, deviceId, deviceName } = surface.boundDevice;
-      return {
-        platform: surface.options.platform,
-        session,
-        deviceId,
-        deviceName,
-        selection: surface.selection(),
-        get client() {
-          return surface.requireClient();
-        },
-      };
+      return rawSession(surface);
     },
     locator: (selector) => context.locator({ kind: 'selector', selector }),
     async setNetwork(state) {

@@ -167,24 +167,16 @@ pack dispatches each call to the engine whose attempt is running. Tools are
 scoped to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one agents entry's `tools`.
 
-## Custom tools that call agent-device
+`deviceSession(...engines)` gives a custom tool of your own the running
+attempt's agent-device session, with its client bound to the engine's daemon,
+lease, and session. Use it for agent-device commands the pack has no tool for.
 
-Code that imports agent-device, such as a custom tool, imports it from
-`@e2e-dev/mobile/agent-device`. It exports `createAgentDeviceClient`, the
-error helpers, and the common types (snapshots, targets, gestures, text
-entry, alerts, waits) from the copy this engine uses, so the project needs no
-`agent-device` dependency of its own to keep in sync. Two agent-device
-versions do not share one daemon, and pnpm does not resolve a bare
-`agent-device` import from a transitive dependency.
+## Custom tools that use agent-device
 
-```ts
-import { isAgentDeviceError, type AgentDeviceClient, type SnapshotNode } from '@e2e-dev/mobile/agent-device';
-```
-
-Inside a test, use `device.unstable_raw.client`, which is bound to the
-engine's daemon, lease, and session. Like `unstable_raw`, this subpath is
-agent-device's API at the pinned version and can change in any release that
-bumps agent-device.
+Import agent-device's types and error helpers for those tools from
+`@e2e-dev/mobile/agent-device`, the copy this engine uses, instead of adding
+`agent-device` to the project. It is unstable, like `device.unstable_raw`
+([reference](https://e2e.com/docs/reference/mobile#unstable_raw)).
 
 ## Secrets
 

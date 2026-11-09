@@ -1,27 +1,33 @@
 /**
- * `@e2e-dev/mobile/agent-device` gives custom tools the agent-device copy
- * this engine resolved. Two versions do not share one daemon, so the subpath
- * must re-export the engine's own import, not a copy of it.
+ * `@e2e-dev/mobile/agent-device` is a public surface, so its runtime values
+ * are pinned here, and every export map entry must point at a module that
+ * the build emits.
  */
 
-import * as agentDevice from 'agent-device';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as subpath from '../../src/agent-device.ts';
 
-describe('@e2e-dev/mobile/agent-device', () => {
-  it('re-exports the values the engine imports, not copies of them', () => {
-    for (const [name, value] of Object.entries(subpath)) {
-      expect(value, name).toBe(agentDevice[name as keyof typeof agentDevice]);
-    }
-  });
+const PACKAGE = new URL('../../', import.meta.url);
 
-  it('exports the chosen values and leaves daemon lifecycle to the engine', () => {
+describe('@e2e-dev/mobile/agent-device', () => {
+  it('exports the chosen values, with no client factory or daemon lifecycle', () => {
     expect(Object.keys(subpath).toSorted()).toEqual([
       'AppError',
       'centerOfRect',
-      'createAgentDeviceClient',
       'isAgentDeviceError',
       'normalizeAgentDeviceError',
     ]);
+  });
+
+  it('maps every export entry to a source module', () => {
+    const manifest = JSON.parse(readFileSync(new URL('package.json', PACKAGE), 'utf8')) as {
+      exports: Record<string, { types: string; default: string }>;
+    };
+    for (const [entry, { types, default: js }] of Object.entries(manifest.exports)) {
+      const source = js.replace(/^\.\/dist\//, 'src/').replace(/\.js$/, '.ts');
+      expect(types, entry).toBe(js.replace(/\.js$/, '.d.ts'));
+      expect(existsSync(new URL(source, PACKAGE)), `${entry} -> ${source}`).toBe(true);
+    }
   });
 });

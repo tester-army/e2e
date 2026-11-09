@@ -1,22 +1,22 @@
 /**
- * The engine's own agent-device, for custom tools, so a project never
- * installs a second copy that has to match this package's pin. Daemon
- * lifecycle (`ensureDaemon`, `startAgentDevice`) is left out because the
- * engine owns the daemon. Unstable, like `device.unstable_raw`: it can
- * change in any release that bumps agent-device.
+ * The engine's own agent-device types and error helpers, for custom tools,
+ * so a project never installs a second copy that has to match this
+ * package's pin. There is no client factory: a client built outside the
+ * engine misses its daemon, lease, and session. A test uses
+ * `device.unstable_raw.client` and a tool uses `deviceSession()` from
+ * `./tools`. Unstable, like `device.unstable_raw`: it can change in any
+ * release that bumps agent-device.
  */
 
 export {
   AppError,
   centerOfRect,
-  createAgentDeviceClient,
   isAgentDeviceError,
   normalizeAgentDeviceError,
 } from 'agent-device';
 
 export type {
   AgentDeviceClient,
-  AgentDeviceClientConfig,
   AlertAction,
   AlertCommandOptions,
   AppCloseOptions,

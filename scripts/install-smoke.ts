@@ -4,7 +4,7 @@
  * into a fresh project outside this repository, installs again from the
  * lockfile, runs a TypeScript test through the installed CLI, and imports
  * `@e2e-dev/mobile/agent-device` from a project with no `agent-device`
- * dependency, against the one agent-device install in the graph.
+ * dependency.
  *
  * pnpm 11 and later fail an install on any dependency build script the
  * project has not decided on (`ERR_PNPM_IGNORED_BUILDS`), and write a
@@ -74,11 +74,8 @@ try {
   writeFileSync(
     join(project, 'agent-device.mjs'),
     [
-      "import { readdirSync } from 'node:fs';",
-      "import { createAgentDeviceClient } from '@e2e-dev/mobile/agent-device';",
-      "if (typeof createAgentDeviceClient !== 'function') throw new Error('@e2e-dev/mobile/agent-device exports no createAgentDeviceClient');",
-      "const copies = readdirSync('node_modules/.pnpm').filter((name) => name.startsWith('agent-device@'));",
-      "if (copies.length !== 1) throw new Error(`expected one agent-device install, found ${copies.join(', ') || 'none'}`);",
+      "import { isAgentDeviceError } from '@e2e-dev/mobile/agent-device';",
+      "if (typeof isAgentDeviceError !== 'function') throw new Error('@e2e-dev/mobile/agent-device exports no isAgentDeviceError');",
       '',
     ].join('\n'),
   );

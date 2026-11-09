@@ -447,27 +447,20 @@ await client.apps.list(device.unstable_raw.selection);
 After the worker disposes the session, reading `unstable_raw` or `client`
 throws `INVALID_STATE`.
 
-Code that imports agent-device, such as a custom tool, imports it from
-`@e2e-dev/mobile/agent-device`. That is the copy the engine uses, so the
-project needs no `agent-device` dependency of its own to keep in sync.
+A custom tool that needs agent-device's types or error helpers imports them
+from `@e2e-dev/mobile/agent-device`, the copy the engine uses, instead of
+adding `agent-device` to the project.
 
 ```ts
-import { isAgentDeviceError, type AgentDeviceClient, type SnapshotNode } from '@e2e-dev/mobile/agent-device';
+import { isAgentDeviceError, type SnapshotNode } from '@e2e-dev/mobile/agent-device';
 ```
 
-It exports `createAgentDeviceClient`, the error helpers (`AppError`,
-`isAgentDeviceError`, `normalizeAgentDeviceError`), `centerOfRect`, and the
-types for the client, snapshots and nodes, screenshots, targets, gestures,
-text entry, alerts, and waits. `ensureDaemon` and `startAgentDevice` are left
-out because the engine owns the daemon.
-
-- Inside a test, use `device.unstable_raw.client`. A client you build with
-  `createAgentDeviceClient` does not get the engine's daemon, lease, or
-  per-worker session name, so on a hosted device or with more than one
-  worker it reaches a different device.
-- Like `unstable_raw`, this is agent-device's API at the version
-  `@e2e-dev/mobile` pins. It can change in any release that bumps
-  agent-device.
+It exports the error helpers (`AppError`, `isAgentDeviceError`,
+`normalizeAgentDeviceError`), `centerOfRect`, and the types for the client,
+snapshots, screenshots, targets, gestures, text entry, alerts, and waits. It
+has no client factory. A test uses `client` above, and a custom tool uses
+[`deviceSession`](#devicesession). Like `unstable_raw`, it can change in any
+release that bumps agent-device.
 
 #### `locator`
 
@@ -939,6 +932,43 @@ capture failure still stops the observation. Device screenshot masks depend
 on secure-field bounds from that capture, so without them the engine cannot
 prove a fallback screenshot safe.
 </Note>
+
+#### `deviceSession`
+
+`deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a custom tool
+the running attempt's `DeviceSession`, the same object a test reads from
+[`device.unstable_raw`](#unstable_raw). Its `client` is bound to the engine's
+daemon, lease, and per-worker session, so a tool can call agent-device
+commands the pack has no tool for.
+
+```ts
+import { tool } from 'ai';
+import { z } from 'zod';
+import { defineTool } from 'e2e/agent';
+import { deviceSession } from '@e2e-dev/mobile/tools';
+
+const mobileData = defineTool(
+  tool({
+    description: 'Turn cellular mobile data on or off. Wi-Fi is not affected.',
+    inputSchema: z.object({ on: z.boolean() }),
+    execute: async ({ on }) => {
+      const { client } = deviceSession(iphone, pixel);
+      await client.settings.update({ setting: 'mobile-data', state: on ? 'on' : 'off' });
+      return on ? 'mobile data is on' : 'mobile data is off';
+    },
+  }),
+  { mutates: true, platforms: ['android'] },
+);
+
+tools: { ...mobileTools(iphone, pixel), mobileData },
+```
+
+- Pass every device engine the config declares, as with `mobileTools`.
+  Outside an attempt it throws `INVALID_STATE`.
+- Client calls are not steps: the report shows the tool call, not what the
+  client did, and a cache replay runs a `mutates: true` tool live.
+- Like `unstable_raw`, it can change in any release.
+
 
 ## Video recording cleanup
 

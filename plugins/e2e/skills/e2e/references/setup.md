@@ -366,8 +366,8 @@ export default {
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
 - `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
-  `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
-  matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
+  `app.appPath` before tests. Set `LIMRUN_API_KEY` and install `@limrun/api`.
+  Android needs `adb` on `PATH` for its tunnel.
   iOS keyboard actions such as `locator.press('Enter')` return
   `UNSUPPORTED_CAPABILITY`; tap an app button when available.
   Limrun's `limrun-inc/testerarmy-e2e-limrun` repository runs the same form
@@ -405,13 +405,12 @@ export default {
   agent-device `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
-- Code that imports agent-device (a custom tool's types, error helpers)
-  imports it from `@e2e-dev/mobile/agent-device`, not from `agent-device`.
-  Do not add `agent-device` to the project: a second copy has to match the
-  engine's version exactly, or it cannot share the daemon. Inside a test,
-  use `device.unstable_raw.client`. A client built from the factory misses
-  the engine's daemon, lease, and per-worker session. Unstable like
-  `unstable_raw`.
+- A custom tool that calls agent-device gets the running device's client
+  from `deviceSession(...engines)` (`@e2e-dev/mobile/tools`), and its types
+  and error helpers from `@e2e-dev/mobile/agent-device`. Do not add
+  `agent-device` to the project for these imports, and do not build a
+  client yourself: it would miss the engine's daemon, lease, and session.
+  Unstable like `unstable_raw`.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.
