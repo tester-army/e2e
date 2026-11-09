@@ -1266,29 +1266,40 @@ export class AgentDeviceSurface {
     return best;
   }
 
+  /** Waits for the transition without exceeding the action's remaining budget. */
+  private async waitOutTransition(operation: OperationContext, budget: InputBudget): Promise<void> {
+    await raceAbort(async () => {
+      const remaining = this.transitionMs - (Date.now() - this.lastActionAt);
+      if (remaining <= 0) return;
+      const available = budget.remainingMs();
+      if (available > 0) await sleep(Math.min(remaining, available), operation.signal);
+      // A capped timer can wake before the clock reaches the deadline. It
+      // still could not fit the transition, so it must never send input.
+      if (available < remaining) {
+        throw new EngineError('OPERATION_TIMEOUT', 'transition could not finish within the action budget', { retryable: false });
+      }
+    }, operation.signal, 'transition wait');
+  }
+
   /**
    * Waits for a control that arrived or moved with the last action, returning
-   * whether it waited. Controls already present at the same place need no wait,
-   * unless keyboard state changed: a keyboard change can precede the app's relayout.
+   * whether it needs a fresh capture. Controls already present at the same
+   * place need no wait, unless keyboard state changed: a keyboard change can
+   * precede the app's relayout.
    */
-  private async waitForTransition(entry: NodeBinding, operation: OperationContext): Promise<boolean> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<boolean> {
     const since = Date.now() - this.lastActionAt;
     const remaining = this.transitionMs - since;
     if (remaining <= 0) return false;
     const before = this.screenBeforeAction;
     if (before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
-    await sleep(remaining, operation.signal);
-    // The sleep resolves on abort; the action behind it must not go out once
-    // the caller has already been told the operation was cancelled.
-    if (operation.signal.aborted) {
-      throw new EngineError('CANCELLED', 'transition wait cancelled', { retryable: false });
-    }
+    await this.waitOutTransition(operation, budget);
     return true;
   }
 
   /** Refreshes a control after a transition wait, keeping the binding when no wait was needed. */
   private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<NodeBinding> {
-    if (await this.waitForTransition(entry, operation)) return this.relocated(entry, operation, budget);
+    if (await this.waitForTransition(entry, operation, budget)) return this.relocated(entry, operation, budget);
     return entry;
   }
 
@@ -1338,9 +1349,10 @@ export class AgentDeviceSurface {
     // at `0.5 + amount / 2` of the height, and a larger amount lands it in
     // bottom chrome (a sticky footer, a tab bar) that swallows the drag. A
     // live iOS run lost every `slow` scroll of the mobile benchmark's sticky
-    // chrome flow that way. Only the settle wait varies here, by origin.
+    // chrome flow that way.
     if (ref.id === ROOT_ID) {
       if (action.kind !== 'swipe') throw notActionable(`the screen root takes swipe only, not ${action.kind}; act on a node`);
+      if (deterministic) await this.waitOutTransition(operation, input);
       const before = this.latestScreen;
       await this.command('swipe', (client) => input.send(() => client.interactions.scroll({ direction: action.direction, ...settle })), operation.signal);
       this.markAction(before);
@@ -1362,7 +1374,7 @@ export class AgentDeviceSurface {
     const run = async (): Promise<unknown> => {
       let target = entry;
       if (filling) {
-        if (deterministic) await this.waitForTransition(entry, operation);
+        if (deterministic) await this.waitForTransition(entry, operation, input);
         target = await this.relocated(entry, operation, input, true);
         if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {

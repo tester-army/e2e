@@ -106,7 +106,8 @@ export interface MobileOptions {
    * so this budget is the only thing that keeps a test from tapping a point
    * the control has not reached. Unmoved controls are acted on immediately
    * only when keyboard visibility is unchanged. Opening or closing the
-   * keyboard also uses the remaining budget. Raise it for slower transitions.
+   * keyboard also uses the remaining budget. Screen swipes in tests wait out
+   * the remaining budget before scrolling. Raise it for slower transitions.
    */
   readonly transition?: number | undefined;
   /**
