@@ -118,7 +118,8 @@
               "integrations/smol",
               "integrations/limrun",
               "integrations/testmu",
-              "integrations/browserstack"
+              "integrations/browserstack",
+              "integrations/e2b"
             ]
           },
           {
