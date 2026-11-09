@@ -408,8 +408,9 @@ export default {
 - A control that appeared or moved with the previous action waits out
   `transition` (default 500 ms). Pass an object to set the wait by the
   previous action: `gesture` after a scroll or swipe, `launch` after the app
-  launches, relaunches, or closes, and `default` for the rest. A `gesture` or
-  `launch` left out takes `default`. The `gesture` budget is the least wait.
+  launches, relaunches, or closes or a link opens into it, and `default` for
+  the rest. A `gesture` or `launch` left out takes `default`. The `gesture`
+  budget is the least wait.
   The control is then read until it stops moving, which is two reads that
   agree, at most 4 s after the gesture, or at the budget when that is larger,
   or sooner when the action's own timeout cannot fit another read. A plain

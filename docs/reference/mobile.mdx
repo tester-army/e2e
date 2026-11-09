@@ -285,9 +285,9 @@ when the control and its look-alikes are the same in number and sit at the same
 places. A look-alike has the same role, test ID, name, and text. The wait ends
 at most 4 s after the gesture, or at the budget when that is larger, and the
 action then goes ahead where the control was last read. A control that never
-stops moving costs the 4 s, or what the action's own timeout leaves: the wait
-ends once the timeout cannot fit another read, and the action goes ahead where
-the control was last read.
+stops moving costs the cap, 4 s or the `gesture` budget when that is larger, or
+what the action's own timeout leaves: the wait ends once the timeout cannot fit
+another read, and the action goes ahead where the control was last read.
 
 If the control changes during the wait, the action finds it again within its timeout before acting.
 
@@ -297,7 +297,8 @@ budget the way a tap does, and the `default` budget applies after them. A
 control that arrives with the screen they reveal waits out the budget before
 the next action lands on it.
 
-`fill` and `clear` re-read the field before typing. Missing fields, changed
+`fill` and `clear` re-read the field before typing; after a scroll or swipe, the
+read that found the field at rest is that re-read. Missing fields, changed
 security state, or incomplete captures return `NODE_STALE` before mutation,
 then retry after a fresh observation. Non-input targets return
 `UNSUPPORTED_CAPABILITY`. An iOS `other`, the type of an element the platform

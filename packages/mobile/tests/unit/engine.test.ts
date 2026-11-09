@@ -3969,15 +3969,44 @@ describe('deterministic actions', () => {
       expect(Date.now() - t0).toBeGreaterThanOrEqual(stoppedAt);
     });
 
-    it('fills a field that came with a gesture where it came to rest, on a read of its own after the wait', async () => {
+    it('fills a field that came with a gesture on the read that found it at rest, with no read of its own', async () => {
       const h = harness({ transition: { gesture: 800 } });
       await scrolled(h);
       const { times } = scrollScreen(h, byRead([[450], [500], [504], [504]]), { label: 'Notes', type: 'text-field' });
       const notes = await observed(h, 'Notes');
       await h.engine.perform!(notes.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
-      // The entry's read, three reads for rest, and the fill's own re-read before it types.
-      expect(times).toHaveLength(5);
-      expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e11~s5', text: 'blue' });
+      // The entry's read and three reads for rest. The last of them is the re-read before the fill types.
+      expect(times).toHaveLength(4);
+      expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e11~s4', text: 'blue' });
+    });
+
+    it('fills on the latest read, with no read of its own, when its timeout cannot fit another', async () => {
+      const h = harness({ transition: { gesture: 100 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read], { label: 'Notes', type: 'text-field', latencyMs: 250 });
+      const notes = await observed(h, 'Notes');
+      const startedAt = Date.now();
+      await h.engine.perform!(notes.ref, { kind: 'fill', value: 'blue', sensitive: false }, { ...test(), timeoutMs: 1_000 });
+      expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: `@e11~s${times.length}`, text: 'blue' });
+      expect(Date.now() - startedAt).toBeLessThan(1_000);
+    });
+
+    it.each([
+      ['truncated', (screen: ReturnType<typeof screenOf>) => ({ ...screen, truncated: true })],
+      ['disabled', (screen: ReturnType<typeof screenOf>) => ({ ...screen, nodes: screen.nodes.map((node) => (node.label === 'Notes' ? { ...node, enabled: false } : node)) })],
+    ])('refuses a fill when the read that found the field at rest is %s, and sends nothing', async (_what, change) => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      let reads = 0;
+      h.fake.respond('capture.snapshot', () => {
+        const read = reads;
+        reads += 1;
+        const screen = screenOf([500], read + 1, 'Notes', 'text-field');
+        return read === 0 ? screen : change(screen);
+      });
+      const notes = await observed(h, 'Notes');
+      await expect(h.engine.perform!(notes.ref, { kind: 'fill', value: 'blue', sensitive: false }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+      expect(h.fake.methods()).not.toContain('interactions.fill');
     });
 
     it('keeps the input checks on the read that finds a field at rest, so a field that turned disabled after a gesture is never filled', async () => {

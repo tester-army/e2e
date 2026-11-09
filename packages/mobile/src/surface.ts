@@ -1417,9 +1417,12 @@ export class AgentDeviceSurface {
    * the wait is a sleep, and a read after it finds the control again. No read
    * can end that sleep early, since the tree cannot tell a control that is
    * still sliding in from one that landed, see DEFAULT_TRANSITION_MS. A budget
-   * of 0 is no wait at all, after a gesture too: no sleep and no read.
+   * of 0 is no wait at all, after a gesture too: no sleep and no read. With
+   * `input`, the read that finds the control at rest also passes the checks
+   * `relocated` makes for an input, so a fill or clear needs no read of its own
+   * after it.
    */
-  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<TransitionWait> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget, input = false): Promise<TransitionWait> {
     const since = Date.now() - this.lastActionAt;
     const kind = this.lastActionKind;
     const floor = this.transitionWaits[kind];
@@ -1429,7 +1432,7 @@ export class AgentDeviceSurface {
     if (before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
     if (since < floor) await this.waitOutTransition(operation, budget);
     if (kind !== 'gesture') return true;
-    return this.atRest(entry, operation, budget, this.lastActionAt + until);
+    return this.atRest(entry, operation, budget, this.lastActionAt + until, input);
   }
 
   /**
@@ -1443,9 +1446,10 @@ export class AgentDeviceSurface {
    * not a wait for the cap. At `capAt` the latest read stands, agreeing or not.
    * So does it when the action's own budget cannot fit another read and the
    * pause before it, as `snapshot` returns a sparse capture rather than time
-   * out on a retry it cannot fit.
+   * out on a retry it cannot fit. With `input`, the read it returns must also
+   * pass the checks of an input mutation, see {@link refuseChangedInput}.
    */
-  private async atRest(entry: NodeBinding, operation: OperationContext, budget: InputBudget, capAt: number): Promise<NodeBinding> {
+  private async atRest(entry: NodeBinding, operation: OperationContext, budget: InputBudget, capAt: number, input: boolean): Promise<NodeBinding> {
     let tracked = entry;
     let previous = this.sightingAt(entry);
     for (;;) {
@@ -1460,7 +1464,10 @@ export class AgentDeviceSurface {
       tracked = this.bind(found, projected);
       const seen = sighting(tracked, projected.index);
       const left = capAt - Date.now();
-      if (sameSighting(previous, seen) || left <= 0 || budget.remainingMs() <= REST_READ_GAP_MS + readMs) return tracked;
+      if (sameSighting(previous, seen) || left <= 0 || budget.remainingMs() <= REST_READ_GAP_MS + readMs) {
+        if (input) this.refuseChangedInput(entry, found, raw);
+        return tracked;
+      }
       previous = seen;
       await sleep(Math.min(REST_READ_GAP_MS, left), operation.signal);
       if (operation.signal.aborted) {
@@ -1489,6 +1496,22 @@ export class AgentDeviceSurface {
   }
 
   /**
+   * Refuses an input mutation when a fresh read shows the control changed from
+   * the binding the action resolved on: a truncated read, the control gone, or
+   * its input purpose, disabled, secure, or hidden state different. A retryable
+   * NODE_STALE, so the locator resolves and authorizes it again.
+   */
+  private refuseChangedInput(entry: NodeBinding, found: ProjectedNode | undefined, raw: RawSnapshot): void {
+    if (isTruncated(raw) || found === undefined ||
+      entry.node.inputPurpose !== found.node.inputPurpose ||
+      entry.node.states?.disabled !== found.node.states?.disabled ||
+      entry.node.states?.secure !== found.node.states?.secure ||
+      entry.node.states?.hidden !== found.node.states?.hidden) {
+      throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
+    }
+  }
+
+  /**
    * The same control in a fresh snapshot. A snapshot that no longer lists it
    * is a retryable NODE_STALE, so the locator resolves again; input mutations
    * also refuse a truncated snapshot or changed security facts.
@@ -1497,13 +1520,7 @@ export class AgentDeviceSurface {
     const raw = await this.snapshotOrEmpty(operation, false, budget);
     const projected = this.project(raw);
     const found = this.refind(entry, projected.index);
-    if (input && (isTruncated(raw) || found === undefined ||
-      entry.node.inputPurpose !== found.node.inputPurpose ||
-      entry.node.states?.disabled !== found.node.states?.disabled ||
-      entry.node.states?.secure !== found.node.states?.secure ||
-      entry.node.states?.hidden !== found.node.states?.hidden)) {
-      throw new EngineError('NODE_STALE', `input node ${entry.id} changed before mutation; observe and authorize it again`, { retryable: true });
-    }
+    if (input) this.refuseChangedInput(entry, found, raw);
     if (found === undefined) {
       throw new EngineError('NODE_STALE', `node ${entry.id} changed during transition; re-resolve`, { retryable: true });
     }
@@ -1566,8 +1583,8 @@ export class AgentDeviceSurface {
     const run = async (): Promise<unknown> => {
       let target = entry;
       if (filling) {
-        if (deterministic) await this.waitForTransition(entry, operation, input);
-        target = await this.relocated(entry, operation, input, true);
+        const waited = deterministic ? await this.waitForTransition(entry, operation, input, true) : false;
+        target = typeof waited === 'object' ? waited : await this.relocated(entry, operation, input, true);
         if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {
         target = await this.settled(entry, operation, input);
