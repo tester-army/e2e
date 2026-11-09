@@ -1,0 +1,32 @@
+# Written by `e2e init --ci gitlab`: the web tests in every merge request and on
+# the default branch. See https://e2e.com/docs/ci
+e2e:
+  image: node:24
+  interruptible: true
+  timeout: 30 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    # GitLab caches only paths inside the project.
+    PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .cache/ms-playwright/
+      - .npm/
+  script:
+    - npm ci --cache .npm --prefer-offline
+    - npx e2e-web install chromium --with-deps
+    - npx e2e run --reporter list,junit
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - .e2e/report.json
+      - .e2e/junit.xml
+      - .e2e/results/
+    reports:
+      junit: .e2e/junit.xml

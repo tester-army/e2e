@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 import {
   configStartsApp,
   configUsesLocalModel,
@@ -9,7 +10,6 @@ import {
   findRepositoryRoot,
   gatewaysInConfig,
   detectCiService,
-  GITHUB_ACTIONS,
   getCiService,
   readNodeMajor,
   renderGithubWorkflow,
@@ -19,117 +19,147 @@ import {
 
 const base: WorkflowContext = { manager: 'npm', projectDir: '', installDir: '', secrets: [] };
 
+/** One step or job of a rendered pipeline, as YAML reads it. */
+type Node = Record<string, unknown>;
+
+/** A rendered GitHub workflow's job and its steps. */
+function githubJob(text: string): { job: Node; steps: Node[]; step: (name: string) => Node; uses: (action: string) => Node | undefined } {
+  const job = (parse(text) as { jobs: { e2e: Node } }).jobs.e2e;
+  const steps = job['steps'] as Node[];
+  return {
+    job,
+    steps,
+    step: (name) => steps.find((step) => step['name'] === name)!,
+    uses: (action) => steps.find((step) => String(step['uses']).startsWith(`${action}@`)),
+  };
+}
+
+/** The templates as shipped, read the way init reads them. */
+const templates = path.resolve(import.meta.dirname, '../../templates/ci');
+
 describe('renderGithubWorkflow', () => {
-  it('writes the npm workflow at the repository root with the model key from secrets', () => {
-    const workflow = renderGithubWorkflow({ ...base, secrets: ['AI_GATEWAY_API_KEY'] });
-    expect(workflow).toContain(`      - uses: ${GITHUB_ACTIONS.setupNode}\n        with:\n          node-version: 24\n          cache: npm\n      - run: npm ci\n`);
-    expect(workflow).toContain("key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}");
-    expect(workflow).toContain('run: npx e2e-web install chromium --with-deps');
-    expect(workflow).toContain('run: npx e2e run --reporter list,junit\n        env:\n          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}\n');
-    expect(workflow).toContain('            .e2e/report.json\n            .e2e/junit.xml\n            .e2e/results\n');
-    expect(workflow).not.toContain('working-directory');
-    expect(workflow).not.toContain('cache-dependency-path');
+  it('writes the template unchanged for npm at the repository root, the model key read from secrets', () => {
+    expect(renderGithubWorkflow({ ...base, secrets: ['AI_GATEWAY_API_KEY'] })).toBe(readFileSync(path.join(templates, 'github-actions.yml'), 'utf8'));
+  });
+
+  it('keeps the template comments and pinned tags', () => {
+    const workflow = renderGithubWorkflow({ ...base, manager: 'pnpm', pnpmVersion: '10' });
+    expect(workflow).toMatch(/^# Written by `e2e init --ci github-actions`/u);
+    expect(workflow).toContain('    branches: [main]\n');
+    expect(workflow).toMatch(/uses: pnpm\/action-setup@[0-9a-f]{40} # v\d/u);
   });
 
   it('sets no env block when the run reads no key', () => {
-    expect(renderGithubWorkflow(base)).not.toContain('env:');
+    expect(githubJob(renderGithubWorkflow(base)).step('Run e2e')).not.toHaveProperty('env');
   });
 
   it('runs a workspace member from its folder and installs at the workspace root', () => {
-    const workflow = renderGithubWorkflow({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10' });
-    expect(workflow).toContain('    defaults:\n      run:\n        working-directory: apps/web\n');
-    expect(workflow).toContain(`      - uses: ${GITHUB_ACTIONS.setupPnpm}\n        with:\n          version: '10'\n`);
-    expect(workflow).toContain('      - run: pnpm install --frozen-lockfile\n        working-directory: .\n');
-    expect(workflow).toContain("hashFiles('pnpm-lock.yaml')");
-    expect(workflow).toContain('run: pnpm exec e2e run --reporter list,junit');
-    expect(workflow).toContain('            apps/web/.e2e/report.json\n');
+    const { job, step, uses } = githubJob(renderGithubWorkflow({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10' }));
+    expect(job['defaults']).toEqual({ run: { 'working-directory': 'apps/web' } });
+    expect(Object.keys(job)).toEqual(['runs-on', 'timeout-minutes', 'defaults', 'steps']);
+    expect(uses('pnpm/action-setup')?.['with']).toEqual({ version: '10' });
+    expect(step('Install dependencies')).toEqual({ name: 'Install dependencies', run: 'pnpm install --frozen-lockfile', 'working-directory': '.' });
+    expect(uses('actions/cache')?.['with']).toMatchObject({ key: "playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}" });
+    expect(step('Run e2e')['run']).toBe('pnpm exec e2e run --reporter list,junit');
+    expect((step('Upload the report')['with'] as Node)['path']).toBe('apps/web/.e2e/report.json\napps/web/.e2e/junit.xml\napps/web/.e2e/results\n');
   });
 
   it('points the cache at a lockfile below the root, and pnpm at the package.json with its packageManager field', () => {
-    const workflow = renderGithubWorkflow({ ...base, manager: 'pnpm', projectDir: 'e2e', installDir: 'e2e', nodeVersionFile: '.nvmrc' });
-    expect(workflow).toContain(`      - uses: ${GITHUB_ACTIONS.setupPnpm}\n        with:\n          package_json_file: e2e/package.json\n      - uses: `);
-    expect(renderGithubWorkflow({ ...base, manager: 'pnpm' })).toContain(`      - uses: ${GITHUB_ACTIONS.setupPnpm}\n      - uses: `);
-    expect(workflow).toContain('          node-version-file: .nvmrc\n          cache: pnpm\n          cache-dependency-path: e2e/pnpm-lock.yaml\n');
-    expect(workflow).toContain('      - run: pnpm install --frozen-lockfile\n      - uses: ');
+    const below = githubJob(renderGithubWorkflow({ ...base, manager: 'pnpm', projectDir: 'e2e', installDir: 'e2e', nodeVersionFile: '.nvmrc' }));
+    expect(below.uses('pnpm/action-setup')?.['with']).toEqual({ package_json_file: 'e2e/package.json' });
+    expect(below.uses('actions/setup-node')?.['with']).toEqual({ 'node-version-file': '.nvmrc', cache: 'pnpm', 'cache-dependency-path': 'e2e/pnpm-lock.yaml' });
+    expect(below.step('Install dependencies')).not.toHaveProperty('working-directory');
+    expect(githubJob(renderGithubWorkflow({ ...base, manager: 'pnpm' })).uses('pnpm/action-setup')).not.toHaveProperty('with');
   });
 
   it.each([
     { yarnBerry: false, install: 'yarn install --frozen-lockfile' },
     { yarnBerry: true, install: 'yarn install --immutable' },
-  ])('enables corepack for Yarn and installs with $install', ({ yarnBerry, install }) => {
-    const workflow = renderGithubWorkflow({ ...base, manager: 'yarn', yarnBerry });
-    expect(workflow).toContain('      - run: corepack enable\n');
-    expect(workflow).toContain(`      - run: ${install}\n`);
-    expect(workflow).toContain('run: yarn e2e run --reporter list,junit');
+  ])('enables corepack before setup-node for Yarn and installs with $install', ({ yarnBerry, install }) => {
+    const { steps, step } = githubJob(renderGithubWorkflow({ ...base, manager: 'yarn', yarnBerry }));
+    expect(steps.findIndex((item) => item['run'] === 'corepack enable')).toBe(steps.findIndex((item) => String(item['uses']).startsWith('actions/setup-node@')) - 1);
+    expect(step('Install dependencies')['run']).toBe(install);
+    expect(step('Run e2e')['run']).toBe('yarn e2e run --reporter list,junit');
   });
 
   it('sets up Bun and keeps setup-node for the runner without a cache', () => {
-    const workflow = renderGithubWorkflow({ ...base, manager: 'bun' });
-    expect(workflow).toContain(`      - uses: ${GITHUB_ACTIONS.setupBun}\n`);
-    expect(workflow).toContain('          node-version: 24\n      - run: bun install --frozen-lockfile\n');
-    expect(workflow).toContain("hashFiles('bun.lock')");
-    expect(workflow).toContain('run: bunx e2e run --reporter list,junit');
+    const { step, uses } = githubJob(renderGithubWorkflow({ ...base, manager: 'bun' }));
+    expect(uses('oven-sh/setup-bun')).toBeDefined();
+    expect(uses('actions/setup-node')?.['with']).toEqual({ 'node-version': 24 });
+    expect(step('Install dependencies')['run']).toBe('bun install --frozen-lockfile');
+    expect(uses('actions/cache')?.['with']).toMatchObject({ key: expect.stringContaining("hashFiles('bun.lock')") });
+    expect(step('Run e2e')['run']).toBe('bunx e2e run --reporter list,junit');
   });
 
   it('runs only the web target when a mobile target shares the config', () => {
-    expect(renderGithubWorkflow({ ...base, target: 'web' })).toContain('run: npx e2e run --target web --reporter list,junit');
+    expect(githubJob(renderGithubWorkflow({ ...base, target: 'web' })).step('Run e2e')['run']).toBe('npx e2e run --target web --reporter list,junit');
   });
 
-  it('quotes a folder YAML would read as something else', () => {
-    expect(renderGithubWorkflow({ ...base, projectDir: 'my app', installDir: 'my app' })).toContain("working-directory: 'my app'");
+  it('keeps a folder name with a space as one value', () => {
+    expect(githubJob(renderGithubWorkflow({ ...base, projectDir: 'my app', installDir: 'my app' })).job['defaults']).toEqual({ run: { 'working-directory': 'my app' } });
   });
 });
 
+/** A rendered GitLab pipeline's one job. */
+function gitlabJob(text: string, name = 'e2e'): Node {
+  return (parse(text) as Record<string, Node>)[name]!;
+}
+
 describe('renderGitlabPipeline', () => {
-  it('runs the npm job in merge requests and on the default branch, caching inside the project', () => {
-    const pipeline = renderGitlabPipeline({ ...base, secrets: ['AI_GATEWAY_API_KEY'] });
-    expect(pipeline).toMatch(/^e2e:\n  image: node:24\n/u);
-    expect(pipeline).toContain('    - if: $CI_PIPELINE_SOURCE == "merge_request_event"\n    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH\n');
-    expect(pipeline).toContain('    PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright\n');
-    expect(pipeline).toContain('      files:\n        - package-lock.json\n    paths:\n      - .cache/ms-playwright/\n      - .npm/\n');
-    expect(pipeline).toContain(
-      '  script:\n    - npm ci --cache .npm --prefer-offline\n    - npx e2e-web install chromium --with-deps\n    - npx e2e run --reporter list,junit\n',
-    );
-    expect(pipeline).toContain('    reports:\n      junit: .e2e/junit.xml\n');
+  it('writes the template unchanged for npm at the repository root, with no key in the file', () => {
     // CI/CD variables reach the job's environment on their own; the file names no key.
-    expect(pipeline).not.toContain('AI_GATEWAY_API_KEY');
-    // No workflow block, so the file works on its own and when another pipeline includes it.
-    expect(pipeline).not.toContain('workflow:');
+    expect(renderGitlabPipeline({ ...base, secrets: ['AI_GATEWAY_API_KEY'] })).toBe(readFileSync(path.join(templates, 'gitlab-ci.yml'), 'utf8'));
   });
 
   it('installs at the workspace root and runs in the project folder', () => {
-    const pipeline = renderGitlabPipeline({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10', nodeMajor: '26' });
-    expect(pipeline).toContain('  image: node:26\n');
-    expect(pipeline).toContain(
-      '    - npm install --global pnpm@10\n    - pnpm config set store-dir .pnpm-store\n    - pnpm install --frozen-lockfile\n    - cd "$CI_PROJECT_DIR/apps/web"\n',
-    );
-    expect(pipeline).toContain('        - pnpm-lock.yaml\n');
-    expect(pipeline).toContain('      - apps/web/.e2e/report.json\n');
-    expect(pipeline).toContain('      junit: apps/web/.e2e/junit.xml\n');
-    expect(pipeline).not.toContain('COREPACK');
+    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'pnpm', projectDir: 'apps/web', installDir: '', pnpmVersion: '10', nodeMajor: '26' }));
+    expect(job['image']).toBe('node:26');
+    expect(job['script']).toEqual([
+      'npm install --global pnpm@10',
+      'pnpm config set store-dir .pnpm-store',
+      'pnpm install --frozen-lockfile',
+      'cd "$CI_PROJECT_DIR/apps/web"',
+      'pnpm exec e2e-web install chromium --with-deps',
+      'pnpm exec e2e run --reporter list,junit',
+    ]);
+    expect(job['cache']).toEqual({ key: { files: ['pnpm-lock.yaml'] }, paths: ['.cache/ms-playwright/', '.pnpm-store/'] });
+    expect(job['artifacts']).toMatchObject({
+      paths: ['apps/web/.e2e/report.json', 'apps/web/.e2e/junit.xml', 'apps/web/.e2e/results/'],
+      reports: { junit: 'apps/web/.e2e/junit.xml' },
+    });
+    expect(job['variables']).not.toHaveProperty('COREPACK_ENABLE_DOWNLOAD_PROMPT');
   });
 
   it('changes into a project below the root before the install, and lets corepack read packageManager', () => {
-    const pipeline = renderGitlabPipeline({ ...base, manager: 'pnpm', projectDir: 'site', installDir: 'site' });
-    expect(pipeline).toContain("    COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'\n");
+    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'pnpm', projectDir: 'site', installDir: 'site' }));
+    expect(job['variables']).toMatchObject({ COREPACK_ENABLE_DOWNLOAD_PROMPT: '0' });
     // Node 25 and later ship no corepack.
-    expect(pipeline).toContain('  script:\n    - cd "$CI_PROJECT_DIR/site"\n    - command -v corepack || npm install --global corepack\n    - corepack enable\n');
-    expect(pipeline).toContain('      - site/.pnpm-store/\n');
-    expect(pipeline).toContain('        - site/pnpm-lock.yaml\n');
+    expect((job['script'] as string[]).slice(0, 3)).toEqual(['cd "$CI_PROJECT_DIR/site"', 'command -v corepack || npm install --global corepack', 'corepack enable']);
+    expect(job['cache']).toEqual({ key: { files: ['site/pnpm-lock.yaml'] }, paths: ['.cache/ms-playwright/', 'site/.pnpm-store/'] });
   });
 
   it.each([
     // The node:26 image has no Yarn 1, and Node 25 and later no corepack.
-    { yarnBerry: false, install: ['command -v yarn || npm install --global yarn', 'yarn install --frozen-lockfile --cache-folder .yarn-cache'] },
-    { yarnBerry: true, install: ['command -v corepack || npm install --global corepack', 'corepack enable', 'yarn install --immutable'] },
-  ])('installs Yarn dependencies with $install', ({ yarnBerry, install }) => {
-    expect(renderGitlabPipeline({ ...base, manager: 'yarn', yarnBerry })).toContain(`  script:\n${install.map((line) => `    - ${line}\n`).join('')}`);
+    { yarnBerry: false, install: ['command -v yarn || npm install --global yarn', 'yarn install --frozen-lockfile --cache-folder .yarn-cache'], store: ['.yarn-cache/'] },
+    { yarnBerry: true, install: ['command -v corepack || npm install --global corepack', 'corepack enable', 'yarn install --immutable'], store: [] },
+  ])('installs Yarn dependencies with $install', ({ yarnBerry, install, store }) => {
+    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'yarn', yarnBerry }));
+    expect((job['script'] as string[]).slice(0, install.length)).toEqual(install);
+    expect((job['cache'] as Node)['paths']).toEqual(['.cache/ms-playwright/', ...store]);
   });
 
   it('installs Bun into the node image and runs only the web target beside a mobile one', () => {
-    const pipeline = renderGitlabPipeline({ ...base, manager: 'bun', target: 'web' });
-    expect(pipeline).toContain('    - npm install --global bun\n    - bun install --frozen-lockfile\n');
-    expect(pipeline).toContain('    - bunx e2e run --target web --reporter list,junit\n');
+    const job = gitlabJob(renderGitlabPipeline({ ...base, manager: 'bun', target: 'web' }));
+    expect((job['script'] as string[]).slice(0, 2)).toEqual(['npm install --global bun', 'bun install --frozen-lockfile']);
+    expect((job['script'] as string[]).at(-1)).toBe('bunx e2e run --target web --reporter list,junit');
+    expect((job['cache'] as Node)['paths']).toEqual(['.cache/ms-playwright/']);
+  });
+
+  it('renames the job and keeps the template comments', () => {
+    const pipeline = renderGitlabPipeline({ ...base, jobName: 'e2e-run' });
+    expect(pipeline).toMatch(/^# Written by `e2e init --ci gitlab`/u);
+    expect(pipeline).toContain('    # GitLab caches only paths inside the project.\n');
+    expect(Object.keys(parse(pipeline) as object)).toEqual(['e2e-run']);
   });
 });
 
@@ -145,14 +175,18 @@ describe('the pinned actions', () => {
     });
   }
 
+  /** Every `uses: owner/action@<sha> # <tag>` in `text`, as [action, pin]. */
+  function pinsIn(text: string): [string, string][] {
+    return [...text.matchAll(/uses: ([\w.-]+\/[\w.-]+)@(\S+ # \S+)/gu)].map(([, action, ref]) => [action!, `${action!}@${ref!}`]);
+  }
+
   it('match the pins in the docs and the e2e skill, so a user copying either gets what init writes', () => {
-    const pins = new Map(Object.values(GITHUB_ACTIONS).map((pin) => [pin.split('@')[0], pin]));
+    const pins = new Map(readdirSync(templates).flatMap((file) => pinsIn(readFileSync(path.join(templates, file), 'utf8'))));
+    expect([...pins.keys()]).toEqual(expect.arrayContaining(['actions/checkout', 'actions/setup-node', 'pnpm/action-setup', 'oven-sh/setup-bun']));
     const mismatches = [...pages(path.join(repository, 'docs')), ...pages(path.join(repository, 'skills/e2e'))].flatMap((file) =>
-      [...readFileSync(file, 'utf8').matchAll(/uses: ([\w.-]+\/[\w.-]+)@(\S+ # \S+)/gu)]
-        .filter(([, action]) => pins.has(action!))
-        .map(([, action, ref]) => `${action}@${ref}`)
-        .filter((pin) => pin !== pins.get(pin.split('@')[0]!))
-        .map((pin) => `${path.relative(repository, file)}: ${pin}`));
+      pinsIn(readFileSync(file, 'utf8'))
+        .filter(([action, pin]) => pins.has(action) && pins.get(action) !== pin)
+        .map(([, pin]) => `${path.relative(repository, file)}: ${pin}`));
     expect(mismatches).toEqual([]);
   });
 });
@@ -224,9 +258,7 @@ describe('project detection', () => {
 
   it('names the job e2e-run beside a pipeline that already has a job named e2e', () => {
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'e2e:\n  script: [npx cypress run]\n');
-    const located = getCiService('gitlab').locate(dir);
-    expect(located).toMatchObject({ file: '.gitlab/e2e.gitlab-ci.yml', jobName: 'e2e-run' });
-    expect(renderGitlabPipeline({ ...base, jobName: 'e2e-run' })).toMatch(/^e2e-run:\n/u);
+    expect(getCiService('gitlab').locate(dir)).toMatchObject({ file: '.gitlab/e2e.gitlab-ci.yml', jobName: 'e2e-run' });
   });
 
   it('counts any GitHub workflow that runs e2e as set up', () => {

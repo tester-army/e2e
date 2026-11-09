@@ -7,6 +7,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
+import { isMap, isScalar, parseDocument, type Document, type Scalar, type YAMLMap, type YAMLSeq } from 'yaml';
 import type { PackageManager } from '../../internal/package-manager.ts';
 import { isLoopbackHost } from '../../internal/urls.ts';
 import { GATEWAYS, type GatewayPreset } from './gateways.ts';
@@ -124,19 +125,6 @@ function gitlabStages(pipeline: string): string[] | undefined {
     .filter((item) => item !== '');
 }
 
-/**
- * Every action the workflow uses, pinned by commit with its tag beside it.
- * The docs and the e2e skill pin the same commits; `tests/unit/init-ci.test.ts` holds them together.
- */
-export const GITHUB_ACTIONS = {
-  checkout: 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1',
-  setupNode: 'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0',
-  setupPnpm: 'pnpm/action-setup@9fd676a19091d4595eefd76e4bd31c97133911f1 # v4.2.0',
-  setupBun: 'oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0',
-  cache: 'actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0',
-  uploadArtifact: 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1',
-} as const;
-
 /** The Node version a pipeline sets up when the project pins none. */
 const DEFAULT_NODE = '24';
 
@@ -207,95 +195,93 @@ function join(dir: string, file: string): string {
   return dir === '' ? file : `${dir}/${file}`;
 }
 
-/** A YAML scalar: bare when it reads back as the same string, single-quoted otherwise. */
-function scalar(value: string): string {
-  return /^[A-Za-z0-9_./-]+$/u.test(value) && !/^[0-9.]+$/u.test(value) ? value : `'${value.replaceAll("'", "''")}'`;
+/** Options that print a template back the way it is written: no wrapping, `[main]` without padding. */
+const STRINGIFY = { lineWidth: 0, flowCollectionPadding: false } as const;
+
+/**
+ * A pipeline template from `templates/ci/`, shipped beside `dist/`. Each is
+ * a complete pipeline for npm at the repository root, so linters and the
+ * docs read it as it is; init edits a copy for the project.
+ */
+function readTemplate(name: string): Document {
+  return parseDocument(readFileSync(new URL(`../../../templates/ci/${name}`, import.meta.url), 'utf8'));
+}
+
+/** A template's `npx <bin> ...` command for the project's package manager, with `--target` after `e2e run`. */
+function templateCommand(manager: PackageManager, template: string, target: string | undefined): string {
+  const bare = template.replace(/^npx /u, '');
+  return exec(manager, target === undefined ? bare : bare.replace(/^e2e run/u, `e2e run --target ${target}`));
+}
+
+/** The map in `items` whose `key` holds `value`, which the template guarantees. */
+function findItem(items: readonly unknown[], key: string, matches: (value: string) => boolean): YAMLMap {
+  const found = items.find((item): item is YAMLMap => isMap(item) && matches(String(item.get(key) ?? '')));
+  if (found === undefined) throw new Error(`the CI template has no step with ${key} ${matches.toString()}`);
+  return found;
+}
+
+/** Sets `key` in `map` right before `before`, or at the end when `before` is absent. */
+function setBefore(doc: Document, map: YAMLMap, key: string, value: unknown, before: string): void {
+  map.delete(key);
+  const at = map.items.findIndex((pair) => isScalar(pair.key) && pair.key.value === before);
+  const pair = doc.createPair(key, value);
+  if (at === -1) map.items.push(pair);
+  else map.items.splice(at, 0, pair);
 }
 
 /** The GitHub Actions workflow that runs the project's web targets on pull requests and on pushes to main. */
 export function renderGithubWorkflow(context: WorkflowContext): string {
   const { manager, projectDir, installDir } = context;
   const lockfile = join(installDir, LOCKFILE[manager]);
-  const output = join(projectDir, '.e2e');
-  const installElsewhere = installDir !== projectDir;
-  const nodeVersion = context.nodeVersionFile === undefined
-    ? [`          node-version: ${DEFAULT_NODE}`]
-    : [`          node-version-file: ${scalar(context.nodeVersionFile)}`];
-  // setup-node caches the store of npm, pnpm, and Yarn; Bun keeps its own.
-  const nodeCache = manager === 'bun'
-    ? []
-    : [`          cache: ${manager}`, ...(lockfile === LOCKFILE[manager] ? [] : [`          cache-dependency-path: ${scalar(lockfile)}`])];
-  const run = ['e2e run', ...(context.target === undefined ? [] : [`--target ${context.target}`]), '--reporter list,junit'].join(' ');
+  const doc = readTemplate('github-actions.yml');
+  const job = doc.getIn(['jobs', 'e2e']) as YAMLMap;
+  const steps = job.get('steps') as YAMLSeq;
+  const byUses = (action: string): YAMLMap => findItem(steps.items, 'uses', (uses) => uses.startsWith(`${action}@`));
+  const byName = (name: string): YAMLMap => findItem(steps.items, 'name', (value) => value === name);
 
-  return [
-    'name: e2e',
-    '',
-    'on:',
-    '  pull_request:',
-    '  push:',
-    '    branches: [main]',
-    '',
-    'permissions:',
-    '  contents: read',
-    '',
-    'concurrency:',
-    '  group: ${{ github.workflow }}-${{ github.ref }}',
-    "  cancel-in-progress: ${{ github.event_name == 'pull_request' }}",
-    '',
-    'jobs:',
-    '  e2e:',
-    '    runs-on: ubuntu-latest',
-    '    timeout-minutes: 30',
-    ...(projectDir === '' ? [] : ['    defaults:', '      run:', `        working-directory: ${scalar(projectDir)}`]),
-    '    steps:',
-    `      - uses: ${GITHUB_ACTIONS.checkout}`,
-    ...(manager === 'pnpm'
-      ? [
-          `      - uses: ${GITHUB_ACTIONS.setupPnpm}`,
-          // Without a version, the action reads packageManager from the repository root's package.json unless told where the project's is.
-          ...(context.pnpmVersion !== undefined
-            ? ['        with:', `          version: ${scalar(context.pnpmVersion)}`]
-            : installDir === ''
-              ? []
-              : ['        with:', `          package_json_file: ${scalar(join(installDir, 'package.json'))}`]),
-        ]
-      : []),
-    ...(manager === 'bun' ? [`      - uses: ${GITHUB_ACTIONS.setupBun}`] : []),
-    // Yarn 2 and later come from the packageManager field through corepack; the runner image has only Yarn 1.
-    ...(manager === 'yarn' ? ['      - run: corepack enable'] : []),
-    `      - uses: ${GITHUB_ACTIONS.setupNode}`,
-    '        with:',
-    ...nodeVersion,
-    ...nodeCache,
-    `      - run: ${frozenInstall(manager, context.yarnBerry === true)}`,
-    ...(installElsewhere ? [`        working-directory: ${installDir === '' ? '.' : scalar(installDir)}`] : []),
-    `      - uses: ${GITHUB_ACTIONS.cache}`,
-    '        with:',
-    '          path: ~/.cache/ms-playwright',
-    `          key: playwright-\${{ runner.os }}-\${{ runner.arch }}-\${{ hashFiles('${lockfile}') }}`,
-    '',
-    '      - name: Install browsers',
-    `        run: ${exec(manager, 'e2e-web install chromium --with-deps')}`,
-    '',
-    '      - name: Run e2e',
-    `        run: ${exec(manager, run)}`,
-    ...(context.secrets.length === 0
-      ? []
-      : ['        env:', ...context.secrets.map((name) => `          ${name}: \${{ secrets.${name} }}`)]),
-    '',
-    '      - name: Upload the report',
-    '        if: ${{ !cancelled() }}',
-    `        uses: ${GITHUB_ACTIONS.uploadArtifact}`,
-    '        with:',
-    '          name: e2e-report',
-    '          path: |',
-    `            ${output}/report.json`,
-    `            ${output}/junit.xml`,
-    `            ${output}/results`,
-    '          if-no-files-found: warn',
-    '          retention-days: 7',
-    '',
-  ].join('\n');
+  if (projectDir !== '') setBefore(doc, job, 'defaults', { run: { 'working-directory': projectDir } }, 'steps');
+
+  const setupNode = byUses('actions/setup-node');
+  const nodeOptions = setupNode.get('with') as YAMLMap;
+  if (context.nodeVersionFile !== undefined) {
+    nodeOptions.delete('node-version');
+    setBefore(doc, nodeOptions, 'node-version-file', context.nodeVersionFile, 'cache');
+  }
+  // setup-node caches the store of npm, pnpm, and Yarn; Bun keeps its own.
+  if (manager === 'bun') nodeOptions.delete('cache');
+  else nodeOptions.set('cache', manager);
+  if (manager !== 'bun' && lockfile !== LOCKFILE[manager]) nodeOptions.set('cache-dependency-path', lockfile);
+
+  const setup = (readTemplate('github-actions-setup.yml').get(manager) as YAMLSeq | undefined)?.items ?? [];
+  if (manager === 'pnpm') {
+    // Without a version, the action reads packageManager from the repository root's package.json unless told where the project's is.
+    const options = context.pnpmVersion !== undefined
+      ? { version: context.pnpmVersion }
+      : installDir === '' ? undefined : { package_json_file: join(installDir, 'package.json') };
+    if (options !== undefined) (setup[0] as YAMLMap).set('with', doc.createNode(options));
+  }
+  steps.items.splice(steps.items.indexOf(setupNode), 0, ...setup);
+
+  const install = byName('Install dependencies');
+  install.set('run', frozenInstall(manager, context.yarnBerry === true));
+  if (installDir !== projectDir) install.set('working-directory', installDir === '' ? '.' : installDir);
+
+  const cache = byUses('actions/cache').get('with') as YAMLMap;
+  cache.set('key', String(cache.get('key')).replace(`hashFiles('${LOCKFILE.npm}')`, `hashFiles('${lockfile}')`));
+
+  const browsers = byName('Install browsers');
+  browsers.set('run', templateCommand(manager, String(browsers.get('run')), undefined));
+  const run = byName('Run e2e');
+  run.set('run', templateCommand(manager, String(run.get('run')), context.target));
+  if (context.secrets.length === 0) run.delete('env');
+  else run.set('env', doc.createNode(Object.fromEntries(context.secrets.map((name) => [name, `\${{ secrets.${name} }}`]))));
+
+  if (projectDir !== '') {
+    const upload = byName('Upload the report').get('with') as YAMLMap;
+    const paths = upload.get('path', true) as Scalar<string>;
+    paths.value = paths.value.split('\n').map((line) => (line === '' ? line : join(projectDir, line))).join('\n');
+  }
+  return doc.toString(STRINGIFY);
 }
 
 /** The `npm`, `pnpm`, Yarn 1, or Bun cache a GitLab job keeps in the project, since GitLab caches only paths inside it. */
@@ -338,51 +324,39 @@ function gitlabInstall(context: WorkflowContext): string[] {
  */
 export function renderGitlabPipeline(context: WorkflowContext): string {
   const { manager, projectDir, installDir } = context;
-  const lockfile = join(installDir, LOCKFILE[manager]);
-  const output = join(projectDir, '.e2e');
-  const store = GITLAB_STORE[manager];
-  const run = ['e2e run', ...(context.target === undefined ? [] : [`--target ${context.target}`]), '--reporter list,junit'].join(' ');
-  const cd = (dir: string): string[] => (dir === '' ? [] : [`cd "$CI_PROJECT_DIR/${dir}"`]);
+  const doc = readTemplate('gitlab-ci.yml');
+  const job = doc.get('e2e') as YAMLMap;
+  // Yarn 2 and later keep their own cache and ignore --cache-folder.
+  const store = manager === 'yarn' && context.yarnBerry === true ? undefined : GITLAB_STORE[manager];
   const usesCorepack = (manager === 'pnpm' && context.pnpmVersion === undefined) || (manager === 'yarn' && context.yarnBerry === true);
+  const cd = (dir: string): string[] => (dir === '' ? [] : [`cd "$CI_PROJECT_DIR/${dir}"`]);
 
-  return [
-    `${context.jobName ?? 'e2e'}:`,
-    `  image: node:${context.nodeMajor ?? DEFAULT_NODE}`,
-    '  interruptible: true',
-    '  timeout: 30 minutes',
-    '  rules:',
-    '    - if: $CI_PIPELINE_SOURCE == "merge_request_event"',
-    '    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH',
-    '  variables:',
-    '    # GitLab caches only paths inside the project.',
-    '    PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright',
-    ...(usesCorepack ? ["    COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'"] : []),
-    '  cache:',
-    '    key:',
-    '      files:',
-    `        - ${scalar(lockfile)}`,
-    '    paths:',
-    '      - .cache/ms-playwright/',
-    ...(store === undefined ? [] : [`      - ${scalar(`${join(installDir, store)}/`)}`]),
-    '  script:',
-    ...[
-      ...cd(installDir),
-      ...gitlabInstall(context),
-      ...(installDir === projectDir ? [] : projectDir === '' ? ['cd "$CI_PROJECT_DIR"'] : cd(projectDir)),
-      exec(manager, 'e2e-web install chromium --with-deps'),
-      exec(manager, run),
-    ].map((line) => `    - ${line}`),
-    '  artifacts:',
-    '    when: always',
-    '    expire_in: 7 days',
-    '    paths:',
-    `      - ${scalar(`${output}/report.json`)}`,
-    `      - ${scalar(`${output}/junit.xml`)}`,
-    `      - ${scalar(`${output}/results/`)}`,
-    '    reports:',
-    `      junit: ${scalar(`${output}/junit.xml`)}`,
-    '',
-  ].join('\n');
+  if (context.jobName !== undefined) {
+    const key = (doc.contents as YAMLMap).items.find((pair) => isScalar(pair.key) && pair.key.value === 'e2e')?.key as Scalar;
+    key.value = context.jobName;
+  }
+  job.set('image', `node:${context.nodeMajor ?? DEFAULT_NODE}`);
+  if (usesCorepack) (job.get('variables') as YAMLMap).set('COREPACK_ENABLE_DOWNLOAD_PROMPT', '0');
+  (job.getIn(['cache', 'key', 'files']) as YAMLSeq).set(0, join(installDir, LOCKFILE[manager]));
+  const cachePaths = job.getIn(['cache', 'paths']) as YAMLSeq;
+  if (store === undefined) cachePaths.delete(1);
+  else cachePaths.set(1, `${join(installDir, store)}/`);
+
+  const [, browsers, run] = (job.get('script') as YAMLSeq<Scalar<string>>).items;
+  job.set('script', doc.createNode([
+    ...cd(installDir),
+    ...gitlabInstall(context),
+    ...(installDir === projectDir ? [] : projectDir === '' ? ['cd "$CI_PROJECT_DIR"'] : cd(projectDir)),
+    templateCommand(manager, browsers!.value, undefined),
+    templateCommand(manager, run!.value, context.target),
+  ]));
+
+  if (projectDir !== '') {
+    for (const item of (job.getIn(['artifacts', 'paths']) as YAMLSeq<Scalar<string>>).items) item.value = join(projectDir, item.value);
+    const junit = job.getIn(['artifacts', 'reports', 'junit'], true) as Scalar<string>;
+    junit.value = join(projectDir, junit.value);
+  }
+  return doc.toString(STRINGIFY);
 }
 
 /**

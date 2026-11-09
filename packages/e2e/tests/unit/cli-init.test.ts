@@ -1275,7 +1275,7 @@ describe('e2e init', () => {
       writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'build:\n  script: [make]\n');
       await init(dir, { yes: true, ci: 'gitlab' });
       expect(read('.gitlab-ci.yml')).toBe('build:\n  script: [make]\n');
-      expect(read('.gitlab/e2e.gitlab-ci.yml')).toMatch(/^e2e:\n/u);
+      expect(read('.gitlab/e2e.gitlab-ci.yml')).toMatch(/^e2e:\n/mu);
       expect(output()).toContain('.gitlab-ci.yml exists, not touching it; add this to it to run the e2e job:');
       expect(output()).toMatch(/include:\n\S*\s+- local: \.gitlab\/e2e\.gitlab-ci\.yml/u);
     });
@@ -1298,7 +1298,7 @@ describe('e2e init', () => {
       const project = path.join(dir, 'apps', 'web');
       mkdirSync(project, { recursive: true });
       expect((await init(project, { yes: true, ci: 'github-actions' })).exitCode).toBe(0);
-      expect(read(workflow)).toContain('      - run: pnpm install --frozen-lockfile\n        working-directory: .\n');
+      expect(read(workflow)).toContain('      - name: Install dependencies\n        run: pnpm install --frozen-lockfile\n        working-directory: .\n');
       expect(read(workflow)).toContain("hashFiles('pnpm-lock.yaml')");
       expect(read(workflow)).toContain('        run: pnpm exec e2e run --reporter list,junit\n');
     });
