@@ -16,9 +16,13 @@ Use Node 22.22.3+, 24.8+, or 26+ for the tests. From this folder:
 ```bash
 cd e2e
 npm install
-npx agent-device doctor
+npx e2e doctor
 npm run test:e2e
 ```
+
+`e2e doctor` checks Node, the config, agent-device, Xcode, and the
+simulators. With one booted simulator or device (a connected iPhone counts),
+it also checks that the app is installed.
 
 After app changes, run the app in Xcode again before you run the tests.
 
@@ -39,6 +43,6 @@ For device setup and CI, see the [Mobile guide](https://e2e.com/docs/mobile).
 
 The bundled fonts use the [SIL Open Font License](HelloApp/Fonts/OFL.txt).
 
-Last checked on 2026-11-04 with e2e 0.22.0, @e2e-dev/mobile 0.12.5, and Xcode
-27.2 on an iOS 26.5 simulator. The three locator tests and the two agent
-tests passed.
+Last checked on 2026-11-09 with e2e 0.23.0, @e2e-dev/mobile 0.12.6, and Xcode
+26.3 on an iOS 26.3 simulator. `npx e2e doctor` and the three locator tests
+passed. The agent tests were not run.
