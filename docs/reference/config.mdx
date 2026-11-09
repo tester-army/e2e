@@ -960,7 +960,7 @@ judge: gateway('anthropic/claude-opus-5'), // default: model
 ```
 
 - Judgments allow 8192 output tokens per call.
-- A judgment sees the instruction and the current screen only.
+- A judgment sees the instruction, its params, the agent's context, and the current screen with its location.
 
 See [A judge of its own](/models#a-judge-of-its-own).
 

@@ -203,7 +203,7 @@ expect(data.titles).toContain('Buy milk');
   it adds `pass vision: true when the answer is in pixels`, as does
   `waitFor`'s timeout after an inconclusive round.
 - Judgments see the assertion, its params, the agent's context, the test
-  title, and the current screen, never prior steps or the act loop's
+  title, and the current screen with its location, never prior steps or the act loop's
   summaries; malformed output gets one repair round, then
   `MODEL_OUTPUT_INVALID`.
 - `assert` and `waitFor` take `params` like `act`:
@@ -213,7 +213,7 @@ expect(data.titles).toContain('Buy milk');
   pay button) must agree everywhere, or the judgment fails. Name the one
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
-  screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+  screen or its location changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
 - Never sleep for a fixed time to let the app settle. A sleep is too short
   on a slow run and wasted time on a fast one; `waitFor` returns as soon as
   the state appears:
@@ -228,7 +228,8 @@ await agent.waitFor('the export finished and a download link appeared', { timeou
 
 - `waitFor` needs a model even under a custom executor and is never cached,
   so each run spends judgments on it. It judges again on every screen
-  change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  change, and on every location change except under `vision: 'only'`, up
+  to `maxModelCalls` (25): for a long wait on a screen that keeps
   changing (a progress counter), raise `interval`. The test timeout still
   caps its `timeout`.
 
