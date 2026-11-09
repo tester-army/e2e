@@ -232,7 +232,7 @@ describe('e2e init --example', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(viteTarball()))));
     mkdirSync(path.join(dir, '.git'));
     vi.mocked(clack.confirm).mockResolvedValue(false);
-    expect(await init(dir, { interactive: true, example: 'with-vite', skills: [], mcp: [] })).toMatchObject({ exitCode: 0, result: 'cancelled' });
+    expect(await init(dir, { interactive: true, example: 'with-vite', skills: [], mcp: [], ci: 'none' })).toMatchObject({ exitCode: 0, result: 'cancelled' });
     expect(readdirSync(dir)).toEqual(['.git']);
   });
 });

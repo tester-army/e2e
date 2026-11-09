@@ -69,6 +69,7 @@ describe('telemetry events', () => {
         gateway: 'openai-compatible',
         skill: true,
         mcp: false,
+        ci: 'github-actions',
         install: true,
       }),
     ).toEqual({
@@ -82,6 +83,7 @@ describe('telemetry events', () => {
         gateway: 'openai-compatible',
         skill: true,
         mcp: false,
+        ci: 'github-actions',
         install: true,
       },
     });
