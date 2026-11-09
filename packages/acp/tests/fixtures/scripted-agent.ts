@@ -51,18 +51,46 @@ const script = JSON.parse(process.env['ACP_SCRIPT'] ?? '[]') as Move[][] | Recor
 const movesFor = (prompt: string, index: number): Move[] =>
   Array.isArray(script) ? (script[index] ?? []) : (Object.entries(script).find(([key]) => prompt.includes(key))?.[1] ?? []);
 const log = (entry: unknown) => {
-  if (process.env['ACP_LOG'] !== undefined) appendFileSync(process.env['ACP_LOG'], `${JSON.stringify(entry)}\n`);
+  if (process.env['ACP_LOG'] === undefined) return;
+  try {
+    appendFileSync(process.env['ACP_LOG'], `${JSON.stringify(entry)}\n`);
+  } catch {
+    // The test removed its log directory; the agent may still be stopping.
+  }
 };
 
 log({ pid: process.pid });
 log({ env: Object.keys(process.env).filter((name) => name.toUpperCase().startsWith('E2E_')).toSorted(), codexConfig: process.env['CODEX_CONFIG'] ?? null });
 
-/** `ACP_EXIT_DELAY_MS` holds the agent in place after SIGTERM, so a test can watch the session directory while the child is still alive. */
+/**
+ * `ACP_EXIT_DELAY_MS` holds the agent in place after SIGTERM, so a test can
+ * watch the session directory while the child is still alive. Teardown closes
+ * stdin and the stdout pipe around the signal, and either can end a plain
+ * process first: stdin's EOF can empty the event loop before the signal
+ * handler runs, and a late write can hit EPIPE. Such an agent holds on through
+ * both and logs any error, so a test that sees it gone early can say why. The
+ * delay starts at SIGTERM or stdin's end, whichever comes first, so an agent
+ * whose test worker died without a teardown still exits.
+ */
 const exitDelayMs = Number(process.env['ACP_EXIT_DELAY_MS'] ?? '0');
 if (exitDelayMs > 0) {
-  process.on('SIGTERM', () => {
-    setTimeout(() => process.exit(0), exitDelayMs);
-  });
+  const hold = setInterval(() => undefined, 60_000);
+  let stopping = false;
+  const stop = (reason: string) => {
+    log({ stopping: reason, at: Date.now() });
+    if (stopping) return;
+    stopping = true;
+    setTimeout(() => {
+      clearInterval(hold);
+      process.exit(0);
+    }, exitDelayMs);
+  };
+  process.on('SIGTERM', () => stop('SIGTERM'));
+  process.stdin.on('end', () => stop('stdin end'));
+  process.stdout.on('error', (error) => log({ stdoutError: String(error) }));
+  process.on('uncaughtException', (error) => log({ uncaught: String(error) }));
+  process.on('unhandledRejection', (error) => log({ unhandled: String(error) }));
+  process.on('exit', (code) => log({ exit: code, at: Date.now() }));
 }
 
 let mcp: Client | undefined;

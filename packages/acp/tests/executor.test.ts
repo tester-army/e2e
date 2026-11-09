@@ -519,7 +519,8 @@ describe('acp', () => {
       // The agent is still stopping and the removal waits for it, so the
       // directory must still be there.
       await new Promise((resolve) => setTimeout(resolve, 500));
-      expect(() => process.kill(pid, 0)).not.toThrow();
+      // The agent's own log says why when it is gone before its delay is up.
+      expect(() => process.kill(pid, 0), JSON.stringify(log().slice(-5))).not.toThrow();
       expect(existsSync(cwd)).toBe(true);
       // Let the fallback removal succeed once the agent is gone.
       chmodSync(cwd, 0o755);
@@ -545,7 +546,7 @@ describe('acp', () => {
     // while the agent is still stopping (it exits 1500ms after SIGTERM).
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(existsSync(cwd)).toBe(false);
-    expect(() => process.kill(pid, 0)).not.toThrow();
+    expect(() => process.kill(pid, 0), JSON.stringify(log().slice(-5))).not.toThrow();
   });
 
   it('reports an agent that does not start', async () => {
