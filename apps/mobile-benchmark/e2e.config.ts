@@ -36,9 +36,10 @@ export const ios = mobile({
   session: 'e2e-mobile-benchmark-ios',
   // A control that just moved waits this long to come to rest before a tap;
   // an unmoved one is tapped at once, so the budget costs only after a
-  // scroll. iOS reports a row's final frame from the first frame of a fling,
-  // and the default half second let a tap after scrollUntilVisible land on
-  // the row still passing underneath on a loaded simulator.
+  // scroll. The default half second let a tap after scrollUntilVisible land
+  // on the row still passing underneath on a loaded simulator. After a scroll
+  // the engine also reads until the control stops moving, so this budget is
+  // the least wait.
   transition: 1_500,
 });
 

@@ -409,10 +409,14 @@ export default {
   `transition` (default 500 ms). Pass an object to set the wait by the
   previous action: `gesture` after a scroll or swipe, `launch` after the app
   launches, relaunches, or closes, and `default` for the rest. A `gesture` or
-  `launch` left out takes `default`. Opening or closing the keyboard also uses
-  the remaining budget. Screen swipes in tests wait out the remaining budget
-  before scrolling. Agent actions settle `settle` ms (default 150) before the
-  next observation, `settle: false` skips it.
+  `launch` left out takes `default`. The `gesture` budget is the least wait.
+  The control is then read until it stops moving, which is two reads that
+  agree, at most 4 s after the gesture, or at the budget when that is larger,
+  or sooner when the action's own timeout cannot fit another read. A plain
+  number sets it too, and 0 is no wait at all. Opening or closing the keyboard
+  also uses the remaining budget. Screen swipes in tests wait out the remaining
+  budget before scrolling. Agent actions settle `settle` ms (default 150) before
+  the next observation, `settle: false` skips it.
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.

@@ -231,16 +231,29 @@ mobile({ platform: 'ios', settle: 300 }); // default: 150
 
 ```ts
 /**
- * Wait before acting on a control that just appeared or moved, in
- * milliseconds. Default 500. Accessibility bounds cannot tell a sliding
- * control from a landed one (iOS reports the final frame at once, Android
- * the frame in flight), so the control is found again in a fresh snapshot
- * once the wait is over and acted on where it landed. Unmoved controls are
- * acted on immediately only when keyboard visibility is unchanged. Opening
- * or closing the keyboard also uses the remaining budget. Screen swipes in
- * tests wait out the remaining budget before scrolling. Raise it for slower
- * transitions. A number is that wait after every action; an object sets it by
- * the kind of the last action, see `TransitionBudgets`.
+ * How long a control that appeared or moved with the last action is given
+ * to finish arriving before a test acts on it, in milliseconds. Default
+ * 500, the length of a modal or screen transition. Accessibility bounds
+ * cannot tell a sliding control from a landed one (iOS reports the final
+ * frame at once, Android the frame in flight), so the control is found
+ * again in a fresh snapshot once the wait is over and acted on where it
+ * landed. Unmoved controls are acted on immediately only when keyboard
+ * visibility is unchanged. Opening or closing the keyboard also uses the
+ * remaining budget. Screen swipes in tests wait out the remaining budget
+ * before scrolling. Raise it for slower transitions. A number is that
+ * budget after every action. An object sets it by the kind of the last
+ * action: `default` for any action except a gesture or a launch, `gesture`
+ * after a scroll or swipe, `launch` after the app launches, relaunches, or
+ * closes, or a link opens into it. A `gesture` or `launch` budget left out
+ * takes the `default` one. A scroll or swipe can return while its content
+ * still moves, and the tree shows that content in flight, so the `gesture`
+ * budget is only the least wait. A control that arrived or moved with the
+ * gesture is then read until it stops moving, which is two reads that
+ * agree on where it and any control that looks like it sit, at most 4 s
+ * after the gesture, or at the budget when that is larger, or sooner when
+ * the action's own timeout cannot fit another read. A plain number sets the
+ * `gesture` budget too. A budget of 0 is no wait at all. After any other
+ * action the budget is the whole wait.
  */
 readonly transition?: number | TransitionBudgets | undefined;
 ```
@@ -257,6 +270,24 @@ closes, or a link opens into it, and `default` after any other action.
 budget when left out, so `{ gesture: 1_500 }` waits 1.5 s after a scroll or
 swipe and 500 ms after everything else. Every budget is a non-negative integer
 of milliseconds, and a key other than these three is `INVALID_CONFIG`.
+
+The `gesture` budget is the least wait, not the whole of it. A scroll or swipe
+can return while its content is still moving, and the tree shows that content
+in flight, so the wait goes on until the control stops. After any other action
+the budget is the whole wait, since the tree cannot tell a control that slides
+in from one that landed. A plain number sets the `gesture` budget too. A
+budget of 0 is no wait at all, so `transition: 0` and `{ gesture: 0 }` act at
+once.
+
+After the `gesture` budget, the engine reads the screen until a read agrees
+with the one before it, or with the one that found the control. Two reads agree
+when the control and its look-alikes are the same in number and sit at the same
+places. A look-alike has the same role, test ID, name, and text. The wait ends
+at most 4 s after the gesture, or at the budget when that is larger, and the
+action then goes ahead where the control was last read. A control that never
+stops moving costs the 4 s, or what the action's own timeout leaves: the wait
+ends once the timeout cannot fit another read, and the action goes ahead where
+the control was last read.
 
 If the control changes during the wait, the action finds it again within its timeout before acting.
 
@@ -1208,7 +1239,13 @@ export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, Permis
 export interface TransitionBudgets {
   /** After any action except a gesture or a launch: a tap, fill, key, back, and the rest. Default 500. */
   readonly default?: number | undefined;
-  /** After a scroll or swipe, which can return while the content is still moving. Default: the `default` budget. */
+  /**
+   * After a scroll or swipe, which can return while the content is still
+   * moving. The least wait. The wait then goes on until the control stops
+   * moving, two reads agreeing, at most 4 s after the gesture. A budget above
+   * 4 s ends the wait at that budget, and 0 is no wait at all. Default: the
+   * `default` budget.
+   */
   readonly gesture?: number | undefined;
   /** After the app launches, relaunches, or closes, or a link opens into it. Default: the `default` budget. */
   readonly launch?: number | undefined;

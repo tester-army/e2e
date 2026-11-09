@@ -3538,91 +3538,6 @@ describe('deterministic actions', () => {
     expect(h.fake.lastArgs('interactions.swipe')).toEqual({ from: expect.any(Object), to: expect.any(Object) });
   });
 
-  it('re-reads a control until it rests before a test acts on it after a gesture that skipped the stabilization wait', async () => {
-    autoAdvanceTimers();
-    const h = harness({ settle: false, transition: 0 });
-    await openAttempt(h);
-    await sleep(0);
-    const root = await screenRootOf(h);
-    const about = await observed(h, 'About');
-    let reads = 0;
-    h.fake.respond('capture.snapshot', () => {
-      reads += 1;
-      const y = reads === 1 ? 150 : 180;
-      return { ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => (node.ref === '@e4' ? { ...node, rect: { ...node.rect!, y } } : node)) };
-    });
-
-    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'down' }, test());
-    await h.engine.perform!(about.ref, { kind: 'tap' }, test());
-    // Two reads while the control still moved, one more to see it rest.
-    expect(reads).toBe(3);
-    expect(h.fake.methods().slice(-2)).toEqual(['capture.snapshot', 'interactions.press']);
-
-    reads = 10;
-    await h.engine.perform!(about.ref, { kind: 'tap' }, test());
-    expect(reads).toBe(10);
-  });
-
-  it('keeps the input checks on every re-read, so a field that turned disabled after a gesture is never filled', async () => {
-    autoAdvanceTimers();
-    const h = harness({ settle: false, transition: 0 });
-    await openAttempt(h);
-    await sleep(0);
-    const root = await screenRootOf(h);
-    const search = await observed(h, 'Search');
-    let reads = 0;
-    h.fake.respond('capture.snapshot', () => {
-      reads += 1;
-      const field = reads === 1 ? {} : { enabled: false };
-      return { ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => (node.ref === '@e7' ? { ...node, ...field, rect: { ...node.rect!, y: 220 + reads * 10 } } : node)) };
-    });
-
-    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'down' }, test());
-    await expect(h.engine.perform!(search.ref, { kind: 'fill', value: 'blue', sensitive: false }, test())).rejects.toMatchObject({
-      code: 'NODE_STALE',
-      retryable: true,
-    });
-    expect(h.fake.methods()).not.toContain('interactions.fill');
-  });
-
-  it('stops re-reading a moving control once the action budget cannot fit another poll, and sends nothing', async () => {
-    autoAdvanceTimers();
-    const h = harness({ settle: false, transition: 0 });
-    await openAttempt(h);
-    await sleep(0);
-    const root = await screenRootOf(h);
-    const about = await observed(h, 'About');
-    let reads = 0;
-    h.fake.respond('capture.snapshot', () => {
-      reads += 1;
-      return { ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => (node.ref === '@e4' ? { ...node, rect: { ...node.rect!, y: 120 + reads * 10 } } : node)) };
-    });
-
-    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'down' }, test());
-    await expect(h.engine.perform!(about.ref, { kind: 'tap' }, { ...test(), timeoutMs: 150 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT' });
-    expect(h.fake.methods()).not.toContain('interactions.press');
-  });
-
-  it('re-reads a control before a node swipe too, so the swipe starts from where the control rests', async () => {
-    autoAdvanceTimers();
-    const h = harness({ settle: false, transition: 0 });
-    await openAttempt(h);
-    await sleep(0);
-    const root = await screenRootOf(h);
-    const scroller = await observed(h, 'Scroller');
-    let reads = 0;
-    h.fake.respond('capture.snapshot', () => {
-      reads += 1;
-      return { ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => (node.ref === '@e10' ? { ...node, rect: { ...node.rect!, y: 350 } } : node)) };
-    });
-
-    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'down' }, test());
-    await h.engine.perform!(scroller.ref, { kind: 'swipe', direction: 'down' }, test());
-    // The control moved from y 320 to 350 after the gesture, then rested.
-    expect(reads).toBe(2);
-    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { y: expect.any(Number) } });
-  });
-
   it('does not re-read a control after a gesture when the agent made it', async () => {
     const h = harness({ settle: false, transition: 0 });
     await openAttempt(h);
@@ -3746,13 +3661,377 @@ describe('deterministic actions', () => {
       ['no budget at all', {}, { launch: 500, default: 500, gesture: 500 }],
       ['budgets that are undefined', { default: undefined, gesture: undefined, launch: undefined }, { launch: 500, default: 500, gesture: 500 }],
       ['no transition', undefined, { launch: 500, default: 500, gesture: 500 }],
-      ['a zero gesture budget, which waits for nothing', { gesture: 0 }, { launch: 500, default: 500, gesture: 0 }],
+      ['a zero gesture budget, which sleeps for nothing', { gesture: 0 }, { launch: 500, default: 500, gesture: 0 }],
     ])('waits per kind of action with %s', async (_what, transition, expected) => {
       expect({
         launch: await waitedAfter(harness({ transition }), relaunch),
         default: await waitedAfter(harness({ transition }), tap),
         gesture: await waitedAfter(harness({ transition }), scroll),
       }).toEqual(expected);
+    });
+  });
+
+  describe('a control that came with a gesture waits until it is seen at rest', () => {
+    type Rows = (read: number, elapsedMs: number) => readonly number[];
+
+    const textQuery = (value: string): LocatorExpression => ({ kind: 'query', query: { kind: 'text', value: { kind: 'string', value, exact: true } } });
+    const presses = (h: Harness): number => h.fake.methods().filter((method) => method === 'interactions.press').length;
+
+    /** Every read past the end of the list shows its last entry. */
+    const byRead =
+      (reads: readonly (readonly number[])[]): Rows =>
+      (read) =>
+        reads[Math.min(read, reads.length - 1)] ?? [];
+
+    /** The screen with a control labelled `label` at each of `ys`; `generation` names the capture, so a ref carries the read it came from. */
+    function screenOf(ys: readonly number[], generation: number, label = 'Row 42', type = 'button') {
+      const rows = ys.map((y, at): RawNode => ({ ref: `@e${11 + at}`, index: 11 + at, parentIndex: 0, depth: 1, type, label, rect: { x: 0, y, width: 390, height: 44 } }));
+      return { ...SETTINGS_SNAPSHOT, refsGeneration: generation, nodes: [...SETTINGS_NODES, ...rows] };
+    }
+
+    /**
+     * Scrolls the screen as a test does, once the launch's own wait is over,
+     * and returns when the scroll returned: the moment the budgets count from.
+     */
+    async function scrolled(h: Harness): Promise<number> {
+      await openAttempt(h);
+      await sleep(1_000);
+      await h.engine.perform!((await screenRootOf(h)).ref, { kind: 'swipe', direction: 'down' }, test());
+      return Date.now();
+    }
+
+    /**
+     * Answers every snapshot from here on with the controls `rowsOf` gives for
+     * it, one per y, named `label`. A read takes `latencyMs` on the faked clock
+     * and shows the screen as of its end. `times` collects when each began and
+     * `ys` where the first control sat in each, counted from the first read here.
+     */
+    function scrollScreen(
+      h: Harness,
+      rowsOf: Rows,
+      { label = 'Row 42', type = 'button', latencyMs = 0 }: { label?: string; type?: string; latencyMs?: number | ((read: number) => number) } = {},
+    ): { times: number[]; ys: (number | undefined)[] } {
+      const scrolledAt = Date.now();
+      const times: number[] = [];
+      const ys: (number | undefined)[] = [];
+      h.fake.respond('capture.snapshot', async () => {
+        const read = times.length;
+        times.push(Date.now());
+        const latency = typeof latencyMs === 'function' ? latencyMs(read) : latencyMs;
+        if (latency > 0) await sleep(latency);
+        const rows = rowsOf(read, Date.now() - scrolledAt);
+        ys.push(rows[0]);
+        return screenOf(rows, read + 1, label, type);
+      });
+      return { times, ys };
+    }
+
+    /** A test's tap on the control the screen now lists under `name`, resolved on a read of its own. */
+    async function tapOnScreen(h: Harness, step: OperationContext = test(), name = 'Row 42'): Promise<void> {
+      await h.engine.perform!((await observed(h, name)).ref, { kind: 'tap' }, step);
+    }
+
+    it('sleeps the least wait, reads once, and taps where it read the control when it already sits still', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      const t0 = await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[500]]));
+      await tapOnScreen(h);
+      // The entry's own read, then the one after the least wait that the tap rides on.
+      expect(times.map((at) => at - t0)).toEqual([0, 800]);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s2' });
+      expect(Date.now() - t0).toBe(800);
+    });
+
+    it('counts the least wait from the gesture, reads nothing before it is over, and takes a number for it', async () => {
+      const h = harness({ transition: 1_200 });
+      const t0 = await scrolled(h);
+      await sleep(300);
+      const { times } = scrollScreen(h, byRead([[500]]));
+      await tapOnScreen(h);
+      expect(times.map((at) => at - t0)).toEqual([300, 1_200]);
+      expect(Date.now() - t0).toBe(1_200);
+    });
+
+    it('keeps reading while the control moves and taps it where it came to rest, only after the read that saw it there', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      const t0 = await scrolled(h);
+      // The entry's read, four reads of a fling slowing down (the last step is a whole pixel, which is still moving), then one that agrees.
+      const { times } = scrollScreen(h, byRead([[450], [520], [508], [505], [504], [504]]));
+      await tapOnScreen(h);
+      expect(times).toHaveLength(6);
+      expect(h.fake.methods().slice(-2)).toEqual(['capture.snapshot', 'interactions.press']);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s6' });
+      expect(Date.now()).toBe(times[5]);
+      expect(times[1]! - t0).toBe(800);
+      const gaps = times.slice(2).map((at, read) => at - times[read + 1]!);
+      expect(gaps.every((gap) => gap > 0 && gap <= 100)).toBe(true);
+    });
+
+    it('goes ahead at the cap with the latest read when the control never stops moving', async () => {
+      // A least wait that the pauses between reads do not land on the cap from, so the last pause has to be cut short.
+      const h = harness({ transition: { gesture: 830 } });
+      const t0 = await scrolled(h);
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read]);
+      await tapOnScreen(h);
+      expect(Date.now() - t0).toBe(4_000);
+      expect(times.at(-1)! - t0).toBe(4_000);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: `@e11~s${times.length}` });
+      expect(presses(h)).toBe(1);
+    });
+
+    it.each([
+      ['a tap', 'interactions.press', 'Row 42', 'button', { kind: 'tap' }],
+      ['a fill', 'interactions.fill', 'Notes', 'text-field', { kind: 'fill', value: 'blue', sensitive: false }],
+    ] as const)('goes ahead with %s on the latest read, before its deadline, when its timeout cannot fit another read', async (_what, method, label, type, action) => {
+      // A short least wait and a cap 4 s out, so the action's own timeout is what ends the wait.
+      const h = harness({ transition: { gesture: 100 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read], { label, type });
+      const control = await observed(h, label);
+      const startedAt = Date.now();
+      await h.engine.perform!(control.ref, action, { ...test(), timeoutMs: 1_000 });
+      expect(h.fake.methods().filter((sent) => sent === method)).toHaveLength(1);
+      // It reads for rest until another read and the pause before it would not fit, then acts. Nothing starts after the deadline.
+      expect(times.every((at) => at - startedAt < 1_000)).toBe(true);
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(900);
+      expect(Date.now() - startedAt).toBeLessThan(1_000);
+    });
+
+    it('fails at its deadline with a read that stalls, and sends nothing when that read answers late', async () => {
+      const h = harness({ transition: { gesture: 100 } });
+      await scrolled(h);
+      // The control's own read and the first read for rest answer at once. The next one outlasts the deadline.
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read], { latencyMs: (read) => (read < 2 ? 0 : 5_000) });
+      const control = await observed(h, 'Row 42');
+      const startedAt = Date.now();
+      await expect(h.engine.perform!(control.ref, { kind: 'tap' }, { ...test(), timeoutMs: 1_000 })).rejects.toMatchObject({ code: 'OPERATION_TIMEOUT', retryable: false });
+      // The stalled read began inside the budget. The call does not wait for the device.
+      expect(Date.now() - startedAt).toBe(1_000);
+      const reads = times.length;
+      await sleep(6_000);
+      expect(times).toHaveLength(reads);
+      expect(presses(h)).toBe(0);
+    });
+
+    it('takes the one read after a gesture budget above the cap, which is then the cap, and goes ahead with it', async () => {
+      const h = harness({ transition: { gesture: 5_000 } });
+      const t0 = await scrolled(h);
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read]);
+      await tapOnScreen(h);
+      expect(times.map((at) => at - t0)).toEqual([0, 5_000]);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s2' });
+    });
+
+    it('gives a gesture budget above the cap its whole sleep, counted from the gesture, and one read after it', async () => {
+      const h = harness({ transition: { gesture: 5_000 } });
+      const t0 = await scrolled(h);
+      await sleep(4_500);
+      const { times } = scrollScreen(h, byRead([[500]]));
+      await tapOnScreen(h);
+      expect(times.map((at) => at - t0)).toEqual([4_500, 5_000]);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s2' });
+    });
+
+    it.each([
+      ['a gesture budget of 0', { transition: { gesture: 0 } }],
+      ['a transition of 0', { transition: 0 }],
+    ] as const)('goes ahead at once with %s, with no sleep and no read for rest', async (_what, options) => {
+      const h = harness(options);
+      const t0 = await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[450], [480], [480]]));
+      await tapOnScreen(h);
+      // Only the read the tap resolved on.
+      expect(times).toHaveLength(1);
+      expect(Date.now()).toBe(t0);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s1' });
+    });
+
+    it('still looks for rest when the least wait is a single millisecond', async () => {
+      const h = harness({ transition: { gesture: 1 } });
+      const t0 = await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[450], [480], [480]]));
+      await tapOnScreen(h);
+      expect(times).toHaveLength(3);
+      expect(times[1]! - t0).toBe(1);
+      expect(times[2]! - times[1]!).toBeLessThanOrEqual(100);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s3' });
+    });
+
+    it.each([
+      ['the read the action resolved on', [[500, 600], [400, 500], [300, 400], [300, 400]]],
+      ['the read before it', [[300, 400], [500, 600], [400, 500], [400, 500]]],
+    ])('does not take a repeated row for at rest when the list moved a whole row since %s', async (_what, reads) => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, byRead(reads), { label: 'Add' });
+      await tapOnScreen(h, test(), 'Add');
+      // A read that matched the control alone would call the row now sitting where it was "still" at the second read.
+      expect(times).toHaveLength(4);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e12~s4' });
+    });
+
+    it.each([
+      ['the newest read', false, 2],
+      ['a read that a newer one has replaced', true, 4],
+    ])('knows the look-alikes of a located control when its read is %s', async (_what, replaced, reads) => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[500, 600]]), { label: 'Add' });
+      const [add] = await h.engine.locate!(textQuery('Add'), test());
+      if (replaced) await h.engine.observe!(operation());
+      await h.engine.perform!(add!.ref, { kind: 'tap' }, test());
+      // Without its own read the control stands alone, which two look-alikes do not match: one more read has to agree with the one before.
+      expect(times).toHaveLength(reads);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: `@e11~s${reads}` });
+    });
+
+    it.each([
+      ['at the first read after the least wait', [[500], []], 2],
+      ['while it is still moving', [[500], [480], [460], []], 4],
+    ])('fails with a retryable NODE_STALE, with no tap and no wait for the cap, when the control is gone %s', async (_when, reads, taken) => {
+      const h = harness({ transition: { gesture: 800 } });
+      const t0 = await scrolled(h);
+      const { times } = scrollScreen(h, byRead(reads));
+      await expect(tapOnScreen(h)).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+      expect(times).toHaveLength(taken);
+      expect(presses(h)).toBe(0);
+      expect(Date.now() - t0).toBeLessThan(4_000);
+    });
+
+    it.each([
+      ['the least wait', 100, [[500]], 1],
+      ['the pause between two reads', 820, [[500], [480], [480]], 2],
+    ])('is cancelled by an abort during %s, with no read after it and no tap', async (_when, abortAt, reads, taken) => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, byRead(reads));
+      const controller = new AbortController();
+      const pending = tapOnScreen(h, { ...operation(controller.signal), origin: 'test' });
+      setTimeout(() => controller.abort(), abortAt);
+      await expect(pending).rejects.toMatchObject({ code: 'CANCELLED' });
+      expect(times).toHaveLength(taken);
+      expect(presses(h)).toBe(0);
+    });
+
+    it('is cancelled by an abort during a read, with no tap', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      scrollScreen(h, byRead([[500]]));
+      const control = await observed(h, 'Row 42');
+      const controller = new AbortController();
+      h.fake.respond('capture.snapshot', async () => {
+        controller.abort();
+        return screenOf([480], 2);
+      });
+      await expect(h.engine.perform!(control.ref, { kind: 'tap' }, { ...operation(controller.signal), origin: 'test' })).rejects.toMatchObject({ code: 'CANCELLED' });
+      expect(presses(h)).toBe(0);
+    });
+
+    it.each([
+      [300, 'reads once for rest', 2],
+      [3_999, 'reads once for rest', 2],
+      [4_000, 'reads nothing, the cap being over', 1],
+    ])('sleeps no more once the gesture returned %s ms ago, and %s', async (ago, _what, taken) => {
+      const h = harness({ transition: { gesture: 100 } });
+      await scrolled(h);
+      await sleep(ago);
+      const { times } = scrollScreen(h, byRead([[500]]));
+      const control = await observed(h, 'Row 42');
+      await tapsAtOnce(h, control, { ref: `@e11~s${taken}` });
+      expect(times).toHaveLength(taken);
+    });
+
+    it.each([
+      ['a tap', async (h: Harness) => h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test())],
+      ['a relaunch', (h: Harness) => h.engine.session!.restart!(test())],
+    ])('does not look for rest after %s: one read after its budget, however the control moves', async (_what, last) => {
+      const h = harness({ transition: 300 });
+      await openAttempt(h);
+      await sleep(1_000);
+      await last(h);
+      const t0 = Date.now();
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read]);
+      await tapOnScreen(h);
+      expect(times.map((at) => at - t0)).toEqual([0, 300]);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s2' });
+    });
+
+    it('waits out a fling that outlasts the budget and taps the row where the list stopped', async () => {
+      const h = harness({ transition: { gesture: 1_500 } });
+      const t0 = await scrolled(h);
+      // Modelled on an iOS simulator, where 3 of 120 scrolls of a long list left it moving 1.66 to 1.84 s after `scroll` returned. A read takes 170 ms here.
+      const stoppedAt = 1_840;
+      const rowAt = (elapsedMs: number): number => (elapsedMs >= stoppedAt ? 504 : 504 + 300 * (1 - elapsedMs / stoppedAt) ** 2);
+      const { times, ys } = scrollScreen(h, (_read, elapsedMs) => [rowAt(elapsedMs)], { latencyMs: 170 });
+      await tapOnScreen(h);
+      expect(ys.at(-1)).toBe(504);
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: `@e11~s${times.length}` });
+      expect(Date.now() - t0).toBeGreaterThanOrEqual(stoppedAt);
+    });
+
+    it('fills a field that came with a gesture where it came to rest, on a read of its own after the wait', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[450], [500], [504], [504]]), { label: 'Notes', type: 'text-field' });
+      const notes = await observed(h, 'Notes');
+      await h.engine.perform!(notes.ref, { kind: 'fill', value: 'blue', sensitive: false }, test());
+      // The entry's read, three reads for rest, and the fill's own re-read before it types.
+      expect(times).toHaveLength(5);
+      expect(h.fake.lastArgs('interactions.fill')).toEqual({ ref: '@e11~s5', text: 'blue' });
+    });
+
+    it('keeps the input checks on the read that finds a field at rest, so a field that turned disabled after a gesture is never filled', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      let read = 0;
+      h.fake.respond('capture.snapshot', () => {
+        read += 1;
+        const screen = screenOf(read === 1 ? [450] : [504], read, 'Notes', 'text-field');
+        return read === 1 ? screen : { ...screen, nodes: screen.nodes.map((node) => (node.ref === '@e11' ? { ...node, enabled: false } : node)) };
+      });
+      const notes = await observed(h, 'Notes');
+      await expect(h.engine.perform!(notes.ref, { kind: 'fill', value: 'blue', sensitive: false }, test())).rejects.toMatchObject({ code: 'NODE_STALE', retryable: true });
+      expect(h.fake.methods()).not.toContain('interactions.fill');
+    });
+
+    it('reads a control until it rests before a node swipe too, so the swipe starts where the control stopped', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[450], [500], [504], [504]]));
+      await h.engine.perform!((await observed(h, 'Row 42')).ref, { kind: 'swipe', direction: 'down' }, test());
+      expect(times).toHaveLength(4);
+      const from = (h.fake.lastArgs('interactions.swipe') as { from: { y: number } }).from;
+      expect(from.y).toBeGreaterThanOrEqual(504);
+      expect(from.y).toBeLessThanOrEqual(548);
+    });
+
+    it('acts at once on a control that sits where it did before the gesture', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      await openAttempt(h);
+      await sleep(1_000);
+      await observed(h, 'About');
+      await h.engine.perform!((await screenRootOf(h)).ref, { kind: 'swipe', direction: 'down' }, test());
+      const looks = h.fake.methods().filter((method) => method === 'capture.snapshot').length;
+      await tapsAtOnce(h, await observed(h, 'About'), { ref: '@e4' });
+      expect(h.fake.methods().filter((method) => method === 'capture.snapshot')).toHaveLength(looks + 1);
+    });
+
+    it('does not make an agent action wait for rest', async () => {
+      const h = harness({ transition: { gesture: 800 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, byRead([[500]]));
+      const control = await observed(h, 'Row 42');
+      vi.setTimerTickMode('manual');
+      try {
+        const pending = h.engine.perform!(control.ref, { kind: 'tap' }, operation());
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(vi.getTimerCount()).toBe(0);
+        expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11~s1', settle: true, settleQuietMs: 150 });
+        await pending;
+      } finally {
+        vi.setTimerTickMode('nextTimerAsync');
+      }
+      expect(times).toHaveLength(1);
     });
   });
 });
