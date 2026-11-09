@@ -87,15 +87,23 @@ export class PollScope {
 /** Which scope the polls of one async lineage go to; a fixture's lineage moves to its teardown's scope. */
 interface PollOwner {
   scope: PollScope | undefined;
+  /** Set inside one `expect.poll` read: the steps it calls are part of the poll, which `e2e run --step` never holds. */
+  readonly reading?: true;
 }
 
 /** The runner's async context, shared through `globalThis` so a test module's copy of `expect` reads it. */
 interface PollScopes {
   current(): PollScope | undefined;
+  read<T>(run: () => T): T;
+  reading(): boolean;
 }
 
 const storage = new AsyncLocalStorage<PollOwner>();
-const scopes: PollScopes = { current: () => storage.getStore()?.scope };
+const scopes: PollScopes = {
+  current: () => storage.getStore()?.scope,
+  read: (run) => enter({ scope: storage.getStore()?.scope, reading: true }, run),
+  reading: () => storage.getStore()?.reading === true,
+};
 const slot = realmSlot<PollScopes>(pollScopesBrand);
 
 /** Runs `run` in the lineage `owner` names, publishing the runner's context for a test module's `expect`. */
@@ -137,4 +145,20 @@ export function pollLineage(): PollLineage {
 /** The scope a poll started here belongs to, or undefined outside any phase (a standalone script). */
 export function currentPollScope(): PollScope | undefined {
   return slot.get(globalThis)?.current();
+}
+
+/**
+ * Runs one `expect.poll` read, marked so `insidePollRead` sees it in every
+ * step the read calls. A runner from before the marker publishes a slot
+ * without it, and the read then runs unmarked.
+ */
+export function pollRead<T>(run: () => T): T {
+  const shared: Partial<PollScopes> | undefined = slot.get(globalThis);
+  return typeof shared?.read === 'function' ? shared.read(run) : run();
+}
+
+/** Whether this async context is inside an `expect.poll` read. */
+export function insidePollRead(): boolean {
+  const shared: Partial<PollScopes> | undefined = slot.get(globalThis);
+  return typeof shared?.reading === 'function' && shared.reading();
 }

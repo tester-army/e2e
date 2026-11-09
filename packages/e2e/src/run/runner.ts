@@ -52,6 +52,8 @@ import { allocateAppPorts } from './app-ports.ts';
 import { inProcessSpawner } from './in-process.ts';
 import { cleanupErrorsOf, someSkippedAfterFailure, tracedResultIds, type ResultRecord, type RunError, type SerialGroupRecord } from './records.ts';
 import { runUnits } from './scheduler.ts';
+import type { BeforeStep, HeldStep, StepPrompt } from './step-hold.ts';
+import { stepPromptLine } from '../report/list-steps.ts';
 import { buildWorkPlans, longestFirst, nonRunResult, plannedSlots, type TargetWorkPlan, type TimeLimit } from './units.ts';
 import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
@@ -211,6 +213,16 @@ export interface RunOptions {
    * the CLI's Ctrl-C ladder (`cli/signals.ts`) feeds these two.
    */
   forceSignal?: AbortSignal | undefined;
+  /**
+   * Holds every top-level step of a test's first attempt, in `beforeEach`
+   * and the body, until it resolves (`e2e run --step`); setup tests and
+   * retries never wait. To stop, interrupt the run. While any step is held,
+   * the test's timeout and the time limit do not run, and the worker
+   * watchdog counts none of the held time.
+   * A rejection stops the run with its error. Refused with the json reporter,
+   * whose stdout the prompt would break.
+   */
+  beforeStep?: BeforeStep | undefined;
   /** A second sink on the run's event spine, beside the list reporter. */
   onEvent?: RunEventSink | undefined;
   /** Budget for each reporter's `onRunFinished`, in ms. Only the test harness sets it; there is no flag. */
@@ -494,7 +506,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   const reporterIds = loaded.config?.reporters ?? options.reporters ?? ['list'];
   keepStdoutFor(reporterIds);
   const listReporter =
-    options.quiet === true || !reporterIds.includes('list') ? undefined : new ListReporter(processOutput?.listOutput);
+    options.quiet === true || !reporterIds.includes('list')
+      ? undefined
+      : new ListReporter(processOutput?.listOutput, { stepping: options.beforeStep !== undefined });
   // Without the list reporter to print it under a heading, a test's output
   // goes to the terminal as written.
   const printsTestOutput = options.quiet !== true && listReporter === undefined;
@@ -767,6 +781,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     recordFailure(loaded.error, 'config');
     return finish();
   }
+  if (options.beforeStep !== undefined && reporterIds.includes('json')) {
+    recordFailure(
+      new ConfigurationError('INVALID_CONFIG', '--step cannot run with the json reporter: the step prompt would land in its stdout document'),
+      'config',
+    );
+    return finish();
+  }
   const config = loaded.config;
   vcs = await detectVcs(config.projectRoot, env);
 
@@ -1028,6 +1049,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionStore: store,
             headed: options.headed ?? false,
             debug,
+            step: options.beforeStep !== undefined,
             envFor: workerEnvFor(plans, env),
           })
         : childProcessSpawner({
@@ -1044,9 +1066,24 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
             sessionKeyBase64: store.exportKeyForWorker(),
             debug: debug.enabled,
             aiTrace: aiTrace !== undefined,
+            step: options.beforeStep !== undefined,
             envFor: workerEnvFor(plans, env),
           });
 
+    // The list reporter shows the prompt under its test; without it, the
+    // prompt goes to stderr as one line, where a person still reads it.
+    const beforeStep = options.beforeStep;
+    let promptLine: string | undefined;
+    const showStep = (prompt: StepPrompt | undefined): void => {
+      if (listReporter !== undefined) {
+        listReporter.showStepPrompt(prompt);
+        return;
+      }
+      // Printed once per prompt: `h` lists nothing more on a plain line.
+      const line = prompt === undefined ? undefined : stepPromptLine(prompt);
+      if (line !== undefined && line !== promptLine) process.stderr.write(`${line}\n`);
+      promptLine = line;
+    };
     pendingNonRun = [];
     await debug.time('scheduler', () =>
       runUnits({
@@ -1055,6 +1092,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         ...(options.maxFailures === undefined ? {} : { maxFailures: options.maxFailures }),
         ...(timeLimit === undefined ? {} : { timeLimit }),
         spawn,
+        ...(beforeStep === undefined ? {} : { beforeStep: (step: HeldStep, signal: AbortSignal) => beforeStep(step, { signal, show: showStep }) }),
         interruptGraceMs: config.timeout + config.cleanupTimeout,
         interruptSignal: interrupted,
         forceSignal: forceController.signal,

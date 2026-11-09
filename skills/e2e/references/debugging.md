@@ -138,6 +138,7 @@ jq '.run.results[] | select(.selected and .status != "passed") | .attempts[-1]
 | Do | When |
 | --- | --- |
 | `--headed` | Watch the failing step |
+| `--step --headed` | A person steps through the test one key per step |
 | `--workers 1 --retries 0` | Take parallelism and retries out of the picture |
 | `--action-timeout 5000` | While writing a test: a wrong locator fails in 5 s instead of 30 s (`--assertion-timeout` for `expect`). Keep it longer than the slowest screen takes to load |
 | `--no-cache` | Rule out a stale `agent.act` replay; one run, not every rerun. A failed run already deletes the replay that ran into the failure, so rerun with the cache on first. When the failure repeats after a replay the trace page shows as kept and the `--no-cache` run passes, tighten the check after that goal: the stale replay then fails it and is deleted |
