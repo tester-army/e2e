@@ -1,7 +1,7 @@
 ---
 title: Continuous integration
 sidebarTitle: Setting up CI
-description: Run e2e on GitHub Actions, Expo Workflows, Bitrise, Codemagic, Norrix, or any CI service that runs Node.
+description: Run e2e on GitHub Actions, GitLab CI/CD, Expo Workflows, Bitrise, Codemagic, Norrix, or any CI service that runs Node.
 "og:image": "https://e2e.com/docs/images/og/ci.png?v=01be716140"
 "twitter:image": "https://e2e.com/docs/images/og/ci.png?v=01be716140"
 ---
@@ -15,6 +15,9 @@ device, runs `npx e2e run`, and uploads `.e2e/`.
 <CardGroup cols={2}>
   <Card title="GitHub Actions" icon="/images/integrations/github-actions.svg" href="/ci/github-actions">
     Web and mobile workflows. Post the results as a pull request comment.
+  </Card>
+  <Card title="GitLab CI/CD" icon="/images/integrations/gitlab.svg" href="/ci/gitlab">
+    Web and mobile jobs. Show the results in the merge request.
   </Card>
   <Card title="Expo Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
     Build an Expo app with Expo Build, then run iOS and Android tests on it.
