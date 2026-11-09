@@ -205,6 +205,34 @@ leave out the tests the change is unlikely to affect. Without the flag, as
 on `main`, the whole suite runs. See
 [Add the decision filter](/filters#add-the-decision-filter).
 
+## Cache the timings history
+
+With more than one worker, `e2e run` starts the longest files first, so the
+last file does not run alone at the end. It orders them by
+`.e2e/timings.json`, which every run updates with how long each file took.
+A fresh CI checkout has no such file, so restore it from your CI cache and
+save it after the run. Nothing else in `.e2e/` is needed.
+
+- The file is a few KB, `{ "schemaVersion": "timings-1", "files": { "<target>::<file>": <ms> } }`.
+  Each run moves a file's time a third of the way toward what it just took, so
+  one slow run does not reorder everything. Files that are gone and targets
+  the config no longer has are dropped.
+- It is advisory. A missing, stale, corrupt, or invalid file is no history, and
+  a run without one falls back to the previous `report.json`. A restored
+  file can change the order of files, never a result.
+- `--last-failed` does not read it. It reads `report.json`.
+- CI defaults to one worker, so set [`workers`](/reference/config#workers) or
+  pass `--workers` to benefit.
+- `--timings <file>` reads and writes another path.
+- Key the cache by branch with the default branch as the fallback, so a new
+  pull request starts from the history of `main`. With [sharding](#sharding),
+  add the shard index to the key; each shard then restores and saves its own
+  history.
+
+[GitHub Actions](/ci/github-actions#cache-the-timings-history) has the
+workflow step. Any other cache works the same way: restore `.e2e/timings.json`
+before `e2e run`, save it after.
+
 ## Sharding
 
 `--shard <index/total>` runs one slice of the suite. Every job runs the

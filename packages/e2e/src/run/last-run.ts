@@ -275,19 +275,12 @@ function isError(value: unknown): value is ReportError {
 }
 
 /**
- * How long each file took for each target in the previous run, keyed by
+ * How long each file took for each target in a report, keyed by
  * `target::file`: every attempt of every result and serial group summed. A
- * file with no attempt (skipped, or never reached) has no entry. No readable
- * report is no history, never an error.
+ * file with no attempt (skipped, or never reached) has no entry.
  */
-export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
+export function fileDurationsOf(report: Report1Document): ReadonlyMap<string, number> {
   const durations = new Map<string, number>();
-  let report: Report1Document;
-  try {
-    report = await readLastRun(reportPath);
-  } catch {
-    return durations;
-  }
   for (const unit of [...report.run.results, ...report.run.serialGroups]) {
     if (unit.attempts.length === 0) continue;
     const key = fileDurationKey(unit.targetId, unit.file);
@@ -297,7 +290,20 @@ export async function previousFileDurations(reportPath: string): Promise<Readonl
   return durations;
 }
 
-/** The key `previousFileDurations` files one target's file under. */
+/**
+ * How long each file took for each target in the previous run, read from its
+ * report (see `fileDurationsOf`). No readable report is no history, never an
+ * error.
+ */
+export async function previousFileDurations(reportPath: string): Promise<ReadonlyMap<string, number>> {
+  try {
+    return fileDurationsOf(await readLastRun(reportPath));
+  } catch {
+    return new Map();
+  }
+}
+
+/** The key `fileDurationsOf` files one target's file under. */
 export function fileDurationKey(targetName: string, file: string): string {
   return `${targetName}::${file}`;
 }

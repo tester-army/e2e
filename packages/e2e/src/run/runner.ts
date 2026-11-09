@@ -58,7 +58,8 @@ import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
 import { registerStaticSecrets } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
-import { carryForward, fileDurationKey, lastFailedIds, previousFileDurations, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
+import { loadTimings, writeTimings } from './timings.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { budgetText, withAbort } from '../internal/time.ts';
@@ -170,6 +171,13 @@ export interface RunOptions {
   agent?: string | readonly string[] | undefined;
   /** Prints aggregated phase timings to stderr after the run. */
   debug?: boolean | undefined;
+  /**
+   * The timings history file for this run (`--timings`), relative to the
+   * project root, over `<output>/timings.json`: read to start the longest
+   * files first and rewritten when the run ends. A missing or invalid file
+   * is no history, never an error.
+   */
+  timings?: string | undefined;
   /** Records every model call to `<output>/ai-trace.json` (`--ai-trace`). */
   aiTrace?: boolean | undefined;
   /**
@@ -643,6 +651,29 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   };
 
 
+  /** The timings file: `--timings` against the project root, else the one in the output directory. */
+  const timingsPath = (config: ResolvedConfig): string =>
+    options.timings === undefined ? outputLayout(config.output).timings : path.resolve(config.projectRoot, options.timings);
+
+  /**
+   * Folds the run's file durations into the timings history. Advisory like
+   * the history itself: a write that fails is a line on stderr, never a run
+   * error. Runs before the report is written, because an absent timings file
+   * falls back to the previous report as the history to merge into.
+   */
+  const writeTimingsHistory = async (config: ResolvedConfig, document: Report1Document): Promise<void> => {
+    try {
+      await writeTimings(document, {
+        timingsPath: timingsPath(config),
+        reportPath: outputLayout(config.output).report,
+        projectRoot: config.projectRoot,
+        targets: new Set(config.targets.map((target) => target.name)),
+      });
+    } catch (cause) {
+      process.stderr.write(`e2e: the timings history could not be written: ${errorMessage(cause)}\n`);
+    }
+  };
+
   /**
    * Writes the AI trace next to the report, on the same terms: the path is
    * returned only once the file exists, and a lost trace is a recorded run
@@ -708,6 +739,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // Only a failed write, itself a run error, forces a rebuild that records it.
     const document = buildRunReport(currentExitCode());
     const recorded = runErrors.length;
+    if (written !== undefined) await writeTimingsHistory(written, document);
     const reportPath = written === undefined ? undefined : await writeCanonicalReport(written, document);
     const traces = written === undefined ? new Map<string, string>() : await writeTraces(written, document);
     const exitCode = currentExitCode();
@@ -915,7 +947,8 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     const inProcess = workerConfigPath === undefined;
     const runWorkers = inProcess ? 1 : config.workers;
     if (runWorkers > 1) {
-      const previous = await previousFileDurations(outputLayout(config.output).report);
+      const layout = outputLayout(config.output);
+      const previous = await loadTimings(timingsPath(config), layout.report);
       plans = longestFirst(plans, (targetName, file) => previous.get(fileDurationKey(targetName, file)));
     }
     const timeLimit: TimeLimit | undefined =

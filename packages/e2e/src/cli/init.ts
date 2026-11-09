@@ -81,6 +81,7 @@ const GITIGNORE_ENTRIES = [
   '.e2e/sessions/',
   '.e2e/report.json',
   '.e2e/ai-trace.json',
+  '.e2e/timings.json',
   '.e2e/junit.xml',
   '.e2e/summary.md',
   '.e2e/logs/',
