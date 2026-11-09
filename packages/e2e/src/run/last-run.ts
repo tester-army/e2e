@@ -274,16 +274,26 @@ function isError(value: unknown): value is ReportError {
   );
 }
 
+/** Whether a result stands for a test its run did not carry out whole: left out, cut short, or never reached. */
+function leftUnmeasured(result: ReportResult): boolean {
+  if (result.selected === false || result.status === 'interrupted') return true;
+  return result.skip !== undefined && UNDELIVERED_SKIPS.has(result.skip.cause);
+}
+
 /**
  * How long each file took for each target in a report, keyed by
  * `target::file`: every attempt of every result and serial group summed. A
- * file with no attempt (skipped, or never reached) has no entry.
+ * file has an entry only when the run carried out all of it, once: a file with
+ * a test a filter or `--last-failed` left out, or one an interrupt or a limit
+ * cut short, would read as faster than it is, and a repeat past the first
+ * would read as slower. A file with no attempt has none either.
  */
 export function fileDurationsOf(report: Report1Document): ReadonlyMap<string, number> {
+  const partial = new Set(report.run.results.filter(leftUnmeasured).map((result) => fileDurationKey(result.targetId, result.file)));
   const durations = new Map<string, number>();
   for (const unit of [...report.run.results, ...report.run.serialGroups]) {
-    if (unit.attempts.length === 0) continue;
     const key = fileDurationKey(unit.targetId, unit.file);
+    if (unit.attempts.length === 0 || unit.repeat > 0 || partial.has(key)) continue;
     const ms = unit.attempts.reduce((sum, attempt) => sum + attempt.durationMs, 0);
     durations.set(key, (durations.get(key) ?? 0) + ms);
   }

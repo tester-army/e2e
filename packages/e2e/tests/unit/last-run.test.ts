@@ -343,6 +343,29 @@ describe('previousFileDurations', () => {
     expect(durations.has(fileDurationKey('web', 'tests/skipped.e2e.ts'))).toBe(false);
   });
 
+  it('leaves a file untimed when the run did not carry out all of it, or ran it more than once', async () => {
+    const attempts = [{ durationMs: 100, artifacts: [] }];
+    const durations = await previousFileDurations(
+      reportFile(
+        report([
+          { id: 'whole', status: 'passed', file: 'tests/whole.e2e.ts', attempts },
+          { id: 'failed', status: 'failed', file: 'tests/whole.e2e.ts', attempts },
+          { id: 'ran', status: 'passed', file: 'tests/filtered.e2e.ts', attempts },
+          leftOut('filtered', 'title does not match --grep'),
+          { id: 'cut', status: 'passed', file: 'tests/cut.e2e.ts', attempts },
+          { id: 'never', status: 'skipped', file: 'tests/cut.e2e.ts', skip: { cause: 'failure-limit', reason: 'stopped' } },
+          { id: 'stopped', status: 'interrupted', file: 'tests/interrupted.e2e.ts', attempts },
+          { id: 'again-0', status: 'passed', file: 'tests/repeated.e2e.ts', repeat: 0, attempts },
+          { id: 'again-1', status: 'passed', file: 'tests/repeated.e2e.ts', repeat: 1, attempts },
+        ].map((row) => (row['id'] === 'filtered' ? { ...row, file: 'tests/filtered.e2e.ts' } : row))),
+      ),
+    );
+    expect([...durations]).toEqual([
+      [fileDurationKey('web', 'tests/whole.e2e.ts'), 200],
+      [fileDurationKey('web', 'tests/repeated.e2e.ts'), 100],
+    ]);
+  });
+
   it('is no history, not an error, without a readable report', async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-last-run-'));
     tempRoots.push(dir);

@@ -115,15 +115,15 @@ step before the run:
             e2e-timings-main-
 ```
 
-Each run saves a new entry and restores the newest one for its branch. A
-pull request cannot write to the base branch's cache, but it can read it,
-so a first run on a new branch starts from the history of `main`. The step
-saves after the job passes. To save after a failed run too, use
-`actions/cache/restore` before the run and `actions/cache/save` after it with
-`if: ${{ !cancelled() }}`.
+Each run saves a new entry and restores the newest one for its branch. A pull
+request can read the base branch's cache but not write to it, so a first run
+on a new branch starts from the history of `main`.
 
-The web workflow above runs one worker, the CI default. The history only
-helps with [`workers`](/reference/config#workers) of 2 or more.
+The step saves after the job passes. To save after a failed run too, use
+`actions/cache/restore` before the run and `actions/cache/save` after it with
+`if: ${{ !cancelled() }}`. The history only helps with
+[`workers`](/reference/config#workers) of 2 or more, and the workflow above
+runs one.
 
 ## iOS and Android
 
