@@ -89,6 +89,9 @@ describe('renderGithubWorkflow', () => {
     expect(step('Install dependencies')['run']).toBe('bun install --frozen-lockfile');
     expect(uses('actions/cache')?.['with']).toMatchObject({ key: expect.stringContaining("hashFiles('bun.lock')") });
     expect(step('Run e2e')['run']).toBe('bunx e2e run --reporter list,junit');
+    expect(uses('oven-sh/setup-bun')).not.toHaveProperty('with');
+    const below = githubJob(renderGithubWorkflow({ ...base, manager: 'bun', projectDir: 'site', installDir: 'site' }));
+    expect(below.uses('oven-sh/setup-bun')?.['with']).toEqual({ 'bun-version-file': 'site/package.json' });
   });
 
   it('runs only the web target when a mobile target shares the config', () => {

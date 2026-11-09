@@ -260,6 +260,10 @@ export function renderGithubWorkflow(context: WorkflowContext): string {
       : installDir === '' ? undefined : { package_json_file: join(installDir, 'package.json') };
     if (options !== undefined) (setup[0] as YAMLMap).set('with', doc.createNode(options));
   }
+  // setup-bun reads the version from the repository root's package.json unless told where the project's is.
+  if (manager === 'bun' && installDir !== '') {
+    (setup[0] as YAMLMap).set('with', doc.createNode({ 'bun-version-file': join(installDir, 'package.json') }));
+  }
   steps.items.splice(steps.items.indexOf(setupNode), 0, ...setup);
 
   const install = byName('Install dependencies');
