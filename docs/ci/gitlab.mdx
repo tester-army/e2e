@@ -8,7 +8,7 @@ import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
 export const setupPrompt = `Add a GitLab CI/CD pipeline that runs this project's e2e tests. Docs: \`https://e2e.com/docs/ci/gitlab.md\` and \`https://e2e.com/docs/ci.md\`
 
 1. Read both pages. Use the web job for web targets and the iOS and Android jobs for mobile targets.
-2. Add the jobs to \`.gitlab-ci.yml\`. Adapt them to this project: package manager, Node version, how the app starts or builds, and the app paths.
+2. Add the jobs to \`.gitlab-ci.yml\`, or to an included file when the project already has one. Adapt them to this project: package manager, Node version, how the app starts or builds, and the app paths.
 3. For a mobile job, ask me for the tags of the self-managed runners to use.
 4. List the CI/CD variables the jobs read, such as the model key, and ask me to add them.
 5. After I push, read the job log and fix errors until the pipeline passes.`;
@@ -25,19 +25,19 @@ codes, see [Continuous integration](/ci).
 
 ## Web
 
-This pipeline runs deterministic and agent tests in one job, for each merge
-request and each push to the default branch. It assumes a config
-[command](/web#starting-your-app) that starts the app:
+This job runs deterministic and agent tests, in each merge request and on
+each push to the default branch. It assumes a config
+[command](/web#starting-your-app) that starts the app. Use the `node` image
+for your project's Node version:
 
 ```yaml title=".gitlab-ci.yml" expandable
-workflow:
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
 e2e:
   image: node:26
   interruptible: true
+  timeout: 30 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
   variables:
     APP_URL: http://127.0.0.1:3000
     PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright
@@ -56,10 +56,15 @@ e2e:
     when: always
     expire_in: 7 days
     paths:
-      - .e2e/
+      - .e2e/report.json
+      - .e2e/junit.xml
+      - .e2e/results/
     reports:
       junit: .e2e/junit.xml
 ```
+
+The rules are on the job, not in a `workflow:` block, so the same job works
+in a pipeline of its own or [beside your other jobs](#add-it-to-an-existing-pipeline).
 
 GitLab caches only paths inside the project, so `PLAYWRIGHT_BROWSERS_PATH`
 moves the [browsers](/reference/web#installing-browsers) there. The cache
@@ -71,18 +76,43 @@ can bind only `::1`. Then e2e can't reach it and the run fails with
 `APP_UNREACHABLE`.
 
 `reports: junit` shows the results in the merge request widget and on the
-pipeline's **Tests** tab. `when: always` uploads `.e2e/` when a test fails
+pipeline's **Tests** tab. `when: always` keeps the reports when a test fails
 too.
+
+On GitLab.com, a new account must verify its identity before hosted runners
+take its jobs. Until then, each pipeline fails without starting a job.
+
+## Add it to an existing pipeline
+
+When the project already has a `.gitlab-ci.yml`, put the job in a file of
+its own, such as `.gitlab/e2e.gitlab-ci.yml`. Then include it from
+`.gitlab-ci.yml`:
+
+```yaml title=".gitlab-ci.yml"
+include:
+  - local: .gitlab/e2e.gitlab-ci.yml
+```
+
+A job with no `rules` runs only in branch pipelines. So a merge request
+pipeline runs the `e2e` job alone, and your other jobs still run once per
+push.
 
 ## Model key
 
 Add the model key, such as `AI_GATEWAY_API_KEY`, under **Settings > CI/CD >
-Variables**, with the visibility **Masked and hidden**. Add user
-credentials, such as `E2E_USER_ADMIN_PASSWORD`, the same way. Each job gets
-them as environment variables.
+Variables**, with the visibility **Masked and hidden**. Or use the
+[GitLab CLI](https://gitlab.com/gitlab-org/cli), which reads the value from
+standard input:
 
-- Clear **Expand variable reference**. Otherwise GitLab rejects a masked
-  value with `$` and some other characters.
+```bash
+printf %s "$AI_GATEWAY_API_KEY" | glab variable set AI_GATEWAY_API_KEY --masked --hidden --raw
+```
+
+Add user credentials, such as `E2E_USER_ADMIN_PASSWORD`, the same way. Each
+job gets them as environment variables.
+
+- Clear **Expand variable reference** (`--raw` does this). Otherwise GitLab
+  rejects a masked value with `$` and some other characters.
 - GitLab masks only values of 8 or more characters, on one line, with no
   spaces. Use **Visible** for a value it can't mask, such as a short
   username.
@@ -92,6 +122,10 @@ them as environment variables.
 - A merge request from a fork runs in the fork's project, with none of
   your variables. When a member runs it in your project, its code can read
   the key. Do that only for code you trust.
+
+[Commit the replay cache](/cache#commit-the-replay-cache) to make fewer
+model calls. A replayed `agent.act` calls no model; each `agent.assert`
+still does.
 
 ## Run only affected tests
 
