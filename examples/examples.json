@@ -909,6 +909,32 @@
       }
     },
     {
+      "slug": "gitlab-ci",
+      "title": "Running e2e in GitLab CI/CD",
+      "shortTitle": "GitLab CI/CD",
+      "description": "A Next.js app whose locator and agent tests run in every merge request in GitLab CI/CD, with JUnit results in the merge request.",
+      "source": "official",
+      "repository": "https://gitlab.com/e2e_inc/e2e-gitlab-ci",
+      "author": {
+        "name": "TesterArmy",
+        "github": "tester-army"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://gitlab.com/e2e_inc/e2e-gitlab-ci/-/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "nextjs",
+          "react"
+        ],
+        "useCase": [
+          "ci"
+        ],
+        "platform": [
+          "web"
+        ]
+      }
+    },
+    {
       "slug": "smolmachines",
       "title": "Testing in smol machines with e2e",
       "shortTitle": "smol machines",
