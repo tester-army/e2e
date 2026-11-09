@@ -222,7 +222,13 @@ describe('lifecycle', () => {
     expect(h.fake.calls[1]!.args).toEqual({ action: 'ios-runner', platform: 'ios', device: 'iPhone 17' });
     expect(h.fake.calls[2]!.args).toEqual({ app: 'Settings', platform: 'ios', device: 'iPhone 17' });
     expect(h.fake.calls[3]!.args).toEqual({ platform: 'ios', device: 'iPhone 17 Pro' });
-    expect(lines).toEqual(['booting iPhone 17 (1 of 2)', 'booting iPhone 17 Pro (2 of 2)']);
+    // One line of step times per slot, after its `booting` line.
+    expect(lines).toEqual([
+      'booting iPhone 17 (1 of 2)',
+      expect.stringMatching(/^iPhone 17: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/),
+      'booting iPhone 17 Pro (2 of 2)',
+      expect.stringMatching(/^iPhone 17 Pro: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/),
+    ]);
 
     // Without a pinned app there is nothing to open, so it boots and starts
     // the runner only; so does a build `appPath` nobody has installed and no
@@ -240,6 +246,7 @@ describe('lifecycle', () => {
     await pinnedBuild.prepare({ runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: (line) => pinnedLines.push(line) });
     expect(pinnedBuild.fake.methods()).toEqual(['devices.boot', 'command.prepare']);
     expect(pinnedLines[1]).toMatch(/Settings awaits the suite's device.installApp\(\)/);
+    expect(pinnedLines[2]).toMatch(/^iPhone 16e: boot \d+\.\ds, iOS runner \d+\.\ds$/);
 
     const single = harness({ device: 'iPhone 16e', session: 'qa' });
     expect(single.engine.workers).toBe(1);
@@ -285,6 +292,7 @@ describe('lifecycle', () => {
     const info = { runId: 'run-1', targetName: 'ios', projectRoot: PROJECT_ROOT, slots: 1, env: {}, signal: new AbortController().signal, headed: false, log: (line: string) => lines.push(line) };
     const result = await h.prepare(info);
     expect(lines[1]).toMatch(/Settings did not open.*runner still installing/);
+    expect(lines[2]).toMatch(/^iPhone 16e: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/);
     // Nothing put the session on the app, and the binding says so: the worker's first launch binds it itself.
     const handed = result?.env ?? {};
     expect(handed[poolVariableIn(handed, 'IOS')]).toBe(JSON.stringify([{ device: 'iPhone 16e' }]));
@@ -309,8 +317,10 @@ describe('lifecycle', () => {
 
     // Android has no XCTest runner to start.
     const android = harness({ device: 'emulator-5556', platform: 'android' });
-    await android.prepare({ ...info, targetName: 'android' });
+    const androidLines: string[] = [];
+    await android.prepare({ ...info, targetName: 'android', log: (line) => androidLines.push(line) });
     expect(android.fake.methods()).not.toContain('command.prepare');
+    expect(androidLines[1]).toMatch(/^emulator-5556: boot \d+\.\ds, open Settings \d+\.\ds$/);
   });
 
   it('discovers every booted device of the platform when no device is named, boots as many as the run has slots, and reports the pool', async () => {
