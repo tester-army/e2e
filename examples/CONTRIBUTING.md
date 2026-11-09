@@ -3,8 +3,9 @@
 [e2e.com/examples](https://e2e.com/examples) lists every
 example in [`examples.json`](examples.json): the official ones, which the e2e
 team maintains in this folder, in other tester-army repositories, and in the
-e2e_inc group on GitLab, and partner and community examples in their own
-GitHub or GitLab repositories. Built something with
+e2e_inc group on GitLab, partner examples in the partner's own GitHub
+repositories, and community examples in their own GitHub or GitLab
+repositories. Built something with
 e2e? Add it with a pull request.
 
 ## Add your example
