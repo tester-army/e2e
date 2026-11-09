@@ -44,6 +44,20 @@ export type PermissionState = 'grant' | 'deny' | 'reset';
 export type LaunchPermissions = Readonly<Partial<Record<DevicePermission, PermissionState>>>;
 
 /**
+ * The `transition` budgets by the kind of the last action, in milliseconds,
+ * each a non-negative integer. A `gesture` or `launch` budget left out takes
+ * the `default` one.
+ */
+export interface TransitionBudgets {
+  /** After any action except a gesture or a launch: a tap, fill, key, back, and the rest. Default 500. */
+  readonly default?: number | undefined;
+  /** After a scroll or swipe, which can return while the content is still moving. Default: the `default` budget. */
+  readonly gesture?: number | undefined;
+  /** After the app launches, relaunches, or closes, or a link opens into it. Default: the `default` budget. */
+  readonly launch?: number | undefined;
+}
+
+/**
  * Options of the device engine: which devices it drives and how. The app
  * under test is the target's `app` (`bundleId`, `appPath`,
  * `launchArguments`, `permissions`). Every optional value also accepts
@@ -114,8 +128,13 @@ export interface MobileOptions {
    * only when keyboard visibility is unchanged. Opening or closing the
    * keyboard also uses the remaining budget. Screen swipes in tests wait out
    * the remaining budget before scrolling. Raise it for slower transitions.
+   * A number is that budget after every action. An object sets it by the kind
+   * of the last action: `default` for any action except a gesture or a launch,
+   * `gesture` after a scroll or swipe, `launch` after the app launches,
+   * relaunches, or closes, or a link opens into it. A `gesture` or `launch`
+   * budget left out takes the `default` one.
    */
-  readonly transition?: number | undefined;
+  readonly transition?: number | TransitionBudgets | undefined;
   /**
    * Whether a video recording draws agent-device's touch indicator where a
    * test tapped. Default `true`. `false` records the plain screen, and skips

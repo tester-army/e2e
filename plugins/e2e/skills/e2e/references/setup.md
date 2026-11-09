@@ -406,7 +406,10 @@ export default {
   `app.appPath` before tests. Set `E2B_API_KEY`; install the `e2b` peer. The
   runner needs no `adb`.
 - A control that appeared or moved with the previous action waits out
-  `transition` (default 500 ms). Opening or closing the keyboard also uses
+  `transition` (default 500 ms). Pass an object to set the wait by the
+  previous action: `gesture` after a scroll or swipe, `launch` after the app
+  launches, relaunches, or closes, and `default` for the rest. A `gesture` or
+  `launch` left out takes `default`. Opening or closing the keyboard also uses
   the remaining budget. Screen swipes in tests wait out the remaining budget
   before scrolling. Agent actions settle `settle` ms (default 150) before the
   next observation, `settle: false` skips it.

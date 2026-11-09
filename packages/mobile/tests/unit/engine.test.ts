@@ -518,6 +518,22 @@ describe('lifecycle', () => {
     expect(() => harness({ transition: 0.5 })).toThrow(/non-negative integer/);
   });
 
+  it.each([
+    ['a negative number', -5, 'mobile: `transition` must be a non-negative integer of milliseconds'],
+    ['a fraction', 0.5, 'mobile: `transition` must be a non-negative integer of milliseconds'],
+    ['a string', '500ms', 'mobile: `transition` must be a non-negative integer of milliseconds, or an object of them by kind of action (default, gesture, launch)'],
+    ['an array', [500], 'mobile: `transition` must be a non-negative integer of milliseconds, or an object of them by kind of action (default, gesture, launch)'],
+    ['a negative default budget', { default: -1 }, 'mobile: `transition.default` must be a non-negative integer of milliseconds'],
+    ['a fractional gesture budget', { gesture: 1.5 }, 'mobile: `transition.gesture` must be a non-negative integer of milliseconds'],
+    ['a launch budget that is no number', { launch: '500' }, 'mobile: `transition.launch` must be a non-negative integer of milliseconds'],
+    ['a misspelled kind of action', { gesure: 1_500 }, 'mobile: `transition` has unknown key "gesure"; did you mean "gesture"?'],
+    ['a kind of action it does not know', { scroll: 1_500 }, 'mobile: `transition` has unknown key "scroll"; expected one of default, gesture, launch'],
+  ])('refuses %s as the transition', (_what, transition, message) => {
+    const refusal = expect.objectContaining({ code: 'INVALID_CONFIG', message });
+    expect(() => harness({ transition: transition as never })).toThrowError(refusal);
+    expect(() => mobile({ platform: 'ios', transition: transition as never })).toThrowError(refusal);
+  });
+
   it('rejects a blank device name at config time', () => {
     expect(() => harness({ device: '' })).toThrow(/must not be blank/);
     expect(() => harness({ device: ['iPhone 17', ' '] })).toThrow(/must not be blank/);
@@ -3658,6 +3674,86 @@ describe('deterministic actions', () => {
       ],
     }));
     await tapsAtOnce(h, await observed(h, 'Save'), { ref: '@e11' });
+  });
+
+  describe('transition budget by the kind of the last action', () => {
+    /** Three different budgets, so the wait a step took names the one it used. */
+    const BUDGETS = { default: 200, gesture: 800, launch: 50 } as const;
+    type Kind = keyof typeof BUDGETS;
+    type Step = (h: Harness) => Promise<unknown>;
+    const submit: RawNode = { ref: '@e11', index: 11, parentIndex: 0, depth: 1, type: 'button', label: 'Submit', rect: { x: 0, y: 600, width: 390, height: 44 } };
+
+    /**
+     * How long a test's tap on a control that came with `last`, the last thing
+     * the test did, waits before it is sent. The clock is faked, so this is the
+     * budget the wait used, not a measurement. The launch's own wait is over
+     * by the time `last` runs.
+     */
+    async function waitedAfter(h: Harness, last: Step): Promise<number> {
+      await openAttempt(h);
+      await sleep(1_000);
+      await last(h);
+      const startedAt = Date.now();
+      h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, nodes: [...SETTINGS_NODES, submit] }));
+      await h.engine.perform!((await observed(h, 'Submit')).ref, { kind: 'tap' }, test());
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11' });
+      return Date.now() - startedAt;
+    }
+
+    const relaunch: Step = (h) => h.engine.session!.restart!(test());
+    const tap: Step = async (h) => h.engine.perform!((await observed(h, 'About')).ref, { kind: 'tap' }, test());
+    const scroll: Step = async (h) => h.engine.perform!((await screenRootOf(h)).ref, { kind: 'swipe', direction: 'down' }, test());
+
+    const LAST_ACTIONS: [what: string, kind: Kind, last: Step][] = [
+      ['an app relaunch', 'launch', relaunch],
+      ['an app close', 'launch', (h) => h.surface.closeApp(test().signal)],
+      ['a link opened into the app', 'launch', (h) => h.surface.openLink(new URL('https://example.com/orders/42'), undefined, test().signal)],
+      ['a tap', 'default', tap],
+      ['a fill', 'default', async (h) => h.engine.perform!((await observed(h, 'Search')).ref, { kind: 'fill', value: 'blue', sensitive: false }, test())],
+      [
+        'a drag',
+        'default',
+        async (h) => {
+          const { root } = await h.engine.observe!(operation());
+          return h.engine.perform!(named(root, 'About').ref, { kind: 'dragTo', target: named(root, 'Back').ref }, test());
+        },
+      ],
+      ['a tap at a point', 'default', (h) => h.engine.performAt!({ x: 10, y: 20 }, { kind: 'tap' }, test())],
+      ['a back', 'default', (h) => h.engine.session!.back!(test())],
+      ['a tap that follows a scroll', 'default', async (h) => { await scroll(h); await tap(h); }],
+      ['a scroll of the screen', 'gesture', scroll],
+      ['a swipe on a control', 'gesture', async (h) => h.engine.perform!((await observed(h, 'Scroller')).ref, { kind: 'swipe', direction: 'down' }, test())],
+      ['a swipe to a point', 'gesture', (h) => h.engine.performAt!({ x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 10, y: 300 } }, test())],
+      ['a timed swipe to a point', 'gesture', (h) => h.engine.performAt!({ x: 10, y: 20 }, { kind: 'swipeTo', target: { x: 10, y: 300 }, durationMs: 400 }, test())],
+    ];
+
+    it.each(LAST_ACTIONS)('after %s the wait is the %s budget', async (_what, kind, last) => {
+      expect(await waitedAfter(harness({ transition: BUDGETS }), last)).toBe(BUDGETS[kind]);
+    });
+
+    it.each(LAST_ACTIONS)('after %s a number is one budget for every kind of action', async (_what, _kind, last) => {
+      const asNumber = await waitedAfter(harness({ transition: 300 }), last);
+      const asObject = await waitedAfter(harness({ transition: { default: 300, gesture: 300, launch: 300 } }), last);
+      expect([asNumber, asObject]).toEqual([300, 300]);
+    });
+
+    it.each([
+      ['a budget for every kind', BUDGETS, { launch: 50, default: 200, gesture: 800 }],
+      ['default alone, which gesture and launch then take', { default: 120 }, { launch: 120, default: 120, gesture: 120 }],
+      ['gesture alone, leaving the others at 500', { gesture: 900 }, { launch: 500, default: 500, gesture: 900 }],
+      ['launch alone, leaving the others at 500', { launch: 40 }, { launch: 40, default: 500, gesture: 500 }],
+      ['default and gesture, which launch then follows with default', { default: 150, gesture: 700 }, { launch: 150, default: 150, gesture: 700 }],
+      ['no budget at all', {}, { launch: 500, default: 500, gesture: 500 }],
+      ['budgets that are undefined', { default: undefined, gesture: undefined, launch: undefined }, { launch: 500, default: 500, gesture: 500 }],
+      ['no transition', undefined, { launch: 500, default: 500, gesture: 500 }],
+      ['a zero gesture budget, which waits for nothing', { gesture: 0 }, { launch: 500, default: 500, gesture: 0 }],
+    ])('waits per kind of action with %s', async (_what, transition, expected) => {
+      expect({
+        launch: await waitedAfter(harness({ transition }), relaunch),
+        default: await waitedAfter(harness({ transition }), tap),
+        gesture: await waitedAfter(harness({ transition }), scroll),
+      }).toEqual(expected);
+    });
   });
 });
 

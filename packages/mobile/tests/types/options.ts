@@ -1,11 +1,15 @@
 /** Compile-time assertions for the device engine's options and the hosted device provider seam. */
-import type { DeviceLease, DeviceProvider, DeviceRequest, DeviceSession, MobileOptions } from '../../src/index.ts';
+import type { DeviceLease, DeviceProvider, DeviceRequest, DeviceSession, MobileOptions, TransitionBudgets } from '../../src/index.ts';
 
 ({ platform: 'ios', device: 'iPhone 16' }) satisfies MobileOptions;
 ({ platform: 'android', device: ['Pixel_8', 'Pixel_9'] }) satisfies MobileOptions;
 ({ platform: 'ios', settle: 200, transition: 500, snapshot: 'interactive' }) satisfies MobileOptions;
 // `false` skips the settle wait, and a value read from the environment needs no conditional spread.
 ({ platform: 'ios', settle: false, device: process.env['E2E_DEVICE'] }) satisfies MobileOptions;
+// A transition budget per kind of action. Each is optional and takes `undefined`.
+const budgets = { default: 750, gesture: 1_500, launch: 500 } satisfies TransitionBudgets;
+({ platform: 'ios', transition: budgets }) satisfies MobileOptions;
+({ platform: 'android', transition: { gesture: 1_500, launch: undefined } }) satisfies MobileOptions;
 
 const farm = {
   name: 'farm',
@@ -25,8 +29,12 @@ const farm = {
 ({ platform: 'ios', snapshot: 'all' }) satisfies MobileOptions;
 // @ts-expect-error settle is milliseconds or false; true names no window.
 ({ platform: 'ios', settle: true }) satisfies MobileOptions;
-// @ts-expect-error the transition budget is a number of milliseconds.
+// @ts-expect-error the transition budget is a number of milliseconds, or an object of them by kind of action.
 ({ platform: 'ios', transition: '500ms' }) satisfies MobileOptions;
+// @ts-expect-error a budget by kind of action is a number of milliseconds.
+({ platform: 'ios', transition: { gesture: '1500ms' } }) satisfies MobileOptions;
+// @ts-expect-error the kinds of action are default, gesture, and launch.
+({ platform: 'ios', transition: { scroll: 1_500 } }) satisfies MobileOptions;
 // @ts-expect-error a device is a name, a pool of names, or a provider; a lease is none of those.
 ({ platform: 'ios', device: { id: 'lease-1', daemon: { baseUrl: 'http://10.0.0.7:4700' } } }) satisfies MobileOptions;
 // @ts-expect-error a provider releases what it leased.
