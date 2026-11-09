@@ -274,9 +274,13 @@ function isError(value: unknown): value is ReportError {
   );
 }
 
-/** Whether a result stands for a test its run did not carry out whole: left out, cut short, or never reached. */
+/**
+ * Whether a result stands for a test its run did not carry out whole: left
+ * out, never reached, or with an attempt cut short, which a retry after a
+ * failure leaves under the earlier verdict.
+ */
 function leftUnmeasured(result: ReportResult): boolean {
-  if (result.selected === false || result.status === 'interrupted') return true;
+  if (result.selected === false || result.status === 'interrupted' || result.attempts.some((attempt) => attempt.status === 'interrupted')) return true;
   return result.skip !== undefined && UNDELIVERED_SKIPS.has(result.skip.cause);
 }
 
@@ -289,7 +293,8 @@ function leftUnmeasured(result: ReportResult): boolean {
  * would read as slower. A file with no attempt has none either.
  */
 export function fileDurationsOf(report: Report1Document): ReadonlyMap<string, number> {
-  const partial = new Set(report.run.results.filter(leftUnmeasured).map((result) => fileDurationKey(result.targetId, result.file)));
+  const cutShort = report.run.serialGroups.filter((group) => group.attempts.some((attempt) => attempt.status === 'interrupted'));
+  const partial = new Set([...report.run.results.filter(leftUnmeasured), ...cutShort].map((unit) => fileDurationKey(unit.targetId, unit.file)));
   const durations = new Map<string, number>();
   for (const unit of [...report.run.results, ...report.run.serialGroups]) {
     const key = fileDurationKey(unit.targetId, unit.file);

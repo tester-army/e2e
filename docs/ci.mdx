@@ -208,8 +208,9 @@ on `main`, the whole suite runs. See
 ## Cache the timings history
 
 With more than one worker, `e2e run` starts the longest files first, ordered
-by `.e2e/timings.json`: a few KB that every run updates. A fresh CI checkout
-has none, so restore it from your CI cache before the run and save it after.
+by `<output>/timings.json` (`.e2e/timings.json` by default): a few KB that a
+run updates when it ran at least one file whole. A fresh CI checkout has none,
+so restore it from your CI cache before the run and save it after.
 [GitHub Actions](/ci/github-actions#cache-the-timings-history) has the step.
 
 - The file is advisory. One that is missing, corrupt, or invalid is no history,

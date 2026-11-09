@@ -26,6 +26,12 @@ const NEW_RUN_WEIGHT = 1 / 3;
 /** The separator `fileDurationKey` puts between a target name and a file; target names never hold a `:`. */
 const KEY_SEPARATOR = '::';
 
+/**
+ * A key as `timings-1` allows it: a target name, then a project-relative POSIX
+ * file with no `..` segment. The same pattern as `schema/timings-v1.schema.json`.
+ */
+const KEY_PATTERN = /^(?!\.+::)[A-Za-z0-9_.-]+::(?!\/)(?![A-Za-z]:)(?!.*\\)(?!\.\.?(?:\/|$))(?!.*\/\.\.?(?:\/|$))(?!.*\/\/)[^/]+(?:\/[^/]+)*$/u;
+
 /** Reads `timings.json`; undefined for anything but a valid `timings-1` document. */
 async function readTimingsFile(file: string): Promise<ReadonlyMap<string, number> | undefined> {
   try {
@@ -37,7 +43,7 @@ async function readTimingsFile(file: string): Promise<ReadonlyMap<string, number
     if (typeof files !== 'object' || files === null || Array.isArray(files)) return undefined;
     const durations = new Map<string, number>();
     for (const [key, ms] of Object.entries(files)) {
-      if (!key.includes(KEY_SEPARATOR) || typeof ms !== 'number' || !Number.isSafeInteger(ms) || ms < 0) return undefined;
+      if (!KEY_PATTERN.test(key) || typeof ms !== 'number' || !Number.isSafeInteger(ms) || ms < 0) return undefined;
       durations.set(key, ms);
     }
     return durations;

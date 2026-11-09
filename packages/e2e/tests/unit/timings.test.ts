@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Ajv2020 } from 'ajv/dist/2020.js';
@@ -63,6 +63,32 @@ describe('loadTimings', () => {
     expect((await loadTimings(timings, report)).size).toBe(0);
   });
 
+  it.each([
+    ['web::tests/a.e2e.ts', true],
+    ['mobile-ios.1::a/b/c.e2e.ts', true],
+    ['web::a.e2e.ts::b', true],
+    ['web::../outside.e2e.ts', false],
+    ['web::tests/../../outside', false],
+    ['web::..', false],
+    ['web::tests/..', false],
+    ['web::/abs/a.e2e.ts', false],
+    ['web::C:/a.e2e.ts', false],
+    ['web::tests\\a.e2e.ts', false],
+    ['web::tests//a.e2e.ts', false],
+    ['..::a.e2e.ts', false],
+    ['.::a.e2e.ts', false],
+    ['::a.e2e.ts', false],
+    ['web::', false],
+    ['a.e2e.ts', false],
+  ])('reads the key %j as the schema does (%s)', async (key, accepted) => {
+    const { timings, report } = project([]);
+    writeFileSync(timings, JSON.stringify({ schemaVersion: 'timings-1', files: { [key]: 90 } }));
+    expect((await loadTimings(timings, report)).size).toBe(accepted ? 1 : 0);
+    const schema = JSON.parse(readFileSync(path.join(import.meta.dirname, '..', '..', 'schema', 'timings-v1.schema.json'), 'utf8')) as Record<string, unknown>;
+    const validate = new Ajv2020({ strict: false }).compile(schema);
+    expect(validate({ schemaVersion: 'timings-1', files: { [key]: 90 } })).toBe(accepted);
+  });
+
   it('is no history when nothing is there', async () => {
     const { timings, report } = project([]);
     expect((await loadTimings(timings, report)).size).toBe(0);
@@ -119,7 +145,15 @@ describe('writeTimings', () => {
 
   it('leaves the file as it was when the run timed nothing', async () => {
     const { root, timings, report } = project(['a.e2e.ts']);
+    const seeded = JSON.stringify({ schemaVersion: 'timings-1', files: { 'web::a.e2e.ts': 70, 'web::deleted.e2e.ts': 9 } });
+    writeFileSync(timings, seeded);
     await writeTimings(reportOf([]), { timingsPath: timings, reportPath: report, projectRoot: root, targets: new Set(['web']) });
-    expect(() => readFileSync(timings)).toThrow();
+    expect(readFileSync(timings, 'utf8')).toBe(seeded);
+  });
+
+  it('writes no file when there is no history and the run timed nothing', async () => {
+    const { root, timings, report } = project(['a.e2e.ts']);
+    await writeTimings(reportOf([]), { timingsPath: timings, reportPath: report, projectRoot: root, targets: new Set(['web']) });
+    expect(existsSync(timings)).toBe(false);
   });
 });

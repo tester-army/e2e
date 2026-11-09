@@ -5,15 +5,25 @@
   "description": "The history `e2e run` keeps in `<output>/timings.json` to start the longest files first. Advisory: a runner that finds any other document reads no history, and a restored file can reorder work, never change a result.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "files"],
+  "required": [
+    "schemaVersion",
+    "files"
+  ],
   "properties": {
-    "schemaVersion": { "const": "timings-1" },
+    "schemaVersion": {
+      "const": "timings-1"
+    },
     "files": {
-      "description": "Milliseconds a target's file took, smoothed over recent runs, keyed `<target>::<project-relative file>`.",
+      "description": "Milliseconds a target's file took, smoothed over recent runs, keyed `<target>::<project-relative file>`: a target name, then a POSIX path with no `..` segment.",
       "type": "object",
       "maxProperties": 100000,
-      "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+::.+$" },
-      "additionalProperties": { "type": "integer", "minimum": 0 }
+      "propertyNames": {
+        "pattern": "^(?!\\.+::)[A-Za-z0-9_.-]+::(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!\\.\\.?(?:/|$))(?!.*/\\.\\.?(?:/|$))(?!.*//)[^/]+(?:/[^/]+)*$"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
     }
   }
 }

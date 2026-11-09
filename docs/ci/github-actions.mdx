@@ -109,13 +109,13 @@ step before the run:
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .e2e/timings.json
-          key: e2e-timings-${{ github.ref_name }}-${{ github.run_id }}
+          key: e2e-timings-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             e2e-timings-${{ github.ref_name }}-
             e2e-timings-main-
 ```
 
-Each run saves a new entry and restores the newest one for its branch. A pull
+Each run, and each rerun, saves a new entry and restores the newest one for its branch. A pull
 request can read the base branch's cache but not write to it, so a first run
 on a new branch starts from the history of `main`.
 

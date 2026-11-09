@@ -635,7 +635,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
     .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
-    .option('--timings <file>', 'the timings history file a run orders its files by and updates when it ends (default: <output>/timings.json)')
+    .option('--timings <file>', 'the timings history file a run updates when it ends, and with more than one worker starts the longest files first by (default: <output>/timings.json)')
     .addOption(new Option('--artifacts <dir>').hideHelp().argParser(removedArtifactsFlag))
     .option('--debug', 'print phase timings and the agent step table to stderr')
     .option('--ai-trace', 'record every model call to <output>/ai-trace.json (unbox-ai)')
