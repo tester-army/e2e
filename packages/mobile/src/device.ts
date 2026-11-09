@@ -173,7 +173,6 @@ export interface Device {
   setClipboard(text: string): Promise<void>;
 }
 
-/** Builds the device fixture for one attempt. */
 /** The agent-device session a surface is bound to: `device.unstable_raw`, and what `deviceSession()` hands a custom tool. */
 export function rawSession(surface: AgentDeviceSurface): DeviceSession {
   const { session, deviceId, deviceName } = surface.boundDevice;
@@ -189,6 +188,7 @@ export function rawSession(surface: AgentDeviceSurface): DeviceSession {
   };
 }
 
+/** Builds the device fixture for one attempt. */
 export function createDeviceFixture(surface: AgentDeviceSurface, context: EngineFixtureContext): Device {
   const device: Device = {
     get unstable_raw() {

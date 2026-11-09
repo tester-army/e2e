@@ -100,6 +100,11 @@ describe('agent tool pack', () => {
     const session = deviceSession(ios, android);
     expect(session).toMatchObject({ platform: 'android', session: 'e2e-android-0' });
     expect(session.client).toBe(androidFake.client);
+
+    await ios.startAttempt!({ attemptId: 'a2', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    expect(() => deviceSession(ios, android)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_STATE', message: expect.stringContaining('several agent-device attempts') }),
+    );
   });
 
   it('refuses a link the model hands to open_app before the device sees it', async () => {

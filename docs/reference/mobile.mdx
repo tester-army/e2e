@@ -952,8 +952,8 @@ const mobileData = defineTool(
     description: 'Turn cellular mobile data on or off. Wi-Fi is not affected.',
     inputSchema: z.object({ on: z.boolean() }),
     execute: async ({ on }) => {
-      const { client } = deviceSession(iphone, pixel);
-      await client.settings.update({ setting: 'mobile-data', state: on ? 'on' : 'off' });
+      const { client, selection } = deviceSession(iphone, pixel);
+      await client.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
       return on ? 'mobile data is on' : 'mobile data is off';
     },
   }),
@@ -965,6 +965,8 @@ tools: { ...mobileTools(iphone, pixel), mobileData },
 
 - Pass every device engine the config declares, as with `mobileTools`.
   Outside an attempt it throws `INVALID_STATE`.
+- Spread `selection` into a call so it reaches the worker's device even
+  before the session has an app open, as the engine's own calls do.
 - Client calls are not steps: the report shows the tool call, not what the
   client did, and a cache replay runs a `mutates: true` tool live.
 - Like `unstable_raw`, it can change in any release.
