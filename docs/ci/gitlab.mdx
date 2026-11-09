@@ -65,9 +65,10 @@ GitLab caches only paths inside the project, so `PLAYWRIGHT_BROWSERS_PATH`
 moves the [browsers](/reference/web#installing-browsers) there. The cache
 keeps them until the lockfile changes.
 
-Start the app on `127.0.0.1`, as `APP_URL` does. In the container, a dev
-server that listens on `localhost`, such as Vite's, can bind only `::1`.
-Then the runner can't reach it and the run fails with `APP_UNREACHABLE`.
+Make the app's command listen on `127.0.0.1`, the host `APP_URL` names. In
+the container, a dev server that listens on `localhost`, such as Vite's,
+can bind only `::1`. Then e2e can't reach it and the run fails with
+`APP_UNREACHABLE`.
 
 `reports: junit` shows the results in the merge request widget and on the
 pipeline's **Tests** tab. `when: always` uploads `.e2e/` when a test fails
@@ -80,6 +81,11 @@ Variables**, with the visibility **Masked and hidden**. Add user
 credentials, such as `E2E_USER_ADMIN_PASSWORD`, the same way. Each job gets
 them as environment variables.
 
+- Clear **Expand variable reference**. Otherwise GitLab rejects a masked
+  value with `$` and some other characters.
+- GitLab masks only values of 8 or more characters, on one line, with no
+  spaces. Use **Visible** for a value it can't mask, such as a short
+  username.
 - Clear **Protect variable** unless the tests run only on protected
   branches. GitLab gives a protected variable only to pipelines on
   protected branches and tags.
@@ -90,16 +96,14 @@ them as environment variables.
 ## Run only affected tests
 
 To let a [test filter](/filters) leave out the tests a merge request can't
-affect, pass the merge request's base to `--changed-since`. Fetch the full
-history, and skip the flag in merge trains:
+affect, pass the merge request's base to `--changed-since`. Add
+`GIT_DEPTH: 0` to the job's `variables` to fetch the full history. Then
+replace the `npx e2e run` line with this one, which skips the flag in merge
+trains:
 
 ```yaml
-e2e:
-  variables:
-    GIT_DEPTH: 0
   script:
-    - npm ci --cache .npm --prefer-offline
-    - npx @e2e-dev/web install chromium --with-deps
+    # ...
     - |
       if [ -n "$CI_MERGE_REQUEST_IID" ] && [ "$CI_MERGE_REQUEST_EVENT_TYPE" != merge_train ]; then
         set -- --changed-since "${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}"
@@ -159,10 +163,10 @@ e2e-ios:
         -configuration Release -sdk iphonesimulator \
         -destination 'generic/platform=iOS Simulator' \
         -derivedDataPath build
-    - UDID=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
-    - echo "$UDID" > .simulator-udid
-    - xcrun simctl bootstatus "$UDID" -b
-    - xcrun simctl install "$UDID" build/Build/Products/Release-iphonesimulator/MyApp.app
+    - export E2E_DEVICE=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+    - echo "$E2E_DEVICE" > .simulator-udid
+    - xcrun simctl bootstatus "$E2E_DEVICE" -b
+    - xcrun simctl install "$E2E_DEVICE" build/Build/Products/Release-iphonesimulator/MyApp.app
     - npx e2e run --target ios --reporter list,junit
   after_script:
     - xcrun simctl delete "$(cat .simulator-udid)"
@@ -170,22 +174,31 @@ e2e-ios:
 e2e-android:
   extends: .e2e-mobile
   tags: [linux-kvm]
+  variables:
+    E2E_DEVICE: emulator-5580
   script:
     - npm ci
     - (cd android && ./gradlew :app:assembleRelease)
-    - $ANDROID_HOME/emulator/emulator -avd e2e -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > /dev/null 2>&1 &
-    - adb wait-for-device
-    - until [ "$(adb shell getprop sys.boot_completed | tr -d '\r')" = "1" ]; do sleep 2; done
-    - adb install -r android/app/build/outputs/apk/release/app-release.apk
+    - mkdir -p .e2e
+    - $ANDROID_HOME/emulator/emulator -avd e2e -port 5580 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > .e2e/emulator.log 2>&1 &
+    - timeout 300 adb -s $E2E_DEVICE wait-for-device
+    - timeout 300 sh -c 'until [ "$(adb -s $E2E_DEVICE shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
+    - adb -s $E2E_DEVICE install -r android/app/build/outputs/apk/release/app-release.apk
     - npx e2e run --target android --reporter list,junit
   after_script:
-    - adb emu kill
+    - adb -s $E2E_DEVICE emu kill
 ```
 
-GitLab runs all `script` lines in one shell, so the emulator and `UDID`
-stay available to the next lines. `after_script` runs in a new shell, also
-when the job fails, so the iOS job reads the simulator's UDID from a file.
-A self-managed runner keeps `~/.agent-device` between jobs, so the XCUITest
+Each target names its device with `device: process.env.E2E_DEVICE` in
+`mobile()`. Then the run drives the device this job booted, never a device
+left over from another job on the same machine.
+
+GitLab runs all `script` lines in one shell, so the emulator and
+`E2E_DEVICE` stay available to the next lines. `after_script` runs in a new
+shell after a failed `script` too, but not after a timeout, so a timed-out
+job can leave its device running. The Android job writes the emulator's log
+to `.e2e/emulator.log`, so a failed boot shows in the artifacts. A
+self-managed runner keeps `~/.agent-device` between jobs, so the XCUITest
 runner is built only on the first run.
 
 To run without a simulator or emulator on the runner, lease devices from
