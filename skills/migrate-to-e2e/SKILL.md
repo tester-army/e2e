@@ -153,12 +153,12 @@ once and the progress file says so; later sessions skip this step.
      an env file (`dotenv.config()`), load it the same way in the e2e
      config, so tests and helpers see the same values. `app.command` does
      not see them; pass the ones the server needs in `command.env`.
-4. Install the dependencies, then run `npx e2e doctor` (e2e 0.23.0 or
-   newer) and fix every check it fails. It loads the config and checks each
-   target's engine (the browser, or agent-device, the toolchain, and the
-   devices) without starting the app. When step 3.2 configured a model,
-   add `--check-model` to call each model once per distinct provider-options
-   and input-limit combination.
+4. Install the packages (with the repo's package manager), then run
+   `npx e2e doctor` (e2e 0.23.0 or newer) and fix every check it fails. It
+   loads the config and checks each target's engine without starting the
+   app: the browser on a web target; agent-device, the toolchain, the
+   devices, and the build at `appPath` on a mobile one. When step 3.2
+   configured a model, add `--check-model` to call each model once.
 5. Port the simplest source test, often the sign-in or the launch, as the
    smoke test. It must pass on every target before any other port. When it
    cannot, the harness is wrong, not the test: fix the harness.
