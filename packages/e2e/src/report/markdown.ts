@@ -44,7 +44,7 @@ import {
 import { cell, code, formatDuration, link, MAX_ID_CHARS, MAX_PATH_CHARS, MAX_TITLE_CHARS, plural } from './markdown-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
 import { isExploreVerdict } from './traces.ts';
-import { toPosixPath, writeTextReport } from './write.ts';
+import { posixRelative, writeTextReport } from './write.ts';
 import type { Reporter, ReporterSummary } from '../types.ts';
 
 type ReportRun = Report1Document['run'];
@@ -636,7 +636,7 @@ export const markdownReporter: Reporter = {
   name: 'markdown',
   async onRunFinished(run) {
     if (run.reportPath === undefined) return;
-    const artifactsDir = toPosixPath(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
+    const artifactsDir = posixRelative(run.projectRoot, run.artifactsRoot);
     const summary = path.join(path.dirname(run.reportPath), 'summary.md');
     await writeTextReport(summary, renderMarkdownReport(run.report, { artifactsDir, traces: run.traces }));
     const rows: ReporterSummary = [{ label: 'Markdown', text: path.relative(run.projectRoot, summary) || summary }];

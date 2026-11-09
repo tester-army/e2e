@@ -48,6 +48,7 @@ Upload `.e2e/` at the end of each job, also when a test fails. It holds:
 | `results/` | The trace pages, screenshots, and screen dumps of each test. With `--video`, also a video for each target whose engine can record |
 
 Point the test-report integration of your CI service at `.e2e/junit.xml`.
+On GitLab, `junit.xml` also links each failure screenshot, so it shows in the test report.
 The [`output`](/reference/config#output) option moves `.e2e/`.
 
 ## Model credentials
