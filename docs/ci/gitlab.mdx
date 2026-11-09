@@ -163,6 +163,9 @@ e2e:
     - npx e2e run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL --reporter list,junit
 ```
 
+A shard with no test fails with `NO_TESTS`. If the run can select fewer
+tests than shards, add `--pass-with-no-tests`.
+
 ## iOS and Android
 
 Run the mobile jobs on self-managed runners with the shell executor: a Mac
