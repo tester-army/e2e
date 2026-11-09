@@ -104,6 +104,11 @@ export function VideoPlayer({
         onClick={toggle}
         onPlay={() => setPaused(false)}
         onPause={() => setPaused(true)}
+        onLoadStart={() => {
+          // Another part's clock and timeline must not show while this one loads.
+          setTime(0);
+          setDuration(0);
+        }}
         onLoadedMetadata={(event) => readDuration(event.currentTarget)}
         onDurationChange={(event) => readDuration(event.currentTarget)}
         onTimeUpdate={(event) => {

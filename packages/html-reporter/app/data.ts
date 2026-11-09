@@ -95,8 +95,8 @@ function attemptViews(result: Result, groups: ReadonlyMap<string, SerialGroup>):
       status: member?.status ?? attempt.status,
       durationMs: member?.durationMs ?? 0,
       startedAt: member?.startedAt ?? attempt.startedAt,
-      // The group's error is a failing member's: a member that ran keeps its own, one that never ran shows what stopped it.
-      error: member === undefined || member.status === 'skipped' ? attempt.error : member.error,
+      // The group's error is often another member's, so a member that passed never shows it; any other falls back to it.
+      error: member?.status === 'passed' ? member.error : (member?.error ?? attempt.error),
       secondaryErrors: [...(member?.secondaryErrors ?? []), ...attempt.secondaryErrors],
       steps: member?.steps ?? [],
       appLog: member?.appLog ?? [],

@@ -95,12 +95,12 @@ function resultTone(status: ResultStatus): Tone {
 
 const STEP_TONE: Record<Step['status'], Tone> = { passed: 'passed', failed: 'failed', blocked: 'failed', 'timed-out': 'failed', cancelled: 'skipped' };
 
-/** A result or attempt status as a colored icon, named for screen readers. */
-export function StatusIcon({ status }: { status: ResultStatus }) {
+/** A result or attempt status as a colored icon, named for screen readers unless a `StatusTag` beside it already says it. */
+export function StatusIcon({ status, named = true }: { status: ResultStatus; named?: boolean }) {
   const tone = resultTone(status);
   return (
     <span className={TONE_TEXT[tone]}>
-      <Icon name={TONE_ICON[tone]} label={status} />
+      <Icon name={TONE_ICON[tone]} {...(named ? { label: status } : {})} />
     </span>
   );
 }

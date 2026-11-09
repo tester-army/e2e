@@ -31,7 +31,7 @@ export function ListView({ model, status, search }: { model: ReportModel; status
 
   return (
     <div className="flex flex-col gap-e2e-4">
-      <RunHeader model={model} />
+      <RunHeader model={model} counts={counts} />
       <div className="flex flex-wrap items-center gap-x-e2e-4 gap-y-e2e-2 border-b border-shade-700 pb-e2e-2">
         <nav aria-label="Status" className="flex flex-wrap gap-x-e2e-4 gap-y-e2e-2">
           {(Object.keys(STATUS_FILTERS) as StatusFilter[]).map((name) =>
@@ -68,9 +68,10 @@ export function ListView({ model, status, search }: { model: ReportModel; status
   );
 }
 
-function RunHeader({ model }: { model: ReportModel }) {
+/** `counts` are the listed tests', so the headline matches the tabs: filtered-out tests count as skipped there. */
+function RunHeader({ model, counts }: { model: ReportModel; counts: Record<StatusFilter, number> }) {
   const { run } = model;
-  const { summary, usage } = run;
+  const { usage } = run;
   const duration = Date.parse(run.finishedAt) - Date.parse(run.startedAt);
   const facts = [
     new Date(run.startedAt).toLocaleString(),
@@ -85,11 +86,11 @@ function RunHeader({ model }: { model: ReportModel }) {
   ].filter((fact) => fact !== undefined && fact !== '');
   // The bar's segments, best first; each grows with its count.
   const segments = [
-    { label: 'passed', value: summary.passed, color: 'bg-status-passed' },
-    { label: 'flaky', value: summary.flaky, color: 'bg-status-flaky' },
-    { label: 'failed', value: summary.failed, color: 'bg-status-failed' },
-    { label: 'interrupted', value: summary.interrupted, color: 'bg-status-interrupted' },
-    { label: 'skipped', value: summary.skipped, color: 'bg-status-skipped' },
+    { label: 'passed', value: counts.passed, color: 'bg-status-passed' },
+    { label: 'flaky', value: counts.flaky, color: 'bg-status-flaky' },
+    { label: 'failed', value: counts.failed, color: 'bg-status-failed' },
+    { label: 'interrupted', value: counts.interrupted, color: 'bg-status-interrupted' },
+    { label: 'skipped', value: counts.skipped, color: 'bg-status-skipped' },
   ].filter((segment) => segment.value > 0);
   const total = segments.reduce((sum, segment) => sum + segment.value, 0);
 
@@ -100,7 +101,7 @@ function RunHeader({ model }: { model: ReportModel }) {
         <p className="flex shrink-0 flex-col items-end gap-e2e-half">
           <span className="type-caption text-shade-500">passed</span>
           <span className="type-number-l">
-            {summary.passed}/{total}
+            {counts.passed}/{total}
           </span>
         </p>
       </div>
@@ -194,12 +195,14 @@ function TestRow({ result, model, tags }: { result: Result; model: ReportModel; 
   const final = attempts.at(-1);
   const retries = attempts.length - 1;
   const showTarget = model.targetIds.size > 1;
+  // Passed and failed say themselves by icon; any other status gets a tag too.
+  const tagged = result.status !== 'passed' && result.status !== 'failed';
   return (
     <a
       href={routeHref({ test: result.id })}
       className="group flex items-center gap-e2e-2 px-e2e-1 py-e2e-1 hover:bg-shade-800 focus-visible:bg-shade-800"
     >
-      <StatusIcon status={result.status} />
+      <StatusIcon status={result.status} named={!tagged} />
       <span className="min-w-0 flex-1">
         <span className="type-body-s block truncate text-shade-100">{result.titlePath.at(-1)}
           {repeatSuffix(result)}
@@ -214,7 +217,7 @@ function TestRow({ result, model, tags }: { result: Result; model: ReportModel; 
           ))}
           {showTarget ? <Tag>{result.targetId}</Tag> : null}
         </span>
-        {result.status === 'passed' || result.status === 'failed' ? null : <StatusTag status={result.status} />}
+        {tagged ? <StatusTag status={result.status} /> : null}
         {retries > 0 ? (
           <Tag tone="flaky" hint="Ran again after a failed attempt; the last attempt decides the result.">
             {retries === 1 ? '1 retry' : `${retries} retries`}

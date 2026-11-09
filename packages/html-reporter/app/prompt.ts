@@ -52,7 +52,9 @@ function section(title: string, lines: readonly string[]): string {
 
 function errorLines(error: ReportError): string[] {
   const where = error.source === undefined ? '' : ` at ${error.source.file}:${error.source.line}`;
-  return [`${error.code}${where}`, '```', error.message, '```'];
+  // Longer than any backtick run in the message, so the message cannot close it.
+  const fence = '`'.repeat(Math.max(3, ...(error.message.match(/`+/gu) ?? []).map((run) => run.length + 1)));
+  return [`${error.code}${where}`, fence, error.message, fence];
 }
 
 /** One line per step; a step that did not pass also gets what it did and why it stopped. */

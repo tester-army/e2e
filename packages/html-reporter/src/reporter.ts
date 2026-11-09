@@ -41,22 +41,27 @@ const TEMPLATE_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'a
 export function htmlReporter(options: HtmlReporterOptions = {}): Reporter {
   return {
     name: 'html',
-    onRunFinished: async (run) => writeReport(run, options, await readFile(TEMPLATE_PATH, 'utf8')),
+    onRunFinished: async (run, signal) => writeReport(run, options, await readFile(TEMPLATE_PATH, 'utf8'), signal),
   };
 }
 
-/** Fills the page template with one finished run, writes it, and resolves with the row naming where it went. */
-export async function writeReport(run: FinishedRun, options: HtmlReporterOptions, template: string): Promise<ReporterSummary> {
+/**
+ * Fills the page template with one finished run, writes it, and resolves with
+ * the row naming where it went. Once `signal` aborts (the runner gave up on
+ * its reporters), it stops reading files and writes nothing.
+ */
+export async function writeReport(run: FinishedRun, options: HtmlReporterOptions, template: string, signal?: AbortSignal): Promise<ReporterSummary> {
   const outputFile =
     options.outputFile === undefined
       ? path.join(path.dirname(run.artifactsRoot), 'report.html')
       : path.resolve(run.projectRoot, options.outputFile);
   const mode = options.media ?? 'link';
-  const media = await pageMedia(mode, run, outputFile);
+  const media = await pageMedia(mode, run, outputFile, signal);
   const resultsDir = toPosix(path.relative(run.projectRoot, run.artifactsRoot)) || '.';
   const traces = Object.fromEntries([...run.traces].map(([id, trace]) => [id, toPosix(trace)]));
   const sources = await sourceFrames(run.report, run.projectRoot, run.redact);
   const page = embedPayload(template, { report: run.report, media, resultsDir, traces, sources });
+  signal?.throwIfAborted();
   await mkdir(path.dirname(outputFile), { recursive: true });
   await writeFile(outputFile, page, 'utf8');
   const shown = path.relative(process.cwd(), outputFile) || outputFile;
@@ -67,12 +72,12 @@ export async function writeReport(run: FinishedRun, options: HtmlReporterOptions
 }
 
 /** What the page holds for screenshots and videos in each `media` mode. */
-async function pageMedia(mode: NonNullable<HtmlReporterOptions['media']>, run: FinishedRun, outputFile: string): Promise<ReportMedia> {
+async function pageMedia(mode: NonNullable<HtmlReporterOptions['media']>, run: FinishedRun, outputFile: string, signal: AbortSignal | undefined): Promise<ReportMedia> {
   switch (mode) {
     case 'link':
       return { mode, base: toPosix(path.relative(path.dirname(outputFile), run.artifactsRoot)) };
     case 'embed':
-      return { mode, files: await embedArtifacts(run.report, run.artifactsRoot) };
+      return { mode, files: await embedArtifacts(run.report, run.artifactsRoot, signal) };
     case 'none':
       return { mode };
   }
@@ -93,7 +98,7 @@ const INERT_TYPE = /^(?:image\/(?:png|jpeg|webp|gif)|video\/(?:mp4|webm|quicktim
  * out, so the page shows it as missing. So is a download the runner could not
  * scan for secrets (`redaction: 'incomplete'`): the page is a file to send.
  */
-async function embedArtifacts(report: Report, artifactsRoot: string): Promise<Record<string, string>> {
+async function embedArtifacts(report: Report, artifactsRoot: string, signal: AbortSignal | undefined): Promise<Record<string, string>> {
   const { run } = report;
   const attempts = [...run.results.flatMap((result) => result.attempts), ...run.serialGroups.flatMap((group) => group.attempts)];
   // One entry per file: a serial group's attempt and its members name the same artifacts.
@@ -109,6 +114,7 @@ async function embedArtifacts(report: Report, artifactsRoot: string): Promise<Re
     const file = path.resolve(artifactsRoot, artifactPath);
     const inside = path.relative(artifactsRoot, file);
     if (inside === '' || inside.startsWith('..') || path.isAbsolute(inside)) continue;
+    signal?.throwIfAborted();
     const bytes = await readFile(file).catch((error: unknown) => {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
       throw error;

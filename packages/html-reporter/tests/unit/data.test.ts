@@ -7,7 +7,7 @@ import fixture from '../../../e2e/schema/fixtures/report-v1.valid.json' with { t
 const REPORT = fixture as unknown as Report;
 
 describe('serial members', () => {
-  it('keep their own error, and one that never ran shows the error that stopped it', () => {
+  it('show their own error, never the group\'s once they passed, and the group\'s when they have none', () => {
     const [group] = REPORT.run.serialGroups;
     const [attempt] = group!.attempts;
     const [member] = attempt!.members;
@@ -17,6 +17,7 @@ describe('serial members', () => {
       { ...member!, testId: 'failed', status: 'failed', error: failure },
       { ...member!, testId: 'passed', status: 'passed' },
       { ...member!, testId: 'skipped', status: 'skipped' },
+      { ...member!, testId: 'failed in afterAll', status: 'failed' },
     ] as const;
     const model = buildModel({
       report: {
@@ -36,6 +37,7 @@ describe('serial members', () => {
       ['failed', failure.message],
       ['passed', undefined],
       ['skipped', failure.message],
+      ['failed in afterAll', failure.message],
     ]);
   });
 });

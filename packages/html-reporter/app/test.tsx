@@ -251,6 +251,7 @@ function StepRow({
     step.explanation !== undefined ||
     error !== undefined ||
     step.model !== undefined ||
+    step.cache?.detail !== undefined ||
     (step.turns?.length ?? 0) > 0 ||
     (step.screen?.changes.length ?? 0) > 0 ||
     actions.length > 0 ||
