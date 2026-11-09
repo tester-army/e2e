@@ -98,6 +98,27 @@ it doesn't pass keep the target's values:
 await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
 ```
 
+### Run the app in another language
+
+On iOS, launch arguments set the app's language and region for that launch.
+The device keeps its own language. Add one target per language:
+
+```ts
+{
+  name: 'ios-fr',
+  engine: mobile({ platform: 'ios' }),
+  app: {
+    bundleId: 'com.example.app',
+    launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR'],
+  },
+}
+```
+
+- The app must ship the language. If it doesn't, iOS shows its development
+  language.
+- Android has no launch argument for the language. Set the emulator's
+  language before the run.
+
 ### Expo development builds
 
 A development build (`expo-dev-client`) opens on the dev launcher and loads

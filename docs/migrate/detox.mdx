@@ -47,6 +47,7 @@ For a migration that spans several sessions, the [`migrate-to-e2e` skill](/codin
 | `detox build` | Your normal build |
 | `device.launchApp({ permissions })` | `app.permissions` on the target, set before every fresh launch, or `device.openApp(app, { relaunch: true, permissions })` for one; `grant`, `deny`, `reset` for `YES`, `NO`, `unset` |
 | `device.launchApp({ launchArgs })` | `app.launchArguments` on the target, or `device.openApp(app, { relaunch: true, launchArguments })` for one; a list of strings the platform launch command takes, not a map |
+| `device.launchApp({ languageAndLocale })` | `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']` on an iOS target; see [Run the app in another language](/mobile#run-the-app-in-another-language). On Android, set the emulator's language before the run |
 
 ```ts title="e2e.config.ts"
 import type { E2EConfig } from 'e2e';
