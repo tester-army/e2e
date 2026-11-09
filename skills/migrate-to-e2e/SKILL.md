@@ -157,7 +157,8 @@ once and the progress file says so; later sessions skip this step.
    newer) and fix every check it fails. It loads the config and checks each
    target's engine (the browser, or agent-device, the toolchain, and the
    devices) without starting the app. When step 3.2 configured a model,
-   add `--check-model` to call each model once.
+   add `--check-model` to call each model once per distinct provider-options
+   and input-limit combination.
 5. Port the simplest source test, often the sign-in or the launch, as the
    smoke test. It must pass on every target before any other port. When it
    cannot, the harness is wrong, not the test: fix the harness.
