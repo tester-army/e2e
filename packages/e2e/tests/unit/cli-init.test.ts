@@ -1320,6 +1320,31 @@ describe('e2e init', () => {
       expect(output().match(/The model endpoint is on this machine/gu)).toHaveLength(1);
     });
 
+    it('reads a loopback endpoint from an existing config too', async () => {
+      writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { e2e: '*', '@e2e-dev/web': '*' } }));
+      writeFileSync(path.join(dir, 'e2e.config.ts'), [
+        "import { createOpenAICompatible } from '@ai-sdk/openai-compatible';",
+        "const model = createOpenAICompatible({ name: 'local',",
+        "  baseURL: 'http://127.0.0.1:11434/v1',",
+        '});',
+        '',
+      ].join('\n'));
+      await init(dir, { yes: true, ci: 'gitlab' });
+      expect(output()).toContain('The model endpoint is on this machine, so agent steps fail in CI');
+    });
+
+    it.skipIf(!symlinks)('writes nothing through a symlinked .github folder', async () => {
+      const elsewhere = mkdtempSync(path.join(os.tmpdir(), 'e2e-init-elsewhere-'));
+      try {
+        symlinkSync(elsewhere, path.join(dir, '.github'), process.platform === 'win32' ? 'junction' : 'dir');
+        expect(await init(dir, { yes: true, ci: 'github-actions' })).toMatchObject({ exitCode: 0 });
+        expect(readdirSync(elsewhere)).toEqual([]);
+        expect(output()).toContain(`Symlink, not touching: .github -> ${realpathSync(elsewhere)} (.github/workflows/e2e.yml)`);
+      } finally {
+        rmSync(elsewhere, { recursive: true, force: true });
+      }
+    });
+
     it('warns that a subscription gateway has no key to give CI', async () => {
       await init(dir, { yes: true, gateway: 'chatgpt', ci: 'github-actions' });
       expect(read(workflow)).not.toContain('env:');

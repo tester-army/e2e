@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   configStartsApp,
+  configUsesLocalModel,
   findNodeVersionFile,
   findRepositoryRoot,
   gatewaysInConfig,
@@ -214,6 +215,18 @@ describe('project detection', () => {
     expect(gitlab.locate(dir).note).toBeUndefined();
     writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'build:\n  script: [make]\n');
     expect(gitlab.locate(dir).note).toBeUndefined();
+    // A stage whose name only contains test is another stage.
+    writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'stages: [build, unit-test]\n');
+    expect(gitlab.locate(dir).note).toBe('The e2e job runs in the test stage; add test to the stages in .gitlab-ci.yml');
+    writeFileSync(path.join(dir, '.gitlab-ci.yml'), "stages:\n  - 'build'\n  - \"test\" # unit and e2e\nvariables: {}\n");
+    expect(gitlab.locate(dir).note).toBeUndefined();
+  });
+
+  it('names the job e2e-run beside a pipeline that already has a job named e2e', () => {
+    writeFileSync(path.join(dir, '.gitlab-ci.yml'), 'e2e:\n  script: [npx cypress run]\n');
+    const located = getCiService('gitlab').locate(dir);
+    expect(located).toMatchObject({ file: '.gitlab/e2e.gitlab-ci.yml', jobName: 'e2e-run' });
+    expect(renderGitlabPipeline({ ...base, jobName: 'e2e-run' })).toMatch(/^e2e-run:\n/u);
   });
 
   it('counts any GitHub workflow that runs e2e as set up', () => {
@@ -257,6 +270,13 @@ describe('reading an existing config', () => {
     expect(gatewaysInConfig('import { generateText, gateway } from "ai"\n').map(({ id }) => id)).toEqual(['vercel']);
     expect(gatewaysInConfig('import {openrouter} from "@openrouter/ai-sdk-provider";\n').map(({ id }) => id)).toEqual(['openrouter']);
     expect(gatewaysInConfig("import { gatewayish } from 'ai';\n")).toEqual([]);
+  });
+
+  it('finds an OpenAI-compatible baseURL on this machine', () => {
+    expect(configUsesLocalModel("        baseURL: 'http://127.0.0.1:11434/v1',")).toBe(true);
+    expect(configUsesLocalModel('        baseURL: "http://localhost:8080/v1",')).toBe(true);
+    expect(configUsesLocalModel("        baseURL: 'https://llm.example/v1',")).toBe(false);
+    expect(configUsesLocalModel("        // baseURL: 'http://127.0.0.1:11434/v1',")).toBe(false);
   });
 
   it('tells a command the runner starts from a commented-out one', () => {

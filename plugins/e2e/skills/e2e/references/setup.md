@@ -45,7 +45,7 @@ Gateway, installs the skill in `.agents/skills/` (`.claude/skills/e2e`
 symlinks to it), registers MCP in `.mcp.json`, `.cursor/mcp.json`, and `.codex/config.toml`, skips
 installing dependencies. A flag per question overrides one default:
 `--engine` (`web,mobile` for both), `--gateway`, `--endpoint`, `--skills`,
-`--mcp` (comma-separated locations, or `none`), `--ci github-actions` or `--ci gitlab` (a
+`--mcp` (comma-separated locations, or `none`), `--ci github-actions`, `--ci gitlab`, or `--ci none` (a
 pipeline for the web tests; `--yes` writes none), `--install`; `npx e2e init --help` lists the values.
 To start a new app from one of the repo's examples instead, run `npx e2e init
 my-app --example with-vite` (or `with-expo`, `with-flutter`, ...): it

@@ -29,6 +29,7 @@ import {
 import {
   CI_SERVICES,
   configStartsApp,
+  configUsesLocalModel,
   detectCiService,
   findNodeVersionFile,
   findRepositoryRoot,
@@ -44,7 +45,7 @@ import { getEnginePresets, DEFAULT_ENGINE_IDS, type EngineId } from './init/engi
 import { copyExample, ExampleCopyCancelled, ExampleDownloadError, findExample, isEmptyDirectory, type ExampleCopy } from './init/examples.ts';
 import { DEFAULT_ENDPOINT, GATEWAYS, getGatewayPreset, validateEndpoint, type GatewayId } from './init/gateways.ts';
 import { isLoopbackHost } from '../internal/urls.ts';
-import { findRegisteredMcpFiles, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
+import { findRegisteredMcpFiles, linkOnPath, MCP_LOCATIONS, planMcpRegistration } from './init/mcp-config.ts';
 import { addDependencies, addScripts, describeManifestError, readPackage, serializePackage } from './init/package.ts';
 import { createScaffold, type ScaffoldModel } from './init/scaffold.ts';
 import { MISSING_SKILL_MESSAGE, readSkillFiles } from './skill.ts';
@@ -391,14 +392,18 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   const ciFile = ciService?.locate(repositoryRoot);
   const ciRelative = ciFile === undefined ? '' : posixRelative(cwd, path.join(repositoryRoot, ciFile.file));
   if (ciFile?.existing === true) clack.log.warn(`Exists, not touching: ${ciRelative}`);
+  // Nothing is written through a symlink: a linked .github or .gitlab could put the file outside the repository.
+  const ciLink = ciFile === undefined || ciFile.existing ? undefined : linkOnPath(repositoryRoot, path.join(repositoryRoot, ciFile.file));
+  if (ciLink !== undefined) clack.log.warn(`Symlink, not touching: ${ciLink.relative} -> ${ciLink.target} (${ciRelative})`);
   const existingConfigText = existingConfig === undefined ? undefined : readFileSync(path.join(cwd, existingConfig), 'utf8');
-  const workflow = ciService === undefined || ciFile === undefined || ciFile.existing ? undefined : planWorkflow({
+  const workflow = ciService === undefined || ciFile === undefined || ciFile.existing || ciLink !== undefined ? undefined : planWorkflow({
     service: ciService,
     cwd,
     repositoryRoot,
     model,
     existingConfigText,
     mobile: hasDependency(manifest, '@e2e-dev/mobile'),
+    jobName: ciFile.jobName,
   });
 
   // An example's package.json, config, and tests stay as the example has them.
@@ -589,6 +594,7 @@ function planWorkflow(input: {
   readonly model: ScaffoldModel | undefined;
   readonly existingConfigText: string | undefined;
   readonly mobile: boolean;
+  readonly jobName: string | undefined;
 }): PlannedWorkflow {
   const { cwd, repositoryRoot } = input;
   // A workspace member installs and caches at the workspace root, with the root's manager.
@@ -610,6 +616,7 @@ function planWorkflow(input: {
     ...(manager === 'pnpm' && !packageManager.startsWith('pnpm@') ? { pnpmVersion: localPnpmMajor() } : {}),
     yarnBerry: existsSync(path.join(installRoot, '.yarnrc.yml')) || /^yarn@[2-9]/u.test(packageManager),
     secrets,
+    ...(input.jobName === undefined ? {} : { jobName: input.jobName }),
     // A new config with a mobile target too leaves the web target unnamed, and an unnamed web target is `web`.
     ...(input.mobile && input.existingConfigText === undefined ? { target: 'web' } : {}),
   });
@@ -620,7 +627,9 @@ function planWorkflow(input: {
     // A new config leaves app.command commented out.
     startsApp: input.existingConfigText !== undefined && configStartsApp(input.existingConfigText),
     mobileTargets: input.mobile && input.existingConfigText !== undefined,
-    localModel: input.model?.gateway === 'openai-compatible' && isLoopbackHost(new URL(input.model.endpoint ?? DEFAULT_ENDPOINT).hostname),
+    localModel: input.existingConfigText === undefined
+      ? input.model?.gateway === 'openai-compatible' && isLoopbackHost(new URL(input.model.endpoint ?? DEFAULT_ENDPOINT).hostname)
+      : configUsesLocalModel(input.existingConfigText),
   };
 }
 

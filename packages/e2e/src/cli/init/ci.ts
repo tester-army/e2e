@@ -8,6 +8,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import type { PackageManager } from '../../internal/package-manager.ts';
+import { isLoopbackHost } from '../../internal/urls.ts';
 import { GATEWAYS, type GatewayPreset } from './gateways.ts';
 
 export type CiId = 'github-actions' | 'gitlab';
@@ -22,6 +23,8 @@ export interface CiFile {
   readonly include?: string;
   /** Something else the main pipeline needs before the included job can run. */
   readonly note?: string;
+  /** The job's name when the pipeline already has a job named `e2e`. */
+  readonly jobName?: string;
 }
 
 export interface CiService {
@@ -96,14 +99,29 @@ function locateGitlabPipeline(root: string): CiFile {
   const pipeline = readFileSync(main, 'utf8');
   if (pipeline.includes('e2e run')) return { file: GITLAB_PIPELINE, existing: true };
   // The job runs in GitLab's default `test` stage, which a pipeline that lists its own stages may leave out.
-  const stages = /^stages:(.*(?:\n[ \t-].*)*)/mu.exec(pipeline)?.[1];
-  const missingTest = stages !== undefined && !/\btest\b/u.test(stages);
+  const stages = gitlabStages(pipeline);
+  // GitLab merges jobs of the same name across included files, so the job steps aside for one the pipeline already has.
+  const jobName = /^e2e\s*:/mu.test(pipeline) ? 'e2e-run' : 'e2e';
   return {
     file: GITLAB_INCLUDED,
     existing: existsSync(path.join(root, GITLAB_INCLUDED)),
     include: `include:\n  - local: ${GITLAB_INCLUDED}`,
-    ...(missingTest ? { note: `The e2e job runs in the test stage; add test to the stages in ${GITLAB_PIPELINE}` } : {}),
+    ...(stages !== undefined && !stages.includes('test')
+      ? { note: `The ${jobName} job runs in the test stage; add test to the stages in ${GITLAB_PIPELINE}` }
+      : {}),
+    ...(jobName === 'e2e' ? {} : { jobName }),
   };
+}
+
+/** The names a pipeline's top-level `stages:` lists, flow (`[build, test]`) or block style; undefined without one. */
+function gitlabStages(pipeline: string): string[] | undefined {
+  const block = /^stages:[ \t]*(.*(?:\n[ \t]+-.*)*)/mu.exec(pipeline)?.[1];
+  if (block === undefined) return undefined;
+  return block
+    .replaceAll(/[[\]]/gu, '')
+    .split(/[,\n]/u)
+    .map((item) => item.replace(/^\s*-?\s*/u, '').replace(/#.*$/u, '').trim().replaceAll(/^['"]|['"]$/gu, ''))
+    .filter((item) => item !== '');
 }
 
 /**
@@ -148,6 +166,8 @@ export interface WorkflowContext {
   readonly secrets: readonly string[];
   /** The target to run when the config also has targets this runner cannot drive. */
   readonly target?: string;
+  /** The GitLab job's name; `e2e` unless the pipeline it joins has one. */
+  readonly jobName?: string;
 }
 
 /**
@@ -326,7 +346,7 @@ export function renderGitlabPipeline(context: WorkflowContext): string {
   const usesCorepack = (manager === 'pnpm' && context.pnpmVersion === undefined) || (manager === 'yarn' && context.yarnBerry === true);
 
   return [
-    'e2e:',
+    `${context.jobName ?? 'e2e'}:`,
     `  image: node:${context.nodeMajor ?? DEFAULT_NODE}`,
     '  interruptible: true',
     '  timeout: 30 minutes',
@@ -439,6 +459,17 @@ function importPattern(line: string): RegExp | undefined {
   const [, name, specifier] = parts;
   const escaped = specifier!.replaceAll(/[.*+?^${}()|[\]\\/]/gu, '\\$&');
   return new RegExp(`import\\s*\\{[^}]*\\b${name!}\\b[^}]*\\}\\s*from\\s*['"]${escaped}['"]`, 'u');
+}
+
+/** Whether a config points an OpenAI-compatible model at a loopback `baseURL`, which a CI runner cannot reach. */
+export function configUsesLocalModel(config: string): boolean {
+  return [...config.matchAll(/^\s*baseURL\s*:\s*['"`]([^'"`]+)['"`]/gmu)].some(([, url]) => {
+    try {
+      return isLoopbackHost(new URL(url!).hostname);
+    } catch {
+      return false;
+    }
+  });
 }
 
 /** Whether a config sets an app `command`, so the runner can start the app on a fresh CI machine. */

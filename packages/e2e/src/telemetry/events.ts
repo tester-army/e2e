@@ -82,7 +82,7 @@ export interface InitOutcome {
   /** Whether the agent skill, the MCP registration, and the install were chosen. */
   readonly skill: boolean;
   readonly mcp: boolean;
-  /** The CI workflow chosen (`github-actions`, `none`), null when not asked. */
+  /** The CI pipeline chosen (`github-actions`, `gitlab`, `none`), null when not asked. */
   readonly ci: string | null;
   readonly install: boolean;
 }
