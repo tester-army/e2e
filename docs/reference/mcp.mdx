@@ -45,7 +45,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 | [`--config <path>`](#config) | discovered like `e2e run` |
 | [`--target <name>`](#target) | the only target |
 | [`--headed`](#headed) | headless |
-| [`--max-sessions <n>`](#max-sessions) | `4` |
+| [`--max-sessions <n>`](#max-sessions) | `4`, `1` on Bun |
 
 #### `--config`
 
@@ -70,8 +70,8 @@ session whose `open_session` does not set `headed`.
 
 #### `--max-sessions`
 
-How many sessions may be open at once, 1 through 16. See
-[Several sessions](#several-sessions).
+How many sessions may be open at once, 1 through 16. On
+[Bun](/reference/cli#bun), one. See [Several sessions](#several-sessions).
 
 ```bash
 e2e mcp --max-sessions 8 # default: 4
@@ -491,7 +491,7 @@ own names, scoped to the target's platform. A mobile project that passes
 The server ships with `e2e`. `e2e init` offers to register it in
 `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), and
 `.codex/config.toml` (Codex). Install dependencies and start the MCP client
-in the project directory so `npx` uses the installed e2e version. By hand:
+in the project directory so `npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <CodeGroup>
 ```bash npm

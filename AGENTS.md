@@ -612,8 +612,9 @@ trees, on both platforms, without a device.
 
 - CI: `.github/workflows/spec.yml` runs lint, typecheck, and the testbed on
   Node 26, `pnpm test` on the newest Node 22, 24, and 26 and on the
-  `engines.node` floors (22.22.3, 24.8.0), and `scripts/install-smoke.ts`, a
-  fresh install of the packed packages with pnpm 11 and 12; `benchmark.yml` runs the
+  `engines.node` floors (22.22.3, 24.8.0), the CLI on Bun 1.4.3 and the
+  latest Bun, and `scripts/install-smoke.ts`, a fresh install of the packed
+  packages with pnpm 11 and 12; `benchmark.yml` runs the
   web benchmark's two suites; `mobile.yml` runs the mobile benchmark's on an
   iOS simulator and an Android emulator (KVM on x64 Linux); `docs.yml`
   checks the docs. All four run on pull requests and in the merge queue

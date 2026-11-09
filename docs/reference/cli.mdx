@@ -30,12 +30,11 @@ bunx e2e run tests/signup.e2e.ts --headed  # one file, with a visible browser
 </CodeGroup>
 
 <Note>
-The CLI needs Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22. Any
-package manager installs it: npm, pnpm, Yarn with or without Plug'n'Play, or
-Bun. The CLI runs on Node.js, not on the Bun or Deno runtimes; `bunx e2e`
-runs it on Node.js. Under Yarn Plug'n'Play on Node.js 24.8 through 24.11.0, a
-`.cts` file fails to load: Node.js rejects the source Yarn's loader hands on.
-24.11.1 and later load it.
+The CLI needs Node.js 24.8 or newer (22.22.3 or newer on Node.js 22), or
+[Bun](#bun) 1.4.3 or newer. Any package manager installs it: npm, pnpm, Yarn
+with or without Plug'n'Play, or Bun. Under Yarn Plug'n'Play on Node.js 24.8
+through 24.11.0, a `.cts` file fails to load: Node.js rejects the source
+Yarn's loader hands on. 24.11.1 and later load it.
 </Note>
 
 ## Reference
@@ -414,7 +413,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 | `--config <path>` | The config every session loads unless `open_session` names one. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs`. |
 | `--target <name>` | The target every session opens on. Default: the only target, or the one `open_session` names. |
 | `--headed` | Shows the UI in sessions whose `open_session` does not set `headed`, when the engine supports it. |
-| `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. |
+| `--max-sessions <n>` | Sessions open at once, each with its own browser or device, 1 through 16. Default: 4. On [Bun](#bun), 1. |
 
 The [MCP server](/reference/mcp) page covers these options in full, plus the
 tools and the session rules.
@@ -1007,7 +1006,7 @@ bunx e2e doctor --target web --headed
 
 | Check | Status |
 | --- | --- |
-| `node` | `pass`: the Node.js version. On an unsupported runtime, `--json` still prints a report with `node` as `fail`. |
+| `node` | `pass`: the Node.js or Bun version. On an unsupported runtime, `--json` still prints a report with `node` as `fail`. |
 | `config` | `pass` with `path` and `targets` (`name`, `platform`, `engine`), or `fail` with the `CONFIG_*` or `UNKNOWN_TARGET` code. A failed `config` is the last check. |
 | Engine checks, with `target` | What the target's engine reports, such as the web engine's `browser`: `pass` when installed, `warn` when the first run will download it, `skip` with a browser provider or `connect`; or the mobile engine's agent-device checks (`agent-device`, `toolchain`, `ios-runner-cache`, `device` per configured device, `target-app`) and `app-path`, with only `device`, as `skip`, for a device provider. An engine that reports nothing adds no check. `engine` is `skip` when the engine has no `doctor` hook, and `fail` when the hook threw, timed out, or returned a malformed check. |
 | `model`, with `agent` | `model` and `judge` as `provider` and `modelId`, the names the AI SDK instance reports. `pass` or `fail` for a model on an [`e2e login`](/subscriptions), from the stored login or the provider's API key variable, with `login` set when the agent's models read one login. `unknown` for any other model, because the model reads its own credential. With `--check-model`, `pass` when every model answered, else `fail` with the error code, its message prefixed `model:` or `judge:` when the agent has both. `skip` when the agent has no model. `unknown` with `executor` when a custom executor brings its own agent and declares no model or judge; any model it declares is checked like an agent's. |
@@ -1331,3 +1330,29 @@ E2E_TELEMETRY_DEBUG=1 bunx e2e run
   exports.
 - A model credential the provider rejects names the variable the provider
   reads.
+
+## Bun
+
+On Bun 1.4.3 or newer, the CLI runs without Node.js. When Node.js is
+installed, `bunx e2e` and `bun run` follow the CLI's `node` shebang and run it
+on Node.js. `bunx --bun e2e` and `bun --bun run` run it on Bun. Without
+Node.js, all of them run it on Bun. The web engine runs on Bun.
+`@e2e-dev/mobile` and the integrations are not verified on Bun yet.
+
+Bun compiles the config and test files with its own TypeScript support. Where
+that differs from Node.js:
+
+- A `#` import that maps to a directory does not load its index. Map the
+  import to the file.
+- A legacy decorator in a `.cts` file fails to load. Move the class to a `.ts`
+  file.
+- `e2e run --watch` and `e2e mcp` read `tsconfig.json` one time, and load a
+  file that an `import()` or `require()` names with a computed path one time.
+  Restart them after you edit either, or after you add a file that an import
+  did not find.
+- `e2e mcp` opens one session at a time and ignores `--max-sessions`.
+- [`e2e/runner`](/reference/runner) needs Node.js.
+- An app `command` with `executable: 'node'` needs Node.js, unless `bun run`
+  or `bunx` started the CLI. They put a `node` on `PATH` that runs Bun.
+- A test that a helper declares after an `await` reports the line in the
+  helper.
