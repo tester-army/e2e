@@ -1,5 +1,5 @@
 # Written by `e2e init --ci gitlab`: the web tests in every merge request and on
-# the default branch. See https://e2e.com/docs/ci
+# the default branch. See https://e2e.com/docs/ci/gitlab
 e2e:
   image: node:24
   interruptible: true

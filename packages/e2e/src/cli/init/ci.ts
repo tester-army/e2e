@@ -60,8 +60,7 @@ export const CI_SERVICES: readonly CiService[] = [
     id: 'gitlab',
     label: 'GitLab CI/CD',
     hint: 'web tests in every merge request and on the default branch',
-    // The GitLab page is not published yet; the CI overview lists every service.
-    docs: '/ci',
+    docs: '/ci/gitlab',
     locate: locateGitlabPipeline,
     render: (context) => renderGitlabPipeline(context),
     secretHint: (name) =>

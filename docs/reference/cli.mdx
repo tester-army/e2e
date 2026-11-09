@@ -225,7 +225,8 @@ bunx e2e init --yes --ci gitlab
 - With a mobile target in a new config too, the job runs `--target web`.
   For an existing config with mobile targets, `init` asks you to add the web
   target's name. A mobile job needs your build; see
-  [GitHub Actions](/ci/github-actions#ios-and-android).
+  [GitHub Actions](/ci/github-actions#ios-and-android) or
+  [GitLab CI/CD](/ci/gitlab#ios-and-android).
 - `init` warns when the config has no `app.command`, since nothing else
   starts the app on the runner. It also warns about a subscription gateway,
   whose sign-in stays on your machine, and an OpenAI-compatible `baseURL` on
