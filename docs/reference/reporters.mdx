@@ -179,9 +179,9 @@ const reporter = htmlReporter({ media: 'embed' });
   slowed down. A phone recording sits beside the steps instead of above
   them.
 - A failed assertion that reports expected and received values (a locator
-  assertion, say) shows them with the characters that differ marked, above
-  the test code around the failing call. A step whose test file is in the
-  project opens to the code that ran it. The page keeps a few lines of the
+  assertion, say) shows them with the characters that differ marked. When
+  the test file is in the project, the failure shows the code around the
+  failing call, and each step opens to the code that ran it. The page keeps a few lines of the
   test files around each step for this, so a shared report shows them too.
 - **copy prompt** on a failed attempt's error copies the failure for a coding
   agent: the error, the steps, what the failed step did, and the paths of
