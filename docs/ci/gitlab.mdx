@@ -169,7 +169,8 @@ tests than shards, add `--pass-with-no-tests`.
 ## iOS and Android
 
 Run the mobile jobs on self-managed runners with the shell executor: a Mac
-with Xcode for iOS, and Linux with KVM and the Android SDK for Android.
+with Xcode for iOS, and Linux with KVM, the JDK your Gradle build needs, and
+the Android SDK for Android.
 GitLab's hosted macOS runners are headless and don't support `testmanagerd`,
 which XCUITest needs. Its hosted Linux runners don't list KVM.
 
@@ -211,19 +212,20 @@ e2e-ios:
 e2e-android:
   extends: .e2e-mobile
   tags: [linux-kvm]
-  variables:
-    E2E_DEVICE: emulator-5580
   script:
     - npm ci
     - (cd android && ./gradlew :app:assembleRelease)
     - mkdir -p .e2e
-    - $ANDROID_HOME/emulator/emulator -avd e2e -port 5580 -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > .e2e/emulator.log 2>&1 &
+    - PORT=$((5554 + 2 * CI_CONCURRENT_ID))
+    - export E2E_DEVICE=emulator-$PORT
+    - adb -s $E2E_DEVICE emu kill || true
+    - $ANDROID_HOME/emulator/emulator -avd e2e -read-only -port $PORT -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > .e2e/emulator.log 2>&1 &
     - timeout 300 adb -s $E2E_DEVICE wait-for-device
     - timeout 300 sh -c 'until [ "$(adb -s $E2E_DEVICE shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
     - adb -s $E2E_DEVICE install -r android/app/build/outputs/apk/release/app-release.apk
     - npx e2e run --target android --reporter list,junit
   after_script:
-    - adb -s $E2E_DEVICE emu kill
+    - adb -s emulator-$((5554 + 2 * CI_CONCURRENT_ID)) emu kill
 ```
 
 Each target names its device with `device: process.env.E2E_DEVICE` in
@@ -233,7 +235,10 @@ left over from another job on the same machine.
 GitLab runs all `script` lines in one shell, so the emulator and
 `E2E_DEVICE` stay available to the next lines. `after_script` runs in a new
 shell after a failed `script` too, but not after a timeout, so a timed-out
-job can leave its device running. The Android job writes the emulator's log
+job can leave its device running. The Android job takes its port from
+`CI_CONCURRENT_ID`, so jobs running at the same time on one runner get
+their own emulator, and it stops an emulator a timed-out job left on that
+port. `-read-only` lets several emulators start from one AVD. The job writes the emulator's log
 to `.e2e/emulator.log`, so a failed boot shows in the artifacts. A
 self-managed runner keeps `~/.agent-device` between jobs, so the XCUITest
 runner is built only on the first run.
