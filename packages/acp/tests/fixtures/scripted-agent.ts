@@ -68,7 +68,8 @@ log({ env: Object.keys(process.env).filter((name) => name.toUpperCase().startsWi
  * stdin and the stdout pipe around the signal, and either can end a plain
  * process first: stdin's EOF can empty the event loop before the signal
  * handler runs, and a late write can hit EPIPE. Such an agent holds on through
- * both and logs any error, so a test that sees it gone early can say why. The
+ * both once it is stopping, and logs any error, so a test that sees it gone
+ * early can say why; an error before that still ends it at once. The
  * delay starts at SIGTERM or stdin's end, whichever comes first, so an agent
  * whose test worker died without a teardown still exits.
  */
@@ -87,9 +88,14 @@ if (exitDelayMs > 0) {
   };
   process.on('SIGTERM', () => stop('SIGTERM'));
   process.stdin.on('end', () => stop('stdin end'));
-  process.stdout.on('error', (error) => log({ stdoutError: String(error) }));
-  process.on('uncaughtException', (error) => log({ uncaught: String(error) }));
-  process.on('unhandledRejection', (error) => log({ unhandled: String(error) }));
+  // Once stopping, an error is teardown's doing and the agent holds on; before that it is a real failure and exits at once.
+  const failed = (kind: string) => (error: unknown) => {
+    log({ [kind]: String(error), stopping });
+    if (!stopping) process.exit(1);
+  };
+  process.stdout.on('error', failed('stdoutError'));
+  process.on('uncaughtException', failed('uncaught'));
+  process.on('unhandledRejection', failed('unhandled'));
   process.on('exit', (code) => log({ exit: code, at: Date.now() }));
 }
 
