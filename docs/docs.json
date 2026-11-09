@@ -100,6 +100,7 @@
             "group": "Run in CI",
             "pages": [
               "ci/github-actions",
+              "ci/gitlab",
               "ci/eas-workflows",
               "ci/bitrise",
               "ci/codemagic",
