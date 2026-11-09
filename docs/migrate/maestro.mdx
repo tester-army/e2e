@@ -15,7 +15,7 @@ export const migrationPrompt = `Migrate this project's Maestro flows to e2e, one
 4. Read the e2e skill (\`npx e2e guide\` prints it, \`npx e2e guide <topic>\` prints a topic) and follow it for every step below.
 5. If you ran init, ask me which model to use for agent steps: a ChatGPT, GitHub Copilot, OpenCode Console, or SuperGrok subscription, an API key, or a local model. Configure it with its provider package. If it needs a sign-in, give me the \`npx e2e login\` command and wait until I confirm.
 6. Port the flows' \`appId\` and \`.maestro/config.yaml\` into the e2e config: one target per platform with \`mobile({ platform })\`, \`app: { bundleId }\` on each target, and tags as \`{ tags }\` on tests. Move passwords and tokens from \`env\` into \`credentials\` or \`secrets\`.
-7. Install dependencies, then run \`npx e2e doctor\` (e2e 0.22.1 or newer) and fix what it reports.
+7. Install dependencies, then run \`npx e2e doctor\` (e2e 0.23.0 or newer) and fix what it reports.
 8. List the flows and ask me which one to move first. Suggest one whose \`optional\` steps and \`runFlow: { when }\` branches often need updating.
 9. Rewrite that flow as a \`.e2e.ts\` test under \`tests/\` (e2e runs \`tests/**/*.e2e.ts\` by default), with one awaited call per command. Start it with \`app.open()\`, since nothing launches on its own. Follow the guide's "Rewrite selectors" section: e2e matches the whole string and fails on several matches. Where the guide says "Not yet" or "No equivalent", use the workaround it gives, or leave that flow in Maestro and tell me why.
 10. Keep the launch and the final assertions deterministic, with \`app.open()\` and locator assertions. Where a run of scripted taps breaks often, propose an \`agent.act\` goal for it instead.
@@ -141,7 +141,8 @@ purpose.
 | `hideKeyboard` | `device.dismissKeyboard()` |
 | `pressKey: Enter` | `.press('Enter')` on the field |
 | `pressKey: Home`, `back` | `device.home()`, `device.back()` |
-| `pressKey: lock`, `power`, `volume up`, TV remote keys | Not yet |
+| `pressKey: lock`, `power`, `volume up`, `volume down` | Not yet. `device.unstable_raw.client.command.hardwareButton({ button })` presses one: `'power'`, `'volume-up'`, or `'volume-down'` on Android; on iOS only the volume keys, on a physical device, not a simulator |
+| TV remote keys | Not yet |
 | `copyTextFrom`, `pasteText` | `await locator.textContent()`, then `.fill(text)` |
 | `setClipboard` | `device.setClipboard(text)`; `device.clipboard()` reads it. Neither works on an Android build with no clipboard shell command |
 | `label: "..."` on a command | Not yet. Every `screen`, `device`, and `agent` call is a report step named by the call |
@@ -229,8 +230,9 @@ Four differences from Maestro's selectors cause most edits.
 
 - e2e records and redacts the calls on `screen`, `app`, `device`, and the
   agent. `device.unstable_raw` hands a test agent-device's client for what
-  those don't cover; its calls aren't steps and nothing redacts their
-  arguments.
+  those don't cover. Its calls aren't steps: the report and trace leave them
+  out, the agent cache doesn't replay them, nothing redacts their arguments,
+  and nothing waits for the screen to settle after one.
 - A device has no `test.setup` or `{ session }`, see
   [what differs from the web](/mobile#what-differs-from-the-web).
 

@@ -156,6 +156,7 @@
               "migrate/playwright",
               "migrate/cypress",
               "migrate/selenium",
+              "migrate/appium",
               "migrate/detox",
               "migrate/maestro",
               "migrate/testerarmy"
