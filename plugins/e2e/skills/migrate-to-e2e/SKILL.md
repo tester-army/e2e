@@ -157,8 +157,9 @@ once and the progress file says so; later sessions skip this step.
    `npx e2e doctor` (e2e 0.23.0 or newer) and fix every check it fails. It
    loads the config and checks each target's engine without starting the
    app: the browser on a web target; agent-device, the toolchain, the
-   devices, and the build at `appPath` on a mobile one. When step 3.2
-   configured a model, add `--check-model` to call each model once.
+   devices, and the build at `appPath` on a local-device mobile target (a
+   device-provider target skips these). When step 3.2 configured a model,
+   add `--check-model` to call each model once.
 5. Port the simplest source test, often the sign-in or the launch, as the
    smoke test. It must pass on every target before any other port. When it
    cannot, the harness is wrong, not the test: fix the harness.
