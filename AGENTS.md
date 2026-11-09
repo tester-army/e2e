@@ -164,6 +164,14 @@ suites that consume the built packages the way a user would.
   keeps it current on reruns, writing the same text to the job summary. It
   reads the token, event, and repository when the run finishes, never at
   config load, and renders the page with `renderMarkdownReport` from `e2e`.
+- `packages/html-reporter` — the published `@e2e-dev/html-reporter`
+  package: `htmlReporter()` writes the run as one self-contained page,
+  `<output>/report.html`. The page is a React app (`app/`) that Vite builds
+  into one HTML file with everything inlined; the reporter embeds the
+  report-1 document in it and links artifacts from `results/` by relative
+  path, so it opens from `file://`. Its styles are a copy of the e2e-site
+  design system's tokens, with OFL fonts in place of Cassette, which the
+  site's license does not let us ship.
 - `packages/testmu` — the published `@e2e-dev/testmu` package: TestMu AI
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's

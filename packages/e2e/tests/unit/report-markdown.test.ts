@@ -952,6 +952,7 @@ describe('markdownReporter', () => {
       artifactsRoot,
       aiTracePath: undefined,
       traces: new Map(),
+      redact: (text) => text,
     };
   }
 

@@ -1,0 +1,190 @@
+/*
+ * The report page's styles: the e2e design system's foundations
+ * (e2e-site, apps/design-system/styles), copied because that package is
+ * private to the site. Cassette is licensed for our own domains only, so the
+ * page ships Geist for text and JetBrains Mono for captions and code, both
+ * SIL OFL 1.1 (fonts/*-OFL.txt).
+ */
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Geist";
+  src: url("./fonts/Geist-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@theme static {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-e2e-neutral-100: #f7f7f7;
+  --color-e2e-neutral-200: #dfdfdf;
+  --color-e2e-neutral-300: #c8c8c8;
+  --color-e2e-neutral-400: #b1b1b1;
+  --color-e2e-neutral-500: #8d8d8d;
+  --color-e2e-neutral-600: #686868;
+  --color-e2e-neutral-700: #434343;
+  --color-e2e-neutral-800: #1c1c1c;
+  --color-e2e-neutral-900: #000000;
+
+  --color-e2e-blue-400: #88b0ff;
+  --color-e2e-blue-600: #1a5fff;
+
+  --color-e2e-green-300: #64ff9d;
+  --color-e2e-green-400: #25e17b;
+  --color-e2e-green-600: #00964d;
+  --color-e2e-green-700: #007139;
+
+  --color-e2e-cyan-300: #8af9ff;
+  --color-e2e-cyan-700: #007176;
+
+  --spacing-e2e-half: 0.25rem;
+  --spacing-e2e-1: 0.5rem;
+  --spacing-e2e-2: 1rem;
+  --spacing-e2e-3: 1.5rem;
+  --spacing-e2e-4: 2rem;
+  --spacing-e2e-5: 2.5rem;
+  --spacing-e2e-6: 3rem;
+  --spacing-e2e-8: 4rem;
+}
+
+/*
+ * The page's colours by role, for a dark and a light theme. The design
+ * system has one palette and remaps nothing, so its tokens keep their values
+ * and each role picks a step of its ramps per theme: `light-dark(light, dark)`
+ * follows `color-scheme`, which the theme switch sets on the root.
+ *
+ * `shade-N` is neutral step N on dark. On light it is the step that plays the
+ * same part: the canvas, panels, lines, and tags mirror the ramp, and the
+ * faintest text (500, 600) sits one step darker than the mirror, because
+ * grey text reads fainter on a light page than on black. Status colours on
+ * light are the vivid steps, not the darkest: the dotted icons are thin, and
+ * a dark green or red dot reads as grey.
+ */
+@theme inline {
+  --color-shade-100: light-dark(var(--color-e2e-neutral-900), var(--color-e2e-neutral-100));
+  --color-shade-200: light-dark(var(--color-e2e-neutral-800), var(--color-e2e-neutral-200));
+  --color-shade-300: light-dark(var(--color-e2e-neutral-700), var(--color-e2e-neutral-300));
+  --color-shade-400: light-dark(var(--color-e2e-neutral-600), var(--color-e2e-neutral-400));
+  --color-shade-500: light-dark(var(--color-e2e-neutral-600), var(--color-e2e-neutral-500));
+  --color-shade-600: light-dark(var(--color-e2e-neutral-500), var(--color-e2e-neutral-600));
+  --color-shade-700: light-dark(var(--color-e2e-neutral-300), var(--color-e2e-neutral-700));
+  --color-shade-800: light-dark(var(--color-e2e-neutral-200), var(--color-e2e-neutral-800));
+  --color-shade-900: light-dark(var(--color-e2e-neutral-100), var(--color-e2e-neutral-900));
+
+  /* The playing position in a recording. */
+  --color-playhead: light-dark(var(--color-e2e-green-600), var(--color-e2e-green-300));
+  --color-mint: light-dark(var(--color-e2e-cyan-700), var(--color-e2e-cyan-300));
+  --color-focus: light-dark(var(--color-e2e-blue-600), var(--color-e2e-blue-400));
+
+  /*
+   * Run and test statuses. The design system has no red or amber yet; these
+   * are placeholders picked to sit with its ramps until a designer sets them.
+   */
+  --color-status-passed: light-dark(var(--color-e2e-green-600), var(--color-e2e-green-400));
+  --color-status-failed: light-dark(#d92d20, #ff5c5c);
+  --color-status-flaky: light-dark(#a85a00, #ffb547);
+  --color-status-skipped: light-dark(var(--color-e2e-neutral-600), var(--color-e2e-neutral-500));
+  --color-status-interrupted: light-dark(var(--color-e2e-neutral-600), var(--color-e2e-neutral-400));
+}
+
+/* The design system's type scale, the sizes the page uses. Captions and headings are lowercase there too. */
+@utility type-h3 {
+  font-family: var(--font-sans);
+  font-size: 1.8125rem;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  @media (width >= 48rem) {
+    font-size: 2.4375rem;
+  }
+}
+
+@utility type-h5 {
+  font-family: var(--font-sans);
+  font-size: 1.375rem;
+  line-height: 1.2;
+}
+
+@utility type-body-m {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+@utility type-body-s {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+@utility type-caption {
+  font-family: var(--font-code);
+  font-size: 0.75rem;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+@utility type-number-l {
+  font-family: var(--font-sans);
+  font-size: 2.5rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility type-code-m {
+  font-family: var(--font-code);
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+@utility type-code-s {
+  font-family: var(--font-code);
+  font-size: 0.75rem;
+  line-height: 1.25rem;
+}
+
+@layer base {
+  /* The system's theme, unless the switch picked one (`data-theme`, set before first paint by index.html). */
+  html {
+    color-scheme: light dark;
+    @apply bg-shade-900 text-shade-100;
+    &[data-theme="light"] {
+      color-scheme: light;
+    }
+    &[data-theme="dark"] {
+      color-scheme: dark;
+    }
+  }
+  body {
+    @apply type-body-m min-h-screen antialiased;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-focus;
+  }
+}
+
+@layer components {
+  .e2e-tag {
+    @apply type-caption inline-flex items-center gap-e2e-half px-e2e-1 py-e2e-half whitespace-nowrap;
+  }
+  .e2e-action {
+    @apply type-caption cursor-pointer text-shade-400 aria-[current=page]:text-shade-100 aria-pressed:text-shade-100;
+  }
+  .e2e-search {
+    @apply h-e2e-4 w-full min-w-0 border border-shade-700 bg-shade-900 px-e2e-2 font-code text-xs tracking-[0.04em] text-shade-100 placeholder:text-shade-500;
+  }
+  .e2e-panel {
+    @apply border border-shade-700 bg-shade-800;
+  }
+}

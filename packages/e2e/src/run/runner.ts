@@ -59,7 +59,7 @@ import { SessionStore } from './sessions.ts';
 import { outputLayout } from './output.ts';
 import type { RunnerOutput } from './process-output.ts';
 import { refuseBun } from './public-ownership.ts';
-import { registerStaticSecrets } from './secrecy.ts';
+import { registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
 import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { loadTimings, writeTimings } from './timings.ts';
@@ -803,6 +803,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         aiTracePath,
         traces,
         ...(lastRun === undefined ? {} : { lastRun }),
+        redact: redactStaticSecrets(loaded.config?.allSecrets),
       },
       options.reporterTimeout ?? REPORTER_TIMEOUT_MS,
       forceController.signal,
@@ -1511,6 +1512,13 @@ function verdictExitCodes(results: readonly ResultRecord[], serialGroups: readon
 
 /** Why a reporter's `onRunFinished` was given up on: the message is the stderr line. */
 class ReporterAbandoned extends Error {}
+
+/** `FinishedRun.redact`: the config's fixed secret values; a config that never loaded declared none. */
+function redactStaticSecrets(secrets: ResolvedConfig['allSecrets'] | undefined): (text: string) => string {
+  if (secrets === undefined) return (text) => String(text);
+  const { redactFragments } = staticSecretLedger(secrets);
+  return (text) => redactFragments(String(text));
+}
 
 /**
  * The built-in reporters that write files beside `report.json`. A forced

@@ -31,6 +31,7 @@ export default {
 | [`junit`](#junit) | Writes `<output>/junit.xml` |
 | [`markdown`](#markdown) | Writes `<output>/summary.md` |
 | [`github()`](#github) | Pull request comment and job summary |
+| [`htmlReporter()`](#htmlreporter) | Writes `<output>/report.html` |
 
 | Throws | When |
 | --- | --- |
@@ -139,6 +140,57 @@ const reporter = github({ key: 'chromium' });
   to show both runs as one comment.
 - Setup and permissions are on [Pull request comments](/github).
 
+#### `htmlReporter()`
+
+`@e2e-dev/html-reporter` writes the run as one page you open in a browser:
+the tests by file with status tabs and a search box, and for each test its
+attempts, error, steps, screenshots, and video.
+
+```ts
+import { htmlReporter } from '@e2e-dev/html-reporter';
+
+const reporter = htmlReporter({ media: 'embed' });
+```
+
+- It writes `report.html` beside the report, with the report document
+  embedded. The page opens from disk with no server.
+- `media` decides what happens to screenshots, videos, and downloads:
+
+  | `media` | The page | To share it |
+  |---|---|---|
+  | `'link'` (default) | links them from `<output>/results/` by relative path | keep the output directory together, as one CI artifact |
+  | `'embed'` | holds them, so the one file is the whole report | send the file; device videos make it tens of megabytes per minute |
+  | `'none'` | leaves them out and shows text only | send the file |
+
+  A download link saves the file instead of opening it. A download the
+  runner could not scan for secrets, such as a PDF or a zip, stays out of an
+  embedded page.
+- `outputFile` puts the page elsewhere, as a path from the project root.
+- The page shows only the run that wrote it: after `--last-failed`, the
+  rerun's tests without the failures it carried over, and under
+  `e2e explore`, the exploration without its findings.
+- The tests list as a tree: each file, its describe blocks, then their tests,
+  failures first. Selecting a file's path folds its tests away.
+- Each step shows where it starts in the attempt's video; selecting the time
+  plays the video from there, and the step the video is on stays
+  highlighted. The video's timeline marks each step's start, and its speed
+  button steps from 0.25× to 4×; a recording under five seconds starts
+  slowed down. A phone
+  recording sits beside the steps instead of above them.
+- A failed assertion shows its locator and the expected and received values,
+  with the characters that differ marked, above the test code around the
+  failing call. Every step opens to the code that ran it. The page keeps a
+  few lines of the test files around each step for this, so a shared report
+  shows them too.
+- **copy prompt** on a failed attempt's error copies the failure for a coding
+  agent: the error, the steps, what the failed step did, and the paths of its
+  trace page, screen tree, screenshot, and video from the project root.
+- Agent steps show their explanation, the actions they took, the model,
+  tokens and cost, whether the step replayed from the cache, and their last
+  turns.
+- The page follows the system's light or dark theme. The sun and moon at the
+  top hold one, and the browser keeps the choice for every report it opens.
+
 ### Custom reporters
 
 A reporter object has a `name` and at least one handler. Use `onEvent` for
@@ -241,6 +293,7 @@ interface FinishedRun {
   readonly aiTracePath: string | undefined;
   readonly traces: ReadonlyMap<string, string>;      // result id -> its trace page, from the project root
   readonly lastRun?: Report;               // with --last-failed, the report the rerun selected from
+  redact(text: string): string;            // masks the config's secret values in text from outside the report
 }
 
 type ReporterSummary = readonly { label: string; text: string }[];
