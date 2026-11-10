@@ -295,7 +295,7 @@ class LineWriter {
     let base: string | undefined;
     // Nothing here checks a locator against a live screen, so a test id, unique by convention,
     // goes before a role and name that a twin may share.
-    if (testId !== undefined) base = `screen.getByTestId(${JSON.stringify(testId)})`;
+    if (testId !== undefined) base = `screen.getByTestId(${JSON.stringify(portableTestId(testId))})`;
     else if (role !== undefined && ROLES.has(role) && name !== undefined && !contentNamed) {
       base = `screen.getByRole(${JSON.stringify(role)}, ${JSON.stringify(name)})`;
     }
@@ -364,6 +364,19 @@ class LineWriter {
     }
     throw new Uncompilable('secret-unknown', `${where}: the secret ${JSON.stringify(name)} is neither a credential password nor a config secret`);
   }
+}
+
+/**
+ * A recorded test id as a line names it on every platform: an Android
+ * resource id without its `<package>:id/` prefix. UIAutomator reports a .NET
+ * MAUI `AutomationId` or a native `android:id` that way, iOS never prefixes
+ * one, and the mobile engine matches the short form when nothing matches the
+ * full id, so the short form is the one a test on both platforms finds. The
+ * framework's own `android:id/...` keeps its prefix.
+ */
+function portableTestId(testId: string): string {
+  const match = /^([A-Za-z][\w.]*):id\/(.+)$/u.exec(testId);
+  return match === null || match[1] === 'android' ? testId : match[2]!;
 }
 
 /** Text placed inside a template literal as itself. */

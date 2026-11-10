@@ -1204,6 +1204,8 @@ with a code:
   `credentials.user(name).username`, `.password`, or `secrets.get(name)`.
   No value is copied into the file.
 - A `unique()` param is typed as the expression the test passed.
+- An Android resource id is written without its `<package>:id/` prefix,
+  the form the mobile engine matches on Android and iOS alike.
 - Missing `screen` or `app` fixtures and `expect`, `credentials`, or
   `secrets` imports are added.
 - `revert` puts the statement back as it was and leaves the added fixtures

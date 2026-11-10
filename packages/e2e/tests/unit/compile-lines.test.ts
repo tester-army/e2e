@@ -69,6 +69,17 @@ describe('compileTrace: actions', () => {
     ]);
   });
 
+  it('names an Android resource id without its package, as a test on iOS finds the same view', () => {
+    expect(
+      lines(
+        trace([
+          tap({ role: 'button', testId: 'dev.e2e.examples.maui:id/greet' }),
+          tap({ role: 'button', testId: 'android:id/button1' }),
+        ]),
+      ),
+    ).toEqual(['await screen.getByTestId("greet").tap();', 'await screen.getByTestId("android:id/button1").tap();']);
+  });
+
   it('drops the scrolls and keyboard dismissals a test action does itself', () => {
     expect(
       lines(
