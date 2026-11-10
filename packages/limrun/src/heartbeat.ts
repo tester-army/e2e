@@ -1,12 +1,13 @@
 import { createAgentDeviceClient } from 'agent-device';
 import type { DriverBinding } from './driver.ts';
+import { leaseSession } from './session.ts';
 
 /** Renew idle leases while other targets run; session retention alone does not prevent expiry. */
 export async function startHeartbeat(binding: DriverBinding, log: (line: string) => void): Promise<() => Promise<void>> {
+  const { stateDir, leaseId } = binding.client;
+  if (!stateDir || !leaseId) throw new Error('Limrun driver returned no agent-device state directory or lease id');
   // An explicit empty URL selects the local stateDir instead of an ambient remote daemon.
-  const client = createAgentDeviceClient({ ...binding.client, daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
-  const leaseId = binding.client.leaseId;
-  if (!leaseId) throw new Error('Limrun driver returned no agent-device lease id');
+  const client = createAgentDeviceClient({ ...binding.client, session: leaseSession(stateDir), daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
   const controller = new AbortController();
   const beat = () => client.leases.heartbeat({ leaseId, ttlMs: 60_000, signal: AbortSignal.any([controller.signal, AbortSignal.timeout(10_000)]) });
   await beat();
