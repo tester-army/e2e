@@ -9,8 +9,6 @@ export const tuned = {
   filter(tests, context) {
     if (context.changes.files.some((file) => file.startsWith('infra/'))) return { exclude: {}, note: 'infra/ changed' };
     const judged = tests.filter((test) => !test.tags.includes('smoke'));
-    const files = context.changes.files.filter((file) => !file.startsWith('apps/mobile/'));
-    if (files.length === 0) return { exclude: Object.fromEntries(judged.map((test) => [test.id, 'only apps/mobile/ changed'])) };
-    return decision.filter(judged, { ...context, changes: { ...context.changes, files } });
+    return decision.filter(judged, context);
   },
 } satisfies TestFilter;

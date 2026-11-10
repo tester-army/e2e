@@ -1,0 +1,126 @@
+---
+title: Custom test filters
+description: Write a test filter or adapt the decision filter to your project.
+---
+
+A custom test filter chooses which tests to leave out, with a reason for
+each. Enable it with [`--changed-since`](/filters).
+
+## Map changed paths to test tags
+
+Return `{ exclude }`, keyed by test ID, from a `TestFilter` object's
+`filter` method. Unnamed tests stay in the selection.
+
+This filter maps repository-relative paths to tags. Unmapped paths keep
+every test, and tests without an area tag always stay in.
+
+<Accordion title="Path-to-tag filter example">
+```ts title="areas-filter.ts"
+import type { TestFilter } from 'e2e';
+
+/** The test tags each part of the app reaches, by path from the repository root. */
+const AREAS: Readonly<Record<string, readonly string[]>> = {
+  'src/todos/': ['todos'],
+  'src/auth/': ['auth', 'smoke'],
+  'src/checkout/': ['checkout'],
+};
+/** Every tag an area reaches; a test without one always runs. */
+const AREA_TAGS: ReadonlySet<string> = new Set(Object.values(AREAS).flat());
+
+export const areas = {
+  name: 'areas',
+  filter(tests, { changes }) {
+    const reached = new Set<string>();
+    for (const file of changes.files) {
+      const area = Object.keys(AREAS).find((prefix) => file.startsWith(prefix));
+      if (area === undefined) return { exclude: {}, note: `${file} is in no area, so areas leaves nothing out` };
+      for (const tag of AREAS[area] ?? []) reached.add(tag);
+    }
+    const exclude: Record<string, string> = {};
+    for (const test of tests) {
+      const tags = test.tags.filter((tag) => AREA_TAGS.has(tag));
+      if (tags.length > 0 && !tags.some((tag) => reached.has(tag))) exclude[test.id] = 'the change reaches none of its areas';
+    }
+    return { exclude };
+  },
+} satisfies TestFilter;
+```
+</Accordion>
+
+## Add filters in order
+
+Add filters to the config in order. Each receives only tests the previous
+filters kept, so `areas` reduces what the model judges:
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { web } from '@e2e-dev/web';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+import { areas } from './areas-filter.ts';
+
+export default {
+  targets: [{ engine: web(), app: { url: 'http://localhost:3000' } }],
+  filters: [areas, decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') })],
+} satisfies E2EConfig;
+```
+
+A filter is not called when no tests remain. A test excluded by a filter
+still runs if another test in its serial group runs.
+
+[Preview exclusions](/filters#preview-locally) and check
+[which tests always run](/filters#what-always-runs).
+
+## Adjust the decision filter
+
+Wrap `decisionFilter` with rules for your repository. This wrapper keeps
+every test when `infra/` changes and always keeps tests tagged `smoke`.
+
+<Accordion title="Decision filter wrapper example">
+```ts title="tuned-filter.ts"
+import type { TestFilter } from 'e2e';
+import { gateway } from 'ai';
+import { decisionFilter } from '@e2e-dev/decision';
+
+const decision = decisionFilter({ model: gateway.decisionModel('typesafe-ai/jev') });
+
+export const tuned = {
+  name: 'decision',
+  filter(tests, context) {
+    if (context.changes.files.some((file) => file.startsWith('infra/'))) return { exclude: {}, note: 'infra/ changed' };
+    const judged = tests.filter((test) => !test.tags.includes('smoke'));
+    return decision.filter(judged, context);
+  },
+} satisfies TestFilter;
+```
+</Accordion>
+
+Put `tuned` in `filters` instead of `decisionFilter(...)`.
+A later filter can still exclude tests this wrapper keeps.
+
+To ignore unrelated paths, pass a copy of `context` with those paths
+removed from `context.changes.files`. Only ignore paths these tests cannot reach.
+
+## Handle secrets and cancellation
+
+Do git, environment, and network work inside `filter`. Workers also load
+the config, but only the runner calls the method.
+
+Pass `context.signal` to every model and network call. It aborts on
+interruption or after 5 minutes. See [failure behavior](/filters#what-the-model-reads).
+
+Call `context.redact(text)` before sending text to a model. It masks
+fixed-value secrets, credential passwords, and matching fragments of at
+least 8 characters. For example, `Password123!` also masks `Password`.
+Values returned by secret providers pass through.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Test filters" icon="filter" href="/filters">
+    Enable filters in CI and read their results.
+  </Card>
+  <Card title="TestFilter reference" icon="code" href="/reference/config#testfilter">
+    Look up filter inputs, results, and naming rules.
+  </Card>
+</CardGroup>

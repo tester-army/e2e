@@ -128,7 +128,8 @@
               "tools",
               "fixtures",
               "executors",
-              "filters"
+              "filters",
+              "custom-test-filters"
             ]
           },
           {

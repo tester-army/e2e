@@ -60,9 +60,9 @@ const EXAMPLES: Record<string, string> = {
   'docs/examples/page-objects/tests/fixtures.ts': 'docs/page-object-model.mdx',
   'docs/examples/page-objects/tests/sign-in.e2e.ts': 'docs/page-object-model.mdx',
   'docs/examples/filters/e2e.config.ts': 'docs/filters.mdx',
-  'docs/examples/filters/areas-filter.ts': 'docs/filters.mdx',
-  'docs/examples/filters/e2e.areas.config.ts': 'docs/filters.mdx',
-  'docs/examples/filters/tuned-filter.ts': 'docs/filters.mdx',
+  'docs/examples/filters/areas-filter.ts': 'docs/custom-test-filters.mdx',
+  'docs/examples/filters/e2e.areas.config.ts': 'docs/custom-test-filters.mdx',
+  'docs/examples/filters/tuned-filter.ts': 'docs/custom-test-filters.mdx',
   'docs/examples/skill/e2e.config.ts': 'skills/e2e/SKILL.md',
   'docs/examples/skill/e2e.setup.config.ts': 'skills/e2e/references/setup.md',
 };
