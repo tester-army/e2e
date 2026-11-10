@@ -2,7 +2,7 @@
   "name": "e2e",
   "version": "0.23.0",
   "description": "SDK, runner, and CLI for agentic end-to-end testing",
-  "mcpName": "io.github.tester-army/e2e",
+  "mcpName": "io.github.e2e-inc/e2e",
   "keywords": [
     "e2e",
     "end-to-end",
@@ -26,13 +26,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/e2e"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e#readme",
+  "homepage": "https://github.com/e2e-inc/e2e#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",

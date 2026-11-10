@@ -23,7 +23,7 @@ const FILE_NAME = 'update-check.json';
 const CHECK_INTERVAL_MS = 86_400_000;
 /** The longest the check may hold the process after the command, once a day at most. */
 const FETCH_TIMEOUT_MS = 1_500;
-const CHANGELOG_URL = 'https://github.com/tester-army/e2e/blob/main/packages/e2e/CHANGELOG.md';
+const CHANGELOG_URL = 'https://github.com/e2e-inc/e2e/blob/main/packages/e2e/CHANGELOG.md';
 /**
  * `mcp` speaks JSON-RPC on stdio to a client, not to a person. `upgrade` is
  * the step the notice asks for; the version running it is the old one.

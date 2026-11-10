@@ -175,7 +175,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
       }
       spinner.error(`Could not download the ${example.id} example`);
       const reason = cause instanceof ExampleDownloadError ? cause.message : String(cause);
-      clack.log.error(`${reason}; check the connection and retry, or copy it from https://github.com/tester-army/e2e/tree/main/examples/${example.id}`);
+      clack.log.error(`${reason}; check the connection and retry, or copy it from https://github.com/e2e-inc/e2e/tree/main/examples/${example.id}`);
       return done('example-failed', 2);
     }
     spinner.stop(`Copied the ${example.id} example (${exampleCopy.ref})`);

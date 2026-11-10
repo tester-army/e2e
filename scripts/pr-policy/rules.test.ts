@@ -85,8 +85,8 @@ test('a closing keyword GitHub resolved counts as the issue', () => {
 });
 
 test('an issue URL under ## Issue counts, a PR URL does not', () => {
-  const issue = filled.replace('Fixes #42', 'https://github.com/tester-army/e2e/issues/42');
-  const pull = filled.replace('Fixes #42', 'https://github.com/tester-army/e2e/pull/42');
+  const issue = filled.replace('Fixes #42', 'https://github.com/e2e-inc/e2e/issues/42');
+  const pull = filled.replace('Fixes #42', 'https://github.com/e2e-inc/e2e/pull/42');
   assert.deepEqual(problems({ title: 'fix: x', body: issue, closingIssues: 0 }), []);
   assert.equal(problems({ title: 'fix: x', body: pull, closingIssues: 0 }).length, 1);
 });
