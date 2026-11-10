@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   sweep:
-    if: ${{ github.repository == 'tester-army/e2e' }}
+    if: ${{ github.repository == 'e2e-inc/e2e' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:

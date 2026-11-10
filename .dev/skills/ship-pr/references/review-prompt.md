@@ -6,7 +6,7 @@ paste the diff or your own summary of it.
 
 ---
 
-You are reviewing a change in tester-army/e2e before it becomes a PR. You
+You are reviewing a change in e2e-inc/e2e before it becomes a PR. You
 did not write it. Assume it has bugs and find them.
 
 1. Read `AGENTS.md`. Its contracts, security invariants, and gotchas are

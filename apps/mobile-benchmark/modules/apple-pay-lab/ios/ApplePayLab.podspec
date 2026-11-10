@@ -5,9 +5,9 @@ Pod::Spec.new do |s|
   s.description    = s.summary
   s.license        = { :type => 'MIT' }
   s.author         = { 'e2e' => 'oskar@tester.army' }
-  s.homepage       = 'https://github.com/tester-army/e2e'
+  s.homepage       = 'https://github.com/e2e-inc/e2e'
   s.platforms      = { :ios => '15.1' }
-  s.source         = { :git => 'https://github.com/tester-army/e2e' }
+  s.source         = { :git => 'https://github.com/e2e-inc/e2e' }
   s.static_framework = true
 
   s.dependency 'ExpoModulesCore'

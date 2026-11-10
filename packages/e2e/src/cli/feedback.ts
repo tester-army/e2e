@@ -68,7 +68,7 @@ export interface FeedbackOptions {
 const EVENT = 'e2e_feedback';
 /** A person waits on this request, so it gets longer than the telemetry flush, but never hangs. */
 const SEND_TIMEOUT_MS = 10_000;
-const ISSUES_URL = 'https://github.com/tester-army/e2e/issues';
+const ISSUES_URL = 'https://github.com/e2e-inc/e2e/issues';
 const NEW_BUG_URL = `${ISSUES_URL}/new`;
 /** The registry check never holds the report up for long; a slow or failed one is skipped. */
 const LATEST_TIMEOUT_MS = 3000;

@@ -98,10 +98,10 @@ This project is a pnpm monorepo. `packages/` holds what publishes to npm,
 - `apps/mobile-benchmark`: private Expo app of hard mobile surfaces plus the e2e suites written against them
 - `docs/`: the documentation pages
 - `skills/e2e/`: the agent skill shipped with the package and installed by `e2e init`
-- `skills/create-verification-skill/`: the generator of a project-local `verify-<app>` skill, installed with `npx skills add tester-army/e2e --skill create-verification-skill`
-- `skills/migrate-to-e2e/`: ports an existing Playwright, Cypress, Selenium, Appium, Detox, Maestro, or TesterArmy suite one slice at a time, installed with `npx skills add tester-army/e2e --skill migrate-to-e2e`
-- `plugins/e2e/`: the Claude Code, Codex, and Cursor plugin of the three skills, installed from this repository as a marketplace with `claude plugin marketplace add tester-army/e2e` or `codex plugin marketplace add tester-army/e2e`, or copied into `~/.cursor/plugins/local/` for Cursor
-- `.dev/skills/`: the skills coding agents use to work on this repo, symlinked from `.claude/skills/` so `npx skills add tester-army/e2e` offers only `skills/*`
+- `skills/create-verification-skill/`: the generator of a project-local `verify-<app>` skill, installed with `npx skills add e2e-inc/e2e --skill create-verification-skill`
+- `skills/migrate-to-e2e/`: ports an existing Playwright, Cypress, Selenium, Appium, Detox, Maestro, or TesterArmy suite one slice at a time, installed with `npx skills add e2e-inc/e2e --skill migrate-to-e2e`
+- `plugins/e2e/`: the Claude Code, Codex, and Cursor plugin of the three skills, installed from this repository as a marketplace with `claude plugin marketplace add e2e-inc/e2e` or `codex plugin marketplace add e2e-inc/e2e`, or copied into `~/.cursor/plugins/local/` for Cursor
+- `.dev/skills/`: the skills coding agents use to work on this repo, symlinked from `.claude/skills/` so `npx skills add e2e-inc/e2e` offers only `skills/*`
 
 On Windows, enable Developer Mode and clone with
 `git clone -c core.symlinks=true` so those symlinks check out as links rather
@@ -230,7 +230,7 @@ When adding a new public package:
    before one can be added.
 2. On npmjs.com open the package, then Settings, then Trusted Publisher:
    - Publisher: GitHub Actions
-   - Organization: `tester-army`, Repository: `e2e`
+   - Organization: `e2e-inc`, Repository: `e2e`
    - Workflow filename: `release.yml`
    - Environment name: leave blank
    - Allowed actions: check `Allow npm publish`. Changesets publishes

@@ -180,7 +180,7 @@ field or lockfile, then the invoking package manager, then npm.
 ##### Starting from an example
 
 `--example` copies one of the
-[example apps](https://github.com/tester-army/e2e/tree/main/examples) into a
+[example apps](https://github.com/e2e-inc/e2e/tree/main/examples) into a
 new or empty directory, then runs the wizard in its e2e project. That is
 the directory itself for a web or Expo app, and its `e2e/` folder for a
 native app.
@@ -366,7 +366,7 @@ See [Pick a model](/subscriptions#pick-a-model).
 
 #### `e2e guide`
 
-Prints the skill that `init` installs; `npx skills add tester-army/e2e`
+Prints the skill that `init` installs; `npx skills add e2e-inc/e2e`
 installs the same skill. See [Coding agents](/coding-agents).
 
 <CodeGroup>
@@ -716,7 +716,7 @@ With `--ai-trace`, the run also writes `<output>/ai-trace.json`, an AI SDK
 devtools database. It holds one entry per model round trip: the exact prompt,
 tool definitions, response, usage, and provider metadata. Observations in it
 are already redacted, and inline image and file bytes become byte counts.
-Open it with [unbox-ai](https://github.com/tester-army/unbox-ai):
+Open it with [unbox-ai](https://github.com/e2e-inc/unbox-ai):
 `npx unbox-ai runs .e2e/ai-trace.json` lists its runs. See
 [Debugging a run](/debugging#agent-steps). A [test filter](/filters)'s model
 calls are not recorded.
@@ -1126,7 +1126,7 @@ package.json: "e2e": "^0.21.2", "@e2e-dev/web": "^0.15.2", "@e2e-dev/kernel": "^
 $ npm install
 ...
 Upgraded: e2e 0.21.2, @e2e-dev/web 0.15.2, @e2e-dev/kernel 0.2.1
-Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2
+Release notes: https://github.com/e2e-inc/e2e/releases/tag/e2e%400.21.2
 Updated the agent skill in .agents/skills/e2e/ (12 files)
 ```
 
@@ -1232,7 +1232,7 @@ bunx e2e feedback --type feature -m "Need a way to set the viewport per test" --
 
 - **A bug needs `--repro`.** Without it, the command sends nothing and prints
   a prefilled
-  [GitHub issue](https://github.com/tester-army/e2e/issues/new?template=bug_report.yml)
+  [GitHub issue](https://github.com/e2e-inc/e2e/issues/new?template=bug_report.yml)
   instead, where the e2e team can ask for a reproduction. Add a minimal one
   and submit it yourself.
 - **Outdated releases are refused.** Before sending, the command asks the npm

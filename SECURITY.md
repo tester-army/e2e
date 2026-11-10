@@ -8,7 +8,7 @@ rule and limit, as the code enforces it, is in
 ## Reporting a vulnerability
 
 Report privately through
-[GitHub security advisories](https://github.com/tester-army/e2e/security/advisories/new)
+[GitHub security advisories](https://github.com/e2e-inc/e2e/security/advisories/new)
 or by mail to security@e2e.com. Do not open a public issue for anything
 that lets a page, a model, or a committed file act with more authority than
 this document grants it.
