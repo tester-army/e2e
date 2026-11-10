@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://trendshift.io/repositories/274762" target="_blank"><img src="https://trendshift.io/api/badge/repositories/274762" alt="tester-army/e2e | Trendshift" width="250" height="55" /></a>
+  <a href="https://trendshift.io/repositories/274762" target="_blank"><img src="https://trendshift.io/api/badge/repositories/274762" alt="e2e-inc/e2e | Trendshift" width="250" height="55" /></a>
 </p>
 
 # e2e
@@ -44,7 +44,7 @@ config and an example test. The
 [quickstart](https://e2e.com/docs/quickstart) covers the rest.
 
 To see a finished setup in your stack, open
-[`examples/`](https://github.com/tester-army/e2e/tree/main/examples):
+[`examples/`](https://github.com/e2e-inc/e2e/tree/main/examples):
 Vite, Next.js, Astro, Angular, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
 Flutter, and .NET MAUI, each a standalone project with a passing suite.
 

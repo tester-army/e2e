@@ -1,6 +1,6 @@
 ---
 name: babysit
-description: Drive an open tester-army/e2e PR through conflicts, review bots, and CI until it is green with every thread handled, then label it Ready for Human Review. Use after opening a PR, or when asked to babysit, watch, monitor, check on, or get a PR green.
+description: Drive an open e2e-inc/e2e PR through conflicts, review bots, and CI until it is green with every thread handled, then label it Ready for Human Review. Use after opening a PR, or when asked to babysit, watch, monitor, check on, or get a PR green.
 metadata:
   internal: true
 ---
