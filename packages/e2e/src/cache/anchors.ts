@@ -159,9 +159,9 @@ function deltaSide(
 
 /**
  * Text that cannot read the same on the next run: a minted key prefix or id,
- * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in milliseconds. An
- * anchor made of it hands every replay off, so it is skipped while some
- * stable anchor exists on either side of the delta; with nothing else, the
+ * a countdown or age, a date, an ISO 8601 instant, a clock time, a timing in
+ * milliseconds. An anchor made of it hands every replay off, so it is skipped
+ * while some stable anchor exists on either side of the delta; with nothing else, the
  * volatile ones stay, because a replay that always hands off is still safer
  * than one that passes on mechanics alone. An alert keeps it, and is
  * compared with these parts read as placeholders (`alertShape`).

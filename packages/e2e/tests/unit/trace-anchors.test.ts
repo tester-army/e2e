@@ -255,6 +255,13 @@ describe('describeDelta', () => {
       expect(describeDelta(before, after, false)).toEqual({ appeared: [{ role: 'status', text: 'Record created' }], gone: [] });
     });
 
+    it('drops a minted-id-only anchor when the opposite side has a stable result', () => {
+      const before = nodes([heading, record]);
+      const after = nodes([heading, canvasNode('n', mintedA)]);
+      expect(describeDelta(before, after, false)).toEqual({ appeared: [], gone: [{ role: 'row', name: 'Example record' }] });
+      expect(describeDelta(after, before, false)).toEqual({ appeared: [{ role: 'row', name: 'Example record' }], gone: [] });
+    });
+
     it('keeps the volatile anchors when no side of the delta has a stable one', () => {
       const before = nodes([heading, node('clock', { text: '10:00' })]);
       const after = nodes([heading, node('clock', { text: '09:59' })]);
@@ -267,6 +274,13 @@ describe('describeDelta', () => {
       expect(describeDelta(before, after, false)).toEqual({
         appeared: [{ role: 'status', text: '3 records imported' }],
         gone: [{ role: 'dialog', name: 'Import CSV' }],
+      });
+      const delta = describeDelta(before, after, false);
+      const brokenReplay = nodes([heading, node('result', { role: 'status', text: '0 records imported' })]);
+      expect(deltaMismatch({ endAnchors: delta.appeared, goneAnchors: delta.gone }, brokenReplay, before)).toEqual({
+        missing: [{ role: 'status', text: '3 records imported' }],
+        present: [],
+        unrecordedAlerts: [],
       });
     });
 
