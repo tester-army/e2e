@@ -22,7 +22,7 @@ export default {
     {
       engine: mobile({
         platform: 'ios',
-        device: expoSimulators({ buildId: process.env.EAS_BUILD_ID }),
+        device: expoSimulators({ buildId: process.env.E2E_IOS_BUILD_ID }),
         videoTouches: false,
       }),
       app: { bundleId: 'com.example.app' },
@@ -43,7 +43,10 @@ Tests start once every slot has a simulator.
 
 - `buildId` (or `applicationArchiveUrl`) has Expo install the app; without
   it, `device.installApp()` uploads the target's `app.appPath` through the
-  daemon.
+  daemon. `E2E_IOS_BUILD_ID` above is a variable you set to the build's ID.
+  Don't read `EAS_BUILD_ID`: in an Expo Workflows job, Expo sets it to the
+  ID of the running job. In a workflow job, set the variable from
+  `needs.<build job>.outputs.build_id`.
 - `device` picks the simulator.
 - `maxIdleTimeMinutes` (default 10) is how long Expo keeps a session no
   command reached, the backstop for a run that died.

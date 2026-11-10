@@ -50,7 +50,7 @@ export default {
       name: 'ios',
       engine: mobile({
         platform: 'ios',
-        device: expoSimulators({ buildId: process.env.EAS_BUILD_ID }),
+        device: expoSimulators({ buildId: process.env.E2E_IOS_BUILD_ID }),
         videoTouches: false,
       }),
       app: { bundleId: 'com.example.app' },
@@ -58,6 +58,19 @@ export default {
   ],
   workers: 2,
 } satisfies E2EConfig;
+```
+
+Set `E2E_IOS_BUILD_ID` to the ID of a simulator build. Don't read
+`EAS_BUILD_ID`: in an [Expo Workflows](/ci/eas-workflows) job, Expo sets it
+to the ID of the running job. In a workflow, set the variable in the test
+job's `env`, from the output of the build job it needs:
+
+```yaml title=".eas/workflows/e2e.yml"
+jobs:
+  e2e_ios:
+    needs: [build_ios]
+    env:
+      E2E_IOS_BUILD_ID: ${{ needs.build_ios.outputs.build_id }}
 ```
 
 <Note>
