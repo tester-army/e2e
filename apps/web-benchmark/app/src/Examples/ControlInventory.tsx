@@ -27,7 +27,7 @@ const viewFromLocation = (): View => (window.location.search.includes(DETAILS_QU
  * browser history, a paragraph to scroll into view). Not a hard surface: each
  * control reports its state in a status line, and the success message shows
  * once every exercise is done. Ours, like the mobile benchmark's Control
- * Inventory, not a copy from the tester-army benchmark.
+ * Inventory, not a copy from the e2e-inc benchmark.
  */
 export default function ControlInventory() {
   const [agreed, setAgreed] = useState(false);

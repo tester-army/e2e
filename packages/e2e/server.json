@@ -1,11 +1,11 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.tester-army/e2e",
+  "name": "io.github.e2e-inc/e2e",
   "title": "e2e",
   "description": "Open live web and mobile app sessions from an e2e project to inspect the app and try locators.",
   "websiteUrl": "https://e2e.com/docs/reference/mcp",
   "repository": {
-    "url": "https://github.com/tester-army/e2e",
+    "url": "https://github.com/e2e-inc/e2e",
     "source": "github",
     "subfolder": "packages/e2e"
   },

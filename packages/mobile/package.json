@@ -23,13 +23,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/tester-army/e2e.git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
     "directory": "packages/mobile"
   },
   "bugs": {
-    "url": "https://github.com/tester-army/e2e/issues"
+    "url": "https://github.com/e2e-inc/e2e/issues"
   },
-  "homepage": "https://github.com/tester-army/e2e/tree/main/packages/mobile#readme",
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/mobile#readme",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "access": "public",
