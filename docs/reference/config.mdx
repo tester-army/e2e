@@ -524,7 +524,11 @@ command: {
   Targets that have finished their work ignore the exit.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
-- Startup timeouts and command exits quote a bounded tail of up to 20 lines appended since the command started when `log` is set.
+- With a `log`, startup timeouts and command exits quote the lines appended
+  since the command started. A log of up to 40 lines inside 8 KiB is quoted
+  whole. Otherwise the quote keeps up to 20 lines from each end, with
+  `[startup output omitted]` between them, and for a log past 8 KiB those
+  lines come from its first and last 4 KiB.
   An empty or unreadable log produces `no output in <log>`.
   A shared log can include lines from other processes.
   The quote replaces `command.env` and `inheritEnv` values of at least 4 characters with `<secret:NAME>` markers.
@@ -964,7 +968,7 @@ judge: gateway('anthropic/claude-opus-5'), // default: model
 ```
 
 - Judgments allow 8192 output tokens per call.
-- A judgment sees the instruction and the current screen only.
+- A judgment sees the instruction, its params, the agent's context, and the current screen with its location.
 
 See [A judge of its own](/models#a-judge-of-its-own).
 
@@ -1147,7 +1151,7 @@ credentials: {
 | `INVALID_CONFIG` | A `secrets` entry named exactly `admin.password` beside an `admin` credential. |
 | `INVALID_CONFIG` | Two credentials whose names map to one `E2E_USER_<NAME>_*` override, like `svc-a` and `svc_a` (see [Environment variables](/reference/environment)). |
 
-See [Signing in](/authentication). The declarations are under
+See [Authentication](/authentication). The declarations are under
 [`CredentialConfig`](#credentialconfig).
 
 #### `username`

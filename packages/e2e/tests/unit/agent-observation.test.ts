@@ -636,6 +636,27 @@ describe('settleObservation', () => {
     expect(value).toBe('new');
   });
 
+  it('returns a capture the caller vouches for without proving it holds still, and settles one it declines', async () => {
+    const vouched = scripted(['a', 'b', 'b']);
+    expect(await settleObservation(vouched.capture, (v) => v, clock, { ...fast, settledWhen: () => true })).toBe('a');
+    expect(vouched.calls()).toBe(1);
+    const declined = scripted(['a', 'b', 'b']);
+    expect(await settleObservation(declined.capture, (v) => v, clock, { ...fast, settledWhen: () => false })).toBe('b');
+    expect(declined.calls()).toBe(3);
+  });
+
+  it('still waits out the change wait before asking whether a capture is settled', async () => {
+    const source = scripted(['old', 'old', 'new', 'new']);
+    const asked: string[] = [];
+    const value = await settleObservation(source.capture, (v) => v, clock, {
+      ...fast,
+      changedFrom: leaving(),
+      settledWhen: (v) => { asked.push(v); return true; },
+    });
+    expect(value).toBe('new');
+    expect(asked).toEqual(['new']);
+  });
+
   it('returns the unchanged screen once the change wait runs out', async () => {
     vi.useFakeTimers();
     try {

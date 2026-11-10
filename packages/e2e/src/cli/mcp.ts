@@ -10,6 +10,7 @@
 import { Writable } from 'node:stream';
 import { isAbandonedRejection } from '../internal/abandoned.ts';
 import { errorMessage, exitCodeForCategory, classifyError } from '../internal/errors.ts';
+import { onBun } from '../internal/runtime.ts';
 import { McpOutput } from '../mcp/output.ts';
 import { serveMcp, type ServeOptions } from '../mcp/server.ts';
 import { processSecrets } from '../run/secrecy.ts';
@@ -108,13 +109,15 @@ export async function mcp(version: string, options: McpCommandOptions, telemetry
   process.once('SIGTERM', onSignal);
   process.on('unhandledRejection', onRejection);
   process.on('uncaughtException', onUncaught);
+  // Bun keeps one instance of each project module (`config/bun-loader.ts`): two live sessions would share their helpers.
+  if (onBun && (options.maxSessions ?? 1) > 1) output.log(`e2e mcp: --max-sessions ${options.maxSessions} ignored: on Bun, one session is open at a time`);
   try {
     const code = await serveMcp({
       cwd: process.cwd(),
       configPath: options.config,
       target: options.target,
       headed: options.headed === true,
-      maxSessions: options.maxSessions,
+      maxSessions: onBun ? 1 : options.maxSessions,
       env: process.env,
       version,
       stdin: process.stdin,

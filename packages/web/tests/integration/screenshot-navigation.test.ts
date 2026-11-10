@@ -4,6 +4,7 @@
  * masks were resolved in went away.
  */
 
+import { EventEmitter } from 'node:events';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -15,6 +16,13 @@ import type { OperationContext } from 'e2e/engine';
 import { PlaywrightSurface } from '../../src/surface.ts';
 import { decodePng } from '../helpers/png.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
+
+// Caret cleanup awaits a frame evaluate before a capture rejection reaches the
+// caller, which lets a short timer fire before the retry decides. This file
+// asserts masks, not the caret, so the capture rejection propagates at once.
+vi.mock('../../src/screenshot-caret.ts', () => ({
+  withHiddenCaret: <T,>(_page: unknown, capture: () => Promise<T>): Promise<T> => capture(),
+}));
 
 /** The race Playwright reports when the document a capture's masks were resolved in is replaced. */
 const RACE = 'page.screenshot: Execution context was destroyed, most likely because of a navigation';
@@ -76,6 +84,21 @@ describe('surface.screenshot while navigating', () => {
   it('captures each screenshot, masked, while the page hops between documents', async () => {
     await page.goto(`${origin}/hop?n=0`);
     for (let shot = 0; shot < 10; shot += 1) await expectMaskedShot(`hop-${shot}`);
+  });
+
+  it('retries the capture when the navigation event arrives after the screenshot error', async () => {
+    await page.goto(`${origin}/hop?n=40`);
+    // The rejection reaches the catch as a microtask. Emitting on a timer is a
+    // macrotask, so the event is not visible until the catch is waiting for it.
+    const capture = vi.spyOn(page, 'screenshot').mockImplementationOnce(() => {
+      setTimeout(() => {
+        // The published Page type hides EventEmitter.emit. The object still emits.
+        (page as unknown as EventEmitter).emit('framenavigated', page.mainFrame());
+      }, 0);
+      return Promise.reject(new Error(RACE));
+    });
+    await expectMaskedShot('late-event');
+    expect(capture).toHaveBeenCalledTimes(2);
   });
 
   it('takes the capture again, masked, of the document that replaced the one its masks were resolved in', async () => {

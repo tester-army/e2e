@@ -269,6 +269,12 @@ matcher passes (`assertionTimeout` and 100 ms by default, stopping with the
 attempt); a throwing read keeps polling, and it is not a report step. A
 poll that the body or a hook returns without awaiting is cancelled and fails
 that phase with `STEP_NOT_AWAITED`.
+`timeout: 0` on a locator or fixture action, `waitFor`, a matcher, or
+`expect.poll` sets no deadline of its own: the test timeout
+(`cleanupTimeout` in `afterEach`) still bounds it, and `expect.poll` with 0
+outside a test is `INVALID_CONFIG`. A negative or non-finite `timeout` is
+`INVALID_ARGUMENT` (`INVALID_CONFIG` from `expect.poll`); `agent.*` calls
+take a positive `timeout` only.
 `expect.soft(x)` keeps a failure instead of throwing; the attempt fails
 after the body with every soft failure listed. If the body then calls
 `test.skip`, the attempt still fails, with the skip reason in its `skip`.

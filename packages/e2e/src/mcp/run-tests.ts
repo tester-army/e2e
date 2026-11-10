@@ -242,7 +242,6 @@ function cliEntry(): { path: string; execArgv: string[] } {
   // fallow-ignore-next-line circular-dependency
   const js = fileURLToPath(new URL('../cli/bin.js', import.meta.url));
   if (existsSync(js)) return { path: js, execArgv: [] };
-  // fallow-ignore-next-line circular-dependency
   const ts = fileURLToPath(new URL('../cli/bin.ts', import.meta.url));
   return { path: ts, execArgv: ['--import', new URL('../config/register.ts', import.meta.url).href] };
 }

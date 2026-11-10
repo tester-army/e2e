@@ -279,7 +279,8 @@ export class DevicePool {
    * hide. A runner that did not start leaves the slot unopened: the open
    * would start it again under a shorter budget. A build `appPath` installs in `init` is
    * not on the device yet, so that slot boots and starts the runner only,
-   * unless a lease says the build is already there.
+   * unless a lease says the build is already there. Each slot logs one line
+   * of how long its boot, runner start, and open took, a failed step included.
    */
   private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<void> {
     for (const [slot, binding] of bindings.entries()) {
@@ -290,21 +291,26 @@ export class DevicePool {
       const client = this.createClient(session, binding);
       this.retain(info.targetName, client);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
-      await runCommand('boot', () => client.devices.boot(where), info.signal, at);
-      const runnerUp = this.options.platform !== 'ios' || (await prepareRunner(client, where, info, at));
-      const app = pinnedApp(info.app, binding.installedApp);
-      if (app === undefined || !runnerUp) continue;
-      // A build the suite installs itself is not on the device yet, so there
-      // is nothing to open: the first attempt installs it.
-      if (info.app.appPath !== undefined && binding.installedApp === undefined) {
-        info.log(`${label}: ${app} awaits the suite's device.installApp()`);
-        continue;
-      }
+      const took: string[] = [];
       try {
-        await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
-      } catch (cause) {
-        if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
-        info.log(`${label}: ${app} did not open (${message(cause)}); the first attempt opens it`);
+        await timed(took, 'boot', () => runCommand('boot', () => client.devices.boot(where), info.signal, at));
+        const runnerUp = this.options.platform !== 'ios' || (await timed(took, 'iOS runner', () => prepareRunner(client, where, info, at)));
+        const app = pinnedApp(info.app, binding.installedApp);
+        if (app === undefined || !runnerUp) continue;
+        // A build the suite installs itself is not on the device yet, so there
+        // is nothing to open: the first attempt installs it.
+        if (info.app.appPath !== undefined && binding.installedApp === undefined) {
+          info.log(`${label}: ${app} awaits the suite's device.installApp()`);
+          continue;
+        }
+        try {
+          await timed(took, `open ${app}`, () => runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at));
+        } catch (cause) {
+          if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
+          info.log(`${label}: ${app} did not open (${message(cause)}); the first attempt opens it`);
+        }
+      } finally {
+        info.log(`${label}: ${took.join(', ')}`);
       }
     }
   }
@@ -314,6 +320,20 @@ export class DevicePool {
     const clients = this.warmed.get(targetName) ?? [];
     clients.push(client);
     this.warmed.set(targetName, clients);
+  }
+}
+
+/**
+ * Runs one warm-up step and appends `<name> <seconds>s` to `took`, also when
+ * the step throws, so the line `warm` logs for the slot says where a slow or
+ * failed prepare spent its time.
+ */
+async function timed<T>(took: string[], name: string, step: () => Promise<T>): Promise<T> {
+  const start = performance.now();
+  try {
+    return await step();
+  } finally {
+    took.push(`${name} ${((performance.now() - start) / 1000).toFixed(1)}s`);
   }
 }
 

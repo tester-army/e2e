@@ -16,7 +16,7 @@ import { resultSegment } from '../run/artifacts.ts';
 import type { Report1Document, ReportExplore, ReportResult } from './build.ts';
 import { renderTracePage } from './failure-text.ts';
 import { outcome, type Outcome } from './outcome.ts';
-import { toPosixPath, writeTextReport } from './write.ts';
+import { posixRelative, writeTextReport } from './write.ts';
 
 /** Where each traced result's page went, by result id, as a path from the project root. */
 export type TracePages = ReadonlyMap<string, string>;
@@ -60,7 +60,7 @@ const TRACE_PAGE = 'trace.md';
  * test this run did not have.
  */
 export async function writeTracePages(report: Report1Document, traced: ReadonlySet<string>, options: WriteTracePagesOptions): Promise<TracePages> {
-  const relative = (absolute: string): string => toPosixPath(path.relative(options.projectRoot, absolute)) || '.';
+  const relative = (absolute: string): string => posixRelative(options.projectRoot, absolute);
   const serialGroups = new Map(report.run.serialGroups.map((group) => [group.id, group]));
   const readArtifact = (reportPath: string): string | undefined => {
     try {

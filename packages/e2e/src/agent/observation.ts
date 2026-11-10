@@ -1,6 +1,6 @@
 /** Observation capture, redaction, and model serialization. */
 
-import { appNavigation } from '../cache/route.ts';
+import { appLocation, appNavigation } from '../cache/route.ts';
 import { OBSERVED_NAME_LIMIT, OBSERVED_TEXT_LIMIT } from '../engine/contract.ts';
 import type { Observation, SemanticNode, ViewportSize } from '../engine/surface.ts';
 import { sha256Hex } from '../internal/ids.ts';
@@ -50,6 +50,8 @@ interface AgentObservationMetadata {
   readonly location?: string;
   /** Location projected to path and query when it is a URL, otherwise kept opaque. */
   readonly path?: string;
+  /** The location as a judgment is shown it (`judgeLocation`). */
+  readonly judgedLocation?: JudgedLocation;
   readonly revision: string;
   /** Redacted, size-bounded serialization sent to the model. */
   readonly text: string;
@@ -85,7 +87,7 @@ export function prepareObservation(
   const path = location === undefined ? undefined : observationPath(location);
   const metadata = {
     revision: observation.revision,
-    ...(location === undefined ? {} : { location }),
+    ...(location === undefined ? {} : { location, judgedLocation: judgeLocation(location, options.appOrigin) }),
     ...(path === undefined ? {} : { path }),
     viewport: observation.viewport,
   };
@@ -299,6 +301,51 @@ function observationPath(location: string): string {
   if (!URL.canParse(location)) return location;
   const url = new URL(location);
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/** Where a capture is, as a judgment is shown it, and whether that is an http(s) address. */
+interface JudgedLocation {
+  readonly text: string;
+  readonly url: boolean;
+}
+
+/**
+ * Where a capture is, as a judgment reads it: redacted, query and fragment
+ * included, a path on the app's origin and the whole address off it
+ * (`appLocation`), since a path on another site would read as the app's own
+ * route. Userinfo is dropped, as a link target drops it. A location that is no
+ * http(s) URL, such as a device's screen, stays as it is. Bounded like a link
+ * target, so a long query cannot push a dense screen past the request's token
+ * ceiling.
+ */
+function judgeLocation(location: string, appOrigin: string | undefined): JudgedLocation {
+  if (!isHttpUrl(location)) return { text: boundHref(location), url: false };
+  const url = new URL(location);
+  url.username = '';
+  url.password = '';
+  return { text: boundHref(appLocation(url.href, appOrigin)), url: true };
+}
+
+/**
+ * What a judgment is shown, as a wait compares it: the screen's shape, and
+ * the location unless the tree is withheld, since `vision: 'only'` is not
+ * shown it (`buildPrompt`). A clock in a device's screen title is no change,
+ * as in `observationShape`; an http(s) URL is compared as it is, since a time
+ * in its path or query names another page.
+ */
+export function judgmentShape(observation: AgentObservation, options: { readonly treeWithheld: boolean }): string | undefined {
+  const shape = observationShape(observation);
+  const location = observation.judgedLocation;
+  if (options.treeWithheld || location === undefined) return shape;
+  const where = location.url ? location.text : location.text.replaceAll(CLOCK_PATTERN, '<time>');
+  return `${shape ?? ''}\n<location ${where}>`;
+}
+
+/** An http(s) address. A device's screen title such as `Timer: 00:12` parses as a URL too, so the scheme decides. */
+function isHttpUrl(location: string): boolean {
+  if (!URL.canParse(location)) return false;
+  const { protocol } = new URL(location);
+  return protocol === 'http:' || protocol === 'https:';
 }
 
 /** Phase metrics describe a node count only when the capture actually read nodes. */
@@ -519,7 +566,7 @@ export function observationShape(observation: AgentObservation): string | undefi
       const stable = states.split(' ').filter((state) => state !== 'focused');
       return stable.length === 0 ? '' : ` [${stable.join(' ')}]`;
     })
-    .replaceAll(CLOCK_PATTERN, '<time>');
+    .replaceAll(CLOCK_PATTERN, CLOCK_MASK);
   // A capture taken with pixels is shaped by them too: on a canvas, a map, or
   // a game the tree never moves, and without the pixels every action would
   // wait out the whole change window and then be reported as having done
@@ -540,6 +587,16 @@ export function pixelDigest(bytes: Uint8Array): string {
 
 /** `12:05`, `0:59`, `23:59:59`: a value that changes on its own once a second or minute. */
 const CLOCK_PATTERN = /\b\d{1,2}:\d{2}(?::\d{2})?\b/g;
+const CLOCK_MASK = '<time>';
+
+/**
+ * The text with its clock-like values masked, so two looks at a screen that
+ * has not moved read the same however the clock ticked. `observationShape`
+ * and `readPage` both compare screens through it.
+ */
+export function maskClocks(text: string): string {
+  return text.replaceAll(CLOCK_PATTERN, CLOCK_MASK);
+}
 
 /**
  * The shape an action's effect is waited for against. On a screen the tree
@@ -556,7 +613,7 @@ export function changeShape(observation: AgentObservation): string | undefined {
 }
 
 /** Poll interval for shape-stability settling. */
-const SETTLE_POLL_MS = 75;
+export const SETTLE_POLL_MS = 75;
 
 /** What a settle loop needs from its step: the remaining clock and cancellation. */
 interface SettleClock {
@@ -596,6 +653,13 @@ export interface SettleOptions<T> {
    * past the change wait as it is.
    */
   readonly stableWaitMs: number;
+  /**
+   * Whether a capture is already the settled screen, so the stability proof
+   * is not spent on it: asked once, of the capture past the change wait. The
+   * caller owns the evidence (a scroll to a text compares the page with the
+   * one before it); a capture it declines gets the stability check.
+   */
+  readonly settledWhen?: ((value: T) => boolean) | undefined;
   readonly pollMs?: number | undefined;
 }
 
@@ -641,6 +705,7 @@ export async function settleObservation<T>(
       if (shape === undefined) return value;
     }
   }
+  if (options.settledWhen?.(value) === true) return value;
   const deadlineMs = Date.now() + options.stableWaitMs;
   while (Date.now() < deadlineMs && clock.remainingMs() > pollMs) {
     await sleep(pollMs, clock.signal);

@@ -5,7 +5,7 @@
  * wrong, and every refusal and the final allow is recorded on the step.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -72,6 +72,30 @@ describe('authorizeUploadPaths', () => {
     expect(authorize(['fixtures/a.txt', '']).code).toBe('INVALID_ARGUMENT');
     expect(authorize('fixtures/a.txt').code).toBe('INVALID_ARGUMENT');
     expect(authorize(Array.from({ length: 17 }, () => 'fixtures/a.txt')).code).toBe('INVALID_ARGUMENT');
+  });
+
+  it('resolves a sample name to e2e\'s own file, outside the project, kept as given', () => {
+    const recorded: string[] = [];
+    const host = { recordPolicy: (name: string, decision: string) => void recorded.push(`${name} ${decision}`) };
+    const authorized = authorizeUploadPaths(host, ['sample:photo.png', 'sample:document.pdf', 'sample:empty.txt'], root);
+    expect(authorized.given).toEqual(['sample:photo.png', 'sample:document.pdf', 'sample:empty.txt']);
+    const [png, pdf, empty] = authorized.resolved.map((file) => readFileSync(file));
+    expect(png!.subarray(1, 4).toString('latin1')).toBe('PNG');
+    expect(pdf!.subarray(0, 8).toString('latin1')).toBe('%PDF-1.4');
+    expect(pdf!.toString('latin1')).toMatch(/startxref\n\d+\n%%EOF\n$/);
+    expect(empty!.byteLength).toBe(0);
+    expect(authorized.resolved.every((file) => !file.startsWith(root))).toBe(true);
+    expect(recorded).toEqual(['upload.path allowed']);
+  });
+
+  it('names the samples for an unknown sample, never for a missing project file a step may have named', () => {
+    const host = { recordPolicy: () => undefined };
+    expect(() => authorizeUploadPaths(host, ['sample:video.mp4'], root)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT', message: expect.stringContaining('sample:photo.png, sample:photo.jpg, sample:document.pdf') }),
+    );
+    expect(() => authorizeUploadPaths(host, ['fixtures/invoice.pdf'], root)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_ARGUMENT', message: 'no file at "fixtures/invoice.pdf" under the project root' }),
+    );
   });
 
   it('checks every path before any is accepted', () => {

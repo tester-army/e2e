@@ -1,11 +1,9 @@
 /**
- * The Node.js releases e2e runs on, as a set of release ranges. The CLI checks the floor before it loads
- * anything else: package managers only warn about `engines`, so an
- * unsupported runtime would otherwise surface as an unrelated TypeError deep
- * inside a run.
+ * The runtimes e2e runs on: Node.js, as a set of release ranges, and Bun
+ * from a floor. The CLI checks before it loads anything else: package
+ * managers only warn about `engines`, so an unsupported runtime would
+ * otherwise surface as an unrelated TypeError deep inside a run.
  */
-
-import nodeModule from 'node:module';
 
 type Version = readonly [major: number, minor: number, patch: number];
 
@@ -50,6 +48,21 @@ const SUPPORTED: readonly ReleaseRange[] = [
 /** `engines.node` in package.json; a unit test keeps the two in step. */
 export const SUPPORTED_NODE_RANGE = SUPPORTED.map((range) => `${'line' in range ? '^' : '>='}${range.since.join('.')}`).join(' || ');
 
+/**
+ * The first Bun e2e runs on. Bun compiles TypeScript itself, so a project's
+ * files load through Bun's own module loader there (`config/bun-loader.ts`).
+ * Before 1.4.3, a CommonJS file that requires an ES module of a graph still
+ * waiting on top-level await throws `require() async module ... is
+ * unsupported`.
+ */
+const BUN_FLOOR: Version = [1, 4, 3];
+
+/** The Bun releases e2e runs on. */
+export const SUPPORTED_BUN_RANGE = `>=${BUN_FLOOR.join('.')}`;
+
+/** Whether this process runs on Bun, which reports a Node.js version it emulates beside its own. */
+export const onBun: boolean = process.versions['bun'] !== undefined;
+
 /** Explains a Node.js outside `SUPPORTED_NODE_RANGE`, or undefined for one inside it. */
 function unsupportedNodeMessage(current: string): string | undefined {
   if (within(current, SUPPORTED)) return undefined;
@@ -57,22 +70,17 @@ function unsupportedNodeMessage(current: string): string | undefined {
   return `e2e requires Node.js ${required}; this is Node.js ${current.replace(/^v/, '')}. Upgrade Node.js, or switch versions with your version manager (nvm install 24, fnm install 24, volta install node@24).`;
 }
 
-/**
- * Explains a runtime e2e cannot run on, or undefined for one it can: a
- * Node.js outside `SUPPORTED_NODE_RANGE`, or a runtime that reports a
- * supported Node.js version without Node.js's `module.registerHooks` (Bun),
- * which e2e's TypeScript loader runs on, or Deno.
- */
+/** Explains a Bun older than `SUPPORTED_BUN_RANGE`, or undefined for one e2e runs on. */
+function unsupportedBunMessage(current: string): string | undefined {
+  if (atLeast(parse(current), BUN_FLOOR)) return undefined;
+  return `e2e requires Bun ${BUN_FLOOR.join('.')} or newer; this is Bun ${current}. Upgrade Bun (bun upgrade), or run the CLI with Node.js (npx e2e).`;
+}
+
+/** Explains a runtime e2e cannot run on, or undefined for one it can. */
 export function unsupportedRuntimeMessage(
-  versions: Pick<NodeJS.ProcessVersions, 'node'> & { readonly bun?: string; readonly deno?: string } = process.versions,
-  hasRegisterHooks: boolean = typeof nodeModule.registerHooks === 'function',
+  versions: Pick<NodeJS.ProcessVersions, 'node'> & { readonly bun?: string | undefined; readonly deno?: string | undefined } = process.versions,
 ): string | undefined {
   // Deno implements module.registerHooks, but not the require() of a native addon from inside a hook that oxc needs.
-  if (versions.deno !== undefined) return `e2e runs on Node.js, not Deno ${versions.deno}: run the CLI with Node.js (npx e2e).`;
-  // Checked before the Node.js version a runtime reports, which upgrading Node.js does not change.
-  if (!hasRegisterHooks) {
-    const runtime = versions.bun !== undefined ? `Bun ${versions.bun}` : 'This runtime';
-    return `e2e runs on Node.js: ${runtime} reports Node.js ${versions.node} but has no module.registerHooks, which e2e's TypeScript loader needs. Run the CLI with Node.js: npx e2e, or bunx e2e (without --bun).`;
-  }
-  return unsupportedNodeMessage(versions.node);
+  if (versions.deno !== undefined) return `e2e runs on Node.js or Bun, not Deno ${versions.deno}: run the CLI with Node.js (npx e2e).`;
+  return versions.bun === undefined ? unsupportedNodeMessage(versions.node) : unsupportedBunMessage(versions.bun);
 }

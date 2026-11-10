@@ -150,8 +150,10 @@ The tools, one per engine action. Name the target as the screen names it
 - `scroll`: viewport or one scrollable node, a screen or a few.
 - `scroll_to`: a listed node into view, or by `text` page a list to a row.
 - `drag`: one node onto another.
-- `upload`: project-root files to a file input or a visible control that opens a
-  native file chooser; outside it or hidden (`.env`) is `POLICY_DENIED`.
+- `upload`: project-root files, or e2e's samples (`sample:photo.png`,
+  `sample:document.pdf`, and the rest) when the step names none, to a file
+  input or a visible control that opens a native file chooser; outside the
+  root or hidden (`.env`) is `POLICY_DENIED`.
 - `navigate`: a URL or app-relative path.
 - `back`: browser history or in-app back.
 - `resize_viewport`: set the viewport size (200 to 4096 CSS px) to check a
@@ -203,7 +205,7 @@ expect(data.titles).toContain('Buy milk');
   it adds `pass vision: true when the answer is in pixels`, as does
   `waitFor`'s timeout after an inconclusive round.
 - Judgments see the assertion, its params, the agent's context, the test
-  title, and the current screen, never prior steps or the act loop's
+  title, and the current screen with its location, never prior steps or the act loop's
   summaries; malformed output gets one repair round, then
   `MODEL_OUTPUT_INVALID`.
 - `assert` and `waitFor` take `params` like `act`:
@@ -213,7 +215,7 @@ expect(data.titles).toContain('Buy milk');
   pay button) must agree everywhere, or the judgment fails. Name the one
   you mean (`'the order summary total is $42.00'`) when only it matters.
 - `waitFor` observes every `interval` (default 3 s), judges only when the
-  screen changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
+  screen or its location changed, and is `STEP_TIMEOUT` after `timeout` (default 30 s).
 - Never sleep for a fixed time to let the app settle. A sleep is too short
   on a slow run and wasted time on a fast one; `waitFor` returns as soon as
   the state appears:
@@ -228,7 +230,8 @@ await agent.waitFor('the export finished and a download link appeared', { timeou
 
 - `waitFor` needs a model even under a custom executor and is never cached,
   so each run spends judgments on it. It judges again on every screen
-  change, up to `maxModelCalls` (25): for a long wait on a screen that keeps
+  change, and on every location change except under `vision: 'only'`, up
+  to `maxModelCalls` (25): for a long wait on a screen that keeps
   changing (a progress counter), raise `interval`. The test timeout still
   caps its `timeout`.
 

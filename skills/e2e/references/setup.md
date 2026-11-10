@@ -13,7 +13,9 @@
 
 ## Requirements
 
-- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22.
+- Node.js 24.8 or newer, or 22.22.3 or newer on Node.js 22; or Bun 1.4.3 or
+  newer (`bunx --bun e2e`), with
+  [these limitations](https://e2e.com/docs/reference/cli#bun).
 - ES modules: `.ts` config, tests, helpers, and workspace packages exporting
   `.ts` source load as ESM regardless of the nearest `package.json` `type`
   (CommonJS packages need no change); never `require` or `module.exports`.
@@ -210,7 +212,7 @@ start a script that brings them up and serves the app.
 
 | Option | Meaning |
 | --- | --- |
-| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
+| `browser` | `'chromium'` (default), `'firefox'`, `'webkit'`, or a `BrowserProvider` leasing hosted browsers over CDP (`kernel()` from `@e2e-dev/kernel`, `smol()` from `@e2e-dev/smol`, `lightpanda()` from `@e2e-dev/lightpanda`, `testmuBrowsers()` from `@e2e-dev/testmu/web`, `e2bBrowsers()` from `@e2e-dev/e2b/web`, or your own), which implies chromium and excludes `connect`. Scope `'worker'` (default): one browser per worker slot from `prepare` to `finish`; `'attempt'`: one per attempt, with `reconnectEndpoint`'s limits (`lightpanda()` and `testmuBrowsers()` are worker scope only). |
 | `viewport` | `{ width, height }`, default 1280x720; `null` follows the browser window (hosted live view, headed run). On a headed hosted browser (Kernel) use `null` and size the service's screen; a fixed size gives a smaller, unmaximized window. |
 | `connect` | `{ cdpEndpoint }` attaches to a remote Chromium over CDP; `cdpEndpoint` is required, and both it and `reconnectEndpoint` are resolvers `(signal) => url`, not strings, else `INVALID_CONFIG` at load. With `reconnectEndpoint` it rides one persistent default context, needs a fresh browser from `cdpEndpoint` every attempt, and reconnects only to the original browser and page. |
 | `headers` | Sent to the app's site only (Vercel's `x-vercel-protection-bypass`, ngrok's `ngrok-skip-browser-warning`), `agent.act` included; disables the browser HTTP cache and service workers. |
@@ -392,10 +394,15 @@ export default {
   `appiumVersion` (such as `'3.2.0'`): BrowserStack's default Appium 1.x
   lacks `mobile:` commands. An attempt that records video links
   BrowserStack's recording of the whole session.
+- `e2b()` from `@e2e-dev/e2b` runs Android 16 in one E2B sandbox per worker
+  (Android only, x86_64, no Google Play) and installs the `.apk` at
+  `app.appPath` before tests. Set `E2B_API_KEY`; install the `e2b` peer. The
+  runner needs no `adb`.
 - A control that appeared or moved with the previous action waits out
   `transition` (default 500 ms). Opening or closing the keyboard also uses
-  the remaining budget. Agent actions settle `settle` ms (default
-  150) before the next observation, `settle: false` skips it.
+  the remaining budget. Screen swipes in tests wait out the remaining budget
+  before scrolling. Agent actions settle `settle` ms (default 150) before the
+  next observation, `settle: false` skips it.
 - Mobile `fill` and `clear` re-read the field before typing, replay included.
   Missing fields, changed security state, or incomplete captures return
   `NODE_STALE` before mutation, then retry after a fresh observation.
@@ -407,7 +414,8 @@ export default {
   `setPermission`, `setNetwork`, `setAppearance`, `clearKeychain`, `fold`
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
-- `device.unstable_raw` gives the session name, device id and name, and an
+- `device.unstable_raw` gives the session name, device id and name, a
+  `selection` to spread into a call, and an
   agent-device `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
@@ -425,6 +433,10 @@ export default {
 - `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`, and
   `modifiers` on `tap` or `doubleTap` are `UNSUPPORTED_CAPABILITY` on a
   device.
+- `device.clipboard()` and `device.setClipboard()` are
+  `UNSUPPORTED_CAPABILITY` on an Android build with no clipboard shell
+  command (the Android 16 emulator is one); check a copy by pasting into a
+  field and reading it back.
 - React Native on iOS: checkbox and radio role and state come off the
   accessibility value (`getByRole`, `check()`, `toBeChecked` work); a tab is
   `other` with `selected`, query by test id or label; a plain `View` is a

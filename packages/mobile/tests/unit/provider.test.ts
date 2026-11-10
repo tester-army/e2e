@@ -69,6 +69,7 @@ const finishInfo = (log: (line: string) => void = () => undefined) => ({
 describe('device provider', () => {
   it('rejects a provider without a name or the two methods', () => {
     expect(() => harness({ device: { name: '' } as unknown as DeviceProvider })).toThrow(/non-empty `name`/);
+    expect(() => harness({ device: null as unknown as DeviceProvider })).toThrow(/non-empty `name`/);
     expect(() => harness({ device: { name: 'x', acquire: async () => ({}) } as unknown as DeviceProvider })).toThrow(
       /provider "x" must implement release\(\)/,
     );
@@ -97,7 +98,9 @@ describe('device provider', () => {
       'toy-cloud: leased lease-0 (sim-0)',
       'toy-cloud: leased lease-1 (sim-1)',
       'booting sim-0 (1 of 2)',
+      expect.stringMatching(/^sim-0: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/),
       'booting sim-1 (2 of 2)',
+      expect.stringMatching(/^sim-1: boot \d+\.\ds, iOS runner \d+\.\ds, open Settings \d+\.\ds$/),
     ]);
     // Warmed like a local device, through the leased daemon: a fresh hosted simulator is the coldest device there is.
     expect(h.connections.map((connection) => connection?.daemon)).toEqual([

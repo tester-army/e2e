@@ -1,20 +1,24 @@
 ---
 title: Continuous integration
 sidebarTitle: Setting up CI
-description: Run e2e on GitHub Actions, Expo Workflows, Bitrise, Codemagic, Norrix, or any CI service that runs Node.
+description: Run e2e on GitHub Actions, GitLab CI/CD, Expo Workflows, Bitrise, Codemagic, Norrix, or any CI service that runs Node.
 "og:image": "https://e2e.com/docs/images/og/ci.png?v=01be716140"
 "twitter:image": "https://e2e.com/docs/images/og/ci.png?v=01be716140"
 ---
 
 e2e runs on each CI service that can run Node 24.8 or later (22.22.3 or
-later on Node 22). Each job installs the dependencies, starts the app or a
-device, runs `npx e2e run`, and uploads `.e2e/`.
+later on Node 22), or [Bun](/reference/cli#bun) 1.4.3 or later for web tests.
+Each job installs the dependencies, starts the app or a device, runs the
+tests, and uploads `.e2e/`.
 
 ## Pick your CI service
 
 <CardGroup cols={2}>
   <Card title="GitHub Actions" icon="/images/integrations/github-actions.svg" href="/ci/github-actions">
     Web and mobile workflows. Post the results as a pull request comment.
+  </Card>
+  <Card title="GitLab CI/CD" icon="/images/integrations/gitlab.svg" href="/ci/gitlab">
+    Web and mobile jobs. Show the results in the merge request.
   </Card>
   <Card title="Expo Workflows" icon="/images/integrations/expo.svg" href="/ci/eas-workflows">
     Build an Expo app with Expo Build, then run iOS and Android tests on it.
@@ -45,6 +49,7 @@ Upload `.e2e/` at the end of each job, also when a test fails. It holds:
 | `results/` | The trace pages, screenshots, and screen dumps of each test. With `--video`, also a video for each target whose engine can record |
 
 Point the test-report integration of your CI service at `.e2e/junit.xml`.
+On GitLab, `junit.xml` also links each failure screenshot, so it shows in the test report.
 The [`output`](/reference/config#output) option moves `.e2e/`.
 
 ## Model credentials

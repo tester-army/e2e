@@ -5,7 +5,8 @@
  * app is refused: one outside the project root (through a symlink too), one
  * that is hidden or sits under a hidden directory (`.env`, `.git`, `.e2e`),
  * one that does not exist or is not a regular file. A page can talk a model
- * into naming any path; it cannot talk the harness into reading it.
+ * into naming any path; it cannot talk the harness into reading it. A
+ * `sample:<name>` path names one of e2e's own sample files instead.
  */
 
 import { statSync } from 'node:fs';
@@ -14,6 +15,7 @@ import { MAX_TRACE_UPLOAD_PATHS } from '../cache/trace.ts';
 import { TestError } from '../internal/errors.ts';
 import { relativeToProjectRoot } from '../internal/paths.ts';
 import { AgentError } from './error.ts';
+import { SAMPLE_NAMES, SAMPLE_PREFIX, samplePath } from './sample-files.ts';
 
 /** The narrow surface the policy needs from its step machinery, the same member the secret fill records through. */
 interface UploadPolicyHost {
@@ -45,6 +47,7 @@ export function authorizeUploadPaths(host: UploadPolicyHost, paths: unknown, pro
     throw new AgentError('POLICY_DENIED', reason);
   };
   const resolved = paths.map((entry) => {
+    if (entry.startsWith(SAMPLE_PREFIX)) return sample(entry.slice(SAMPLE_PREFIX.length));
     const absolute = path.resolve(projectRoot, entry);
     const relative = relativeToProjectRoot(projectRoot, absolute);
     if (relative === undefined) {
@@ -64,4 +67,16 @@ export function authorizeUploadPaths(host: UploadPolicyHost, paths: unknown, pro
   });
   host.recordPolicy('upload.path', 'allowed');
   return { given: paths, resolved };
+}
+
+/** Where a named sample is; a name that is no sample is the model's to correct. */
+function sample(name: string): string {
+  const found = samplePath(name);
+  if (found === undefined) {
+    throw new TestError(
+      'INVALID_ARGUMENT',
+      `no sample file named ${JSON.stringify(name)}; the samples are ${SAMPLE_NAMES.map((known) => `${SAMPLE_PREFIX}${known}`).join(', ')}`,
+    );
+  }
+  return found;
 }

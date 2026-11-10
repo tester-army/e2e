@@ -38,7 +38,9 @@ import { parseList, parseNames } from './parse-names.ts';
 import { SESSION_BOUNDS } from '../mcp/bounds.ts';
 import { PROVIDER_IDS } from '../oauth/provider-ids.ts';
 import type { LoginFlags } from '../oauth/cli.ts';
+import { Keyboard } from './keyboard.ts';
 import { SignalLadder } from './signals.ts';
+import { StepGate, stepKeyOf } from './step.ts';
 import { skillTopics } from './skill.ts';
 import { UpdateCheck } from './update-check.ts';
 import { telemetry as telemetryCommand, TELEMETRY_ACTIONS, type TelemetryAction } from './telemetry.ts';
@@ -341,6 +343,39 @@ function rejectWatchIn(command: Command, reporters: readonly Reporter[] | undefi
 }
 
 /**
+ * Where `--step` cannot work: it reads keys, so it needs a terminal on both
+ * ends and no CI; its prompt is one at a time, so one worker; and it cannot
+ * share the keyboard with `--watch` or stdout with the json reporter.
+ */
+function rejectStepIn(command: Command, options: { watch?: boolean; workers?: number; reporter?: readonly Reporter[] }): void {
+  const refuse = (why: string): never => command.error(`error: --step ${why}`, { exitCode: 2 });
+  if (isCiMode(process.env)) refuse('waits for a key at every step, so it is refused in CI (CI is set)');
+  if (process.stdin.isTTY !== true || process.stdout.isTTY !== true) refuse('reads keys from the terminal, so stdin and stdout must both be one');
+  if (options.watch === true) refuse('cannot be combined with --watch: both read the keyboard');
+  if (options.workers !== undefined && options.workers > 1) refuse('runs one test at a time, so it cannot be combined with --workers above 1');
+  if (options.reporter?.includes('json') === true) refuse('cannot be combined with --reporter json: the prompt would land in its stdout document');
+}
+
+/**
+ * One run stepped through from the keyboard: raw-mode keys for the run's
+ * whole length, so Ctrl-C (a keypress then, not a signal) still climbs the
+ * ladder while a step runs, and `q` is the ladder's first rung.
+ */
+async function stepped(options: RunOptions, signals: SignalLadder): Promise<RunOutcome> {
+  const gate = new StepGate(() => signals.escalate());
+  const keyboard = new Keyboard(process.stdin, stepKeyOf);
+  keyboard.listen((key) => {
+    if (key === 'suspend') keyboard.suspend();
+    else gate.press(key);
+  });
+  try {
+    return await run({ ...options, beforeStep: gate.beforeStep });
+  } finally {
+    keyboard.close();
+  }
+}
+
+/**
  * Runs the watch loop under the Ctrl-C ladder, armed once for every run of
  * the session; each run is recorded for telemetry as it ends, and the exit
  * code is the last run's. What throws before a run starts prints as a
@@ -585,7 +620,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .addOption(new Option('--headless').hideHelp())
     .option(
       '--max-sessions <n>',
-      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default})`,
+      `sessions open at once, each with its own browser or device, ${SESSION_BOUNDS.min} through ${SESSION_BOUNDS.max} (default: ${SESSION_BOUNDS.default}; 1 on Bun)`,
       parseBoundedInt(SESSION_BOUNDS),
     )
     .addHelpText(
@@ -631,6 +666,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
     .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
+    .option('--step', 'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops; one worker, a terminal, not in CI')
     .optionsGroup('Output:')
     .option('--reporter <ids>', `comma-separated reporters: ${BUILTIN_REPORTERS.join(', ')}`, parseReporters)
     .option('--output <dir>', 'results directory: report, artifacts, sessions (default: output in the config, else .e2e)')
@@ -647,6 +683,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
         examples([
           'e2e run',
           'e2e run tests/signup.e2e.ts --headed',
+          'e2e run tests/checkout.e2e.ts --step --headed',
           'e2e run --watch',
           "e2e run 'tests/**/*.smoke.e2e.ts' --target web --tag smoke",
           'e2e run --tag smoke,billing --tag-mode all',
@@ -697,6 +734,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           strictCache?: boolean;
           updateSnapshots?: boolean;
           watch?: boolean;
+          step?: boolean;
           debug?: boolean;
           aiTrace?: boolean;
           trace?: RecordingMode | true;
@@ -713,7 +751,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           headed: options.headed,
           agent: options.agent,
           retries: options.retries,
-          workers: options.workers,
+          // A stepped run is one test at a time, so there is one prompt at a time.
+          workers: options.step === true ? 1 : options.workers,
           actionTimeout: options.actionTimeout,
           assertionTimeout: options.assertionTimeout,
           maxFailures: options.maxFailures,
@@ -731,6 +770,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           video: recordingOption(options.video),
         };
         if (options.watch === true) rejectWatchIn(command, options.reporter);
+        if (options.step === true) rejectStepIn(command, options);
         const output = claimRunnerOutput();
         try {
           if (options.watch === true) {
@@ -756,9 +796,10 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
             });
             return;
           }
-          await runToOutcome(telemetry, command, (signals) =>
-            run({ ...runOptions, interruptSignal: signals.interruptSignal, forceSignal: signals.forceSignal, processOutput: output }),
-          );
+          await runToOutcome(telemetry, command, (signals) => {
+            const base = { ...runOptions, interruptSignal: signals.interruptSignal, forceSignal: signals.forceSignal, processOutput: output };
+            return options.step === true ? stepped(base, signals) : run(base);
+          });
         } finally {
           output.end();
         }

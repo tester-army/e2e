@@ -302,9 +302,10 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   );
   if (isCancelled(mcpFiles)) return cancel();
   facts.mcp = mcpFiles.length > 0;
+  const manager = detectPackageManager(cwd, pkg.manifest.packageManager);
   let mcpRegistrations: ReturnType<typeof planMcpRegistration>['registrations'];
   try {
-    const plan = planMcpRegistration(cwd, mcpFiles);
+    const plan = planMcpRegistration(cwd, mcpFiles, manager);
     mcpRegistrations = plan.registrations;
     for (const link of plan.links) {
       clack.log.warn(`Symlink, not touching: ${link.relative} -> ${link.target} (e2e mcp server)`);
@@ -366,7 +367,6 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     if (isCancelled(proceed) || !proceed) return cancel();
   }
 
-  const manager = detectPackageManager(cwd, manifest.packageManager);
   const install = given.install ?? await clack.confirm({ message: `Install dependencies with ${manager}?`, initialValue: true });
   if (isCancelled(install)) return cancel();
   facts.install = install;

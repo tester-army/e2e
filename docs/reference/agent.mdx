@@ -156,8 +156,8 @@ await agent.assert('the dashboard shows a trial badge');
 await agent.assert('the table lists {name}', { params: { name } });
 ```
 
-- The judge sees the assertion, its `params`, the current observation, and
-  the agent's `context`, never prior steps or `act` summaries. It answers `holds`,
+- The judge sees the assertion, its `params`, the current observation with
+  its location, and the agent's `context`, never prior steps or `act` summaries. It answers `holds`,
   `fails`, or `inconclusive`.
 - When the subject appears more than once, such as a total in a summary and
   on a pay button, every instance must agree: one that contradicts it fails.
@@ -219,8 +219,10 @@ await agent.waitFor('the upload progress reports completion', { interval: 500 })
   holds.
 - After a false or inconclusive judgment it waits out `interval`. Then it
   observes every 500 ms (or every `interval`, when shorter) without a model
-  call. It judges again only once the screen differs from the one last
-  judged, pixels included under `vision`.
+  call. It judges again only once the screen or its location differs from the
+  one last judged, pixels included under `vision`. Under `vision: 'only'` a
+  location change alone does not count, since that mode is not shown the
+  location.
 - Judgments follow the [`agent.assert`](#agent-assert) rules: a value shown
   in more than one place holds only once every instance agrees.
 
@@ -331,17 +333,21 @@ click, as a Shift-click extends a selection.
 | `scroll({ direction, target?, times? })` | `swipe` | Scrolls the viewport or one scrollable node, up to 20 screens per call. |
 | `scroll_to({ target })` or `scroll_to({ text, direction?, target? })` | `scrollIntoView`; with `text`, `swipe` | With `target` alone, brings one listed node into the viewport, for a node the tree lists below or above the fold. With `text`, pages the list (`target`, else the viewport) screen by screen in `direction` (down by default) until a node reading that text shows, then brings it in when the engine can. That is for a row deep in a long or windowed list the tree has not rendered yet. The node's label must be the text, or hold it with no part of a word on either side, so `Row 12` never stops at `Row 120`. When `target` names a list, the node must be inside it, so a heading elsewhere reading the same does not end the paging. One action however many screens, up to 800; a screen that stops moving or the cap is `LOCATOR_NOT_FOUND`. Each form is offered only with its action kind. |
 | `drag({ target, to })` | `dragTo` | Drags one node and drops it on another: reordering, kanban columns, drop zones. |
-| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input, or to a visible control that opens a native file chooser. Paths are project-relative; see the policy below. |
+| `upload({ target, files })` | `setInputFiles` | Attaches files to a file input, or to a visible control that opens a native file chooser. Paths are project-relative or name a `sample:` file; see the policy below. |
 | `navigate({ url })` | `session.open` | Opens a URL or an app-relative path. |
 | `back()` | `session.back` | Goes back once: browser history on a page, the in-app back on a device. |
 | `resize_viewport({ width, height })` | `session.resize` | Sets the viewport size in CSS pixels, 200 to 4096 per side, to check a layout at another width. The size holds until the next resize. Engines with `session.resize`, such as web. |
 | `observe()` | | Looks again and reports what changed since the last screen the model received. |
 | `dismiss_keyboard()` | `keyboard.dismiss` | Hides an on-screen keyboard. Device engines only. |
 
-`scroll_to({ text })` waits for each scrolled screen to settle. On a device,
-the next observation checks stability without waiting for a second scroll
-effect. Engines with `scrollIntoView` still wait for the final adjustment
-that brings the matched node into view. Replay follows the same rule.
+`scroll_to({ text })` reads each screen once when it has visibly scrolled, and
+otherwise re-reads it for up to a second, the same beat a held-still look
+uses, before that screen counts as stopped. A list that appends when it
+reaches the end keeps being paged. A single changing time value
+(`12:05`) beside other text does not count as the list moving. On a device, the next observation
+checks stability without waiting for a second scroll effect. Engines with
+`scrollIntoView` still wait for the final adjustment that brings the matched
+node into view. Replay follows the same rule.
 
 `upload` takes the model's path, but the runner decides:
 
@@ -352,6 +358,10 @@ that brings the matched node into view. Replay follows the same rule.
   `.e2e`, is refused with `POLICY_DENIED`.
 - A path that names no regular file is `INVALID_ARGUMENT`, an ordinary action
   failure the model reads and corrects.
+- `sample:photo.png`, `sample:photo.jpg`, `sample:document.pdf`,
+  `sample:notes.txt`, `sample:table.csv`, and `sample:empty.txt` name small
+  files e2e ships, so the agent can try an upload when the project has no
+  file to give it. The tool lists them.
 - Every refusal and the final allow is a `policy` event named `upload.path`
   on the step. Nothing reaches the engine until every path passes.
 
@@ -451,7 +461,7 @@ await agent.assert('no overlay covers the checkout form', { vision: 'only' }); /
 | --- | --- |
 | `false`, the default | Semantic tree |
 | `true` | Semantic tree and a masked screenshot |
-| `'only'` | Masked screenshot only |
+| `'only'` | Masked screenshot only, no tree or location |
 
 Use `'only'` for visual checks, such as whether an overlay covers a form or a
 chart looks correct. Screenshots show the current viewport, so scroll to the

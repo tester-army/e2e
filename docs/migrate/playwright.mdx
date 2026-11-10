@@ -76,7 +76,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `expect.timeout` | `assertionTimeout` | renamed |
 | `use.actionTimeout` | `actionTimeout` | renamed |
 | `use.navigationTimeout` | `timeout`, the test budget; `browser.goto(url, { timeout })` overrides one call | renamed |
-| `use.storageState`, a `setup` project in `projects[].dependencies` | `test.setup(title, { sessions }, fn)` with `session.save(name)`, then `{ session }` on a test, see [Signing in](/authentication); no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
+| `use.storageState`, a `setup` project in `projects[].dependencies` | `test.setup(title, { sessions }, fn)` with `session.save(name)`, then `{ session }` on a test, see [Authentication](/authentication); no file, see [What differs on purpose](#what-differs-on-purpose) | by design |
 | `use.storageState: { cookies }` with fixed values | `browser.setCookies(cookies)` in a fixture | renamed |
 | `use.trace` | `trace`: `'off'`, `'on'`, `'retain-on-failure'`, `'on-first-retry'`, or `'on-all-retries'`, at the top of the config, per target, per test, or `--trace [mode]`. A trace is a markdown page, `trace.md`, in each test's directory under `.e2e/results/`, not a zip, with no viewer. No `'retain-on-first-failure'`, `'retain-on-failure-and-retries'`, or object form. The default differs, see [below](#defaults-that-differ) | renamed |
 | `use.video` | `video`, with the modes and places of `trace`, and `--video [mode]`; no `{ mode, size }` object | renamed |
@@ -247,7 +247,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.viewportSize()` | `browser.evaluate(() => ({ width: innerWidth, height: innerHeight }))` | missing |
 | `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | renamed |
 | a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage. No page opens before the first `app.open` or `browser.goto`, where Playwright starts on `about:blank` | same |
-| `page.pause()` | `--headed` to watch, [`e2e mcp`](/mcp-server) to drive the app from a coding agent | missing |
+| `page.pause()` | `--step --headed` runs the first step, then holds each later one until a key; [`e2e mcp`](/mcp-server) to drive the app from a coding agent | missing |
 
 </Accordion>
 <Accordion title="Network and browser">
@@ -316,7 +316,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `--project web` | `--target web` | renamed |
 | `-g`, `--grep`, `--grep-invert` | `--grep` and `--grep-invert`, no `-g`; matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` | renamed |
 | `tests/login.spec.ts:12` | `tests/login.e2e.ts:12`, the test whose `test(` call opens on that line. A `describe` line or `file:line:column` selects nothing | renamed |
-| `--debug` | `--headed` to watch. `e2e run --debug` prints phase timings and the agent step table, not an inspector | missing |
+| `--debug` | `--step --headed` runs the first step, then holds each later one until a key; there is no inspector. `e2e run --debug` prints phase timings and the agent step table | renamed |
 | `--ui` | `--watch` reruns on save with vitest's keys, `--headed` to watch, `e2e mcp` to drive the app from a coding agent | missing |
 | `--headed`, `--retries`, `--workers`, `--config`, `--pass-with-no-tests` | the same long flags, no `-j` or `-c`. `--workers` takes a number, not `50%`; `--config` takes a file, not a directory | renamed |
 | `--reporter` | the same flag; the ids are `list`, `json`, `junit`, `markdown`. No `dot`, `line`, `html`, `blob`, `github`, or `null`; a custom reporter goes in the config's `reporters` | renamed |
@@ -436,7 +436,7 @@ context.
 - `browser.evaluate` takes and returns JSON only, so the report can record
   and redact the result. Pass values in through `arg`.
 - A password is a `Secret` with no string value, and the model never sees
-  it. See [Signing in](/authentication).
+  it. See [Authentication](/authentication).
 - Sessions are per run. `test.setup` saves state under a name, one time per
   run and target, and `{ session }` restores it. The file is encrypted and
   deleted at cleanup, so there is no `.auth/user.json` to reuse across runs.

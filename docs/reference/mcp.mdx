@@ -45,7 +45,7 @@ bunx e2e mcp [--config <path>] [--target <name>] [--headed] [--max-sessions <n>]
 | [`--config <path>`](#config) | discovered like `e2e run` |
 | [`--target <name>`](#target) | the only target |
 | [`--headed`](#headed) | headless |
-| [`--max-sessions <n>`](#max-sessions) | `4` |
+| [`--max-sessions <n>`](#max-sessions) | `4`, `1` on Bun |
 
 #### `--config`
 
@@ -70,8 +70,8 @@ session whose `open_session` does not set `headed`.
 
 #### `--max-sessions`
 
-How many sessions may be open at once, 1 through 16. See
-[Several sessions](#several-sessions).
+How many sessions may be open at once, 1 through 16. On
+[Bun](/reference/cli#bun), one. See [Several sessions](#several-sessions).
 
 ```bash
 e2e mcp --max-sessions 8 # default: 4
@@ -264,12 +264,13 @@ changed on screen.
 | Input | Does |
 | --- | --- |
 | A node id | From the newest observation. |
-| The value, key, `checked` state, direction, drop target, project-relative `files`, URL, `width` and `height`, or secret name | What the verb needs. |
+| The value, key, `checked` state, direction, drop target, project-relative or `sample:` `files`, URL, `width` and `height`, or secret name | What the verb needs. |
 | `modifiers` (optional) | On `tap`, `double_tap`, and `right_click`, when the engine declares `tapModifiers`: a list of `Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`, held for the click. |
 
 - A verb the engine does not declare is not in the catalog.
 - `upload` refuses a path outside the project, a hidden file, or a file
-  under a hidden directory with `POLICY_DENIED`.
+  under a hidden directory with `POLICY_DENIED`. A `sample:` file has no
+  test line: save a file in the project for one.
 - `type_secret` is listed when the config declares `credentials` or
   `secrets` and the engine declares the `fill` action. The plaintext never
   reaches the agent as text; see
@@ -490,7 +491,7 @@ own names, scoped to the target's platform. A mobile project that passes
 The server ships with `e2e`. `e2e init` offers to register it in
 `.mcp.json` (Claude Code), `.cursor/mcp.json` (Cursor), and
 `.codex/config.toml` (Codex). Install dependencies and start the MCP client
-in the project directory so `npx` uses the installed e2e version. By hand:
+in the project directory so `npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <CodeGroup>
 ```bash npm
@@ -652,8 +653,8 @@ Several sessions can be open at once, up to `--max-sessions`, each on its
 own attempt and its own browser or device. Parallel agents, such as a
 coding agent's subagents, share one server this way: each opens a session
 and passes its id to every `tools`, `call`, and `close_session`.
-[Bug bashes](/bug-bash) use this: every verifying subagent drives its own
-session.
+[Bug bashes](/bug-bash) use this: a verifying subagent that hardens a repro
+into a scripted test drives its own session.
 
 | Throws | When |
 | --- | --- |

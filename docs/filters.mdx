@@ -128,10 +128,9 @@ or runs past 5 minutes leaves nothing out, and a warning says so. The next
 filter still judges every test it was given.
 
 On another CI service, pass `--changed-since origin/main` on pull request
-builds only, and fetch enough history for the merge base. On GitLab, pass
-`--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
-in merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. With `--shard`, the filters on each machine judge
-only its slice.
+builds only, and fetch enough history for the merge base. On GitLab, see
+[Run only affected tests](/ci/gitlab#run-only-affected-tests). With
+`--shard`, the filters on each machine judge only its slice.
 
 ## What you see
 

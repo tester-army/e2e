@@ -369,6 +369,11 @@ test('a negated toHaveURL ignoreCase fails on a case-folded match', async ({ app
   await app.open('/classes');
   await expect(browser).not.toHaveURL('/CLASSES', { ignoreCase: true, timeout: 300 });
 });
+
+test('a relative toHaveURL prints the expected URL resolved', async ({ app, browser }) => {
+  await app.open('/classes');
+  await expect(browser).toHaveURL('/about', { timeout: 300 });
+});
 `;
 
 // A predicate, which Playwright accepts and a migrated test may still pass, is
@@ -695,7 +700,15 @@ describe('web platform integration', () => {
     const negated = resultByTitle(outcome, 'a negated toHaveURL ignoreCase fails on a case-folded match');
     expect(negated.status).toBe('failed');
     expect(negated.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
-    expect(negated.attempts[0]!.error?.message).toContain('expected: not URL /CLASSES (ignoring case)');
+    expect(negated.attempts[0]!.error?.message).toContain(`expected: not URL ${new URL('/CLASSES', app.url).href} (ignoring case)`);
+  });
+
+  it('prints a relative toHaveURL expectation resolved against the app URL, like the observed one', () => {
+    const result = resultByTitle(outcome, 'a relative toHaveURL prints the expected URL resolved');
+    expect(result.attempts[0]!.error?.code).toBe('ASSERTION_FAILED');
+    expect(result.attempts[0]!.error?.message).toContain(
+      `expected: URL ${new URL('/about', app.url).href}\nobserved: URL ${new URL('/classes', app.url).href}`,
+    );
   });
 
   it.each([

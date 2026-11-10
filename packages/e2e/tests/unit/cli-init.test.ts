@@ -138,6 +138,13 @@ describe('e2e init', () => {
     expect(output()).toContain('Next: npm install, then APP_URL=http://localhost:3000 npm run test:e2e');
   });
 
+  it('registers the MCP server through bunx in a Bun project', async () => {
+    writeFileSync(path.join(dir, 'bun.lock'), '');
+    expect((await init(dir, { yes: true })).exitCode).toBe(0);
+    expect(JSON.parse(read('.mcp.json'))).toEqual({ mcpServers: { e2e: { command: 'bunx', args: ['e2e', 'mcp'] } } });
+    expect(read('.codex/config.toml')).toContain('command = "bunx"');
+  });
+
   it('hands back what --yes chose, then that a second run had nothing to do', async () => {
     expect(await init(dir, { yes: true })).toEqual({
       exitCode: 0,

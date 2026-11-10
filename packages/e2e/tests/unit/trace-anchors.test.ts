@@ -219,8 +219,12 @@ describe('describeDelta', () => {
       node('b', { text: 'v2.2.1' }),
       node('c', { text: 'E2E workspace 00d8365e' }),
       node('d', { role: 'status', name: 'Counter', text: '1' }),
+      node('e', { text: 'Marketing 12' }),
+      node('f', { text: 'Mayor 3' }),
+      node('g', { text: 'Augusta 3' }),
+      node('h', { text: '12 Marketing' }),
     ]);
-    expect(appeared(nodes([heading]), end)).toHaveLength(4);
+    expect(appeared(nodes([heading]), end)).toHaveLength(8);
   });
 
   it('keeps a count the step made appear, which is its result, and skips one that only moved or that came with another route, which is the data', () => {

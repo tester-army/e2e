@@ -11,6 +11,11 @@ its findings, `list` returns a selection, and `openHost` hosts e2e sessions
 in another test runner. Importing `e2e` from a test file does not load the
 runner.
 
+<Note>
+`run`, `list`, `explore`, and `openHost` need Node.js. On Bun, they throw
+`NODE_UNSUPPORTED`; run tests with the [CLI](/reference/cli#bun) there.
+</Note>
+
 ```ts title="scripts/run-e2e.ts"
 import type { E2EConfig } from 'e2e';
 import { run } from 'e2e/runner';

@@ -1,0 +1,258 @@
+---
+title: GitLab CI/CD
+description: Run web, iOS, and Android tests on GitLab CI/CD, show the results in the merge request, and run only the tests a merge request can affect.
+---
+
+import { SetupPrompt } from '../snippets/setup-prompt-card.jsx';
+
+export const setupPrompt = `Add a GitLab CI/CD pipeline that runs this project's e2e tests. Docs: \`https://e2e.com/docs/ci/gitlab.md\` and \`https://e2e.com/docs/ci.md\`
+
+1. Read both pages. Use the web job for web targets and the iOS and Android jobs for mobile targets.
+2. Add the jobs to \`.gitlab-ci.yml\`, or to an included file when the project already has one. Adapt them to this project: package manager, Node version, how the app starts or builds, and the app paths.
+3. For a mobile job, ask me for the tags of the self-managed runners to use.
+4. List the CI/CD variables the jobs read, such as the model key, and ask me to add them.
+5. After I push, read the job log and fix errors until the pipeline passes.`;
+
+These jobs run web targets on GitLab's hosted Linux runners, and iOS and
+Android targets on your own runners. For CI defaults, model keys, and exit
+codes, see [Continuous integration](/ci).
+
+<SetupPrompt>
+
+<Prompt description={setupPrompt} children={setupPrompt} actions={["copy", "cursor"]} />
+
+</SetupPrompt>
+
+## Web
+
+This job runs deterministic and agent tests, in each merge request and on
+each push to the default branch. It assumes a config
+[command](/web#starting-your-app) that starts the app. Use the `node` image
+for your project's Node version:
+
+```yaml title=".gitlab-ci.yml" expandable
+e2e:
+  image: node:26
+  interruptible: true
+  timeout: 30 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    APP_URL: http://127.0.0.1:3000
+    PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+      - .cache/ms-playwright/
+  script:
+    - npm ci --cache .npm --prefer-offline
+    - npx @e2e-dev/web install chromium --with-deps
+    - npx e2e run --reporter list,junit
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - .e2e/report.json
+      - .e2e/junit.xml
+      - .e2e/results/
+    reports:
+      junit: .e2e/junit.xml
+```
+
+The rules are on the job, not in a `workflow:` block, so the same job works
+in a pipeline of its own or [beside your other jobs](#add-it-to-an-existing-pipeline).
+
+GitLab caches only paths inside the project, so `PLAYWRIGHT_BROWSERS_PATH`
+moves the [browsers](/reference/web#installing-browsers) there. The cache
+keeps them until the lockfile changes.
+
+Make the app's command listen on `127.0.0.1`, the host `APP_URL` names. In
+the container, a dev server that listens on `localhost`, such as Vite's,
+can bind only `::1`. Then e2e can't reach it and the run fails with
+`APP_UNREACHABLE`.
+
+`reports: junit` shows the results in the merge request widget and on the
+pipeline's **Tests** tab. `when: always` keeps the reports when a test fails
+too.
+
+On GitLab.com, a new account must verify its identity before hosted runners
+take its jobs. Until then, each pipeline fails without starting a job.
+
+## Add it to an existing pipeline
+
+When the project already has a `.gitlab-ci.yml`, put the job in a file of
+its own, such as `.gitlab/e2e.gitlab-ci.yml`. Then include it from
+`.gitlab-ci.yml`:
+
+```yaml title=".gitlab-ci.yml"
+include:
+  - local: .gitlab/e2e.gitlab-ci.yml
+```
+
+A job with no `rules` runs only in branch pipelines. So a merge request
+pipeline runs the `e2e` job alone, and your other jobs still run once per
+push.
+
+## Model key
+
+Add the model key, such as `AI_GATEWAY_API_KEY`, under **Settings > CI/CD >
+Variables**, with the visibility **Masked and hidden**. Or use the
+[GitLab CLI](https://gitlab.com/gitlab-org/cli), which reads the value from
+standard input:
+
+```bash
+printf %s "$AI_GATEWAY_API_KEY" | glab variable set AI_GATEWAY_API_KEY --masked --hidden --raw
+```
+
+Add user credentials, such as `E2E_USER_ADMIN_PASSWORD`, the same way. Each
+job gets them as environment variables.
+
+- Clear **Expand variable reference** (`--raw` does this). Otherwise GitLab
+  rejects a masked value with `$` and some other characters.
+- GitLab masks only values of 8 or more characters, on one line, with no
+  spaces. Use **Visible** for a value it can't mask, such as a short
+  username.
+- Clear **Protect variable** unless the tests run only on protected
+  branches. GitLab gives a protected variable only to pipelines on
+  protected branches and tags.
+- A merge request from a fork runs in the fork's project, with none of
+  your variables. When a member runs it in your project, its code can read
+  the key. Do that only for code you trust.
+
+[Commit the replay cache](/cache#commit-the-replay-cache) to make fewer
+model calls. A replayed `agent.act` calls no model; each `agent.assert`
+still does.
+
+## Run only affected tests
+
+To let a [test filter](/filters) leave out the tests a merge request can't
+affect, pass the merge request's base to `--changed-since`. Add
+`GIT_DEPTH: 0` to the job's `variables` to fetch the full history. Then
+replace the `npx e2e run` line with this one, which skips the flag in merge
+trains:
+
+```yaml
+  script:
+    # ...
+    - |
+      if [ -n "$CI_MERGE_REQUEST_IID" ] && [ "$CI_MERGE_REQUEST_EVENT_TYPE" != merge_train ]; then
+        set -- --changed-since "${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}"
+      fi
+      npx e2e run --reporter list,junit "$@"
+```
+
+`CI_MERGE_REQUEST_TARGET_BRANCH_SHA` is set in merged results pipelines,
+and `CI_MERGE_REQUEST_DIFF_BASE_SHA` in the others. On the default branch
+the whole suite runs. See
+[Add the decision filter](/filters#add-the-decision-filter).
+
+## Sharding
+
+`parallel` runs one job for each [shard](/ci#sharding). GitLab merges the
+JUnit reports of all shards in the merge request widget:
+
+```yaml
+e2e:
+  parallel: 3
+  script:
+    # ...
+    - npx e2e run --shard $CI_NODE_INDEX/$CI_NODE_TOTAL --reporter list,junit
+```
+
+A shard with no test fails with `NO_TESTS`. If the run can select fewer
+tests than shards, add `--pass-with-no-tests`.
+
+## iOS and Android
+
+Run the mobile jobs on self-managed runners with the shell executor: a Mac
+with Xcode for iOS, and Linux with KVM, the JDK your Gradle build needs, and
+the Android SDK for Android.
+GitLab's hosted macOS runners are headless and don't support `testmanagerd`,
+which XCUITest needs. Its hosted Linux runners don't list KVM.
+
+These jobs follow the rules in [Mobile jobs](/ci#mobile-jobs). Replace the
+`tags` with your runners' tags. The Android job boots an AVD named `e2e`
+that you create on the runner.
+
+```yaml title=".gitlab-ci.yml" expandable
+.e2e-mobile:
+  timeout: 60m
+  interruptible: true
+  artifacts:
+    when: always
+    expire_in: 7 days
+    paths:
+      - .e2e/
+    reports:
+      junit: .e2e/junit.xml
+
+e2e-ios:
+  extends: .e2e-mobile
+  tags: [macos]
+  script:
+    - npm ci
+    - (cd ios && pod install)
+    - |
+      xcodebuild -workspace ios/MyApp.xcworkspace -scheme MyApp \
+        -configuration Release -sdk iphonesimulator \
+        -destination 'generic/platform=iOS Simulator' \
+        -derivedDataPath build
+    - export E2E_DEVICE=$(xcrun simctl create e2e "iPhone 17" com.apple.CoreSimulator.SimRuntime.iOS-26-5)
+    - echo "$E2E_DEVICE" > .simulator-udid
+    - xcrun simctl bootstatus "$E2E_DEVICE" -b
+    - xcrun simctl install "$E2E_DEVICE" build/Build/Products/Release-iphonesimulator/MyApp.app
+    - npx e2e run --target ios --reporter list,junit
+  after_script:
+    - xcrun simctl delete "$(cat .simulator-udid)"
+
+e2e-android:
+  extends: .e2e-mobile
+  tags: [linux-kvm]
+  script:
+    - npm ci
+    - (cd android && ./gradlew :app:assembleRelease)
+    - mkdir -p .e2e
+    - PORT=$((5554 + 2 * CI_CONCURRENT_ID))
+    - export E2E_DEVICE=emulator-$PORT
+    - adb -s $E2E_DEVICE emu kill || true
+    - $ANDROID_HOME/emulator/emulator -avd e2e -read-only -port $PORT -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > .e2e/emulator.log 2>&1 &
+    - timeout 300 adb -s $E2E_DEVICE wait-for-device
+    - timeout 300 sh -c 'until [ "$(adb -s $E2E_DEVICE shell getprop sys.boot_completed | tr -d "\r")" = 1 ]; do sleep 2; done'
+    - adb -s $E2E_DEVICE install -r android/app/build/outputs/apk/release/app-release.apk
+    - npx e2e run --target android --reporter list,junit
+  after_script:
+    - adb -s emulator-$((5554 + 2 * CI_CONCURRENT_ID)) emu kill
+```
+
+Each target names its device with `device: process.env.E2E_DEVICE` in
+`mobile()`. Then the run drives the device this job booted, never a device
+left over from another job on the same machine.
+
+GitLab runs all `script` lines in one shell, so the emulator and
+`E2E_DEVICE` stay available to the next lines. `after_script` runs in a new
+shell after a failed `script` too, but not after a timeout, so a timed-out
+job can leave its device running. The Android job takes its port from
+`CI_CONCURRENT_ID`, so jobs running at the same time on one runner get
+their own emulator, and it stops an emulator a timed-out job left on that
+port. `-read-only` lets several emulators start from one AVD. The job writes the emulator's log
+to `.e2e/emulator.log`, so a failed boot shows in the artifacts. A
+self-managed runner keeps `~/.agent-device` between jobs, so the XCUITest
+runner is built only on the first run.
+
+To run without a simulator or emulator on the runner, lease devices from
+a [hosted device service](/mobile#hosted-devices).
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Continuous integration" icon="rotate" href="/ci">
+    CI defaults, sharding, reruns, and exit codes.
+  </Card>
+  <Card title="Test filters" icon="filter" href="/filters">
+    Run only the tests a merge request can affect.
+  </Card>
+</CardGroup>
