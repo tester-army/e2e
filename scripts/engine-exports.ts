@@ -4,6 +4,15 @@
  * a package takes from `e2e` or an `e2e/*` entry must be exported by `e2e`
  * at the version the package's peer floor names.
  *
+ * Imports and exports come from oxc-parser's module info
+ * (`parseSync(...).module`), not from pattern matching: comments and JSDoc
+ * examples never count as imports or exports, destructured declarations
+ * are read as the names they bind, and names nested inside a namespace
+ * never leak out as top-level exports. A declaration's kind comes from the
+ * parsed declaration itself, since module info alone cannot tell a
+ * `declare` function from a type: interfaces and type aliases are types
+ * only, classes and enums are both, everything else exported is a value.
+ *
  * The export set at a version comes from the `e2e@<version>` tag: the entry
  * file is read off the sibling's `package.json` `exports` at that tag (its
  * `types` target, mapped from `dist/` to `src/`), and `export *` chains are
@@ -23,21 +32,71 @@
  * follow-up, not part of this change.
  */
 
+import { parseSync } from 'oxc-parser';
+
 /** Whether an import takes the name as a value or only as a type. A value import needs a value export; a type import is satisfied by either kind. */
 export type ImportKind = 'value' | 'type';
 
 /** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry), each name with its kind. A value import of a name subsumes a type import of the same name. */
 export type EngineImportMap = ReadonlyMap<string, ReadonlyMap<string, ImportKind>>;
 
-const IMPORT_FROM = /import\s+(type\s+)?(?:\w+\s*,\s*)?\{([^}]*)\}\s+from\s+['"]e2e(\/[^'"]*)?['"]/gs;
-const REEXPORT_FROM = /export\s+(type\s+)?\{([^}]*)\}\s+from\s+['"]e2e(\/[^'"]*)?['"]/gs;
-const NAMESPACE_FROM = /import\s+(?:type\s+)?\*\s+as\s+\w+\s+from\s+['"]e2e(\/[^'"]*)?['"]/g;
-const DYNAMIC_IMPORT_NAMES = /(?:const|let|var)\s*\{\s*([^}]*)\}\s*=\s*(?:await\s+)?import\s*\(\s*['"]e2e(\/[^'"]*)?['"]\s*\)/gs;
-const DYNAMIC_IMPORT = /import\s*\(\s*['"]e2e(\/[^'"]*)?['"]\s*\)/g;
+/** The subpath of an `e2e` specifier (`''` for the bare entry), undefined for any other package. */
+function e2eSubpath(specifier: string): string | undefined {
+  if (specifier === 'e2e') return '';
+  if (specifier.startsWith('e2e/')) return specifier.slice('e2e/'.length);
+  return undefined;
+}
 
-/** `source` with block and line comments blanked, so a comment inside an import or export list is never read as a name. */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+type AstNode = Record<string, unknown>;
+
+function isRecord(value: unknown): value is AstNode {
+  return typeof value === 'object' && value !== null;
+}
+
+/** The `import(...)` call in `node`, unwrapping `await` and parentheses; undefined when `node` is not one. */
+function importCall(node: unknown): AstNode | undefined {
+  let current: unknown = node;
+  while (isRecord(current) && (current.type === 'AwaitExpression' || current.type === 'ParenthesizedExpression')) {
+    current = current.type === 'AwaitExpression' ? current.argument : current.expression;
+  }
+  if (!isRecord(current) || current.type !== 'ImportExpression') return undefined;
+  return current;
+}
+
+/** The source of an `import(...)` call; undefined when `node` is not one. */
+function importCallSource(node: unknown): string | undefined {
+  const call = importCall(node);
+  if (call === undefined) return undefined;
+  const source = call.source;
+  if (!isRecord(source) || source.type !== 'Literal' || typeof source.value !== 'string') return undefined;
+  return source.value;
+}
+
+/** The module exports a destructuring pattern reads: the top-level keys of an object pattern, or undefined when the pattern cannot be enumerated (a rest element, a whole-module binding, or anything but an object pattern). A nested pattern reads a property of an export, not another export, so only top-level keys count. */
+function patternNames(pattern: unknown): string[] | undefined {
+  if (!isRecord(pattern)) return undefined;
+  if (pattern.type !== 'ObjectPattern' || !Array.isArray(pattern.properties)) return undefined;
+  const names: string[] = [];
+  for (const property of pattern.properties) {
+    if (!isRecord(property)) return undefined;
+    if (property.type === 'RestElement') return undefined;
+    if (property.type !== 'Property') return undefined;
+    const key = property.key;
+    if (!isRecord(key) || key.type !== 'Identifier' || typeof key.name !== 'string') return undefined;
+    names.push(key.name);
+  }
+  return names;
+}
+
+/** Walks every node in `value`, calling `visit` on each object node. */
+function walkAst(value: unknown, visit: (node: AstNode) => void): void {
+  if (Array.isArray(value)) {
+    for (const item of value) walkAst(item, visit);
+    return;
+  }
+  if (!isRecord(value)) return;
+  visit(value);
+  for (const child of Object.values(value)) walkAst(child, visit);
 }
 
 /** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry). A namespace import is recorded as the name `'*'`, which the check cannot enumerate. */
@@ -54,47 +113,61 @@ export function engineImports(source: string): EngineImportMap {
       if (existing === undefined || kind === 'value') map.set(name, kind);
     }
   };
-  const splitNames = (list: string, wholeListType: boolean): [string, ImportKind][] =>
-    stripComments(list)
-      .split(',')
-      .map((part) => part.trim())
-      .filter((part) => part.length > 0)
-      .map((part): [string, ImportKind] => {
-        const typeOnly = wholeListType || part.startsWith('type ');
-        const name = part.replace(/^type\s+/, '').split(/\s+as\s+/)[0]?.trim() ?? '';
-        return [name, typeOnly ? 'type' : 'value'];
-      })
-      .filter(([name]) => name.length > 0);
-  for (const pattern of [IMPORT_FROM, REEXPORT_FROM]) {
-    for (const match of source.matchAll(pattern)) {
-      const list = match[2];
-      const subpath = (match[3] ?? '').replace(/^\//, '');
-      if (list === undefined) continue;
-      add(subpath, splitNames(list, match[1] !== undefined));
+  const parsed = parseSync('file.ts', source, { lang: 'ts', sourceType: 'module' });
+  for (const statement of parsed.module.staticImports) {
+    const subpath = e2eSubpath(statement.moduleRequest.value);
+    if (subpath === undefined) continue;
+    for (const entry of statement.entries) {
+      if (entry.importName.kind === 'NamespaceObject') add(subpath, [['*', 'value']]);
+      else if (entry.importName.kind === 'Name' && entry.importName.name !== null) {
+        add(subpath, [[entry.importName.name, entry.isType ? 'type' : 'value']]);
+      }
+      // A default import names no export the check tracks, and a
+      // side-effect import (`import 'e2e/engine'`) has no entries.
     }
   }
-  for (const match of source.matchAll(NAMESPACE_FROM)) {
-    add((match[1] ?? '').replace(/^\//, ''), [['*', 'value']]);
+  // A re-export from an `e2e` entry is an import too: the package depends
+  // on the export existing at its floor. `export * from` cannot be
+  // enumerated, so it is recorded as a namespace import.
+  for (const statement of parsed.module.staticExports) {
+    for (const entry of statement.entries) {
+      const moduleRequest = entry.moduleRequest?.value;
+      if (moduleRequest === undefined) continue;
+      const subpath = e2eSubpath(moduleRequest);
+      if (subpath === undefined) continue;
+      if (entry.importName.kind === 'AllButDefault') add(subpath, [['*', 'value']]);
+      else if (entry.importName.kind === 'Name' && entry.importName.name !== null) {
+        add(subpath, [[entry.importName.name, entry.isType ? 'type' : 'value']]);
+      }
+      // `export * as ns` exports one name and imports no names.
+    }
   }
   // A dynamic import takes its names the same way, when they are
-  // destructured; a bare one cannot be enumerated, so it is recorded as
-  // the namespace name, like a namespace import. The destructured
-  // statements are blanked before the bare scan, so their import call is
-  // not also counted as a bare one.
-  const blanked: [number, number][] = [];
-  for (const match of source.matchAll(DYNAMIC_IMPORT_NAMES)) {
-    const list = match[1];
-    const subpath = (match[2] ?? '').replace(/^\//, '');
-    if (list !== undefined) add(subpath, splitNames(list, false));
-    if (match.index !== undefined) blanked.push([match.index, match.index + match[0].length]);
-  }
-  let dynamicSource = source;
-  for (const [start, end] of blanked.toSorted((a, b) => b[0] - a[0])) {
-    dynamicSource = `${dynamicSource.slice(0, start)}${' '.repeat(end - start)}${dynamicSource.slice(end)}`;
-  }
-  for (const match of dynamicSource.matchAll(DYNAMIC_IMPORT)) {
-    add((match[1] ?? '').replace(/^\//, ''), [['*', 'value']]);
-  }
+  // destructured; any other use cannot be enumerated, so it is recorded as
+  // the namespace name, like a namespace import.
+  const handled = new Set<object>();
+  walkAst(parsed.program, (node) => {
+    if (node.type !== 'VariableDeclarator') return;
+    const sourceSpecifier = importCallSource(node.init);
+    if (sourceSpecifier === undefined) return;
+    const subpath = e2eSubpath(sourceSpecifier);
+    if (subpath === undefined) return;
+    const call = importCall(node.init);
+    if (call !== undefined) handled.add(call);
+    const names = patternNames(node.id);
+    add(
+      subpath,
+      names === undefined ? [['*', 'value']] : names.map((name): readonly [string, ImportKind] => [name, 'value']),
+    );
+  });
+  walkAst(parsed.program, (node) => {
+    if (node.type !== 'ImportExpression' || handled.has(node)) return;
+    const sourceSpecifier = importCallSource(node);
+    if (sourceSpecifier === undefined) return;
+    const subpath = e2eSubpath(sourceSpecifier);
+    if (subpath === undefined) return;
+    add(subpath, [['*', 'value']]);
+  });
   return found;
 }
 
@@ -113,6 +186,57 @@ export function addEngineImports(target: Map<string, Map<string, ImportKind>>, s
   }
 }
 
+/** The kind of each name a top-level `export` declaration introduces. Two declarations of one name (interface plus namespace) merge to both. */
+function declarationKinds(program: ReturnType<typeof parseSync>['program']): Map<string, 'type' | 'value' | 'both'> {
+  const kinds = new Map<string, 'type' | 'value' | 'both'>();
+  const set = (name: string, kind: 'type' | 'value' | 'both'): void => {
+    const existing = kinds.get(name);
+    if (existing === undefined) kinds.set(name, kind);
+    else if (existing !== kind) kinds.set(name, 'both');
+  };
+  const collectBindings = (pattern: unknown): void => {
+    if (!isRecord(pattern)) return;
+    if (pattern.type === 'Identifier' && typeof pattern.name === 'string') {
+      set(pattern.name, 'value');
+      return;
+    }
+    if (pattern.type === 'ObjectPattern' && Array.isArray(pattern.properties)) {
+      for (const property of pattern.properties) {
+        if (!isRecord(property)) continue;
+        if (property.type === 'RestElement') collectBindings(property.argument);
+        else if (property.type === 'Property') collectBindings(property.value);
+      }
+      return;
+    }
+    if (pattern.type === 'ArrayPattern' && Array.isArray(pattern.elements)) {
+      for (const element of pattern.elements) collectBindings(element);
+      return;
+    }
+    if (pattern.type === 'AssignmentPattern') collectBindings(pattern.left);
+    else if (pattern.type === 'RestElement') collectBindings(pattern.argument);
+  };
+  for (const statement of program.body) {
+    const node: unknown = statement;
+    if (!isRecord(node) || node.type !== 'ExportNamedDeclaration') continue;
+    const declaration = node.declaration;
+    if (!isRecord(declaration)) continue;
+    const id = declaration.id;
+    const name = isRecord(id) && typeof id.name === 'string' ? id.name : undefined;
+    if (declaration.type === 'TSInterfaceDeclaration' || declaration.type === 'TSTypeAliasDeclaration') {
+      if (name !== undefined) set(name, 'type');
+    } else if (declaration.type === 'ClassDeclaration' || declaration.type === 'TSEnumDeclaration') {
+      if (name !== undefined) set(name, 'both');
+    } else if (declaration.type === 'FunctionDeclaration' || declaration.type === 'TSDeclareFunction' || declaration.type === 'TSModuleDeclaration') {
+      if (name !== undefined) set(name, 'value');
+    } else if (declaration.type === 'VariableDeclaration' && Array.isArray(declaration.declarations)) {
+      for (const declarator of declaration.declarations) {
+        if (isRecord(declarator)) collectBindings(declarator.id);
+      }
+    }
+  }
+  return kinds;
+}
+
 /** The names one file exports, split by kind, and the relative modules its `export *` pulls in. A `type` export or declaration lands in `types`; a class or enum lands in both, since its name is usable as a type; anything else value-like lands in `values`. `export type *` targets are kept apart from value `export *` targets: the former re-export types only. */
 function exportedNames(source: string): {
   values: ReadonlySet<string>;
@@ -120,47 +244,41 @@ function exportedNames(source: string): {
   starModules: readonly string[];
   typeStarModules: readonly string[];
 } {
+  const parsed = parseSync('file.ts', source, { lang: 'ts', sourceType: 'module' });
   const values = new Set<string>();
   const types = new Set<string>();
   const starModules: string[] = [];
   const typeStarModules: string[] = [];
-  for (const match of source.matchAll(/export\s+(type\s+)?\{([^}]*)\}\s*(?:from\s+['"]([^'"]+)['"])?/gs)) {
-    const wholeListType = match[1] !== undefined;
-    const list = match[2];
-    if (list === undefined) continue;
-    for (const part of stripComments(list).split(',')) {
-      const trimmed = part.trim();
-      if (trimmed.length === 0) continue;
-      const typeOnly = wholeListType || trimmed.startsWith('type ');
-      const nameMatch = /(\w+)(?:\s+as\s+(\w+))?/.exec(trimmed.replace(/^type\s+/, ''));
-      if (nameMatch === null) continue;
-      const name = nameMatch[2] ?? nameMatch[1] ?? '';
-      if (name.length === 0) continue;
-      (typeOnly ? types : values).add(name);
+  const declared = declarationKinds(parsed.program);
+  for (const statement of parsed.module.staticExports) {
+    for (const entry of statement.entries) {
+      const moduleRequest = entry.moduleRequest?.value;
+      if (moduleRequest !== undefined) {
+        // `export * as ns` exports only the namespace name, not the
+        // module's names, so it is recorded as one export and its star
+        // chain is not followed.
+        if (entry.importName.kind === 'AllButDefault') {
+          (entry.isType ? typeStarModules : starModules).push(moduleRequest);
+        } else if (entry.importName.kind === 'All') {
+          const name = entry.exportName.name;
+          if (name !== null) (entry.isType ? types : values).add(name);
+        } else if (entry.importName.kind === 'Name') {
+          const name = entry.exportName.name;
+          if (name !== null) (entry.isType ? types : values).add(name);
+        }
+        continue;
+      }
+      const name = entry.exportName.name;
+      if (entry.exportName.kind !== 'Name' || name === null) continue;
+      const kind = declared.get(name);
+      if (kind === 'type') types.add(name);
+      else if (kind === 'both') {
+        values.add(name);
+        types.add(name);
+      } else if (kind === 'value') values.add(name);
+      else if (entry.isType) types.add(name);
+      else values.add(name);
     }
-  }
-  // `export * as ns` exports only the namespace name, not the module's
-  // names, so it is recorded as one export and its star chain is not
-  // followed.
-  for (const match of source.matchAll(/export\s+(type\s+)?\*\s*(?:as\s+(\w+)\s*)?from\s+['"]([^'"]+)['"]/g)) {
-    if (match[3] === undefined) continue;
-    if (match[2] !== undefined) {
-      (match[1] !== undefined ? types : values).add(match[2]);
-    } else if (match[1] !== undefined) {
-      typeStarModules.push(match[3]);
-    } else {
-      starModules.push(match[3]);
-    }
-  }
-  for (const match of source.matchAll(/export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const\s+)?(interface|type|class|function|const|let|var|enum)\s+(\w+)/g)) {
-    const kind = match[1];
-    const name = match[2];
-    if (kind === undefined || name === undefined) continue;
-    if (kind === 'interface' || kind === 'type') types.add(name);
-    else if (kind === 'class' || kind === 'enum') {
-      values.add(name);
-      types.add(name);
-    } else values.add(name);
   }
   return { values, types, starModules, typeStarModules };
 }
@@ -247,21 +365,21 @@ export function subpathEntryFile(packageJson: string, siblingDir: string, subpat
 }
 
 /**
- * The export set of a sibling's subpath at a version, split by kind, read
- * through `showFile(tag, path)`. Undefined when the tag, the manifest, or
- * the entry cannot be read.
+ * The export set of a sibling's subpath, split by kind. `readFile` reads a
+ * repo path (undefined when it has none); the caller binds it to a
+ * version, for example `(path) => showAtTag(tag, path)` for a tag record
+ * or a working-tree read.
  */
 export function tagExportsAt(
-  showFile: (tag: string, path: string) => string | undefined,
-  tag: string,
+  readFile: (path: string) => string | undefined,
   siblingDir: string,
   subpath: string,
 ): ExportSets | undefined {
-  const manifest = showFile(tag, `${siblingDir}/package.json`);
+  const manifest = readFile(`${siblingDir}/package.json`);
   if (manifest === undefined) return undefined;
   const entry = subpathEntryFile(manifest, siblingDir, subpath);
   if (entry === undefined) return undefined;
-  return resolveEntryExports((path) => showFile(tag, path), entry);
+  return resolveEntryExports(readFile, entry);
 }
 
 export interface EngineImportCheck {

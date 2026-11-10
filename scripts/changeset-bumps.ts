@@ -10,18 +10,16 @@
  * `**Breaking:**` or `**Release:**`. A `major` makes it `1.0.0`, outside every
  * sibling's `>=x <1` peer range, so only a `**Release:**` may carry one.
  *
- * Rule (a) of #1657 sits here too: a changeset that raises a package's peer
- * floor on a sibling past a runner minor the previous range accepted must
- * be a `**Breaking:**` minor. The check script pairs each pending changeset
- * with the floor change it ships: the previous floor is the one at the
- * package's release tag, the current floor is the working tree's, and a
- * raise counts only when it cuts off a *released* version on an older
- * minor. A correction from a never-published floor to the version it
- * already meant in practice (for example `>=0.22.1` to `>=0.23.0`, where
- * the previous range accepted only released `0.23.0`) cuts off nothing a
- * consumer could install, so a patch carries it. The rule lives in this
- * check, not in `check-peer-ranges.ts`, because only this check reads the
- * changesets that must announce the raise.
+ * Rule (a): a changeset that raises a package's peer floor on a sibling
+ * past a runner minor the previous range accepted must be a `**Breaking:**`
+ * minor. The check script pairs each pending changeset with the floor
+ * change it ships: the previous floor is the one at the package's release
+ * tag, the current floor is the working tree's, and a raise counts only
+ * when it cuts off a *released* version on an older minor. A correction
+ * from a never-published floor to the released version it already meant
+ * cuts off nothing a consumer could install, so a patch carries it. The
+ * rule lives in this check, not in `check-peer-ranges.ts`, because only
+ * this check reads the changesets that must announce the raise.
  */
 
 import { parseChangesetFile } from '@changesets/parse';
@@ -83,7 +81,7 @@ export function floorRaisesPastMinor(previousFloor: string, currentFloor: string
   return false;
 }
 
-/** Whether a changeset entry of `type` with `summary` announces a floor raise: a minor opening `**Breaking:**`, or a major opening `**Release:**`. A `**Release:**` minor does not announce one: the maintainer's rule for #1657 is that a floor raise past an accepted runner minor must be a `**Breaking:**` minor, and a release train is not that signal. A major needs no breaking prefix because the major itself is the signal: no `0.x` consumer picks it up without opting in. */
+/** Whether a changeset entry of `type` with `summary` announces a floor raise: a minor opening `**Breaking:**`, or a major opening `**Release:**`. A `**Release:**` minor does not announce one: a floor raise past an accepted runner minor must be a `**Breaking:**` minor, and a release train is not that signal. A major needs no breaking prefix because the major itself is the signal: no `0.x` consumer picks it up without opting in. */
 export function announcesFloorRaise(type: BumpType, summary: string): boolean {
   if (type === 'minor') return summary.startsWith(BREAKING);
   if (type === 'major') return summary.startsWith(RELEASE);

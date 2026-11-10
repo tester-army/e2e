@@ -40,10 +40,10 @@ for (const { manifest } of packages) {
 
 // The version each sibling's pending changesets will release: a floor may
 // name it as the sibling's version in the same release.
-const { changesets } = pendingChangesets();
+const pending = pendingChangesets();
 const versions = new Map(packages.map(({ manifest }) => [manifest.name, manifest.version]));
 const nextVersions = new Map<string, string>();
-for (const [name, bump] of pendingBumps(changesets)) {
+for (const [name, bump] of pendingBumps(pending.map(({ changeset }) => changeset))) {
   const version = versions.get(name);
   if (version === undefined) continue;
   const next = nextVersionAfterBump(version, bump);
@@ -65,7 +65,7 @@ const siblingDirs = new Map(packages.map(({ manifest, path }) => [manifest.name,
 const exportsCache = new Map<string, ExportSets | undefined>();
 
 /** Reads `path` from the working tree, undefined when it cannot be read. */
-function showWorkingTree(_tag: string, path: string): string | undefined {
+function showWorkingTree(path: string): string | undefined {
   try {
     return readFileSync(join(REPO_ROOT, path), 'utf8');
   } catch {
@@ -77,13 +77,13 @@ const exportsAt = (sibling: string, subpath: string, version: string): ExportSet
   const key = `${sibling}@${version}:${subpath}`;
   if (exportsCache.has(key)) return exportsCache.get(key);
   const siblingDir = siblingDirs.get(sibling);
-  let resolved = siblingDir === undefined ? undefined : tagExportsAt(showAtTag, `${sibling}@${version}`, siblingDir, subpath);
+  let resolved = siblingDir === undefined ? undefined : tagExportsAt((path) => showAtTag(`${sibling}@${version}`, path), siblingDir, subpath);
   if (resolved === undefined && siblingDir !== undefined && nextVersions.get(sibling) === version) {
     // A floor naming the version the sibling's pending changesets will
     // release has no tag yet, so the tag lookup cannot verify it; the
     // working tree is that pending release's source, so verify against it
     // instead of passing the floor on an unverifiable note.
-    resolved = tagExportsAt(showWorkingTree, `${sibling}@${version}`, siblingDir, subpath);
+    resolved = tagExportsAt(showWorkingTree, siblingDir, subpath);
   }
   exportsCache.set(key, resolved);
   return resolved;

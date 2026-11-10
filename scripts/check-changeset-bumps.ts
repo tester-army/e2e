@@ -16,7 +16,7 @@
 
 import { relative } from 'node:path';
 import { listTags, pendingChangesets, readChangelog, showAtTag } from './check-helpers.ts';
-import { BREAKING, RELEASE, disallowedBumps, floorRaiseProblems, latestReleaseVersion, versionBumpAnnounces, type FloorRaiseInput } from './changeset-bumps.ts';
+import { BREAKING, RELEASE, disallowedBumps, floorRaiseProblems, latestReleaseVersion, versionBumpAnnounces, type BumpType, type FloorRaiseInput } from './changeset-bumps.ts';
 import { peerFloor, releasedVersions } from './peer-ranges.ts';
 import { REPO_ROOT, isWidePeerRange, publicPackages, siblingPeers, type PackageManifest } from './public-packages.ts';
 
@@ -28,12 +28,10 @@ function previousReleaseManifest(name: string, packagePath: string): string | un
 }
 
 const versions = new Map(publicPackages().flatMap(({ manifest }) => (manifest.version === undefined ? [] : [[manifest.name, manifest.version] as const])));
-const { files, changesets } = pendingChangesets();
+const pending = pendingChangesets();
 const problems: string[] = [];
 const flagged = new Set<string>();
-for (const [index, changeset] of changesets.entries()) {
-  const file = files[index];
-  if (file === undefined) continue;
+for (const { file, changeset } of pending) {
   for (const { name, type } of disallowedBumps(changeset, versions)) {
     flagged.add(name);
     const needs = type === 'major' ? RELEASE : `${BREAKING} or ${RELEASE}`;
@@ -41,8 +39,8 @@ for (const [index, changeset] of changesets.entries()) {
   }
 }
 
-const changesByPackage = new Map<string, { type: 'patch' | 'minor' | 'major'; summary: string }[]>();
-for (const changeset of changesets) {
+const changesByPackage = new Map<string, { type: BumpType; summary: string }[]>();
+for (const { changeset } of pending) {
   for (const { name, type } of changeset.releases) {
     if (type !== 'patch' && type !== 'minor' && type !== 'major') continue;
     const list = changesByPackage.get(name) ?? [];
@@ -112,6 +110,6 @@ if (problems.length > 0) {
   process.exitCode = 1;
 } else {
   process.stdout.write(
-    `changeset bumps: ${files.length} pending, none an unannounced 0.x minor or major; ${inputs.length} peer floor ${inputs.length === 1 ? 'change' : 'changes'} checked against their releases, none raised past an accepted minor without a **Breaking:** minor${skipped > 0 ? ` (${skipped} skipped: no release tag or changelog)` : ''}\n`,
+    `changeset bumps: ${pending.length} pending, none an unannounced 0.x minor or major; ${inputs.length} peer floor ${inputs.length === 1 ? 'change' : 'changes'} checked against their releases, none raised past an accepted minor without a **Breaking:** minor${skipped > 0 ? ` (${skipped} skipped: no release tag or changelog)` : ''}\n`,
   );
 }

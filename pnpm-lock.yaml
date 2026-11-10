@@ -148,6 +148,9 @@ importers:
       fallow:
         specifier: 3.42.0
         version: 3.42.0
+      oxc-parser:
+        specifier: 0.158.0
+        version: 0.158.0
       oxlint:
         specifier: 1.93.0
         version: 1.93.0

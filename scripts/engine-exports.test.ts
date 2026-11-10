@@ -46,13 +46,38 @@ describe('engineImports', () => {
     );
   });
 
-  it('reads names destructured from a dynamic import', () => {
-    const imports = engineImports(`const { stepTimeout, type EngineDoctorCheck } = await import('e2e/engine');\n`);
+  it('ignores an import in a JSDoc example', () => {
+    const imports = engineImports(
+      `/**\n * @example\n * import { x } from 'e2e/engine';\n */\nimport { stepTimeout } from 'e2e/engine';\n`,
+    );
+    assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['stepTimeout', 'value']]));
+  });
+
+  it('reads names re-exported from e2e entries as imports', () => {
+    const imports = engineImports(`export { stepTimeout, type EngineDoctorCheck } from 'e2e/engine';\n`);
     assert.deepEqual(
       imports.get('engine'),
       new Map<string, ImportKind>([
         ['stepTimeout', 'value'],
         ['EngineDoctorCheck', 'type'],
+      ]),
+    );
+  });
+
+  it('records a star re-export from an e2e entry as unverifiable', () => {
+    const imports = engineImports(`export * from 'e2e/engine';\n`);
+    assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['*', 'value']]));
+  });
+
+  it('reads names destructured from a dynamic import', () => {
+    // A `type` modifier is not valid syntax in a destructuring pattern, so
+    // destructured names are values.
+    const imports = engineImports(`const { stepTimeout, EngineError: err } = await import('e2e/engine');\n`);
+    assert.deepEqual(
+      imports.get('engine'),
+      new Map<string, ImportKind>([
+        ['stepTimeout', 'value'],
+        ['EngineError', 'value'],
       ]),
     );
   });
@@ -117,6 +142,32 @@ describe('exportedNames and resolveEntryExports', () => {
     const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
     assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['Mode', 'helper', 'runCheck']);
     assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['Mode']);
+  });
+
+  it('ignores a commented-out export', () => {
+    const files = new Map([['src/engine/index.ts', `export function kept(): void {}\n// export function gone(): void {}\n`]]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['kept']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
+  });
+
+  it('reads names bound by a destructured export const', () => {
+    const files = new Map([['src/collect/registry.ts', `export const { describe, beforeEach, afterEach } = test;\n`]]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/collect/registry.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['afterEach', 'beforeEach', 'describe']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
+  });
+
+  it('does not leak types nested inside an exported namespace', () => {
+    const files = new Map([
+      [
+        'src/types.ts',
+        `export namespace StandardSchemaV1 {\n  export interface Props { x: string }\n  export type Result = { ok: boolean };\n}\n`,
+      ],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/types.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['StandardSchemaV1']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
   });
 
   it('ignores comments inside export lists', () => {
@@ -187,10 +238,11 @@ describe('engineImportProblems', () => {
   it('fails a value import satisfied only by a type-only export', () => {
     const { problems } = engineImportProblems(
       [check('0.23.0', named([['isKeyModifier', 'value'], ['parseKey', 'value'], ['KeyModifier', 'type']]))],
-      () => exported(['parseKey'], ['KeyModifier']),
+      () => exported(['parseKey'], ['KeyModifier', 'isKeyModifier']),
     );
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /imports `isKeyModifier` from e2e\/engine/);
+    assert.match(problems[0]!, /does not export it/);
   });
 
   it('reports a floor with no tag record as unverifiable, not a problem', () => {

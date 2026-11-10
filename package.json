@@ -52,6 +52,7 @@
     "@types/node": "26.6.6",
     "ajv": "8.20.0",
     "fallow": "3.42.0",
+    "oxc-parser": "0.158.0",
     "oxlint": "1.93.0",
     "remark-gfm": "4.0.1",
     "typescript": "7.0.2"

@@ -75,9 +75,11 @@ export function readChangelog(packagePath: string): string | undefined {
   }
 }
 
-/** The pending changesets: every `.md` file in `.changeset` except the README, parsed. */
-export function pendingChangesets(): { files: string[]; changesets: ReturnType<typeof parseChangesetFile>[] } {
+/** The pending changesets: every `.md` file in `.changeset` except the README, parsed, in file order. */
+export function pendingChangesets(): { file: string; changeset: ReturnType<typeof parseChangesetFile> }[] {
   const dir = join(REPO_ROOT, '.changeset');
-  const files = readdirSync(dir).filter((file) => file.endsWith('.md') && file !== 'README.md');
-  return { files, changesets: files.map((file) => parseChangesetFile(readFileSync(join(dir, file), 'utf8'))) };
+  const files = readdirSync(dir)
+    .filter((file) => file.endsWith('.md') && file !== 'README.md')
+    .toSorted();
+  return files.map((file) => ({ file, changeset: parseChangesetFile(readFileSync(join(dir, file), 'utf8')) }));
 }
