@@ -58,7 +58,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `maxFailures` | `--max-failures <n>`; no config key | renamed |
 | `globalTimeout` | `maxDuration`, or `--max-duration <ms>`; the clock starts with the tests, not app startup | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | renamed |
-| `reporter: 'html'` | the `markdown` reporter writes `.e2e/summary.md` | missing |
+| `reporter: 'html'` | `htmlReporter()` from `@e2e-dev/html-reporter` writes `.e2e/report.html` | renamed |
 | `outputDir` | `output`, default `.e2e`, holding `results/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
 | `metadata` | not yet | missing |
 

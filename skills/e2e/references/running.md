@@ -190,6 +190,11 @@ hosted service's video by URL.
   comment per run (edited on rerun) plus the job summary; needs
   `pull-requests: write` and `GITHUB_TOKEN` (or `GH_TOKEN`) in the step's
   env.
+- `htmlReporter()` from `@e2e-dev/html-reporter`: `<output>/report.html`
+  (`.e2e/` by default), one page that opens from disk, with each test's
+  steps, screenshots, and video. It links media from `<output>/results/`;
+  `media: 'embed'` puts it in the page, one file to share, except downloads
+  the runner could not scan for secrets, and `media: 'none'` leaves it out.
 
 ## Exit codes
 

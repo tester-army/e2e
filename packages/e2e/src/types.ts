@@ -1578,6 +1578,13 @@ export interface FinishedRun {
    * out here. A reporter that keeps one place current folds this run into it.
    */
   readonly lastRun?: Report;
+  /**
+   * Replaces every fixed-value secret and credential password in `text`, and
+   * any run of 8 or more consecutive characters of one. The report is
+   * redacted already; this is for text a reporter adds from elsewhere, such
+   * as lines of a test file.
+   */
+  redact(text: string): string;
 }
 
 /** Rows a reporter hands back for the terminal summary: a label and its text, a URL or a path. */

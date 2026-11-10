@@ -140,5 +140,6 @@ export function finished(document: Report, lastRun?: Report): FinishedRun {
     aiTracePath: undefined,
     traces: new Map(),
     ...(lastRun === undefined ? {} : { lastRun }),
+    redact: (text) => text,
   };
 }

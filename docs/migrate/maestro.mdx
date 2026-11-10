@@ -55,7 +55,7 @@ The reference pages hold the details: [screen](/reference/screen),
 | `env` and `${VAR}` | module constants, and `params` in a goal: `agent.act('sign in as {email}', { params: { email } })` |
 | `MAESTRO_*` variables | `process.env` in the config; a password or token goes under `credentials` or `secrets`, which the model never sees, see [Authentication](/authentication) |
 | `--format junit`, `--output` | `--reporter list,junit`, written to `.e2e/junit.xml` |
-| `--format html` | Not yet. `markdown` writes `.e2e/summary.md`, and each failed test gets a `trace.md` page under `.e2e/results/` |
+| `--format html` | `htmlReporter()` from `@e2e-dev/html-reporter` writes `.e2e/report.html` |
 | `properties` (JUnit `<property>`) | Not yet |
 | `--shards`, `--shard-split` | `device: [...]` plus `workers` on one machine; `--shard <index/total>` across machines, see [Sharding](/ci#sharding) |
 | `maestro record` | `npx e2e run --video`, one MP4 of the device per attempt, or `video` in the config |
