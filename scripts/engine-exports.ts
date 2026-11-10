@@ -368,7 +368,14 @@ export function subpathEntryFile(packageJson: string, siblingDir: string, subpat
  * The export set of a sibling's subpath, split by kind. `readFile` reads a
  * repo path (undefined when it has none); the caller binds it to a
  * version, for example `(path) => showAtTag(tag, path)` for a tag record
- * or a working-tree read.
+ * or a working-tree read. Undefined when the tag record cannot be read:
+ * no manifest at that version, a manifest that does not parse, or an
+ * entry file that cannot be read. Empty sets when the tag record exists
+ * but the sibling does not export that subpath at that version: every
+ * named import from it is then a problem, not unverifiable, since the
+ * floor version never had the subpath to import from. An export entry
+ * with no types target stays unverifiable, since no entry file can be
+ * found for it that way.
  */
 export function tagExportsAt(
   readFile: (path: string) => string | undefined,
@@ -378,8 +385,21 @@ export function tagExportsAt(
   const manifest = readFile(`${siblingDir}/package.json`);
   if (manifest === undefined) return undefined;
   const entry = subpathEntryFile(manifest, siblingDir, subpath);
-  if (entry === undefined) return undefined;
-  return resolveEntryExports(readFile, entry);
+  if (entry !== undefined) return resolveEntryExports(readFile, entry);
+  // No entry file for the subpath. When the manifest names no such
+  // export, the subpath did not exist at that version, so empty sets,
+  // not undefined: the caller fails every named import from it instead
+  // of passing the floor on an unverifiable note. A manifest that does
+  // not parse, or an export entry with no types target, cannot be read
+  // this way, so those stay unverifiable.
+  let parsed: { exports?: Record<string, unknown> };
+  try {
+    parsed = JSON.parse(manifest) as { exports?: Record<string, unknown> };
+  } catch {
+    return undefined;
+  }
+  if (parsed.exports?.[subpath === '' ? '.' : `./${subpath}`] !== undefined) return undefined;
+  return { values: new Set<string>(), types: new Set<string>() };
 }
 
 export interface EngineImportCheck {

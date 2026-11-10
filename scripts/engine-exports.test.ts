@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
+import { engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, tagExportsAt, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
 
 describe('engineImports', () => {
   it('reads named, aliased, and type-only imports from e2e entries', () => {
@@ -194,6 +194,77 @@ describe('exportedNames and resolveEntryExports', () => {
     assert.equal(subpathEntryFile(packageJson, 'packages/e2e', 'engine'), 'packages/e2e/src/engine/index.ts');
     assert.equal(subpathEntryFile('not json', 'packages/e2e', 'engine'), undefined);
     assert.equal(subpathEntryFile(packageJson, 'packages/e2e', 'missing'), undefined);
+  });
+});
+
+describe('tagExportsAt', () => {
+  // A tag record for a floor that exports the bare entry and ./engine,
+  // but no ./agent: a package importing from e2e/agent against this
+  // floor is a real gap, not an unverifiable floor.
+  const tagFiles = new Map([
+    [
+      'packages/e2e/package.json',
+      JSON.stringify({
+        exports: {
+          '.': { types: './dist/index.d.ts', default: './dist/index.js' },
+          './engine': { types: './dist/engine/index.d.ts', default: './dist/engine/index.js' },
+        },
+      }),
+    ],
+    ['packages/e2e/src/index.ts', `export function test(): void {}\n`],
+    ['packages/e2e/src/engine/index.ts', `export function stepTimeout(): void {}\n`],
+  ]);
+  const readAtTag = (path: string): string | undefined => tagFiles.get(path);
+  const agentCheck: EngineImportCheck = {
+    packageName: '@e2e-dev/acp',
+    packagePath: 'packages/acp/package.json',
+    sibling: 'e2e',
+    floor: '0.22.0',
+    imports: new Map([['agent', new Map<string, ImportKind>([['acp', 'value']])]]),
+  };
+
+  it('returns empty sets for a subpath the tag does not export', () => {
+    const atAgent = tagExportsAt(readAtTag, 'packages/e2e', 'agent');
+    assert.notEqual(atAgent, undefined);
+    assert.deepEqual([...(atAgent?.values ?? [])], []);
+    assert.deepEqual([...(atAgent?.types ?? [])], []);
+  });
+
+  it('fails a named import from a subpath the floor tag does not export', () => {
+    const { problems, unverifiable, verified } = engineImportProblems(
+      [agentCheck],
+      (_sibling, subpath) => tagExportsAt(readAtTag, 'packages/e2e', subpath),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports `acp` from e2e\/agent, but e2e@0\.22\.0 does not export it/);
+    assert.deepEqual(unverifiable, []);
+    assert.equal(verified, 1);
+  });
+
+  it('returns undefined when there is no tag record', () => {
+    assert.equal(tagExportsAt(() => undefined, 'packages/e2e', 'engine'), undefined);
+  });
+
+  it('still reports a floor with no tag record as unverifiable, not a problem', () => {
+    const { problems, unverifiable, verified } = engineImportProblems([agentCheck], () => undefined);
+    assert.deepEqual(problems, []);
+    assert.equal(unverifiable.length, 1);
+    assert.match(unverifiable[0]!, /cannot be verified, no tag record/);
+    assert.equal(verified, 0);
+  });
+
+  it('returns undefined when the manifest does not parse', () => {
+    assert.equal(tagExportsAt(() => 'not json', 'packages/e2e', 'agent'), undefined);
+  });
+
+  it('returns undefined for an export entry with no types target', () => {
+    const files = new Map([
+      ['packages/e2e/package.json', JSON.stringify({ exports: { './agent': { default: './dist/agent/public.js' } } })],
+    ]);
+    assert.equal(
+      tagExportsAt((path) => files.get(path), 'packages/e2e', 'agent'),
+      undefined,
+    );
   });
 });
 
