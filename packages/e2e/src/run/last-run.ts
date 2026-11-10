@@ -276,11 +276,14 @@ function isError(value: unknown): value is ReportError {
 
 /**
  * Whether a result stands for a test its run did not carry out whole: left
- * out, never reached, or with an attempt cut short, which a retry after a
- * failure leaves under the earlier verdict.
+ * out by a filter, never reached, or with an attempt cut short, which a retry
+ * after a failure leaves under the earlier verdict. A test its `platforms`
+ * list keeps off the target is not left out: no run of that target would ever
+ * carry it out, so it does not make its file partial.
  */
 function leftUnmeasured(result: ReportResult): boolean {
-  if (result.selected === false || result.status === 'interrupted' || result.attempts.some((attempt) => attempt.status === 'interrupted')) return true;
+  const onlyPlatformExcluded = result.skip?.cause === 'platform-unavailable';
+  if ((result.selected === false && !onlyPlatformExcluded) || result.status === 'interrupted' || result.attempts.some((attempt) => attempt.status === 'interrupted')) return true;
   return result.skip !== undefined && UNDELIVERED_SKIPS.has(result.skip.cause);
 }
 

@@ -372,6 +372,21 @@ describe('previousFileDurations', () => {
     ]);
   });
 
+  it('times a file whose other tests a platforms list keeps off the target, but not one a filter left out', async () => {
+    const attempts = [{ durationMs: 100, artifacts: [] }];
+    const durations = await previousFileDurations(
+      reportFile(
+        report([
+          { id: 'common', status: 'passed', file: 'tests/platforms.e2e.ts', attempts },
+          { id: 'ios-only', status: 'skipped', selected: false, file: 'tests/platforms.e2e.ts', skip: { cause: 'platform-unavailable', reason: 'test declares platforms [ios]' } },
+          { id: 'grep-ran', status: 'passed', file: 'tests/grep.e2e.ts', attempts },
+          { id: 'grep-out', status: 'skipped', selected: false, file: 'tests/grep.e2e.ts', skip: { cause: 'filtered', reason: 'title does not match --grep' } },
+        ]),
+      ),
+    );
+    expect([...durations]).toEqual([[fileDurationKey('web', 'tests/platforms.e2e.ts'), 100]]);
+  });
+
   it('is no history, not an error, without a readable report', async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'e2e-last-run-'));
     tempRoots.push(dir);
