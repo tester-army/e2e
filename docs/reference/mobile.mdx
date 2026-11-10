@@ -203,15 +203,16 @@ mobile({ platform: 'android', snapshot: 'interactive' }); // default: 'full'
 
 ```ts
 /**
- * How long the UI must hold still after a tap, fill, screen scroll, or
- * back before the action counts as landed, in milliseconds; `false` skips
- * the wait. The wait keeps the observation that follows an action off a
- * transition frame; the runner's own polling (`expect`, actions waiting
+ * For the agent's actions: how long the UI must hold still after a tap,
+ * fill, screen scroll, or back before the agent observes again, in
+ * milliseconds; `false` skips the wait. The wait keeps that observation off
+ * a transition frame; the runner's own polling (`expect`, actions waiting
  * for their node) covers the rest, so a short window suffices. Default
  * 150. Every frame of a running animation changes the tree, so a 150 ms
  * window still catches a transition in flight; raise it for slow devices
  * or apps that settle in stages, or lower it to 0 to keep only the first
- * re-observation.
+ * re-observation. A test's own steps never settle: `expect` verifies their
+ * outcome, and `transition` covers a control that is still arriving.
  */
 readonly settle?: number | false | undefined;
 ```
