@@ -99,10 +99,19 @@ describe('manifest', () => {
     expect(pinned.state).toBeUndefined();
   });
 
+  it('default-exports the factory, which is what an MCP session that names the package calls', async () => {
+    const entry = await import('../../src/index.ts');
+    expect(entry.default).toBe(entry.mobile);
+  });
+
   it('rejects an option it does not know, naming the nearest', () => {
     expect(() => harness({ sesion: 'e2e-ios' } as never)).toThrow(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: 'mobile() has unknown key "sesion"; did you mean "session"?' }),
     );
+    // What `e2e mcp` passes when an agent names the package alone, or leaves the platform out.
+    for (const options of [undefined, {}, { platform: 'tvos' }]) {
+      expect(() => mobile(options as never)).toThrowError(expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringContaining("mobile() needs platform: 'ios' or 'android'") }));
+    }
     expect(() => mobile({ platform: 'ios', app: 'x' } as never)).toThrowError(
       expect.objectContaining({ code: 'INVALID_CONFIG', message: expect.stringMatching(/^mobile\(\) has unknown key "app"/) }),
     );
