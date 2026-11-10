@@ -11,6 +11,8 @@ export interface OutputLayout {
   readonly report: string;
   /** The `--ai-trace` recording, `ai-trace.json`. */
   readonly aiTrace: string;
+  /** The timings history, `timings.json`: what a CI cache restores to order the next run's files. */
+  readonly timings: string;
   /**
    * One directory per test, `results/<test>/`, holding its trace page
    * (`trace.md`) and its attempts' artifacts (`attempt-<n>/`); the report's
@@ -31,6 +33,7 @@ export function outputLayout(output: string): OutputLayout {
   return {
     report: path.join(output, 'report.json'),
     aiTrace: path.join(output, 'ai-trace.json'),
+    timings: path.join(output, 'timings.json'),
     results: path.join(output, 'results'),
     sessions: path.join(output, 'sessions'),
     videos: (sessionId) => path.join(output, 'videos', sessionId),
