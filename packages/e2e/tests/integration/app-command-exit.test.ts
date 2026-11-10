@@ -191,7 +191,8 @@ export default {
         const message = outcome.report.run.errors[0]?.message ?? '';
         expect.soft(message).toContain('app output 29');
         expect.soft(message).toContain('app exiting intentionally: <secret:APP_SECRET>');
-        expect.soft(message).not.toContain('app output 0\n');
+        expect.soft(message).toContain('app output 0\n');
+        expect.soft(message).not.toContain('[startup output omitted]');
         expect.soft(JSON.stringify(outcome.report)).not.toContain(SECRET);
         expect.soft(existsSync(path.join(project.dir, 'queued-ran'))).toBe(false);
         expect.soft(outcome.results.find((result) => result.test.title === 'waits while the app exits')?.status).toBe('interrupted');
