@@ -44,7 +44,7 @@ const MAX_CONTAINERS = 3;
 const BOX_SLACK = 1;
 
 /** The roles `getByRole` takes, so a node read as `generic` never becomes a role query. */
-const ROLES: ReadonlySet<string> = new Set(
+export const ROLES: ReadonlySet<string> = new Set(
   Object.keys({
     button: true, link: true, textbox: true, searchbox: true, combobox: true, listbox: true, option: true, checkbox: true,
     radio: true, radiogroup: true, switch: true, slider: true, spinbutton: true, progressbar: true, meter: true, image: true,

@@ -1028,6 +1028,59 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
 
   registerCacheCommand(program);
 
+  const compileProgram = program
+    .command('compile')
+    .summary('turn recorded agent.act() steps into the test lines that repeat them')
+    .description(
+      'Replace each agent.act() step of the selected tests with the screen.* and app.* lines its recording repeats, plus expect lines from its end state. A step with no recording is recorded first by running its test (e2e run <file:line>), unless --no-run. Without --write, prints the change and edits nothing. Conservative by default: a step whose targets have no test id stays an agent.act() unless --loose, and so does a step whose recording cannot be pinned to its call or that holds an action no locator line repeats, with its reason as a code. `e2e compile status` reports every step and what would unlock it; `e2e compile revert` puts a compiled block back.',
+    )
+    .argument('[files...]', FILES_DESCRIPTION)
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
+    .option('--target <name>', 'the target whose recordings to compile (default: the only target)')
+    .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
+    .option('--write', 'rewrite the test files instead of printing the change')
+    .option('--no-run', 'compile only steps already recorded; never run a test')
+    .option('--loose', 'also compile targets with no test id, from locators nothing checked against a live screen')
+    .option('--verify', 'with --write, run each compiled test once and put back the blocks of every test that did not pass')
+    .action(async (files: string[], options: { config?: string; target?: string; cacheDir?: string; write?: boolean; run?: boolean; loose?: boolean; verify?: boolean }) => {
+      const { compileCommand } = await import('../compile/index.ts');
+      process.exitCode = await compileCommand({ files, ...options });
+    });
+
+  compileProgram
+    .command('status')
+    .summary('report which recorded agent.act() steps compile, why the rest stay, and what would unlock them')
+    .description(
+      'For every recorded agent.act() step of the selected tests: whether it compiles and, when it does not, why, as a stable code; the coverage by code; and the targets a test id would unlock. Never runs a test or edits a file.',
+    )
+    .argument('[files...]', FILES_DESCRIPTION)
+    .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
+    .option('--target <name>', 'the target whose recordings to read (default: the only target)')
+    .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
+    .option('--loose', 'judge as compile --loose does')
+    .option('--json', 'print the report as JSON')
+    .action(async (files: string[], _options: unknown, command: Command) => {
+      // compile's own options are parsed wherever they appear, so a subcommand reads them merged.
+      const options = command.optsWithGlobals<{ config?: string; target?: string; cacheDir?: string; loose?: boolean; json?: boolean }>();
+      const { statusCommand } = await import('../compile/index.ts');
+      process.exitCode = await statusCommand({ files, ...options });
+    });
+
+  compileProgram
+    .command('revert')
+    .summary('put compiled blocks back as the agent.act() calls they were compiled from')
+    .description(
+      'Replace each compiled block (from its /** @compiled */ comment to its /** @end compiled */ comment) with the statement its @from tag kept. A file reverts every block in it; file:line reverts the block on that line, or every block of the test declared there; repeats of one step in a test revert together. A broken block in any file stops the command before it edits one. Without --write, prints the change and edits nothing.',
+    )
+    .argument('<locations...>', 'test files, or file:line')
+    .option('--config <path>', 'config file, for the project root that relative paths resolve against')
+    .option('--write', 'rewrite the test files instead of printing the change')
+    .action(async (locations: string[], _options: unknown, command: Command) => {
+      const options = command.optsWithGlobals<{ config?: string; write?: boolean }>();
+      const { revertCommand } = await import('../compile/index.ts');
+      process.exitCode = await revertCommand({ locations, ...options });
+    });
+
   program
     .command('upgrade')
     .alias('update')

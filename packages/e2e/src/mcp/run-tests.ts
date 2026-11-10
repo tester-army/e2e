@@ -237,7 +237,7 @@ export function runArguments(args: RunTestsInput, defaults: Omit<TestRunsOptions
  * layouts; from source, e2e's own loader is registered first, as for a
  * worker.
  */
-function cliEntry(): { path: string; execArgv: string[] } {
+export function cliEntry(): { path: string; execArgv: string[] } {
   // A path to spawn, not an import: the CLI runs in its own process, so it is no cycle.
   // fallow-ignore-next-line circular-dependency
   const js = fileURLToPath(new URL('../cli/bin.js', import.meta.url));

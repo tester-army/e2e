@@ -233,7 +233,7 @@ export function locateQuery(args: LocateArgs): LocateQuery {
  * accessible name, so a message or list row reads as one line. A name read off
  * such a node is text no role query matches.
  */
-const CONTENT_NAMED_ROLES: ReadonlySet<string> = new Set(['status', 'alert', 'listitem']);
+export const CONTENT_NAMED_ROLES: ReadonlySet<string> = new Set(['status', 'alert', 'listitem']);
 
 /** The zero-match advice for a content-named role: match the text instead of retrying it as a name. */
 function contentNameNotFound(role: string, name: string, exact: boolean): string {

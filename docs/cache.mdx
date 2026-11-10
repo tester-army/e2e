@@ -429,6 +429,15 @@ The `cached` percentage in AI usage is the provider's prompt cache. It
 lowers the cost of a model call. The replay cache skips the call.
 </Note>
 
+## Compile a recording into code
+
+`e2e compile` replaces an `agent.act()` step with the locator lines its
+recording repeats, so the step runs with no model and no cache. By default
+it compiles only steps whose targets have test ids; `--loose --verify`
+compiles the rest and keeps only what a run passes on. `e2e compile status`
+says why each other step stays, and `e2e compile revert` puts a step back.
+See [`e2e compile`](/reference/cli#e2e-compile).
+
 ## Next
 
 <CardGroup cols={2}>

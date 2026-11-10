@@ -1,0 +1,5 @@
+---
+"e2e": patch
+---
+
+Add `e2e compile`: replaces the `agent.act()` steps of the selected tests with the `screen.*` and `app.*` lines their replay cache recordings repeat, plus `expect` lines for the recorded end state, so a compiled step runs with no model call and no cache. Each block is kept between a `/** @compiled */` JSDoc comment, which records the original statement, the recording, and when it was recorded, compiled, and verified, and a `/** @end compiled */` comment. A step with no recording is recorded first by running its test (`--no-run` skips that), and the change is printed unless `--write`. By default only steps whose targets have test ids compile; `--loose` also compiles role, text, and placeholder locators, and `--verify` runs each compiled test once and puts back the blocks of any test that did not pass. `e2e compile status` reports every step with a code for why it stays, marks a compiled block `stale` once its step is recorded again, and lists the test ids that would unlock steps (`--json`); `e2e compile revert` puts a compiled block back as the statement it came from.
