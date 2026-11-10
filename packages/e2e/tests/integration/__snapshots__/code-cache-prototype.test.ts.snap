@@ -1,0 +1,18 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`records an agent flow, emits ordinary code, and runs it without an agent 1`] = `
+"import { test } from '@e2e-dev/web';
+import { expect } from 'e2e';
+
+test("counter", async ({ app, screen, browser }) => {
+  await app.open("/");
+  await expect(screen.getByRole("status", "Counter", { exact: true }).filter({ hasText: new RegExp("^2$") })).not.toBeVisible();
+  await expect(screen.getByRole("status", "Counter", { exact: true }).filter({ hasText: new RegExp("^0$") })).toBeVisible();
+  await screen.getByRole("button", "Increment", { exact: true }).tap();
+  await screen.getByRole("button", "Increment", { exact: true }).tap();
+  await expect(screen.getByRole("status", "Counter", { exact: true }).filter({ hasText: new RegExp("^2$") })).toBeVisible();
+  await expect(screen.getByRole("status", "Counter", { exact: true }).filter({ hasText: new RegExp("^0$") })).not.toBeVisible();
+  await expect(browser).toHaveURL("/");
+});
+"
+`;
