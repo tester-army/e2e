@@ -120,7 +120,7 @@ purpose.
 | `stopApp`, then `launchApp` | `app.restart()` |
 | `clearKeychain` | `device.clearKeychain()`, the whole simulator's keychain; iOS only |
 | `openLink` | `device.openLink(url, { app })`; on iOS the link opens into `app`, default the pinned app |
-| `addMedia` | Not yet. Add the photo from the host before `app.open()`: `xcrun simctl addmedia` on iOS, `adb push` and a media scan on Android, see [Photos for a picker test](/mobile#the-device-fixture) |
+| `addMedia` | Not yet. Add the photo from the host before `app.open()`: `xcrun simctl addmedia` on iOS, `adb push` and a media scan on Android, see the "Photos for a picker test" accordion under [The device fixture](/mobile#the-device-fixture) |
 | `back` | `app.back()`, or `device.back()` |
 
 </Accordion>

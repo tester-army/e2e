@@ -325,7 +325,7 @@ function addPhoto(device: Device, file: string): void {
   execFileSync('adb', ['-s', deviceId, 'shell', 'content', 'call', '--method', 'scan_volume', '--uri', 'content://media', '--arg', 'external_primary']);
 }
 
-test('attaches the receipt from the photo library', async ({ app, device, screen }) => {
+test('attaches the receipt from the photo library', { platforms: ['ios'] }, async ({ app, device, screen }) => {
   addPhoto(device, receipt);
   await app.open();
   await screen.getByLabel('Choose photo').tap();
