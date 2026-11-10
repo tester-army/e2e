@@ -770,8 +770,10 @@ async function verifyCompiled(project: Project, written: readonly { readonly tes
   // a test on several targets keeps its compiled lines only when they pass on each.
   await runTests(config, undefined, [...new Set(written.map(({ test }) => test.file))], options, ['--retries=0', `--grep=${written.map(({ test }) => `^${escapeRegExp(test.titlePath.join(' '))}$`).join('|')}`]);
   const statuses = new Map<string, string>();
+  let reported = false;
   try {
     const report = ReportResults.parse(JSON.parse(await readFile(reportPath, 'utf8')));
+    reported = true;
     // A target that skipped the test says nothing; one that did not pass decides, and one must pass.
     for (const result of report.run.results) {
       if (result.status === 'skipped') continue;
@@ -801,7 +803,7 @@ async function verifyCompiled(project: Project, written: readonly { readonly tes
     }
     await writeFile(absolute, applyEdits(source.text, blocks.map((block) => ({ start: block.start, end: block.end, text: block.from }))));
     reverted += blocks.length;
-    process.stdout.write(`${skipMark()} ${test.titlePath.join(' › ')} ${codeLabel('verify-failed')} the test ${status === undefined ? 'did not run' : status} with its compiled lines; ${String(blocks.length)} block(s) are agent.act() again\n`);
+    process.stdout.write(`${skipMark()} ${test.titlePath.join(' › ')} ${codeLabel('verify-failed')} ${status !== undefined ? `the test ${status} with its compiled lines` : reported ? 'the test did not run with its compiled lines' : 'the checking run wrote no report, so nothing showed the lines pass (see its error above)'}; ${String(blocks.length)} block(s) are agent.act() again\n`);
   }
   return reverted;
 }
