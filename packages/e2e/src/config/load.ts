@@ -78,16 +78,17 @@ function explicitConfigNotFound(cwd: string, explicitPath: string, absolute: str
  * The failure for a run that found no config file: where the search looked,
  * a lookalike in the working directory when one exists, and otherwise the
  * command that creates a config. Thrown when a config file is discovered,
- * never for a supplied config value.
+ * never for a supplied config value. `alternative` is what the caller can do
+ * instead of creating one: the CLI's flag by default.
  */
-export function missingConfigError(cwd: string): ConfigurationError {
+export function missingConfigError(cwd: string, alternative = 'pass --config <path>'): ConfigurationError {
   const root = path.resolve(cwd);
   const lookalike = CONFIG_LOOKALIKES.find((name) => existsSync(path.join(root, name)));
   const names = `${CONFIG_NAMES.slice(0, -1).join(', ')}, or ${CONFIG_NAMES.at(-1)}`;
   const searched = `no ${names} found in ${root} or its parent directories`;
   const remedy =
     lookalike === undefined
-      ? 'run e2e init to create one, or pass --config <path>'
+      ? `run e2e init to create one, or ${alternative}`
       : `found ${lookalike}, but only ${names} is loaded: rename it and keep it an ES module`;
   return new ConfigurationError('CONFIG_NOT_FOUND', `${searched}; ${remedy}`);
 }
