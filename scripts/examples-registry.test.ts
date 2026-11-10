@@ -6,6 +6,7 @@ import {
   type Registry,
   type RegistryEnvironment,
   readEnvironment,
+  isLocalFolder,
   readmeUrl,
   registryProblems,
   schemaProblems,
@@ -25,7 +26,7 @@ function registry(examples: Record<string, unknown>[] = []): Registry {
         slug: 'with-vite',
         icon: 'vite.svg',
         source: 'official',
-        repository: 'https://github.com/tester-army/e2e/tree/main/examples/with-vite',
+        repository: 'https://github.com/e2e-inc/e2e/tree/main/examples/with-vite',
         tags: { framework: ['vite'], platform: ['web'] },
       },
       ...examples,
@@ -72,6 +73,29 @@ describe('registryProblems', () => {
     assert.deepEqual(registryProblems(registry([community]), ENV), []);
   });
 
+  for (const owner of ['e2e-inc', 'tester-army']) {
+    it(`recognizes official folders and repositories under ${owner}`, () => {
+      const base = registry();
+      base.examples[0]!.repository = `https://github.com/${owner}/e2e/tree/main/examples/with-vite`;
+      assert.equal(isLocalFolder(base.examples[0]!.repository), true);
+      assert.deepEqual(registryProblems(base, ENV), []);
+      assert.deepEqual(registryProblems(registry([
+        { ...community, source: 'official', repository: `https://github.com/${owner}/e2e-clerk` },
+      ]), ENV), []);
+      const problems = registryProblems(registry([
+        { ...community, source: 'official', repository: `https://github.com/${owner}/e2e/tree/main/docs` },
+        { ...community, slug: 'community', repository: `https://github.com/${owner}/e2e-clerk` },
+        { ...community, slug: 'partner', source: 'partner', repository: `https://github.com/${owner}/e2e-partner`, author: { github: owner, website: 'https://example.com' } },
+      ]), ENV);
+      assert.equal(problems.length, 3);
+      assert.match(problems[0]!, /must point at its folder/);
+      assert.match(problems[1]!, /outside the e2e-inc organization/);
+      assert.match(problems[2]!, /outside the e2e-inc organization/);
+      assert.equal(isLocalFolder(`https://github.com/${owner}-other/e2e/tree/main/examples/with-vite`), false);
+      assert.equal(readmeUrl({ repository: base.examples[0]!.repository }), `https://raw.githubusercontent.com/${owner}/e2e/main/examples/with-vite/README.md`);
+    });
+  }
+
   it('rejects a duplicate slug and an undefined tag', () => {
     const problems = registryProblems(
       registry([community, { ...community, tags: { framework: ['svelte'], platform: ['web'] } }]),
@@ -86,14 +110,14 @@ describe('registryProblems', () => {
   it('keeps community examples out of the organization and official ones in it', () => {
     const problems = registryProblems(
       registry([
-        { ...community, repository: 'https://github.com/tester-army/e2e/tree/main/examples/with-vite' },
+        { ...community, repository: 'https://github.com/e2e-inc/e2e/tree/main/examples/with-vite' },
         { ...community, slug: 'fake-official', source: 'official' },
       ]),
       ENV,
     );
     assert.equal(problems.length, 2, problems.join('\n'));
     assert.match(problems[0]!, /community example lives in its own repository/);
-    assert.match(problems[1]!, /official example lives under https:\/\/github\.com\/tester-army\//);
+    assert.match(problems[1]!, /official example lives under https:\/\/github\.com\/e2e-inc\//);
   });
 
   it("accepts a partner example in its author's repository, and keeps it out of the organization", () => {
@@ -101,13 +125,13 @@ describe('registryProblems', () => {
     assert.deepEqual(registryProblems(registry([partner]), ENV), []);
     const problems = registryProblems(
       registry([
-        { ...partner, repository: 'https://github.com/tester-army/e2e-smolmachines' },
+        { ...partner, repository: 'https://github.com/e2e-inc/e2e-smolmachines' },
         { ...partner, slug: 'impostor', repository: 'https://github.com/someone-else/e2e-smolmachines' },
       ]),
       ENV,
     );
     assert.equal(problems.length, 2, problems.join('\n'));
-    assert.match(problems[0]!, /"smolmachines": a partner example lives in its own repository, outside the tester-army organization/);
+    assert.match(problems[0]!, /"smolmachines": a partner example lives in its own repository, outside the e2e-inc organization/);
     assert.match(problems[1]!, /"impostor": a partner example lives in its author's repository, https:\/\/github\.com\/someone\//);
   });
 
@@ -122,18 +146,18 @@ describe('registryProblems', () => {
     assert.match(problems[1]!, /"vite-auth": only a partner example has author\.website/);
   });
 
-  it('accepts an official example in its own tester-army repository, and no community one there', () => {
+  it('accepts an official example in its own e2e-inc repository, and no community one there', () => {
     const problems = registryProblems(
       registry([
-        { ...community, slug: 'stripe', source: 'official', repository: 'https://github.com/tester-army/e2e-stripe' },
-        { ...community, repository: 'https://github.com/tester-army/e2e-clerk' },
-        { ...community, slug: 'loose', source: 'official', repository: 'https://github.com/tester-army/e2e/tree/main/docs' },
+        { ...community, slug: 'stripe', source: 'official', repository: 'https://github.com/e2e-inc/e2e-stripe' },
+        { ...community, repository: 'https://github.com/e2e-inc/e2e-clerk' },
+        { ...community, slug: 'loose', source: 'official', repository: 'https://github.com/e2e-inc/e2e/tree/main/docs' },
       ]),
       ENV,
     );
     assert.equal(problems.length, 2, problems.join('\n'));
-    assert.match(problems[0]!, /"vite-auth": a community example lives in its own repository, outside the tester-army organization/);
-    assert.match(problems[1]!, /"loose": an official example in tester-army\/e2e must point at its folder/);
+    assert.match(problems[0]!, /"vite-auth": a community example lives in its own repository, outside the e2e-inc organization/);
+    assert.match(problems[1]!, /"loose": an official example in e2e-inc\/e2e must point at its folder/);
   });
 
   it('accepts an official example in the e2e_inc group on GitLab, and no community or partner one there', () => {
@@ -148,9 +172,9 @@ describe('registryProblems', () => {
       ENV,
     );
     assert.equal(problems.length, 3, problems.join('\n'));
-    assert.match(problems[0]!, /"vite-auth": a community example lives in its own repository, outside the tester-army organization and the e2e_inc group/);
+    assert.match(problems[0]!, /"vite-auth": a community example lives in its own repository, outside the e2e-inc organization and the e2e_inc group/);
     assert.match(problems[1]!, /"partner": a partner example lives in its author's repository, https:\/\/github\.com\/someone\//);
-    assert.match(problems[2]!, /"elsewhere": an official example lives under https:\/\/github\.com\/tester-army\/ or https:\/\/gitlab\.com\/e2e_inc\//);
+    assert.match(problems[2]!, /"elsewhere": an official example lives under https:\/\/github\.com\/e2e-inc\/ or https:\/\/gitlab\.com\/e2e_inc\//);
   });
 
   it('requires an entry for every example folder and an icon file for every icon', () => {

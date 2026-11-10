@@ -1075,7 +1075,7 @@ describe('e2e feedback', () => {
     const output = written(stdoutSpy);
     expect(output).toContain('Not sent: a bug without --repro goes to GitHub');
     const url = new URL(output.trim().split('\n').at(-1) ?? '');
-    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/tester-army/e2e/issues/new');
+    expect(`${url.origin}${url.pathname}`).toBe('https://github.com/e2e-inc/e2e/issues/new');
     expect(url.searchParams.get('template')).toBe('bug_report.yml');
     expect(url.searchParams.get('title')).toBe('tap lands on the wrong tab');
     expect(url.searchParams.get('what')).toBe('tap lands on the wrong tab\n\nActual: token <secret:MY_SERVICE_TOKEN> leaked\nError code: TARGET_NOT_FOUND');

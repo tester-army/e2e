@@ -44,7 +44,7 @@ jobs:
   # dispatch the workflow, and it would spend their runners and model key.
   # Every example job needs this one, so on a fork they all skip with it.
   pack:
-    if: ${{ github.repository == 'tester-army/e2e' }}
+    if: ${{ github.repository == 'e2e-inc/e2e' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     outputs:
@@ -506,7 +506,7 @@ jobs:
   # One Slack message for the whole night, whatever failed.
   summary:
     needs: [pack, web, android, ios]
-    if: ${{ always() && github.repository == 'tester-army/e2e' }}
+    if: ${{ always() && github.repository == 'e2e-inc/e2e' }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 5
     permissions:

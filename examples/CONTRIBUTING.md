@@ -2,7 +2,7 @@
 
 [e2e.com/examples](https://e2e.com/examples) lists every
 example in [`examples.json`](examples.json): the official ones, which the e2e
-team maintains in this folder, in other tester-army repositories, and in the
+team maintains in this folder, in other e2e-inc repositories, and in the
 e2e_inc group on GitLab, partner examples in the partner's own GitHub
 repositories, and community examples in their own GitHub or GitLab
 repositories. Built something with
@@ -54,7 +54,7 @@ Your editor can autocomplete the fields from
   GitLab), to render that file instead, or to `false` for no README: the page then shows the entry's
   details and links to the code in `repository`.
 - `source` is always `community`. `official` is reserved for examples the
-  e2e team maintains under the tester-army organization on GitHub or the
+  e2e team maintains under the e2e-inc organization on GitHub or the
   e2e_inc group on GitLab, and `partner` for examples a partner company
   verifies and maintains in its own repository, which the e2e team sets once
   a partnership is agreed; the repository must be on GitHub and belong to the
@@ -101,3 +101,6 @@ The folders here are official examples, maintained by the e2e team:
   entry there. Pull requests never run them. Oxlint and fallow exclude them.
 - Do not commit lockfiles. Keep the demo and tests consistent across
   examples.
+
+GitHub URLs using the former `tester-army` owner still parse as official
+examples. Use `e2e-inc` for new entries.

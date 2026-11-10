@@ -1,6 +1,6 @@
 {
   "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
-  "changelog": ["@changesets/changelog-github", { "repo": "tester-army/e2e" }],
+  "changelog": ["@changesets/changelog-github", { "repo": "e2e-inc/e2e" }],
   "commit": false,
   "access": "public",
   "baseBranch": "main",
