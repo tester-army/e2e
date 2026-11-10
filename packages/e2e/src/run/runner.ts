@@ -805,7 +805,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     projectRoot: config.projectRoot,
     artifactsRoot: outputLayout(config.output).results,
     ci: isCiMode(env),
-    targets: config.targets.map((target) => target.name),
+    targets: headerTargets(config.targets, options.targetIds).map((target) => target.name),
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
     ...(runAgent?.model === undefined ? {} : { model: modelLabel(runAgent.model) }),
     ...(runJudge === undefined ? {} : { judge: modelLabel(runJudge) }),
@@ -1399,6 +1399,19 @@ async function loadRunConfig(
     env,
     cli,
   });
+}
+
+/**
+ * The targets `run-started` names: the ones `--target` selected, in config
+ * order. An unknown target ID names every configured target here, since the
+ * run fails on it with `UNKNOWN_TARGET` as a collection error once it begins.
+ */
+function headerTargets(targets: readonly ResolvedTarget[], targetIds: readonly string[] | undefined): readonly ResolvedTarget[] {
+  try {
+    return selectTargets(targets, targetIds);
+  } catch {
+    return targets;
+  }
 }
 
 /**

@@ -1115,8 +1115,8 @@ export class ListReporter implements Reporter {
 
   /**
    * The badge of the explored target: an exploration runs on exactly one,
-   * the one its test started on. `targets` lists every configured target,
-   * so the first of those is only right when `--target` named it.
+   * the one its test started on. `targets` lists every target the run
+   * selected, so the first of those is only right when it is the only one.
    */
   private exploreBadge(): string {
     this.exploredTarget ??= [...this.pairs.values()].find((test) => test.executing)?.group.target;
