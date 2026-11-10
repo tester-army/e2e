@@ -123,6 +123,19 @@ describe('e2e compile: pinning a recording to its call', () => {
     expect(status(created)).toMatchObject([{ status: 'stays', code: 'step-options' }]);
   });
 
+  it('uses a name the file imports from its own fixtures module, as the rest of the test does', async () => {
+    const typed: ActionTrace['actions'] = [{ name: 'type', summary: 'type', target: { testId: 'email' }, value: 'admin@example.test' }];
+    const created = await project(
+      { 'tests/a.e2e.ts': suite("  await agent.act('sign in');", "import { credentials } from './fixtures.ts';"), 'tests/fixtures.ts': "export { credentials } from 'e2e';\n" },
+      [{ title: 't', instruction: 'sign in', actions: typed }],
+    );
+    const compiled = cli(created, ['compile', 'tests/a.e2e.ts', '--write', '--no-run']);
+    expect(compiled.output).toContain('1 step(s) compiled');
+    const source = readFileSync(path.join(created.dir, 'tests/a.e2e.ts'), 'utf8');
+    expect(source).toContain('fill(credentials.user("admin").username)');
+    expect(source.match(/import \{[^}]*credentials[^}]*\}/gu)).toHaveLength(1);
+  });
+
   it('keeps a step whose lines need a name the module already binds', async () => {
     const typed: ActionTrace['actions'] = [{ name: 'type', summary: 'type', target: { testId: 'email' }, value: 'admin@example.test' }];
     const created = await project({ 'tests/a.e2e.ts': suite("  await agent.act('sign in');", 'const credentials = { note: 1 };') }, [{ title: 't', instruction: 'sign in', actions: typed }]);

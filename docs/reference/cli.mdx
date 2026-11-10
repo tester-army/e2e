@@ -1196,7 +1196,7 @@ with a code:
 | `dynamic-params` | The params are not literals the source spells out. Use `--loose` for a call with one recording. |
 | `ambiguous-recording` | The recordings cannot be told apart: a helper repeats the call, the test was recorded for several agents, or another test's id shares its first 300 characters. |
 | `group-partial` | Another call of the same step stays. |
-| `fixtures` | The callback does not destructure the fixtures the lines need, names one otherwise, or a name the lines use is bound to something else. |
+| `fixtures` | The callback does not destructure the fixtures the lines need, names one otherwise, or the module or the callback declares a name the lines use. A name the file imports, from `e2e` or a module that re-exports it, is used as imported. |
 | `verify-failed` | The `--verify` run did not pass on the lines. |
 | `truncated`, `empty` | The recording hit a cap, or holds no action a line repeats. |
 

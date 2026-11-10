@@ -332,7 +332,8 @@ function blockText(site: ActSite, step: CompiledStep, recording: Recording, comp
  * The fixtures to add to the callback's pattern and the names to import from
  * `e2e`, or why the lines cannot have the names they use: a fixture bound
  * under another name, a pattern that gathers the rest, or a name the module
- * or the callback already binds to something else.
+ * or the callback declares itself. A name the file already imports, from
+ * `e2e` or from a module that re-exports it, is used as imported.
  */
 function bindingEdits(
   source: SourceFile,
@@ -356,9 +357,9 @@ function bindingEdits(
   const toImport: string[] = [];
   for (const name of imports) {
     if (testSource.bodyNames.has(name)) return `the callback declares its own ${name}, and the lines use e2e's`;
-    const from = imported.get(name);
-    if (from === 'e2e') continue;
-    if (from !== undefined) return `${name} is imported from ${from}, and the lines use e2e's`;
+    // An import of the name (e2e's, or a project's fixtures module re-exporting it) is the binding the
+    // rest of the test already uses, so the lines use it too; --verify catches one that differs.
+    if (imported.has(name)) continue;
     if (declared.has(name)) return `the module declares its own ${name}, and the lines use e2e's`;
     toImport.push(name);
   }
