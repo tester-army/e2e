@@ -400,6 +400,11 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(unknown.isError).toBe(true);
     expect(unknown.text).toContain('UNKNOWN_TARGET');
 
+    const named = await invoke('open_session', { engine: '@e2e-dev/web', app: { url: app.url } });
+    expect(named.isError).toBe(true);
+    expect(named.text).toContain('INVALID_ARGUMENT');
+    expect(named.text).toContain(`${path.join(project.dir, 'e2e.config.ts')} exists; leave engine out`);
+
     const absent = await invoke('open_session', { config: 'missing.config.ts' });
     expect(absent.isError).toBe(true);
     expect(absent.text).toContain('CONFIG_NOT_FOUND');

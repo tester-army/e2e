@@ -7,7 +7,8 @@
  * already on disk is loaded.
  */
 
-import { createRequire } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
+import { createRequire, isBuiltin } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -54,7 +55,7 @@ export function userEnginesDir(): string {
  * the handle's brand and contract version are all that cross.
  */
 export async function loadEngine(ref: FactoryRef, lookup: EngineLookup): Promise<EngineHandle> {
-  const engine = await callFactory(ref, lookup);
+  const engine = await callFactory(ref, lookup, 'engine');
   if (!isEngineHandle(engine)) {
     throw new ConfigurationError('INVALID_CONFIG', `${describe(ref)} did not return an engine; it must return what defineEngine or connectEngine returns`);
   }
@@ -67,16 +68,21 @@ export async function loadEngine(ref: FactoryRef, lookup: EngineLookup): Promise
   return engine;
 }
 
-/** Calls the factory `ref` names with its options, the factory calls among them made first. */
-async function callFactory(ref: FactoryRef, lookup: EngineLookup): Promise<unknown> {
-  if (!PACKAGE.test(ref.package)) {
-    throw new ConfigurationError('INVALID_ARGUMENT', `open_session: engine names a package such as "@e2e-dev/web", got ${JSON.stringify(ref.package)}`);
+/**
+ * Calls the factory `ref` names with its options, the factory calls among
+ * them made first. `role` is where the call stands: the `engine` itself, or
+ * an `option` value read as a call by its shape.
+ */
+async function callFactory(ref: FactoryRef, lookup: EngineLookup, role: 'engine' | 'option'): Promise<unknown> {
+  // A builtin's name resolves to itself, which a file URL would then read as a path in the project.
+  if (!PACKAGE.test(ref.package) || isBuiltin(ref.package)) {
+    throw new ConfigurationError('INVALID_ARGUMENT', `open_session: engine names an installed package such as "@e2e-dev/web", got ${JSON.stringify(ref.package)}`);
   }
   const name = ref.export ?? 'default';
   if (!EXPORT_NAME.test(name)) {
     throw new ConfigurationError('INVALID_ARGUMENT', `open_session: export names one export of ${ref.package}, got ${JSON.stringify(name)}`);
   }
-  const entry = resolveEntry(ref.package, lookup);
+  const entry = resolveEntry(ref.package, lookup, role);
   let exports: Record<string, unknown>;
   try {
     exports = (await import(pathToFileURL(entry).href)) as Record<string, unknown>;
@@ -92,7 +98,8 @@ async function callFactory(ref: FactoryRef, lookup: EngineLookup): Promise<unkno
       `${describe(ref)} (${entry}) is not a function, so there is nothing to call; ${others}. Name one with export, or declare the target in an e2e.config.ts`,
     );
   }
-  const options = ref.options === undefined ? undefined : await resolveOptions(ref.options, lookup);
+  // The options object is the factory's argument, never a call itself, whatever its keys.
+  const options = ref.options === undefined ? undefined : await resolveEntries(ref.options, lookup);
   try {
     return await (factory as (options: unknown) => unknown)(options);
   } catch (cause) {
@@ -110,7 +117,11 @@ async function resolveOptions(value: unknown, lookup: EngineLookup): Promise<unk
     return items;
   }
   if (typeof value !== 'object' || value === null) return value;
-  if (isFactoryRef(value)) return callFactory(value, lookup);
+  return isFactoryRef(value) ? callFactory(value, lookup, 'option') : resolveEntries(value, lookup);
+}
+
+/** A copy of `value` with each of its values resolved. */
+async function resolveEntries(value: object, lookup: EngineLookup): Promise<Record<string, unknown>> {
   const entries: [string, unknown][] = [];
   for (const [key, item] of Object.entries(value)) entries.push([key, await resolveOptions(item, lookup)]);
   // Not assignment: a `__proto__` key from JSON stays an own property instead of becoming the object's prototype.
@@ -133,22 +144,61 @@ function describe(ref: FactoryRef): string {
   return ref.export === undefined ? `the default export of ${ref.package}` : `${ref.package} export ${JSON.stringify(ref.export)}`;
 }
 
-/** The package's entry file, from the first place that has it installed. */
-function resolveEntry(name: string, lookup: EngineLookup): string {
-  const roots = [lookup.cwd, path.dirname(fileURLToPath(import.meta.url)), lookup.enginesDir];
-  for (const root of roots) {
+/**
+ * The package's entry file, from the first place that has the package
+ * installed. A package that is there but has no loadable entry is an error
+ * of its own, never a reason to look further or to install it again.
+ */
+function resolveEntry(name: string, lookup: EngineLookup, role: 'engine' | 'option'): string {
+  const [first = '', second = ''] = name.split('/');
+  const installable = name.startsWith('@') ? `${first}/${second}` : first;
+  for (const root of [lookup.cwd, path.dirname(fileURLToPath(import.meta.url)), lookup.enginesDir]) {
+    const directory = installedAt(installable, root);
+    if (directory === undefined) continue;
     try {
       // The file need not exist: it only says which node_modules directories to walk.
       return createRequire(path.join(root, 'package.json')).resolve(name);
     } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === 'MODULE_NOT_FOUND') continue;
-      throw new ConfigurationError('INVALID_CONFIG', `package ${name} is installed under ${root} but cannot be resolved: ${errorMessage(cause)}`, { cause });
+      // `require` conditions miss an entry a package exports to `import` alone.
+      const imported = (cause as NodeJS.ErrnoException).code === 'ERR_PACKAGE_PATH_NOT_EXPORTED' ? importEntry(directory, name.slice(installable.length)) : undefined;
+      if (imported !== undefined) return imported;
+      throw new ConfigurationError('INVALID_CONFIG', `package ${name} is installed at ${directory} but its entry cannot be resolved: ${errorMessage(cause)}`, { cause });
     }
   }
-  const [scope, bare] = name.split('/');
-  const installable = name.startsWith('@') ? `${scope}/${bare}` : scope;
+  // An option is only read as a call by its shape, so the message says how it was read before it names a command.
+  const read = role === 'engine' ? '' : `an option value with only package, export, and options keys is read as a factory call, and `;
   throw new ConfigurationError(
     'ENGINE_NOT_INSTALLED',
-    `package ${name} is not installed in ${lookup.cwd}, beside e2e, or in ${lookup.enginesDir}. Install it once for every project with: npm install --prefix ${JSON.stringify(lookup.enginesDir)} ${String(installable)}; then call open_session again`,
+    `${read}package ${name} is not installed in ${lookup.cwd}, beside e2e, or in ${lookup.enginesDir}. Install it once for every project with: npm install --prefix ${JSON.stringify(lookup.enginesDir)} ${installable}; then call open_session again`,
   );
+}
+
+/** The directory of `name` in the nearest `node_modules` from `root` upward, as Node.js looks a package up. */
+function installedAt(name: string, root: string): string | undefined {
+  for (let directory = root; ; directory = path.dirname(directory)) {
+    const candidate = path.join(directory, 'node_modules', name);
+    if (existsSync(path.join(candidate, 'package.json'))) return candidate;
+    if (path.dirname(directory) === directory) return undefined;
+  }
+}
+
+/** The file `subpath` (`''` for the main entry) of the package at `directory` exports to `import`, when its `exports` names one. */
+function importEntry(directory: string, subpath: string): string | undefined {
+  const manifest: unknown = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+  const exports = typeof manifest === 'object' && manifest !== null && 'exports' in manifest ? manifest.exports : undefined;
+  const key = `.${subpath}`;
+  const keyed = typeof exports === 'object' && exports !== null && !Array.isArray(exports) && Object.keys(exports).some((entry) => entry.startsWith('.'));
+  const target = importTarget(keyed ? (exports as Record<string, unknown>)[key] : key === '.' ? exports : undefined);
+  return target === undefined ? undefined : path.join(directory, target);
+}
+
+/** The first target an `import` of this `exports` value selects: a path, or the first matching condition's, in the order written. */
+function importTarget(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  for (const [condition, target] of Object.entries(value)) {
+    const selected = condition === 'import' || condition === 'node' || condition === 'default' ? importTarget(target) : undefined;
+    if (selected !== undefined) return selected;
+  }
+  return undefined;
 }

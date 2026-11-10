@@ -10,11 +10,11 @@ const FACTORY = `export default (options) => ({ [Symbol.for('e2e.engine.v1')]: t
 let root: string;
 let lookup: { cwd: string; enginesDir: string };
 
-/** Installs `name` under `dir/node_modules` with `source` as its entry, and `subpaths` as further entries. */
-function install(dir: string, name: string, source: string, subpaths: Readonly<Record<string, string>> = {}): void {
+/** Installs `name` under `dir/node_modules` with `source` as its entry, and `subpaths` as further entries, each exported under `condition`. */
+function install(dir: string, name: string, source: string, subpaths: Readonly<Record<string, string>> = {}, condition = 'default'): void {
   const packageDir = path.join(dir, 'node_modules', name);
   mkdirSync(packageDir, { recursive: true });
-  const exports = Object.fromEntries([['.', { default: './index.js' }], ...Object.keys(subpaths).map((subpath) => [`./${subpath}`, { default: `./${subpath}.js` }])]);
+  const exports = Object.fromEntries([['.', { types: './index.d.ts', [condition]: './index.js' }], ...Object.keys(subpaths).map((subpath) => [`./${subpath}`, { [condition]: `./${subpath}.js` }])]);
   writeFileSync(path.join(packageDir, 'package.json'), JSON.stringify({ name, type: 'module', exports }));
   writeFileSync(path.join(packageDir, 'index.js'), source);
   for (const [subpath, content] of Object.entries(subpaths)) writeFileSync(path.join(packageDir, `${subpath}.js`), content);
@@ -43,6 +43,12 @@ describe('loadEngine', () => {
     expect(await loadEngine({ package: 'named/web' }, lookup)).toMatchObject({ name: 'from-subpath' });
   });
 
+  it('loads a package that exports its entries to import alone', async () => {
+    install(lookup.cwd, 'esm-only', FACTORY, { web: FACTORY.replace("'fake'", "'from-subpath'") }, 'import');
+    expect(await loadEngine({ package: 'esm-only' }, lookup)).toMatchObject({ name: 'fake' });
+    expect(await loadEngine({ package: 'esm-only/web' }, lookup)).toMatchObject({ name: 'from-subpath' });
+  });
+
   it('makes the factory calls among the options first, so an engine gets a provider JSON cannot carry', async () => {
     install(lookup.cwd, 'engine', FACTORY);
     install(lookup.enginesDir, 'cloud', `export const devices = (options) => ({ name: 'cloud', region: options?.region, acquire: () => 'leased' });\n`);
@@ -55,6 +61,8 @@ describe('loadEngine', () => {
     expect(engine.options.pool[0]?.name).toBe('cloud');
     // An object with any other key is an option value, not a factory call.
     expect(engine.options.app).toEqual({ package: 'left alone', bundleId: 'x' });
+    // Nor is the options object itself, whatever its keys.
+    expect(await loadEngine({ package: 'engine', options: { package: 'com.example.app' } }, lookup)).toMatchObject({ options: { package: 'com.example.app' } });
   });
 
   it('keeps a __proto__ key from JSON an own property, so it cannot give the options inherited values', async () => {
@@ -82,11 +90,21 @@ describe('loadEngine', () => {
     install(lookup.cwd, 'engine', FACTORY);
     await expect(loadEngine({ package: 'engine', options: { device: { package: 'absent-cloud' } } }, lookup)).rejects.toMatchObject({
       code: 'ENGINE_NOT_INSTALLED',
-      message: expect.stringContaining('package absent-cloud is not installed'),
+      message: expect.stringContaining('is read as a factory call, and package absent-cloud is not installed'),
     });
   });
 
-  it.each(['./engine.js', '/tmp/engine.js', 'file:///tmp/engine.js', 'engine/../../outside', '..'])('refuses %s, which is not a package name', async (name) => {
+  it('reports a package that is installed without a loadable entry, and looks no further for it', async () => {
+    install(lookup.cwd, 'unbuilt', FACTORY);
+    rmSync(path.join(lookup.cwd, 'node_modules', 'unbuilt', 'index.js'));
+    install(lookup.enginesDir, 'unbuilt', FACTORY);
+    await expect(loadEngine({ package: 'unbuilt' }, lookup)).rejects.toMatchObject({
+      code: 'INVALID_CONFIG',
+      message: expect.stringContaining(`is installed at ${path.join(lookup.cwd, 'node_modules', 'unbuilt')} but its entry cannot be resolved`),
+    });
+  });
+
+  it.each(['./engine.js', '/tmp/engine.js', 'file:///tmp/engine.js', 'engine/../../outside', '..', 'util', 'fs/promises', 'node:fs'])('refuses %s, which is not an installed package', async (name) => {
     await expect(loadEngine({ package: name }, lookup)).rejects.toMatchObject({ code: 'INVALID_ARGUMENT' });
   });
 

@@ -13,7 +13,7 @@ export interface ProjectOptions {
   readonly configPath?: string | undefined;
 }
 
-/** A config loaded from a file, which a session always has: the file is what sessions share. */
+/** A config loaded from a file: what sessions on a project share. A session opened with `engine` has none. */
 export type LoadedConfig = ResolvedConfig & { readonly configPath: string };
 
 /** The absolute path of a project's config, found without evaluating it. */
