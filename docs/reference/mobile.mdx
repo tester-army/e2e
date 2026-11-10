@@ -350,13 +350,34 @@ so a cold boot on CI is never charged against `launchTimeout`.
   workers the engine declares.
 - On iOS, `prepare` starts the automation runner on every device with
   agent-device's `prepare ios-runner`, so its first launch is paid before the
-  first test. Then it brings the target's `app.bundleId` up once per device
-  when it is installed. A build the suite installs itself comes up with the
-  first `app.open()`, which relaunches it fresh whenever a test asks.
+  first test.
+- Then it opens the target's `app.bundleId` once per device. A build the
+  suite installs itself comes up with the first `app.open()`, which
+  relaunches it fresh whenever a test asks.
 - A device that cannot boot, or a runner that is busy, wedged, or past its
   watchdog, ends the run in `prepare`.
 - A runner that does not start for another reason is logged and left to the
   first attempt, and that device's app is not opened there.
+
+Each device logs one line of how long its prepare steps took, a failed step
+included. A cold iOS simulator:
+
+```text
+ℹ booting E93FA5E5-1592-43C7-9149-F1B5FE0AD5F5 (1 of 1)
+ℹ E93FA5E5-1592-43C7-9149-F1B5FE0AD5F5: boot 36.3s, iOS runner 61.6s, open dev.e2e.benchmark 9.2s
+```
+
+- `boot` is the device boot, a few seconds on a device that is already up.
+- `iOS runner` is the automation runner's start, on iOS only.
+- `open <app>` is the app's first launch, missing on a device where the
+  open is skipped as described above.
+
+An app that does not open is logged on a line of its own, and the run goes
+on:
+
+```text
+ℹ E93FA5E5-1592-43C7-9149-F1B5FE0AD5F5: dev.e2e.not.installed did not open (open dev.e2e.not.installed failed: Simulator device failed to launch dev.e2e.not.installed. Hint: The app bundle is not installed on this simulator. Run install before open.); the first attempt opens it
+```
 
 <Note>
 agent-device commands take no abort signal, so a timed-out command keeps
