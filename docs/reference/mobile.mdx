@@ -369,10 +369,11 @@ included. A cold iOS simulator:
 
 - `boot` is the device boot, a few seconds on a device that is already up.
 - `iOS runner` is the automation runner's start, on iOS only.
-- `open <app>` is the app's first launch, missing on a device where the
-  open is skipped as described above.
+- `open <app>` brings the app to the foreground, launching it on a cold
+  device. It is missing on a device where the open is skipped as described
+  above.
 
-An app that does not open is logged on a line of its own, and the run goes
+An ordinary app-open failure is logged on a line of its own, and the run goes
 on:
 
 ```text
