@@ -71,6 +71,7 @@ describe('loadEngine', () => {
     const engine = (await loadEngine({ package: 'engine', options }, lookup)) as unknown as { options: Record<string, unknown> };
     expect(Object.getPrototypeOf(engine.options)).toBe(Object.prototype);
     expect(engine.options['device']).toBeUndefined();
+    expect(Object.getOwnPropertyDescriptor(engine.options, '__proto__')?.value).toEqual({ device: 'smuggled' });
   });
 
   it('falls back to the engines directory, and prefers the project', async () => {

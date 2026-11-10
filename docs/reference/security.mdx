@@ -350,5 +350,5 @@ plugins, and app can make more connections.
 
 | Command | Rule |
 | --- | --- |
-| `e2e mcp` | Uses stdio and the same action authorization as a test run. Four open sessions by default ([`--max-sessions`](/reference/mcp), 1 through 16). Closes idle sessions. `open_session {engine}` loads the installed packages the agent names and calls the exports it names. That code runs with the server's full authority, like a config's imports. The server takes package names only, never a path or a URL, and installs nothing. |
+| `e2e mcp` | Uses stdio and the same action authorization as a test run. Four open sessions by default ([`--max-sessions`](/reference/mcp), 1 through 16). Closes idle sessions. `open_session {engine}` loads the installed packages the agent names and calls the exports it names. That code runs with the server's full authority, like a config's imports. `engine` names packages only, never a path or a URL, and the server installs nothing. |
 | `e2e explore` | Offers every configured credential to every step. The explorer sees account names and usernames. Passwords stay handles and need an engine that supports sensitive fills; without one, the explorer skips them. With no credentials, it may sign in with made-up test credentials, typed as plain text. |

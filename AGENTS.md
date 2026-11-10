@@ -62,10 +62,10 @@ suites that consume the built packages the way a user would.
     methods), `src/mcp/` the `e2e mcp` server (a live session that rides
     the `act` socket with a queue executor so every MCP call is a harness
     action; in a directory with no config, `open_session {engine}` names the
-    engine as a factory call, a package with an export and options that may
-    hold further such calls, which `mcp/default-engine.ts` resolves in the
-    project, beside e2e, or in `~/.e2e/engines`, never by a specifier written
-    in core), `src/oauth/` subscription sign-in (the `e2e login`, `logout`,
+    engine as a package, whose default export is called, or as a factory
+    call, a package with an export and options that may hold further such
+    calls, which `mcp/default-engine.ts` resolves in the project, beside e2e,
+    or in `~/.e2e/engines`, never by a specifier written in core), `src/oauth/` subscription sign-in (the `e2e login`, `logout`,
     and `models` commands and the `e2e/oauth/*` model constructors; each
     constructor subpath is the place its `@ai-sdk/*` optional peers are
     imported, and the Copilot constructor loads `@ai-sdk/openai` lazily, only

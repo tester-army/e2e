@@ -83,7 +83,7 @@ project, run `e2e init --yes --skills none --mcp .codex/config.toml` with the in
 or add the entry below. Install dependencies, trust the project, and start a
 new Codex session from the project directory. In a directory with no e2e
 config, the agent can still open a session by naming the engine package:
-`open_session {engine: "@e2e-dev/web", app: {url}}`.
+`open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}`.
 
 ```toml
 [mcp_servers.e2e]
