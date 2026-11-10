@@ -1184,7 +1184,7 @@ with a code:
 | `not-recorded` | It has no recording, or its run did not pass. |
 | `runtime-value` | It typed a value read from the screen during this run, such as a one-time code, or a target is named by a redacted secret or a run-unique value. |
 | `project-tool` | It called one of the project's tools. |
-| `point` | It tapped a viewport point, not a node. |
+| `point` | It hovered or dragged at a viewport point, not a node. |
 | `focus-keyboard` | It typed into whatever had focus. |
 | `viewport` | It resized the viewport. |
 | `no-identity` | A target has no role and name, test id, placeholder, or text. |
@@ -1207,6 +1207,9 @@ with a code:
 - A target with no test id is located by its role and name, text, or
   placeholder, and its line ends in `// unverified locator` until the run
   after the compile passes on it. A test id makes the locator certain.
+- A tap at a bare viewport point, as on a canvas, is written as
+  `screen.tapAt({ x, y })` with the viewport size it was recorded at. It
+  holds only on a viewport of that size.
 - A typed credential username and a filled secret are written by name:
   `credentials.user(name).username`, `.password`, or `secrets.get(name)`.
   No value is copied into the file.

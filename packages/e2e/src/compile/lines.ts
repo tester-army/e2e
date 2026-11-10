@@ -2,8 +2,8 @@
  * One recorded `agent.act()` step as test lines: each grammar action of a
  * `trace-1` entry becomes the `screen.*` or `app.*` call that repeats it,
  * and the step's end anchors become `expect` lines. A step compiles whole or
- * not at all: one action no locator line repeats (a project-tool gap, a bare
- * viewport point, keyboard input to whatever held focus) leaves the step to
+ * not at all: one action no locator line repeats (a project-tool gap, a hover
+ * at a bare viewport point, keyboard input to whatever held focus) leaves the step to
  * the agent, with the reason.
  *
  * Unlike the MCP session's lines (`mcp/test-lines.ts`), nothing here sees the
@@ -205,9 +205,12 @@ class LineWriter {
       case 'resize':
         throw new Uncompilable('viewport', `${where}: the viewport size is the engine fixture's call, which a compiled line does not name`);
       case 'tapAt':
+        // The point holds on a viewport of the recorded size only; the run after the write checks it landed.
+        this.fixtures.add('screen');
+        return `await screen.tapAt({ x: ${String(action.point.x)}, y: ${String(action.point.y)} }); // a viewport point, recorded at ${String(action.viewport.width)}x${String(action.viewport.height)}`;
       case 'hoverAt':
       case 'dragAt':
-        throw new Uncompilable('point', `${where}: a bare viewport point has no locator line`);
+        throw new Uncompilable('point', `${where}: a test has no line that hovers or drags at a bare viewport point`);
       case 'typeText':
       case 'pressKey':
         throw new Uncompilable('focus-keyboard', `${where}: keyboard input to whatever held focus has no locator line`);

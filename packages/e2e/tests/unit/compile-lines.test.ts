@@ -208,6 +208,12 @@ describe('compileTrace: targets with no test id', () => {
     expect(refused.reason).toContain('inside "Budget"');
   });
 
+  it('taps a bare viewport point at the recorded point, naming the viewport it was recorded on', () => {
+    expect(lines(trace([{ name: 'tapAt', summary: 'tap at', point: { x: 120.5, y: 48 }, viewport: { width: 800, height: 600 } }]))).toEqual([
+      'await screen.tapAt({ x: 120.5, y: 48 }); // a viewport point, recorded at 800x600',
+    ]);
+  });
+
   it('gives a long scroll the recorded wait', () => {
     const recorded = trace([{ name: 'scrollUntil', summary: 'scroll', text: 'Row 4322', direction: 'down', target: { testId: 'viewport' } }], [], { endWaitMs: 45_000 });
     expect(lines(recorded)).toEqual([
@@ -220,7 +226,7 @@ describe('compileTrace: refusals', () => {
   it.each<[string, readonly RecordedAction[], string]>([
     ['runtime-value', [{ name: 'tool', summary: 'tool type (run-time value)', derived: 'minted-token' }], 'this run\'s data (minted-token)'],
     ['project-tool', [{ name: 'tool', summary: 'tool seedDatabase' }], 'a project tool ran'],
-    ['point', [{ name: 'tapAt', summary: 'tap at', point: { x: 1, y: 2 }, viewport: { width: 800, height: 600 } }], 'bare viewport point'],
+    ['point', [{ name: 'hoverAt', summary: 'hover at', point: { x: 1, y: 2 }, viewport: { width: 800, height: 600 } }], 'bare viewport point'],
     ['focus-keyboard', [{ name: 'typeText', summary: 'type', value: 'x', replace: false }], 'whatever held focus'],
     ['viewport', [{ name: 'resize', summary: 'resize', size: { width: 390, height: 844 } }], 'viewport size'],
     ['secret-unknown', [{ name: 'typeSecret', summary: 'fill', target: { testId: 'pin' }, secret: 'pin' }], 'neither a credential password'],
