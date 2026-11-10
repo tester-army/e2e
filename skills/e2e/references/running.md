@@ -15,7 +15,7 @@ npx e2e run [files...] [options]   # run tests
 npx e2e explore [goal] [options]   # explore toward a goal without a test file (topic explore)
 npx e2e list [files...] [options]  # print what run would select
 npx e2e doctor [--check-model]     # can a run start: config, engine setup, models;
-                                   # --reporter json for a host, exit 2 on a failed check
+                                   # --json for a host, exit 2 on a failed check
 npx e2e init [directory] [--yes]   # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill; topics: setup, writing-tests, agent,
                                    # running, explore, debugging, mcp, bug-bash
@@ -61,6 +61,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `--step` | Run the first step, then hold each later one until a key at its prompt: Enter runs it, `n` the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops (exit 130). For a person at a terminal, not an agent: refused in CI, with `--watch`, `--workers` above 1, and the json reporter. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call except a test filter's, to `<output>/ai-trace.json`. |
+| `--timings <file>` | The timings history to update, over `<output>/timings.json`. With more than one worker, files with no recorded time start first, then the rest longest first. |
 | `--trace [mode]`, `--video [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`), or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
 
 ```bash
@@ -134,7 +135,7 @@ its own tools.
 ## Output
 
 `<output>` (`.e2e` by default) holds `report.json`, `junit.xml`,
-`summary.md`, `ai-trace.json`, `sessions/`, and `results/`, one directory
+`summary.md`, `ai-trace.json`, `timings.json` (how long each file took; with more than one worker the next run starts the longest known files first, after any with no time), `sessions/`, and `results/`, one directory
 per test with its `trace.md` and an `attempt-<n>/` per attempt
 (screenshots, videos, `--debug` transcripts, downloads).
 `results/` is cleared once a run's tests start; a run stopping before
@@ -189,6 +190,11 @@ hosted service's video by URL.
   comment per run (edited on rerun) plus the job summary; needs
   `pull-requests: write` and `GITHUB_TOKEN` (or `GH_TOKEN`) in the step's
   env.
+- `htmlReporter()` from `@e2e-dev/html-reporter`: `<output>/report.html`
+  (`.e2e/` by default), one page that opens from disk, with each test's
+  steps, screenshots, and video. It links media from `<output>/results/`;
+  `media: 'embed'` puts it in the page, one file to share, except downloads
+  the runner could not scan for secrets, and `media: 'none'` leaves it out.
 
 ## Exit codes
 

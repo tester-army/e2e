@@ -390,6 +390,7 @@ describe('open_session {test}', { timeout: 120_000 }, () => {
         ...resolveConfig({ ...config, targets: [webTarget('web', app.url)] } as E2EConfig as never, { projectRoot: project.dir, env: {}, configPath }),
         configPath,
       }),
+      loadEngineConfig: () => Promise.reject(new Error('these sessions open on the config')),
       env: {},
       headed: false,
       log: () => undefined,

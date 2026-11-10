@@ -72,7 +72,11 @@ between turns to shorten the history, or returns `{ messages, stop }` when the
 step makes no progress. A message it rewrites, in place or by replacement,
 edits the request prefix, and on Anthropic models, whose thinking is bound
 to it, the loop then stops sending the reasoning from that message on.
-`guard()` stops new tool calls when the step is
+When the provider refuses a request as too large, the loop shortens the
+history and retries once if that makes the request smaller, else fails with
+`CONTEXT_OVERFLOW`; `inconclusiveOnOverflow: true` fails the step with
+`ASSERTION_INCONCLUSIVE` instead, for an assertion loop whose earlier screens
+are evidence. `guard()` stops new tool calls when the step is
 concluding and returns a failure to the model as text. `ctx.actions`
 authorizes, counts, and records each action, so these steps replay from the
 [cache](/cache) and run on any engine that supports `tap`.
@@ -200,9 +204,10 @@ budget is spent, the deadline passed, or the test was cancelled. The runner
 refuses any other use, and a passed verdict with a code, with
 `MODEL_OUTPUT_INVALID`.
 
-For a model your executor drives itself, `createVerdictTool()` from
-`e2e/agent` is the built-in agent's `complete_step`. Give the model its
-`tool` and `VERDICT_RULES`, then return `verdict()`.
+For a model your executor drives itself, `createVerdictTool(ctx.step.kind)`
+from `e2e/agent` is the built-in agent's `complete_step`. Give the model its
+`tool` and `VERDICT_RULES`, then return `verdict()`. On an `act` step it drops
+`ASSERTION_INCONCLUSIVE` from a failed verdict.
 
 ## Replay cache
 

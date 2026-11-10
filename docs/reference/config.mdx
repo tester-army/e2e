@@ -620,6 +620,7 @@ overrides it for one run.
 | `report.json` | The canonical report; `--last-failed` reads the one here |
 | `junit.xml`, `summary.md` | The `junit` and `markdown` reporters' files |
 | `ai-trace.json` | `--ai-trace` |
+| `timings.json` | How long each file took, smoothed over recent runs. A run with more than one worker starts the longest files first by it; see [Cache the timings history](/ci#cache-the-timings-history) |
 | `results/` | One directory per test: its [trace page](/debugging#traces), `trace.md`, when the [`trace`](#trace) mode keeps one, and its screenshots, videos, downloads, and logs, one `attempt-<n>/` per attempt. Cleared once a run's tests start, so it holds the latest run's evidence and nothing its report no longer names. A `--last-failed` rerun keeps the files the report it reruns names and writes its own attempts under each test's `rerun-<n>/` |
 | `sessions/` | The run's encrypted `test.setup` sessions, deleted when it ends |
 | `videos/<session>/` | [`e2e mcp`](/reference/mcp#recording) session recordings |
@@ -953,7 +954,8 @@ See [Models](/models) and [`ModelInstance`](#modelinstance).
 
 #### `judge`
 
-The model for `assert`, `waitFor`, and `extract`.
+The model for non-exploring `assert`, `waitFor`, and `extract`. Built-in
+exploring assertions use `agents.<name>.model`, even when `judge` is set.
 
 ```ts
 judge: gateway('anthropic/claude-opus-5'), // default: model

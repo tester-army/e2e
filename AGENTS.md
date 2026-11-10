@@ -14,7 +14,7 @@ There is no separate spec. The code is the contract, pinned in three places:
   by accident; it runs under the package `typecheck`, never under vitest.
 - Wire formats live in `packages/e2e/schema/*.schema.json` (report-1,
   session-1, agent-judgment-2, the engine protocol's engine-manifest-1,
-  `e2e doctor`'s doctor-1, and the deprecated agent-judgment-1) with a valid and an invalid fixture
+  `e2e doctor`'s doctor-1, the scheduler's advisory timings-1, and the deprecated agent-judgment-1) with a valid and an invalid fixture
   each. Integration tests validate every generated report and session envelope
   against them; `tests/unit/schema-fixtures.test.ts` checks the fixtures. A
   wire change edits the schema, both fixtures, and the producer in one review.
@@ -61,7 +61,11 @@ suites that consume the built packages the way a user would.
     `src/agent/` the agent (the `act` executor socket plus the judgment
     methods), `src/mcp/` the `e2e mcp` server (a live session that rides
     the `act` socket with a queue executor so every MCP call is a harness
-    action), `src/oauth/` subscription sign-in (the `e2e login`, `logout`,
+    action; in a directory with no config, `open_session {engine}` names the
+    engine as a package, whose default export is called, or as a factory
+    call, a package with an export and options that may hold further such
+    calls, which `mcp/default-engine.ts` resolves in the project, beside e2e,
+    or in `~/.e2e/engines`, never by a specifier written in core), `src/oauth/` subscription sign-in (the `e2e login`, `logout`,
     and `models` commands and the `e2e/oauth/*` model constructors; each
     constructor subpath is the place its `@ai-sdk/*` optional peers are
     imported, and the Copilot constructor loads `@ai-sdk/openai` lazily, only
@@ -160,6 +164,14 @@ suites that consume the built packages the way a user would.
   keeps it current on reruns, writing the same text to the job summary. It
   reads the token, event, and repository when the run finishes, never at
   config load, and renders the page with `renderMarkdownReport` from `e2e`.
+- `packages/html-reporter` — the published `@e2e-dev/html-reporter`
+  package: `htmlReporter()` writes the run as one self-contained page,
+  `<output>/report.html`. The page is a React app (`app/`) that Vite builds
+  into one HTML file with everything inlined; the reporter embeds the
+  report-1 document in it and links artifacts from `results/` by relative
+  path, so it opens from `file://`. Its styles are a copy of the e2e-site
+  design system's tokens, with OFL fonts in place of Cassette, which the
+  site's license does not let us ship.
 - `packages/testmu` — the published `@e2e-dev/testmu` package: TestMu AI
   (formerly LambdaTest) hosted Android emulators, iOS simulators, and real
   devices for the mobile engine (`DeviceProvider`), through agent-device's

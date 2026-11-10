@@ -210,6 +210,26 @@ leave out the tests the change is unlikely to affect. Without the flag, as
 on `main`, the whole suite runs. See
 [Add the decision filter](/filters#add-the-decision-filter).
 
+## Cache the timings history
+
+With more than one worker, `e2e run` starts the longest files first, after
+any file it has no time for, ordered by `<output>/timings.json` (`.e2e/timings.json` by default): a few KB that a
+run updates when it ran at least one file whole. A fresh CI checkout has none,
+so restore it from your CI cache before the run and save it after.
+[GitHub Actions](/ci/github-actions#cache-the-timings-history) has the step.
+
+- The file is advisory. One that is missing, corrupt, or invalid is no history,
+  and the run falls back to the previous `report.json`. A restored file can
+  change the order of files, never a result.
+- A run times a file only when it ran all of it. A `--grep` or
+  `--last-failed` run leaves the entry of a file it ran in part as it was.
+- CI defaults to one worker. Set [`workers`](/reference/config#workers) or
+  pass `--workers` to benefit.
+- Key the cache by branch, with `main` as the fallback, so a new pull
+  request starts from the history of `main`. With [sharding](#sharding), add
+  the shard index to the key.
+- `--timings <file>` reads and writes another path.
+
 ## Sharding
 
 `--shard <index/total>` runs one slice of the suite. Every job runs the

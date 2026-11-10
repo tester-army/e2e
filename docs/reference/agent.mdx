@@ -149,7 +149,7 @@ The runner's own stops, and the checks on the call itself:
 
 ### agent.assert
 
-Checks one fresh observation without polling.
+Checks one fresh observation without polling by default.
 
 ```ts
 await agent.assert('the dashboard shows a trial badge');
@@ -167,6 +167,9 @@ await agent.assert('the table lists {name}', { params: { name } });
 
 | Option | Type | Default |
 | --- | --- | --- |
+| `explore` | `boolean` | `false` |
+| `maxSteps` | `number`, requires `explore` | min(10, configured limit) |
+| `maxModelCalls` | `number`, requires `explore` | min(6, configured limit) |
 | `params` | `AgentParams` | none |
 | `timeout` | `number` | `agents.<name>.judgmentTimeout`, 30000 |
 | `screenshot` | `boolean` | `true` |
@@ -206,6 +209,38 @@ as `step.vision` when it declares `vision: true`; otherwise `vision` is
 `UNSUPPORTED_CAPABILITY`. Its budget and timeout are under
 [Budgets](#budgets).
 </Note>
+
+#### Viewport exploration
+
+With `explore: true`, `agent.assert` can scroll the current screen and combine
+evidence from several viewports. This helps when a list fits on a tablet but
+needs scrolling on a phone.
+
+```ts
+await agent.assert('Settings lists HOS Settings, Account, Language and Theme', {
+  explore: true,
+  maxSteps: 10,
+  maxModelCalls: 6,
+});
+```
+
+Exploration offers `observe`, `scroll`, `scroll_to`, and project tools declared
+`mutates: false`. The built-in executor also offers `screenshot` when `vision`
+is `true` or `'only'`; the default is tree-only. Other actions are rejected. The viewport stays
+where exploration ends.
+
+Defaults are 10 scroll actions and 6 model calls, each capped at the selected
+agent's configured limit. Overrides may exceed the 10/6 defaults, up to the
+configured limits. The deadline
+defaults to `judgmentTimeout`. `maxSteps` or `maxModelCalls` without
+`explore: true` throws `INVALID_ARGUMENT`. The built-in executor uses
+`agents.<name>.model`, even when `judge` is configured.
+
+A contradiction is `ASSERTION_FAILED`; insufficient evidence within the time
+or action/model budget is `ASSERTION_INCONCLUSIVE`.
+
+Use `waitFor` for a condition that changes over time, and `explore` for content
+elsewhere on the current screen.
 
 ### agent.waitFor
 
@@ -294,7 +329,8 @@ timeout.
 | `act` | `agents.<name>.maxModelCalls`, 25 | `agents.<name>.maxSteps`, 25 | `config.timeout`, 120000 ms |
 | `waitFor` | `agents.<name>.maxModelCalls`, 25 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
 | `extract` | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
-| `assert` | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
+| `assert` without exploration | 2 | 0 | `agents.<name>.judgmentTimeout`, 30000 ms |
+| `assert` with exploration | min(6, configured limit) | min(10, configured limit) | `agents.<name>.judgmentTimeout`, 30000 ms |
 
 - `actionTimeout` limits engine operations, not model calls.
 - Per-call budgets (`maxSteps`, `maxModelCalls`) can only lower the
@@ -302,9 +338,10 @@ timeout.
   limits; a larger one is `INVALID_ARGUMENT`.
 - All durations are in milliseconds.
 
-The `assert` row holds for the built-in agent. When the selected agent has a
-custom `executor`, `assert` runs on it as a step. Its budget is the agent's
-`maxSteps` and `maxModelCalls`, and its default timeout is `config.timeout`.
+Without exploration, the `assert` row describes the built-in agent. A custom
+`executor` runs non-exploring assertions with the agent's `maxSteps` and
+`maxModelCalls`, and `config.timeout` as the default deadline. Exploring
+assertions use the capped defaults and `judgmentTimeout` with any executor.
 For `vision` and `screenshot` there, see the Note under
 [`agent.assert`](#agent-assert).
 
@@ -550,8 +587,14 @@ export interface AgentOption {
   agent?: string;
 }
 
-/** `assert` options: one judgment plus one repair round, within `timeout`. */
+/** `assert` options: one judgment, or opt-in bounded viewport exploration. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /** Look around by scrolling before judging; defaults to false. */
+  explore?: boolean;
+  /** Scroll budget; requires explore, defaults to min(10, configured maxSteps). */
+  maxSteps?: number;
+  /** Model-call budget; requires explore, defaults to min(6, configured maxModelCalls). */
+  maxModelCalls?: number;
   /**
    * Values the assertion refers to as `{name}`, with the same rules as `act`
    * params. A `Secret` reaches the judge by name only, never its value.

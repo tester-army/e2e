@@ -149,8 +149,14 @@ export interface AgentOption {
   agent?: string;
 }
 
-/** `assert` options: one judgment plus one repair round, within `timeout`. */
+/** `assert` options: one judgment, or opt-in bounded viewport exploration. */
 export interface AssertOptions extends VisionOption, AgentOption {
+  /** Look around by scrolling before judging; defaults to false. */
+  explore?: boolean;
+  /** Scroll budget; requires explore, defaults to min(10, configured maxSteps). */
+  maxSteps?: number;
+  /** Model-call budget; requires explore, defaults to min(6, configured maxModelCalls). */
+  maxModelCalls?: number;
   /**
    * Values the assertion refers to as `{name}`, with the same rules as `act`
    * params. A `Secret` reaches the judge by name only, never its value.
@@ -1477,9 +1483,9 @@ export interface AgentOptions {
   /** An AI SDK model instance; no implicit default. */
   model?: ModelInstance;
   /**
-   * The model that judges `assert`, `waitFor`, and `extract`; defaults to
-   * `model`. A judge of its own separates the model that grades a flow from
-   * the one that drove it.
+   * The model for non-exploring `assert`, `waitFor`, and `extract`; defaults
+   * to `model`. Built-in exploring assertions use `model` even when `judge`
+   * is configured.
    */
   judge?: ModelInstance;
   /**
@@ -1578,6 +1584,13 @@ export interface FinishedRun {
    * out here. A reporter that keeps one place current folds this run into it.
    */
   readonly lastRun?: Report;
+  /**
+   * Replaces every fixed-value secret and credential password in `text`, and
+   * any run of 8 or more consecutive characters of one. The report is
+   * redacted already; this is for text a reporter adds from elsewhere, such
+   * as lines of a test file.
+   */
+  redact(text: string): string;
 }
 
 /** Rows a reporter hands back for the terminal summary: a label and its text, a URL or a path. */

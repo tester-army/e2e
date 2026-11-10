@@ -70,6 +70,46 @@ describe('checked and selected', () => {
     expect(await page.getByRole('option').allTextContents()).toEqual(['Visible', 'Disabled', 'No visibility', 'Restored']);
   });
 
+  it('lists a checkbox or radio its own label draws over no box as shown, with its checked state', async () => {
+    await page.setContent(`
+      <style>.shrunk { opacity: 0; width: 0; height: 0; margin: 0; position: absolute }</style>
+      <label><input class="shrunk" type="checkbox" data-testid="agree" checked>Agree</label>
+      <label><input class="shrunk" type="radio" data-testid="large">Large</label>
+      <input class="shrunk" type="checkbox" id="unlabelled" data-testid="hidden-label"><label for="unlabelled" style="display:none">Gone</label>
+    `);
+    const nodes = await captureByTestId();
+    expect(nodes.get('agree')).toMatchObject({ role: 'checkbox', name: 'Agree', states: { checked: true } });
+    expect(nodes.get('large')).toMatchObject({ role: 'radio', name: 'Large', states: { checked: false } });
+    for (const id of ['agree', 'large']) expect(nodes.get(id)?.states?.hidden).not.toBe(true);
+    expect(nodes.has('hidden-label')).toBe(false);
+  });
+
+  it('leaves out a box-less control no label of its own draws in a way a tap can click', async () => {
+    await page.setContent(`
+      <style>.shrunk { opacity: 0; width: 0; height: 0; margin: 0; padding: 0; border: 0; position: absolute }</style>
+      <label><input class="shrunk" type="checkbox" data-testid="invisible" style="visibility:hidden">Invisible</label>
+      <label><input class="shrunk" type="text" data-testid="text">Name</label>
+      <skip-slot><input class="shrunk" type="checkbox" id="skipped" data-testid="skipped"></skip-slot>
+      <label for="skipped">Skipped</label>
+      <label style="display:contents"><input class="shrunk" type="checkbox" data-testid="contents"><span>Contents</span></label>
+      <label><input class="shrunk" type="checkbox" data-testid="link">Accept <a href="#terms">the terms</a></label>
+      <label role="button"><input class="shrunk" type="checkbox" data-testid="button-label">Button</label>
+      <label role="link"><input class="shrunk" type="checkbox" data-testid="link-label">Link</label>
+      <label contenteditable><input class="shrunk" type="checkbox" data-testid="editable-label">Editable</label>
+      <script>
+        customElements.define('skip-slot', class extends HTMLElement {
+          connectedCallback() {
+            this.attachShadow({ mode: 'open' }).innerHTML = '<div style="content-visibility:hidden;width:50px;height:50px"><slot></slot></div>';
+          }
+        });
+      </script>
+    `);
+    const nodes = await captureByTestId();
+    for (const id of ['invisible', 'text', 'skipped', 'contents', 'link', 'button-label', 'link-label', 'editable-label']) {
+      expect(nodes.has(id), id).toBe(false);
+    }
+  });
+
   it('applies the option limit to offered choices after hidden options are excluded', async () => {
     await page.setContent(`<select aria-label="Many choices">${'<option hidden>Excluded</option>'.repeat(60)}${Array.from({ length: 61 }, (_, index) => `<option data-testid="choice-${index}">Choice ${index}</option>`).join('')}</select>`);
     const nodes = await captureByTestId();

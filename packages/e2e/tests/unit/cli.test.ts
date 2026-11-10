@@ -904,6 +904,7 @@ describe('e2e --version and --help', () => {
       '--reporter',
       '--output',
       '--cache-dir',
+      '--timings',
       '--debug',
       '--ai-trace',
       '--trace',

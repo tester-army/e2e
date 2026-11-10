@@ -81,7 +81,9 @@ The plugin does not bundle the e2e MCP server, which runs from the project's
 own `e2e` install. `e2e init` offers to register it for Codex. In an existing
 project, run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI
 or add the entry below. Install dependencies, trust the project, and start a
-new Codex session from the project directory:
+new Codex session from the project directory. In a directory with no e2e
+config, the agent can still open a session by naming the engine package:
+`open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}`.
 
 ```toml
 [mcp_servers.e2e]

@@ -99,6 +99,32 @@ for the engine's pinned Playwright version, with their system libraries; the
 cache step skips the download until the lockfile changes. A
 test that passed on retry keeps its failed attempt's evidence in the upload.
 
+## Cache the timings history
+
+Restore and save [`.e2e/timings.json`](/ci#cache-the-timings-history) with
+`actions/cache`, so a fresh runner starts the longest files first. Add the
+step before the run:
+
+```yaml
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .e2e/timings.json
+          key: e2e-timings-${{ github.ref_name }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            e2e-timings-${{ github.ref_name }}-
+            e2e-timings-main-
+```
+
+Each run, and each rerun, saves a new entry and restores the newest one for its branch. A pull
+request can read the base branch's cache but not write to it, so a first run
+on a new branch starts from the history of `main`.
+
+The step saves after the job passes. To save after a failed run too, use
+`actions/cache/restore` before the run and `actions/cache/save` after it with
+`if: ${{ !cancelled() }}`. The history only helps with
+[`workers`](/reference/config#workers) of 2 or more, and the workflow above
+runs one.
+
 ## iOS and Android
 
 This workflow runs one job for each platform and follows the rules in

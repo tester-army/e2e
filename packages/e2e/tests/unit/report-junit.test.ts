@@ -706,6 +706,7 @@ describe('junitReporter', () => {
       aiTracePath: undefined,
       report: failedWithShot(),
       traces: new Map(),
+      redact: (text) => text,
     };
     await junitReporter.onRunFinished!(run, new AbortController().signal);
     const xml = fs.readFileSync(path.join(artifactsRoot, 'junit.xml'), 'utf8');

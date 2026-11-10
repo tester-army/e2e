@@ -122,7 +122,7 @@ agent()
     mcp = new Client({ name: 'scripted-agent', version: '1' });
     await mcp.connect(new StreamableHTTPClientTransport(new URL(server.url)));
     const { tools } = await mcp.listTools();
-    log({ session: { cwd: params.cwd, server: server.name, meta: params._meta ?? null, tools: tools.map((tool) => tool.name) } });
+    log({ session: { cwd: params.cwd, server: server.name, meta: params._meta ?? null, tools: tools.map((tool) => tool.name), readOnly: tools.filter((tool) => tool.annotations?.readOnlyHint === true).map((tool) => tool.name) } });
     return {
       sessionId: 's1',
       configOptions: [
