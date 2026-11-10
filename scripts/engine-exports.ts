@@ -1,34 +1,26 @@
 /**
- * Rule (c) of #1657: an engine that starts importing a new `e2e/engine`
- * export counts as raising the floor. This module verifies it: for each
- * package, every named import it takes from `e2e` or an `e2e/*` entry must
- * be exported by `e2e` at the version the package's peer floor names.
+ * Rule (c): an engine that starts importing a new `e2e/engine` export
+ * counts as raising the floor. This module verifies it: every named import
+ * a package takes from `e2e` or an `e2e/*` entry must be exported by `e2e`
+ * at the version the package's peer floor names.
  *
- * The export set at a version comes from the tag record,
- * `e2e@<version>`: the entry file is read off the sibling's `package.json`
- * `exports` at that tag (its `types` target, mapped from `dist/` to
- * `src/`), and `export *` chains are followed. The tag record is the only
- * source that names the version's exports exactly: the CHANGELOG records
- * releases but not exports, and the published tarball would put the
- * network in `pnpm check`. A floor whose tag does not exist (for example
- * `e2e@0.15.0`, released before a tag was cut per version) cannot be
- * verified this way; that floor is reported as unverifiable, not as a
- * failure, and the released-floor rule in `peer-ranges.ts` still applies
- * to it. Type-only imports count the same as value imports: the package's
+ * The export set at a version comes from the `e2e@<version>` tag: the entry
+ * file is read off the sibling's `package.json` `exports` at that tag (its
+ * `types` target, mapped from `dist/` to `src/`), and `export *` chains are
+ * followed. A floor whose tag does not exist cannot be verified this way;
+ * that floor is reported as unverifiable, not a failure, and the
+ * released-floor rule in `peer-ranges.ts` still applies to it. Imports and
+ * exports are tracked by kind, `value` or `type`: a value import needs a
+ * value export (a name that only reaches the entry through `export type *`
+ * does not satisfy one), and a type import is satisfied by either kind.
+ * Type-only imports count the same as value imports: the package's
  * published `.d.ts` names those types, so a consumer on the floor runner
- * fails typecheck when the floor version lacks them. The split runs the
- * other way too: a value import needs a value export, so a name that only
- * reaches the entry through `export type *` (for example `isKeyModifier`
- * from `contract.ts`, which `e2e/engine` does not export as a value) does
- * not satisfy a value import. Imports and exports are therefore tracked by
- * kind: `value` or `type`. A type import is satisfied by a value or a type
- * export; a value import only by a value export.
+ * fails typecheck when the floor version lacks them.
  *
  * Only imports from `e2e` itself are checked. An integration's imports
  * from another engine (`@e2e-dev/web`, `@e2e-dev/mobile`) are the same
- * shape but a different sibling, and the maintainer's rule names
- * `e2e/engine`; extending this to engine peers is a follow-up, not part
- * of this change.
+ * shape but a different sibling; extending this to engine peers is a
+ * follow-up, not part of this change.
  */
 
 /** Whether an import takes the name as a value or only as a type. A value import needs a value export; a type import is satisfied by either kind. */
@@ -40,6 +32,13 @@ export type EngineImportMap = ReadonlyMap<string, ReadonlyMap<string, ImportKind
 const IMPORT_FROM = /import\s+(type\s+)?(?:\w+\s*,\s*)?\{([^}]*)\}\s+from\s+['"]e2e(\/[^'"]*)?['"]/gs;
 const REEXPORT_FROM = /export\s+(type\s+)?\{([^}]*)\}\s+from\s+['"]e2e(\/[^'"]*)?['"]/gs;
 const NAMESPACE_FROM = /import\s+(?:type\s+)?\*\s+as\s+\w+\s+from\s+['"]e2e(\/[^'"]*)?['"]/g;
+const DYNAMIC_IMPORT_NAMES = /(?:const|let|var)\s*\{\s*([^}]*)\}\s*=\s*(?:await\s+)?import\s*\(\s*['"]e2e(\/[^'"]*)?['"]\s*\)/gs;
+const DYNAMIC_IMPORT = /import\s*\(\s*['"]e2e(\/[^'"]*)?['"]\s*\)/g;
+
+/** `source` with block and line comments blanked, so a comment inside an import or export list is never read as a name. */
+function stripComments(source: string): string {
+  return source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
+}
 
 /** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry). A namespace import is recorded as the name `'*'`, which the check cannot enumerate. */
 export function engineImports(source: string): EngineImportMap {
@@ -56,7 +55,7 @@ export function engineImports(source: string): EngineImportMap {
     }
   };
   const splitNames = (list: string, wholeListType: boolean): [string, ImportKind][] =>
-    list
+    stripComments(list)
       .split(',')
       .map((part) => part.trim())
       .filter((part) => part.length > 0)
@@ -75,6 +74,25 @@ export function engineImports(source: string): EngineImportMap {
     }
   }
   for (const match of source.matchAll(NAMESPACE_FROM)) {
+    add((match[1] ?? '').replace(/^\//, ''), [['*', 'value']]);
+  }
+  // A dynamic import takes its names the same way, when they are
+  // destructured; a bare one cannot be enumerated, so it is recorded as
+  // the namespace name, like a namespace import. The destructured
+  // statements are blanked before the bare scan, so their import call is
+  // not also counted as a bare one.
+  const blanked: [number, number][] = [];
+  for (const match of source.matchAll(DYNAMIC_IMPORT_NAMES)) {
+    const list = match[1];
+    const subpath = (match[2] ?? '').replace(/^\//, '');
+    if (list !== undefined) add(subpath, splitNames(list, false));
+    if (match.index !== undefined) blanked.push([match.index, match.index + match[0].length]);
+  }
+  let dynamicSource = source;
+  for (const [start, end] of blanked.toSorted((a, b) => b[0] - a[0])) {
+    dynamicSource = `${dynamicSource.slice(0, start)}${' '.repeat(end - start)}${dynamicSource.slice(end)}`;
+  }
+  for (const match of dynamicSource.matchAll(DYNAMIC_IMPORT)) {
     add((match[1] ?? '').replace(/^\//, ''), [['*', 'value']]);
   }
   return found;
@@ -110,7 +128,7 @@ function exportedNames(source: string): {
     const wholeListType = match[1] !== undefined;
     const list = match[2];
     if (list === undefined) continue;
-    for (const part of list.split(',')) {
+    for (const part of stripComments(list).split(',')) {
       const trimmed = part.trim();
       if (trimmed.length === 0) continue;
       const typeOnly = wholeListType || trimmed.startsWith('type ');
@@ -121,15 +139,25 @@ function exportedNames(source: string): {
       (typeOnly ? types : values).add(name);
     }
   }
-  for (const match of source.matchAll(/export\s+(type\s+)?\*\s*(?:as\s+\w+\s*)?from\s+['"]([^'"]+)['"]/g)) {
-    if (match[2] !== undefined) (match[1] !== undefined ? typeStarModules : starModules).push(match[2]);
+  // `export * as ns` exports only the namespace name, not the module's
+  // names, so it is recorded as one export and its star chain is not
+  // followed.
+  for (const match of source.matchAll(/export\s+(type\s+)?\*\s*(?:as\s+(\w+)\s*)?from\s+['"]([^'"]+)['"]/g)) {
+    if (match[3] === undefined) continue;
+    if (match[2] !== undefined) {
+      (match[1] !== undefined ? types : values).add(match[2]);
+    } else if (match[1] !== undefined) {
+      typeStarModules.push(match[3]);
+    } else {
+      starModules.push(match[3]);
+    }
   }
-  for (const match of source.matchAll(/export\s+(?:declare\s+)?(interface|type|class|function|const|let|var|enum|abstract\s+class)\s+(\w+)/g)) {
+  for (const match of source.matchAll(/export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\s+)?(?:const\s+)?(interface|type|class|function|const|let|var|enum)\s+(\w+)/g)) {
     const kind = match[1];
     const name = match[2];
     if (kind === undefined || name === undefined) continue;
     if (kind === 'interface' || kind === 'type') types.add(name);
-    else if (kind === 'class' || kind === 'enum' || kind.startsWith('abstract')) {
+    else if (kind === 'class' || kind === 'enum') {
       values.add(name);
       types.add(name);
     } else values.add(name);
@@ -254,15 +282,20 @@ export interface EngineImportCheck {
  * its names cannot be enumerated. A namespace import does not excuse the
  * names imported beside it from the same subpath: those are still
  * validated. A value import needs a value export; a type import is
- * satisfied by a value or a type export.
+ * satisfied by a value or a type export. `verified` counts the checks
+ * whose named imports were all checked against a tag record: a check no
+ * tag record covers is not verified, even when it reports no problem.
  */
 export function engineImportProblems(
   checks: readonly EngineImportCheck[],
   exportsAt: (sibling: string, subpath: string, version: string) => ExportSets | undefined,
-): { problems: string[]; unverifiable: string[] } {
+): { problems: string[]; unverifiable: string[]; verified: number } {
   const problems: string[] = [];
   const unverifiable: string[] = [];
+  let verified = 0;
   for (const check of checks) {
+    let checked = false;
+    let allResolved = true;
     for (const [subpath, names] of check.imports) {
       const label = subpath === '' ? check.sibling : `${check.sibling}/${subpath}`;
       const named = [...names].filter(([name]) => name !== '*');
@@ -273,8 +306,10 @@ export function engineImportProblems(
       const exported = exportsAt(check.sibling, subpath, check.floor);
       if (exported === undefined) {
         unverifiable.push(`${check.packagePath}: ${label} at ${check.sibling}@${check.floor} cannot be verified, no tag record for that version; the floor must still name a released version`);
+        allResolved = false;
         continue;
       }
+      checked = true;
       const missing = named
         .filter(([name, kind]) => (kind === 'value' ? !exported.values.has(name) : !exported.values.has(name) && !exported.types.has(name)))
         .map(([name]) => name)
@@ -285,6 +320,7 @@ export function engineImportProblems(
         );
       }
     }
+    if (checked && allResolved) verified += 1;
   }
-  return { problems, unverifiable };
+  return { problems, unverifiable, verified };
 }

@@ -1,34 +1,6 @@
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
-import { addEngineImports, engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, tagExportsAt, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
-import { peerFloor } from './peer-ranges.ts';
-import { REPO_ROOT, publicPackages } from './public-packages.ts';
-
-/** Reads `path` at `tag` (`git show`), undefined when the tag or the file does not exist. */
-function showAtTag(tag: string, path: string): string | undefined {
-  try {
-    return execFileSync('git', ['show', `${tag}:${path}`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return undefined;
-  }
-}
-
-/** The TypeScript files under `dirPath`, recursively. */
-function sourceFiles(dirPath: string): string[] {
-  const out: string[] = [];
-  const walk = (current: string): void => {
-    for (const entry of readdirSync(current)) {
-      const full = join(current, entry);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (full.endsWith('.ts')) out.push(full);
-    }
-  };
-  walk(dirPath);
-  return out;
-}
+import { engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
 
 describe('engineImports', () => {
   it('reads named, aliased, and type-only imports from e2e entries', () => {
@@ -60,6 +32,34 @@ describe('engineImports', () => {
   it('records a value import of a name over a type import of the same name', () => {
     const imports = engineImports(`import { type EngineError } from 'e2e/engine';\nimport { EngineError } from 'e2e/engine';\n`);
     assert.equal(imports.get('engine')?.get('EngineError'), 'value');
+  });
+
+  it('ignores comments inside import lists', () => {
+    const imports = engineImports(`import { stepTimeout /* the timeout */, /* leading */ EngineError, type EngineDoctorCheck // trailing\n } from 'e2e/engine';\n`);
+    assert.deepEqual(
+      imports.get('engine'),
+      new Map<string, ImportKind>([
+        ['stepTimeout', 'value'],
+        ['EngineError', 'value'],
+        ['EngineDoctorCheck', 'type'],
+      ]),
+    );
+  });
+
+  it('reads names destructured from a dynamic import', () => {
+    const imports = engineImports(`const { stepTimeout, type EngineDoctorCheck } = await import('e2e/engine');\n`);
+    assert.deepEqual(
+      imports.get('engine'),
+      new Map<string, ImportKind>([
+        ['stepTimeout', 'value'],
+        ['EngineDoctorCheck', 'type'],
+      ]),
+    );
+  });
+
+  it('records a bare dynamic import as unverifiable, not as names', () => {
+    const imports = engineImports(`await import('e2e/engine');\n`);
+    assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['*', 'value']]));
   });
 
   it('ignores imports from other packages', () => {
@@ -95,6 +95,37 @@ describe('exportedNames and resolveEntryExports', () => {
     const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
     assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['parseKey']);
     assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['KeyModifier']);
+  });
+
+  it('exports only the namespace name for export star as', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `export * as engine from './engine.ts';\n`],
+      ['src/engine/engine.ts', `export function stepTimeout(): void {}\nexport class EngineError extends Error {}\n`],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['engine']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
+  });
+
+  it('reads async functions and declare const enums as declarations', () => {
+    const files = new Map([
+      [
+        'src/engine/index.ts',
+        `export async function runCheck(): Promise<void> {}\nexport declare const enum Mode { A = 'a' }\nexport declare function helper(): void;\n`,
+      ],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['Mode', 'helper', 'runCheck']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['Mode']);
+  });
+
+  it('ignores comments inside export lists', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `export { stepTimeout /* the timeout */, EngineError } from './errors.ts';\n`],
+      ['src/engine/errors.ts', `export function stepTimeout(): void {}\nexport class EngineError extends Error {}\n`],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['EngineError', 'stepTimeout']);
   });
 
   it('answers undefined when an entry file cannot be read', () => {
@@ -189,49 +220,98 @@ describe('engineImportProblems', () => {
     assert.equal(unverifiable.length, 1);
     assert.match(unverifiable[0]!, /imported as a namespace/);
   });
+
+  it('counts only the checks verified against a tag record', () => {
+    const { problems, verified } = engineImportProblems(
+      [
+        check('0.23.0', named([['stepTimeout', 'value']])),
+        check('0.15.0', named([['EngineError', 'value']])),
+      ],
+      (_sibling, _subpath, version) => (version === '0.23.0' ? exported(['stepTimeout']) : undefined),
+    );
+    assert.deepEqual(problems, []);
+    assert.equal(verified, 1);
+  });
+
+  it('does not count a namespace-only check as verified', () => {
+    const { verified } = engineImportProblems(
+      [check('0.23.0', new Map([['engine', new Map<string, ImportKind>([['*', 'value']])]]))],
+      () => exported(['stepTimeout']),
+    );
+    assert.equal(verified, 0);
+  });
 });
 
-describe('imports at their floors on this repo', () => {
-  it('has every e2e import exported at the package floor version (#1657)', () => {
-    const checks: EngineImportCheck[] = [];
-    for (const { path, manifest } of publicPackages()) {
-      const range = manifest.peerDependencies?.['e2e'];
-      if (range === undefined) continue;
-      const floor = peerFloor(range);
-      if (floor === undefined) continue;
-      const imports = new Map<string, Map<string, ImportKind>>();
-      for (const file of sourceFiles(join(dirname(path), 'src'))) {
-        addEngineImports(imports, engineImports(readFileSync(file, 'utf8')));
-      }
-      if (imports.size === 0) continue;
-      checks.push({ packageName: manifest.name, packagePath: relative(REPO_ROOT, path), sibling: 'e2e', floor, imports });
-    }
-    const siblingDirs = new Map(publicPackages().map(({ manifest, path }) => [manifest.name, relative(REPO_ROOT, dirname(path))]));
-    const { problems } = engineImportProblems(checks, (sibling, subpath, version) => {
-      const siblingDir = siblingDirs.get(sibling);
-      if (siblingDir === undefined) return undefined;
-      return tagExportsAt(showAtTag, `${sibling}@${version}`, siblingDir, subpath);
-    });
+describe('floor export checks with in-memory fixtures', () => {
+  const exported = (values: readonly string[], types: readonly string[] = []) => ({ values: new Set(values), types: new Set(types) });
+
+  it('verifies every import against fixture export sets for two floors', () => {
+    const checks: EngineImportCheck[] = [
+      {
+        packageName: '@e2e-dev/web',
+        packagePath: 'packages/web/package.json',
+        sibling: 'e2e',
+        floor: '0.23.0',
+        imports: new Map([['engine', new Map<string, ImportKind>([['stepTimeout', 'value'], ['EngineDoctorCheck', 'type']])]]),
+      },
+      {
+        packageName: '@e2e-dev/acp',
+        packagePath: 'packages/acp/package.json',
+        sibling: 'e2e',
+        floor: '0.22.0',
+        imports: new Map([['agent', new Map<string, ImportKind>([['acp', 'value']])]]),
+      },
+    ];
+    const { problems, unverifiable, verified } = engineImportProblems(checks, (_sibling, subpath, version) =>
+      subpath === 'engine' && version === '0.23.0' ? exported(['stepTimeout'], ['EngineDoctorCheck']) : exported(['acp']),
+    );
     assert.deepEqual(problems, []);
+    assert.deepEqual(unverifiable, []);
+    assert.equal(verified, 2);
   });
 
-  it('catches the original bug: web imports stepTimeout, which e2e@0.22.0 does not export', () => {
-    const exported = tagExportsAt(showAtTag, 'e2e@0.22.0', 'packages/e2e', 'engine');
-    assert.notEqual(exported, undefined, 'e2e@0.22.0 tag not fetched; the test job checks out with fetch-depth: 0');
-    assert.equal(exported?.values.has('stepTimeout'), false);
-    assert.equal(exported?.types.has('EngineDoctorCheck'), false);
-    const atNext = tagExportsAt(showAtTag, 'e2e@0.23.0', 'packages/e2e', 'engine');
-    assert.notEqual(atNext, undefined, 'e2e@0.23.0 tag not fetched; the test job checks out with fetch-depth: 0');
-    assert.equal(atNext?.values.has('stepTimeout'), true);
-    assert.equal(atNext?.types.has('EngineDoctorCheck'), true);
+  it('catches the original bug: web imports stepTimeout, which the earlier fixture entry does not export', () => {
+    const earlier = new Map([
+      ['src/engine/index.ts', `export { EngineError } from './errors.ts';\nexport type { NodeRef } from './contract.ts';\n`],
+      ['src/engine/errors.ts', `export class EngineError extends Error {}\n`],
+      ['src/engine/contract.ts', `export type NodeRef = string;\n`],
+    ]);
+    const later = new Map([
+      [
+        'src/engine/index.ts',
+        `export { EngineError } from './errors.ts';\nexport { stepTimeout } from './timing.ts';\nexport type { NodeRef, EngineDoctorCheck } from './contract.ts';\n`,
+      ],
+      ['src/engine/errors.ts', `export class EngineError extends Error {}\n`],
+      ['src/engine/timing.ts', `export function stepTimeout(): void {}\n`],
+      ['src/engine/contract.ts', `export type NodeRef = string;\nexport type EngineDoctorCheck = { ok: boolean };\n`],
+    ]);
+    const atEarlier = resolveEntryExports((path) => earlier.get(path), 'src/engine/index.ts');
+    const atLater = resolveEntryExports((path) => later.get(path), 'src/engine/index.ts');
+    assert.equal(atEarlier?.values.has('stepTimeout'), false);
+    assert.equal(atEarlier?.types.has('EngineDoctorCheck'), false);
+    assert.equal(atLater?.values.has('stepTimeout'), true);
+    assert.equal(atLater?.types.has('EngineDoctorCheck'), true);
+    const imports: EngineImportMap = new Map([['engine', new Map<string, ImportKind>([['stepTimeout', 'value']])]]);
+    const check = (floor: string): EngineImportCheck => ({ packageName: '@e2e-dev/web', packagePath: 'packages/web/package.json', sibling: 'e2e', floor, imports });
+    const { problems: earlierProblems } = engineImportProblems([check('0.22.0')], () => atEarlier);
+    assert.equal(earlierProblems.length, 1);
+    assert.match(earlierProblems[0]!, /imports `stepTimeout` from e2e\/engine/);
+    const { problems: laterProblems } = engineImportProblems([check('0.23.0')], () => atLater);
+    assert.deepEqual(laterProblems, []);
   });
 
-  it('does not count a type-star re-export as an e2e/engine value export', () => {
-    const atNext = tagExportsAt(showAtTag, 'e2e@0.23.0', 'packages/e2e', 'engine');
-    assert.notEqual(atNext, undefined, 'e2e@0.23.0 tag not fetched; the test job checks out with fetch-depth: 0');
-    assert.equal(atNext?.values.has('isKeyModifier'), false);
-    assert.equal(atNext?.types.has('isKeyModifier'), false);
-    assert.equal(atNext?.values.has('parseKey'), true);
-    assert.equal(atNext?.types.has('KeyModifier'), true);
+  it('does not count a type-star re-export as a value export in fixture entries', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `export type * from './contract.ts';\nexport { parseKey } from './contract.ts';\n`],
+      [
+        'src/engine/contract.ts',
+        `export function isKeyModifier(value: unknown): boolean { return false; }\nexport function parseKey(value: string): string { return value; }\nexport type KeyModifier = 'Shift';\n`,
+      ],
+    ]);
+    const exportedAt = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.equal(exportedAt?.values.has('isKeyModifier'), false);
+    assert.equal(exportedAt?.types.has('isKeyModifier'), false);
+    assert.equal(exportedAt?.values.has('parseKey'), true);
+    assert.equal(exportedAt?.types.has('KeyModifier'), true);
   });
 });

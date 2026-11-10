@@ -10,6 +10,7 @@ import {
   nextVersionAfterBump,
   parseVersion,
   pendingBumps,
+  versionBumpAnnounces,
   type FloorRaiseInput,
 } from './changeset-bumps.ts';
 
@@ -96,6 +97,7 @@ describe('floorRaiseProblems', () => {
     released,
     changes,
     alreadyFlagged: false,
+    announcedByVersionBump: false,
     ...extra,
   });
 
@@ -140,11 +142,39 @@ describe('floorRaiseProblems', () => {
     );
   });
 
+  it('passes a floor raise the release version bump announces', () => {
+    assert.deepEqual(floorRaiseProblems([input([], { announcedByVersionBump: true })]), []);
+  });
+
+  it('still fails a floor raise carried only by a patch version bump', () => {
+    const problems = floorRaiseProblems([input([], { announcedByVersionBump: false })]);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /with no changeset for @e2e-dev\/web/);
+  });
+
   it('leaves an unannounced minor to disallowedBumps instead of reporting it twice', () => {
     assert.deepEqual(
       floorRaiseProblems([input([{ type: 'minor', summary: 'Raises the floor.' }], { alreadyFlagged: true })]),
       [],
     );
+  });
+});
+
+describe('versionBumpAnnounces', () => {
+  it('accepts a 0.x minor and a major as the announcement', () => {
+    assert.equal(versionBumpAnnounces('0.2.4', '0.3.0'), true);
+    assert.equal(versionBumpAnnounces('0.23.0', '1.0.0'), true);
+  });
+
+  it('rejects a patch bump, no bump, and a 1.x minor', () => {
+    assert.equal(versionBumpAnnounces('0.2.4', '0.2.5'), false);
+    assert.equal(versionBumpAnnounces('0.2.4', '0.2.4'), false);
+    assert.equal(versionBumpAnnounces('1.2.3', '1.3.0'), false);
+  });
+
+  it('rejects versions that are not x.y.z', () => {
+    assert.equal(versionBumpAnnounces('0.2.4', '0.3.0-canary-x'), false);
+    assert.equal(versionBumpAnnounces('not semver', '0.3.0'), false);
   });
 });
 

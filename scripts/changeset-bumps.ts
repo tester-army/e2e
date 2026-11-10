@@ -90,6 +90,16 @@ export function announcesFloorRaise(type: BumpType, summary: string): boolean {
   return false;
 }
 
+/** Whether the version change from `previousVersion` to `currentVersion` announces a floor raise on its own: a `0.x` minor, or a major. On a release PR the changesets are already consumed, so the bump the release carries is the announcement; a patch bump is not one. */
+export function versionBumpAnnounces(previousVersion: string, currentVersion: string): boolean {
+  const previous = parseVersion(previousVersion);
+  const current = parseVersion(currentVersion);
+  if (previous === undefined || current === undefined) return false;
+  if (current[0] > previous[0]) return true;
+  if (previous[0] === 0 && current[0] === 0 && current[1] > previous[1]) return true;
+  return false;
+}
+
 /** The latest released version of `name` among `tags` (`<name>@<x.y.z>`), undefined when none exists. The bump check falls back to it when the tag for a package's current version does not exist yet, which is exactly a generated release PR: `version-packages` has already bumped the version, so the current tag is missing and the previous released manifest is the one to compare the floor against. */
 export function latestReleaseVersion(tags: readonly string[], name: string): string | undefined {
   let latest: Semver | undefined;
@@ -137,18 +147,24 @@ export interface FloorRaiseInput {
   readonly released: ReadonlySet<string>;
   readonly changes: readonly { type: BumpType; summary: string }[];
   readonly alreadyFlagged: boolean;
+  /** The release carrying this floor change already bumped the package by a `0.x` minor or a major, so its consumed changesets announced the raise. */
+  readonly announcedByVersionBump: boolean;
 }
 
 /**
  * Every floor raise in `inputs` that no pending changeset announces as a
  * `**Breaking:**` minor. A package whose bump `disallowedBumps` already
  * flags is skipped: the same summary fix (opening it with `**Breaking:**`)
- * cures both, so it is reported once, there.
+ * cures both, so it is reported once, there. A raise the release's own
+ * version bump announces is skipped too: on a release PR the changesets
+ * are already consumed, so there is no pending changeset left to carry
+ * the announcement.
  */
 export function floorRaiseProblems(inputs: readonly FloorRaiseInput[]): string[] {
   const problems: string[] = [];
   for (const input of inputs) {
     if (!floorRaisesPastMinor(input.previousFloor, input.currentFloor, input.released)) continue;
+    if (input.announcedByVersionBump) continue;
     if (input.changes.some((change) => announcesFloorRaise(change.type, change.summary))) continue;
     if (input.alreadyFlagged) continue;
     const highest = input.changes.reduce<BumpType | undefined>(

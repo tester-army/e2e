@@ -4,8 +4,7 @@
  * `>=<major.minor.patch> <major+1>`, or names a version the sibling never
  * released (no `## <version>` in its CHANGELOG.md, and no pending changeset
  * releasing it), or imports an `e2e/*` export the floor version does not
- * have (#1657 rule (c): a new `e2e/engine` import counts as raising the
- * floor).
+ * have (rule (c): a new `e2e/engine` import counts as raising the floor).
  *
  * A floor naming the version the sibling's pending changesets will release
  * has no tag yet, so its imports are verified against the working tree,
@@ -13,60 +12,22 @@
  * unverifiable note.
  *
  * `changeset version --snapshot canary` rewrites those peers to the siblings'
- * exact canary versions, and the canary output is committed to main as
- * `chore: release`. An exact pin that lands makes changesets patch-bump the
- * dependent and rewrite the pin on each release of the sibling, and leaves a
- * consumer who updates the sibling alone with a peer npm 7+ refuses
- * (ERESOLVE). `restore-peer-ranges.ts` puts the ranges back after a publish;
- * this check is what notices when it did not run. `peer-ranges.ts` says why
- * the floor must also be a released version; `engine-exports.ts` says how
- * the floor version's exports are read (the `e2e@<version>` tag).
+ * exact canary versions; `restore-peer-ranges.ts` puts the ranges back after
+ * a publish, and this check is what notices when it did not run. See
+ * `peer-ranges.ts` for why the floor must be a released version and
+ * `engine-exports.ts` for how the floor version's exports are read.
  *
  * Usage: `node scripts/check-peer-ranges.ts`, part of `pnpm check`. Exits 1
  * listing every offending peer.
  */
 
-import { execFileSync } from 'node:child_process';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
-import { parseChangesetFile } from '@changesets/parse';
+import { collectEngineImports, listTags, pendingChangesets, readChangelog, showAtTag } from './check-helpers.ts';
 import { nextVersionAfterBump, pendingBumps } from './changeset-bumps.ts';
-import { addEngineImports, engineImportProblems, engineImports, tagExportsAt, type EngineImportCheck, type ExportSets, type ImportKind } from './engine-exports.ts';
+import { engineImportProblems, tagExportsAt, type EngineImportCheck, type ExportSets } from './engine-exports.ts';
 import { peerFloor, peerRangeProblems } from './peer-ranges.ts';
 import { REPO_ROOT, publicPackages, siblingPeers } from './public-packages.ts';
-
-/** Reads `path` at `tag` (`git show`), undefined when the tag or the file does not exist. */
-function showAtTag(tag: string, path: string): string | undefined {
-  try {
-    return execFileSync('git', ['show', `${tag}:${path}`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return undefined;
-  }
-}
-
-/** The TypeScript files under `dirPath`, recursively; unreadable entries are skipped. */
-function sourceFiles(dirPath: string): string[] {
-  const out: string[] = [];
-  const walk = (current: string): void => {
-    let entries: string[];
-    try {
-      entries = readdirSync(current);
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const full = join(current, entry);
-      try {
-        if (statSync(full).isDirectory()) walk(full);
-        else if (full.endsWith('.ts')) out.push(full);
-      } catch {
-        continue;
-      }
-    }
-  };
-  walk(dirPath);
-  return out;
-}
 
 const packages = publicPackages();
 const siblings = new Set(packages.map(({ manifest }) => manifest.name));
@@ -79,9 +40,7 @@ for (const { manifest } of packages) {
 
 // The version each sibling's pending changesets will release: a floor may
 // name it as the sibling's version in the same release.
-const dir = join(REPO_ROOT, '.changeset');
-const changesetFiles = readdirSync(dir).filter((file) => file.endsWith('.md') && file !== 'README.md');
-const changesets = changesetFiles.map((file) => parseChangesetFile(readFileSync(join(dir, file), 'utf8')));
+const { changesets } = pendingChangesets();
 const versions = new Map(packages.map(({ manifest }) => [manifest.name, manifest.version]));
 const nextVersions = new Map<string, string>();
 for (const [name, bump] of pendingBumps(changesets)) {
@@ -91,13 +50,14 @@ for (const [name, bump] of pendingBumps(changesets)) {
   if (next !== undefined) nextVersions.set(name, next);
 }
 
-const problems = peerRangeProblems(packages, (packagePath) => {
-  try {
-    return readFileSync(join(dirname(packagePath), 'CHANGELOG.md'), 'utf8');
-  } catch {
-    return undefined;
-  }
-}, nextVersions);
+const problems = peerRangeProblems(packages, readChangelog, nextVersions);
+
+// With no `e2e@*` tags at all there is no tag record to verify any import
+// against, so rule (c) would quietly pass every package. Fail loudly
+// instead: a tagless checkout must fetch the tags.
+if (listTags('e2e@*').length === 0) {
+  problems.push('no e2e@* tags exist; no e2e import can be verified against its floor version, so the check fails instead of quietly passing (fetch the tags: git fetch --tags)');
+}
 
 // Rule (c): every named import from `e2e/*` must be exported by `e2e` at
 // the package's peer floor, read off the `e2e@<floor>` tag.
@@ -135,21 +95,18 @@ for (const { path, manifest } of packages) {
   if (range === undefined) continue;
   const floor = peerFloor(range);
   if (floor === undefined) continue;
-  const imports = new Map<string, Map<string, ImportKind>>();
-  for (const file of sourceFiles(join(dirname(path), 'src'))) {
-    addEngineImports(imports, engineImports(readFileSync(file, 'utf8')));
-  }
+  const imports = collectEngineImports(path);
   if (imports.size === 0) continue;
   checks.push({ packageName: manifest.name, packagePath: relative(REPO_ROOT, path), sibling: 'e2e', floor, imports });
 }
-const { problems: importProblems, unverifiable } = engineImportProblems(checks, exportsAt);
+const { problems: importProblems, unverifiable, verified } = engineImportProblems(checks, exportsAt);
 problems.push(...importProblems);
 
 if (problems.length > 0) {
   process.stderr.write(`${problems.join('\n')}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`peer ranges: ${checked.toSorted().join(', ')} as wide ranges on released versions; ${checks.length} packages' e2e imports verified against their floors\n`);
+  process.stdout.write(`peer ranges: ${checked.toSorted().join(', ')} as wide ranges on released versions; ${verified} packages' e2e imports verified against their floors\n`);
 }
 for (const note of unverifiable) {
   process.stdout.write(`note: ${note}\n`);

@@ -1,8 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
-import { publicPackages } from './public-packages.ts';
 import { peerFloor, peerRangeProblems, releasedVersions, type PublicPackage } from './peer-ranges.ts';
 
 function pkg(name: string, peers: Record<string, string>): PublicPackage {
@@ -90,26 +87,5 @@ describe('peerRangeProblems', () => {
   it('ignores peers that are not siblings', () => {
     const packages = [pkg('@e2e-dev/web', { e2e: '>=9.9.9 <1', zod: '^3.0.0' })];
     assert.deepEqual(peerRangeProblems(packages, read), []);
-  });
-});
-
-describe('released floors on this repo', () => {
-  it('has no sibling peer floor naming a version that never shipped (#1657)', () => {
-    const problems = peerRangeProblems(publicPackages(), (packagePath) => {
-      try {
-        return readFileSync(join(dirname(packagePath), 'CHANGELOG.md'), 'utf8');
-      } catch {
-        return undefined;
-      }
-    });
-    assert.deepEqual(problems, []);
-  });
-
-  it('keeps the #1657 floors at the oldest released sibling each package works with', () => {
-    const byName = new Map(publicPackages().map(({ manifest }) => [manifest.name, manifest.peerDependencies ?? {}]));
-    assert.equal(byName.get('@e2e-dev/mobile')?.['e2e'], '>=0.23.0 <1');
-    assert.equal(byName.get('@e2e-dev/web')?.['e2e'], '>=0.23.0 <1');
-    assert.equal(byName.get('@e2e-dev/acp')?.['e2e'], '>=0.22.0 <1');
-    assert.equal(byName.get('@e2e-dev/limrun')?.['@e2e-dev/mobile'], '>=0.11.0 <1');
   });
 });

@@ -10,16 +10,10 @@
  * refuses. Second, the floor must name a version the sibling actually
  * released, read off its CHANGELOG.md (`## x.y.z` headings), or the version
  * the sibling's pending changesets will release alongside it (the
- * sibling's version in the same release). A floor past the latest stable names a
- * version no install can satisfy: #1657 raised both engines to `>=0.22.1`
- * in a patch release, but no stable `e2e@0.22.1` ever shipped (only
- * nightlies), so a fresh `npm install` of an unchanged project on
- * `e2e ~0.21.3` failed with ERESOLVE. The same shape hid in `@e2e-dev/acp`
- * (`>=0.21.4`, never released) and `@e2e-dev/limrun`
- * (`@e2e-dev/mobile >=0.11.1`, never released). A floor may rise only once
- * its version is in the changelog (or is the sibling's pending release);
- * until then the package either works without the new export, on the old
- * floor, or waits for the release.
+ * sibling's version in the same release). A floor past the latest stable
+ * names a version no install can satisfy, so a patch release must not
+ * raise it there; until the version ships, the package either works
+ * without the new export, on the old floor, or waits for the release.
  */
 
 import { relative } from 'node:path';

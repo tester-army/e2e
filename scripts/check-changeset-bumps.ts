@@ -4,55 +4,31 @@
  * `**Release:**` (`changeset-bumps.ts` says why), or when a changeset
  * raises a package's peer floor on a sibling past a runner minor the
  * previous range accepted without a `**Breaking:**` minor
- * (`floorRaiseProblems` in `changeset-bumps.ts` says how a raise is judged:
- * the previous floor is the one at the package's release tag, or, on a
- * generated release PR whose bumped version has no tag yet, at its latest
- * released tag; only a released version on an older minor counts).
+ * (`floorRaiseProblems` in `changeset-bumps.ts` says how a raise is judged).
+ * The previous floor is the one at the package's release tag; on a
+ * generated release PR the current version has no tag yet, so the previous
+ * released tag is used instead, and the version bump from that tag counts
+ * as the announcement when it is a `0.x` minor or a major.
  *
  * Usage: `node scripts/check-changeset-bumps.ts`, part of `pnpm check`. Exits
  * 1 listing every offending changeset.
  */
 
-import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
-import { parseChangesetFile } from '@changesets/parse';
-import { BREAKING, RELEASE, disallowedBumps, floorRaiseProblems, latestReleaseVersion, type FloorRaiseInput } from './changeset-bumps.ts';
+import { relative } from 'node:path';
+import { listTags, pendingChangesets, readChangelog, showAtTag } from './check-helpers.ts';
+import { BREAKING, RELEASE, disallowedBumps, floorRaiseProblems, latestReleaseVersion, versionBumpAnnounces, type FloorRaiseInput } from './changeset-bumps.ts';
 import { peerFloor, releasedVersions } from './peer-ranges.ts';
 import { REPO_ROOT, isWidePeerRange, publicPackages, siblingPeers, type PackageManifest } from './public-packages.ts';
 
-/** Reads `path` at `tag` (`git show`), undefined when the tag or the file does not exist. */
-function showAtTag(tag: string, path: string): string | undefined {
-  try {
-    return execFileSync('git', ['show', `${tag}:${path}`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return undefined;
-  }
-}
-
 /** The manifest at the package's latest released tag, undefined when it has no release tag. A generated release PR has already bumped the version, so the tag for the current version does not exist yet; the previous released manifest is the one to compare the floor against, instead of skipping the check. */
 function previousReleaseManifest(name: string, packagePath: string): string | undefined {
-  let tags: string;
-  try {
-    tags = execFileSync('git', ['tag', '--list', `${name}@*`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
-  } catch {
-    return undefined;
-  }
-  const latest = latestReleaseVersion(
-    tags
-      .split('\n')
-      .map((tag) => tag.trim())
-      .filter((tag) => tag.length > 0),
-    name,
-  );
+  const latest = latestReleaseVersion(listTags(`${name}@*`), name);
   if (latest === undefined) return undefined;
   return showAtTag(`${name}@${latest}`, packagePath);
 }
 
 const versions = new Map(publicPackages().flatMap(({ manifest }) => (manifest.version === undefined ? [] : [[manifest.name, manifest.version] as const])));
-const dir = join(REPO_ROOT, '.changeset');
-const files = readdirSync(dir).filter((file) => file.endsWith('.md') && file !== 'README.md');
-const changesets = files.map((file) => parseChangesetFile(readFileSync(join(dir, file), 'utf8')));
+const { files, changesets } = pendingChangesets();
 const problems: string[] = [];
 const flagged = new Set<string>();
 for (const [index, changeset] of changesets.entries()) {
@@ -75,6 +51,13 @@ for (const changeset of changesets) {
   }
 }
 
+// With no `e2e@*` tags at all there is no released version to compare a
+// floor against, so the rule below would quietly skip every package.
+// Fail loudly instead: a tagless checkout must fetch the tags.
+if (listTags('e2e@*').length === 0) {
+  problems.push('no e2e@* tags exist; a peer floor cannot be compared against any released version, so the check fails instead of quietly skipping (fetch the tags: git fetch --tags)');
+}
+
 const packages = publicPackages();
 const byName = new Map(packages.map((pkg) => [pkg.manifest.name, pkg]));
 const siblings = new Set(packages.map(({ manifest }) => manifest.name));
@@ -83,7 +66,8 @@ let skipped = 0;
 for (const { path, manifest } of packages) {
   if (manifest.version === undefined) continue;
   let tagManifest = showAtTag(`${manifest.name}@${manifest.version}`, relative(REPO_ROOT, path));
-  if (tagManifest === undefined) tagManifest = previousReleaseManifest(manifest.name, relative(REPO_ROOT, path));
+  const fellBack = tagManifest === undefined;
+  if (fellBack) tagManifest = previousReleaseManifest(manifest.name, relative(REPO_ROOT, path));
   if (tagManifest === undefined) {
     skipped += 1;
     continue;
@@ -103,12 +87,7 @@ for (const { path, manifest } of packages) {
     if (currentFloor === undefined || previousFloor === undefined || currentFloor === previousFloor) continue;
     const sibling = byName.get(peer);
     if (sibling === undefined) continue;
-    let changelog: string | undefined;
-    try {
-      changelog = readFileSync(join(dirname(sibling.path), 'CHANGELOG.md'), 'utf8');
-    } catch {
-      changelog = undefined;
-    }
+    const changelog = readChangelog(sibling.path);
     if (changelog === undefined) {
       skipped += 1;
       continue;
@@ -122,6 +101,7 @@ for (const { path, manifest } of packages) {
       released: releasedVersions(changelog),
       changes: changesByPackage.get(manifest.name) ?? [],
       alreadyFlagged: flagged.has(manifest.name),
+      announcedByVersionBump: fellBack && previous.version !== undefined && versionBumpAnnounces(previous.version, manifest.version),
     });
   }
 }
