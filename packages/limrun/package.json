@@ -48,7 +48,7 @@
     "test:unit": "vitest run tests/unit"
   },
   "peerDependencies": {
-    "@e2e-dev/mobile": ">=0.11.1 <1",
+    "@e2e-dev/mobile": ">=0.11.0 <1",
     "@limrun/api": ">=0.59.0 <1",
     "e2e": ">=0.15.0 <1"
   },
