@@ -106,12 +106,16 @@ test.describe('device fixture', () => {
 
   // The client is bound to this worker's session, so a raw call reads the
   // screen this test is on, on the device the engine booted.
-  test('unstable_raw reaches the test session through agent-device', async ({ device, platform }) => {
+  test('unstable_raw reaches the test session through the raw driver', async ({ device, platform }) => {
     const { client, session, deviceId, deviceName } = device.unstable_raw;
     expect(platform).toBe(device.unstable_raw.platform);
-    const own = (await client.sessions.list()).find((entry) => entry.name === session);
+    const raw = client as {
+      sessions: { list(): Promise<{ name: string; device: { id: string; name: string } }[]> };
+      capture: { snapshot(options: Record<string, never>): Promise<{ nodes: { identifier?: string }[] }> };
+    };
+    const own = (await raw.sessions.list()).find((entry) => entry.name === session);
     expect(own?.device).toMatchObject({ id: deviceId, name: deviceName });
-    const { nodes } = await client.capture.snapshot({});
+    const { nodes } = await raw.capture.snapshot({});
     expect(nodes.some((node) => node.identifier === 'inventory-header')).toBe(true);
   });
 

@@ -410,14 +410,14 @@ export default {
   `requires: ['device']`.
 - `device.unstable_raw` gives the session name, device id and name, a
   `selection` to spread into a call, and an
-  agent-device `client` bound to the test's session, for what `device`
+  raw driver `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
-- A custom tool that calls agent-device gets the running device's client
-  from `deviceSession(...engines)` (`@e2e-dev/mobile/tools`), and its types
-  and error helpers from `@e2e-dev/mobile/agent-device`. Do not add
-  `agent-device` to the project for these imports, and do not build a
-  client yourself: it would miss the engine's daemon, lease, and session.
+- A custom tool that needs capabilities e2e does not wrap yet gets the raw
+  driver session from `unstable_deviceSession(...engines)`
+  (`@e2e-dev/mobile/tools`). Its `client` is `unknown`; narrow it to the
+  operations the tool needs. Do not build a client yourself: it would miss
+  the engine's daemon, lease, and session.
   Its calls skip e2e's guards like `unstable_raw`: a snapshot or screenshot
   a tool returns is not redacted or masked, even after a secret fill,
   nothing waits for the screen to settle, and a tool that changes the

@@ -436,10 +436,10 @@ declaration; the types they use are under [Types](#device-fixture).
 
 ```ts
 /**
- * The agent-device session this test drives, for what the methods here do
+ * The raw driver session this test drives, for what the methods here do
  * not cover. Calls through `client` bypass e2e: they are not steps, so the
  * report and trace leave them out, the agent's cache does not replay them,
- * their arguments reach agent-device unredacted, and nothing waits for the
+ * their arguments reach the driver unredacted, and nothing waits for the
  * screen to settle after one. Unstable: it may change or go away in any
  * release.
  */
@@ -447,29 +447,16 @@ readonly unstable_raw: DeviceSession;
 ```
 
 ```ts
-const { client, session, deviceId } = device.unstable_raw;
-const sessions = await client.sessions.list();
-await client.apps.list(device.unstable_raw.selection);
+const { client, selection } = device.unstable_raw;
+// Describe only the raw operations this test needs.
+const raw = client as { apps: { list(options: typeof selection): Promise<unknown> } };
+await raw.apps.list(selection);
 ```
 
-`client` is agent-device's own client at the version `@e2e-dev/mobile` pins.
+`client` is `unknown`. Its operations are driver-specific and unstable;
+callers must narrow it to the operations they use.
 After the worker disposes the session, reading `unstable_raw` or `client`
 throws `INVALID_STATE`.
-
-A custom tool that needs agent-device's types or error helpers imports them
-from `@e2e-dev/mobile/agent-device`, the copy the engine uses, instead of
-adding `agent-device` to the project.
-
-```ts
-import { isAgentDeviceError, type SnapshotNode } from '@e2e-dev/mobile/agent-device';
-```
-
-It exports the error helpers (`AppError`, `isAgentDeviceError`,
-`normalizeAgentDeviceError`), `centerOfRect`, and the types for the client,
-snapshots, screenshots, targets, gestures, text entry, alerts, and waits. It
-has no client factory. A test uses `client` above, and a custom tool uses
-[`deviceSession`](#devicesession). Like `unstable_raw`, it can change in any
-release that bumps agent-device.
 
 #### `locator`
 
@@ -970,27 +957,35 @@ on secure-field bounds from that capture, so without them the engine cannot
 prove a fallback screenshot safe.
 </Note>
 
-#### `deviceSession`
+#### `unstable_deviceSession`
 
-`deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a custom tool
+`unstable_deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a custom tool
 the running attempt's `DeviceSession`, the same object a test reads from
 [`device.unstable_raw`](#unstable_raw). Its `client` is bound to the engine's
-daemon, lease, and per-worker session, so a tool can call agent-device
-commands the pack has no tool for.
+daemon, lease, and per-worker session, for capabilities e2e does not wrap
+yet. Its `client` is `unknown`; narrow it to the operations your tool needs.
+The following example assumes the current driver supports `settings.update`.
 
 ```ts
 import { tool } from 'ai';
 import { z } from 'zod';
 import { defineTool } from 'e2e/agent';
-import { deviceSession } from '@e2e-dev/mobile/tools';
+import { unstable_deviceSession } from '@e2e-dev/mobile/tools';
 
 const mobileData = defineTool(
   tool({
     description: 'Turn cellular mobile data on or off. Wi-Fi is not affected.',
     inputSchema: z.object({ on: z.boolean() }),
     execute: async ({ on }) => {
-      const { client, selection } = deviceSession(iphone, pixel);
-      await client.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
+      const { client, selection } = unstable_deviceSession(iphone, pixel);
+      const raw = client as {
+        settings: {
+          update(options: typeof selection & {
+            setting: 'mobile-data'; state: 'on' | 'off';
+          }): Promise<unknown>;
+        };
+      };
+      await raw.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
       return on ? 'mobile data is on' : 'mobile data is off';
     },
   }),
@@ -1201,18 +1196,18 @@ export interface ForegroundApp {
 /** Sensors `setBiometrics` simulates. */
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 
-/** The agent-device session behind `device`; see `Device.unstable_raw`. */
+/** The raw driver session behind `device`; see `Device.unstable_raw`. */
 export interface DeviceSession {
   readonly platform: MobilePlatform;
-  /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
+  /** The raw driver session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
   readonly session: string;
-  /** The device's agent-device id: a simulator UDID or an Android serial. */
+  /** The device id: a simulator UDID or an Android serial. */
   readonly deviceId: string;
   readonly deviceName: string;
   /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
   readonly selection: DeviceSelection;
-  /** agent-device's client, bound to this session. */
-  readonly client: AgentDeviceClient;
+  /** The raw driver client, bound to this session. Narrow it to the operations your tool needs. */
+  readonly client: unknown;
 }
 
 /** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */

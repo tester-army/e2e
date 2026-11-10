@@ -2,9 +2,7 @@
  * A first install, the way a new user meets it: packs the built `e2e`,
  * `@e2e-dev/web`, and `@e2e-dev/mobile`, installs them with a given pnpm
  * into a fresh project outside this repository, installs again from the
- * lockfile, runs a TypeScript test through the installed CLI, and imports
- * `@e2e-dev/mobile/agent-device` from a project with no `agent-device`
- * dependency.
+ * lockfile, and runs a TypeScript test through the installed CLI.
  *
  * pnpm 11 and later fail an install on any dependency build script the
  * project has not decided on (`ERR_PNPM_IGNORED_BUILDS`), and write a
@@ -71,22 +69,12 @@ try {
     "import { expect, test } from 'e2e';\n\nenum Answer { Yes = 'yes' }\n\ntest('TypeScript runs', () => {\n  expect(Answer.Yes).toBe('yes');\n});\n",
   );
 
-  writeFileSync(
-    join(project, 'agent-device.mjs'),
-    [
-      "import { isAgentDeviceError } from '@e2e-dev/mobile/agent-device';",
-      "if (typeof isAgentDeviceError !== 'function') throw new Error('@e2e-dev/mobile/agent-device exports no isAgentDeviceError');",
-      '',
-    ].join('\n'),
-  );
-
-  for (const [step, command, args] of [
-    ['pnpm install', 'pnpm', ['install']],
-    ['pnpm install --frozen-lockfile', 'pnpm', ['install', '--frozen-lockfile']],
-    ['e2e run', 'pnpm', ['exec', 'e2e', 'run', '--workers', '1']],
-    ['@e2e-dev/mobile/agent-device', 'node', ['agent-device.mjs']],
+  for (const [step, args] of [
+    ['pnpm install', ['install']],
+    ['pnpm install --frozen-lockfile', ['install', '--frozen-lockfile']],
+    ['e2e run', ['exec', 'e2e', 'run', '--workers', '1']],
   ] as const) {
-    const { status, output } = command === 'pnpm' ? pnpm(args) : run(project, command, args);
+    const { status, output } = pnpm(args);
     process.stdout.write(`$ ${step}: exit ${status}\n`);
     if (status !== 0) problems.push(`${step} exited ${status}:\n${output}`);
     if (output.includes('ERR_PNPM_IGNORED_BUILDS')) problems.push(`${step} reported ERR_PNPM_IGNORED_BUILDS:\n${output}`);
@@ -101,5 +89,5 @@ if (problems.length > 0) {
   process.stderr.write(`${problems.join('\n\n')}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`install smoke: pnpm ${pnpmVersion} installs ${PACKAGES.join(', ')} with no build scripts, runs a TypeScript test, and imports @e2e-dev/mobile/agent-device\n`);
+  process.stdout.write(`install smoke: pnpm ${pnpmVersion} installs ${PACKAGES.join(', ')} with no build scripts and runs a TypeScript test\n`);
 }

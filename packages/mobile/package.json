@@ -18,7 +18,7 @@
   ],
   "license": "Apache-2.0",
   "contributors": [
-    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Oskar Kwa\u015bniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "repository": {
@@ -48,10 +48,6 @@
     "./lease": {
       "types": "./dist/lease/index.d.ts",
       "default": "./dist/lease/index.js"
-    },
-    "./agent-device": {
-      "types": "./dist/agent-device.d.ts",
-      "default": "./dist/agent-device.js"
     }
   },
   "files": [

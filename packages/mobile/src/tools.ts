@@ -46,8 +46,8 @@ function runningSurface(surfaces: readonly AgentDeviceSurface[]): AgentDeviceSur
     throw new EngineError(
       'INVALID_STATE',
       running.length === 0
-        ? 'no agent-device attempt is running; device tools act inside a test attempt only'
-        : 'several agent-device attempts are running in one worker; tools cannot pick a device',
+        ? 'no mobile attempt is running; device tools act inside a test attempt only'
+        : 'several mobile attempts are running in one worker; tools cannot pick a device',
       { retryable: false },
     );
   }
@@ -55,14 +55,14 @@ function runningSurface(surfaces: readonly AgentDeviceSurface[]): AgentDeviceSur
 }
 
 /**
- * The running attempt's agent-device session, for a custom tool that calls
- * agent-device itself: the object a test reads from `device.unstable_raw`,
+ * The running attempt's raw driver session, for a custom tool that needs
+ * capabilities e2e does not wrap yet: the object a test reads from `device.unstable_raw`,
  * with a client bound to the engine's daemon, lease, and session. Pass every
  * device engine the config declares. Outside an attempt it throws
  * `INVALID_STATE`. Client calls are not steps, and like `unstable_raw` this
  * can change in any release.
  */
-export function deviceSession(...engines: readonly [EngineHandle, ...EngineHandle[]]): DeviceSession {
+export function unstable_deviceSession(...engines: readonly [EngineHandle, ...EngineHandle[]]): DeviceSession {
   return rawSession(runningSurface(engines.map(requireSurface)));
 }
 

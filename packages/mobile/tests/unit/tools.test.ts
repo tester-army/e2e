@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defineEngine } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
-import { deviceSession, mobileTools } from '../../src/tools.ts';
+import { unstable_deviceSession, mobileTools } from '../../src/tools.ts';
 import { createFakeClient, type FakeClient } from '../helpers/fake-client.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -92,19 +92,25 @@ describe('agent tool pack', () => {
       });
     }
 
-    expect(() => deviceSession(ios, android)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    expect(() => unstable_deviceSession(ios, android)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
     const foreign = defineEngine({ name: 'other', version: '1', spiVersion: 1 });
-    expect(() => deviceSession(foreign)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    expect(() => unstable_deviceSession(foreign)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
 
     await android.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
-    const session = deviceSession(ios, android);
+    const session = unstable_deviceSession(ios, android);
     expect(session).toMatchObject({ platform: 'android', session: 'e2e-android-0' });
     expect(session.client).toBe(androidFake.client);
 
     await ios.startAttempt!({ attemptId: 'a2', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
-    expect(() => deviceSession(ios, android)).toThrowError(
-      expect.objectContaining({ code: 'INVALID_STATE', message: expect.stringContaining('several agent-device attempts') }),
+    expect(() => unstable_deviceSession(ios, android)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_STATE', message: expect.stringContaining('several mobile attempts') }),
     );
+    await ios.endAttempt!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    await android.endAttempt!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    expect(() => unstable_deviceSession(ios, android)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    await ios.dispose!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    await android.dispose!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    expect(() => session.client).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
   });
 
   it('refuses a link the model hands to open_app before the device sees it', async () => {

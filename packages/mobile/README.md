@@ -167,16 +167,14 @@ pack dispatches each call to the engine whose attempt is running. Tools are
 scoped to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one agents entry's `tools`.
 
-## Custom tools that use agent-device
+## Custom tools with a raw driver session
 
-`deviceSession(...engines)` gives a custom tool of your own the running
-attempt's agent-device session, with its client bound to the engine's daemon,
-lease, and session. Use it for agent-device commands the pack has no tool for.
-
-Import agent-device's types and error helpers for those tools from
-`@e2e-dev/mobile/agent-device`, the copy this engine uses, instead of adding
-`agent-device` to the project. It is unstable, like `device.unstable_raw`
-([reference](https://e2e.com/docs/reference/mobile#unstable_raw)).
+`unstable_deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a
+custom tool the running attempt's raw driver session, for capabilities e2e
+does not wrap yet. Its client is bound to the engine's daemon, lease, and
+session. The client is `unknown`; narrow it to the operations your tool needs.
+This API can change in any release, like `device.unstable_raw`
+([reference](https://e2e.com/docs/reference/mobile#unstable_devicesession)).
 
 ## Secrets
 

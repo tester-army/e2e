@@ -1,5 +1,4 @@
 /** Compile-time assertions for the device engine's options and the hosted device provider seam. */
-import type { AgentDeviceClient as SubpathClient } from '../../src/agent-device.ts';
 import type { DeviceLease, DeviceProvider, DeviceRequest, DeviceSession, MobileOptions } from '../../src/index.ts';
 
 ({ platform: 'ios', device: 'iPhone 16' }) satisfies MobileOptions;
@@ -37,6 +36,7 @@ const farm = {
 // @ts-expect-error a lease names its daemon by URL.
 ({ id: 'lease-1', daemon: { baseUrl: 4700 } }) satisfies DeviceLease;
 
-// The subpath's client type is the one the engine's `device.unstable_raw.client` carries.
-({}) as DeviceSession['client'] satisfies SubpathClient;
-({}) as SubpathClient satisfies DeviceSession['client'];
+// Raw operations require an explicit narrowing at the call site.
+const raw = {} as DeviceSession;
+// @ts-expect-error the raw client has no stable driver-specific methods.
+raw.client.settings.update({ setting: 'mobile-data', state: 'on' });
