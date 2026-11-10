@@ -61,9 +61,9 @@ export interface MobileOptions {
    * files across every device at once. Omitted, the pool is every booted device
    * of the platform at `prepare` that no other agent-device session holds, as
    * many as the run has slots; with none booted, agent-device boots a shut-down
-   * one, newest OS first, then name order (a stopped Android emulator reports
-   * no OS version, so the name decides), and with every booted one held,
-   * `prepare` fails. A `DeviceProvider` leases hosted devices
+   * one: a phone or tablet over a TV, then the newest OS, then name order (a
+   * stopped Android emulator reports no OS version, so the name decides). With
+   * every booted one held, `prepare` fails. A `DeviceProvider` leases hosted devices
    * instead: one per worker slot at `prepare`, each driven through the daemon
    * and client configuration the lease names. A replacement worker resumes a
    * healthy agent-device session on the same lease. Forced worker shutdown
