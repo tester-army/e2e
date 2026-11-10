@@ -310,7 +310,7 @@ web({ testIdAttribute: 'data-test' }); // default: 'data-testid'
 web({ observationNodeBudget: 8_000 }); // default: 3,000, at most 1,000,000
 ```
 
-Node budget for one observation, shared across the main document and its frames: how many nodes it lists before the observation is marked incomplete. Raise it for a known dense target whose controls fall past the default cutoff. The cost is capture time and CDP payload, not model tokens: the agent's `maxObservationBytes` budget caps what the model sees and can bind first on a dense page, so raise that too when the late control still does not appear.
+Node budget for one observation, shared across the main document and its frames: how many nodes it lists before the observation is marked incomplete. Raise it for a known dense target whose controls fall past the default cutoff. The costs are capture time, CDP payload, and input tokens, which grow until the observation's byte or token cap truncates the tree. On a dense page the agent's `maxObservationBytes` (or the `maxInputTokens`-derived limit) can bind before this budget does, so raise whichever limit is truncating when the late control still does not appear.
 
 #### `userAgent`
 
