@@ -17,6 +17,7 @@ import type { ViewportPoint } from '../engine/surface.ts';
 import { codedMessage, hasCause, TestError } from '../internal/errors.ts';
 import { VIEWPORT_LIMITS } from '../internal/geometry.ts';
 import type { AgentErrorCode } from '../types.ts';
+import { READ_ONLY_GRAMMAR } from './action-names.ts';
 import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type StepVerdict } from './executor.ts';
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
@@ -29,6 +30,7 @@ const MODEL_ERROR_CODES = [
   'ACTION_FAILED',
   'AUTOMATION_UNSUPPORTED',
   'ASSERTION_FAILED',
+  'ASSERTION_INCONCLUSIVE',
   'AUTHENTICATION_FAILED',
   'AUTH_CREDENTIAL_UNAVAILABLE',
   'AUTH_CREDENTIAL_INVALID',
@@ -147,8 +149,12 @@ export interface VerdictTool {
  * dropped and the result says so, never refused: one model attaches
  * `ACTION_FAILED` to about half of its passes, and a schema refusal had it
  * resend the identical call until the turn budget ran out.
+ *
+ * @param kind The step's kind. On `act`, `ASSERTION_INCONCLUSIVE` is dropped
+ * from a failed verdict the same way, since only an assertion can be
+ * inconclusive. Omit it to keep every code a failed verdict sends.
  */
-export function createVerdictTool(): VerdictTool {
+export function createVerdictTool(kind?: 'act' | 'assert'): VerdictTool {
   let verdict: StepVerdict | undefined;
   const tool = schemaTool({
     description:
@@ -180,16 +186,16 @@ export function createVerdictTool(): VerdictTool {
           'If the application itself misbehaved, use status "failed" instead.'
         );
       }
+      const ignored = input.status === 'passed' || (kind === 'act' && input.errorCode === 'ASSERTION_INCONCLUSIVE');
       verdict = {
         status: input.status,
         summary: input.summary,
-        ...(input.errorCode === undefined || input.status === 'passed'
-          ? {}
-          : { errorCode: input.errorCode }),
+        ...(input.errorCode === undefined || ignored ? {} : { errorCode: input.errorCode }),
       };
-      return input.status === 'passed' && input.errorCode !== undefined
+      if (input.errorCode === undefined || !ignored) return 'Step concluded.';
+      return input.status === 'passed'
         ? `Step concluded as passed; the errorCode ${input.errorCode} you sent does not apply to a passed verdict and was ignored.`
-        : 'Step concluded.';
+        : `Step concluded as ${input.status}; the errorCode ${input.errorCode} you sent applies only to assertions and was ignored.`;
     },
   });
   return {
@@ -642,7 +648,11 @@ export function grammarTools(
         ),
     });
   }
-  return tools;
+  if (context.step.kind !== 'assert') return tools;
+  // An assertion only looks: the read-only tools, and no screenshot when it asked for the tree alone.
+  return Object.fromEntries(
+    Object.entries(tools).filter(([name]) => name in READ_ONLY_GRAMMAR && (name !== 'screenshot' || context.step.vision !== false)),
+  );
 }
 
 /**

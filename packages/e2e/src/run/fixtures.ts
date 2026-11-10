@@ -409,6 +409,7 @@ function lazyBuiltInAgent(config: ResolvedAgentConfig): StepExecutor {
     // Cache provenance and model policyVersion record this wrapper, not the
     // delegate it constructs, so both carry the one identity.
     ...BUILT_IN_AGENT,
+    vision: true,
     async runStep(context) {
       if (executor === undefined) {
         const { createBuiltInAgent } = await import('../agent/default-agent.ts');
