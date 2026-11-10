@@ -76,7 +76,7 @@ today, and "No equivalent" one it leaves out on purpose.
 | `appium:noReset: false` | `app.clearState()` at the start of the test |
 | `appium:fullReset` | `device.installApp(path, { reinstall: true })` |
 | `appium:newCommandTimeout`, WebDriverAgent timeouts | Not needed. Actions use `actionTimeout`, assertions `assertionTimeout`, and tests `timeout` |
-| `appium:language`, `appium:locale` | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`; see [Run the app in another language](/mobile#run-the-app-in-another-language). Not yet on Android: set the emulator's language before the run |
+| `appium:language`, `appium:locale` | On iOS, `app.launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR']`; see [Run the app in another language](/mobile#run-the-app-in-another-language). On a hosted device, `language` and `locale` on [`browserstack()`](/integrations/browserstack) or [`testmu()`](/integrations/testmu). On a local Android device, set its language before the run |
 | `bstack:options`, `lt:options` | A device provider: [`browserstack()`](/integrations/browserstack) or [`testmu()`](/integrations/testmu) |
 | Several capabilities, `maxInstances` | One target per platform, `workers`, and a `device` pool |
 

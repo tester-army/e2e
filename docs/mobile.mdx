@@ -116,8 +116,9 @@ The device keeps its own language. Add one target per language:
 
 - The app must ship the language. If it doesn't, iOS shows its development
   language.
-- Android has no launch argument for the language. Set the emulator's
-  language before the run.
+- Android has no launch argument for the language. On a hosted device, set
+  `language` and `locale` on `browserstack()` or `testmu()`. On a local
+  device, set the device's language before the run.
 
 ### Expo development builds
 
