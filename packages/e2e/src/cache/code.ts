@@ -18,7 +18,12 @@ function literal(value: unknown): string {
 /** Emits code-1 replay syntax without executing source or discarding replay evidence. */
 export function emitReplayCode(trace: ActionTrace): string {
   const { actions, ...context } = trace;
-  return `${HEADER}  {\n${Object.entries(context).filter(([, value]) => value !== undefined).toSorted(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => `    ${JSON.stringify(key)}: ${literal(value)},\n`).join('')}  },\n  [\n${actions.map(({ name, ...input }) => `    replay.${name}(${literal(input)}),\n`).join('')}${FOOTER}`;
+  const fields = Object.entries(context)
+    .filter(([, value]) => value !== undefined)
+    .toSorted(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
+    .map(([key, value]) => `    ${JSON.stringify(key)}: ${literal(value)},\n`);
+  const calls = actions.map(({ name, ...input }) => `    replay.${name}(${literal(input)}),\n`);
+  return `${HEADER}  {\n${fields.join('')}  },\n  [\n${calls.join('')}${FOOTER}`;
 }
 
 /** Reads only the generated replay grammar. Imports, expressions and arbitrary callbacks never execute. */
@@ -52,7 +57,17 @@ export function readReplayCode(source: string): TraceEntry | undefined {
 /** Produces a deterministic unified replacement diff for a regenerated recording. */
 export function replayCodeDiff(name: string, before: string, after: string): string {
   if (before === after) return '';
-  const oldLines = before.trimEnd().split('\n');
-  const newLines = after.trimEnd().split('\n');
-  return `--- a/${name}\n+++ b/${name}\n@@ -1,${oldLines.length} +1,${newLines.length} @@\n${oldLines.map((line) => `-${line}\n`).join('')}${newLines.map((line) => `+${line}\n`).join('')}`;
+  const oldLines = before === '' ? [] : before.trimEnd().split('\n');
+  const newLines = after === '' ? [] : after.trimEnd().split('\n');
+  let prefix = 0;
+  while (prefix < oldLines.length && prefix < newLines.length && oldLines[prefix] === newLines[prefix]) prefix += 1;
+  let suffix = 0;
+  while (suffix < oldLines.length - prefix && suffix < newLines.length - prefix && oldLines.at(-suffix - 1) === newLines.at(-suffix - 1)) suffix += 1;
+  const lines = [
+    ...oldLines.slice(0, prefix).map((line) => ` ${line}`),
+    ...oldLines.slice(prefix, oldLines.length - suffix).map((line) => `-${line}`),
+    ...newLines.slice(prefix, newLines.length - suffix).map((line) => `+${line}`),
+    ...oldLines.slice(oldLines.length - suffix).map((line) => ` ${line}`),
+  ];
+  return `--- ${before === '' ? '/dev/null' : `a/${name}`}\n+++ ${after === '' ? '/dev/null' : `b/${name}`}\n@@ -${oldLines.length === 0 ? 0 : 1},${oldLines.length} +${newLines.length === 0 ? 0 : 1},${newLines.length} @@\n${lines.join('\n')}\n`;
 }

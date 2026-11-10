@@ -1,5 +1,8 @@
 # Executable cache exploration
 
+This is the initial exploration. See [Code cache parity](PARITY.md) for the
+integrated implementation and current verification results.
+
 This branch prototypes exporting a confirmed recording as a standalone web test.
 It does not replace the runner's cache or add a published API. No other repository
 was inspected or changed. The implementation is in

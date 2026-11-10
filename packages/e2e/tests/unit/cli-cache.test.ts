@@ -222,3 +222,17 @@ describe('e2e cache configuration', () => {
     expect(process.exitCode).toBe(2);
   });
 });
+
+it('migrates code, lists both formats, displays diffs and clears both', async () => {
+  const keyHash = 'a'.repeat(64);
+  await seed([{ keyHash, trace: trace(undefined, 1) }]);
+  await invoke('cache', 'migrate');
+  expect(written(stdoutSpy)).toContain('converted');
+  expect(readdirSync(path.join(root, CACHE_DIR))).toContain(`${keyHash}.replay.ts`);
+  await invoke('cache', 'diff');
+  expect(written(stdoutSpy)).toContain('+    replay.tap(');
+  await invoke('cache', 'ls');
+  expect(written(stdoutSpy)).toContain('ACTIONS');
+  await invoke('cache', 'clear');
+  expect(written(stdoutSpy)).toContain('cleared 3 file(s)');
+});

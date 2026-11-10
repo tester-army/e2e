@@ -87,7 +87,11 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
       return 0;
     }
     if (command === 'diff') {
-      for (const name of (await readdir(directory)).toSorted()) {
+      const names = await readdir(directory).catch((cause: unknown) => {
+        if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw cause;
+      });
+      for (const name of names.toSorted()) {
         if (/^[a-f0-9]{64}\.replay\.ts\.diff$/u.test(name)) process.stdout.write(await readFile(path.join(directory, name), 'utf8'));
       }
       return 0;

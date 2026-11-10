@@ -398,3 +398,11 @@ describe('settleStagedTraces', () => {
     expect(other).not.toBe(first);
   });
 });
+
+it('selects code format without changing CI defaults or accepting it on custom stores', () => {
+  expect(resolve({ cache: { format: 'code' } }, { CI: '1' }).cache).toMatchObject({ format: 'code', mode: 'read-only' });
+  expect(resolve({ cache: { format: 'code', mode: 'read-write', strict: true } }).cache).toMatchObject({ format: 'code', mode: 'read-write', strict: { config: true } });
+  expect(() => resolve({ cache: { format: 'code', store: memoryStore() } })).toThrow('only to the file store');
+  // @ts-expect-error Validate untyped configuration at runtime too.
+  expect(() => resolve({ cache: { format: 'javascript' } })).toThrow('cache.format');
+});

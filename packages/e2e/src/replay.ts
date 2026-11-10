@@ -26,4 +26,4 @@ export const replay = {
   back: action('back'), resize: action('resize'), tapAt: action('tapAt'), hoverAt: action('hoverAt'),
   dragAt: action('dragAt'), typeText: action('typeText'), pressKey: action('pressKey'),
   dismissKeyboard: action('dismissKeyboard'), tool: action('tool'),
-};
+} satisfies { define: typeof define } & Record<ActionName, unknown>;
