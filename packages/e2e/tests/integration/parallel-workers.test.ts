@@ -1061,7 +1061,7 @@ test('runs on the next worker', async ({ app }) => {
   );
 
   it(
-    'starts the file the previous run spent longest in first with more than one worker, and in collection order with one',
+    'starts the file the timings history holds longest first with more than one worker, and in collection order with one',
     async () => {
       const sleeping = (title: string, ms: number) => `import { test } from 'e2e';
 
@@ -1093,17 +1093,17 @@ test('${title}', async () => {
         { 'tests/alpha.e2e.ts': sleeping('alpha', 0), 'tests/beta.e2e.ts': gated('beta', 'gamma', 900), 'tests/gamma.e2e.ts': gated('gamma', 'beta', 700) },
         { configSource: workerFakeConfigSource(1) },
       );
-      // No report to learn from yet.
+      // No history to learn from yet.
       expect(startOrder(first)).toEqual(['alpha', 'beta', 'gamma']);
 
-      // Two workers take beta and gamma, the files that run spent longest in. Neither sleeps before both have started, so alpha waits for one of them however slowly the second worker boots.
+      // Two workers take beta and gamma, the files the history holds longest. Neither sleeps before both have started, so alpha waits for one of them however slowly the second worker boots.
       const barrier = mkdtempSync(path.join(tmpdir(), 'e2e-order-'));
       const parallel = await runExistingWithConfigFile(project, { runOptions: { workers: 2, env: { ...process.env, CI: '', APP_URL: undefined, ORDER_BARRIER: barrier } } });
       rmSync(barrier, { recursive: true, force: true });
       expect(parallel.exitCode).toBe(0);
       expect(startOrder(parallel).at(-1)).toBe('alpha');
 
-      // One worker reads no timings, though the last report holds them.
+      // One worker reads no timings, though the history holds them.
       const serial = await runExistingWithConfigFile(project, { runOptions: { workers: 1 } });
       expect(startOrder(serial)).toEqual(['alpha', 'beta', 'gamma']);
       project.cleanup();

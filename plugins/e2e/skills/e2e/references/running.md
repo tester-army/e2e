@@ -297,8 +297,7 @@ jobs:
   tests whose test file, setup file, or stored screenshots changed. It scores
   each test, and each target starts the likeliest files first. With one worker
   (the CI default) only the relevance bands order files and collection order
-  breaks ties, since the previous run's
-  times matter only above one worker. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
+  breaks ties, since the timings history matters only above one worker. On GitLab, pass `--changed-since ${CI_MERGE_REQUEST_TARGET_BRANCH_SHA:-$CI_MERGE_REQUEST_DIFF_BASE_SHA}`
   on merge request pipelines, not merge trains, with `GIT_DEPTH: 0`. Preview
   with `npx e2e list --changed-since origin/main`, after committing: the
   decision filter reads what the commits change, and a file only the

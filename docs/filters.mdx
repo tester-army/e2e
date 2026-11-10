@@ -149,9 +149,9 @@ the most with `--max-failures` and with one worker, the default in CI.
 
 - Files start in four bands: 75% and up, 50% up to 75%, 25% up to 50%, and
   under 25%. A file takes the band of its likeliest test.
-- With more than one worker, the file the previous run spent longest in
-  starts first inside a band, read from `report.json` in the output
-  directory. A file with no time starts before the timed ones.
+- With more than one worker, the longest file by the
+  [timings history](/ci#cache-the-timings-history) starts first inside a
+  band. A file with no time starts before the timed ones.
 - Targets go by the band of their best file, ties in config order, and each
   target starts its own files in that order. A target's setup tests still
   finish before its first test file starts.

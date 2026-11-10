@@ -229,9 +229,9 @@ workers: 4, // default: 1 in CI, else half the cores
 - An engine may cap it lower: `workers` never exceeds what a target's engine
   declares.
 - With more than one worker, each target's files start longest first by the
-  time the previous run spent in them, read from `report.json`. A file with no
-  time starts before the timed ones. With `--changed-since`, the likeliest
-  files start before that, as
+  [timings history](/ci#cache-the-timings-history). A file with no time starts
+  before the timed ones. With `--changed-since`, the likeliest files start
+  before that, as
   [Start the likeliest first](/filters#start-the-likeliest-first) says.
 
 #### `reporters`
