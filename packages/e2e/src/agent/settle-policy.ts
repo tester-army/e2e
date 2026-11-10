@@ -6,11 +6,13 @@
  * leave the shape the action was resolved against (the dispatcher arms it,
  * and the next settled look waits out what remains), and how far the
  * replay's look before the next action settles. A new action kind does not
- * compile until it declares both, and the live loop and replay can never
- * disagree about the same action.
+ * compile until it declares both. The window is the table's, except that
+ * `changeWaitAfter` shortens it for a caret key by reading the focus on the
+ * newest screen the loop or the replay holds.
  */
 
 import type { RecordedAction } from '../cache/trace.ts';
+import { parseKey } from '../engine/contract.ts';
 
 /**
  * How far one look settles.
@@ -70,6 +72,71 @@ interface SettleAfter {
   readonly changeWaitMs?: number;
   /** How far the replay's look before the next action settles. */
   readonly look: SettleMode;
+}
+
+/**
+ * The change wait after a caret key in a text field. A selection that changes
+ * shows in the first capture after the key, but a handler on `selectionchange`
+ * (a rich-text toolbar, a mention list) may update the tree a beat later, and
+ * the tree cannot say whether one is listening. The wait is the span a screen
+ * must hold still to count as settled, so a handler that updates within a
+ * second is read, at half the cost of the full window. One slower than that
+ * is read on the next look, as it is after any action with a shorter window.
+ */
+const CARET_CHANGE_WAIT_MS = HELD_STILL_MS;
+
+/** Roles of a field a caret lives in. A `combobox` is left out: its keys open and move a popup. */
+const CARET_ROLES: ReadonlySet<string> = new Set(['textbox', 'searchbox']);
+
+/**
+ * Keys that only move a caret or extend a selection, alone or with modifiers.
+ * Narrower than the agent's focus-only keys (`primitives.ts`): Tab and the
+ * vertical keys leave the field or move a popup, so they keep the full wait.
+ */
+const CARET_KEYS: ReadonlySet<string> = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End']);
+
+/** The action a settle policy reads: its kind, its key, and the node it ran against. */
+export interface SettleSubject {
+  readonly name: RecordedAction['name'];
+  readonly key?: string;
+  readonly node?: { readonly role?: string | undefined; readonly states?: { readonly focused?: boolean | undefined } | undefined };
+}
+
+/** True for a text field that held the focus when the action reached it. */
+function focusedTextField(node: SettleSubject['node']): boolean {
+  return node?.states?.focused === true && CARET_ROLES.has(node.role ?? '');
+}
+
+/**
+ * Whether the key moved a caret in a text field that already held the
+ * focus, an effect the tree mostly cannot show. A selection it changes is
+ * read at once, so the change wait only ever runs out on one that changed
+ * nothing: a key at the end of the text, a second select-all. A tap is left
+ * out, focused field or not: a click can open a popup or a panel that takes
+ * longer than the short window to render. So is the first focus of a field,
+ * since what a field opens when it takes the focus may arrive a beat later.
+ * `focused` is the field a key press went to, which a keyboard action does
+ * not name.
+ */
+function movesCaretOnly(action: SettleSubject, focused: SettleSubject['node']): boolean {
+  if (action.name !== 'press' && action.name !== 'pressKey') return false;
+  if (!focusedTextField(action.name === 'press' ? action.node : focused)) return false;
+  const parsed = parseKey(action.key ?? '');
+  if (parsed === undefined || parsed.modifiers.includes('Alt')) return false;
+  if (parsed.key.kind === 'named') return CARET_KEYS.has(parsed.key.name);
+  const [only, ...rest] = parsed.modifiers;
+  return parsed.key.char === 'a' && rest.length === 0 && (only === 'Control' || only === 'Meta' || only === 'ControlOrMeta');
+}
+
+/**
+ * How long after the committed action the screen has to leave the shape it
+ * was resolved against (`SETTLE_AFTER`'s window, shortened for an action
+ * that only moves a caret): absent when the tree cannot show the effect.
+ */
+export function changeWaitAfter(action: SettleSubject, focused?: SettleSubject['node']): number | undefined {
+  const { changeWaitMs } = SETTLE_AFTER[action.name];
+  if (changeWaitMs === undefined || changeWaitMs <= CARET_CHANGE_WAIT_MS) return changeWaitMs;
+  return movesCaretOnly(action, focused) ? CARET_CHANGE_WAIT_MS : changeWaitMs;
 }
 
 /**

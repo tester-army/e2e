@@ -42,7 +42,7 @@ import { describePointAction, describePointDrag, describePointHit, hitTest, POIN
 import { nodeReading, normalizeReading, pageLanded, pageMoved, readPage, type PageReading } from './reading.ts';
 import { SETTLE_POLL_MS, type AgentObservation, type RedactedNode, type SemanticAgentObservation } from './observation.ts';
 import { authorizeSecretFill } from './secrets.ts';
-import { HELD_STILL_MS, SETTLE_AFTER } from './settle-policy.ts';
+import { changeWaitAfter, HELD_STILL_MS, SETTLE_AFTER, type SettleSubject } from './settle-policy.ts';
 import type { StepAccounting } from './step-accounting.ts';
 import type { StepTraceSession } from './step-cache.ts';
 import { authorizeUploadPaths } from './upload-paths.ts';
@@ -365,7 +365,7 @@ export class ActionDispatcher {
       const name = `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`;
       const value = await instrumentPhase(this.runtime, { api: this.accounting.api, kind: 'engine', phase: 'agent.action', name }, body);
       if (call.mutates) {
-        this.armAfter('tool');
+        this.armAfter({ name: 'tool' });
         await this.notify('tool', (fields) => ({ ...fields, action: `${PROJECT_TOOL_EVENT_PREFIX}${call.name}`, summary: `ran ${call.name}` }));
       }
       return value;
@@ -713,7 +713,7 @@ export class ActionDispatcher {
       this.accounting.checkpoint(cause);
       throw cause;
     }
-    this.armAfter(action.name);
+    this.armAfter(action);
     this.recordTrace(action);
     await this.notify(action.name, (fields) => actionEvent(action, { ...fields, summary: describeAction(action, redaction).summary }));
   }
@@ -797,9 +797,9 @@ export class ActionDispatcher {
    * would wait against the destination screen. An action whose effect the
    * tree cannot show arms nothing.
    */
-  private armAfter(name: RecordedAction['name']): void {
-    if (name === 'scrollUntil' && !this.verbs.has('scrollTo')) return;
-    const { changeWaitMs } = SETTLE_AFTER[name];
+  private armAfter(action: SettleSubject): void {
+    if (action.name === 'scrollUntil' && !this.verbs.has('scrollTo')) return;
+    const changeWaitMs = changeWaitAfter(action, action.name === 'pressKey' ? this.feed.focusedNode() : undefined);
     if (changeWaitMs !== undefined) this.feed.armChange(changeWaitMs);
   }
 
