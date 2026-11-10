@@ -7,6 +7,7 @@
 - Output
 - Exit codes
 - Continuous integration
+- Code recordings
 
 ## Commands
 
@@ -19,7 +20,7 @@ npx e2e doctor [--check-model]     # can a run start: config, engine setup, mode
 npx e2e init [directory] [--yes]   # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill; topics: setup, writing-tests, agent,
                                    # running, explore, debugging, mcp, bug-bash
-npx e2e cache ls|clear|stats       # inspect or empty the replay cache
+npx e2e cache ls|clear|stats|migrate|diff       # inspect or empty the replay cache
 npx e2e login|logout|models [provider]  # e2e/oauth subscription logins: openai,
                                    # github-copilot, opencode-console, spacexai
 npx e2e mcp [--target <name>]      # MCP server for a coding agent (topic mcp)
@@ -300,3 +301,14 @@ jobs:
   decision filter reads what the commits change, and a file only the
   working tree changes by name alone.
   Reference: https://e2e.com/docs/filters
+
+## Code recordings
+
+Use `cache: { format: 'code' }` for readable `.replay.ts` recordings. The runner
+parses constrained `e2e/replay` calls and uses the same matching, outcome checks,
+confirmation and agent fallback as JSON on web and mobile. Keep the generated
+layout when editing. Do not insert arbitrary JavaScript or freeze runtime-derived
+values. Run `e2e cache migrate` before switching an existing JSON directory, then
+`e2e cache diff` to review regenerated recordings. Commit `.replay.ts` files;
+`.replay.ts.diff` files are local review aids. Strict mode rejects stale recordings
+and never rewrites them. Custom stores do not accept the `format` option.

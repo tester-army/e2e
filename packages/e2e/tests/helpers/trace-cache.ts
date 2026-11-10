@@ -5,9 +5,10 @@
  * store holds.
  */
 
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from 'vitest';
+import { emitReplayCode, readReplayCode } from '../../src/cache/code.ts';
 import type { TraceEntry } from '../../src/cache/trace.ts';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
 import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
@@ -288,11 +289,11 @@ export function readEntries(project: FixtureProject): { readonly file: string; r
   const dir = path.join(project.dir, '.e2e', 'cache');
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((name) => name.endsWith('.json'))
+    .filter((name) => name.endsWith('.json') || name.endsWith('.replay.ts'))
     .toSorted()
     .map((name) => {
       const file = path.join(dir, name);
-      return { file, entry: JSON.parse(readFileSync(file, 'utf8')) as TraceEntry };
+      return { file, entry: name.endsWith('.replay.ts') ? readReplayCode(readFileSync(file, 'utf8'))! : JSON.parse(readFileSync(file, 'utf8')) as TraceEntry };
     });
 }
 
@@ -338,4 +339,9 @@ export function expectReplayed(step: StepRecord, actions: number): void {
 /** A step the executor ran from the top, with the reason the report gives. */
 export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo['reason']>, totalActions: number): void {
   expect(step.cache).toMatchObject({ mode: 'missed', reason, replayedActions: 0, totalActions });
+}
+
+/** Rewrites a fixture recording in its original storage format. */
+export function writeEntry(file: string, entry: TraceEntry): void {
+  writeFileSync(file, file.endsWith('.replay.ts') ? emitReplayCode(entry.payload) : JSON.stringify(entry), 'utf8');
 }

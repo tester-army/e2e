@@ -112,6 +112,7 @@ export interface ResolvedConfig {
  * config module and construct their own.
  */
 export interface ResolvedCacheConfig {
+  readonly format?: 'json' | 'code';
   readonly mode: CacheMode;
   /** Custom entry store; undefined selects the file store at `dir`. */
   readonly store: CacheStore | undefined;
@@ -187,7 +188,7 @@ const TOP_LEVEL_KEYS = new Set([
   'secrets',
 ]);
 
-const CACHE_KEYS = new Set(['mode', 'store', 'dir', 'strict']);
+const CACHE_KEYS = new Set(['mode', 'store', 'dir', 'strict', 'format']);
 const CACHE_MODES = new Set(['off', 'read-only', 'read-write']);
 
 const APP_BELONGS_TO_TARGET =
@@ -382,6 +383,7 @@ function resolveCacheConfig(
   let store: CacheStore | undefined;
   let dir: string | undefined;
   let strict = false;
+  let format: 'json' | 'code' = 'json';
   if (typeof value === 'string') {
     mode = value;
     explicit = true;
@@ -399,6 +401,13 @@ function resolveCacheConfig(
           `unknown cache config key "${key}"${didYouMean(key, [...CACHE_KEYS])}`,
         );
       }
+    }
+    if (value.format !== undefined && value.format !== 'json' && value.format !== 'code') {
+      throw new ConfigurationError('INVALID_CONFIG', 'cache.format must be json or code');
+    }
+    format = value.format ?? 'json';
+    if (value.store !== undefined && value.format !== undefined) {
+      throw new ConfigurationError('INVALID_CONFIG', 'cache.format applies only to the file store');
     }
     mode = value.mode ?? 'read-write';
     explicit = value.mode !== undefined;
@@ -433,7 +442,7 @@ function resolveCacheConfig(
   const cliStrict = cli.cacheStrict === true;
   const cacheDir = resolveCacheDir(projectRoot, dir, store, cli.cacheDir, env);
   return {
-    cache: { mode, store, dir: cacheDir.dir, strict: strict || cliStrict ? { config: strict, flag: cliStrict } : false },
+    cache: { ...(format === 'code' ? { format } : {}), mode, store, dir: cacheDir.dir, strict: strict || cliStrict ? { config: strict, flag: cliStrict } : false },
     source: cacheDir.source,
   };
 }

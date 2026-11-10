@@ -1357,3 +1357,14 @@ that differs from Node.js:
   or `bunx` started the CLI. They put a `node` on `PATH` that runs Bun.
 - A test that a helper declares after an `await` reports the line in the
   helper.
+
+### Convert and review code recordings
+
+`e2e cache migrate` converts valid JSON recordings in the configured cache directory
+to `.replay.ts` files without replacing existing code or deleting originals. It
+reports invalid entries and preserved agent handoff gaps. Set `cache.format` to
+`'code'` to use the converted files.
+
+`e2e cache diff` prints the latest saved replacement diffs for code recordings.
+Both commands accept `--config` and `--cache-dir`, like the other cache commands.
+See [Code recordings](/cache#code-recordings).

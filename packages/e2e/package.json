@@ -44,6 +44,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./replay": {
+      "types": "./dist/replay.d.ts",
+      "default": "./dist/replay.js"
+    },
     "./agent": {
       "types": "./dist/agent/public.d.ts",
       "default": "./dist/agent/public.js"

@@ -1,6 +1,7 @@
 /** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { emitReplayCode, readReplayCode } from '../../src/cache/code.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
@@ -11,6 +12,7 @@ import type { ActionTrace, RecordedAction } from '../../src/cache/trace.ts';
 import type { SemanticNode } from '../../src/engine/surface.ts';
 import { redactedNodes } from '../helpers/redacted.ts';
 
+describe.each(['json', 'code'] as const)('%s replay parity', (format) => {
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setTimerTickMode('nextTimerAsync');
@@ -23,7 +25,8 @@ const upgrade: SemanticNode = { ref: { id: 'n1', revision: 'r1' }, role: 'button
 const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox', name: 'Email' };
 
 function trace(actions: RecordedAction[]): ActionTrace {
-  return { actions, executor: { name: 'test' }, summary: 'done' };
+  const payload = { actions, executor: { name: 'test' }, summary: 'done' };
+  return format === 'code' ? readReplayCode(emitReplayCode(payload))!.payload : payload;
 }
 
 const tapUpgrade: RecordedAction = {
@@ -683,4 +686,6 @@ describe('replayTrace: bare-point drags', () => {
     expect(await replayTrace(gone, trace([{ ...moved, to: { point: { x: 300, y: 150 }, within: tray } }]))).toMatchObject({ completed: false, executed: 0, stopReason: 'target-not-found' });
     expect(gone.calls).not.toContain('dragAt');
   });
+});
+
 });

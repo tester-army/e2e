@@ -1360,6 +1360,8 @@ export type CacheMode = 'off' | 'read-only' | 'read-write';
  * module and construct their own.
  */
 export interface CacheConfig {
+  /** File format. Code uses constrained e2e/replay calls with the same replay policy. Default json. */
+  format?: 'json' | 'code';
   /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */

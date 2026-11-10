@@ -439,3 +439,68 @@ lowers the cost of a model call. The replay cache skips the call.
     `e2e cache ls`, `stats`, `clear`.
   </Card>
 </CardGroup>
+
+## Code recordings
+
+Set `cache: { format: 'code' }` to store recordings as `<key>.replay.ts` files.
+JSON remains the default. Both formats use the same cache key and replay engine,
+including conservative target relocation, simultaneous outcome checks, unexpected
+alert detection, partial-action recovery, secret handles and parameter expansion.
+Code recordings work with web and mobile engines.
+
+```ts
+export default {
+  cache: { format: 'code', mode: 'read-write' },
+};
+```
+
+A recording contains constrained `e2e/replay` calls:
+
+```ts
+// e2e replay code-1
+import { replay } from 'e2e/replay';
+
+export default replay.define(
+  {
+    "endAnchors": [{"name":"Saved","role":"status"}],
+    "endPath": "/profile",
+    "executor": {"name":"default"},
+    "startPath": "/profile",
+    "summary": "Profile saved",
+  },
+  [
+    replay.tap({"summary":"Save profile","target":{"name":"Save","role":"button"}}),
+  ],
+);
+```
+
+The runner parses this grammar without importing or evaluating the file. Keep the
+generated layout when editing values. Arbitrary expressions, extra imports and
+callbacks are invalid entries. This restriction keeps committed recordings under
+the same trust rules as JSON. Each action retains its full target constraints.
+The context retains the recorded outcome and provenance. The file contains no
+creation timestamp or observation IDs. Keys and formatting are deterministic;
+array order and recorded wait budgets are preserved because they affect replay.
+
+Writes still require a later independent assertion. Generated outcome checks do
+not confirm their own recording. A failed replay resumes the agent on the current
+screen with the completed prefix and any uncertain action, then saves a confirmed
+repair. `cache.strict` and `--strict-cache` prevent stale recordings from healing,
+just as they do for JSON. A step with no recording can still run live.
+
+Every changed code recording gets a sibling `.replay.ts.diff` with its latest
+replacement diff. Run `e2e cache diff` to print those diffs. Commit the `.replay.ts`
+files; the `.diff` files are local review aids. Successful unchanged replays leave
+both files untouched. `e2e cache ls`, `stats` and `clear` recognize both formats.
+Code entries display no age because they store no creation timestamp.
+
+Run `e2e cache migrate` to convert the configured directory's JSON recordings.
+The command validates each entry, reports unreadable entries, preserves originals,
+and skips existing code files. Select `format: 'code'` after conversion. The run
+reads only the selected format, so invalid code never silently falls back to JSON.
+Migration preserves truncated recordings as misses and runtime-derived or custom
+tool gaps as agent handoffs. It cannot reconstruct the expression that produced a
+runtime value. Freezing the observed value would weaken replay safety.
+
+`format` applies only to the file store. Custom `cache.store` implementations keep
+the existing `CacheStore` trace contract and cannot also set `format`.

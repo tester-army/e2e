@@ -1876,3 +1876,11 @@ export type CacheReadResult =
   | { readonly status: 'miss' }
   | { readonly status: 'invalid'; readonly reason: string; readonly bytes?: number };
 ```
+
+### Code cache format
+
+`cache.format` accepts `'json'` or `'code'`. The default is `'json'`. Code entries
+use constrained calls from `e2e/replay` in `.replay.ts` files, with the same key,
+confirmation boundary and strict-mode behavior as JSON. This option cannot be
+combined with `cache.store`. See [Code recordings](/cache#code-recordings) for
+migration, generated syntax and regeneration diffs.

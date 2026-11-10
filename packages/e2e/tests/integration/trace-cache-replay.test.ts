@@ -17,7 +17,7 @@ import type { E2EConfig } from '../../src/index.ts';
 import { loopCalls } from '../helpers/fake-loop-model.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
-import { createProject, runExisting, webTarget, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
+import { createProject, runExisting as runBase, webTarget, type FixtureProject, type RunOutcome } from '../helpers/run-project.ts';
 import {
   actSteps,
   cacheConfig,
@@ -32,8 +32,17 @@ import {
   handedOffNotice,
   onlyActStep,
   readEntries,
+  writeEntry,
   type Flow,
 } from '../helpers/trace-cache.ts';
+
+describe.each(['json', 'code'] as const)('%s cache parity', (format) => {
+/** Runs the existing behavioral suite with only the file representation changed. */
+function runExisting(project: Parameters<typeof runBase>[0], options: Parameters<typeof runBase>[1]) {
+  const cache = options.config?.cache;
+  const configured = typeof cache === 'object' ? cache : cache === undefined ? {} : { mode: cache };
+  return runBase(project, { ...options, config: { ...options.config, cache: configured.store === undefined ? { ...configured, format } : configured } });
+}
 
 const FLOWS_FILE = 'tests/flows.e2e.ts';
 
@@ -287,7 +296,7 @@ describe('trace cache: --strict-cache fails a step whose key changed under its r
     expect(entry.payload.keyedBy?.agentContextDigest).toBe(createHash('sha256').update('').digest('hex'));
     // An entry from before the occurrence fields: a read-write replay completes it.
     const { testId, targetId, instructionDigest } = recordedFor;
-    writeFileSync(file, JSON.stringify({ ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } }), 'utf8');
+    writeEntry(file, { ...entry, payload: { ...entry.payload, recordedFor: { testId, targetId, instructionDigest } } });
     const replayed = await runExisting(project, { appUrl: app.url, config: cacheConfig(flowsModel()) });
     expectPassed(replayed);
     expectReplayed(onlyActStep(replayed, 'increments the counter'), 2);
@@ -412,4 +421,6 @@ describe('trace cache: --repeat-each records on the first repeat and replays on 
     expectReplayed(onlyActStep(outcome, 'increments the counter', 1), 2);
     expect(readEntries(project)).toHaveLength(1);
   }, 120_000);
+});
+
 });

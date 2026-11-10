@@ -11,10 +11,11 @@
  * enumerate it, so it says so instead of listing an empty directory.
  */
 
-import { readdir, rm, rmdir } from 'node:fs/promises';
+import { readdir, readFile, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
 import picocolors from 'picocolors';
+import { migrateReplayCache } from '../cache/migrate.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig } from '../config/resolve.ts';
@@ -22,7 +23,7 @@ import { errorMessage } from '../internal/errors.ts';
 import { visibleWidth } from '../report/format.ts';
 import { docsLine, examples } from './help.ts';
 
-type CacheCommand = 'ls' | 'clear' | 'stats';
+type CacheCommand = 'ls' | 'clear' | 'stats' | 'migrate' | 'diff';
 
 /** The `--cache-dir` help line `e2e run` and every `e2e cache` command share. */
 export const CACHE_DIR_DESCRIPTION =
@@ -38,6 +39,7 @@ interface CacheOptions {
 
 /** One entry as `ls` prints it, or a file that is not a readable entry. */
 interface CacheEntrySummary {
+  readonly name: string;
   readonly keyHash: string;
   readonly bytes: number;
   readonly createdAt: string;
@@ -58,9 +60,9 @@ interface CacheContents {
 }
 
 /** Store file names: the key digest, as `FileCacheStore` writes them. */
-const ENTRY_FILE = /^([a-f0-9]{64})\.json$/u;
+const ENTRY_FILE = /^([a-f0-9]{64})\.(?:json|replay\.ts)$/u;
 /** A crashed writer's leftover; a store file for cleanup purposes. */
-const TEMPORARY_FILE = /^[a-f0-9]{64}\.json\.[a-f0-9]{16}\.tmp$/u;
+const TEMPORARY_FILE = /^[a-f0-9]{64}\.(?:json|replay\.ts(?:\.diff)?)(?:\.[a-f0-9]{16}\.tmp|\.diff)$/u;
 
 /** Digest prefix printed instead of the full 64 hex characters. */
 const DIGEST_PREFIX_CHARS = 12;
@@ -80,6 +82,16 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 
   try {
+    if (command === 'migrate') {
+      for (const result of await migrateReplayCache(directory)) process.stdout.write(`${result}\n`);
+      return 0;
+    }
+    if (command === 'diff') {
+      for (const name of (await readdir(directory)).toSorted()) {
+        if (/^[a-f0-9]{64}\.replay\.ts\.diff$/u.test(name)) process.stdout.write(await readFile(path.join(directory, name), 'utf8'));
+      }
+      return 0;
+    }
     const contents = await readContents(directory);
     switch (command) {
       case 'ls':
@@ -126,6 +138,8 @@ export function registerCacheCommand(program: Command): void {
     'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
   );
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
+  cacheSubcommand('migrate', 'convert JSON recordings to code', 'Validate and convert JSON recordings, preserving recovery gaps and leaving originals and existing code untouched.');
+  cacheSubcommand('diff', 'show regenerated recording diffs', 'Print the latest replacement diff for each code recording.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
 }
 
@@ -160,6 +174,7 @@ async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
  */
 async function readContents(directory: string): Promise<CacheContents> {
   const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
+  const codeStore = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false, format: 'code' });
   const entries: CacheEntrySummary[] = [];
   const unreadable: { name: string; bytes: number }[] = [];
   const foreign: string[] = [];
@@ -180,13 +195,14 @@ async function readContents(directory: string): Promise<CacheContents> {
       if (!TEMPORARY_FILE.test(name)) foreign.push(name);
       continue;
     }
-    const read = await store.read(keyHash);
+    const read = await (name.endsWith('.replay.ts') ? codeStore : store).read(keyHash);
     if (read.status !== 'hit') {
       unreadable.push({ name, bytes: read.status === 'invalid' ? (read.bytes ?? 0) : 0 });
       continue;
     }
     const trace = read.entry.payload;
     entries.push({
+      name,
       keyHash,
       bytes: read.bytes,
       createdAt: read.entry.createdAt,
@@ -223,7 +239,7 @@ function list(contents: CacheContents): number {
       entry.testId ?? '-',
       entry.targetId ?? '-',
       entry.instructionDigest?.slice(0, DIGEST_PREFIX_CHARS) ?? '-',
-      formatAge(entry.createdAt, now),
+      entry.name.endsWith('.replay.ts') ? '-' : formatAge(entry.createdAt, now),
       `${entry.actions}${entry.truncated ? ' (truncated)' : ''}`,
     ]);
   const header = ['TEST', 'TARGET', 'INSTRUCTION', 'AGE', 'ACTIONS'];
@@ -265,7 +281,7 @@ function stats(contents: CacheContents): number {
  */
 async function clear(contents: CacheContents): Promise<number> {
   const removable = [
-    ...contents.entries.map((entry) => `${entry.keyHash}.json`),
+    ...contents.entries.map((entry) => entry.name),
     ...contents.unreadable.map((file) => file.name),
   ];
   for (const name of removable) {

@@ -82,7 +82,7 @@ export class StoredRecordings {
  */
 export function storedRecordingsFor(cache: ResolvedCacheConfig): StoredRecordings | undefined {
   if (cache.strict === false || cache.mode === 'off' || cache.store !== undefined) return undefined;
-  return new StoredRecordings(new FileCacheStore({ directory: cache.dir, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false }));
+  return new StoredRecordings(new FileCacheStore({ directory: cache.dir, ...(cache.format === undefined ? {} : { format: cache.format }), maxBytes: MAX_CACHE_WIRE_BYTES, writable: false }));
 }
 
 /** The whole step as one map key, or undefined when the provenance does not record all of it. */
