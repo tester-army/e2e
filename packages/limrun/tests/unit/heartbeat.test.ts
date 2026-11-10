@@ -13,7 +13,7 @@ it('renews an idle scoped lease beyond its expiry window and stops before daemon
   mocks.heartbeat.mockResolvedValue({});
   const binding = { client: { stateDir: '/worker-2', tenant: 'e2e', runId: 'run', leaseId: 'lease-2' }, deviceId: 'device-2' };
   const stop = await startHeartbeat(binding, vi.fn());
-  expect(mocks.create).toHaveBeenCalledWith({ ...binding.client, daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
+  expect(mocks.create).toHaveBeenCalledWith({ ...binding.client, session: expect.stringMatching(/^e2e-lease-[0-9a-f]{8}$/), daemonBaseUrl: '', daemonAuthToken: '', daemonTransport: 'auto' });
   await vi.advanceTimersByTimeAsync(140_000);
   expect(mocks.heartbeat).toHaveBeenCalledTimes(8);
   expect(mocks.heartbeat).toHaveBeenLastCalledWith({ leaseId: 'lease-2', ttlMs: 60_000, signal: expect.any(AbortSignal) });
@@ -26,7 +26,7 @@ it('reports transient renewal failures, retries, and cancels an in-flight beat o
   vi.useFakeTimers();
   const log = vi.fn();
   mocks.heartbeat.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('transport unavailable'));
-  const stop = await startHeartbeat({ client: { leaseId: 'lease' }, deviceId: 'device' }, log);
+  const stop = await startHeartbeat({ client: { stateDir: '/worker', leaseId: 'lease' }, deviceId: 'device' }, log);
   await vi.advanceTimersByTimeAsync(20_000);
   expect(log).toHaveBeenCalledWith('driver lease renewal failed: transport unavailable');
   let signal: AbortSignal | undefined;
