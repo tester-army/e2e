@@ -301,6 +301,51 @@ scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach
 test's `app.open()` relaunches the app, so restoring the setting is enough.
 </Accordion>
 
+<Accordion title="Photos for a picker test">
+`device` can't add photos to the library, so add them from the host before
+`app.open()`: `xcrun simctl addmedia` on an iOS simulator, `adb push` and a
+media scan on an Android emulator (Android 10 or later). `deviceId` is the
+simulator's UDID or the emulator's adb serial:
+
+```ts
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { test, type Device } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+const receipt = resolve(import.meta.dirname, 'receipt.jpg');
+
+function addPhoto(device: Device, file: string): void {
+  const { platform, deviceId } = device.unstable_raw;
+  if (platform === 'ios') {
+    execFileSync('xcrun', ['simctl', 'addmedia', deviceId, file]);
+    return;
+  }
+  execFileSync('adb', ['-s', deviceId, 'push', file, '/sdcard/Pictures/receipt.jpg']);
+  execFileSync('adb', ['-s', deviceId, 'shell', 'content', 'call', '--method', 'scan_volume', '--uri', 'content://media', '--arg', 'external_primary']);
+}
+
+test('attaches the receipt from the photo library', async ({ app, device, screen }) => {
+  addPhoto(device, receipt);
+  await app.open();
+  await screen.getByLabel('Choose photo').tap();
+  await screen.getByRole('image', /^Photo, /).first().tap();
+  await expect(screen.getByText(/^Receipt attached/)).toBeVisible();
+});
+```
+
+On iOS the system picker runs outside the app, but its photos are in the
+screen tree, newest first, each an `image` named `Photo, ` and the date it
+was taken. Android's picker is another app with its own names, so read its
+tree in the trace before you write that locator.
+
+`addmedia` adds a copy on every run, so a reused simulator collects
+identical photos: `first()` still picks the newest, but an agent step can't
+tell them apart. Erase the simulator (`xcrun simctl erase`) or add the photo
+once per simulator. `adb push` to the same path replaces the file, so the
+emulator keeps one.
+</Accordion>
+
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
 emulator (a Pixel Fold profile, or the generic "7.6in Foldable") in a hinge
