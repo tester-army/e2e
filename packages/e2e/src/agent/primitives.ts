@@ -21,6 +21,7 @@ import { isRuntimeHardStop, BLOCKABLE_CODES, type StepExecutorContext, type Step
 import { cacheTokenFields, readCost } from './model/sdk.ts';
 import { OperationQueue } from './operation-queue.ts';
 import { imagePointToViewport, POINT_VERBS } from './point-tap.ts';
+import { SAMPLE_NAMES, SAMPLE_PREFIX } from './sample-files.ts';
 import { ScreenPresenter, type ScreenOutput, type ScreenUpdateOptions } from './screen-update.ts';
 
 /** Codes the model may pick when concluding; runtime codes are runtime-assigned. */
@@ -523,7 +524,7 @@ export function grammarTools(
   if (verbs.has('upload')) {
     tools['upload'] = screenTool({
       description:
-        'Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Paths are relative to the project root, e.g. "fixtures/photo.png"; use the paths the step gives you. A file outside the project, a hidden one, or one that does not exist is refused.',
+        `Attach one or more files to a file input node, or to a control that opens a file chooser when clicked (an upload button). Use the project-relative paths the step gives you; when it names none, attach a sample: ${SAMPLE_NAMES.map((name) => `${SAMPLE_PREFIX}${name}`).join(', ')}. Any other file outside the project, a hidden one, or one that does not exist is refused.`,
       inputSchema: z.object({ target, files: z.array(z.string().min(1)).min(1) }),
       execute: ({ target: id, files }) =>
         acting(

@@ -44,6 +44,11 @@ here.
   [Lightpanda](https://lightpanda.io) from `LIGHTPANDA_PATH` (or `PATH`),
   run by hand to see which features its nightly covers; the docs page
   `integrations/lightpanda` lists the result.
+- `e2e.scroll.config.ts` + `tests-scroll/` — `scroll_to` by text over the
+  windowed `/scroll` page, driven by a scripted executor, so it needs no model.
+  Its own config, since it makes the default agent the scripted executor; it
+  runs as `test:scroll`, its own CI step, and never inside `test`, whose
+  forwarded arguments (`--changed-since`) would not reach it.
 - `e2e.agent.config.ts` + `tests-agent/` — opt-in agentic suite against the
   playground: `agent.act` flows, assisted polling, judgments,
   schema-validated extraction with zod, and the pixel tools on the canvas

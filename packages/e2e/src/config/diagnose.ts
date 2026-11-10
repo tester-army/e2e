@@ -70,8 +70,26 @@ interface Manifest {
  * its own message.
  */
 export function explainModuleError(cause: unknown, importer: string): string {
-  const message = cause instanceof Error ? cause.message : String(cause);
-  return withHint(`${message}${syntaxErrorLocation(cause, message)}`, moduleErrorHint(message, (cause as { code?: unknown } | null)?.code, importer));
+  const built = bunBuildErrors(cause);
+  const message = built ?? (cause instanceof Error ? cause.message : String(cause));
+  const located = built === undefined ? `${message}${syntaxErrorLocation(cause, message)}` : message;
+  return withHint(located, moduleErrorHint(message, cause, importer));
+}
+
+/**
+ * `file:line:column: message` for each error Bun's transpiler raised, one
+ * per line: a `BuildMessage` keeps its position beside a message that names
+ * none, and several arrive as an AggregateError of them. Undefined for any
+ * other error.
+ */
+function bunBuildErrors(cause: unknown): string | undefined {
+  const errors: readonly unknown[] = cause instanceof AggregateError ? cause.errors : [cause];
+  const lines = errors.map((error) => {
+    const position = (error as { position?: { file?: unknown; line?: unknown; column?: unknown } | null } | null)?.position;
+    if (!(error instanceof Error) || typeof position?.file !== 'string' || typeof position.line !== 'number' || typeof position.column !== 'number') return undefined;
+    return `${position.file}:${position.line}:${position.column}: ${error.message}`;
+  });
+  return lines.length > 0 && lines.every((line) => line !== undefined) ? lines.join('\n') : undefined;
 }
 
 /**
@@ -87,9 +105,12 @@ function syntaxErrorLocation(cause: unknown, message: string): string {
   return ` (${file}:${located[2]})`;
 }
 
-function moduleErrorHint(message: string, code: unknown, importer: string): string {
+function moduleErrorHint(message: string, cause: unknown, importer: string): string {
+  const { code, specifier } = (cause ?? {}) as { code?: unknown; specifier?: unknown };
   if (code === 'ERR_MODULE_NOT_FOUND') {
     const missing = /Cannot find (?:package|module) '([^']+)'/.exec(message)?.[1];
+    // Bun reports an unresolved `#` import as a missing package, and names the whole specifier beside the message.
+    if (missing?.startsWith('#') === true) return packageImportHint(typeof specifier === 'string' ? specifier : missing, importer);
     if (missing !== undefined && !missing.startsWith('.') && !path.isAbsolute(missing)) {
       return missingPackageHint(packageNameOf(missing), importer);
     }
@@ -100,7 +121,26 @@ function moduleErrorHint(message: string, code: unknown, importer: string): stri
     return match === null ? '' : subpathHint(match[1]!, match[2]!);
   }
   const missingExport = /The requested module '([^']+)' does not provide an export named '([^']+)'/.exec(message);
-  return missingExport === null ? '' : missingExportHint(missingExport[1]!, missingExport[2]!);
+  if (missingExport !== null) return missingExportHint(missingExport[1]!, missingExport[2]!);
+  // Bun names the module's file rather than the specifier the import wrote.
+  const bunMissingExport = /^Export named '([^']+)' not found in module '([^']+)'/.exec(message);
+  return bunMissingExport === null ? '' : missingExportHint(ownEntrySpecifier(bunMissingExport[2]!) ?? bunMissingExport[2]!, bunMissingExport[1]!);
+}
+
+/** This package's root, where its `dist` (or, in this repository, `src`) sits. */
+const PACKAGE_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+
+/** The specifier that imports `file` when it is one of e2e's entries with export advice (`e2e`, `e2e/agent`); undefined for any other file. */
+function ownEntrySpecifier(file: string): string | undefined {
+  const entry = /^(?:dist|src)\/(.+)\.[jt]s$/.exec(path.relative(PACKAGE_ROOT, file).replaceAll('\\', '/'))?.[1];
+  if (entry === 'index') return 'e2e';
+  return entry === 'agent/public' ? 'e2e/agent' : undefined;
+}
+
+/** For a `#` import nothing resolved: where the project maps it. */
+function packageImportHint(specifier: string, importer: string): string {
+  const manifest = nearestManifest(path.dirname(importer));
+  return `${specifier} is a package import: map it to a file under "imports" in ${manifest?.path ?? 'the nearest package.json'}`;
 }
 
 /** `@scope/name/subpath` and `name/subpath` reduce to the package that would be installed. */

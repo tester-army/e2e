@@ -19,10 +19,13 @@ screen where it failed.
 ## Setup
 
 The server ships with the project's `e2e` dependency, separately from the
-skills-only plugin. `e2e init` offers to register it for Claude Code and
-Cursor. Reuse an existing registration; when adding one, use the project's
-config so it starts in the project it drives.
+skills-only plugin. `e2e init` offers to register it for Claude Code,
+Cursor, and Codex. Reuse an existing registration; when adding one, use the project's
+config so it starts in the project it drives. Install dependencies and start
+the MCP client in that directory so `npx` uses the installed e2e version. In a
+Bun project, use `bunx` wherever this file says `npx`.
 
+For an existing setup, `e2e init --yes --skills none --mcp .codex/config.toml` adds Codex.
 Codex reads `.codex/config.toml` in a trusted project:
 
 ```toml
@@ -55,7 +58,7 @@ Flags: `--config <path>` names the default config file, `--target <name>`
 fixes the target every session opens on, `--headed` shows the browser or
 simulator when the engine supports it in sessions that do not set `headed`
 (sessions are headless by default, as in `e2e run`), `--max-sessions <n>`
-sets how many sessions may be open at once (default 4, 1 through 16).
+sets how many sessions may be open at once (default 4, 1 through 16; one on Bun).
 
 ## Tools
 
@@ -77,7 +80,7 @@ The catalog, per session:
 | Catalog tool | Does |
 | --- | --- |
 | `observe` | A fresh observation: one node per line as `#id role "name" ...`, plus the current path. On the web engine a link's `href` is its path on the app URL's origin, else origin and path (`mailto:` and `tel:` keep their scheme, `blob:` its inner origin and path); `?…` and `#…` mark a dropped query or fragment, `data:…` and `javascript:…` an inline payload, a trailing `…` a target cut at 256 characters. |
-| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `resize_viewport`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files`; `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
+| `tap`, `double_tap`, `long_press`, `right_click`, `hover`, `type`, `press`, `select`, `check`, `scroll`, `scroll_to`, `drag`, `upload`, `navigate`, `back`, `resize_viewport`, `dismiss_keyboard` | The grammar verbs, as the testing agent gets them: `check` takes `checked`, `drag` a `to` node, `upload` project-relative `files` or `sample:` files (no test line for those); `dismiss_keyboard` comes with device engines. On an engine that declares `tapModifiers`, `tap`, `double_tap`, and `right_click` take an optional `modifiers` list (`Shift`, `Control`, `Alt`, `Meta`, `ControlOrMeta`) to hold keys for the click. Each reports what changed on screen and, after its lead, the test line that repeats it (`Test line: await screen.getByRole("button", "Save").tap();`) or `No test line:` and why; `observe` shows the whole screen. A verb the engine cannot honor is not listed and fails with `UNSUPPORTED_CAPABILITY`. |
 | `type_secret` | Fills a configured secret by name: a credential's password into a password field, a `secrets` entry into any editable input; the plaintext never reaches the agent, and its test line names the credential or secret (`fill(credentials.user(name).password)`, `fill(secrets.get(name))`). Listed when the config declares `credentials` or `secrets` and the engine can fill secrets. |
 | `locate` | Tries a semantic locator with exactly one of `role`, `text`, `label`, `placeholder`, `testId` (`name` only with `role`; `exact` optional; anything else is `INVALID_ARGUMENT`) and returns how many nodes match, which, and the `screen.*` call to write. |
 | `run_code` | Runs test statements (`code`, as a test body writes them) on the session's `screen` and `app` with a test's waits, exactly-one rule, and matchers. Stops at the first failure and returns each statement's pass, failure (code and message), or read value, then what changed on screen. Each statement waits at most `timeout` ms (default 5000), but `timeout` doesn't stop a regex mid-match: avoid nested quantifiers such as `(\w+\s?)*`. The code is parsed, never evaluated as JavaScript: statements start with `screen`, `app`, or `expect(locator)`; arguments are literals, regexes, arrays, objects, locators, and `credentials.user(name).username`. A secret (`credentials.user(name).password`, `secrets.get(name)`) goes only into `fill`, under `type_secret`'s checks. Engine fixtures (`browser`, `device`), `app.screenshot`, and `toHaveScreenshot` are left out. Anything else is `INVALID_ARGUMENT` quoting the refused code with its line and column, and nothing runs. Reads and matchers see `<secret:name>` where a secret value is. When the config declares a secret or credential, a locator found by part of a text (a regex, an `exact` other than `true`, `hasText`) is `POLICY_DENIED` before anything runs: find it by its exact text. A matcher that expects `<secret:name>` is `INVALID_ARGUMENT`. The statements that pass, except reads, join `test_lines` as written. |

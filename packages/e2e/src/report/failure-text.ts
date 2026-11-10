@@ -250,6 +250,12 @@ export function appErrorLines(told: AttemptView): string[] {
   return [...shown.map(({ label, text }) => `App ${label}: ${code(text, MAX_DETAIL_CHARS)}`), ...(more === undefined ? [] : [more])];
 }
 
+/** The failure screenshot artifact of the told attempt, if one was recorded. */
+export function failureScreenshot(told: AttemptView): ReportArtifact | undefined {
+  const id = told.failure?.screenshot;
+  return id === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === id);
+}
+
 /** Artifacts of the told attempt by id, the failure's own first, one per kind. */
 export function evidenceOf(told: AttemptView): ReportArtifact[] {
   const byId = new Map(told.artifacts.map((artifact) => [artifact.id, artifact]));
@@ -609,7 +615,7 @@ export function renderTracePage(report: Report1Document, result: ReportResult, f
       ...(failure.nodes === undefined ? [] : [plural(failure.nodes, 'node')]),
     ];
     if (where.length > 0) lines.push(`${where.join(' · ')}  `);
-    const shot = failure.screenshot === undefined ? undefined : told.artifacts.find((artifact) => artifact.id === failure.screenshot);
+    const shot = failureScreenshot(told);
     const shotHref = shot?.path === undefined ? undefined : pageHref(shot.path, options);
     if (shotHref !== undefined) lines.push('', `!${link('screenshot at failure', shotHref)}`, '');
     if (failure.candidates !== undefined && failure.candidates.length > 0) {

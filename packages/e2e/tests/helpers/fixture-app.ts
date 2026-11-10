@@ -15,6 +15,7 @@ import { HOME_PAGES } from './fixture-pages/home.ts';
 import { LIVE_PAGES } from './fixture-pages/live.ts';
 import type { FixtureState, PageRenderer } from './fixture-pages/page.ts';
 import { RECORD_PAGES, renderCompany, renderRecord } from './fixture-pages/records.ts';
+import { SCROLL_PAGES } from './fixture-pages/scroll.ts';
 
 export interface FixtureApp {
   readonly url: string;
@@ -24,6 +25,8 @@ export interface FixtureApp {
    * replay cache compares query and all, stays the one the recording saw.
    */
   setVariant(variant: string | null): void;
+  /** Lets the `/moves?key=<key>` page move its URL, at the moment a test chooses. */
+  releaseMove(key: string): void;
   close(): Promise<void>;
 }
 
@@ -36,6 +39,7 @@ const ROUTES: Record<string, PageRenderer> = {
   ...GESTURE_PAGES,
   ...LIVE_PAGES,
   ...RECORD_PAGES,
+  ...SCROLL_PAGES,
 };
 
 /** Pages whose path carries an id or a name. */
@@ -116,6 +120,11 @@ const RESPONDERS: Record<string, Responder> = {
     response.writeHead(200, { 'content-type': 'text/plain', 'content-disposition': 'attachment; filename="headers.txt"' });
     response.end(`authorization: ${request.headers.authorization ?? ''}\n`);
   },
+  '/api/moves': (request, response, state) => {
+    const key = new URL(request.url ?? '/', 'http://localhost').searchParams.get('key') ?? '';
+    response.writeHead(state.movesReleased.has(key) ? 200 : 204);
+    response.end();
+  },
   '/api/flags': (_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ betaBoard: false }));
@@ -166,7 +175,7 @@ function serve(request: IncomingMessage, response: ServerResponse, state: Fixtur
 
 /** Starts the fixture app on an ephemeral loopback port. */
 export async function startFixtureApp(): Promise<FixtureApp> {
-  const state: FixtureState = { searches: 0, feedRequests: 0, todos: new Set(), variant: null };
+  const state: FixtureState = { searches: 0, feedRequests: 0, todos: new Set(), variant: null, movesReleased: new Set() };
   const server: Server = createServer((request, response) => serve(request, response, state));
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address() as AddressInfo;
@@ -174,6 +183,9 @@ export async function startFixtureApp(): Promise<FixtureApp> {
     url: `http://127.0.0.1:${port}`,
     setVariant: (variant) => {
       state.variant = variant;
+    },
+    releaseMove: (key) => {
+      state.movesReleased.add(key);
     },
     close: () =>
       new Promise<void>((resolve, reject) => {

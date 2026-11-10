@@ -73,7 +73,7 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
-| `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. |
+| `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. Screen swipes in tests wait out the remaining budget before scrolling. |
 
 Every optional `mobile()` value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` straight through, with no conditional
@@ -89,8 +89,8 @@ spread.
   (`ABOUT`, `android:id/title`) are the node's `testId`, what `getByTestId`
   matches.
 - **Actions**: tap, double tap, long press, fill, clear, check/uncheck (when
-  the tree exposes the checked state; Android switches do not), focus on
-  editable fields, `Enter`, single-character keys, swipe within a node, drag.
+  the tree exposes the checked state, as switches do on both platforms),
+  focus on editable fields, `Enter`, single-character keys, swipe within a node, drag.
   `selectOption`, `setInputFiles`, `scrollIntoView`, `secondaryTap`,
   `modifiers` on `tap` or `doubleTap`, focus on a control, and other keys fail with
   `UNSUPPORTED_CAPABILITY`.
@@ -167,11 +167,11 @@ pack dispatches each call to the engine whose attempt is running. Tools are
 scoped to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one agents entry's `tools`.
 
+## Custom tools that use agent-device
+
 `deviceSession(...engines)` gives a custom tool of your own the running
 attempt's agent-device session, with its client bound to the engine's daemon,
 lease, and session. Use it for agent-device commands the pack has no tool for.
-
-## Custom tools that use agent-device
 
 Import agent-device's types and error helpers for those tools from
 `@e2e-dev/mobile/agent-device`, the copy this engine uses, instead of adding

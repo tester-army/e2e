@@ -2,7 +2,7 @@
  * Adapted from microsoft/playwright tests/page/page-screenshot.spec.ts at v1.64.1.
  * Copyright Microsoft Corporation. Licensed under the Apache License 2.0 (see ../app/playwright/LICENSE).
  * Rewritten against the e2e public API: `page.screenshot()` is `app.screenshot()`, read back with
- * pngjs, and a `mask` is the `toHaveScreenshot` option, compared against the same viewport with
+ * @napi-rs/image, and a `mask` is the `toHaveScreenshot` option, compared against the same viewport with
  * boxes of the mask color painted over the masked elements. Playwright's golden images belong to
  * its own renderer setup, so a golden comparison becomes a check of the pixels it shows.
  */
@@ -51,7 +51,7 @@ import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { test, type Browser, type WebApp } from '@e2e-dev/web';
 import { expect } from 'e2e';
-import { PNG } from 'pngjs';
+import { JsColorType, Transformer } from '@napi-rs/image';
 import { content, CROSS, PREFIX } from './helpers.ts';
 
 const stored = new Set<string>();
@@ -63,13 +63,31 @@ interface MaskTarget {
   readonly index: number;
 }
 
-/** The PNG at `file`, decoded. */
-function readPng(file: string): PNG {
-  return PNG.sync.read(readFileSync(file));
+/** A decoded screenshot: 8-bit RGBA, rows top to bottom. */
+interface Rgba {
+  readonly width: number;
+  readonly height: number;
+  readonly data: Uint8Array;
+}
+
+/** The RGB or RGBA PNG at `file`, decoded to RGBA. */
+function readPng(file: string): Rgba {
+  const image = new Transformer(readFileSync(file));
+  const { width, height, format, colorType } = image.metadataSync();
+  if (format !== 'png') throw new Error(`${file} is not a PNG: the bytes are ${format}`);
+  const raw = image.rawPixelsSync();
+  if (colorType === JsColorType.Rgba8) return { width, height, data: raw };
+  if (colorType !== JsColorType.Rgb8) throw new Error(`${file} is neither an RGB nor an RGBA PNG: color type ${colorType}`);
+  const data = new Uint8Array(width * height * 4);
+  for (let from = 0, to = 0; from < raw.length; from += 3, to += 4) {
+    data.set(raw.subarray(from, from + 3), to);
+    data[to + 3] = 255;
+  }
+  return { width, height, data };
 }
 
 /** The red, green, and blue of the pixel at (`x`, `y`). */
-function rgb(png: PNG, x: number, y: number): [number, number, number] {
+function rgb(png: Rgba, x: number, y: number): [number, number, number] {
   const offset = (y * png.width + x) * 4;
   return [png.data[offset]!, png.data[offset + 1]!, png.data[offset + 2]!];
 }
@@ -80,12 +98,12 @@ function near(actual: readonly number[], expected: readonly number[], slack = 3)
 }
 
 /** The pixels of `box` cut out of `png`, rounded out to whole pixels. */
-function crop(png: PNG, box: { x: number; y: number; width: number; height: number }): Buffer {
+function crop(png: Rgba, box: { x: number; y: number; width: number; height: number }): Buffer {
   const left = Math.floor(box.x);
   const top = Math.floor(box.y);
   const right = Math.ceil(box.x + box.width);
   const bottom = Math.ceil(box.y + box.height);
-  const rows: Buffer[] = [];
+  const rows: Uint8Array[] = [];
   for (let y = top; y < bottom; y++) rows.push(png.data.subarray((y * png.width + left) * 4, (y * png.width + right) * 4));
   return Buffer.concat(rows);
 }
@@ -256,7 +274,7 @@ test.describe('page screenshot', { requires: ['browser'], tags: ['playwright'] }
     }
 
     /** Whether the line of `step` shows in `screenshot`: the canvas sits at the body margin, 8 pixels in. */
-    function hasLine(screenshot: PNG, step: number): boolean {
+    function hasLine(screenshot: Rgba, step: number): boolean {
       const y = 8 + step * 100;
       return [y - 1, y].some((row) => row >= 8 && rgb(screenshot, 8 + 150, row)[0] < 200);
     }

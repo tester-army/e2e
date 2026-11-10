@@ -68,10 +68,19 @@ Flutter, and .NET MAUI, each a standalone project with a passing suite.
 | [`@e2e-dev/lightpanda`](https://www.npmjs.com/package/@e2e-dev/lightpanda) | Lightpanda, the open-source headless browser, started per run for the web engine. |
 | [`@e2e-dev/smol`](https://www.npmjs.com/package/@e2e-dev/smol) | smol machines browsers for the web engine: by default, each attempt branches a warm Chromium microVM. |
 | [`@e2e-dev/testmu`](https://www.npmjs.com/package/@e2e-dev/testmu) | TestMu AI (formerly LambdaTest) hosted Android emulators, iOS simulators, and real devices for the mobile engine, and hosted Chrome and Edge for the web engine. |
+| [`@e2e-dev/e2b`](https://www.npmjs.com/package/@e2e-dev/e2b) | E2B sandboxes: Android 16 for the mobile engine, and Chromium for the web engine. |
 | [`@e2e-dev/browserstack`](https://www.npmjs.com/package/@e2e-dev/browserstack) | BrowserStack App Automate real Android and iOS devices for the mobile engine. |
 | [`@e2e-dev/limrun`](https://www.npmjs.com/package/@e2e-dev/limrun) | Limrun hosted iOS simulators and Android emulators for mobile tests. |
 | [`@e2e-dev/eas`](https://www.npmjs.com/package/@e2e-dev/eas) | Expo Simulators hosted iOS simulators and Android emulators for the mobile engine. |
 | [`@e2e-dev/github`](https://www.npmjs.com/package/@e2e-dev/github) | Reporter that posts results as a pull request comment. |
+
+### Community
+
+Packages built on e2e's public API and maintained outside this repository.
+
+| Package | What it does |
+| --- | --- |
+| [`e2e-cige`](https://www.npmjs.com/package/e2e-cige) | [CIGE](https://www.amazon.science/publications/cige-an-agentic-ai-test-case-standard) test cases (Context, Intent, Guardrails, Execution) as JSON, run through `agent.act` and `agent.assert`, with run summaries and checks for agents that repair failing tests. Source: [vivekkrishna/cige](https://github.com/vivekkrishna/cige). |
 
 ## Documentation
 

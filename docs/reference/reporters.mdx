@@ -75,6 +75,11 @@ reporters: ['list', 'junit'],
 - It reads `run.report`, writes `junit.xml` beside `run.reportPath`, and
   returns one row naming the file. It is the smallest complete example of a
   reporter.
+- When a test that failed, timed out, passed only on a retry, or failed as
+  [`test.fail`](/reference/test#fail) expected recorded a failure screenshot, its `<testcase>` links it as
+  `<system-out>[[ATTACHMENT|<path>]]</system-out>`, which GitLab CI shows in
+  the pipeline test report. The path is relative to `$CI_PROJECT_DIR`, or to
+  the project root when that is unset; screenshots outside it get no link.
 - A second Ctrl-C still lets it write its file, so no file from the previous
   run is left beside the new report.
 

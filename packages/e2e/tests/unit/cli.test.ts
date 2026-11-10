@@ -338,6 +338,62 @@ describe('e2e run argument parsing', () => {
     expect(watchMock).not.toHaveBeenCalled();
   });
 
+  it('runs --step in a terminal on one worker, with the step hook', async () => {
+    const ci = process.env.CI;
+    const tty = { stdin: process.stdin.isTTY, stdout: process.stdout.isTTY };
+    try {
+      delete process.env.CI;
+      process.stdin.isTTY = true;
+      process.stdout.isTTY = true;
+      await invoke('run', '--step');
+      const options = lastRunOptions();
+      expect(options.workers).toBe(1);
+      expect(options.beforeStep).toBeTypeOf('function');
+    } finally {
+      process.stdin.isTTY = tty.stdin;
+      process.stdout.isTTY = tty.stdout;
+      if (ci === undefined) delete process.env.CI;
+      else process.env.CI = ci;
+    }
+  });
+
+  it('refuses --step in CI and without a terminal, exit code 2, without running', async () => {
+    const ci = process.env.CI;
+    const tty = { stdin: process.stdin.isTTY, stdout: process.stdout.isTTY };
+    try {
+      process.env.CI = '1';
+      await invoke('run', '--step');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('--step waits for a key at every step, so it is refused in CI');
+      delete process.env.CI;
+      process.exitCode = undefined;
+      process.stdin.isTTY = false;
+      await invoke('run', '--step');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('stdin and stdout must both be one');
+      process.exitCode = undefined;
+      process.stdin.isTTY = true;
+      process.stdout.isTTY = true;
+      await invoke('run', '--step', '--workers', '2');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('cannot be combined with --workers above 1');
+      process.exitCode = undefined;
+      await invoke('run', '--step', '--watch');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('cannot be combined with --watch');
+      process.exitCode = undefined;
+      await invoke('run', '--step', '--reporter', 'json');
+      expect(process.exitCode).toBe(2);
+      expect(written(stderrSpy)).toContain('--step cannot be combined with --reporter json');
+    } finally {
+      process.stdin.isTTY = tty.stdin;
+      process.stdout.isTTY = tty.stdout;
+      if (ci === undefined) delete process.env.CI;
+      else process.env.CI = ci;
+    }
+    expect(runMock).not.toHaveBeenCalled();
+  });
+
   it('rejects an invalid --tag-mode with exit code 2 and never runs', async () => {
     await invoke('run', '--tag-mode', 'sometimes');
     expect(runMock).not.toHaveBeenCalled();
@@ -651,10 +707,10 @@ describe('e2e init argument parsing', () => {
   });
 
   it('merges repeated --skills and --mcp flags like comma-separated ones', async () => {
-    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json');
+    await invoke('init', '--yes', '--skills', '.agents/skills', '--skills', '.claude/skills', '--mcp', '.cursor/mcp.json', '--mcp', '.mcp.json,.codex/config.toml');
     expect(initMock).toHaveBeenCalledExactlyOnceWith(
       process.cwd(),
-      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json'] }),
+      expect.objectContaining({ skills: ['.agents/skills', '.claude/skills'], mcp: ['.cursor/mcp.json', '.mcp.json', '.codex/config.toml'] }),
     );
   });
 
@@ -680,7 +736,7 @@ describe('e2e init argument parsing', () => {
     [['--gateway', 'anthropic'], 'Allowed choices are vercel, openrouter, openai-compatible, chatgpt, copilot, opencode-console, grok, none.'],
     [['--skills', '.cursor/skills'], 'error: --skills: unknown skill directory ".cursor/skills"; expected .agents/skills, .claude/skills, none'],
     [['--skills', ''], 'must name at least one skill directory'],
-    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, none'],
+    [['--mcp', 'claude'], 'error: --mcp: unknown MCP config file "claude"; expected .mcp.json, .cursor/mcp.json, .codex/config.toml, none'],
     [['--mcp', 'none,.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
     [['--mcp', 'none', '--mcp', '.mcp.json'], 'error: --mcp: none cannot be combined with other values'],
     [['--skills', '.claude/skills', '--skills', 'none'], 'error: --skills: none cannot be combined with other values'],
@@ -844,6 +900,7 @@ describe('e2e --version and --help', () => {
       '--strict-cache',
       '-u',
       '-w',
+      '--step',
       '--reporter',
       '--output',
       '--cache-dir',

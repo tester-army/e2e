@@ -25,8 +25,10 @@ step with no recording.
 
 ## Set it up
 
-`e2e init` offers to register the server in `.mcp.json` (Claude Code) and
-`.cursor/mcp.json` (Cursor). By hand:
+`e2e init` offers to register the server in `.mcp.json` (Claude Code),
+`.cursor/mcp.json` (Cursor), and `.codex/config.toml` (Codex). Install the
+project dependencies and start the MCP client in the project directory so
+`npx` (`bunx` in a Bun project) uses the installed e2e version. By hand:
 
 <Tabs>
   <Tab title="Claude Code">
@@ -45,8 +47,9 @@ step with no recording.
     </CodeGroup>
   </Tab>
   <Tab title="Codex">
-    Add the server to `.codex/config.toml`, trust the project, and start a
-    new session:
+    Run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI,
+    or add the entry below. Trust the project and start a new Codex session.
+    `codex mcp list`, run in the project, shows the registration:
 
     ```toml title=".codex/config.toml"
     [mcp_servers.e2e]

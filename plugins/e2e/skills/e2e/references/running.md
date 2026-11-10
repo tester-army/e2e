@@ -15,7 +15,7 @@ npx e2e run [files...] [options]   # run tests
 npx e2e explore [goal] [options]   # explore toward a goal without a test file (topic explore)
 npx e2e list [files...] [options]  # print what run would select
 npx e2e doctor [--check-model]     # can a run start: config, engine setup, models;
-                                   # --reporter json for a host, exit 2 on a failed check
+                                   # --json for a host, exit 2 on a failed check
 npx e2e init [directory] [--yes]   # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill; topics: setup, writing-tests, agent,
                                    # running, explore, debugging, mcp, bug-bash
@@ -58,6 +58,7 @@ npx e2e telemetry [disable|enable] # anonymous usage telemetry: status or switch
 | `-u`, `--update-snapshots` | Write the stored screenshots `toHaveScreenshot` finds missing or different, and pass. |
 | `-w`, `--watch` | Run, then run again when a test file, a source file beside the tests, or the config is saved, or a key asks: `a` or enter all, `r` the current filters, `f` failed, `u` update snapshots, `p` and `t` filter by file and title, `q` quit; a key during a run cancels it. Refused in CI and with `--reporter json`. |
 | `--pass-with-no-tests` | Exit 0, not `NO_TESTS`, when nothing matches; a run with nothing to run starts no engine or app. |
+| `--step` | Run the first step, then hold each later one until a key at its prompt: Enter runs it, `n` the rest of the test, `a` the rest of the run, `h` lists the keys, `q` stops (exit 130). For a person at a terminal, not an agent: refused in CI, with `--watch`, `--workers` above 1, and the json reporter. |
 | `--debug` | Phase timings and an agent step table on stderr; transcripts as artifacts. |
 | `--ai-trace` | Every model call except a test filter's, to `<output>/ai-trace.json`. |
 | `--trace [mode]`, `--video [mode]` | Which tests keep a trace page (`<output>/results/<test>/trace.md`), or which attempts record a video (WebM on browsers, MP4 on devices), over the config and every target: bare is `on` (`--trace` then pages every test, passing ones too); `--trace off` writes none; `retain-on-failure` keeps only failures; `on-first-retry` keeps first retries, `on-all-retries` every retry. A test's own `trace` or `video` still wins; targets whose engine cannot record video are skipped with a notice. Both are greedy: write `--video=<mode>` or put test files first. The failure recap names the trace page and the video. |
@@ -164,7 +165,10 @@ hosted service's video by URL.
   run: a signal, `--max-failures`, `--max-duration`, a run-level error; not a failure), `flaky`, and `skipped` add up
   to `selected`; `discovered - selected` were left out.
 - `junit`: `junit.xml` for CI summaries; `--reporter list,junit` keeps the
-  terminal output.
+  terminal output. A case with a failure screenshot links it as
+  `<system-out>[[ATTACHMENT|<path>]]</system-out>`, relative to
+  `$CI_PROJECT_DIR` (else the project root), which GitLab shows in the
+  test report.
 - Every run that reaches its tests also writes a trace page per failed,
   timed-out, interrupted, or flaky test, `results/<test>/trace.md` (the
   `trace` mode, default `retain-on-failure`): every step with what
@@ -236,6 +240,10 @@ jobs:
           node-version: 26 # Node >= 24.8, or >= 22.22.3 on 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('pnpm-lock.yaml') }}
       - run: pnpm exec e2e-web install chromium --with-deps
       - run: npx e2e run --reporter list,junit
         env:

@@ -106,14 +106,16 @@ export interface MobileOptions {
    * so this budget is the only thing that keeps a test from tapping a point
    * the control has not reached. Unmoved controls are acted on immediately
    * only when keyboard visibility is unchanged. Opening or closing the
-   * keyboard also uses the remaining budget. Raise it for slower transitions.
+   * keyboard also uses the remaining budget. Screen swipes in tests wait out
+   * the remaining budget before scrolling. Raise it for slower transitions.
    */
   readonly transition?: number | undefined;
   /**
    * Whether a video recording draws agent-device's touch indicator where a
    * test tapped. Default `true`. `false` records the plain screen, and skips
    * the pass that draws the indicator once the recording stops: on a hosted
-   * daemon that pass can outlast the attempt's `cleanupTimeout`.
+   * daemon such as Expo Simulators' that pass can outlast the attempt's
+   * `cleanupTimeout`.
    */
   readonly videoTouches?: boolean | undefined;
 }

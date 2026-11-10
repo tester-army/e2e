@@ -4,11 +4,13 @@
  * each at its own indent, so nothing here knows where the line lands.
  */
 
+import type { HeldStep, StepPrompt } from '../run/step-hold.ts';
 import type { StepRecord } from '../run/steps.ts';
 import { modelLabel } from '../config/agent.ts';
 import { sanitizeText, truncateUtf8 } from '../internal/errors.ts';
 import { collapseText } from '../internal/text.ts';
 import {
+  bounded,
   F_CHECK,
   F_CROSS,
   fitColumns,
@@ -68,6 +70,59 @@ export function stepLine(pc: Colors, step: FinishedStep, options: StepLineOption
       ? undefined
       : options.maxWidth - visibleWidth(head) - visibleWidth(tail) - LABEL_CHROME;
   return `${head}${quotedLabel(step.label, room)} ${tail}`;
+}
+
+/** What Enter does at an `e2e run --step` prompt: it runs every step on it. */
+function enterDoes(prompt: StepPrompt): string {
+  return prompt.steps.length === 1 ? 'run this step' : `run these ${prompt.steps.length} steps`;
+}
+
+/** The prompt's other keys, in `--watch`'s words. */
+const STEP_KEYS = [
+  ['n', 'run to the next test'],
+  ['a', 'run all without stopping'],
+  ['q', 'quit'],
+] as const;
+
+/** Where a held step was called from, as `file:line`, or nothing. */
+function promptSource(step: HeldStep): string {
+  const { source } = step;
+  return source === undefined ? '' : `${bounded(source.file)}:${source.line}`;
+}
+
+/**
+ * A held step's prompt for the live window, under its test: the steps
+ * waiting, one row each, then what to press, as `--watch` says it. Labels
+ * are clipped so each call site stays on its row. The keys are one short
+ * line, or every key once `h` asked for them.
+ */
+export function stepPromptRows(pc: Colors, prompt: StepPrompt, options: { readonly maxWidth: number }): string[] {
+  const rows = prompt.steps.map(({ step, number }) => {
+    const head = `${pc.bold(pc.cyan(`▶ step ${number}`))}  ${pc.dim(step.api)} `;
+    const source = promptSource(step);
+    const tail = source === '' ? '' : `  ${pc.dim(source)}`;
+    const room = options.maxWidth - visibleWidth(head) - visibleWidth(tail) - LABEL_CHROME;
+    return `${head}${quotedLabel(step.label, room)}${tail}`;
+  });
+  const press = (key: string, does: string): string => `${pc.dim('press')} ${pc.bold(key)} ${pc.dim(`to ${does}`)}`;
+  const enter = press('enter', enterDoes(prompt));
+  const keys = prompt.help
+    ? [enter, ...STEP_KEYS.map(([key, does]) => press(key, does)), press('h', 'hide help')]
+    : [`${enter}${pc.dim(',')} ${press('h', 'show help')}${pc.dim(',')} ${press('q', 'quit')}`];
+  return [...rows, ...keys.map((line) => `  ${line}`)];
+}
+
+/** A held step's prompt as one plain line, for a terminal with no live window to show it in. */
+export function stepPromptLine(prompt: StepPrompt): string {
+  const [first] = prompt.steps;
+  const numbers = prompt.steps.map(({ number }) => number).join(', ');
+  const steps = prompt.steps.map(({ step }) => {
+    const source = promptSource(step);
+    return `${step.api} ${quotedLabel(step.label)}${source === '' ? '' : ` (${source})`}`;
+  });
+  const keys = [`enter to ${enterDoes(prompt)}`, ...STEP_KEYS.map(([key, does]) => `${key} to ${does}`)].join(', ');
+  const at = prompt.steps.length === 1 ? 'step' : 'steps';
+  return `paused at ${at} ${numbers} of ${bounded(first.step.title)} [${bounded(first.step.target)}]: ${steps.join('; ')} · press ${keys}`;
 }
 
 /** Recording mismatches under one test, deduplicated across its attempts. */

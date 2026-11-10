@@ -14,7 +14,7 @@ Android emulator, or phone.
   skill and feature map on top of e2e. Invoke it with
   `/e2e:create-verification-skill` in Claude Code or
   `$e2e:create-verification-skill` in Codex. It loads only when invoked.
-- **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Detox, Maestro,
+- **migrate-to-e2e**: port a Playwright, Cypress, Selenium, Appium, Detox, Maestro,
   or TesterArmy suite to e2e one slice at a time, with the old suite running beside the
   new one and a `MIGRATION.md` file the next session resumes from.
 
@@ -78,8 +78,10 @@ model: an AI SDK provider key, or a ChatGPT subscription through
 ## MCP server
 
 The plugin does not bundle the e2e MCP server, which runs from the project's
-own `e2e` install. To let Codex drive the running app, add it to the
-project's `.codex/config.toml`:
+own `e2e` install. `e2e init` offers to register it for Codex. In an existing
+project, run `e2e init --yes --skills none --mcp .codex/config.toml` with the installed CLI
+or add the entry below. Install dependencies, trust the project, and start a
+new Codex session from the project directory:
 
 ```toml
 [mcp_servers.e2e]

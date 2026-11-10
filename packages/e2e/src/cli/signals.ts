@@ -63,7 +63,8 @@ export class SignalLadder {
     process.on('SIGINT', escalate);
     process.on('SIGTERM', escalate);
     process.on('disconnect', parentGone);
-    if (process.connected === false) parentGone();
+    // `process.send` marks a process spawned with a channel: Bun reports `connected: false` without one.
+    if (process.send !== undefined && !process.connected) parentGone();
     return () => {
       process.removeListener('SIGINT', escalate);
       process.removeListener('SIGTERM', escalate);

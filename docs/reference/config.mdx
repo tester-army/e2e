@@ -520,9 +520,12 @@ command: {
 - `shutdownTimeout` is the grace period before force-kill.
 - `log` receives the process's stdout and stderr, appended, resolved from the
   project root. It must stay inside the project root.
-- A startup failure quotes the last 20 lines appended since the command
-  started, with `command.env` and `inheritEnv` values replaced by
-  `<secret:NAME>` markers.
+- With a `log`, a failure after the command started quotes the lines any
+  process appended since then, with `command.env` and `inheritEnv` values of
+  at least four characters replaced by `<secret:NAME>` markers. A log of up to
+  40 lines inside 8 KiB is quoted whole. Otherwise the quote keeps up to 20
+  lines from each end, with `[startup output omitted]` between them, and for a
+  log past 8 KiB those lines come from its first and last 4 KiB.
 - `reuseExisting`: when the readiness URL already answers before the command
   starts, the runner uses that process. It starts nothing and stops nothing.
   CI ignores it, with a notice, and always starts the command.
@@ -957,7 +960,7 @@ judge: gateway('anthropic/claude-opus-5'), // default: model
 ```
 
 - Judgments allow 8192 output tokens per call.
-- A judgment sees the instruction and the current screen only.
+- A judgment sees the instruction, its params, the agent's context, and the current screen with its location.
 
 See [A judge of its own](/models#a-judge-of-its-own).
 
@@ -1140,7 +1143,7 @@ credentials: {
 | `INVALID_CONFIG` | A `secrets` entry named exactly `admin.password` beside an `admin` credential. |
 | `INVALID_CONFIG` | Two credentials whose names map to one `E2E_USER_<NAME>_*` override, like `svc-a` and `svc_a` (see [Environment variables](/reference/environment)). |
 
-See [Signing in](/authentication). The declarations are under
+See [Authentication](/authentication). The declarations are under
 [`CredentialConfig`](#credentialconfig).
 
 #### `username`

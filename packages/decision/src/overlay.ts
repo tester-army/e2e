@@ -1,6 +1,6 @@
-import { PNG } from 'pngjs';
 import type { ExecutorPixels } from 'e2e';
 import { fnv1a } from './hash.ts';
+import { decodeRgba, encodeRgba, type Rgba } from './png.ts';
 /** Pixels as the decision model receives them: the runner's capture without its masking count. */
 export type Screenshot = Omit<ExecutorPixels, 'maskedRegionCount'>;
 /** A viewport point in CSS pixels. */
@@ -54,7 +54,8 @@ export interface Zoom {
 /**
  * The `box` by `box` CSS-pixel region around `center`, kept inside the
  * screenshot and enlarged `factor` times (nearest neighbor), for a finer
- * closer look at a drawn control. Undefined when the pixels cannot be decoded.
+ * closer look at a drawn control. Undefined when the pixels cannot be
+ * decoded or the region comes out under one pixel, which no PNG can hold.
  */
 export function zoomAround(screenshot: Screenshot, center: Point, box: number, factor: number): Zoom | undefined {
   const png = decode(screenshot);
@@ -68,7 +69,8 @@ export function zoomAround(screenshot: Screenshot, center: Point, box: number, f
     y: Math.round(Math.max(0, Math.min(cssHeight - side, center.y - side / 2))),
   };
   const size = Math.round(side * factor);
-  const out = new PNG({ width: size, height: size });
+  if (!Number.isFinite(size) || size < 1) return undefined;
+  const out = { width: size, height: size, data: new Uint8Array(size * size * 4) };
   for (let y = 0; y < size; y += 1) {
     for (let x = 0; x < size; x += 1) {
       const sx = Math.min(png.width - 1, Math.floor((origin.x + x / factor) * scale));
@@ -81,7 +83,7 @@ export function zoomAround(screenshot: Screenshot, center: Point, box: number, f
       out.data[to + 3] = 255;
     }
   }
-  return { screenshot: { mediaType: 'image/png', data: new Uint8Array(PNG.sync.write(out)), width: size, height: size, scale: 1 }, origin, factor };
+  return { screenshot: { mediaType: 'image/png', data: encodeRgba(out), width: size, height: size, scale: 1 }, origin, factor };
 }
 /**
  * A hash of the `box` by `box` CSS-pixel region around `center`: what a tap
@@ -120,17 +122,17 @@ export function withGrid(screenshot: Screenshot, grid: Grid): Screenshot {
       }
     }
   }
-  return { ...screenshot, data: new Uint8Array(PNG.sync.write(png)) };
+  return { ...screenshot, data: encodeRgba(png) };
 }
-function decode(screenshot: Screenshot): PNG | undefined {
+function decode(screenshot: Screenshot): Rgba | undefined {
   try {
-    return PNG.sync.read(Buffer.from(screenshot.data));
+    return decodeRgba(screenshot.data);
   } catch {
     return undefined;
   }
 }
 const GRID: readonly [number, number, number] = [255, 0, 255];
-function paint(png: PNG, x: number, y: number, color: readonly [number, number, number]): void {
+function paint(png: Rgba, x: number, y: number, color: readonly [number, number, number]): void {
   if (x < 0 || y < 0 || x >= png.width || y >= png.height) return;
   const offset = (y * png.width + x) * 4;
   png.data[offset] = color[0];

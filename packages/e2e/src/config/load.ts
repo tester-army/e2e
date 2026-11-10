@@ -3,6 +3,7 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { ConfigurationError, InfrastructureError, isE2EError } from '../internal/errors.ts';
+import { onBun } from '../internal/runtime.ts';
 import { withConfigSecretReferences } from '../secrets.ts';
 import type { E2EConfig } from '../types.ts';
 import { explainModuleError } from './diagnose.ts';
@@ -114,7 +115,8 @@ export interface ConfigLoadOptions {
  * receives another realm's instance of it and a second `run()` in one
  * process sees the file as it is now. The files it imports keep one instance
  * per process, unless `graph` names a fresh graph to load them in, shared
- * by every module loaded under that name.
+ * by every module loaded under that name. Bun ignores the query, so there
+ * `bun-loader.ts` takes the module out of Bun's registry instead.
  */
 export async function importModule(absolutePath: string, cacheKey = 'module', graph?: string): Promise<unknown> {
   return importFresh(absolutePath, cacheKey, graph ?? false);
@@ -127,7 +129,9 @@ async function importFresh(absolutePath: string, cacheKey: string, graph: boolea
   imports += 1;
   registerLoader();
   const key = `${cacheKey}-${imports}`;
-  return import(freshModuleURL(absolutePath, key, graph === true ? key : graph === false ? undefined : graph));
+  const graphName = graph === true ? key : graph === false ? undefined : graph;
+  if (onBun) return (await import('./bun-loader.ts')).importFreshOnBun(absolutePath, graphName);
+  return import(freshModuleURL(absolutePath, key, graphName));
 }
 
 /** Loads and returns the raw default export of a config module. */

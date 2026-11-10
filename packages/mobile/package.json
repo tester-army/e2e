@@ -67,8 +67,8 @@
     "test:unit": "vitest run tests/unit"
   },
   "dependencies": {
+    "@napi-rs/image": "1.16.0",
     "agent-device": "0.21.36",
-    "pngjs": "7.0.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {
@@ -82,8 +82,7 @@
   },
   "devDependencies": {
     "@types/node": "26.6.6",
-    "@types/pngjs": "6.0.5",
-    "ai": "7.0.163",
+    "ai": "7.0.166",
     "e2e": "workspace:*",
     "typescript": "7.0.2",
     "vitest": "5.1.0"

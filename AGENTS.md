@@ -174,6 +174,22 @@ suites that consume the built packages the way a user would.
   engine (`DeviceProvider`), through agent-device's built-in `browserstack`
   provider. An `https` `app` is uploaded once per run through the App
   Automate API, since the session's `app` capability takes only `bs://` ids.
+- `packages/e2b` — the published `@e2e-dev/e2b` package: E2B sandboxes for
+  both engines, through the `e2b` SDK (peer). Every sandbox refuses public
+  traffic; a loopback tunnel on the runner (`src/tunnel.ts`) adds E2B's
+  traffic access token, and a lease names only that tunnel, so no lease
+  carries that token. `e2b()` (`DeviceProvider`) boots one `android-16`
+  sandbox per worker slot, installs the engine's agent-device there behind
+  `agent-device proxy`, and installs the target's `.apk` through that proxy
+  with the agent-device client (pinned like `@e2e-dev/mobile`'s); the lease's
+  `daemon` is the tunnel, so the runner needs no `adb`. `e2bBrowsers()` from
+  `@e2e-dev/e2b/web` (`BrowserProvider`) starts Chromium on a sandbox's
+  loopback and creates the sandbox with `maskRequestHost`, so E2B's edge
+  rewrites `Host` to `localhost` and DevTools accepts the request. Keep the
+  Playwright image in `docs/examples/web/e2b-template.ts` in sync with
+  `@e2e-dev/web`. Run
+  `pnpm --filter @e2e-dev/e2b test`, then verify live sandboxes on both
+  engines, web in both scopes, with `E2B_API_KEY` set.
 - `apps/testbed` (`@e2e-dev/testbed`, private) — dogfood project that
   consumes the **built** packages like a real user would: the playground app
   where every runner feature (sessions, routes, downloads, frames, uploads,
@@ -253,7 +269,7 @@ suites that consume the built packages the way a user would.
   it generated and ran for `apps/testbed`: regenerate it when a playground
   route, label, or test it names changes.
 - `skills/migrate-to-e2e/`: a consumer skill that ports a Playwright,
-  Cypress, Selenium, Detox, Maestro, or TesterArmy suite one slice per session, the old
+  Cypress, Selenium, Appium, Detox, Maestro, or TesterArmy suite one slice per session, the old
   suite running beside the new one, with a `MIGRATION.md` progress file the next
   session resumes from. It routes to `docs/migrate/<runner>.mdx` for the
   API mapping, so a mapping change edits the guide, not the skill. Installed
@@ -550,21 +566,21 @@ trees, on both platforms, without a device.
   old ones in the same pull request. A step that was never recorded still runs
   live. A strict run replays on retries too and never writes or deletes an
   entry, whatever the mode.
-  The web benchmark's entries are in. The mobile benchmark's iOS entries are
-  recorded on a Mac; nobody has recorded on an Android emulator yet, so the
-  Android side spends model calls until an emulator recording is committed.
+  The web benchmark's entries are in. The mobile benchmark's iOS and Android
+  entries are recorded on a Mac; Android replays with `--strict-cache`, iOS
+  leniently.
 - No implicit default model. For the built-in agent, the entry's `model`
   serves `act`; the judgment calls (`assert`, `waitFor`, `extract`) use its
   `judge` when one is configured, else `model`. A judgment never sees the
   prior-step ledger or the acting agent's summaries; it sees the instruction, its
-  params, the agent's context, and the current screen. Without a model, the first `agent` acquisition in a run
+  params, the agent's context, and the current screen with its location. Without a model, the first `agent` acquisition in a run
   reports one run-level `MODEL_UNAVAILABLE` and stops the run (exit 2). A
   custom executor handles `act` and `assert` through `runStep` and needs no
   model; its `waitFor` and `extract` still use the built-in judgments. No implicit target either: `targets` is required and
   each names its engine.
 - Security invariants (fail closed when one cannot be enforced):
   - Secret values never reach model input, digests, logs, reports, or
-    artifacts as text. Model input is the redacted semantic tree (as text
+    artifacts as text. Model input is the redacted location, the redacted semantic tree (as text
     or, on request, the redacted node tree), masked pixels only when masking
     is proven, and the sanitized prior-step records. Pixels mask secure
     fields only, before and after a secret fill: a value the app shows
@@ -616,8 +632,9 @@ trees, on both platforms, without a device.
 
 - CI: `.github/workflows/spec.yml` runs lint, typecheck, and the testbed on
   Node 26, `pnpm test` on the newest Node 22, 24, and 26 and on the
-  `engines.node` floors (22.22.3, 24.8.0), and `scripts/install-smoke.ts`, a
-  fresh install of the packed packages with pnpm 11 and 12; `benchmark.yml` runs the
+  `engines.node` floors (22.22.3, 24.8.0), the CLI on Bun 1.4.3 and the
+  latest Bun, and `scripts/install-smoke.ts`, a fresh install of the packed
+  packages with pnpm 11 and 12; `benchmark.yml` runs the
   web benchmark's two suites; `mobile.yml` runs the mobile benchmark's on an
   iOS simulator and an Android emulator (KVM on x64 Linux); `docs.yml`
   checks the docs. All four run on pull requests and in the merge queue

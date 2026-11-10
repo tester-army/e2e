@@ -283,12 +283,12 @@ export class ObservationFeed {
    * list reads between its pages. Direct rather than queued, like
    * `relocate`, since the queue is held by this very caller.
    */
-  async look(mode: SettleMode): Promise<AgentObservation> {
+  async look(mode: SettleMode, settledWhen?: (observation: AgentObservation) => boolean): Promise<AgentObservation> {
     this.accounting.checkpoint();
     const observation = await instrumentPhase(
       this.runtime,
       { api: this.accounting.api, kind: 'observation', phase: 'agent.observe', name: 'page' },
-      () => this.captureSettled(mode, false),
+      () => this.captureSettled(mode, false, settledWhen),
       observationDetail,
     );
     this.publish(observation);
@@ -324,9 +324,14 @@ export class ObservationFeed {
    * screen to leave the pre-action shape once, so later looks read the screen
    * as is; held still, it then proves the new shape holds for a beat, while
    * after-change reads the first post-change capture, which is all a fill's
-   * own field needs.
+   * own field needs. A held-still look the caller can already vouch for
+   * (`settledWhen`) returns that capture without the proof.
    */
-  private captureSettled(mode: SettleMode, pixels: boolean): Promise<AgentObservation> {
+  private captureSettled(
+    mode: SettleMode,
+    pixels: boolean,
+    settledWhen?: (observation: AgentObservation) => boolean,
+  ): Promise<AgentObservation> {
     if (mode === 'raw') return this.capture(pixels);
     const changedFrom = this.pendingChange;
     this.pendingChange = undefined;
@@ -343,6 +348,7 @@ export class ObservationFeed {
       {
         changedFrom,
         stableWaitMs: mode === 'held-still' ? HELD_STILL_MS : 0,
+        ...(mode === 'held-still' && settledWhen !== undefined ? { settledWhen } : {}),
         changeShapeOf: changeShape,
         transitional: isTransitionalObservation,
       },

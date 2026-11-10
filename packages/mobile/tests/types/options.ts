@@ -1,6 +1,5 @@
 /** Compile-time assertions for the device engine's options and the hosted device provider seam. */
 import type { AgentDeviceClient as SubpathClient } from '../../src/agent-device.ts';
-import type { deviceSession } from '../../src/tools.ts';
 import type { DeviceLease, DeviceProvider, DeviceRequest, DeviceSession, MobileOptions } from '../../src/index.ts';
 
 ({ platform: 'ios', device: 'iPhone 16' }) satisfies MobileOptions;
@@ -41,5 +40,3 @@ const farm = {
 // The subpath's client type is the one the engine's `device.unstable_raw.client` carries.
 ({}) as DeviceSession['client'] satisfies SubpathClient;
 ({}) as SubpathClient satisfies DeviceSession['client'];
-// A custom tool's session is the same shape a test reads from `device.unstable_raw`.
-({}) as ReturnType<typeof deviceSession> satisfies DeviceSession;

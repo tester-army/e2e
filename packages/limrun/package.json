@@ -54,7 +54,7 @@
   },
   "devDependencies": {
     "@e2e-dev/mobile": "workspace:*",
-    "@limrun/api": "0.69.1",
+    "@limrun/api": "0.69.4",
     "@types/node": "26.6.6",
     "e2e": "workspace:*",
     "typescript": "7.0.2",

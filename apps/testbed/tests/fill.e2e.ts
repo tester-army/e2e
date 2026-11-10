@@ -1,5 +1,5 @@
 /**
- * Adapted from microsoft/playwright tests/page/page-fill.spec.ts at v1.64.1.
+ * Adapted from microsoft/playwright tests/page/page-fill.spec.ts at v1.65.0.
  * Copyright Microsoft Corporation. Licensed under the Apache License 2.0 (see ../app/playwright/LICENSE).
  * Rewritten against the e2e public API: `page.fill(selector, value)` is a locator fill.
  */
@@ -53,16 +53,6 @@ test.describe('page fill', { requires: ['browser'], tags: ['playwright'] }, () =
     expect(await browser.evaluate("() => document.querySelector('input').value")).toBe('42');
   });
 
-  test('should throw on incorrect range value', async ({ browser }) => {
-    await browser.goto(content('<input type=range min=0 max=100 value=50>'));
-    const error1 = await browser.locator('input').fill('foo').catch((caught: Error) => caught);
-    expect((error1 as Error).message).toContain('Malformed value');
-    const error2 = await browser.locator('input').fill('200').catch((caught: Error) => caught);
-    expect((error2 as Error).message).toContain('Malformed value');
-    const error3 = await browser.locator('input').fill('15.43').catch((caught: Error) => caught);
-    expect((error3 as Error).message).toContain('Malformed value');
-  });
-
   test('should fill color input', async ({ browser }) => {
     await browser.goto(content('<input type=color value="#e66465">'));
     await browser.locator('input').fill('#aaaaaa');
@@ -73,12 +63,6 @@ test.describe('page fill', { requires: ['browser'], tags: ['playwright'] }, () =
     await browser.goto(content('<input type=color value="#e66465">'));
     await browser.locator('input').fill('#AbCd00');
     expect(await browser.evaluate("() => document.querySelector('input').value")).toBe('#abcd00');
-  });
-
-  test('should throw on incorrect color value', async ({ browser }) => {
-    await browser.goto(content('<input type=color value="#e66465">'));
-    const error1 = await browser.locator('input').fill('badvalue').catch((caught: Error) => caught);
-    expect((error1 as Error).message).toContain('Malformed value');
   });
 
   test('should fill date input after clicking', async ({ browser }) => {
@@ -122,12 +106,6 @@ test.describe('page fill', { requires: ['browser'], tags: ['playwright'] }, () =
     });
   }
 
-  test('should throw on incorrect date', async ({ browser }) => {
-    await browser.goto(content('<input type=date>'));
-    const error = await browser.locator('input').fill('2020-13-05').catch((caught: Error) => caught);
-    expect((error as Error).message).toContain('Malformed value');
-  });
-
   test('should fill time input', async ({ browser }) => {
     await browser.goto(content('<input type=time>'));
     await browser.locator('input').fill('13:15');
@@ -140,40 +118,19 @@ test.describe('page fill', { requires: ['browser'], tags: ['playwright'] }, () =
     expect(await browser.evaluate("() => document.querySelector('input').value")).toBe('2020-07');
   });
 
-  test('should throw on incorrect month', async ({ browser }) => {
-    await browser.goto(content('<input type=month>'));
-    const error = await browser.locator('input').fill('2020-13').catch((caught: Error) => caught);
-    expect((error as Error).message).toContain('Malformed value');
-  });
-
   test('should fill week input', async ({ browser }) => {
     await browser.goto(content('<input type=week>'));
     await browser.locator('input').fill('2020-W50');
     expect(await browser.evaluate("() => document.querySelector('input').value")).toBe('2020-W50');
   });
 
-  test('should throw on incorrect week', async ({ browser }) => {
-    await browser.goto(content('<input type=week>'));
-    const error = await browser.locator('input').fill('2020-123').catch((caught: Error) => caught);
-    expect((error as Error).message).toContain('Malformed value');
-  });
-
-  test('should throw on incorrect time', async ({ browser }) => {
-    await browser.goto(content('<input type=time>'));
-    const error = await browser.locator('input').fill('25:05').catch((caught: Error) => caught);
-    expect((error as Error).message).toContain('Malformed value');
-  });
 
   test('should fill datetime-local input', async ({ browser }) => {
     await browser.goto(content('<input type=datetime-local>'));
     await browser.locator('input').fill('2020-03-02T05:15');
     expect(await browser.evaluate("() => document.querySelector('input').value")).toBe('2020-03-02T05:15');
-  });
-
-  test('should throw on incorrect datetime-local', async ({ browser }) => {
-    await browser.goto(content('<input type=datetime-local>'));
-    const error = await browser.locator('input').fill('abc').catch((caught: Error) => caught);
-    expect((error as Error).message).toContain('Malformed value');
+    await browser.locator('input').fill('2020-03-02T06:20:00');
+    expect(await browser.evaluate("() => document.querySelector('input').value")).toBe('2020-03-02T06:20');
   });
 
   test('should fill contenteditable', async ({ browser }) => {

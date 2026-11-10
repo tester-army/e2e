@@ -24,8 +24,10 @@ const READY_PROBE_TIMEOUT_MS = 2_000;
  */
 const PROGRESS_NOTICE_MIN_MS = 5_000;
 /** How much of the process's own output a startup failure quotes. */
-const OUTPUT_TAIL_LINES = 20;
-const OUTPUT_TAIL_BYTES = 4_096;
+const OUTPUT_WINDOW_LINES = 20;
+const OUTPUT_WINDOW_BYTES = 4_096;
+/** Stands between the first and last lines of a log too long to quote whole. */
+const OUTPUT_OMITTED = '[startup output omitted]';
 /**
  * `command.env` and `inheritEnv` values this long are redacted from the quoted
  * output; shorter ones (a port, a flag) would blank ordinary text without
@@ -328,9 +330,9 @@ export class ManagedProcess {
   }
 
   /**
-   * The startup failure with the log's tail under it, so the report alone
-   * says what the process was doing when it stalled or died. The message
-   * lands in the report, so `command.env` and `inheritEnv` values are
+   * The startup failure with the log's first and last lines under it, so the
+   * report alone says what the process was doing when it stalled or died. The
+   * message lands in the report, so `command.env` and `inheritEnv` values are
    * redacted from the quote with the same redactor and markers as the traces,
    * the way the log itself never is. Without a log there is nothing to quote,
    * and the message says how to get one.
@@ -348,30 +350,35 @@ export class ManagedProcess {
   }
 
   /**
-   * The last lines appended to the log past `offset`, terminal controls
-   * stripped, bounded in bytes before lines so a chatty process cannot turn
-   * the message into the whole log.
+   * The lines appended to the log past `offset`, terminal controls stripped,
+   * bounded in bytes before lines so a chatty process cannot turn the message
+   * into the whole log. A log longer than the two windows is quoted as its
+   * first and last lines with an omission marker between them: a service that
+   * fails early and then keeps logging, a watcher for instance, would otherwise
+   * bury the error that matters under its own tail.
    */
   private outputSince(offset: number): string[] {
     let fd: number | undefined;
     try {
       fd = fs.openSync(this.logPath(), 'r');
       const end = fs.fstatSync(fd).size;
-      const start = Math.max(offset, end - OUTPUT_TAIL_BYTES);
-      if (end <= start) return [];
-      // One byte before a cut tells whether it landed mid-line: a fragment
-      // says nothing and goes, a line that ended right at the cut stays.
-      const readFrom = start > offset ? start - 1 : start;
-      const buffer = Buffer.alloc(end - readFrom);
-      fs.readSync(fd, buffer, 0, buffer.length, readFrom);
-      const text = buffer.toString('utf8');
-      const cutMidLine = start > offset && !/^[\r\n]/.test(text);
-      const lines = stripVTControlCharacters(text)
-        .split(/\r\n|\n|\r/)
-        .map((line) => line.trimEnd())
-        .filter((line) => line.length > 0);
-      if (cutMidLine) lines.shift();
-      return lines.slice(-OUTPUT_TAIL_LINES);
+      if (end <= offset) return [];
+      if (end - offset <= OUTPUT_WINDOW_BYTES * 2) {
+        // The two windows cover everything the command appended: quote it
+        // whole, and reach for the marker only when the line cap drops some.
+        const lines = readLines(fd, offset, end, UNCLIPPED);
+        return lines.length <= OUTPUT_WINDOW_LINES * 2
+          ? lines
+          : [...lines.slice(0, OUTPUT_WINDOW_LINES), OUTPUT_OMITTED, ...lines.slice(-OUTPUT_WINDOW_LINES)];
+      }
+      // The head starts at `offset` without clipping the start: a previous run
+      // that left the log mid-line leaves the command's own first line behind
+      // it, and that line is the one a startup failure is usually about.
+      const head = readLines(fd, offset, offset + OUTPUT_WINDOW_BYTES, { start: false, end: true });
+      const tail = readLines(fd, end - OUTPUT_WINDOW_BYTES, end, { start: true, end: false });
+      // Both windows are capped at the line budget, and the marker stays even
+      // when a single huge first line leaves nothing to quote above it.
+      return [...head.slice(0, OUTPUT_WINDOW_LINES), OUTPUT_OMITTED, ...tail.slice(-OUTPUT_WINDOW_LINES)];
     } catch {
       return [];
     } finally {
@@ -453,6 +460,34 @@ export class ManagedProcess {
     }
     live.delete(child);
   }
+}
+
+/** Which edges of a read window the log runs past; a cut edge drops the fragment it left. */
+interface WindowClip {
+  readonly start: boolean;
+  readonly end: boolean;
+}
+
+/** Both edges of the window are line boundaries: neither fragment needs dropping. */
+const UNCLIPPED: WindowClip = { start: false, end: false };
+
+/**
+ * The non-empty lines in `[from, to)` of `fd`, terminal controls stripped. A
+ * window the log runs past yields a fragment at that edge, which says nothing
+ * and goes. The fragment is dropped before empty lines are filtered out, so a
+ * trailing indent the cut landed in cannot take the complete line above it.
+ */
+function readLines(fd: number, from: number, to: number, clip: WindowClip): string[] {
+  const readFrom = clip.start ? from - 1 : from;
+  const readTo = clip.end ? to + 1 : to;
+  if (readTo <= readFrom) return [];
+  const buffer = Buffer.alloc(readTo - readFrom);
+  fs.readSync(fd, buffer, 0, buffer.length, readFrom);
+  const text = buffer.toString('utf8');
+  const parts = stripVTControlCharacters(text).split(/\r\n|\n|\r/);
+  if (clip.start && !/^[\r\n]/.test(text)) parts.shift();
+  if (clip.end && !/[\r\n]$/.test(text)) parts.pop();
+  return parts.map((line) => line.trimEnd()).filter((line) => line.length > 0);
 }
 
 /** What one started process, or everything a run or a session started, is released by. */

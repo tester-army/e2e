@@ -63,6 +63,7 @@
               "index",
               "quickstart",
               "core-concepts",
+              "agentic-vs-deterministic",
               "coding-agents",
               "mcp-server",
               "ci"
@@ -99,6 +100,7 @@
             "group": "Run in CI",
             "pages": [
               "ci/github-actions",
+              "ci/gitlab",
               "ci/eas-workflows",
               "ci/bitrise",
               "ci/codemagic",
@@ -116,7 +118,8 @@
               "integrations/smol",
               "integrations/limrun",
               "integrations/testmu",
-              "integrations/browserstack"
+              "integrations/browserstack",
+              "integrations/e2b"
             ]
           },
           {
@@ -155,6 +158,7 @@
               "migrate/playwright",
               "migrate/cypress",
               "migrate/selenium",
+              "migrate/appium",
               "migrate/detox",
               "migrate/maestro",
               "migrate/testerarmy"

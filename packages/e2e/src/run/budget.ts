@@ -42,6 +42,14 @@ export class AttemptBudget {
   }
 
   /**
+   * Gives the running phase a deadline `remainingMs` from now, keeping its
+   * signal: the test clock running again after `e2e run --step` held a step.
+   */
+  resetDeadline(remainingMs: number): void {
+    this.current = { signal: this.current.signal, deadline: new Deadline(remainingMs) };
+  }
+
+  /**
    * Runs `body` with the running phase's deadline brought forward to
    * `timeoutMs` from now, when that is sooner, then puts the phase's own
    * deadline back. Every fixture operation in `body` is capped by it, the way

@@ -24,6 +24,7 @@ describe('@e2e-dev/mobile/agent-device', () => {
     const manifest = JSON.parse(readFileSync(new URL('package.json', PACKAGE), 'utf8')) as {
       exports: Record<string, { types: string; default: string }>;
     };
+    expect(manifest.exports).toHaveProperty('./agent-device');
     for (const [entry, { types, default: js }] of Object.entries(manifest.exports)) {
       const source = js.replace(/^\.\/dist\//, 'src/').replace(/\.js$/, '.ts');
       expect(types, entry).toBe(js.replace(/\.js$/, '.d.ts'));
