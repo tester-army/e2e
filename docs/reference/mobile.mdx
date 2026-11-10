@@ -211,8 +211,8 @@ mobile({ platform: 'android', snapshot: 'interactive' }); // default: 'full'
  * 150. Every frame of a running animation changes the tree, so a 150 ms
  * window still catches a transition in flight; raise it for slow devices
  * or apps that settle in stages, or lower it to 0 to keep only the first
- * re-observation. A test's own steps never settle: `expect` verifies their
- * outcome, and `transition` covers a control that is still arriving.
+ * re-observation. A test's locator actions do not settle: `expect` verifies
+ * their outcome, and `transition` covers a control that is still arriving.
  */
 readonly settle?: number | false | undefined;
 ```
