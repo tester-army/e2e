@@ -798,6 +798,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   // The judge is named only when it is a model of its own.
   const runAgent = config.agentNames.length === 1 ? config.agent : undefined;
   const runJudge = runAgent?.judge?.model === runAgent?.model?.model ? undefined : runAgent?.judge;
+  // Settled once, before the header: the header names what --target
+  // selected, and an unknown --target fails the run once it begins.
+  const selected = selectRunTargets(config.targets, options.targetIds);
   emit({
     type: 'run-started',
     runId,
@@ -805,7 +808,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     projectRoot: config.projectRoot,
     artifactsRoot: outputLayout(config.output).results,
     ci: isCiMode(env),
-    targets: headerTargets(config.targets, options.targetIds).map((target) => target.name),
+    targets: ('targets' in selected ? selected.targets : config.targets).map((target) => target.name),
     ...(config.agentNames.length === 1 && config.agentNames[0] === 'default' ? {} : { agents: config.agentNames }),
     ...(runAgent?.model === undefined ? {} : { model: modelLabel(runAgent.model) }),
     ...(runJudge === undefined ? {} : { judge: modelLabel(runJudge) }),
@@ -817,15 +820,13 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
     // decides the outcome.
     if (interrupted.aborted) return;
 
-    // Which targets the run is for, settled before anything is collected,
-    // downloaded, or started: an unknown --target is a collection failure.
-    let targets: readonly ResolvedTarget[];
-    try {
-      targets = selectTargets(config.targets, options.targetIds);
-    } catch (cause) {
-      recordFailure(cause, 'collection');
+    // An unknown --target is a collection failure, before anything is
+    // collected, downloaded, or started.
+    if ('error' in selected) {
+      recordFailure(selected.error, 'collection');
       return;
     }
+    const { targets } = selected;
 
     /**
      * Narrates and times one setup step on the event spine, its `finished`
@@ -1402,15 +1403,18 @@ async function loadRunConfig(
 }
 
 /**
- * The targets `run-started` names: the ones `--target` selected, in config
- * order. An unknown target ID names every configured target here, since the
- * run fails on it with `UNKNOWN_TARGET` as a collection error once it begins.
+ * The targets the run is for, as `--target` selected them in config order,
+ * or the `UNKNOWN_TARGET` error an unknown target ID raised. The run records
+ * the error once it begins, so `run-started` still comes first.
  */
-function headerTargets(targets: readonly ResolvedTarget[], targetIds: readonly string[] | undefined): readonly ResolvedTarget[] {
+function selectRunTargets(
+  targets: readonly ResolvedTarget[],
+  targetIds: readonly string[] | undefined,
+): { readonly targets: readonly ResolvedTarget[] } | { readonly error: unknown } {
   try {
-    return selectTargets(targets, targetIds);
-  } catch {
-    return targets;
+    return { targets: selectTargets(targets, targetIds) };
+  } catch (error) {
+    return { error };
   }
 }
 

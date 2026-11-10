@@ -346,8 +346,10 @@ type RunEventFact =
 
 - `run-started` comes first and `run-finished` last.
 - `targets` on `run-started` names the targets the run selected with
-  `--target`, in config order, or every configured target without it. The
-  report's `run.targets` still lists every configured target.
+  `--target`, in config order, or every configured target without it or
+  when `--target` names an unknown target, which fails the run with
+  `UNKNOWN_TARGET`. The report's `run.targets` still lists every configured
+  target.
 - `judge` on `run-started` is the run agent's judge model, present only when
   judgments use a model other than `model`.
 - `setup` brackets the work before the tests start. Its `step.kind` is
