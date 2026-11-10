@@ -81,6 +81,7 @@
             "group": "Features",
             "pages": [
               "cache",
+              "filters",
               "explore",
               "visual-testing",
               "authentication",
@@ -128,7 +129,6 @@
               "tools",
               "fixtures",
               "executors",
-              "filters",
               "custom-test-filters"
             ]
           },
