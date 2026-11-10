@@ -206,8 +206,8 @@ What survives:
   taint, and the agent ledger. Dialog and route handlers are reattached.
 - Video recording resumes. A segment lost during the disconnect is gone.
 - Operations already dispatched are never retried.
-- Recovery clears old node references. Observation-derived `tapAt` calls,
-  observation-root swipes, and focused engine keyboard input need a fresh
+- Recovery clears old node references. Observation-derived `tapAt` and
+  `doubleTapAt` calls, observation-root swipes, and focused engine keyboard input need a fresh
   engine observation before they resume.
 - An observation or locator read started before recovery cannot publish
   references after the connection changes. Each attempt owns its binding and
@@ -442,7 +442,7 @@ export type WebInitScript = string | { readonly path: string } | (() => unknown)
 | [`onDialog`](#ondialog) | `Promise<() => Promise<void>>` |
 | [`waitForDownload`](#waitfordownload) | `Promise<{ path, absolutePath, … }>` |
 | [`keyboard`](#keyboard) | `{ press, down, up, type }` |
-| [`mouse`](#mouse) | `{ dblclick, move, wheel, down, up }` |
+| [`mouse`](#mouse) | `{ move, wheel, down, up }` |
 
 The [config](/reference/config) sets each member's budget:
 
@@ -890,13 +890,6 @@ await browser.keyboard.type('hello');
 Viewport-level pointer input from test code, independent of agent
 observations.
 
-`dblclick(x, y)` sends a primary-button double-click at viewport CSS
-coordinates without element actionability checks.
-
-```ts
-await browser.mouse.dblclick(120, 240);
-```
-
 ```ts
 await browser.mouse.move(120, 240);
 await browser.mouse.down();
@@ -1183,8 +1176,6 @@ export interface Browser extends Expectable<BrowserExpectation> {
    * before starting a pointer sequence.
    */
   readonly mouse: {
-    /** Double-clicks the primary button at viewport CSS coordinates, without element actionability checks. */
-    dblclick(x: number, y: number): Promise<void>;
     /** Moves the pointer. */
     move(x: number, y: number): Promise<void>;
     /** Scrolls the pointer wheel. */

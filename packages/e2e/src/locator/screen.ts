@@ -220,6 +220,14 @@ class ScreenImpl implements Screen {
     );
   }
 
+  async doubleTapAt(point: Point, options?: ActionOptions): Promise<void> {
+    rejectUnknownOptions('doubleTapAt', options, ['timeout']);
+    const at = requirePoint(point, 'doubleTapAt');
+    await this.context.steps.run('screen', 'screen.doubleTapAt', describePoint(at), () =>
+      this.context.engine.performAt(at, { kind: 'doubleTap' }, options?.timeout),
+    );
+  }
+
   async swipe(options: SwipeOptions | SwipePathOptions): Promise<void> {
     if (isSwipePath(options)) {
       rejectUnknownOptions('swipe', options, ['from', 'to', 'duration']);

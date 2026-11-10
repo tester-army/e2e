@@ -62,16 +62,29 @@ test.describe('raw pointer input', { requires: ['browser'] }, () => {
   });
 });
 
-test('raw mouse double-click edits a label beneath a sibling SVG', { requires: ['browser'] }, async ({ app, browser, screen }) => {
+test('screen.doubleTapAt edits a label beneath a sibling SVG', { requires: ['browser'] }, async ({ app, browser, screen }) => {
   await app.open('/pointer');
   const label = screen.getByRole('textbox', 'Edit label');
   const point = centerOf(await boxOf(label));
   const hit = await browser.evaluate(({ x, y }: { x: number; y: number }) => {
+    const node = document.querySelector<HTMLElement>('#diagram-node')!;
+    node.dataset['events'] = '';
+    for (const type of ['mousedown', 'mouseup', 'click', 'dblclick'] as const) {
+      node.addEventListener(type, (event) => {
+        node.dataset['events'] += `${event.type}|${event.isTrusted}|${event.button}|${event.detail}|${event.clientX},${event.clientY};`;
+      });
+    }
     const target = document.elementFromPoint(x, y);
     return { tag: target?.localName ?? null, node: target?.closest('#diagram-node')?.id ?? null };
   }, { x: point.x, y: point.y });
   expect(hit).toEqual({ tag: 'path', node: 'diagram-node' });
-  await browser.mouse.dblclick(point.x, point.y);
+  await screen.doubleTapAt(point);
+  const events = await browser.evaluate(() => document.querySelector<HTMLElement>('#diagram-node')!.dataset['events'] ?? '');
+  const at = `${Math.round(point.x)},${Math.round(point.y)}`;
+  expect(events).toBe(
+    `mousedown|true|0|1|${at};mouseup|true|0|1|${at};click|true|0|1|${at};` +
+    `mousedown|true|0|2|${at};mouseup|true|0|2|${at};click|true|0|2|${at};dblclick|true|0|2|${at};`,
+  );
   await label.fill('Renamed');
   await expect(label).toHaveValue('Renamed');
 });

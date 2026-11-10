@@ -220,6 +220,7 @@ field and types one character per `delay`, plain string only (a `Secret` is
 Coordinates are CSS pixels, for what the tree does not list: `tap({ position:
 { x, y } })` offsets from the node's top-left corner (with `modifiers` it is
 `INVALID_ARGUMENT`), `screen.tapAt({ x, y })` taps a viewport point,
+`screen.doubleTapAt({ x, y })` double-taps a viewport point,
 `screen.swipe({ from, to, duration? })` swipes along a path,
 `screen.swipe({ direction, momentum? })` swipes the viewport. Prefer a
 locator; a point moves with the layout.
@@ -510,9 +511,6 @@ the app opens itself (`target="_blank"`, `window.open`) is not followed:
   `keyboard.up(key)`, `mouse.*`: unfocused input. Only `down(key)` holds a
   key or modifier until `up(key)`. `press(key)` presses and releases within
   the call. Prefer `locator.press` and `locator.fill`.
-- `mouse.dblclick(x, y)`: a primary-button double-click at viewport CSS
-  coordinates, without element actionability checks. Useful when a diagram
-  receives pointer input on an SVG rather than its semantic textbox.
 
 A `route`, `unroute`, or `waitForResponse` pattern is a glob string or
 `RegExp` matched against the full URL (`*` stays within one path segment,

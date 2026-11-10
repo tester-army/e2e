@@ -458,6 +458,11 @@ declare const point: import('../../src/types.ts').Point;
 void (executorContext.actions.tapAt(point) satisfies Promise<PointTapResult>);
 void (executorContext.actions.hitTest(point) satisfies Promise<PointHit>);
 void screen.tapAt(point, { timeout: 1_000 });
+void (screen.doubleTapAt(point, { timeout: 1_000 }) satisfies Promise<void>);
+// @ts-expect-error a point has both coordinates.
+void screen.doubleTapAt({ x: 1 });
+// @ts-expect-error viewport double-taps accept action timeout, not locator modifiers.
+void screen.doubleTapAt(point, { modifiers: ['Shift'] });
 void screen.swipe({ direction: 'up', momentum: 'fast' });
 void screen.swipe({ from: point, to: point });
 void screen.swipe({ from: point, to: point, duration: 300 });

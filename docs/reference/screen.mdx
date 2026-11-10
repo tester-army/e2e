@@ -371,10 +371,11 @@ await screen.getByRole('row').nth(2).getByRole('checkbox').check();
 | Method | Returns |
 | --- | --- |
 | [`screen.tapAt`](#screen-tapat) | `Promise<void>` |
+| [`screen.doubleTapAt`](#screen-doubletapat) | `Promise<void>` |
 | [`screen.swipe`](#screen-swipe) | `Promise<void>` |
 | [`screen.scrollUntilVisible`](#screen-scrolluntilvisible) | `Promise<void>` |
 
-`tapAt` and `swipe` act on the viewport.
+`tapAt`, `doubleTapAt`, and `swipe` act on the viewport.
 
 #### `screen.tapAt`
 
@@ -405,6 +406,21 @@ await screen.tapAt({ x: map.x + 360, y: map.y + 70 });
 <Note>
 `tapAt` is not scoped: on a locator it still taps a viewport point.
 </Note>
+
+#### `screen.doubleTapAt`
+
+Double-taps a viewport point without resolving a node. On web, this sends a
+primary-button double-click. The page or device decides what receives the
+gesture.
+
+```ts
+await screen.doubleTapAt({ x: 120, y: 240 }, { timeout: 1_000 });
+```
+
+Like [`tapAt`](#screen-tapat), it uses viewport coordinates and defaults to
+`config.actionTimeout`. It throws `INVALID_ARGUMENT` for negative or
+non-finite coordinates, or `UNSUPPORTED_CAPABILITY` if the engine does not
+declare the `doubleTap` pointer action.
 
 #### `screen.swipe`
 
@@ -1283,7 +1299,7 @@ export interface SwipePathOptions {
 }
 
 /**
- * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
  * `tap({ position })` it is the node's own top-left corner.
  */

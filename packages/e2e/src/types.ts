@@ -382,7 +382,7 @@ export interface ActionOptions {
 }
 
 /**
- * A point in CSS pixels. For `screen.tapAt` and `screen.swipe` the origin is
+ * A point in CSS pixels. For `screen.tapAt`, `screen.doubleTapAt`, and `screen.swipe` the origin is
  * the viewport's top-left corner, the space `boundingBox()` reports in; for
  * `tap({ position })` it is the node's own top-left corner.
  */
@@ -463,6 +463,8 @@ export interface Screen {
   getByTestId(id: TextMatch, options?: { visible?: boolean }): Locator;
   /** Taps a viewport point, with no node behind it. */
   tapAt(point: Point, options?: ActionOptions): Promise<void>;
+  /** Double-taps a viewport point, with no node behind it. */
+  doubleTapAt(point: Point, options?: ActionOptions): Promise<void>;
   /** Performs a viewport-level swipe: in a direction, or along a path from one point to another. */
   swipe(options: SwipeOptions | SwipePathOptions): Promise<void>;
   /**
