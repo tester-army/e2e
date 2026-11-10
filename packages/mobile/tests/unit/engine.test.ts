@@ -3797,6 +3797,19 @@ describe('deterministic actions', () => {
       expect(Date.now() - startedAt).toBeLessThan(1_000);
     });
 
+    it('goes ahead with a long press on the latest read, with its hold still inside the timeout', async () => {
+      const h = harness({ transition: { gesture: 100 } });
+      await scrolled(h);
+      const { times } = scrollScreen(h, (read) => [100 + 10 * read]);
+      const control = await observed(h, 'Row 42');
+      const startedAt = Date.now();
+      await h.engine.perform!(control.ref, { kind: 'longPress', durationMs: 500 }, { ...test(), timeoutMs: 1_000 });
+      expect(h.fake.lastArgs('interactions.longPress')).toEqual({ ref: `@e11~s${times.length}`, durationMs: 500 });
+      // It stopped reading while 500 ms of the timeout were left for the hold.
+      expect(Date.now() - startedAt).toBeGreaterThanOrEqual(400);
+      expect(Date.now() - startedAt).toBeLessThanOrEqual(500);
+    });
+
     it('fails at its deadline with a read that stalls, and sends nothing when that read answers late', async () => {
       const h = harness({ transition: { gesture: 100 } });
       await scrolled(h);

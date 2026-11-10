@@ -1420,9 +1420,10 @@ export class AgentDeviceSurface {
    * of 0 is no wait at all, after a gesture too: no sleep and no read. With
    * `input`, the read that finds the control at rest also passes the checks
    * `relocated` makes for an input, so a fill or clear needs no read of its own
-   * after it.
+   * after it. `holdMs` is how long the action then holds, a long press, which
+   * `InputBudget.send` refuses unsent when less than that is left.
    */
-  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget, input = false): Promise<TransitionWait> {
+  private async waitForTransition(entry: NodeBinding, operation: OperationContext, budget: InputBudget, input = false, holdMs = 0): Promise<TransitionWait> {
     const since = Date.now() - this.lastActionAt;
     const kind = this.lastActionKind;
     const floor = this.transitionWaits[kind];
@@ -1432,7 +1433,7 @@ export class AgentDeviceSurface {
     if (before !== undefined && before.keyboardVisible === entry.keyboardVisible && this.samePlace(entry, before.index) !== undefined) return false;
     if (since < floor) await this.waitOutTransition(operation, budget);
     if (kind !== 'gesture') return true;
-    return this.atRest(entry, operation, budget, this.lastActionAt + until, input);
+    return this.atRest(entry, operation, budget, this.lastActionAt + until, input, holdMs);
   }
 
   /**
@@ -1445,11 +1446,12 @@ export class AgentDeviceSurface {
    * that no longer lists it is a retryable NODE_STALE, as in `relocated`, and
    * not a wait for the cap. At `capAt` the latest read stands, agreeing or not.
    * So does it when the action's own budget cannot fit another read and the
-   * pause before it, as `snapshot` returns a sparse capture rather than time
-   * out on a retry it cannot fit. With `input`, the read it returns must also
-   * pass the checks of an input mutation, see {@link refuseChangedInput}.
+   * pause before it, and the `holdMs` the action holds after them, as
+   * `snapshot` returns a sparse capture rather than time out on a retry it
+   * cannot fit. With `input`, the read it returns must also pass the checks of
+   * an input mutation, see {@link refuseChangedInput}.
    */
-  private async atRest(entry: NodeBinding, operation: OperationContext, budget: InputBudget, capAt: number, input: boolean): Promise<NodeBinding> {
+  private async atRest(entry: NodeBinding, operation: OperationContext, budget: InputBudget, capAt: number, input: boolean, holdMs: number): Promise<NodeBinding> {
     let tracked = entry;
     let previous = this.sightingAt(entry);
     for (;;) {
@@ -1464,7 +1466,7 @@ export class AgentDeviceSurface {
       tracked = this.bind(found, projected);
       const seen = sighting(tracked, projected.index);
       const left = capAt - Date.now();
-      if (sameSighting(previous, seen) || left <= 0 || budget.remainingMs() <= REST_READ_GAP_MS + readMs) {
+      if (sameSighting(previous, seen) || left <= 0 || budget.remainingMs() <= REST_READ_GAP_MS + readMs + holdMs) {
         if (input) this.refuseChangedInput(entry, found, raw);
         return tracked;
       }
@@ -1489,8 +1491,8 @@ export class AgentDeviceSurface {
   }
 
   /** Refreshes a control after a transition wait. That is the control as the wait read it at rest, else found again after a sleep, else the binding itself when no wait was needed. */
-  private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget): Promise<NodeBinding> {
-    const waited = await this.waitForTransition(entry, operation, budget);
+  private async settled(entry: NodeBinding, operation: OperationContext, budget: InputBudget, holdMs = 0): Promise<NodeBinding> {
+    const waited = await this.waitForTransition(entry, operation, budget, false, holdMs);
     if (waited === true) return this.relocated(entry, operation, budget);
     return waited === false ? entry : waited;
   }
@@ -1574,6 +1576,7 @@ export class AgentDeviceSurface {
     if (filling && !entry.takesText) throw refuseFill(entry);
     const label = `perform ${action.kind}`;
     const client = this.requireClient();
+    const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : 0;
     // A toggle already in the wanted state sends nothing, so it neither waits
     // for a transition nor counts as an action the next control must wait on.
     if ((action.kind === 'check' || action.kind === 'uncheck') && entry.node.states?.checked === (action.kind === 'check')) {
@@ -1587,7 +1590,7 @@ export class AgentDeviceSurface {
         target = typeof waited === 'object' ? waited : await this.relocated(entry, operation, input, true);
         if (!target.takesText) throw refuseFill(target);
       } else if (deterministic) {
-        target = await this.settled(entry, operation, input);
+        target = await this.settled(entry, operation, input, holdMs);
       }
       switch (action.kind) {
         case 'tap':
@@ -1603,8 +1606,8 @@ export class AgentDeviceSurface {
           return input.press(client, { ...this.actionTarget(target), count: 2, ...settle });
         case 'longPress':
           return input.send(
-            () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
-            action.durationMs ?? DEFAULT_LONG_PRESS_MS,
+            () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: holdMs }),
+            holdMs,
           );
         case 'hover':
           return input.send(() => client.interactions.hover(this.actionTarget(target)));
