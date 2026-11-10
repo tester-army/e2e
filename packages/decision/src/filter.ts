@@ -82,8 +82,9 @@ const EXAMPLE = "pass an AI SDK decision model, e.g. decisionFilter({ model: gat
  * and the note says why. It also scores every test it is handed, so the run
  * starts the likeliest to fail first: 1 for a test the change touches, the
  * model's probability for one it judged, and 0.5 for one it did not. When
- * every call fails, as without a key, or git fails,
- * the filter throws, so the run warns and runs every test.
+ * every call fails, as without a key, or git or a file read fails, the filter
+ * throws, so the run warns and runs every test; the error carries the scores
+ * the change alone gives, so the tests it touches still start first.
  */
 export function decisionFilter(options: DecisionFilterOptions): TestFilter {
   if (typeof options !== 'object' || options === null) {
@@ -100,7 +101,7 @@ export function decisionFilter(options: DecisionFilterOptions): TestFilter {
       judge(tests, context, settings).catch((error: unknown) => {
         // An abort ends with its reason, not the AbortError of a git or file read it cut short.
         context.signal.throwIfAborted();
-        throw error;
+        throw withRelevance(error, unaskedRelevance(tests, touchedBy(context)));
       }),
   };
 }
@@ -145,14 +146,15 @@ interface Answers {
  * not. The note names
  * the tests that ran without asking, what the model did not judge, and
  * what the calls spent. Throws when git or a file read fails, the first
- * failure's first line when calls fail and none answers, and on an abort.
+ * failure's first line when calls fail and none answers, and on an abort;
+ * `decisionFilter` puts the scores of the change alone on any throw but the
+ * abort.
  */
 async function judge(given: readonly TestFilterCandidate[], context: TestFilterContext, options: DecisionFilterOptions): Promise<TestFilterResult> {
   const { changes, signal, log, redact } = context;
   const touched = touchedBy(context);
   const tests = given.filter((test) => !touched(test.file) && !touched(test.setupFile));
-  const asked = new Set(tests);
-  const relevance = Object.fromEntries(given.map((test) => [test.id, asked.has(test) ? UNJUDGED_RELEVANCE : TOUCHED_RELEVANCE]));
+  const relevance = unaskedRelevance(given, touched);
   const everything = runAllFile(context);
   if (everything !== undefined) return result({}, relevance, `${everything} changed, so the decision filter left nothing out`);
   const unasked = tests.length === given.length ? undefined : `${counted(given.length - tests.length, 'test')} ran without asking: the test file, setup file, or stored screenshots changed`;
@@ -170,6 +172,20 @@ async function judge(given: readonly TestFilterCandidate[], context: TestFilterC
   const verdict = verdicts(tests, answers);
   const unjudged = verdict.missed.length === 0 ? undefined : `${modelId} did not judge ${testsIn(verdict.missed)}: ${unjudgedBecause(failures, tooLarge)}`;
   return answered(verdict.exclude, { ...relevance, ...verdict.relevance }, [unasked, unjudged], spend);
+}
+/** How likely each of `given` is to fail before the model says anything: `TOUCHED_RELEVANCE` for a test the change touches, `UNJUDGED_RELEVANCE` for the rest. */
+function unaskedRelevance(given: readonly TestFilterCandidate[], touched: (file: string | undefined) => boolean): Record<string, number> {
+  return Object.fromEntries(given.map((test) => [test.id, touched(test.file) || touched(test.setupFile) ? TOUCHED_RELEVANCE : UNJUDGED_RELEVANCE]));
+}
+/**
+ * `error` with `relevance` on it, which the run reads off a filter that
+ * throws. The property is not enumerable, so printing or serializing the
+ * error does not list every test; a throw that cannot carry it, such as text
+ * or a frozen object, goes on as it was.
+ */
+function withRelevance(error: unknown, relevance: Record<string, number>): unknown {
+  if (!(error instanceof Error) || !Object.isExtensible(error)) return error;
+  return Object.defineProperty(error, 'relevance', { value: relevance, enumerable: false, writable: true, configurable: true });
 }
 /**
  * The tests to leave out, each with its reason; how likely each test is to

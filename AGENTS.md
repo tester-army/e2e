@@ -154,7 +154,8 @@ suites that consume the built packages the way a user would.
   runner starts each target's likeliest files first. A failed
   call leaves its tests in and the rest are still judged; after 3 failed
   calls it stops asking. When every call fails, or git or a file read
-  fails, it throws, and the run warns and runs every test.
+  fails, it throws, and the run warns and runs every test, the touched
+  ones first, since the error carries their scores in `relevance`.
 - `packages/acp` — the published `@e2e-dev/acp` package: a `StepExecutor`
   (`acp()`, with `claudeCode()` and `codex()` presets) that runs
   `agent.act` and `agent.assert` on a coding agent over the Agent Client

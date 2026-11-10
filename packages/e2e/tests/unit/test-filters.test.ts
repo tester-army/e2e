@@ -494,7 +494,7 @@ describe('applyTestFilters', () => {
       expect((await applyTestFilters([filterOf('areas', () => ({ exclude: {}, relevance: {} }))], candidates, value)).relevance.size).toBe(0);
     });
 
-    it('scores nothing for a filter that throws or is refused, even when its scores were valid', async () => {
+    it('scores nothing for a filter that throws without scores or is refused, even when its scores were valid', async () => {
       const candidates = await candidatesOf('a', 'b');
       const a = idOf(candidates, 'a');
       const { scope: value } = scope();
@@ -504,11 +504,163 @@ describe('applyTestFilters', () => {
           filterOf('threw', () => {
             throw new Error('no diff');
           }),
+          filterOf('thrown text', () => Promise.reject('no key')),
         ],
         candidates,
         value,
       );
       expect(applied.relevance.size).toBe(0);
+    });
+
+    describe('of a filter that fails', () => {
+      /** The error a filter throws when it cannot finish but still knows how likely some tests are to fail. */
+      const failing = (message: string, relevance: unknown): Error => Object.assign(new Error(message), { relevance });
+
+      it('scores the tests its error names, keeping the highest across filters, and still warns and records the failure', async () => {
+        const candidates = await candidatesOf('a', 'b', 'c');
+        const [a, b, c] = ['a', 'b', 'c'].map((title) => idOf(candidates, title)) as [string, string, string];
+        const outside = 'tests/z.e2e.ts::outside%20the%20shard';
+        const { scope: value, notices } = scope({ collectedIds: new Set([...candidates.map((candidate) => candidate.id), outside]) });
+        const applied = await applyTestFilters(
+          [
+            filterOf('answers', () => ({ exclude: {}, relevance: { [c]: 0.9 } })),
+            filterOf('throws', () => {
+              throw failing('no key', { [a]: 1, [b]: 0.5, [outside]: 1 });
+            }),
+            filterOf('rejects', () => Promise.reject(failing('offline', { [b]: 0.7, [c]: 0.2 }))),
+          ],
+          candidates,
+          value,
+        );
+        // `outside` is collected but was never handed over, so its score is dropped as a result's is.
+        expect([...applied.relevance]).toEqual([
+          [c, 0.9],
+          [a, 1],
+          [b, 0.7],
+        ]);
+        expect(applied.excluded.size).toBe(0);
+        expect(applied.decisions).toEqual([
+          { name: 'answers', candidates: 3 },
+          { name: 'throws', candidates: 3, note: 'failed, so it leaves nothing out: no key', outcome: 'failed' },
+          { name: 'rejects', candidates: 3, note: 'failed, so it leaves nothing out: offline', outcome: 'failed' },
+        ]);
+        expect(notices).toEqual(['warning: throws failed, so it leaves nothing out: no key', 'warning: rejects failed, so it leaves nothing out: offline']);
+      });
+
+      it.each<[string, (id: string) => unknown, (id: string) => string]>([
+        ['a score above 1', (id) => ({ [id]: 2 }), (id) => `the relevance of "${id}" must be a number from 0 to 1, got 2`],
+        ['a score of NaN', (id) => ({ [id]: Number.NaN }), (id) => `the relevance of "${id}" must be a number from 0 to 1, got NaN`],
+        ['an id no collected test has', () => ({ nope: 1 }), () => 'relevance names "nope", which no collected test has; relevance takes test.id'],
+        ['a list', () => [], () => 'relevance must be a plain object of test ids to numbers from 0 to 1, got an array'],
+        ['a number', () => 1, () => 'relevance must be a plain object of test ids to numbers from 0 to 1, got 1'],
+      ])('drops %s and says so in the note, before the failure it follows', async (_label, relevance, issue) => {
+        const candidates = await candidatesOf('a', 'b');
+        const a = idOf(candidates, 'a');
+        const { scope: value, notices } = scope();
+        const applied = await applyTestFilters(
+          [
+            filterOf('areas', () => {
+              throw failing('no key', relevance(a));
+            }),
+          ],
+          candidates,
+          value,
+        );
+        const note = `failed, ignoring its relevance (${issue(a)}), so it leaves nothing out: no key`;
+        expect(applied.relevance.size).toBe(0);
+        expect(applied.decisions).toEqual([{ name: 'areas', candidates: 2, note, outcome: 'failed' }]);
+        expect(notices).toEqual([`warning: areas ${note}`]);
+      });
+
+      it('drops a relevance that cannot be read, such as a getter that throws, and says so', async () => {
+        const candidates = await candidatesOf('a');
+        const unreadable = Object.defineProperty(new Error('no key'), 'relevance', {
+          get() {
+            throw new Error('getter broke');
+          },
+        });
+        const { scope: value } = scope();
+        const applied = await applyTestFilters(
+          [
+            filterOf('areas', () => {
+              throw unreadable;
+            }),
+          ],
+          candidates,
+          value,
+        );
+        expect(applied.relevance.size).toBe(0);
+        expect(applied.decisions).toEqual([{ name: 'areas', candidates: 1, note: 'failed, ignoring its relevance (getter broke), so it leaves nothing out: no key', outcome: 'failed' }]);
+      });
+
+      it('redacts a secret in why the scores were dropped, whether a score quotes it or the error that stopped the read does', async () => {
+        const candidates = await candidatesOf('a');
+        const a = idOf(candidates, 'a');
+        const hostile = Object.defineProperty(new Error('no key'), 'relevance', {
+          get() {
+            throw new Error(`reading it failed with ${SECRET}`);
+          },
+        });
+        const { scope: value } = scope();
+        const applied = await applyTestFilters(
+          [
+            filterOf('quotes', () => {
+              throw failing('no key', { [a]: SECRET });
+            }),
+            filterOf('reads', () => {
+              throw hostile;
+            }),
+          ],
+          candidates,
+          value,
+        );
+        const [quotes, reads] = applied.decisions.map((decision) => decision.note ?? '') as [string, string];
+        expect(quotes).toMatch(/got "<secret:[^>]+>"\), so it leaves nothing out: no key$/u);
+        expect(reads).toMatch(/ignoring its relevance \(reading it failed with <secret:[^>]+>\), so it leaves nothing out: no key$/u);
+        for (const note of [quotes, reads]) expect(note).not.toContain(SECRET);
+      });
+
+      it('keeps the failure in the note when the reason the scores were dropped is long, and cuts a long failure after that reason, to one line of 1024 code points', async () => {
+        const candidates = await candidatesOf('a');
+        const a = idOf(candidates, 'a');
+        const long = 'x'.repeat(5000);
+        const { scope: value } = scope();
+        const applied = await applyTestFilters(
+          [
+            filterOf('quiet', () => {
+              throw failing('no key', { [a]: long });
+            }),
+            filterOf('verbose', () => {
+              throw failing(long, { nope: 1 });
+            }),
+          ],
+          candidates,
+          value,
+        );
+        const [quiet, verbose] = applied.decisions.map((decision) => decision.note ?? '') as [string, string];
+        // The reason is cut to 300 code points, and the failure's message still follows it.
+        const reason = /^failed, ignoring its relevance \((.*)\), so it leaves nothing out: no key$/u.exec(quiet)?.[1] ?? '';
+        expect(reason).toMatch(/^the relevance of ".*…$/u);
+        expect([...reason]).toHaveLength(300);
+        // A long message is what the cut shortens, and the reason before it survives.
+        expect(verbose).toMatch(/^failed, ignoring its relevance \(relevance names "nope", which no collected test has; relevance takes test\.id\), so it leaves nothing out: x+…$/u);
+        expect([...verbose]).toHaveLength(1024);
+      });
+
+      it('scores nothing for a filter that outran its deadline, even when it then rejects with scores: the call was abandoned, and what it throws after is not read', async () => {
+        const candidates = await candidatesOf('a');
+        const obedient = filterOf(
+          'jev',
+          (_tests, { signal }) =>
+            new Promise<TestFilterResult>((_resolve, reject) => {
+              signal.addEventListener('abort', () => reject(Object.assign(signal.reason as Error, { relevance: { [idOf(candidates, 'a')]: 1 } })), { once: true });
+            }),
+        );
+        const { scope: value } = scope({ timeoutMs: 20 });
+        const applied = await applyTestFilters([obedient], candidates, value);
+        expect(applied.relevance.size).toBe(0);
+        expect(applied.decisions).toEqual([{ name: 'jev', candidates: 1, note: 'did not finish within 20ms, so it leaves nothing out', outcome: 'timed-out' }]);
+      });
     });
   });
 

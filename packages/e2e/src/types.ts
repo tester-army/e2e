@@ -1626,7 +1626,12 @@ export interface Reporter {
  * once, in the runner process; workers load the config too and never call
  * it, so constructing one must have no side effects: read git, the
  * environment, or the network inside `filter`. A call that throws, returns
- * an invalid result, or runs past 5 minutes leaves nothing out.
+ * an invalid result, or runs past 5 minutes leaves nothing out. A failed call
+ * scores nothing either, unless the error it throws has a `relevance`
+ * property shaped like `TestFilterResult.relevance`: the run checks it as it
+ * checks a result's, starts the likeliest tests first, and still warns of the
+ * failure. A call past 5 minutes is abandoned, and nothing it throws after
+ * that is read.
  */
 export interface TestFilter {
   /** Names the filter in the report and in errors: ASCII letters, numbers, `_`, `-`, and `.`, not only dots, at most 256 characters, unique among `filters`. */

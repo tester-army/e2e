@@ -72,7 +72,8 @@ setup under 20% likely affected. Tests the model can't judge run, and the
 filter's note says why: a diff over 60 kB, a test or setup file too large
 to send with the diff, or some calls failing. When every call fails, as
 without a key on a pull request from a fork, the filter fails: the run
-warns and runs every test. When git can't measure the change, because it
+warns and runs every test, starting first the ones whose test file, setup
+file, or stored screenshots changed. When git can't measure the change, because it
 is missing, the project is not in a repository, or the ref shares no
 history with `HEAD`, the run fails with `INVALID_CHANGED_SINCE`. The
 filter needs `ai` 7.0.134 or later.
@@ -124,9 +125,11 @@ The decision filter also runs:
   project.
 
 A filter that throws, returns something other than
-`{ exclude, relevance?, note? }`, or runs past 5 minutes leaves nothing out
-and scores nothing, and a warning says so. The next filter still judges every
-test it was given.
+`{ exclude, relevance?, note? }`, or runs past 5 minutes leaves nothing out,
+and a warning says so. The next filter still judges every test it was given.
+A failed filter scores nothing either, unless the error it threw carries
+`relevance`, as in [Write your own](#write-your-own). A filter that runs past
+5 minutes is abandoned, and nothing it throws after that counts.
 
 On another CI service, pass `--changed-since origin/main` on pull request
 builds only, and fetch enough history for the merge base. On GitLab, see
@@ -276,6 +279,12 @@ export default {
 - `relevance` takes test ids and numbers from 0 to 1, a test no filter names
   counts as 0, and a test several filters name keeps its highest. Anything
   else fails the filter, as for `exclude`.
+- A filter that fails can still score. An error it throws with a `relevance`
+  property, shaped and checked like the result's, scores the tests the same
+  way, and the failure still warns and leaves nothing out. The decision
+  filter does this, so a run without a key still starts the tests the change
+  touches first. Scores that fail the check are dropped, and the warning
+  says so.
 - Each filter judges only the tests the one before it kept, and is not
   called when none are left.
 - Pass `signal` to every call, and `redact` what you send to a model. It

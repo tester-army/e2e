@@ -72,10 +72,17 @@ export interface TestFilterScope {
   readonly step: (name: string, work: () => Promise<FilterCall>) => Promise<FilterCall>;
 }
 
-/** How one filter call ended: with its answer, checked; or thrown, refused, or abandoned past the deadline, with the note that says so. */
+/** The score each of some tests was given, by test id. */
+type Scores = readonly (readonly [string, number])[];
+
+/**
+ * How one filter call ended: with its answer, checked; or thrown, refused, or
+ * abandoned past the deadline, with the note that says so and the scores the
+ * error it threw carried, none for the other two.
+ */
 type FilterCall =
   | { readonly outcome: 'answered'; readonly result: CheckedResult }
-  | { readonly outcome: FilterOutcome; readonly note: string };
+  | { readonly outcome: FilterOutcome; readonly note: string; readonly relevance: Scores };
 
 /** What the filters decided: every test they left out, by test id, how likely they rated each of the others to fail, and one decision per filter that ran. */
 interface AppliedTestFilters {
@@ -88,8 +95,14 @@ interface AppliedTestFilters {
 /** A filter's answer once checked: what it left out, with each reason, the scores it gave the tests it was handed, and its note, redacted and cut; no note when it left none. */
 interface CheckedResult {
   readonly exclude: readonly (readonly [string, string])[];
-  readonly relevance: readonly (readonly [string, number])[];
+  readonly relevance: Scores;
   readonly note: string | undefined;
+}
+
+/** The scores the error a filter threw carried, and why they were dropped when they failed the check or could not be read. */
+interface ThrownScores {
+  readonly scores: Scores;
+  readonly dropped?: string;
 }
 
 /** The most code points a stored reason, note, or log line keeps, on one line. */
@@ -97,6 +110,9 @@ const MAX_FILTER_TEXT = 1024;
 
 /** The most code points an error quotes of a key or test id a filter chose. */
 const MAX_QUOTED = 200;
+
+/** The most code points of why a thrown error's scores were dropped that a note keeps, so the failure's own message still fits after it. */
+const MAX_DROPPED = 300;
 
 const RESULT_KEYS: ReadonlySet<string> = new Set(['exclude', 'relevance', 'note']);
 
@@ -222,10 +238,12 @@ export function filterCandidates(selection: Selection): readonly TestFilterCandi
  * result is their intersection. A filter whose input is empty is not called.
  * A filter that throws, answers with something other than
  * `{ exclude, relevance?, note? }`, or runs past `scope.timeoutMs` leaves
- * nothing out and scores nothing: the run warns and the next filter is called
- * on every test it was given. A test several filters scored keeps its highest
- * score. Reasons, notes, log lines, and what a refused answer quotes are
- * redacted and cut before anything prints or records them.
+ * nothing out: the run warns and the next filter is called on every test it
+ * was given. A failed filter scores nothing either, except that the error it
+ * throws may carry `relevance`, checked as a result's is; nothing a call
+ * throws past its deadline is read. A test several filters scored keeps its
+ * highest score. Reasons, notes, log lines, and what a refused answer quotes
+ * are redacted and cut before anything prints or records them.
  */
 export async function applyTestFilters(
   filters: readonly TestFilter[],
@@ -244,15 +262,15 @@ export async function applyTestFilters(
     }
     const input = Object.freeze([...remaining]);
     const call = await callFilter(filter, input, scope);
+    for (const [id, score] of call.outcome === 'answered' ? call.result.relevance : call.relevance) relevance.set(id, Math.max(relevance.get(id) ?? 0, score));
     if (call.outcome !== 'answered') {
       // Said now, not with the summaries: an interrupt during a later filter would drop them.
       scope.notice(`warning: ${name} ${call.note}`);
       decisions.push({ name, candidates: input.length, note: call.note, outcome: call.outcome });
       continue;
     }
-    const { exclude, relevance: scores, note } = call.result;
+    const { exclude, note } = call.result;
     for (const [id, reason] of exclude) excluded.set(id, { filter: name, reason });
-    for (const [id, score] of scores) relevance.set(id, Math.max(relevance.get(id) ?? 0, score));
     decisions.push({ name, candidates: input.length, ...(note === undefined ? {} : { note }) });
     remaining = remaining.filter((candidate) => !excluded.has(candidate.id));
   }
@@ -288,8 +306,11 @@ async function callFilter(filter: TestFilter, input: readonly TestFilterCandidat
     },
     redact: (text: string) => redactFragments(String(text)),
   });
-  /** A call that leaves nothing out, its note ending in `detail`, so a long one is what the cut shortens. */
-  const failed = (problem: string, detail: unknown): FilterCall => ({ outcome: 'failed', note: cut(`${problem}, so it leaves nothing out: ${redact(errorMessage(detail))}`) });
+  /** A call that leaves nothing out, its note ending in `detail`, so a long one is what the cut shortens, and scoring what `thrown` kept; why `thrown` dropped any is said before it, cut to `MAX_DROPPED`. */
+  const failed = (problem: string, detail: unknown, thrown?: ThrownScores): FilterCall => {
+    const ignored = thrown?.dropped === undefined ? '' : `, ignoring its relevance (${ellipsize(collapseText(redact(thrown.dropped)), MAX_DROPPED)})`;
+    return { outcome: 'failed', note: cut(`${problem}${ignored}, so it leaves nothing out: ${redact(errorMessage(detail))}`), relevance: thrown?.scores ?? [] };
+  };
   try {
     return await scope.step(name, async () => {
       let raw: unknown;
@@ -297,9 +318,9 @@ async function callFilter(filter: TestFilter, input: readonly TestFilterCandidat
         raw = await withAbort(() => Promise.resolve().then(() => filter.filter(input, context)), signal, () => interrupted);
       } catch (cause) {
         if (scope.signal.aborted) throw cause;
-        if (!deadline.signal.aborted) return failed('failed', cause);
+        if (!deadline.signal.aborted) return failed('failed', cause, thrownScores(cause, input, scope.collectedIds, redact));
         leaveWorkBehind();
-        return { outcome: 'timed-out', note: cut(`did not finish within ${budget}, so it leaves nothing out`) };
+        return { outcome: 'timed-out', note: cut(`did not finish within ${budget}, so it leaves nothing out`), relevance: [] };
       }
       try {
         return { outcome: 'answered', result: checkedResult(raw, input, scope.collectedIds, redact) };
@@ -412,7 +433,7 @@ function checkedRelevance(
   ids: ReadonlySet<string>,
   collectedIds: ReadonlySet<string>,
   redact: (text: string) => string,
-): readonly (readonly [string, number])[] {
+): Scores {
   if (relevance === undefined) return [];
   if (!isPlainObject(relevance)) {
     throw new Error(`relevance must be a plain object of test ids to numbers from 0 to 1, got ${describeValue(relevance)}`);
@@ -428,4 +449,20 @@ function checkedRelevance(
     throw new Error(`the relevance of ${quoted(id, redact)} must be a number from 0 to 1, got ${describeValue(score)}`);
   }
   return (entries as [string, number][]).filter(([id]) => ids.has(id));
+}
+
+/**
+ * The scores in the `relevance` of what a filter threw, checked as a result's
+ * are: a filter that fails can still know how likely some tests are to fail,
+ * such as the ones the change touches, and the run starts those first. None
+ * when it carries none; none, with the reason, when they fail the check or
+ * cannot be read, since the failure is what the warning reports.
+ */
+function thrownScores(cause: unknown, input: readonly TestFilterCandidate[], collectedIds: ReadonlySet<string>, redact: (text: string) => string): ThrownScores {
+  try {
+    const relevance = typeof cause === 'object' && cause !== null ? (cause as { relevance?: unknown }).relevance : undefined;
+    return { scores: checkedRelevance(relevance, new Set(input.map((candidate) => candidate.id)), collectedIds, redact) };
+  } catch (problem) {
+    return { scores: [], dropped: errorMessage(problem) };
+  }
 }

@@ -50,6 +50,16 @@ function sized(title: string, size: number): string {
   return `test('${title}', async () => {});\n// ${'x'.repeat(size)}\n`;
 }
 
+/** What `work`, a promise or the value a filter may return in place of one, rejected with. */
+async function rejection(work: unknown): Promise<unknown> {
+  try {
+    await work;
+  } catch (error) {
+    return error;
+  }
+  throw new Error('expected a rejection');
+}
+
 describe('decisionFilter', () => {
   it('asks the model it is given about every test file that fits in one call, one question per test', async () => {
     const repo = cartRepo();
@@ -618,6 +628,32 @@ describe('decisionFilter', () => {
     expect(requests).toHaveLength(8);
   });
 
+  it('carries the scores the change alone gives on the error it throws when every call failed, so the run still starts the tests the change touches first', async () => {
+    const repo = cartRepo({ 'src/cart.ts': 'export const total = 2;\n', [LOGIN]: "test('signs in', async () => { /* edited */ });\n" });
+    const { model, requests } = scriptedJudge(
+      () => 0,
+      () => {
+        throw new Error('Unauthorized: no AI Gateway key\nsee the docs');
+      },
+    );
+    const error = await rejection(decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context));
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ message: 'Unauthorized: no AI Gateway key', relevance: { [ADDS.id]: 0.5, [SIGNS_IN.id]: 1 } });
+    // Logging or serializing the error must not list every test the run has.
+    expect(Object.keys(error as object)).not.toContain('relevance');
+    expect(JSON.stringify(error)).toBe('{}');
+    expect(requests).toHaveLength(1);
+  });
+
+  it('carries the same scores when git cannot diff against the base, the original error and its message kept', async () => {
+    const repo = { ...cartRepo({ 'src/cart.ts': 'export const total = 2;\n', [LOGIN]: "test('signs in', async () => { /* edited */ });\n" }), base: '0'.repeat(40) };
+    const { model } = scriptedJudge(() => 0);
+    const error = await rejection(decisionFilter({ model }).filter([ADDS, SIGNS_IN], filterContext(repo).context));
+    expect((error as Error).message).toMatch(/^Command failed: git diff --name-only /);
+    // `cmd` is git's own error, not a wrapper of it.
+    expect(error).toMatchObject({ cmd: expect.stringMatching(/^git diff --name-only /), relevance: { [ADDS.id]: 0.5, [SIGNS_IN.id]: 1 } });
+  });
+
   it('retries a call that fails with a retryable error up to 3 times', async () => {
     const busy = new APICallError({
       message: 'Too many requests',
@@ -657,6 +693,8 @@ describe('decisionFilter', () => {
     );
     const { context } = filterContext(cartRepo());
     await expect(decisionFilter({ model }).filter([ADDS, SIGNS_IN], { ...context, signal: run.signal })).rejects.toBe(reason);
+    // The reason is the run's own, not an error of the filter's to carry scores on.
+    expect(reason).not.toHaveProperty('relevance');
   });
 
   it('ends with the abort, making no call, when the run stopped waiting before git answered', async () => {

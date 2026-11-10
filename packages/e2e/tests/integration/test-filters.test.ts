@@ -675,6 +675,23 @@ describe('starting the likeliest tests first', () => {
     }
   });
 
+  it('keeps the scores a failing filter puts on its error, so the failing test still starts first, and the warning and the failed record stay', async () => {
+    const files = { ...THREE_TESTS, 'tests/gamma.e2e.ts': FAILING_GAMMA };
+    const down: TestFilter = {
+      name: 'areas',
+      filter: (tests) => {
+        throw Object.assign(new Error('no key'), { relevance: Object.fromEntries(tests.map((test) => [test.id, titleOf(test) === 'gamma' ? 1 : 0.5])) });
+      },
+    };
+    const { titles, events, outcome, report } = await started(files, [down], { maxFailures: 1 });
+    expect(titles).toEqual(['gamma']);
+    expect(outcome.exitCode).toBe(1);
+    expect(events).toContain('notice:filter:warning: areas failed, so it leaves nothing out: no key');
+    expect(events).toContain('notice:filter:ranked 3 of 3 tests by relevance, likeliest first');
+    expect(report.run.filters).toEqual([{ name: 'areas', candidates: 3, excluded: 0, note: 'failed, so it leaves nothing out: no key', outcome: 'failed' }]);
+    expect(row(report, 'gamma').status).toBe('failed');
+  });
+
   it('applies to a file-backed config run by the CLI, and says nothing of ranking on e2e list, which starts nothing', () => {
     const project = fixture({
       ...THREE_TESTS,

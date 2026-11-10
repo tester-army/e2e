@@ -1802,6 +1802,11 @@ interface TestFilterResult {
 `TestFilter`, `TestFilterCandidate`, `TestFilterContext`,
 `TestFilterChanges`, and `TestFilterResult` are exported from `e2e`.
 
+A filter that throws, returns an invalid result, or runs past 5 minutes
+leaves nothing out, and a warning says so. An error it throws can carry
+`relevance`, shaped as in `TestFilterResult`: the run still starts the
+likeliest first. See [Test filters](/filters#write-your-own).
+
 ### `CredentialConfig`
 
 ```ts
