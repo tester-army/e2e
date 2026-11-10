@@ -432,9 +432,8 @@ lowers the cost of a model call. The replay cache skips the call.
 ## Compile a recording into code
 
 `e2e compile` replaces an `agent.act()` step with the locator lines its
-recording repeats, so the step runs with no model and no cache. By default
-it compiles only steps whose targets have test ids; `--loose --verify`
-compiles the rest and keeps only what a run passes on. `e2e compile status`
+recording repeats, so the step runs with no model and no cache. It then
+runs the compiled test once and keeps only the lines that pass. `e2e compile status`
 says why each other step stays, and `e2e compile revert` puts a step back.
 See [`e2e compile`](/reference/cli#e2e-compile).
 

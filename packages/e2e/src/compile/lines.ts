@@ -7,11 +7,11 @@
  * the agent, with the reason.
  *
  * Unlike the MCP session's lines (`mcp/test-lines.ts`), nothing here sees the
- * live screen: a locator comes from the recorded descriptor alone. So the
- * default is conservative: a target without a test id leaves the step to the
- * agent (`unverified-locator`). Under `loose` such a target compiles from its
- * role and name, text, or placeholder, with a comment saying so, and a
- * locator that also matches a twin fails loudly when the compiled test runs.
+ * live screen: a locator comes from the recorded descriptor alone. A target
+ * without a test id compiles from its role and name, text, or placeholder,
+ * with a comment saying so; `e2e compile` then runs the compiled test, which
+ * puts the step back if a locator matches a twin, and drops the comment once
+ * the run passes.
  */
 
 import { CONTENT_NAMED_ROLES } from '../mcp/catalog.ts';
@@ -45,8 +45,6 @@ export interface CompileFills {
 export type RefusalCode =
   | 'truncated'
   | 'empty'
-  | 'unverified-locator'
-  | 'long-scroll'
   | 'viewport'
   | 'point'
   | 'focus-keyboard'
@@ -60,12 +58,6 @@ export type RefusalCode =
 
 /** What compiling one step needs beyond its trace. */
 export interface CompileContext {
-  /**
-   * Compile targets with no test id too, from their role and name, text, or
-   * placeholder, unchecked against a live screen. Off by default: such a step
-   * stays an `agent.act()` with `unverified-locator`.
-   */
-  readonly loose?: boolean;
   readonly fills: CompileFills;
   /** The target app's base URL, which a navigation line is made relative to. */
   readonly appBase: { readonly href: string; readonly origin: string } | undefined;
@@ -84,8 +76,8 @@ export interface CompiledStep {
 
 /**
  * A compiled step, or why the step stays an `agent.act()`. `unverified` lists
- * the targets found by a locator nothing checked: what a test id would make
- * safe, and on a compiled step under `loose`, what its lines guess.
+ * the targets found by a locator nothing checked: what its lines guess until
+ * a run passes on them, and what a test id would make certain.
  */
 export type CompileResult =
   | { readonly ok: true; readonly step: CompiledStep; readonly unverified: readonly TraceTargetDescriptor[] }
@@ -125,12 +117,8 @@ export function compileTrace(trace: ActionTrace, context: CompileContext): Compi
     }
   }
   if (lines.length === 0) return { ok: false, code: 'empty', reason: 'the recording holds no action a test line repeats', unverified: [] };
-  if (context.loose !== true && writer.unverified.length > 0) {
-    const named = [...new Set(writer.unverified.map((target) => targetLabel(target)))].join(', ');
-    return { ok: false, code: 'unverified-locator', reason: `no test id on ${named}; a locator from the recording alone may match a twin (--loose compiles it anyway)`, unverified: writer.unverified };
-  }
   const actions = lines.length;
-  for (const anchor of chosenAnchors(trace.endAnchors ?? [], context.loose === true)) {
+  for (const anchor of chosenAnchors(trace.endAnchors ?? [])) {
     const line = writer.assertion(anchor);
     if (line !== undefined) lines.push(line);
   }
@@ -138,18 +126,15 @@ export function compileTrace(trace: ActionTrace, context: CompileContext): Compi
 }
 
 /**
- * The end anchors worth asserting, in recorded order: under `loose`, the ones
- * with a test id, a state, a value, or an outcome role; otherwise only the
- * ones with a test id, chosen before the cap so a guessed one never takes a
- * place.
+ * The end anchors worth asserting: the ones with a test id, a state, a value,
+ * or an outcome role, those with a test id first so a guessed one never takes
+ * their place under the cap, each group in recorded order.
  */
-function chosenAnchors(anchors: readonly TraceTargetDescriptor[], loose: boolean): readonly TraceTargetDescriptor[] {
-  return anchors
-    .filter((anchor) =>
-      loose ? anchor.testId !== undefined || (anchor.states?.length ?? 0) > 0 || anchor.value !== undefined || OUTCOME_ROLES.has(anchor.role ?? '') : anchor.testId !== undefined,
-    )
-    .filter((anchor) => !Object.values(anchor).some((value) => typeof value === 'string' && (value.includes('<secret:') || value.includes('{{param:'))))
-    .slice(0, MAX_ASSERTIONS);
+function chosenAnchors(anchors: readonly TraceTargetDescriptor[]): readonly TraceTargetDescriptor[] {
+  const worth = anchors
+    .filter((anchor) => anchor.testId !== undefined || (anchor.states?.length ?? 0) > 0 || anchor.value !== undefined || OUTCOME_ROLES.has(anchor.role ?? ''))
+    .filter((anchor) => !Object.values(anchor).some((value) => typeof value === 'string' && (value.includes('<secret:') || value.includes('{{param:'))));
+  return [...worth.filter((anchor) => anchor.testId !== undefined), ...worth.filter((anchor) => anchor.testId === undefined)].slice(0, MAX_ASSERTIONS);
 }
 
 /** Writes the line of each action and anchor, noting the fixtures and imports they use. */
@@ -200,7 +185,6 @@ class LineWriter {
         return this.on(action.target, (locator) => `${locator}.dragTo(${destination})`);
       }
       case 'scrollUntil': {
-        if (this.context.loose !== true) throw new Uncompilable('long-scroll', `${where}: a test's scroll pages at its own pace, and a long one may time out where the agent's did not (--loose compiles it anyway)`);
         this.fixtures.add('screen');
         const scroller = action.target === undefined ? 'screen' : this.locator(action.target);
         const sought = `screen.getByText(${this.typed(action.text, where)})`;
@@ -284,11 +268,7 @@ class LineWriter {
         throw new Uncompilable('runtime-value', `a recorded target names a secret or a run-unique value: ${JSON.stringify(value)}`);
       }
     }
-    if (testId === undefined) {
-      // An assertion is optional: without a test id it is left out unless loose, never refused.
-      if (use === 'anchor' && this.context.loose !== true) throw new Uncompilable('unverified-locator', 'anchor without a test id');
-      if (use === 'action' && (name !== undefined || text !== undefined || placeholder !== undefined)) this.unverified.push(target);
-    }
+    if (testId === undefined && use === 'action' && (name !== undefined || text !== undefined || placeholder !== undefined)) this.unverified.push(target);
     this.fixtures.add('screen');
     // A content-named role's name is its text unless a distinct text says the name is a real label.
     const contentNamed = role !== undefined && CONTENT_NAMED_ROLES.has(role) && (text === undefined || name === text);

@@ -8,7 +8,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -129,30 +129,36 @@ describe('e2e compile: pinning a recording to its call', () => {
       { 'tests/a.e2e.ts': suite("  await agent.act('sign in');", "import { credentials } from './fixtures.ts';"), 'tests/fixtures.ts': "export { credentials } from 'e2e';\n" },
       [{ title: 't', instruction: 'sign in', actions: typed }],
     );
-    const compiled = cli(created, ['compile', 'tests/a.e2e.ts', '--write', '--no-run']);
-    expect(compiled.output).toContain('1 step(s) compiled');
-    const source = readFileSync(path.join(created.dir, 'tests/a.e2e.ts'), 'utf8');
-    expect(source).toContain('fill(credentials.user("admin").username)');
-    expect(source.match(/import \{[^}]*credentials[^}]*\}/gu)).toHaveLength(1);
+    const compiled = cli(created, ['compile', 'tests/a.e2e.ts', '--dry-run']);
+    expect(compiled.output).toContain('1 step(s) would compile');
+    expect(compiled.output).toContain('+   await screen.getByTestId("email").fill(credentials.user("admin").username);');
+    // The file's own import serves the line: no e2e import gains a credentials name.
+    expect(compiled.output).not.toMatch(/^[+-] .*import/mu);
   });
 
   it('keeps a step whose lines need a name the module already binds', async () => {
     const typed: ActionTrace['actions'] = [{ name: 'type', summary: 'type', target: { testId: 'email' }, value: 'admin@example.test' }];
     const created = await project({ 'tests/a.e2e.ts': suite("  await agent.act('sign in');", 'const credentials = { note: 1 };') }, [{ title: 't', instruction: 'sign in', actions: typed }]);
-    const compiled = cli(created, ['compile', 'tests/a.e2e.ts', '--write', '--no-run']);
+    const compiled = cli(created, ['compile', 'tests/a.e2e.ts', '--dry-run']);
     expect(compiled.output).toContain('[fixtures] the module declares its own credentials');
-    expect(readFileSync(path.join(created.dir, 'tests/a.e2e.ts'), 'utf8')).not.toContain('@compiled');
+    expect(compiled.output).toContain('0 step(s) would compile');
   });
 });
 
 describe('e2e compile revert', () => {
   it('edits no file when one of them holds a broken block', async () => {
-    const created = await project({ 'tests/a.e2e.ts': suite("  await agent.act('save it');") }, [{ title: 't', instruction: 'save it' }]);
-    const compiled = cli(created, ['compile', 'tests/a.e2e.ts', '--write', '--no-run']);
-    expect(compiled.output).toContain('1 step(s) compiled');
-    const good = readFileSync(path.join(created.dir, 'tests/a.e2e.ts'), 'utf8');
-    writeFileSync(path.join(created.dir, 'tests/b.e2e.ts'), good.replace('/** @end compiled */', ''));
-    const reverted = cli(created, ['compile', 'revert', 'tests/a.e2e.ts', 'tests/b.e2e.ts', '--write']);
+    const good = suite(
+      [
+        '  /**',
+        '   * @compiled agent.act("save it")',
+        `   * @from ${JSON.stringify("await agent.act('save it');")}`,
+        '   */',
+        '  await screen.getByTestId("save").tap();',
+        '  /** @end compiled */',
+      ].join('\n'),
+    );
+    const created = await project({ 'tests/a.e2e.ts': good, 'tests/b.e2e.ts': good.replace('/** @end compiled */', '') }, []);
+    const reverted = cli(created, ['compile', 'revert', 'tests/a.e2e.ts', 'tests/b.e2e.ts']);
     expect(reverted.exitCode).toBe(2);
     expect(reverted.output).toContain('nothing was reverted');
     expect(readFileSync(path.join(created.dir, 'tests/a.e2e.ts'), 'utf8')).toBe(good);

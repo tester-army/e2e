@@ -1090,28 +1090,36 @@ and `app.*` lines its replay cache recording repeats, plus `expect` lines
 for the end state it recorded. A compiled step runs with no model call and
 no cache. A step with no recording is recorded first: the command runs its
 test with `e2e run <file:line>`, and a step whose run did not pass stays an
-`agent.act()`. Without `--write`, it prints the change and edits nothing.
+`agent.act()`. The command then rewrites the test files and runs each
+compiled test once, on every target, with no retries: the blocks of a test
+that did not pass go back to `agent.act()` (`verify-failed`), and the blocks
+of one that passed get `@verifiedAt`. A target that skips the test does not
+count. `--dry-run` runs no test and edits nothing: it prints the change the
+recordings so far would make.
 
 <CodeGroup>
 ```bash npm
-npx e2e compile tests/checkout.e2e.ts             # print the change
-npx e2e compile tests/checkout.e2e.ts:12 --write  # compile the test declared at line 12
-npx e2e compile status --json                     # which steps compile, and why the rest stay
-npx e2e compile revert tests/checkout.e2e.ts --write
+npx e2e compile tests/checkout.e2e.ts            # record, compile, and check on a run
+npx e2e compile tests/checkout.e2e.ts:12         # only the test declared at line 12
+npx e2e compile tests/checkout.e2e.ts --dry-run  # print the change; run and edit nothing
+npx e2e compile status --json                    # which steps compile, and why the rest stay
+npx e2e compile revert tests/checkout.e2e.ts
 ```
 
 ```bash pnpm
-pnpm exec e2e compile tests/checkout.e2e.ts             # print the change
-pnpm exec e2e compile tests/checkout.e2e.ts:12 --write  # compile the test declared at line 12
-pnpm exec e2e compile status --json                     # which steps compile, and why the rest stay
-pnpm exec e2e compile revert tests/checkout.e2e.ts --write
+pnpm exec e2e compile tests/checkout.e2e.ts            # record, compile, and check on a run
+pnpm exec e2e compile tests/checkout.e2e.ts:12         # only the test declared at line 12
+pnpm exec e2e compile tests/checkout.e2e.ts --dry-run  # print the change; run and edit nothing
+pnpm exec e2e compile status --json                    # which steps compile, and why the rest stay
+pnpm exec e2e compile revert tests/checkout.e2e.ts
 ```
 
 ```bash bun
-bunx e2e compile tests/checkout.e2e.ts             # print the change
-bunx e2e compile tests/checkout.e2e.ts:12 --write  # compile the test declared at line 12
-bunx e2e compile status --json                     # which steps compile, and why the rest stay
-bunx e2e compile revert tests/checkout.e2e.ts --write
+bunx e2e compile tests/checkout.e2e.ts            # record, compile, and check on a run
+bunx e2e compile tests/checkout.e2e.ts:12         # only the test declared at line 12
+bunx e2e compile tests/checkout.e2e.ts --dry-run  # print the change; run and edit nothing
+bunx e2e compile status --json                    # which steps compile, and why the rest stay
+bunx e2e compile revert tests/checkout.e2e.ts
 ```
 </CodeGroup>
 
@@ -1142,7 +1150,7 @@ await expect(screen.getByTestId("success-message")).toHaveText("Logged in succes
 | `@recording` | The first 12 characters of the recording's key hash. |
 | `@step` | The instruction and params digests the recording was keyed by. |
 | `@recordedAt`, `@compiledAt` | The recording's date, and the compile's. |
-| `@verifiedAt` | When a `--verify` run passed on the lines. |
+| `@verifiedAt` | When the run after the compile passed on the lines. |
 
 The commands find a block through the parser's comment list, so a formatter,
 a comment after the end comment, or CRLF line ends leave it readable. A
@@ -1152,7 +1160,7 @@ a comment after the end comment, or CRLF line ends leave it readable. A
 | Command | Does |
 | --- | --- |
 | `e2e compile [files...]` | Compiles the selected tests' steps. Files select as in [`e2e run`](#positional-arguments), `file:line` included. |
-| `e2e compile status [files...]` | Prints every step: whether it compiles or is compiled, the code of why it stays, the coverage by code, and the targets a test id would unlock. A compiled block whose step was recorded again since is `stale`. Runs no test and edits no file. |
+| `e2e compile status [files...]` | Prints every step: whether it compiles or is compiled, the code of why it stays, and the coverage by code. A compiled block whose step was recorded again since is `stale`. Runs no test and edits no file. |
 | `e2e compile revert <file[:line]>...` | Replaces each compiled block with the statement it was compiled from. A file reverts every block in it; `file:line` reverts the block on that line, or every block of the test declared there. Repeats of one step in a test revert together. |
 
 | Option | Description |
@@ -1160,24 +1168,20 @@ a comment after the end comment, or CRLF line ends leave it readable. A
 | `--config <path>` | Explicit config path. Default: the nearest `e2e.config.ts`, `.mts`, `.js`, or `.mjs`. |
 | `--target <name>` | The target whose recordings to compile. Default: the only target; required with several. |
 | `--cache-dir <dir>` | The store directory, as for [`e2e cache`](#e2e-cache). |
-| `--write` | Rewrites the test files. `compile` and `revert` only. |
-| `--no-run` | Compiles only steps already recorded and runs no test. `compile` only. |
-| `--loose` | Also compiles targets with no test id, from their role and name, text, or placeholder, and a call whose params the source does not spell out when it has one recording. An action line on such a target ends in `// unverified locator`. `compile` and `status`. |
-| `--verify` | With `--write`, runs each compiled test once on every target, with no retries. A target that skips the test does not count. The blocks of a test that did not pass go back to `agent.act()` (`verify-failed`); the blocks of one that passed get `@verifiedAt` and lose their `// unverified locator` comments. `compile` only. |
+| `--dry-run` | Runs no test and edits nothing; prints the change. `compile` and `revert` only. |
 | `--json` | Prints the report as JSON. `status` only. |
 
 A step is compiled only when its recording is pinned to its call: a literal
 instruction in a bare `await agent.act(...)` statement of the test's own
 callback, in a test declared once at its line, with params the source
 spells out and that digest as the recording's key does, recorded for one
-agent under the current replay policy. A step compiles whole or not at all. Each one that stays is reported
+agent under the current replay policy. A call whose params the source does
+not spell out takes its test's only recording of that instruction. A step compiles whole or not at all. Each one that stays is reported
 with a code:
 
 | Code | The step stays because |
 | --- | --- |
 | `not-recorded` | It has no recording, or its run did not pass. |
-| `unverified-locator` | A target has no test id. Use `--loose`, or add the test id `status` names. |
-| `long-scroll` | It scrolls a list until a row shows. Use `--loose`. |
 | `runtime-value` | It typed a value read from the screen during this run, such as a one-time code, or a target is named by a redacted secret or a run-unique value. |
 | `project-tool` | It called one of the project's tools. |
 | `point` | It tapped a viewport point, not a node. |
@@ -1193,13 +1197,16 @@ with a code:
 | `nested-call` | The call is not a bare `await agent.act(...)` statement. |
 | `step-options` | The call passes `onAction`, `onBeforeAction`, `timeout`, or options the source does not spell out, which the lines would drop. |
 | `dynamic-instruction` | An instruction in the test is built at run time. |
-| `dynamic-params` | The params are not literals the source spells out. Use `--loose` for a call with one recording. |
+| `dynamic-params` | Several calls with the instruction pass params the source does not spell out. |
 | `ambiguous-recording` | The recordings cannot be told apart: a helper repeats the call, the test was recorded for several agents, or another test's id shares its first 300 characters. |
 | `group-partial` | Another call of the same step stays. |
 | `fixtures` | The callback does not destructure the fixtures the lines need, names one otherwise, or the module or the callback declares a name the lines use. A name the file imports, from `e2e` or a module that re-exports it, is used as imported. |
-| `verify-failed` | The `--verify` run did not pass on the lines. |
+| `verify-failed` | The run after the compile did not pass on the lines. |
 | `truncated`, `empty` | The recording hit a cap, or holds no action a line repeats. |
 
+- A target with no test id is located by its role and name, text, or
+  placeholder, and its line ends in `// unverified locator` until the run
+  after the compile passes on it. A test id makes the locator certain.
 - A typed credential username and a filled secret are written by name:
   `credentials.user(name).username`, `.password`, or `secrets.get(name)`.
   No value is copied into the file.

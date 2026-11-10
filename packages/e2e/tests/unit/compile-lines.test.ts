@@ -1,8 +1,8 @@
 /**
  * A recorded step as test lines: each action's line, the end anchors'
  * assertions, the fills spelled by name, and every refusal with its code.
- * Conservative by default, so a target without a test id leaves the step to
- * the agent unless `loose`.
+ * A target without a test id compiles from its role, text, or placeholder,
+ * marked as a guess until the run after the write passes on it.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -175,42 +175,42 @@ describe('compileTrace: assertions', () => {
     expect(lines(trace([tap({ testId: 'save' })], [...guessed, { text: 'Saved', testId: 'toast' }]))).toEqual([
       'await screen.getByTestId("save").tap();',
       'await expect(screen.getByTestId("toast")).toHaveText("Saved");',
+      'await expect(screen.getByText("Status 1")).toBeVisible();',
+      'await expect(screen.getByText("Status 2")).toBeVisible();',
     ]);
   });
 
-  it('leaves out an anchor with no test id, or one that names a run-unique value, without refusing the step', () => {
+  it('leaves out an anchor that names a run-unique value without refusing the step', () => {
     expect(lines(trace([tap({ testId: 'save' })], [{ role: 'status', name: 'Saved' }, { text: 'Hi {{param:/label}}', testId: 'greeting' }]))).toEqual([
       'await screen.getByTestId("save").tap();',
+      'await expect(screen.getByText("Saved")).toBeVisible();',
     ]);
   });
 });
 
-describe('compileTrace: conservative by default', () => {
-  it('refuses a target with no test id, naming it, and compiles it with a comment under loose', () => {
+describe('compileTrace: targets with no test id', () => {
+  it('compiles one from its role and name, with a comment, and lists it as unverified', () => {
     const recorded = trace([tap({ role: 'button', name: 'Buy now', within: 'Headphones' })]);
-    const refused = refusal(recorded);
-    expect(refused.code).toBe('unverified-locator');
-    expect(refused.reason).toContain('button "Buy now"');
-    expect(refused.unverified).toEqual([{ role: 'button', name: 'Buy now', within: 'Headphones' }]);
-    expect(lines(recorded, { loose: true })).toEqual(['await screen.getByRole("button", "Buy now").tap(); // unverified locator; recorded inside "Headphones"']);
+    expect(lines(recorded)).toEqual(['await screen.getByRole("button", "Buy now").tap(); // unverified locator; recorded inside "Headphones"']);
+    const compiled = compileTrace(recorded, { fills: { credentials: [], secrets: [] }, appBase: undefined, uniques: new Map() });
+    expect(compiled.unverified).toEqual([{ role: 'button', name: 'Buy now', within: 'Headphones' }]);
   });
 
-  it('finds a content-named role by its text under loose, and keeps a position among twins', () => {
+  it('finds a content-named role by its text, and keeps a position among twins', () => {
     expect(
-      lines(trace([{ name: 'secondaryTap', summary: 'right-click', target: { role: 'listitem', name: 'report.pdf', position: { index: 1, of: 3 } } }]), { loose: true }),
+      lines(trace([{ name: 'secondaryTap', summary: 'right-click', target: { role: 'listitem', name: 'report.pdf', position: { index: 1, of: 3 } } }])),
     ).toEqual(['await screen.getByText("report.pdf").nth(1).secondaryTap(); // unverified locator; 2 of 3 matches, by position']);
   });
 
   it('refuses a place among twins counted inside a container, which a screen-wide nth() would miscount', () => {
-    const refused = refusal(trace([tap({ testId: 'delete', within: 'Budget', position: { index: 1, of: 2 } })]), { loose: true });
+    const refused = refusal(trace([tap({ testId: 'delete', within: 'Budget', position: { index: 1, of: 2 } })]));
     expect(refused.code).toBe('container-position');
     expect(refused.reason).toContain('inside "Budget"');
   });
 
-  it('refuses a long scroll unless loose, and gives it the recorded wait', () => {
+  it('gives a long scroll the recorded wait', () => {
     const recorded = trace([{ name: 'scrollUntil', summary: 'scroll', text: 'Row 4322', direction: 'down', target: { testId: 'viewport' } }], [], { endWaitMs: 45_000 });
-    expect(refusal(recorded).code).toBe('long-scroll');
-    expect(lines(recorded, { loose: true })).toEqual([
+    expect(lines(recorded)).toEqual([
       'await screen.getByTestId("viewport").scrollUntilVisible(screen.getByText("Row 4322"), { direction: "down", timeout: 45000 });',
     ]);
   });
@@ -228,7 +228,7 @@ describe('compileTrace: refusals', () => {
     ['unique-unresolved', [{ name: 'type', summary: 'type', target: { testId: 'q' }, value: '{{param:/query}}' }], 'no unique() param at /query'],
     ['no-identity', [tap({ role: 'textbox', within: 'Account' })], 'no role and name, test id'],
   ])('%s', (code, actions, reason) => {
-    const refused = refusal(trace([tap({ testId: 'first' }), ...actions]), { loose: true });
+    const refused = refusal(trace([tap({ testId: 'first' }), ...actions]));
     expect(refused.code).toBe(code);
     expect(refused.reason).toContain(reason);
   });

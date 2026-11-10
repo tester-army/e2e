@@ -5,8 +5,10 @@
  *
  * - `e2e compile [files...]` compiles. The recordings are the replay
  *   cache's `trace-1` entries; a selected step with none is recorded first
- *   by running its test (`e2e run <file:line>`), unless `--no-run`. Without
- *   `--write`, the change is printed and nothing is edited.
+ *   by running its test (`e2e run <file:line>`). The test files are then
+ *   rewritten, and each compiled test runs once: the blocks of a test that
+ *   did not pass go back to `agent.act()`. `--dry-run` runs no test and
+ *   edits nothing; it prints the change the recordings so far would make.
  * - `e2e compile status [files...]` says, for every step, whether it
  *   compiles and, when not, why, as a code; whether a compiled block's
  *   recording has been replaced since; what a test id would unlock; and the
@@ -18,8 +20,9 @@
  * a literal instruction in a bare statement of the test's own callback, the
  * test declared once at its line, params the source spells out and the
  * recording's key digests alike, one agent, and as many recordings of that
- * call as calls. Conservative by default: a target with no test id leaves
- * its step to the agent (`unverified-locator`) unless `--loose`.
+ * call as calls. A target with no test id compiles from its role, text, or
+ * placeholder, and the run after the write is what shows it found the right
+ * node.
  */
 
 import { spawn } from 'node:child_process';
@@ -72,25 +75,19 @@ interface CommonOptions {
 
 export interface CompileOptions extends CommonOptions {
   readonly files: readonly string[];
-  /** Rewrite the test files; otherwise print what would change. */
-  readonly write?: boolean;
-  /** Record missing steps by running their tests first. Default true. */
-  readonly run?: boolean;
-  /** Compile targets with no test id, and calls whose params the source does not spell out, too. */
-  readonly loose?: boolean;
-  /** After writing, run each compiled test once and put back the blocks of every test that did not pass. */
-  readonly verify?: boolean;
+  /** Run no test and edit nothing: print the change the recordings so far would make. */
+  readonly dryRun?: boolean;
 }
 
 export interface StatusOptions extends CommonOptions {
   readonly files: readonly string[];
-  readonly loose?: boolean;
   readonly json?: boolean;
 }
 
 export interface RevertOptions extends CommonOptions {
   readonly locations: readonly string[];
-  readonly write?: boolean;
+  /** Print what would change and edit nothing. */
+  readonly dryRun?: boolean;
 }
 
 /** One recording, newest per step. */
@@ -121,7 +118,6 @@ interface TestPlan {
 interface PlanContext {
   readonly fills: CompileFills;
   readonly appBase: { readonly href: string; readonly origin: string } | undefined;
-  readonly loose: boolean;
   /** Each secret's purpose by name, and each credential's username: what a params digest projects them to. */
   readonly secretPurposes: ReadonlyMap<string, string>;
   readonly usernames: ReadonlyMap<string, string>;
@@ -143,7 +139,7 @@ interface Project {
 }
 
 /** Loads the config and picks the target; a string is the error to print. */
-async function openProject(options: CommonOptions & { readonly loose?: boolean }): Promise<Project | string> {
+async function openProject(options: CommonOptions): Promise<Project | string> {
   const cwd = options.cwd ?? process.cwd();
   let config: ResolvedConfig;
   try {
@@ -187,7 +183,6 @@ async function openProject(options: CommonOptions & { readonly loose?: boolean }
         secrets: [...config.secrets.keys()],
       },
       appBase: target.app.base,
-      loose: options.loose === true,
       secretPurposes: new Map([...config.allSecrets].map(([name, secret]) => [name, secret.purpose])),
       usernames: new Map(credentials.map((credential) => [credential.name, credential.username])),
     },
@@ -212,7 +207,8 @@ export async function compileCommand(options: CompileOptions): Promise<number> {
 
   let plans = await planAll(project, tests, await readRecordings(config, targetName));
   const missing = [...new Set(plans.flatMap(({ test, outcomes }) => (outcomes.some((outcome) => outcome.kind === 'missing') ? [declaration(test)] : [])))];
-  if (missing.length > 0 && options.run !== false) {
+  const write = options.dryRun !== true;
+  if (missing.length > 0 && write) {
     if (isCiMode(process.env) && config.cache.mode !== 'read-write') {
       process.stderr.write(picocolors.yellow(`CI is set and the cache is ${config.cache.mode}: the run below records nothing. Set cache.mode to read-write to record in CI.\n`));
     }
@@ -225,7 +221,7 @@ export async function compileCommand(options: CompileOptions): Promise<number> {
   const compiledOn = today();
   const editsByFile = new Map<string, Edit[]>();
   const importNeeds = new Map<string, Set<string>>();
-  /** Each test compiled here, with the recordings its blocks name, for `--verify` to find them again. */
+  /** Each test compiled here, with the recordings its blocks name, for the checking run to find them again. */
   const written: { readonly test: CollectedTest; readonly recordings: ReadonlySet<string> }[] = [];
   let compiled = 0;
   let left = 0;
@@ -247,8 +243,8 @@ export async function compileCommand(options: CompileOptions): Promise<number> {
       if (outcome.kind === 'missing') {
         left += 1;
         const why =
-          options.run === false
-            ? 'no recording; run the test first, or drop --no-run'
+          !write
+            ? 'no recording yet; without --dry-run, e2e compile records it by running the test'
             : 'no recording: the run did not pass this step, or the cache saved nothing for it (a step that ends where it began, or with no action to replay; see "not saved" in the run summary)';
         process.stdout.write(`  ${skipMark()} ${label} ${codeLabel('not-recorded')} ${why}\n`);
         continue;
@@ -293,17 +289,18 @@ export async function compileCommand(options: CompileOptions): Promise<number> {
       const at = existing?.insert ?? source.afterImports();
       edits.push({ start: at, end: at, text: existing === undefined ? `${source.eol}import { ${names.join(', ')} } from 'e2e';` : names.map((name) => `, ${name}`).join('') });
     }
-    await emit(config.projectRoot, file, source.text, applyEdits(source.text, edits), options.write === true);
+    await emit(config.projectRoot, file, source.text, applyEdits(source.text, edits), write);
   }
 
-  if (options.verify === true && options.write === true && written.length > 0) {
+  if (write && written.length > 0) {
     const reverted = await verifyCompiled(project, written, options);
     compiled -= reverted;
     left += reverted;
   }
 
-  const verb = options.write === true ? 'compiled' : 'would compile';
-  process.stdout.write(`\n${picocolors.bold(`${String(compiled)} step(s) ${verb}`)}, ${String(left)} left to the agent${options.write === true || compiled === 0 ? '' : '; pass --write to change the files'}\n`);
+  const verb = write ? 'compiled' : 'would compile';
+  const next = write || compiled === 0 ? '' : '; without --dry-run, the files change and a run checks the lines';
+  process.stdout.write(`\n${picocolors.bold(`${String(compiled)} step(s) ${verb}`)}, ${String(left)} left to the agent${next}\n`);
   if (left > 0) process.stdout.write(picocolors.dim('Why each one stays, and what would unlock it: e2e compile status\n'));
   return 0;
 }
@@ -358,7 +355,7 @@ function bindingEdits(
   for (const name of imports) {
     if (testSource.bodyNames.has(name)) return `the callback declares its own ${name}, and the lines use e2e's`;
     // An import of the name (e2e's, or a project's fixtures module re-exporting it) is the binding the
-    // rest of the test already uses, so the lines use it too; --verify catches one that differs.
+    // rest of the test already uses, so the lines use it too; the checking run catches one that differs.
     if (imported.has(name)) continue;
     if (declared.has(name)) return `the module declares its own ${name}, and the lines use e2e's`;
     toImport.push(name);
@@ -387,17 +384,6 @@ export async function statusCommand(options: StatusOptions): Promise<number> {
   const plans = await planAll(project, tests, await readRecordings(project.config, project.targetName));
 
   const rows: StatusRow[] = [];
-  // Targets without a test id, with the steps each blocks: a step counts only when ids are all it lacks.
-  const unlocks = new Map<string, { label: string; steps: Set<string> }>();
-  const noteUnverified = (key: string, unverified: readonly TraceTargetDescriptor[], onlyIds: boolean): void => {
-    for (const target of unverified) {
-      const label = `${targetLabel(target)}${target.within === undefined ? '' : ` in "${target.within}"`}`;
-      const entry = unlocks.get(label) ?? { label, steps: new Set<string>() };
-      if (onlyIds) entry.steps.add(key);
-      unlocks.set(label, entry);
-    }
-  };
-
   for (const plan of plans) {
     const { test } = plan;
     const name = test.titlePath.join(' › ');
@@ -415,7 +401,6 @@ export async function statusCommand(options: StatusOptions): Promise<number> {
           reason: `${plan.placement.reason}; the recording ${result.ok ? 'would compile' : `would stay: [${result.code}]`}`,
           unverified: result.unverified.map((target) => targetLabel(target)),
         });
-        noteUnverified(`${test.id}#${recording.keyHash}`, result.unverified, false);
       }
       if (plan.recordings.length === 0) rows.push({ test: name, location: declaration(test), instruction: undefined, status: 'stays', code: plan.placement.code, reason: plan.placement.reason, unverified: [] });
       continue;
@@ -429,7 +414,6 @@ export async function statusCommand(options: StatusOptions): Promise<number> {
         rows.push({ ...base, status: 'compiles', code: undefined, reason: undefined, unverified: outcome.unverified.map((target) => targetLabel(target)) });
       } else {
         rows.push({ ...base, status: 'stays', code: outcome.code, reason: outcome.reason, unverified: outcome.unverified.map((target) => targetLabel(target)) });
-        noteUnverified(`${test.id}@${location}`, outcome.unverified, outcome.code === 'unverified-locator');
       }
     }
   }
@@ -440,7 +424,6 @@ export async function statusCommand(options: StatusOptions): Promise<number> {
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
   const done = rows.filter((row) => row.status === 'compiles' || row.status === 'compiled').length;
-  const suggestions = [...unlocks.values()].filter((entry) => entry.steps.size > 0).toSorted((a, b) => b.steps.size - a.steps.size);
 
   if (options.json === true) {
     const summary = {
@@ -449,9 +432,8 @@ export async function statusCommand(options: StatusOptions): Promise<number> {
       compiled: rows.filter((row) => row.status === 'compiled').length,
       stale: rows.filter((row) => row.status === 'stale').length,
       byCode: Object.fromEntries(counts),
-      loose: project.context.loose,
     };
-    process.stdout.write(`${JSON.stringify({ summary, steps: rows, testIds: suggestions.map((entry) => ({ target: entry.label, unlocks: entry.steps.size })) }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ summary, steps: rows }, null, 2)}\n`);
     return 0;
   }
 
@@ -472,12 +454,8 @@ export async function statusCommand(options: StatusOptions): Promise<number> {
       process.stdout.write(`  ${skipMark()} L${where}${what} ${codeLabel(row.code!)} ${picocolors.dim(row.reason ?? '')}\n`);
     }
   }
-  process.stdout.write(`\n${picocolors.bold('Coverage')} ${String(done)} of ${String(rows.length)} step(s) compiled or compile${project.context.loose ? ' (--loose)' : ''}\n`);
+  process.stdout.write(`\n${picocolors.bold('Coverage')} ${String(done)} of ${String(rows.length)} step(s) compiled or compile\n`);
   for (const [code, count] of [...counts].toSorted((a, b) => b[1] - a[1])) process.stdout.write(`  ${String(count).padStart(3)} ${codeLabel(code)}\n`);
-  if (suggestions.length > 0) {
-    process.stdout.write(`\n${picocolors.bold('Test ids that would unlock steps')}\n`);
-    for (const entry of suggestions.slice(0, 15)) process.stdout.write(`  ${String(entry.steps.size).padStart(3)} step(s) · ${entry.label}\n`);
-  }
   return 0;
 }
 
@@ -559,10 +537,10 @@ export async function revertCommand(options: RevertOptions): Promise<number> {
       continue;
     }
     reverted += chosen.length;
-    await emit(cwd, relative, source.text, applyEdits(source.text, chosen.map((block) => ({ start: block.start, end: block.end, text: block.from }))), options.write === true);
+    await emit(cwd, relative, source.text, applyEdits(source.text, chosen.map((block) => ({ start: block.start, end: block.end, text: block.from }))), options.dryRun !== true);
   }
-  const verb = options.write === true ? 'reverted' : 'would revert';
-  process.stdout.write(`\n${picocolors.bold(`${String(reverted)} block(s) ${verb}`)}${options.write === true || reverted === 0 ? '' : '; pass --write to change the files'}\n`);
+  const verb = options.dryRun === true ? 'would revert' : 'reverted';
+  process.stdout.write(`\n${picocolors.bold(`${String(reverted)} block(s) ${verb}`)}${options.dryRun !== true || reverted === 0 ? '' : '; without --dry-run, the files change'}\n`);
   return 0;
 }
 
@@ -722,15 +700,11 @@ function planTest(testSource: TestSource, recordings: readonly Recording[], cont
       continue;
     }
     if (group.some((site) => signatures.get(site) === undefined)) {
-      // The cache keys a call by its params; the source does not spell these out, so the recording cannot be checked against them.
+      // The cache keys a call by its params, which the source does not spell out: one call takes the only
+      // recording, and the run after the write checks it; several cannot be told apart.
       const [site] = group;
-      if (!context.loose || group.length > 1 || site === undefined) {
-        skipAll(
-          'dynamic-params',
-          group.length > 1
-            ? 'calls with this instruction pass params the source does not spell out, so their recordings cannot be told apart'
-            : 'the params are not literals the source spells out, so the recording cannot be checked against them (--loose takes the only recording)',
-        );
+      if (group.length > 1 || site === undefined) {
+        skipAll('dynamic-params', 'calls with this instruction pass params the source does not spell out, so their recordings cannot be told apart');
         continue;
       }
       if (forInstruction.length === 0) outcomes.set(site, { kind: 'missing', site });
@@ -832,7 +806,7 @@ async function verifyCompiled(project: Project, written: readonly { readonly tes
   return reverted;
 }
 
-/** What `--verify` reads of the run's `report.json`: each result's test id and status. */
+/** What the checking run's `report.json` gives: each result's test id and status. */
 const ReportResults = z.looseObject({ run: z.looseObject({ results: z.array(z.looseObject({ testId: z.string(), status: z.string() })) }) });
 
 /** A compiled block's text once a run passed on it: an `@verifiedAt` tag, and no line still marked a guess. */

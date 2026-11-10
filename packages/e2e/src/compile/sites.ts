@@ -102,7 +102,7 @@ export interface CompiledBlock {
   readonly step: string | undefined;
   readonly recordedAt: string | undefined;
   readonly compiledAt: string | undefined;
-  /** When a run last passed on the block's lines, under `compile --verify`. */
+  /** When the run after the compile passed on the block's lines. */
   readonly verifiedAt: string | undefined;
 }
 

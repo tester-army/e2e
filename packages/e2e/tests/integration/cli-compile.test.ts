@@ -1,10 +1,10 @@
 /**
  * `e2e compile` end to end through the built CLI, on the fixture app with an
  * executor that taps without a model: a step with no recording is recorded by
- * running its test, kept as an `agent.act()` while its target has no test id,
- * compiled with `--loose` into lines that pass with the agent forbidden and
- * the cache off once a run passed on them, and reverted to the original
- * source, whose recording still replays.
+ * running its test, compiled into lines that pass with the agent forbidden
+ * and the cache off once a run passed on them, reverted to the original
+ * source, whose recording still replays, and put back when the run after the
+ * write fails on the lines.
  */
 
 import { spawn } from 'node:child_process';
@@ -90,37 +90,27 @@ describe('e2e compile', () => {
     await app?.close();
   });
 
-  it('records a step with no recording, then keeps it while its target has no test id', async () => {
-    const compiled = await cli(['compile', 'tests/act.e2e.ts', '--write']);
-    expect(compiled.exitCode, compiled.output).toBe(0);
-    expect(compiled.output).toContain('Recording 1 test(s) with no recording yet: e2e run tests/act.e2e.ts:3');
-    expect(compiled.output).toContain('[unverified-locator] no test id on button "Increment"');
-    expect(compiled.output).toContain('0 step(s) compiled, 1 left to the agent');
-    expect(readdirSync(path.join(project.dir, '.e2e', 'cache')).filter((name) => name.endsWith('.json'))).toHaveLength(1);
+  it('previews nothing before the step is recorded, and runs no test', async () => {
+    const preview = await cli(['compile', 'tests/act.e2e.ts', '--dry-run']);
+    expect(preview.exitCode, preview.output).toBe(0);
+    expect(preview.output).toContain('[not-recorded] no recording yet; without --dry-run, e2e compile records it by running the test');
+    expect(preview.output).not.toContain('Recording');
     expect(suite()).toBe(SUITE);
-  }, 180_000);
-
-  it('reports the step, its code, and the test id that would unlock it', async () => {
-    const status = await cli(['compile', 'status', '--json']);
-    expect(status.exitCode, status.output).toBe(0);
-    const report = JSON.parse(status.output) as {
-      summary: { steps: number; compiles: number; byCode: Record<string, number> };
-      testIds: { target: string; unlocks: number }[];
-    };
-    expect(report.summary).toMatchObject({ steps: 1, compiles: 0, byCode: { 'unverified-locator': 1 } });
-    expect(report.testIds).toEqual([{ target: 'button "Increment"', unlocks: 1 }]);
-  });
+  }, 120_000);
 
   it('fails with the agent forbidden while the step is an agent.act() and the cache is off', async () => {
     const forbidden = await cli(['run', '--no-cache'], { E2E_FORBID_AGENT: '1' });
     expect(forbidden.exitCode, forbidden.output).toBe(1);
   }, 120_000);
 
-  it('compiles the recording with --loose, verifies it on a run, and passes with no agent and no cache', async () => {
-    const compiled = await cli(['compile', 'tests/act.e2e.ts', '--loose', '--write', '--no-run', '--verify']);
+  it('records the step, compiles it, checks it on a run, and the test passes with no agent and no cache', async () => {
+    const compiled = await cli(['compile', 'tests/act.e2e.ts']);
     expect(compiled.exitCode, compiled.output).toBe(0);
+    expect(compiled.output).toContain('Recording 1 test(s) with no recording yet: e2e run tests/act.e2e.ts:3');
+    expect(compiled.output).toContain('(2 unverified locator(s))');
     expect(compiled.output).toContain('increments twice passed with its compiled lines');
     expect(compiled.output).toContain('1 step(s) compiled, 0 left to the agent');
+    expect(readdirSync(path.join(project.dir, '.e2e', 'cache')).filter((name) => name.endsWith('.json'))).toHaveLength(1);
     const source = suite();
     expect(source).toContain(`  /**\n   * @compiled agent.act("increment the counter twice")\n   * @from "await agent.act('increment the counter twice');"\n`);
     expect(source).toMatch(/ \* @recording [0-9a-f]{12}\n/u);
@@ -138,11 +128,11 @@ describe('e2e compile', () => {
   }, 180_000);
 
   it('reverts the block to the call it was compiled from, whose recording still replays', async () => {
-    const preview = await cli(['compile', 'revert', 'tests/act.e2e.ts:5']);
+    const preview = await cli(['compile', 'revert', 'tests/act.e2e.ts:5', '--dry-run']);
     expect(preview.output).toContain('1 block(s) would revert');
     expect(suite()).not.toBe(SUITE);
 
-    const reverted = await cli(['compile', 'revert', 'tests/act.e2e.ts:3', '--write']);
+    const reverted = await cli(['compile', 'revert', 'tests/act.e2e.ts:3']);
     expect(reverted.exitCode, reverted.output).toBe(0);
     expect(suite()).toBe(SUITE);
 
@@ -150,15 +140,24 @@ describe('e2e compile', () => {
     expect(replayed.exitCode, replayed.output).toBe(0);
   }, 180_000);
 
-  it('puts a block back when its verification run does not pass', async () => {
+  it('reports the recorded step as compiling, with the targets its lines locate without a test id', async () => {
+    const status = await cli(['compile', 'status', '--json']);
+    expect(status.exitCode, status.output).toBe(0);
+    const report = JSON.parse(status.output) as { summary: { steps: number; compiles: number }; steps: { status: string; unverified: string[] }[] };
+    expect(report.summary).toMatchObject({ steps: 1, compiles: 1 });
+    expect(report.steps).toMatchObject([{ status: 'compiles', unverified: ['button "Increment"', 'button "Increment"'] }]);
+  });
+
+  it('puts a block back when its checking run does not pass', async () => {
     // The recording now taps a button the page does not have: its lines compile, and fail on the live app.
     const directory = path.join(project.dir, '.e2e', 'cache');
     for (const name of readdirSync(directory).filter((file) => file.endsWith('.json'))) {
       const file = path.join(directory, name);
       writeFileSync(file, readFileSync(file, 'utf8').replaceAll('"Increment"', '"Decrement"'));
     }
-    const compiled = await cli(['compile', 'tests/act.e2e.ts', '--loose', '--write', '--no-run', '--verify']);
+    const compiled = await cli(['compile', 'tests/act.e2e.ts']);
     expect(compiled.exitCode, compiled.output).toBe(0);
+    expect(compiled.output).not.toContain('Recording');
     expect(compiled.output).toContain('[verify-failed] the test failed with its compiled lines; 1 block(s) are agent.act() again');
     expect(compiled.output).toContain('0 step(s) compiled, 1 left to the agent');
     expect(suite()).toBe(SUITE);
