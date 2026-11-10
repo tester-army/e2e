@@ -3523,6 +3523,26 @@ describe('deterministic actions', () => {
     expect(h.fake.methods()).not.toContain('interactions.press');
   });
 
+  it('re-reads a control before a node swipe too, so the swipe starts from where the control rests', async () => {
+    autoAdvanceTimers();
+    const h = harness({ settle: false, transition: 0 });
+    await openAttempt(h);
+    await sleep(0);
+    const root = await screenRootOf(h);
+    const scroller = await observed(h, 'Scroller');
+    let reads = 0;
+    h.fake.respond('capture.snapshot', () => {
+      reads += 1;
+      return { ...SETTINGS_SNAPSHOT, nodes: SETTINGS_NODES.map((node) => (node.ref === '@e10' ? { ...node, rect: { ...node.rect!, y: 350 } } : node)) };
+    });
+
+    await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'down' }, test());
+    await h.engine.perform!(scroller.ref, { kind: 'swipe', direction: 'down' }, test());
+    // The control moved from y 320 to 350 after the gesture, then rested.
+    expect(reads).toBe(2);
+    expect(h.fake.lastArgs('interactions.swipe')).toMatchObject({ from: { y: expect.any(Number) } });
+  });
+
   it('does not re-read a control after a gesture when the agent made it', async () => {
     const h = harness({ settle: false, transition: 0 });
     await openAttempt(h);

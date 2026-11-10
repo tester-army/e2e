@@ -1450,7 +1450,7 @@ export class AgentDeviceSurface {
       } else if (deterministic) {
         target = await this.settled(entry, operation, input);
       }
-      if (deterministic && action.kind !== 'swipe') {
+      if (deterministic) {
         target = await this.steadied(target, operation, input, filling);
         if (filling && !target.takesText) throw refuseFill(target);
       }
