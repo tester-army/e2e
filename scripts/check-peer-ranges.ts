@@ -7,6 +7,11 @@
  * have (#1657 rule (c): a new `e2e/engine` import counts as raising the
  * floor).
  *
+ * A floor naming the version the sibling's pending changesets will release
+ * has no tag yet, so its imports are verified against the working tree,
+ * which is that pending release's source, instead of passing on an
+ * unverifiable note.
+ *
  * `changeset version --snapshot canary` rewrites those peers to the siblings'
  * exact canary versions, and the canary output is committed to main as
  * `chore: release`. An exact pin that lands makes changesets patch-bump the
@@ -26,7 +31,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseChangesetFile } from '@changesets/parse';
 import { nextVersionAfterBump, pendingBumps } from './changeset-bumps.ts';
-import { engineImportProblems, engineImports, tagExportsAt, type EngineImportCheck } from './engine-exports.ts';
+import { addEngineImports, engineImportProblems, engineImports, tagExportsAt, type EngineImportCheck, type ExportSets, type ImportKind } from './engine-exports.ts';
 import { peerFloor, peerRangeProblems } from './peer-ranges.ts';
 import { REPO_ROOT, publicPackages, siblingPeers } from './public-packages.ts';
 
@@ -73,7 +78,7 @@ for (const { manifest } of packages) {
 }
 
 // The version each sibling's pending changesets will release: a floor may
-// name it as the runner version in the same release.
+// name it as the sibling's version in the same release.
 const dir = join(REPO_ROOT, '.changeset');
 const changesetFiles = readdirSync(dir).filter((file) => file.endsWith('.md') && file !== 'README.md');
 const changesets = changesetFiles.map((file) => parseChangesetFile(readFileSync(join(dir, file), 'utf8')));
@@ -97,12 +102,29 @@ const problems = peerRangeProblems(packages, (packagePath) => {
 // Rule (c): every named import from `e2e/*` must be exported by `e2e` at
 // the package's peer floor, read off the `e2e@<floor>` tag.
 const siblingDirs = new Map(packages.map(({ manifest, path }) => [manifest.name, relative(REPO_ROOT, dirname(path))]));
-const exportsCache = new Map<string, ReadonlySet<string> | undefined>();
-const exportsAt = (sibling: string, subpath: string, version: string): ReadonlySet<string> | undefined => {
+const exportsCache = new Map<string, ExportSets | undefined>();
+
+/** Reads `path` from the working tree, undefined when it cannot be read. */
+function showWorkingTree(_tag: string, path: string): string | undefined {
+  try {
+    return readFileSync(join(REPO_ROOT, path), 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
+const exportsAt = (sibling: string, subpath: string, version: string): ExportSets | undefined => {
   const key = `${sibling}@${version}:${subpath}`;
   if (exportsCache.has(key)) return exportsCache.get(key);
   const siblingDir = siblingDirs.get(sibling);
-  const resolved = siblingDir === undefined ? undefined : tagExportsAt(showAtTag, `${sibling}@${version}`, siblingDir, subpath);
+  let resolved = siblingDir === undefined ? undefined : tagExportsAt(showAtTag, `${sibling}@${version}`, siblingDir, subpath);
+  if (resolved === undefined && siblingDir !== undefined && nextVersions.get(sibling) === version) {
+    // A floor naming the version the sibling's pending changesets will
+    // release has no tag yet, so the tag lookup cannot verify it; the
+    // working tree is that pending release's source, so verify against it
+    // instead of passing the floor on an unverifiable note.
+    resolved = tagExportsAt(showWorkingTree, `${sibling}@${version}`, siblingDir, subpath);
+  }
   exportsCache.set(key, resolved);
   return resolved;
 };
@@ -113,16 +135,9 @@ for (const { path, manifest } of packages) {
   if (range === undefined) continue;
   const floor = peerFloor(range);
   if (floor === undefined) continue;
-  const imports = new Map<string, Set<string>>();
+  const imports = new Map<string, Map<string, ImportKind>>();
   for (const file of sourceFiles(join(dirname(path), 'src'))) {
-    for (const [subpath, names] of engineImports(readFileSync(file, 'utf8'))) {
-      let set = imports.get(subpath);
-      if (set === undefined) {
-        set = new Set<string>();
-        imports.set(subpath, set);
-      }
-      for (const name of names) set.add(name);
-    }
+    addEngineImports(imports, engineImports(readFileSync(file, 'utf8')));
   }
   if (imports.size === 0) continue;
   checks.push({ packageName: manifest.name, packagePath: relative(REPO_ROOT, path), sibling: 'e2e', floor, imports });

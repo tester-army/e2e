@@ -9,8 +9,8 @@
  * leaves a consumer who updates the sibling alone with a peer npm 7+
  * refuses. Second, the floor must name a version the sibling actually
  * released, read off its CHANGELOG.md (`## x.y.z` headings), or the version
- * the sibling's pending changesets will release alongside it (the runner
- * version in the same release). A floor past the latest stable names a
+ * the sibling's pending changesets will release alongside it (the
+ * sibling's version in the same release). A floor past the latest stable names a
  * version no install can satisfy: #1657 raised both engines to `>=0.22.1`
  * in a patch release, but no stable `e2e@0.22.1` ever shipped (only
  * nightlies), so a fresh `npm install` of an unchanged project on
@@ -51,7 +51,7 @@ export function releasedVersions(changelog: string): ReadonlySet<string> {
  * sibling's CHANGELOG.md for a package path (undefined when it has none);
  * the check script passes the real read, tests pass a fake. `nextVersions`
  * maps a sibling to the version its pending changesets will release, which
- * a floor may name as the runner version in the same release.
+ * a floor may name as the sibling's version in the same release.
  */
 export function peerRangeProblems(
   packages: readonly PublicPackage[],
@@ -74,12 +74,14 @@ export function peerRangeProblems(
       if (floor === undefined || sibling === undefined) continue;
       const changelog = readChangelog(sibling.path);
       if (changelog === undefined) {
-        problems.push(
-          `${display}: ${peer} peer floor is ${floor}, but ${peer} has no CHANGELOG.md to show it released; a floor must name a released stable version`,
-        );
+        if (nextVersions.get(peer) !== floor) {
+          problems.push(
+            `${display}: ${peer} peer floor is ${floor}, but ${peer} has no CHANGELOG.md to show it released; a floor must name a released stable version`,
+          );
+        }
       } else if (!releasedVersions(changelog).has(floor) && nextVersions.get(peer) !== floor) {
         problems.push(
-          `${display}: ${peer} peer floor is ${floor}, which ${peer} never released (no ## ${floor} in its CHANGELOG.md) and no pending changeset releases; a floor must name a released stable version, or the runner version in the same release, so a patch release cannot raise it past the latest stable. Raise it only after that version ships, or keep the old floor when the package works without the new export`,
+          `${display}: ${peer} peer floor is ${floor}, which ${peer} never released (no ## ${floor} in its CHANGELOG.md) and no pending changeset releases; a floor must name a released stable version, or the sibling's version in the same release, so a patch release cannot raise it past the latest stable. Raise it only after that version ships, or keep the old floor when the package works without the new export`,
         );
       }
     }

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { describe, it } from 'node:test';
-import { engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, tagExportsAt, type EngineImportCheck } from './engine-exports.ts';
+import { addEngineImports, engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, tagExportsAt, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
 import { peerFloor } from './peer-ranges.ts';
 import { REPO_ROOT, publicPackages } from './public-packages.ts';
 
@@ -35,13 +35,31 @@ describe('engineImports', () => {
     const imports = engineImports(
       `import { stepTimeout, EngineError as EngineErr, type EngineDoctorCheck } from 'e2e/engine';\nimport type { StepExecutor } from 'e2e';\nimport { test as base } from 'e2e';\n`,
     );
-    assert.deepEqual(imports.get('engine'), new Set(['stepTimeout', 'EngineError', 'EngineDoctorCheck']));
-    assert.deepEqual(imports.get(''), new Set(['StepExecutor', 'test']));
+    assert.deepEqual(
+      imports.get('engine'),
+      new Map<string, ImportKind>([
+        ['stepTimeout', 'value'],
+        ['EngineError', 'value'],
+        ['EngineDoctorCheck', 'type'],
+      ]),
+    );
+    assert.deepEqual(
+      imports.get(''),
+      new Map<string, ImportKind>([
+        ['StepExecutor', 'type'],
+        ['test', 'value'],
+      ]),
+    );
   });
 
   it('records a namespace import as unverifiable, not as names', () => {
     const imports = engineImports(`import * as engine from 'e2e/engine';\n`);
-    assert.deepEqual(imports.get('engine'), new Set(['*']));
+    assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['*', 'value']]));
+  });
+
+  it('records a value import of a name over a type import of the same name', () => {
+    const imports = engineImports(`import { type EngineError } from 'e2e/engine';\nimport { EngineError } from 'e2e/engine';\n`);
+    assert.equal(imports.get('engine')?.get('EngineError'), 'value');
   });
 
   it('ignores imports from other packages', () => {
@@ -62,7 +80,21 @@ describe('exportedNames and resolveEntryExports', () => {
       ['src/engine/kinds.ts', `export type Kind = 'a';\n`],
     ]);
     const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
-    assert.deepEqual([...(exported ?? [])].toSorted(), ['EngineErr', 'Kind', 'Local', 'NodeRef', 'stepTimeout']);
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['EngineErr', 'stepTimeout']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['Kind', 'Local', 'NodeRef']);
+  });
+
+  it('does not count a type-star re-export as a value export', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `export type * from './contract.ts';\nexport { parseKey } from './contract.ts';\n`],
+      [
+        'src/engine/contract.ts',
+        `export function isKeyModifier(value: unknown): boolean { return false; }\nexport function parseKey(value: string): string { return value; }\nexport type KeyModifier = 'Shift';\nexport const KEY_MODIFIERS = ['Shift'] as const;\n`,
+      ],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['parseKey']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['KeyModifier']);
   });
 
   it('answers undefined when an entry file cannot be read', () => {
@@ -84,38 +116,76 @@ describe('exportedNames and resolveEntryExports', () => {
 });
 
 describe('engineImportProblems', () => {
-  const check = (floor: string, imports: Map<string, Set<string>>): EngineImportCheck => ({
+  const check = (floor: string, imports: EngineImportMap): EngineImportCheck => ({
     packageName: '@e2e-dev/web',
     packagePath: 'packages/web/package.json',
     sibling: 'e2e',
     floor,
     imports,
   });
+  const exported = (values: readonly string[], types: readonly string[] = []) => ({ values: new Set(values), types: new Set(types) });
+  const named = (entries: readonly (readonly [string, ImportKind])[]): EngineImportMap =>
+    new Map([['engine', new Map(entries)]]);
 
   it('fails an import the floor version does not export', () => {
-    const exported = new Set(['EngineError']);
-    const { problems } = engineImportProblems([check('0.22.0', new Map([['engine', new Set(['stepTimeout', 'EngineError'])]]))], () => exported);
+    const { problems } = engineImportProblems(
+      [check('0.22.0', named([['stepTimeout', 'value'], ['EngineError', 'value']]))],
+      () => exported(['EngineError']),
+    );
     assert.equal(problems.length, 1);
     assert.match(problems[0]!, /imports `stepTimeout` from e2e\/engine, but e2e@0\.22\.0 does not export it/);
   });
 
   it('passes when the floor version exports every import', () => {
-    const exported = new Set(['stepTimeout', 'EngineError']);
-    const { problems, unverifiable } = engineImportProblems([check('0.23.0', new Map([['engine', new Set(['stepTimeout'])]]))], () => exported);
+    const { problems, unverifiable } = engineImportProblems(
+      [check('0.23.0', named([['stepTimeout', 'value']]))],
+      () => exported(['stepTimeout', 'EngineError']),
+    );
     assert.deepEqual(problems, []);
     assert.deepEqual(unverifiable, []);
   });
 
+  it('passes a type import satisfied by a type-only export', () => {
+    const { problems } = engineImportProblems(
+      [check('0.23.0', named([['KeyModifier', 'type']]))],
+      () => exported(['parseKey'], ['KeyModifier']),
+    );
+    assert.deepEqual(problems, []);
+  });
+
+  it('fails a value import satisfied only by a type-only export', () => {
+    const { problems } = engineImportProblems(
+      [check('0.23.0', named([['isKeyModifier', 'value'], ['parseKey', 'value'], ['KeyModifier', 'type']]))],
+      () => exported(['parseKey'], ['KeyModifier']),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports `isKeyModifier` from e2e\/engine/);
+  });
+
   it('reports a floor with no tag record as unverifiable, not a problem', () => {
-    const { problems, unverifiable } = engineImportProblems([check('0.15.0', new Map([['engine', new Set(['EngineError'])]]))], () => undefined);
+    const { problems, unverifiable } = engineImportProblems([check('0.15.0', named([['EngineError', 'value']]))], () => undefined);
     assert.deepEqual(problems, []);
     assert.equal(unverifiable.length, 1);
     assert.match(unverifiable[0]!, /cannot be verified, no tag record/);
   });
 
   it('reports a namespace import as unverifiable', () => {
-    const { problems, unverifiable } = engineImportProblems([check('0.23.0', new Map([['engine', new Set(['*'])]]))], () => new Set());
+    const { problems, unverifiable } = engineImportProblems(
+      [check('0.23.0', new Map([['engine', new Map<string, ImportKind>([['*', 'value']])]]))],
+      () => exported([]),
+    );
     assert.deepEqual(problems, []);
+    assert.equal(unverifiable.length, 1);
+    assert.match(unverifiable[0]!, /imported as a namespace/);
+  });
+
+  it('still validates named imports beside a namespace import', () => {
+    const { problems, unverifiable } = engineImportProblems(
+      [check('0.23.0', new Map([['engine', new Map<string, ImportKind>([['*', 'value'], ['stepTimeout', 'value']])]]))],
+      () => exported(['EngineError']),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports `stepTimeout` from e2e\/engine/);
     assert.equal(unverifiable.length, 1);
     assert.match(unverifiable[0]!, /imported as a namespace/);
   });
@@ -129,16 +199,9 @@ describe('imports at their floors on this repo', () => {
       if (range === undefined) continue;
       const floor = peerFloor(range);
       if (floor === undefined) continue;
-      const imports = new Map<string, Set<string>>();
+      const imports = new Map<string, Map<string, ImportKind>>();
       for (const file of sourceFiles(join(dirname(path), 'src'))) {
-        for (const [subpath, names] of engineImports(readFileSync(file, 'utf8'))) {
-          let set = imports.get(subpath);
-          if (set === undefined) {
-            set = new Set<string>();
-            imports.set(subpath, set);
-          }
-          for (const name of names) set.add(name);
-        }
+        addEngineImports(imports, engineImports(readFileSync(file, 'utf8')));
       }
       if (imports.size === 0) continue;
       checks.push({ packageName: manifest.name, packagePath: relative(REPO_ROOT, path), sibling: 'e2e', floor, imports });
@@ -154,10 +217,21 @@ describe('imports at their floors on this repo', () => {
 
   it('catches the original bug: web imports stepTimeout, which e2e@0.22.0 does not export', () => {
     const exported = tagExportsAt(showAtTag, 'e2e@0.22.0', 'packages/e2e', 'engine');
-    assert.equal(exported?.has('stepTimeout'), false);
-    assert.equal(exported?.has('EngineDoctorCheck'), false);
+    assert.notEqual(exported, undefined, 'e2e@0.22.0 tag not fetched; the test job checks out with fetch-depth: 0');
+    assert.equal(exported?.values.has('stepTimeout'), false);
+    assert.equal(exported?.types.has('EngineDoctorCheck'), false);
     const atNext = tagExportsAt(showAtTag, 'e2e@0.23.0', 'packages/e2e', 'engine');
-    assert.equal(atNext?.has('stepTimeout'), true);
-    assert.equal(atNext?.has('EngineDoctorCheck'), true);
+    assert.notEqual(atNext, undefined, 'e2e@0.23.0 tag not fetched; the test job checks out with fetch-depth: 0');
+    assert.equal(atNext?.values.has('stepTimeout'), true);
+    assert.equal(atNext?.types.has('EngineDoctorCheck'), true);
+  });
+
+  it('does not count a type-star re-export as an e2e/engine value export', () => {
+    const atNext = tagExportsAt(showAtTag, 'e2e@0.23.0', 'packages/e2e', 'engine');
+    assert.notEqual(atNext, undefined, 'e2e@0.23.0 tag not fetched; the test job checks out with fetch-depth: 0');
+    assert.equal(atNext?.values.has('isKeyModifier'), false);
+    assert.equal(atNext?.types.has('isKeyModifier'), false);
+    assert.equal(atNext?.values.has('parseKey'), true);
+    assert.equal(atNext?.types.has('KeyModifier'), true);
   });
 });

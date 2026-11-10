@@ -6,6 +6,7 @@ import {
   disallowedBumps,
   floorRaiseProblems,
   floorRaisesPastMinor,
+  latestReleaseVersion,
   nextVersionAfterBump,
   parseVersion,
   pendingBumps,
@@ -71,9 +72,9 @@ describe('floorRaisesPastMinor', () => {
 });
 
 describe('announcesFloorRaise', () => {
-  it('accepts a breaking or release minor and a release major', () => {
+  it('accepts a breaking minor and a release major, but not a release minor', () => {
     assert.equal(announcesFloorRaise('minor', '**Breaking:** drops old runners.'), true);
-    assert.equal(announcesFloorRaise('minor', '**Release:** the runner API.'), true);
+    assert.equal(announcesFloorRaise('minor', '**Release:** the runner API.'), false);
     assert.equal(announcesFloorRaise('major', '**Release:** the runner API.'), true);
   });
 
@@ -126,8 +127,10 @@ describe('floorRaiseProblems', () => {
     assert.deepEqual(floorRaiseProblems([input([{ type: 'minor', summary: '**Breaking:** needs e2e 0.23.0.' }])]), []);
   });
 
-  it('passes a floor raise carried by a **Release:** minor', () => {
-    assert.deepEqual(floorRaiseProblems([input([{ type: 'minor', summary: '**Release:** the runner API.' }])]), []);
+  it('fails a floor raise carried only by a **Release:** minor', () => {
+    const problems = floorRaiseProblems([input([{ type: 'minor', summary: '**Release:** the runner API.' }])]);
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /make it a minor whose summary opens \*\*Breaking:\*\*/);
   });
 
   it('passes a correction from a never-published floor on a patch bump', () => {
@@ -145,8 +148,21 @@ describe('floorRaiseProblems', () => {
   });
 });
 
-describe('pendingBumps and nextVersionAfterBump', () => {
-  it('takes the highest bump per package', () => {
+describe('latestReleaseVersion', () => {
+  const tags = ['e2e@0.22.0', 'e2e@0.23.0', 'e2e@0.21.3', '@e2e-dev/web@0.15.5', 'e2e@0.23.0-nightly-1'];
+
+  it('picks the highest released tag for the package', () => {
+    assert.equal(latestReleaseVersion(tags, 'e2e'), '0.23.0');
+    assert.equal(latestReleaseVersion(tags, '@e2e-dev/web'), '0.15.5');
+  });
+
+  it('answers undefined when the package has no released tag', () => {
+    assert.equal(latestReleaseVersion(tags, '@e2e-dev/e2b'), undefined);
+    assert.equal(latestReleaseVersion([], 'e2e'), undefined);
+  });
+});
+
+describe('pendingBumps and nextVersionAfterBump', () => {  it('takes the highest bump per package', () => {
     const bumps = pendingBumps([
       parseChangesetFile('---\n"e2e": patch\n---\n\nA fix.\n'),
       parseChangesetFile('---\n"e2e": minor\n"@e2e-dev/web": patch\n---\n\n**Breaking:** a break.\n'),

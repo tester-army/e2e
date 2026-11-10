@@ -5,8 +5,9 @@
  * raises a package's peer floor on a sibling past a runner minor the
  * previous range accepted without a `**Breaking:**` minor
  * (`floorRaiseProblems` in `changeset-bumps.ts` says how a raise is judged:
- * the previous floor is the one at the package's release tag, and only a
- * released version on an older minor counts).
+ * the previous floor is the one at the package's release tag, or, on a
+ * generated release PR whose bumped version has no tag yet, at its latest
+ * released tag; only a released version on an older minor counts).
  *
  * Usage: `node scripts/check-changeset-bumps.ts`, part of `pnpm check`. Exits
  * 1 listing every offending changeset.
@@ -16,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { parseChangesetFile } from '@changesets/parse';
-import { BREAKING, RELEASE, disallowedBumps, floorRaiseProblems, type FloorRaiseInput } from './changeset-bumps.ts';
+import { BREAKING, RELEASE, disallowedBumps, floorRaiseProblems, latestReleaseVersion, type FloorRaiseInput } from './changeset-bumps.ts';
 import { peerFloor, releasedVersions } from './peer-ranges.ts';
 import { REPO_ROOT, isWidePeerRange, publicPackages, siblingPeers, type PackageManifest } from './public-packages.ts';
 
@@ -27,6 +28,25 @@ function showAtTag(tag: string, path: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** The manifest at the package's latest released tag, undefined when it has no release tag. A generated release PR has already bumped the version, so the tag for the current version does not exist yet; the previous released manifest is the one to compare the floor against, instead of skipping the check. */
+function previousReleaseManifest(name: string, packagePath: string): string | undefined {
+  let tags: string;
+  try {
+    tags = execFileSync('git', ['tag', '--list', `${name}@*`], { cwd: REPO_ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return undefined;
+  }
+  const latest = latestReleaseVersion(
+    tags
+      .split('\n')
+      .map((tag) => tag.trim())
+      .filter((tag) => tag.length > 0),
+    name,
+  );
+  if (latest === undefined) return undefined;
+  return showAtTag(`${name}@${latest}`, packagePath);
 }
 
 const versions = new Map(publicPackages().flatMap(({ manifest }) => (manifest.version === undefined ? [] : [[manifest.name, manifest.version] as const])));
@@ -62,7 +82,8 @@ const inputs: FloorRaiseInput[] = [];
 let skipped = 0;
 for (const { path, manifest } of packages) {
   if (manifest.version === undefined) continue;
-  const tagManifest = showAtTag(`${manifest.name}@${manifest.version}`, relative(REPO_ROOT, path));
+  let tagManifest = showAtTag(`${manifest.name}@${manifest.version}`, relative(REPO_ROOT, path));
+  if (tagManifest === undefined) tagManifest = previousReleaseManifest(manifest.name, relative(REPO_ROOT, path));
   if (tagManifest === undefined) {
     skipped += 1;
     continue;

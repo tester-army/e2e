@@ -75,6 +75,18 @@ describe('peerRangeProblems', () => {
     assert.match(problems[0]!, /has no CHANGELOG\.md/);
   });
 
+  it('passes a floor that is the pending version of a sibling with no changelog yet', () => {
+    const packages = [pkg('e2e', {}), pkg('@e2e-dev/web', { e2e: '>=0.1.0 <1' })];
+    assert.deepEqual(peerRangeProblems(packages, () => undefined, new Map([['e2e', '0.1.0']])), []);
+  });
+
+  it('still fails a floor past the pending version of a sibling with no changelog', () => {
+    const packages = [pkg('e2e', {}), pkg('@e2e-dev/web', { e2e: '>=0.18.0 <1' })];
+    const problems = peerRangeProblems(packages, () => undefined, new Map([['e2e', '0.2.0']]));
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /has no CHANGELOG\.md/);
+  });
+
   it('ignores peers that are not siblings', () => {
     const packages = [pkg('@e2e-dev/web', { e2e: '>=9.9.9 <1', zod: '^3.0.0' })];
     assert.deepEqual(peerRangeProblems(packages, read), []);

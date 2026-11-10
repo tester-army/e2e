@@ -83,11 +83,23 @@ export function floorRaisesPastMinor(previousFloor: string, currentFloor: string
   return false;
 }
 
-/** Whether a changeset entry of `type` with `summary` announces a floor raise: a minor opening `**Breaking:**` or `**Release:**`, or a major opening `**Release:**`. */
+/** Whether a changeset entry of `type` with `summary` announces a floor raise: a minor opening `**Breaking:**`, or a major opening `**Release:**`. A `**Release:**` minor does not announce one: the maintainer's rule for #1657 is that a floor raise past an accepted runner minor must be a `**Breaking:**` minor, and a release train is not that signal. A major needs no breaking prefix because the major itself is the signal: no `0.x` consumer picks it up without opting in. */
 export function announcesFloorRaise(type: BumpType, summary: string): boolean {
-  if (type === 'minor') return summary.startsWith(BREAKING) || summary.startsWith(RELEASE);
+  if (type === 'minor') return summary.startsWith(BREAKING);
   if (type === 'major') return summary.startsWith(RELEASE);
   return false;
+}
+
+/** The latest released version of `name` among `tags` (`<name>@<x.y.z>`), undefined when none exists. The bump check falls back to it when the tag for a package's current version does not exist yet, which is exactly a generated release PR: `version-packages` has already bumped the version, so the current tag is missing and the previous released manifest is the one to compare the floor against. */
+export function latestReleaseVersion(tags: readonly string[], name: string): string | undefined {
+  let latest: Semver | undefined;
+  for (const tag of tags) {
+    if (!tag.startsWith(`${name}@`)) continue;
+    const version = parseVersion(tag.slice(name.length + 1));
+    if (version === undefined) continue;
+    if (latest === undefined || compareVersions(version, latest) > 0) latest = version;
+  }
+  return latest === undefined ? undefined : latest.join('.');
 }
 
 const BUMP_RANK: Record<BumpType, number> = { patch: 0, minor: 1, major: 2 };

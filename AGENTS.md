@@ -698,11 +698,13 @@ trees, on both platforms, without a device.
   `scripts/check-peer-ranges.ts` (`pnpm check`) fails on any other shape for
   every peer one package under `packages/` has on another (vendor SDK peers
   such as `@onkernel/sdk` are not checked). The floor must name a version the
-  sibling released, or the runner version in the same release, and a raise
+  sibling released, or the sibling's version in the same release, and a raise
   past a runner minor the previous range accepted needs a `**Breaking:**`
   minor changeset (`scripts/check-changeset-bumps.ts`); a new `e2e/engine`
-  import counts as a raise, so the check also fails any `e2e/*` import the
-  floor version does not export, read off the `e2e@<version>` tag. Narrow or exact, every runner minor (exact: every patch too)
+  import counts as a raise, so the check also fails any named `e2e/*` import the
+  floor version does not export, read off the `e2e@<version>` tag (a namespace
+  import is reported as an unverifiable note instead, since its names cannot
+  be enumerated). Narrow or exact, every runner minor (exact: every patch too)
   falls out of range, and changesets 3 then patch-bumps each engine and
   rewrites its pin, never a major (`determineDependents` in
   `@changesets/assemble-release-plan` patches an out-of-range peer dependent).
