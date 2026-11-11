@@ -202,8 +202,9 @@ Then each test, one at a time:
   that fails on timeout (`waitForFunction`) becomes one more, so the e2e
   count is at least the inventory's.
 - Then, before the first run, arrange the translated lines in the shape the
-  e2e skill's `writing-tests` topic gives ("Structure"); keep every line,
-  only move it:
+  e2e skill's `writing-tests` topic gives ("Structure"). Lines move, split
+  tests copy the steps they need, and closing waits are added; no source
+  step or assertion is dropped:
   - One top-level `describe` per source file or feature, named after it.
     Setup tests stay top-level.
   - A source test that checks one behavior keeps its title. A source test
