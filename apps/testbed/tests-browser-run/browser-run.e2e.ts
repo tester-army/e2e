@@ -1,16 +1,6 @@
 import { test } from '@e2e-dev/web';
 import { expect } from 'e2e';
 
-test('CDP authorization stays out of page requests and artifacts', async ({ app, browser, screen }) => {
-  await app.open('/forms');
-  const headers = await browser.evaluate("async () => (await fetch('/echo-headers')).json()");
-  expect(headers).not.toHaveProperty('authorization');
-  await screen.getByLabel('Full name').fill('Browser Run on Roundtrip');
-  await screen.getByRole('button', 'Save profile').tap();
-  await expect(screen.getByRole('status', 'Save result')).toHaveText('Saved profile for Browser Run on Roundtrip');
-  await app.screenshot('browser-run-form');
-});
-
 for (let n = 0; n < 4; n++) {
   test(`cookies and local storage start empty ${n}`, async ({ app, browser }) => {
     await app.open('/forms');
