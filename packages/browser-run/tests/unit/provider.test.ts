@@ -19,6 +19,7 @@ const context = (overrides: Partial<BrowserRequest> = {}): BrowserRequest => ({
 
 afterEach(async () => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   const journal = new LeaseJournal(env.CLOUDFLARE_ACCOUNT_ID, runId, 'cloudflare');
 
   for (const receipt of await journal.outstanding()) await journal.forget(receipt);
@@ -167,4 +168,21 @@ describe('browserRun', () => {
     }
   });
 
+});
+
+it.each([204, 503])('releases a browser after journal failure and preserves both failures for DELETE %s', async (status) => {
+  const journalError = new Error('journal write failed');
+  vi.spyOn(LeaseJournal.prototype, 'remember').mockRejectedValueOnce(journalError);
+  const fetch = vi.fn().mockResolvedValueOnce(Response.json({ sessionId: id }))
+    .mockResolvedValueOnce(new Response(null, { status }));
+  vi.stubGlobal('fetch', fetch);
+  const failure = await browserRun().acquire(context()).catch((cause: unknown) => cause);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch.mock.calls[1]).toEqual([expect.stringContaining(`/${id}`), expect.objectContaining({ method: 'DELETE' })]);
+  if (status === 204) {
+    expect(failure).toMatchObject({ message: expect.stringContaining('session released'), cause: journalError });
+  } else {
+    expect(failure).toBeInstanceOf(AggregateError);
+    expect(failure).toMatchObject({ message: expect.stringContaining(id), errors: [journalError, expect.objectContaining({ message: expect.stringContaining('HTTP 503') })] });
+  }
 });
