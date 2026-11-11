@@ -1,35 +1,22 @@
 /**
  * Rule (c): an engine that starts importing a new `e2e/engine` export
- * counts as raising the floor. This module verifies it: every named import
- * a package takes from `e2e` or an `e2e/*` entry must be exported by `e2e`
- * at the version the package's peer floor names.
+ * counts as raising the floor. This module verifies it: every import a
+ * package takes from `e2e` or an `e2e/*` entry must be exported by `e2e`
+ * at the version the package's peer floor names, including namespace,
+ * side-effect, and default-only imports, which record the subpath even
+ * though they name no exports.
  *
- * Imports and exports come from oxc-parser's module info
- * (`parseSync(...).module`), not from pattern matching: comments and JSDoc
- * examples never count as imports or exports, destructured declarations
- * are read as the names they bind, and names nested inside a namespace
- * never leak out as top-level exports. A declaration's kind comes from the
- * parsed declaration itself, since module info alone cannot tell a
- * `declare` function from a type: interfaces and type aliases are types
- * only, classes and enums are both, everything else exported is a value.
+ * Imports and exports come from oxc-parser's module info, not pattern
+ * matching, so comments and JSDoc examples never count. Declaration
+ * kinds come from the parsed declaration: interfaces and type aliases
+ * are types only, classes and enums are both, the rest are values.
  *
- * The export set at a version comes from the `e2e@<version>` tag: the entry
- * file is read off the sibling's `package.json` `exports` at that tag (its
- * `types` target, mapped from `dist/` to `src/`), and `export *` chains are
- * followed. A floor whose tag does not exist cannot be verified this way;
- * that floor is reported as unverifiable, not a failure, and the
- * released-floor rule in `peer-ranges.ts` still applies to it. Imports and
- * exports are tracked by kind, `value` or `type`: a value import needs a
- * value export (a name that only reaches the entry through `export type *`
- * does not satisfy one), and a type import is satisfied by either kind.
- * Type-only imports count the same as value imports: the package's
- * published `.d.ts` names those types, so a consumer on the floor runner
- * fails typecheck when the floor version lacks them.
- *
- * Only imports from `e2e` itself are checked. An integration's imports
- * from another engine (`@e2e-dev/web`, `@e2e-dev/mobile`) are the same
- * shape but a different sibling; extending this to engine peers is a
- * follow-up, not part of this change.
+ * The export set at a version comes from the `e2e@<version>` tag (the
+ * entry file off the sibling's `package.json` `exports`, `export *`
+ * chains followed). A floor with no tag is unverifiable, not a failure.
+ * A value import needs a value export; a type import is satisfied by
+ * either kind. Type-only imports count as value imports, since the
+ * package's published `.d.ts` names those types.
  */
 
 import { parseSync } from 'oxc-parser';
@@ -51,6 +38,28 @@ type AstNode = Record<string, unknown>;
 
 function isRecord(value: unknown): value is AstNode {
   return typeof value === 'object' && value !== null;
+}
+
+/** Parses `source` as a TypeScript module, throwing when oxc-parser reports errors instead of reading a half-parsed file silently. */
+function parseModule(source: string): ReturnType<typeof parseSync> {
+  const parsed = parseSync('file.ts', source, { lang: 'ts', sourceType: 'module' });
+  if (parsed.errors.length > 0) {
+    throw new Error(`failed to parse TypeScript source: ${parsed.errors[0]?.message ?? 'unknown parse error'}`);
+  }
+  return parsed;
+}
+
+/** The `exports` key for a subpath (`'.'` for the bare entry). */
+function exportKey(subpath: string): string {
+  return subpath === '' ? '.' : `./${subpath}`;
+}
+
+/** Records `names` into `target`, a value import of a name winning over a type import of the same name. */
+function mergeImportKinds(target: Map<string, ImportKind>, names: Iterable<readonly [string, ImportKind]>): void {
+  for (const [name, kind] of names) {
+    const existing = target.get(name);
+    if (existing === undefined || kind === 'value') target.set(name, kind);
+  }
 }
 
 /** The `import(...)` call in `node`, unwrapping `await` and parentheses; undefined when `node` is not one. */
@@ -79,7 +88,6 @@ function patternNames(pattern: unknown): string[] | undefined {
   const names: string[] = [];
   for (const property of pattern.properties) {
     if (!isRecord(property)) return undefined;
-    if (property.type === 'RestElement') return undefined;
     if (property.type !== 'Property') return undefined;
     const key = property.key;
     if (!isRecord(key) || key.type !== 'Identifier' || typeof key.name !== 'string') return undefined;
@@ -99,7 +107,7 @@ function walkAst(value: unknown, visit: (node: AstNode) => void): void {
   for (const child of Object.values(value)) walkAst(child, visit);
 }
 
-/** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry). A namespace import is recorded as the name `'*'`, which the check cannot enumerate. */
+/** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry). A namespace import is recorded as the name `'*'`, which the check cannot enumerate; a side-effect or default-only import records the subpath with no names, so the check still verifies the subpath exists at the floor. */
 export function engineImports(source: string): EngineImportMap {
   const found = new Map<string, Map<string, ImportKind>>();
   const add = (subpath: string, names: readonly (readonly [string, ImportKind])[]): void => {
@@ -108,22 +116,22 @@ export function engineImports(source: string): EngineImportMap {
       map = new Map<string, ImportKind>();
       found.set(subpath, map);
     }
-    for (const [name, kind] of names) {
-      const existing = map.get(name);
-      if (existing === undefined || kind === 'value') map.set(name, kind);
-    }
+    mergeImportKinds(map, names);
   };
-  const parsed = parseSync('file.ts', source, { lang: 'ts', sourceType: 'module' });
+  const parsed = parseModule(source);
   for (const statement of parsed.module.staticImports) {
     const subpath = e2eSubpath(statement.moduleRequest.value);
     if (subpath === undefined) continue;
+    // Record the subpath even when the import names nothing: a
+    // side-effect import (`import 'e2e/engine'`) has no entries, and a
+    // default-only import names no export the check tracks, but both
+    // still need the subpath to exist at the floor.
+    add(subpath, []);
     for (const entry of statement.entries) {
       if (entry.importName.kind === 'NamespaceObject') add(subpath, [['*', 'value']]);
       else if (entry.importName.kind === 'Name' && entry.importName.name !== null) {
         add(subpath, [[entry.importName.name, entry.isType ? 'type' : 'value']]);
       }
-      // A default import names no export the check tracks, and a
-      // side-effect import (`import 'e2e/engine'`) has no entries.
     }
   }
   // A re-export from an `e2e` entry is an import too: the package depends
@@ -135,32 +143,36 @@ export function engineImports(source: string): EngineImportMap {
       if (moduleRequest === undefined) continue;
       const subpath = e2eSubpath(moduleRequest);
       if (subpath === undefined) continue;
+      add(subpath, []);
       if (entry.importName.kind === 'AllButDefault') add(subpath, [['*', 'value']]);
       else if (entry.importName.kind === 'Name' && entry.importName.name !== null) {
         add(subpath, [[entry.importName.name, entry.isType ? 'type' : 'value']]);
       }
-      // `export * as ns` exports one name and imports no names.
+      // `export * as ns` exports one name and imports no names, but the
+      // subpath above is still recorded, since the module must exist.
     }
   }
   // A dynamic import takes its names the same way, when they are
   // destructured; any other use cannot be enumerated, so it is recorded as
-  // the namespace name, like a namespace import.
+  // the namespace name, like a namespace import. One walk handles both:
+  // a declarator is visited before its `import(...)` child, so the child
+  // is skipped once the declarator has recorded it.
   const handled = new Set<object>();
   walkAst(parsed.program, (node) => {
-    if (node.type !== 'VariableDeclarator') return;
-    const sourceSpecifier = importCallSource(node.init);
-    if (sourceSpecifier === undefined) return;
-    const subpath = e2eSubpath(sourceSpecifier);
-    if (subpath === undefined) return;
-    const call = importCall(node.init);
-    if (call !== undefined) handled.add(call);
-    const names = patternNames(node.id);
-    add(
-      subpath,
-      names === undefined ? [['*', 'value']] : names.map((name): readonly [string, ImportKind] => [name, 'value']),
-    );
-  });
-  walkAst(parsed.program, (node) => {
+    if (node.type === 'VariableDeclarator') {
+      const sourceSpecifier = importCallSource(node.init);
+      if (sourceSpecifier === undefined) return;
+      const subpath = e2eSubpath(sourceSpecifier);
+      if (subpath === undefined) return;
+      const call = importCall(node.init);
+      if (call !== undefined) handled.add(call);
+      const names = patternNames(node.id);
+      add(
+        subpath,
+        names === undefined ? [['*', 'value']] : names.map((name): readonly [string, ImportKind] => [name, 'value']),
+      );
+      return;
+    }
     if (node.type !== 'ImportExpression' || handled.has(node)) return;
     const sourceSpecifier = importCallSource(node);
     if (sourceSpecifier === undefined) return;
@@ -179,10 +191,7 @@ export function addEngineImports(target: Map<string, Map<string, ImportKind>>, s
       map = new Map<string, ImportKind>();
       target.set(subpath, map);
     }
-    for (const [name, kind] of names) {
-      const existing = map.get(name);
-      if (existing === undefined || kind === 'value') map.set(name, kind);
-    }
+    mergeImportKinds(map, names);
   }
 }
 
@@ -244,7 +253,7 @@ function exportedNames(source: string): {
   starModules: readonly string[];
   typeStarModules: readonly string[];
 } {
-  const parsed = parseSync('file.ts', source, { lang: 'ts', sourceType: 'module' });
+  const parsed = parseModule(source);
   const values = new Set<string>();
   const types = new Set<string>();
   const starModules: string[] = [];
@@ -259,10 +268,7 @@ function exportedNames(source: string): {
         // chain is not followed.
         if (entry.importName.kind === 'AllButDefault') {
           (entry.isType ? typeStarModules : starModules).push(moduleRequest);
-        } else if (entry.importName.kind === 'All') {
-          const name = entry.exportName.name;
-          if (name !== null) (entry.isType ? types : values).add(name);
-        } else if (entry.importName.kind === 'Name') {
+        } else if (entry.importName.kind === 'All' || entry.importName.kind === 'Name') {
           const name = entry.exportName.name;
           if (name !== null) (entry.isType ? types : values).add(name);
         }
@@ -323,24 +329,18 @@ export function resolveEntryExports(readFile: (path: string) => string | undefin
     const source = readFile(file);
     if (source === undefined) return undefined;
     const exported = exportedNames(source);
-    if (typeOnly) {
-      for (const name of exported.types) types.add(name);
-      for (const specifier of [...exported.starModules, ...exported.typeStarModules]) {
-        const target = resolveModule(file, specifier);
-        if (target !== undefined) queue.push([target, true]);
-      }
-    } else {
+    // A file reached through `export type *` contributes its types only,
+    // and a value star reached that way is followed as type-only too.
+    for (const name of exported.types) types.add(name);
+    if (!typeOnly) {
       for (const name of exported.values) values.add(name);
-      for (const name of exported.types) types.add(name);
-      for (const specifier of exported.starModules) {
-        const target = resolveModule(file, specifier);
-        if (target !== undefined) queue.push([target, false]);
-      }
-      for (const specifier of exported.typeStarModules) {
-        const target = resolveModule(file, specifier);
-        if (target !== undefined) queue.push([target, true]);
-      }
     }
+    const enqueue = (specifier: string, asType: boolean): void => {
+      const target = resolveModule(file, specifier);
+      if (target !== undefined) queue.push([target, asType]);
+    };
+    for (const specifier of exported.starModules) enqueue(specifier, typeOnly);
+    for (const specifier of exported.typeStarModules) enqueue(specifier, true);
   }
   return { values, types };
 }
@@ -352,30 +352,31 @@ export function resolveEntryExports(readFile: (path: string) => string | undefin
  * package has no such export, or its manifest does not parse.
  */
 export function subpathEntryFile(packageJson: string, siblingDir: string, subpath: string): string | undefined {
-  let parsed: { exports?: Record<string, { types?: string } | string> };
+  let exports: Record<string, unknown> | undefined;
   try {
-    parsed = JSON.parse(packageJson) as { exports?: Record<string, { types?: string } | string> };
+    exports = (JSON.parse(packageJson) as { exports?: Record<string, unknown> }).exports;
   } catch {
     return undefined;
   }
-  const entry = parsed.exports?.[subpath === '' ? '.' : `./${subpath}`];
-  const types = typeof entry === 'string' ? entry : entry?.types;
-  if (typeof types !== 'string') return undefined;
+  return entryFileFromExports(exports, siblingDir, subpath);
+}
+
+/** The entry file for a subpath from an already-parsed `exports` map. */
+function entryFileFromExports(exports: Record<string, unknown> | undefined, siblingDir: string, subpath: string): string | undefined {
+  const entry = exports?.[exportKey(subpath)];
+  const types = typeof entry === 'string' ? entry : isRecord(entry) && typeof entry.types === 'string' ? entry.types : undefined;
+  if (types === undefined) return undefined;
   return `${siblingDir}/src/${types.replace(/^\.\/dist\//, '').replace(/\.d\.ts$/, '.ts')}`;
 }
 
 /**
- * The export set of a sibling's subpath, split by kind. `readFile` reads a
- * repo path (undefined when it has none); the caller binds it to a
- * version, for example `(path) => showAtTag(tag, path)` for a tag record
- * or a working-tree read. Undefined when the tag record cannot be read:
- * no manifest at that version, a manifest that does not parse, or an
- * entry file that cannot be read. Empty sets when the tag record exists
- * but the sibling does not export that subpath at that version: every
- * named import from it is then a problem, not unverifiable, since the
- * floor version never had the subpath to import from. An export entry
- * with no types target stays unverifiable, since no entry file can be
- * found for it that way.
+ * The export set of a sibling's subpath at a version, split by kind.
+ * `readFile` reads a repo path at that version. Undefined when the tag
+ * record cannot be read (no manifest, unparseable manifest, unreadable
+ * entry). Empty sets when the record exists but the sibling does not
+ * export that subpath there: every import from it is then a problem,
+ * not unverifiable. An export entry with no types target stays
+ * unverifiable, since no entry file can be found for it that way.
  */
 export function tagExportsAt(
   readFile: (path: string) => string | undefined,
@@ -384,21 +385,15 @@ export function tagExportsAt(
 ): ExportSets | undefined {
   const manifest = readFile(`${siblingDir}/package.json`);
   if (manifest === undefined) return undefined;
-  const entry = subpathEntryFile(manifest, siblingDir, subpath);
-  if (entry !== undefined) return resolveEntryExports(readFile, entry);
-  // No entry file for the subpath. When the manifest names no such
-  // export, the subpath did not exist at that version, so empty sets,
-  // not undefined: the caller fails every named import from it instead
-  // of passing the floor on an unverifiable note. A manifest that does
-  // not parse, or an export entry with no types target, cannot be read
-  // this way, so those stay unverifiable.
-  let parsed: { exports?: Record<string, unknown> };
+  let exports: Record<string, unknown> | undefined;
   try {
-    parsed = JSON.parse(manifest) as { exports?: Record<string, unknown> };
+    exports = (JSON.parse(manifest) as { exports?: Record<string, unknown> }).exports;
   } catch {
     return undefined;
   }
-  if (parsed.exports?.[subpath === '' ? '.' : `./${subpath}`] !== undefined) return undefined;
+  const entry = entryFileFromExports(exports, siblingDir, subpath);
+  if (entry !== undefined) return resolveEntryExports(readFile, entry);
+  if (exports?.[exportKey(subpath)] !== undefined) return undefined;
   return { values: new Set<string>(), types: new Set<string>() };
 }
 
@@ -412,17 +407,12 @@ export interface EngineImportCheck {
 
 /**
  * Every import in `checks` the sibling does not export at the floor
- * version, plus the floors that could not be verified. `exportsAt`
- * returns the sibling's export set for a subpath at a version, or
- * undefined when that version has no tag record to read; an unverifiable
- * floor is a note, not a problem, since the released-floor rule still
- * applies to it. A namespace import is unverifiable for the same reason:
- * its names cannot be enumerated. A namespace import does not excuse the
- * names imported beside it from the same subpath: those are still
- * validated. A value import needs a value export; a type import is
- * satisfied by a value or a type export. `verified` counts the checks
- * whose named imports were all checked against a tag record: a check no
- * tag record covers is not verified, even when it reports no problem.
+ * version, plus the floors that could not be verified. A namespace
+ * import is unverifiable, since its names cannot be enumerated, unless
+ * the floor tag does not export the subpath at all, which is a problem.
+ * A side-effect or default-only import is verified when the tag exports
+ * the subpath. `verified` counts the checks whose imports were all
+ * checked against a tag record.
  */
 export function engineImportProblems(
   checks: readonly EngineImportCheck[],
@@ -437,10 +427,28 @@ export function engineImportProblems(
     for (const [subpath, names] of check.imports) {
       const label = subpath === '' ? check.sibling : `${check.sibling}/${subpath}`;
       const named = [...names].filter(([name]) => name !== '*');
+      if (named.length === 0) {
+        // No names to check, but the subpath itself must exist at the
+        // floor: a namespace, side-effect, or default-only import from a
+        // subpath the floor tag never exported fails at runtime.
+        const exported = exportsAt(check.sibling, subpath, check.floor);
+        if (exported === undefined) {
+          unverifiable.push(`${check.packagePath}: ${label} at ${check.sibling}@${check.floor} cannot be verified, no tag record for that version; the floor must still name a released version`);
+          allResolved = false;
+        } else if (exported.values.size === 0 && exported.types.size === 0) {
+          problems.push(
+            `${check.packagePath}: imports from ${label}, but ${check.sibling}@${check.floor} does not export that subpath; a new ${label} import counts as raising the floor, so raise the ${check.sibling} peer floor to the first version that exports it (as a **Breaking:** minor when it passes a runner minor the previous range accepted)`,
+          );
+        } else if (names.has('*')) {
+          unverifiable.push(`${check.packagePath}: ${label} is imported as a namespace, so its names cannot be verified against ${check.sibling}@${check.floor}`);
+        } else {
+          checked = true;
+        }
+        continue;
+      }
       if (names.has('*')) {
         unverifiable.push(`${check.packagePath}: ${label} is imported as a namespace, so its names cannot be verified against ${check.sibling}@${check.floor}`);
       }
-      if (named.length === 0) continue;
       const exported = exportsAt(check.sibling, subpath, check.floor);
       if (exported === undefined) {
         unverifiable.push(`${check.packagePath}: ${label} at ${check.sibling}@${check.floor} cannot be verified, no tag record for that version; the floor must still name a released version`);

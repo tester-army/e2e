@@ -61,7 +61,13 @@ function sourceFiles(dirPath: string): string[] {
 export function collectEngineImports(packagePath: string): EngineImportMap {
   const imports = new Map<string, Map<string, ImportKind>>();
   for (const file of sourceFiles(join(dirname(packagePath), 'src'))) {
-    addEngineImports(imports, engineImports(readFileSync(file, 'utf8')));
+    try {
+      addEngineImports(imports, engineImports(readFileSync(file, 'utf8')));
+    } catch (error) {
+      // A file that fails to parse names no file in the error from
+      // engineImports, so say which one it was.
+      throw new Error(`${file}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    }
   }
   return imports;
 }

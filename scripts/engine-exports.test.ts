@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, tagExportsAt, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
+import { addEngineImports, engineImportProblems, engineImports, resolveEntryExports, resolveModule, subpathEntryFile, tagExportsAt, type EngineImportCheck, type EngineImportMap, type ImportKind } from './engine-exports.ts';
 
 describe('engineImports', () => {
   it('reads named, aliased, and type-only imports from e2e entries', () => {
@@ -32,6 +32,25 @@ describe('engineImports', () => {
   it('records a value import of a name over a type import of the same name', () => {
     const imports = engineImports(`import { type EngineError } from 'e2e/engine';\nimport { EngineError } from 'e2e/engine';\n`);
     assert.equal(imports.get('engine')?.get('EngineError'), 'value');
+  });
+
+  it('records a value import of a name over a type import when the value comes first', () => {
+    const imports = engineImports(`import { EngineError } from 'e2e/engine';\nimport { type EngineError } from 'e2e/engine';\n`);
+    assert.equal(imports.get('engine')?.get('EngineError'), 'value');
+  });
+
+  it('records a side-effect import as the subpath with no names', () => {
+    const imports = engineImports(`import 'e2e/nope2';\n`);
+    assert.deepEqual(imports.get('nope2'), new Map<string, ImportKind>());
+  });
+
+  it('records a default-only import as the subpath with no names', () => {
+    const imports = engineImports(`import def from 'e2e/nope';\n`);
+    assert.deepEqual(imports.get('nope'), new Map<string, ImportKind>());
+  });
+
+  it('throws when a source file fails to parse', () => {
+    assert.throws(() => engineImports('export const = ;\n'), /failed to parse/);
   });
 
   it('ignores comments inside import lists', () => {
@@ -92,6 +111,44 @@ describe('engineImports', () => {
   });
 });
 
+describe('addEngineImports', () => {
+  it('keeps a value import over a type import in either order', () => {
+    const typeFirst = new Map<string, Map<string, ImportKind>>();
+    addEngineImports(
+      typeFirst,
+      new Map([['engine', new Map<string, ImportKind>([['EngineError', 'type']])]]),
+    );
+    addEngineImports(
+      typeFirst,
+      new Map([['engine', new Map<string, ImportKind>([['EngineError', 'value']])]]),
+    );
+    assert.equal(typeFirst.get('engine')?.get('EngineError'), 'value');
+    const valueFirst = new Map<string, Map<string, ImportKind>>();
+    addEngineImports(
+      valueFirst,
+      new Map([['engine', new Map<string, ImportKind>([['EngineError', 'value']])]]),
+    );
+    addEngineImports(
+      valueFirst,
+      new Map([['engine', new Map<string, ImportKind>([['EngineError', 'type']])]]),
+    );
+    assert.equal(valueFirst.get('engine')?.get('EngineError'), 'value');
+  });
+
+  it('merges names across subpaths without dropping any', () => {
+    const target = new Map<string, Map<string, ImportKind>>();
+    addEngineImports(
+      target,
+      new Map([
+        ['engine', new Map<string, ImportKind>([['stepTimeout', 'value']])],
+        ['runner', new Map<string, ImportKind>([['openHost', 'value']])],
+      ]),
+    );
+    assert.deepEqual([...(target.get('engine')?.keys() ?? [])], ['stepTimeout']);
+    assert.deepEqual([...(target.get('runner')?.keys() ?? [])], ['openHost']);
+  });
+});
+
 describe('exportedNames and resolveEntryExports', () => {
   it('reads named exports, aliases, declarations, and export-star chains', () => {
     const files = new Map([
@@ -132,8 +189,7 @@ describe('exportedNames and resolveEntryExports', () => {
     assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
   });
 
-  it('reads async functions and declare const enums as declarations', () => {
-    const files = new Map([
+  it('reads async functions and declare const enums as declarations', () => {    const files = new Map([
       [
         'src/engine/index.ts',
         `export async function runCheck(): Promise<void> {}\nexport declare const enum Mode { A = 'a' }\nexport declare function helper(): void;\n`,
@@ -142,6 +198,22 @@ describe('exportedNames and resolveEntryExports', () => {
     const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
     assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['Mode', 'helper', 'runCheck']);
     assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['Mode']);
+  });
+
+  it('counts an interface plus a namespace of the same name as both a type and a value', () => {
+    const files = new Map([
+      [
+        'src/types.ts',
+        `export interface Foo { x: string }\nexport namespace Foo { export const bar = 'bar'; }\n`,
+      ],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/types.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['Foo']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), ['Foo']);
+  });
+
+  it('throws when an entry file fails to parse', () => {
+    assert.throws(() => resolveEntryExports(() => 'export const = ;\n', 'src/engine/index.ts'), /failed to parse/);
   });
 
   it('ignores a commented-out export', () => {
@@ -326,11 +398,62 @@ describe('engineImportProblems', () => {
   it('reports a namespace import as unverifiable', () => {
     const { problems, unverifiable } = engineImportProblems(
       [check('0.23.0', new Map([['engine', new Map<string, ImportKind>([['*', 'value']])]]))],
-      () => exported([]),
+      () => exported(['stepTimeout']),
     );
     assert.deepEqual(problems, []);
     assert.equal(unverifiable.length, 1);
     assert.match(unverifiable[0]!, /imported as a namespace/);
+  });
+
+  it('fails a namespace import from a subpath the floor tag does not export', () => {
+    const { problems, unverifiable } = engineImportProblems(
+      [check('0.23.0', new Map([['nope', new Map<string, ImportKind>([['*', 'value']])]]))],
+      () => exported([]),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports from e2e\/nope, but e2e@0\.23\.0 does not export that subpath/);
+    assert.deepEqual(unverifiable, []);
+  });
+
+  it('fails a side-effect import from a subpath the floor tag does not export', () => {
+    const { problems, unverifiable } = engineImportProblems(
+      [check('0.23.0', new Map([['nope2', new Map<string, ImportKind>()]]))],
+      () => exported([]),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports from e2e\/nope2, but e2e@0\.23\.0 does not export that subpath/);
+    assert.deepEqual(unverifiable, []);
+  });
+
+  it('passes a side-effect import from a subpath the floor tag exports', () => {
+    const { problems, unverifiable, verified } = engineImportProblems(
+      [check('0.23.0', new Map([['engine', new Map<string, ImportKind>()]]))],
+      () => exported(['stepTimeout']),
+    );
+    assert.deepEqual(problems, []);
+    assert.deepEqual(unverifiable, []);
+    assert.equal(verified, 1);
+  });
+
+  it('does not count a check as verified when one of its subpaths has no tag record', () => {
+    const twoSubpaths: EngineImportCheck = {
+      packageName: '@e2e-dev/web',
+      packagePath: 'packages/web/package.json',
+      sibling: 'e2e',
+      floor: '0.23.0',
+      imports: new Map([
+        ['engine', new Map<string, ImportKind>([['stepTimeout', 'value']])],
+        ['agent', new Map<string, ImportKind>([['acp', 'value']])],
+      ]),
+    };
+    const { problems, unverifiable, verified } = engineImportProblems(
+      [twoSubpaths],
+      (_sibling, subpath) => (subpath === 'engine' ? exported(['stepTimeout']) : undefined),
+    );
+    assert.deepEqual(problems, []);
+    assert.equal(unverifiable.length, 1);
+    assert.match(unverifiable[0]!, /cannot be verified, no tag record/);
+    assert.equal(verified, 0);
   });
 
   it('still validates named imports beside a namespace import', () => {
