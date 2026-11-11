@@ -34,28 +34,28 @@ export function buildEngine(surface: AgentDeviceSurface): EngineHandle {
     dispose: (context) => surface.dispose(context),
     // The harness signal does not abort at an operation's budget, so each
     // operation enforces its own; see InputBudget in support.ts.
-    observe: (operation, options) => surface.observe(operation, options, surface.inputBudget('observe', operation.timeoutMs)),
-    locate: (expression, operation) => surface.locate(expression, operation, surface.inputBudget('locate', operation.timeoutMs)),
-    perform: (ref, action, operation) => surface.perform(ref, action, operation, surface.inputBudget(action.kind, operation.timeoutMs)),
+    observe: (operation, options) => surface.observe(operation, options, surface.inputBudget('observe', operation.timeoutMs, operation.signal)),
+    locate: (expression, operation) => surface.locate(expression, operation, surface.inputBudget('locate', operation.timeoutMs, operation.signal)),
+    perform: (ref, action, operation) => surface.perform(ref, action, operation, surface.inputBudget(action.kind, operation.timeoutMs, operation.signal)),
     actions: DEVICE_ACTIONS,
-    performAt: (point, action, operation) => surface.performAt(point, action, operation, surface.inputBudget(action.kind, operation.timeoutMs)),
+    performAt: (point, action, operation) => surface.performAt(point, action, operation, surface.inputBudget(action.kind, operation.timeoutMs, operation.signal)),
     pointerActions: DEVICE_POINTER_ACTIONS,
     keyboard: {
-      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation, surface.inputBudget('type', operation.timeoutMs)),
-      press: (key, operation) => surface.pressFocusedKey(key, operation, surface.inputBudget('press', operation.timeoutMs)),
-      dismiss: (operation) => surface.dismissKeyboard(operation.signal, surface.inputBudget('keyboard dismiss', operation.timeoutMs)),
+      type: (text, keyboardOptions, operation) => surface.typeText(text, keyboardOptions, operation, surface.inputBudget('type', operation.timeoutMs, operation.signal)),
+      press: (key, operation) => surface.pressFocusedKey(key, operation, surface.inputBudget('press', operation.timeoutMs, operation.signal)),
+      dismiss: (operation) => surface.dismissKeyboard(operation.signal, surface.inputBudget('keyboard dismiss', operation.timeoutMs, operation.signal)),
     },
     validateApp: (app, info) => validateApp(app, info, surface.options.platform),
     // No `open`: a device app has no URL to open, so the runner serves
     // `app.open()` with `restart`, the fresh launch of the pinned app, which
     // is also the device's "recreate the context".
     session: {
-      back: (operation) => surface.back(operation, surface.inputBudget('back', operation.timeoutMs)),
+      back: (operation) => surface.back(operation, surface.inputBudget('back', operation.timeoutMs, operation.signal)),
       restart: (operation) => surface.restart(operation),
       reset: (operation) => surface.reset(operation),
     },
     artifacts: {
-      screenshot: (label, operation) => surface.screenshot(label, operation, surface.inputBudget('screenshot', operation.timeoutMs)),
+      screenshot: (label, operation) => surface.screenshot(label, operation, surface.inputBudget('screenshot', operation.timeoutMs, operation.signal)),
       startVideo: (operation) => surface.startVideo(operation),
       stopVideo: (operation) => surface.stopVideo(operation),
     },

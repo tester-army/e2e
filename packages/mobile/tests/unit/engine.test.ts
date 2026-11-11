@@ -490,13 +490,13 @@ describe('lifecycle', () => {
     await openAttempt(slow);
     const node = await observed(slow, 'About');
     await slow.engine.perform!(node.ref, { kind: 'tap' }, operation());
-    expect(slow.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 600 });
+    expect(slow.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4', settle: true, settleQuietMs: 600 });
 
     const none = harness({ settle: false });
     await openAttempt(none);
     const target = await observed(none, 'About');
     await none.engine.perform!(target.ref, { kind: 'tap' }, operation());
-    expect(none.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e4' });
+    expect(none.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4' });
     await none.engine.session!.back!(operation());
     expect(none.fake.lastArgs('command.back')).toEqual({});
     const screen = await screenRootOf(none);
@@ -1175,8 +1175,8 @@ describe('location', () => {
     await h.engine.perform!(back!.ref, { kind: 'tap' }, operation());
     await h.engine.perform!(about.ref, { kind: 'tap' }, operation());
     expect(h.fake.calls.filter((call) => call.method === 'interactions.press').map((call) => call.args)).toEqual([
-      { signal: expect.any(AbortSignal), ref: '@e3', settle: true, settleQuietMs: 150 },
-      { signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 150 },
+      { ref: '@e3', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
     ]);
   });
 
@@ -1317,25 +1317,25 @@ describe('perform', () => {
     await h.engine.perform!(root.ref, { kind: 'swipe', direction: 'up', momentum: 'fast' }, op);
     await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 150 }],
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e4', count: 2, settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e4', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e4', count: 2, settle: true, settleQuietMs: 150 }],
       ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 900 }],
       // No duration named: the engine's one-second hold, past a Pressable's delayLongPress.
       ['interactions.longPress', { ref: '@e4', settle: true, settleQuietMs: 150, durationMs: 1000 }],
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.hover', { ref: '@e4' }],
       ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: 'blue', settle: true, settleQuietMs: 150 }],
       ['capture.snapshot', { interactiveOnly: false }],
       ['interactions.fill', { ref: '@e7', text: '', settle: true, settleQuietMs: 150 }],
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e6', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e6', settle: true, settleQuietMs: 150 }],
       // Enter reaches the field through the soft keyboard, so the unfocused field is tapped first.
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['command.keyboard', { action: 'enter' }],
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: 'a' }],
       // Space is typed like a character, the unfocused field tapped first.
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e7', settle: true, settleQuietMs: 150 }],
       ['interactions.type', { text: ' ' }],
       ['interactions.swipe', { from: { x: 195, y: 620 }, to: { x: 195, y: 420 } }],
       // The root swipe is the viewport swipe: agent-device's whole-screen scroll at its default amount, settled like a tap.
@@ -1384,10 +1384,10 @@ describe('perform', () => {
     );
     await h.engine.perform!(located!.ref, { kind: 'uncheck' }, operation());
     expect(h.fake.calls.slice(before).filter((call) => call.method === 'interactions.press').map((call) => call.args)).toEqual([
-      { signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 150 },
-      { signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 150 },
-      { signal: expect.any(AbortSignal), ref: '@e5', settle: true, settleQuietMs: 150 },
-      { signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
+      { ref: '@e5', settle: true, settleQuietMs: 150 },
+      { ref: '@e4', settle: true, settleQuietMs: 150 },
     ]);
   });
 
@@ -1920,7 +1920,7 @@ describe('device fixture', () => {
       const before = h.fake.calls.length;
       await device.dismissKeyboard();
       expect(h.fake.methods().slice(before)).toEqual(['command.keyboard', 'capture.snapshot', 'interactions.press', 'capture.snapshot']);
-      expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), x: 195, y: 722 });
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 195, y: 722 });
     });
 
     it('leaves any other refusal to the caller', async () => {
@@ -1982,7 +1982,7 @@ describe('device fixture', () => {
       const submit = await observed(h, 'Submit');
       await h.engine.perform!(submit.ref, { kind: 'tap' }, { ...operation(), origin: 'test' });
       expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
-      expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e11' });
+      expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11' });
     }
     // A read leaves the budget alone: the clipboard changes no screen.
     await device.clipboard();
@@ -2531,8 +2531,8 @@ describe('snapshot generations', () => {
     await h.engine.perform!(toggle!.ref, { kind: 'check' }, op);
     await h.engine.perform!(about!.ref, { kind: 'dragTo', target: back!.ref }, op);
     expect(h.fake.calls.slice(before).map((call) => [call.method, call.args])).toEqual([
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e4~s7', settle: true, settleQuietMs: 150 }],
-      ['interactions.press', { signal: expect.any(AbortSignal), ref: '@e6~s7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e4~s7', settle: true, settleQuietMs: 150 }],
+      ['interactions.press', { ref: '@e6~s7', settle: true, settleQuietMs: 150 }],
       ['interactions.drag', { source: '@e4~s7', destination: '@e3~s7' }],
     ]);
   });
@@ -2566,7 +2566,7 @@ describe('snapshot generations', () => {
     const step: OperationContext = { ...operation(), origin: 'test' };
     const about = await observed(h, 'About');
     await h.engine.perform!(about.ref, { kind: 'tap' }, step);
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e4~s8' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4~s8' });
   });
 
   it('drags from a source found again after a transition to a target located before it', async () => {
@@ -3214,13 +3214,13 @@ describe('deterministic actions', () => {
    * transition budget. An upper bound on wall-clock time says the same only
    * on an idle machine.
    */
-  async function tapsAtOnce(h: Harness, node: SemanticNode, expected: Record<string, unknown>): Promise<void> {
+  async function tapsAtOnce(h: Harness, node: SemanticNode, expected: unknown): Promise<void> {
     vi.setTimerTickMode('manual');
     try {
       const pending = h.engine.perform!(node.ref, { kind: 'tap' }, test());
       await new Promise<void>((resolve) => setImmediate(resolve));
       expect(vi.getTimerCount()).toBe(0);
-      expect(h.fake.lastArgs('interactions.press')).toEqual({ ...expected, signal: expect.any(AbortSignal) });
+      expect(h.fake.lastArgs('interactions.press')).toEqual(expected);
       await pending;
     } finally {
       vi.setTimerTickMode('nextTimerAsync');
@@ -3255,7 +3255,7 @@ describe('deterministic actions', () => {
     const submit = await observed(h, 'Submit');
     await h.engine.perform!(submit.ref, { kind: 'tap' }, test());
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(100);
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e11' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e11' });
   });
 
   it('acts on a control that came with the last action where a fresh snapshot lists it once the budget has passed', async () => {
@@ -3276,7 +3276,7 @@ describe('deterministic actions', () => {
     const inFlight = await observed(h, 'Submit');
     h.fake.respond('capture.snapshot', () => submit(600, '@e42'));
     await h.engine.perform!(inFlight.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e42' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
 
     // A missing control must be resolved again before any input is dispatched.
     h.fake.respond('capture.snapshot', () => SETTINGS_SNAPSHOT);
@@ -3313,7 +3313,7 @@ describe('deterministic actions', () => {
     expect(h.fake.methods().filter((method) => method === 'interactions.press')).toHaveLength(presses);
 
     await h.engine.perform!((await observed(h, 'Chat')).ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e12' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e12' });
   });
 
   it.each(
@@ -3342,7 +3342,7 @@ describe('deterministic actions', () => {
         ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } } : node),
     }));
     await h.engine.perform!(stale.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e42' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
   });
 
   it.each(['Enter', 'focused Enter', 'dismiss'] as const)('reobserves after %s hides the keyboard before the control moves', async action => {
@@ -3353,7 +3353,7 @@ describe('deterministic actions', () => {
     const search = await observed(h, 'Search');
     if (action === 'Enter') await h.engine.perform!(search.ref, { kind: 'press', key: 'Enter' }, test());
     else if (action === 'focused Enter') await h.engine.keyboard!.press('Enter', test());
-    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test().timeoutMs));
+    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test().timeoutMs, test().signal));
     h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } }));
     const stale = await observed(h, 'About');
     h.fake.respond('capture.snapshot', () => ({
@@ -3362,7 +3362,7 @@ describe('deterministic actions', () => {
         ? { ...node, ref: '@e42', rect: { x: 0, y: 200, width: 390, height: 44 } } : node),
     }));
     await h.engine.perform!(stale.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e42' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e42' });
   });
 
   it.each(['type', 'fill', 'clear'] as const)('keeps unchanged controls immediate after %s when keyboard state is unchanged', async action => {
@@ -3394,7 +3394,7 @@ describe('deterministic actions', () => {
       nodes: [...SETTINGS_NODES, add('@e20', 200), { ...add('@e21', 610), index: 11 }],
     }));
     await h.engine.perform!(arriving.ref, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e21' });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e21' });
   });
 
   it('gives a control that moved with the last action the budget too, and skips it once the budget has elapsed', async () => {
@@ -3425,9 +3425,9 @@ describe('deterministic actions', () => {
     await h.engine.session!.back!(test());
     expect(h.fake.lastArgs('command.back')).toEqual({});
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'tap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), x: 10, y: 20 });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20 });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'doubleTap' }, test());
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), x: 10, y: 20, count: 2 });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ x: 10, y: 20, count: 2 });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'longPress', durationMs: 700 }, test());
     expect(h.fake.lastArgs('interactions.longPress')).toEqual({ x: 10, y: 20, durationMs: 700 });
     await h.engine.performAt!({ x: 10, y: 20 }, { kind: 'longPress' }, test());
@@ -3440,7 +3440,7 @@ describe('deterministic actions', () => {
 
     const about = await observed(h, 'About');
     await h.engine.perform!(about.ref, { kind: 'tap' }, { ...operation(), origin: 'agent' });
-    expect(h.fake.lastArgs('interactions.press')).toEqual({ signal: expect.any(AbortSignal), ref: '@e4', settle: true, settleQuietMs: 150 });
+    expect(h.fake.lastArgs('interactions.press')).toEqual({ ref: '@e4', settle: true, settleQuietMs: 150 });
   });
 
   it('skips the post-gesture stabilization wait for a test swipe and scroll, and keeps it for the agent', async () => {

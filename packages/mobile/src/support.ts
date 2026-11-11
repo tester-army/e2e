@@ -1,6 +1,6 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
-import { isAgentDeviceError, type CaptureScreenshotResult } from 'agent-device';
+import type { CaptureScreenshotResult } from 'agent-device';
 import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
 
 export interface Point {
@@ -35,14 +35,15 @@ export class InputBudget {
   private sent = false;
 
   /**
-   * `track` keeps the device command itself in flight, past a timeout that
-   * abandons it, until it settles. The callers' own tracking settles with the
-   * race, so this is the registration the next attempt waits on.
+   * `track` keeps the SDK request in flight, past a timeout that abandons
+   * it, until its promise settles. Cancellation can settle that promise
+   * before already accepted native work ends.
    */
   constructor(
     private readonly label: string,
     timeoutMs: number,
     private readonly track: <T>(pending: Promise<T>) => Promise<T>,
+    private readonly signal: AbortSignal,
   ) {
     this.endsAt = Date.now() + timeoutMs;
   }
@@ -57,7 +58,7 @@ export class InputBudget {
    * Press requests receive caller cancellation and are cancelled when this
    * wait expires, including its existing acknowledgement allowance.
    */
-  send<T>(dispatch: (signal: AbortSignal) => Promise<T>, holdMs = 0, signal?: AbortSignal): Promise<T> {
+  send<T>(dispatch: (signal: AbortSignal) => Promise<T>, holdMs = 0): Promise<T> {
     const remaining = this.remainingMs();
     if (remaining <= 0) return Promise.reject(this.spent());
     if (holdMs >= remaining) {
@@ -69,20 +70,14 @@ export class InputBudget {
         ),
       );
     }
-    if (signal?.aborted) return Promise.reject(cancelled(`${this.label} cancelled before it was sent`));
     const answerMs = Math.max(remaining, MIN_ANSWER_MS);
     const deadline = new AbortController();
-    const requestSignal = signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal]);
+    const requestSignal = AbortSignal.any([this.signal, deadline.signal]);
     const pending = this.track(dispatch(requestSignal));
     this.sent = true;
     return withTimeout(pending, answerMs, () => {
       deadline.abort();
       return this.maybeCommitted();
-    }).catch((cause: unknown) => {
-      if (deadline.signal.aborted && signal?.aborted !== true && isAgentDeviceError(cause) && cause.details?.reason === 'request_canceled') {
-        throw this.maybeCommitted();
-      }
-      throw cause;
     });
   }
 
