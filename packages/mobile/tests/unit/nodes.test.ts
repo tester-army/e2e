@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { projectSnapshot, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
+import { keyboardBand, projectSnapshot, screenTitle, viewportOf, type RawNode } from '../../src/nodes.ts';
 import { SETTINGS_NODES } from '../helpers/fake-client.ts';
 
 function project(nodes: readonly RawNode[]) {
@@ -674,6 +674,15 @@ describe('nodes under the soft keyboard', () => {
       { mintId: () => `n${(counter += 1)}`, keyboard: { x: 0, y: 500, width: 402, height: 374 } },
     );
     expect(index.filter((entry) => entry.node.states?.hidden === true).map((entry) => entry.node.name)).toEqual(['Continue']);
+  });
+
+  it('reads the band off keys a capture lists with no keyboard element around them', () => {
+    const keys: RawNode[] = [
+      { ref: '@e0', index: 0, depth: 0, type: 'Application', label: 'Shop', rect: { x: 0, y: 0, width: 402, height: 874 } },
+      { ref: '@e1', index: 1, parentIndex: 0, depth: 1, type: 'Key', label: 'q', rect: { x: 4, y: 590, width: 39, height: 54 } },
+      { ref: '@e2', index: 2, parentIndex: 0, depth: 1, type: 'Key', label: 'p', rect: { x: 360, y: 590, width: 39, height: 54 } },
+    ];
+    expect(keyboardBand(keys, undefined, undefined)).toEqual({ x: 4, y: 590, width: 395, height: 284 });
   });
 
   it('hides nothing when the producer measured no keyboard frame', () => {

@@ -124,12 +124,13 @@ const UNCHECKED_VALUES = new Set(['0', 'off', 'false', 'unchecked']);
 export const KEYBOARD_KINDS: ReadonlySet<string> = new Set(['keyboard', 'key']);
 
 /**
- * Whether a raw node is the soft keyboard: the keyboard element, or the
+ * Whether a raw node is the soft keyboard: the keyboard element or one of
+ * its keys (a capture can list keys with no keyboard around them), or the
  * suggestion strip UIKit draws along its top edge (`UISystemInputAssistantView`),
  * which XCTest lists beside the keyboard, not inside it.
  */
 function isKeyboardElement(node: RawNode): boolean {
-  return kindOf(node) === 'keyboard' || node.identifier === 'SystemInputAssistantView';
+  return KEYBOARD_KINDS.has(kindOf(node)) || node.identifier === 'SystemInputAssistantView';
 }
 
 /**

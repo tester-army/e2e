@@ -404,7 +404,9 @@ export default {
   a value or only text is typed into, since a custom-drawn field (Compose
   Multiplatform, Flutter) can read that way.
 - A node whose centre the soft keyboard covers is hidden, so
-  `scrollUntilVisible` keeps scrolling and `toBeVisible()` fails. A tap on a
+  `scrollUntilVisible` keeps scrolling and `toBeVisible()` fails. The
+  keyboard's own keys and dock, the focused field, and a container with a
+  child still showing stay visible. A tap on a
   node agent-device finds covered (by an overlay or the keyboard) fails
   `ACTION_FAILED` naming the cover; dismiss it or scroll the target clear.
 - `screen`, `expect`, `app`, `agent` work unchanged; `test` from
