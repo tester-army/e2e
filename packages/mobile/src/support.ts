@@ -54,8 +54,10 @@ export class InputBudget {
    * at least as long as the budget left could only be cut off mid-gesture, so
    * it is refused unsent. An input that does not answer in time may have
    * landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it.
+   * Press requests also receive the deadline and caller cancellation through
+   * the SDK signal, so readiness polling cannot dispatch after either ends.
    */
-  send<T>(dispatch: () => Promise<T>, holdMs = 0): Promise<T> {
+  send<T>(dispatch: (signal: AbortSignal) => Promise<T>, holdMs = 0, signal?: AbortSignal): Promise<T> {
     const remaining = this.remainingMs();
     if (remaining <= 0) return Promise.reject(this.spent());
     if (holdMs >= remaining) {
@@ -67,9 +69,24 @@ export class InputBudget {
         ),
       );
     }
-    const pending = this.track(dispatch());
+    if (signal?.aborted) return Promise.reject(cancelled(`${this.label} cancelled before it was sent`));
+    const answerMs = Math.max(remaining, MIN_ANSWER_MS);
+    const deadline = new AbortController();
+    // The answer allowance must not extend a pending press's dispatch deadline.
+    const timer = setTimeout(() => deadline.abort(), Math.ceil(remaining));
+    const requestSignal = signal === undefined ? deadline.signal : AbortSignal.any([signal, deadline.signal]);
+    let pending: Promise<T>;
+    try {
+      pending = this.track(dispatch(requestSignal));
+    } catch (cause) {
+      clearTimeout(timer);
+      throw cause;
+    }
     this.sent = true;
-    return withTimeout(pending, Math.max(remaining, MIN_ANSWER_MS), () => this.maybeCommitted());
+    return withTimeout(pending, answerMs, () => this.maybeCommitted()).catch((cause: unknown) => {
+      if (deadline.signal.aborted && signal?.aborted !== true) throw this.maybeCommitted();
+      throw cause;
+    }).finally(() => clearTimeout(timer));
   }
 
   /**

@@ -63,13 +63,14 @@ export function pointerInteraction(
   action: PointerAction,
   settle: Record<string, unknown>,
   stabilization: Record<string, unknown>,
+  signal: AbortSignal,
 ): Promise<unknown> {
   const at = { x: point.x, y: point.y };
   switch (action.kind) {
     case 'tap':
-      return client.interactions.press({ ...at, ...settle });
+      return client.interactions.press({ ...at, ...settle, signal });
     case 'doubleTap':
-      return client.interactions.press({ ...at, count: 2, ...settle });
+      return client.interactions.press({ ...at, count: 2, ...settle, signal });
     case 'longPress':
       return client.interactions.longPress({ ...at, ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS });
     case 'swipeTo': {
