@@ -1,6 +1,6 @@
 {
   "$schema": "https://context7.com/schema/context7.json",
-  "url": "https://context7.com/tester-army/e2e",
+  "url": "https://context7.com/e2e-inc/e2e",
   "public_key": "pk_200ABkj87UaaQXDXUtAxf",
   "projectTitle": "e2e",
   "description": "Next generation e2e testing framework for web and mobile apps.",
