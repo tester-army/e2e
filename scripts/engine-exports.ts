@@ -2,9 +2,9 @@
  * Rule (c): an engine that starts importing a new `e2e/engine` export
  * counts as raising the floor. This module verifies it: every import a
  * package takes from `e2e` or an `e2e/*` entry must be exported by `e2e`
- * at the version the package's peer floor names, including namespace,
- * side-effect, and default-only imports, which record the subpath even
- * though they name no exports.
+ * at the version the package's peer floor names, including namespace and
+ * side-effect imports, which record the subpath even though they name no
+ * exports, and default imports, which record the `default` binding.
  *
  * Imports and exports come from oxc-parser's module info, not pattern
  * matching, so comments and JSDoc examples never count. Declaration
@@ -107,7 +107,7 @@ function walkAst(value: unknown, visit: (node: AstNode) => void): void {
   for (const child of Object.values(value)) walkAst(child, visit);
 }
 
-/** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry). A namespace import is recorded as the name `'*'`, which the check cannot enumerate; a side-effect or default-only import records the subpath with no names, so the check still verifies the subpath exists at the floor. */
+/** The named imports from `e2e` and its subpaths in one source file, keyed by subpath (`''` is the bare `e2e` entry). A namespace import is recorded as the name `'*'`, which the check cannot enumerate; a side-effect import records the subpath with no names, so the check still verifies the subpath exists at the floor; a default import records the name `default`, so a floor without one fails the check. */
 export function engineImports(source: string): EngineImportMap {
   const found = new Map<string, Map<string, ImportKind>>();
   const add = (subpath: string, names: readonly (readonly [string, ImportKind])[]): void => {
@@ -123,12 +123,12 @@ export function engineImports(source: string): EngineImportMap {
     const subpath = e2eSubpath(statement.moduleRequest.value);
     if (subpath === undefined) continue;
     // Record the subpath even when the import names nothing: a
-    // side-effect import (`import 'e2e/engine'`) has no entries, and a
-    // default-only import names no export the check tracks, but both
-    // still need the subpath to exist at the floor.
+    // side-effect import (`import 'e2e/engine'`) has no entries, but it
+    // still needs the subpath to exist at the floor.
     add(subpath, []);
     for (const entry of statement.entries) {
       if (entry.importName.kind === 'NamespaceObject') add(subpath, [['*', 'value']]);
+      else if (entry.importName.kind === 'Default') add(subpath, [['default', entry.isType ? 'type' : 'value']]);
       else if (entry.importName.kind === 'Name' && entry.importName.name !== null) {
         add(subpath, [[entry.importName.name, entry.isType ? 'type' : 'value']]);
       }
@@ -275,6 +275,12 @@ function exportedNames(source: string): {
         continue;
       }
       const name = entry.exportName.name;
+      if (entry.exportName.kind === 'Default') {
+        // `export default ...` exports the name `default`: a default
+        // import of this entry is satisfied only by one.
+        (entry.isType ? types : values).add('default');
+        continue;
+      }
       if (entry.exportName.kind !== 'Name' || name === null) continue;
       const kind = declared.get(name);
       if (kind === 'type') types.add(name);
@@ -410,8 +416,9 @@ export interface EngineImportCheck {
  * version, plus the floors that could not be verified. A namespace
  * import is unverifiable, since its names cannot be enumerated, unless
  * the floor tag does not export the subpath at all, which is a problem.
- * A side-effect or default-only import is verified when the tag exports
- * the subpath. `verified` counts the checks whose imports were all
+ * A side-effect import is verified when the tag exports the subpath; a
+ * default import is checked against the `default` export like any other
+ * name. `verified` counts the checks whose imports were all
  * checked against a tag record.
  */
 export function engineImportProblems(
@@ -429,7 +436,7 @@ export function engineImportProblems(
       const named = [...names].filter(([name]) => name !== '*');
       if (named.length === 0) {
         // No names to check, but the subpath itself must exist at the
-        // floor: a namespace, side-effect, or default-only import from a
+        // floor: a namespace or side-effect import from a
         // subpath the floor tag never exported fails at runtime.
         const exported = exportsAt(check.sibling, subpath, check.floor);
         if (exported === undefined) {

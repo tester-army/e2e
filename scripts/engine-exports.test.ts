@@ -44,9 +44,30 @@ describe('engineImports', () => {
     assert.deepEqual(imports.get('nope2'), new Map<string, ImportKind>());
   });
 
-  it('records a default-only import as the subpath with no names', () => {
+  it('records a default-only import as the default binding', () => {
     const imports = engineImports(`import def from 'e2e/nope';\n`);
-    assert.deepEqual(imports.get('nope'), new Map<string, ImportKind>());
+    assert.deepEqual(imports.get('nope'), new Map<string, ImportKind>([['default', 'value']]));
+  });
+
+  it('records a default import beside named imports', () => {
+    const imports = engineImports(`import def, { stepTimeout } from 'e2e/engine';\n`);
+    assert.deepEqual(
+      imports.get('engine'),
+      new Map<string, ImportKind>([
+        ['default', 'value'],
+        ['stepTimeout', 'value'],
+      ]),
+    );
+  });
+
+  it('records a type-only default import as a type', () => {
+    const imports = engineImports(`import type def from 'e2e/engine';\n`);
+    assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['default', 'type']]));
+  });
+
+  it('records a default imported by name', () => {
+    const imports = engineImports(`import { default as def } from 'e2e/engine';\n`);
+    assert.deepEqual(imports.get('engine'), new Map<string, ImportKind>([['default', 'value']]));
   });
 
   it('throws when a source file fails to parse', () => {
@@ -186,6 +207,24 @@ describe('exportedNames and resolveEntryExports', () => {
     ]);
     const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
     assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['engine']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
+  });
+
+  it('reads a default export as the default name', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `export default function makeEngine(): void {}\nexport function stepTimeout(): void {}\n`],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['default', 'stepTimeout']);
+    assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
+  });
+
+  it('reads a name exported as default', () => {
+    const files = new Map([
+      ['src/engine/index.ts', `function makeEngine(): void {}\nexport { makeEngine as default };\n`],
+    ]);
+    const exported = resolveEntryExports((path) => files.get(path), 'src/engine/index.ts');
+    assert.deepEqual([...(exported?.values ?? [])].toSorted(), ['default']);
     assert.deepEqual([...(exported?.types ?? [])].toSorted(), []);
   });
 
@@ -435,6 +474,25 @@ describe('engineImportProblems', () => {
     assert.equal(verified, 1);
   });
 
+  it('fails a default import when the floor exports other names but no default', () => {
+    const { problems } = engineImportProblems(
+      [check('0.23.0', named([['default', 'value']]))],
+      () => exported(['stepTimeout']),
+    );
+    assert.equal(problems.length, 1);
+    assert.match(problems[0]!, /imports `default` from e2e\/engine, but e2e@0\.23\.0 does not export it/);
+  });
+
+  it('passes a default import when the floor exports a default', () => {
+    const { problems, unverifiable, verified } = engineImportProblems(
+      [check('0.23.0', named([['default', 'value']]))],
+      () => exported(['default', 'stepTimeout']),
+    );
+    assert.deepEqual(problems, []);
+    assert.deepEqual(unverifiable, []);
+    assert.equal(verified, 1);
+  });
+
   it('does not count a check as verified when one of its subpaths has no tag record', () => {
     const twoSubpaths: EngineImportCheck = {
       packageName: '@e2e-dev/web',
@@ -544,6 +602,26 @@ describe('floor export checks with in-memory fixtures', () => {
     assert.match(earlierProblems[0]!, /imports `stepTimeout` from e2e\/engine/);
     const { problems: laterProblems } = engineImportProblems([check('0.23.0')], () => atLater);
     assert.deepEqual(laterProblems, []);
+  });
+
+  it('fails a default import against an entry with no default export, and passes once one is added', () => {
+    const withoutDefault = new Map([
+      ['src/engine/index.ts', `export function stepTimeout(): void {}\n`],
+    ]);
+    const withDefault = new Map([
+      ['src/engine/index.ts', `export default function makeEngine(): void {}\nexport function stepTimeout(): void {}\n`],
+    ]);
+    const atWithout = resolveEntryExports((path) => withoutDefault.get(path), 'src/engine/index.ts');
+    const atWith = resolveEntryExports((path) => withDefault.get(path), 'src/engine/index.ts');
+    assert.equal(atWithout?.values.has('default'), false);
+    assert.equal(atWith?.values.has('default'), true);
+    const imports: EngineImportMap = new Map([['engine', new Map<string, ImportKind>([['default', 'value']])]]);
+    const check = (floor: string): EngineImportCheck => ({ packageName: '@e2e-dev/web', packagePath: 'packages/web/package.json', sibling: 'e2e', floor, imports });
+    const { problems: withoutProblems } = engineImportProblems([check('0.22.0')], () => atWithout);
+    assert.equal(withoutProblems.length, 1);
+    assert.match(withoutProblems[0]!, /imports `default` from e2e\/engine/);
+    const { problems: withProblems } = engineImportProblems([check('0.23.0')], () => atWith);
+    assert.deepEqual(withProblems, []);
   });
 
   it('does not count a type-star re-export as a value export in fixture entries', () => {
