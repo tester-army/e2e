@@ -229,7 +229,7 @@ an `end-mismatch` it names the recorded nodes that did not show, the ones
 that did not go away, and any alert the recording never saw, or says the
 outcome already showed before the replay acted.
 `step.cache.entry` identifies the act call inside its test's recording.
-The trace page links to the test's `.replay.ts` file.
+The trace page links to the test's `.yml` file.
 
 | Reason | What happened | What to do |
 | --- | --- | --- |
@@ -281,7 +281,7 @@ composed itself, replay.
 
 ## What a recording holds
 
-Each test has one `.replay.ts` file under `.e2e/cache/`, containing its act
+Each test has one `.yml` file under `.e2e/cache/`, containing its act
 calls in execution order, grouped by project, target and agent. Each call
 holds actions, target descriptions, typed text, a summary, and the
 end checks: the route and up to eight controls that appeared and eight that
@@ -431,89 +431,100 @@ lowers the cost of a model call. The replay cache skips the call.
 </Note>
 
 
-## Code recordings
+## YAML recordings
 
-The file cache stores typed `e2e/replay` declarations. Commit these files with
-your tests and review their actions and target evidence in the diff. Web and
-mobile use the same replay safeguards and confirmation boundary.
+Each test has one YAML file in `cache.dir`. Commit it with the test and review
+changes with Git. Web and mobile keep the same replay checks and confirmation
+boundary.
 
 <Warning>
-JSON replay caches are no longer supported. Delete old `.json` cache files,
-then run your tests with `cache: 'read-write'` to regenerate recordings.
-Old files are ignored, including in strict mode. There is no migration command
-or `cache.format` option.
+Delete old `.json` and `.replay.ts` cache files, then run with
+`cache: 'read-write'` to regenerate. Old formats are ignored, including in
+strict mode. There is no migration command, format switch or cache diff command.
 </Warning>
 
-The filename keeps the old flat SHA-256 naming style. Previously the digest
-identified one act call; now it hashes the collected test ID, the relative
-source path plus its encoded describe and test titles. For example,
-`tests/checkout.e2e.ts::buys` maps to
-`<cache.dir>/f809206a0475119f8e8b9958b88da124127e6750ab513ba73c3dce843a12968c.replay.ts`.
-The digest stays 64 characters. Different source files and describe paths
-remain distinct; duplicate full titles in one file are rejected at collection.
+### Filenames
 
-<Accordion title="Example structure, with digest values abbreviated">
-```ts
-import { replay } from 'e2e/replay';
+`tests/checkout.e2e.ts::buys` becomes `.e2e/cache/checkout-buys.yml`.
+Names combine the source file stem and decoded test titles, lowercase them,
+remove accent marks, replace punctuation with hyphens and truncate at 72
+characters. A title prefix repeating the file stem is included once. Empty names become `test`; Windows device names get a `test-`
+prefix. Directory paths remain part of identity even though filenames omit them.
 
-export default replay.test(
-  { id: '<test digest>', testId: 'tests/checkout.e2e.ts::buys' },
-  [
-    replay.step(
-      {
-        key: '<act digest>',
-        order: 0,
-        variant: { project: '<project digest>', target: '<target digest>', agent: '<agent digest>' },
-      },
-      replay.define(
-        { executor: { name: 'e2e-default-agent' }, summary: 'Saved' },
-        [replay.tap({ summary: 'Save', target: { name: 'Save', role: 'button' } })],
-      ),
-    ),
-  ],
-);
+When two identities produce the same slug, both files get `--` plus the first
+12 hexadecimal characters of their test identity digest. For example,
+`tests/a/login.e2e.ts::logs%20in` and
+`tests/b/login.e2e.ts::logs%20in` share the slug `login-logs-in` and receive
+different suffixes. Suffixes remain stable after a collision. A digest collision
+fails the write instead of overwriting a recording. Duplicate full test titles
+in one source file remain collection errors.
+
+### File contents
+
+Actions appear first as compact flow maps. This excerpt omits the generated
+`replay` and `identity` metadata:
+
+```yaml
+test: checkout › buys
+file: tests/checkout.e2e.ts
+recordedWith:
+  engine: 1
+  platform: web
+  app: <app identity>
+
+acts:
+  - instruction: log in with the given credentials
+    steps:
+      - type: { role: textbox, name: Email, value: grace@example.com }
+      - type: { role: textbox, name: Password, secret: benchmark.password }
+      - tap: { role: button, name: Log in }
+      - press: Enter
+      - wait: { role: status, name: Signed in }
 ```
 
-Generated files contain full digests, redacted provenance and outcome checks.
-Variant names are hashed so secret-bearing target or agent names cannot leak.
-</Accordion>
+Each act's `replay` section retains its key, execution order, variant, action
+summaries and verification evidence. This includes start and end locations,
+transition spans and wait budgets. Trailing `wait` and `waitGone` rows hold
+appeared and disappeared anchors. The replay checks them together as the
+outcome, not as sequential sleeps. A target's
+`targetValue` distinguishes its observed value from a `type` action's input.
+Optional targets on scrolling actions remain nested to avoid ambiguous fields.
+The `recordedWith` header describes the first variant; each variant keeps its
+own validity metadata.
 
-Act calls keep their existing keys: instruction, params, occurrence of that
-same call, test, target, agent and replay policy. `order` records execution
-order; it does not replace key matching. A new call is a miss and runs the
-agent. A stale recording follows the normal repair path, or fails with
-`REPLAY_STALE` in strict mode. Strict mode still lets a call with no recording
-run live and writes nothing.
+Calls match by instruction, params, occurrence, test, target, agent and replay
+policy, not array position. A missing call runs the agent. A stale recording
+follows normal repair, or fails with `REPLAY_STALE` in strict mode. Strict mode
+lets never-recorded calls run live and writes nothing. Secret fills store
+references; `unique()` values store parameter slots.
 
-After a successful attempt, the file keeps only the calls that attempt
-encountered for its project, target and agent. Other variants remain. Failed
-attempts preserve unvisited calls and apply the usual confirmation and eviction
-rules. Interrupted attempts write nothing.
+Custom tool gaps and runtime-derived values still hand off to the agent.
+Their `tool` entries describe the gap; they do not authorize tool execution or
+invent arguments the original recording never captured. Outcome waits retain their concurrent checks; their position after actions
+describes the required result.
 
-Renaming a test changes its filename. A successful read-write run removes the
+### Updates and cleanup
+
+A confirmed read-write attempt publishes the entire file atomically under a
+lock. A completed body removes steps it did not encounter for its variant.
+Failed attempts retain unvisited steps and apply normal confirmation and
+eviction rules. Other targets and agents remain; interrupted attempts write
+nothing. An unchanged replay leaves the file untouched.
+
+Renaming a test changes its filename. A successful read-write run removes its
 old variant when collection proves the test is gone: its source was collected,
-or a full collection finds the source deleted. Filtered runs preserve files
-outside their collection. Read-only and strict runs never prune. If no tests
-run, cleanup waits for the next run that executes tests. Configurations no
-longer run cannot clean up their own variants; remove those files with Git.
+or a full collection finds the source deleted. Filtered, read-only and strict
+runs never prune outside their scope. If no tests execute, cleanup waits for
+the next successful run. Retired configurations cannot prune their variants;
+`e2e cache ls` lists them for removal with Git.
 
+The loader accepts only bounded YAML core-schema data. It rejects tags, anchors,
+aliases, duplicate keys, unknown fields and invalid replay data with a filename
+and line. Generated files use stable key order and quoting, without creation
+timestamps or observation IDs. App values needed for matching remain intact.
 
-The loader accepts formatting changes, comments and literal values. It never
-imports or evaluates the file. Expressions, callbacks, spreads and extra
-statements are rejected with a source location. Generated files have stable
-formatting and no creation timestamp or observation IDs. App values needed
-for matching stay intact; use `unique()` for run-specific test data.
-
-Runtime-derived values remain explicit agent handoffs. A recording cannot
-reconstruct a computation the agent read from the app.
-
-A confirmed repair updates the test file atomically. Review it with Git.
-Concurrent target writers merge under a per-file lock. A busy lock skips the
-write; after a crashed writer, remove its `.replay.ts.lock` file before
-regenerating. The 1 MiB limit applies to the complete test file. An unchanged
-replay leaves the file untouched. Custom stores retain their per-act typed
-trace contract.
-
+After a crashed writer, remove the cache folder’s `.recordings.lock` file before regenerating.
+Custom stores retain the per-act typed trace contract.
 
 ## Next
 

@@ -1,7 +1,7 @@
 /** Zero-turn replay: typed dispatch, relocation backoff, divergence. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { emitReplayCode, readReplayCode } from '../../src/cache/code.ts';
+import { emitReplayYaml, readReplayYaml } from '../../src/cache/yaml.ts';
 import { AgentError } from '../../src/agent/error.ts';
 import type { ExecutorActions } from '../../src/agent/executor.ts';
 import { replayTrace, verifyEndState, type ObservedScreen, type ReplayHost } from '../../src/agent/replay.ts';
@@ -25,7 +25,7 @@ const email: SemanticNode = { ref: { id: 'n2', revision: 'r1' }, role: 'textbox'
 
 function trace(actions: RecordedAction[]): ActionTrace {
   const payload = { actions, executor: { name: 'test' }, summary: 'done' };
-  return readReplayCode(emitReplayCode(payload)).payload;
+  return readReplayYaml(emitReplayYaml({ id: 'a'.repeat(64), testId: 'fixture', steps: [{ key: 'b'.repeat(64), order: 0, variant: { project: '', target: '', agent: '' }, trace: payload }] })).steps[0]!.trace;
 }
 
 const tapUpgrade: RecordedAction = {

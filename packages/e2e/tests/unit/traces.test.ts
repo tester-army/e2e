@@ -9,7 +9,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { cacheFileName } from '../../src/cache/code.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import type { ReportResult } from '../../src/report/build.ts';
 import { writeTracePages } from '../../src/report/traces.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep } from '../helpers/report.ts';

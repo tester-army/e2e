@@ -1,0 +1,43 @@
+test: control inventory › check sets the checkbox and the radio
+file: tests-agent/control-inventory.e2e.ts
+recordedWith: {}
+
+acts:
+  - instruction: agree to the terms and pick the Medium size
+    steps:
+      - check: { role: checkbox, name: Agree to terms, within: Toggles, checked: true }
+      - check: { role: radio, name: Medium, within: Size, checked: true }
+      - wait: { role: status, name: Toggles state, text: "terms agreed, size Medium" }
+      - wait: { role: checkbox, name: Agree to terms, states: [ checked ] }
+      - wait: { role: radio, name: Medium, states: [ checked ] }
+      - waitGone: { role: status, name: Toggles state, text: "terms not agreed, size unset" }
+      - waitGone: { role: checkbox, name: Agree to terms }
+      - waitGone: { role: radio, name: Medium }
+    replay:
+      key: "1f2ad4f61f8c80341b1a181b5f505c12fb2e7562c4c888ec21d4d3edf90d3a50"
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/control-inventory
+        endWaitMs: 11356
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: "31e69bd3b8b58acb08fa60eaea2976e3271b633b840b8ffca9440e21488961fc"
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/control-inventory.e2e.ts::control%20inventory::check%20sets%20the%20checkbox%20and%20the%20radio
+        startPath: /e/control-inventory
+        summary: Agreed to the terms and selected Medium. The Toggles state confirms “terms agreed, size Medium.”
+      summaries:
+        - check checkbox "Agree to terms" in "Toggles"
+        - check radio "Medium" in "Size"
+identity:
+  id: df7db32fffb961b1f5a804fcc0cebbb3fcc6eaa73957e84de7c0048c92e02cd5
+  testId: tests-agent/control-inventory.e2e.ts::control%20inventory::check%20sets%20the%20checkbox%20and%20the%20radio

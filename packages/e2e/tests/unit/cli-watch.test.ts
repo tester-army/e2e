@@ -100,7 +100,7 @@ describe('classifyChange and watchRoots', () => {
     expect(at('node_modules', 'pkg', 'x.e2e.ts')).toBeUndefined();
     expect(at('.e2e', 'results', 'x.ts')).toBeUndefined();
     expect(at('test-results', 'report.json')).toBeUndefined();
-    expect(at('tests', 'cache', 'abc.replay.ts')).toBeUndefined();
+    expect(at('tests', 'cache', 'abc.yml')).toBeUndefined();
     expect(at('..', 'other', 'tests', 'x.e2e.ts')).toBeUndefined();
   });
 

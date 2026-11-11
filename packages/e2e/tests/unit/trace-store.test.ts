@@ -4,7 +4,7 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cacheFileName } from '../../src/cache/code.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
 

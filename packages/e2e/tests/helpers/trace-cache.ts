@@ -8,7 +8,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from 'vitest';
-import { emitTestReplayCode, readTestReplayCode } from '../../src/cache/code.ts';
+import { emitReplayYaml, readReplayYaml } from '../../src/cache/yaml.ts';
 import { buildTraceEntry, type TraceEntry } from '../../src/cache/trace.ts';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
 import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
@@ -289,11 +289,11 @@ export function readEntries(project: FixtureProject): { readonly file: string; r
   const dir = path.join(project.dir, '.e2e', 'cache');
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
-    .filter((name) => name.endsWith('.replay.ts'))
+    .filter((name) => name.endsWith('.yml'))
     .toSorted()
     .flatMap((name) => {
       const file = path.join(dir, name);
-      return readTestReplayCode(readFileSync(file, 'utf8')).steps.map((step) => ({ file, entry: buildTraceEntry(step.trace) }));
+      return readReplayYaml(readFileSync(file, 'utf8')).steps.map((step) => ({ file, entry: buildTraceEntry(step.trace) }));
     });
 }
 
@@ -343,7 +343,7 @@ export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo
 
 /** Rewrites a fixture recording as replay declarations. */
 export function writeEntry(file: string, entry: TraceEntry): void {
-  const recording = readTestReplayCode(readFileSync(file, 'utf8'));
+  const recording = readReplayYaml(readFileSync(file, 'utf8'));
   const steps = recording.steps.map((step) => JSON.stringify(step.trace.recordedFor) === JSON.stringify(entry.payload.recordedFor) || recording.steps.length === 1 ? { ...step, trace: entry.payload } : step);
-  writeFileSync(file, emitTestReplayCode({ ...recording, steps }), 'utf8');
+  writeFileSync(file, emitReplayYaml({ ...recording, steps }), 'utf8');
 }

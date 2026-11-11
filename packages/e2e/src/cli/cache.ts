@@ -1,7 +1,7 @@
 /**
  * `e2e cache`: what is in the replay cache, and how to get rid of it.
  *
- * The store is a directory of digest-named files, so a committed cache is
+ * The store is a directory of test-named YAML files, so a committed cache is
  * indexed by `ls`: test, targets, act steps and actions. `stats` sizes the
  * store, and `clear` empties it.
  *
@@ -14,7 +14,8 @@ import { readdir, readFile, stat, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
 import picocolors from 'picocolors';
-import { cacheFileKey, readTestReplayCode } from '../cache/code.ts';
+import { readReplayYaml } from '../cache/yaml.ts';
+import { isCacheFile } from '../cache/file-name.ts';
 import { MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig } from '../config/resolve.ts';
@@ -52,13 +53,13 @@ interface CacheContents {
   readonly directory: string;
   readonly entries: readonly CacheEntrySummary[];
   /** Digest-named files the store could not read: a miss to the runner too. */
-  readonly unreadable: readonly { readonly name: string; readonly bytes: number }[];
+  readonly unreadable: readonly { readonly name: string; readonly bytes: number; readonly reason: string }[];
   /** Files in the directory that are not cache-shaped; never touched. */
   readonly foreign: readonly string[];
 }
 
 /** Only files the atomic writer creates qualify for cleanup. */
-const TEMPORARY_FILE = /^[a-f0-9]{64}\.replay\.ts\.[a-f0-9]{16}\.tmp$/u;
+const TEMPORARY_FILE = /^[a-z0-9][a-z0-9-]{0,88}\.yml\.[a-f0-9]{16}\.tmp$/u;
 
 /**
  * Runs one `e2e cache` command against the configured store directory.
@@ -155,7 +156,7 @@ async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
  */
 async function readContents(directory: string): Promise<CacheContents> {
   const entries: CacheEntrySummary[] = [];
-  const unreadable: { name: string; bytes: number }[] = [];
+  const unreadable: { name: string; bytes: number; reason: string }[] = [];
   const foreign: string[] = [];
 
   let names: string[];
@@ -169,8 +170,7 @@ async function readContents(directory: string): Promise<CacheContents> {
   }
 
   for (const name of names.toSorted()) {
-    const keyHash = cacheFileKey(name);
-    if (keyHash === undefined) {
+    if (!isCacheFile(name)) {
       if (!TEMPORARY_FILE.test(name)) foreign.push(name);
       continue;
     }
@@ -181,14 +181,13 @@ async function readContents(directory: string): Promise<CacheContents> {
       if (bytes > MAX_CACHE_WIRE_BYTES) throw new Error('oversized test recording');
       const source = await readFile(file, 'utf8');
       if (Buffer.byteLength(source) > MAX_CACHE_WIRE_BYTES) throw new Error('oversized test recording');
-      const recording = readTestReplayCode(source);
-      if (recording.id !== keyHash) throw new Error('wrong test filename');
-      entries.push({ name, keyHash, bytes, testId: recording.testId,
+      const recording = readReplayYaml(source, file);
+      entries.push({ name, keyHash: recording.id, bytes, testId: recording.testId,
         targetId: [...new Set(recording.steps.map((step) => step.trace.recordedFor?.targetId ?? '-'))].toSorted().join(', '),
         actions: recording.steps.reduce((sum, step) => sum + step.trace.actions.length, 0),
         steps: recording.steps.length, truncated: recording.steps.some((step) => step.trace.truncated === true),
       });
-    } catch { unreadable.push({ name, bytes }); }
+    } catch (cause) { unreadable.push({ name, bytes, reason: errorMessage(cause) }); }
   }
   return { directory, entries, unreadable, foreign };
 }
@@ -255,10 +254,7 @@ function stats(contents: CacheContents): number {
  * and a mistyped one must not take a project's files with it.
  */
 async function clear(contents: CacheContents): Promise<number> {
-  const removable = [
-    ...contents.entries.map((entry) => entry.name),
-    ...contents.unreadable.map((file) => file.name),
-  ];
+  const removable = contents.entries.map((entry) => entry.name);
   for (const name of removable) {
     await rm(path.join(contents.directory, name), { force: true });
   }
@@ -295,9 +291,10 @@ async function removeTemporaries(directory: string): Promise<number> {
 function warnAboutSkipped(contents: CacheContents): void {
   if (contents.unreadable.length > 0) {
     process.stderr.write(
-      `${contents.unreadable.length} file(s) in ${contents.directory} are not readable trace-1 entries; a run treats each as a miss\n`,
+      `${contents.unreadable.length} file(s) in ${contents.directory} are not readable trace-1 entries and were left alone; a normal run treats each as a miss, strict mode fails\n`,
     );
   }
+  for (const file of contents.unreadable) process.stderr.write(`${file.name}: ${JSON.stringify(file.reason)}\n`);
   if (contents.foreign.length > 0) {
     process.stderr.write(
       `${contents.foreign.length} file(s) in ${contents.directory} are not cache files and were left alone: ${contents.foreign.join(', ')}\n`,

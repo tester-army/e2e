@@ -280,13 +280,13 @@ the [session errors](/reference/errors).
 
 ### Cache trust
 
-Code recordings (`.replay.ts`) are parsed as literal declarations with oxc, never
-imported or evaluated. Extra statements, expressions, callbacks, spreads and
-duplicate object keys are rejected. Each test file is capped at 1 MiB; every
-step passes trace validation and runtime replay safeguards. Variant ownership
-uses hashes of target and agent names; display provenance is secret-redacted.
-Legacy JSON files are ignored and never read.
-
+YAML recordings (`.yml`) are parsed as core-schema data, never evaluated.
+Tags, anchors, aliases, duplicate keys, prototype keys and unknown fields are
+rejected with a filename and line. Each test file is capped at 1 MiB and 64
+nesting levels. Every step passes trace validation and runtime replay safeguards.
+Variant ownership uses hashes of target and agent names; display provenance,
+instructions and params are secret-redacted. Secret fills keep references only.
+Legacy JSON and TypeScript recordings are ignored and never read.
 
 Cache entries replay actions without a model and aren't signed.
 

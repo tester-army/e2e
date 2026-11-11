@@ -6,7 +6,7 @@ import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
-import { cacheFileName } from '../../src/cache/code.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import { FileCacheStore } from '../../src/cache/store.ts';
 import { buildTraceEntry } from '../../src/cache/trace.ts';
 import { readTraceEntry } from '../../src/cache/trace-read.ts';

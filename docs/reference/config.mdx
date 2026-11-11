@@ -1294,10 +1294,11 @@ cache: 'read-write', // default: 'read-write' locally, 'read-only' in CI
   CI restores the cache from its own cache service.
 - `--no-cache` wins over both and disables caching for the run.
 
-The file store writes one `.replay.ts` declaration per test under `cache.dir`,
-named by the SHA-256 digest of its collected test ID. See [recording lifecycle](/cache#code-recordings). The removed `format`
-option is rejected. Old JSON cache files are ignored; delete them and run
-with `cache: 'read-write'` to regenerate. See [Code recordings](/cache#code-recordings).
+The file store writes one `.yml` recording per test under `cache.dir`,
+named from the file stem and test titles, with a digest suffix only on collision.
+See [recording lifecycle](/cache#yaml-recordings). The removed `format`
+option is rejected. Old JSON and TypeScript cache files are ignored; delete them and run
+with `cache: 'read-write'` to regenerate.
 
 #### `store`
 

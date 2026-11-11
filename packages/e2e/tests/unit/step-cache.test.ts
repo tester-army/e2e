@@ -1,6 +1,7 @@
 /** StepTraceSession: store resilience, staging anchors, replay postconditions, the write-side decision. */
 
-import { readTestReplayCode, cacheFileName } from '../../src/cache/code.ts';
+import { readReplayYaml } from '../../src/cache/yaml.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -49,7 +50,6 @@ const exampleContext = {
   project: 'p'.repeat(64),
   platform: 'web',
   engineName: 'web',
-  engineVersion: '0.11',
   engineSpiVersion: 1,
   appIdentity: 'a'.repeat(64),
   agentContextDigest: 'c'.repeat(64),
@@ -1031,7 +1031,7 @@ describe('StepTraceSession', () => {
     const recorded = await run(['/pricing', '/customers'], [[], [savedMarker]]);
     expect(recorded.cacheInfo?.mode).toBe('missed');
     const written = await snapshot();
-    expect(readTestReplayCode(written.bytes).steps[0]!.trace.endAnchors).toEqual([savedAnchor]);
+    expect(readReplayYaml(written.bytes).steps[0]!.trace.endAnchors).toEqual([savedAnchor]);
 
     // Two replays in a row: the file's bytes and mtime never move.
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -1048,7 +1048,7 @@ describe('StepTraceSession', () => {
     expect(healed.replayedPrefix?.stopReason).toBe('end-mismatch');
     const rewritten = await snapshot();
     expect(rewritten.bytes).not.toBe(written.bytes);
-    expect(readTestReplayCode(rewritten.bytes).steps[0]!.trace.endAnchors).toEqual([{ ...savedAnchor, text: 'stored' }]);
+    expect(readReplayYaml(rewritten.bytes).steps[0]!.trace.endAnchors).toEqual([{ ...savedAnchor, text: 'stored' }]);
 
     // A replay nothing verified afterwards is implicated like a recording would be: evicted.
     const unconfirmed = await run(['/pricing', '/customers'], [[], [renamed]], 0);
@@ -1202,7 +1202,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
 
     await flush({ ...trace('saved the record', 10_100, 1), recordedBy: { provider: 'test', model: 'A' } });
     const written = await snapshot();
-    expect(readTestReplayCode(written.bytes).steps[0]!.trace.summary).toBe('saved the record');
+    expect(readReplayYaml(written.bytes).steps[0]!.trace.summary).toBe('saved the record');
 
     // A live run of the same flow words its summary differently and measures
     // another end wait; the file is what a replay reads, and nothing it reads changed.
@@ -1214,7 +1214,7 @@ describe('settleStagedTraces and a re-recorded flow', () => {
     await flush(trace('saved after a retry', 10_090, 2));
     const replaced = await snapshot();
     expect(replaced.bytes).not.toBe(written.bytes);
-    expect(readTestReplayCode(replaced.bytes).steps[0]!.trace.actions).toHaveLength(2);
+    expect(readReplayYaml(replaced.bytes).steps[0]!.trace.actions).toHaveLength(2);
   });
 
   it('leaves an entry untouched when only the rule that flagged a typed value differs', async () => {

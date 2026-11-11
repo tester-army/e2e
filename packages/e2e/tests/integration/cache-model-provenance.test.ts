@@ -35,7 +35,7 @@ function counterModel(modelId: string): ModelInstance {
   return { ...model, modelId };
 }
 
-it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provider', 'blank-model', 'oversized-provider', 'oversized-model'])('reports recording attribution without changing replay, %s', async (mode) => {
+it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provider', 'blank-model', 'oversized-provider', 'oversized-model'])('reports valid attribution and rejects malformed YAML metadata, %s', async (mode) => {
   const app = await startFixtureApp();
   const project = createProject({ 'tests/provenance.e2e.ts': SUITE });
   const source = { provider: 'fake-loop', model: 'model-A' };
@@ -63,6 +63,14 @@ it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provid
         reporters: [{ name: 'capture', onEvent: (event) => list.handle(event) }],
       },
     });
+    if (!known && mode !== 'legacy') {
+      expect(replayed.exitCode).toBe(2);
+      expect(loopCalls).toHaveLength(0);
+      expect(onlyActStep(replayed, TITLE).cache?.reason).toBe('invalid-entry');
+      expect(readFileSync(entry!.file, 'utf8')).toBe(before);
+      assertValidReport(replayed.report);
+      return;
+    }
     expect(replayed.exitCode).toBe(0);
     expect(loopCalls).toHaveLength(0);
     const step = onlyActStep(replayed, TITLE);

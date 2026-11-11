@@ -7,7 +7,7 @@
 - Output
 - Exit codes
 - Continuous integration
-- Code recordings
+- YAML recordings
 
 ## Commands
 
@@ -119,8 +119,8 @@ With npm, use `npm exec -- e2e run --headed` to pass flags to e2e.
 
 ## The replay cache
 
-Recordings live under `.e2e/cache/`, one `.replay.ts` file per test, named by
-the SHA-256 digest of the collected test ID. Each file groups ordered act
+Recordings live under `.e2e/cache/`, one `.yml` file per test, named from
+the source stem and test titles with a short digest suffix only on collision. Each file groups ordered act
 steps by project, target and agent; each act retains its signature-based key.
 `E2E_CACHE_DIR` or `--cache-dir <dir>` (on `run` and `cache`) replaces
 `cache.dir` (file store only), so worktrees can share one directory; the mode
@@ -304,15 +304,15 @@ jobs:
   working tree changes by name alone.
   Reference: https://e2e.com/docs/filters
 
-## Code recordings
+## YAML recordings
 
-The file cache always writes reviewable `.replay.ts` declarations.
-Formatting changes and comments are accepted; executable expressions are not.
-The runner never imports these files. Web and mobile share target matching,
+The file cache writes YAML core-schema data with compact action maps.
+Tags, aliases, anchors, duplicate keys and unknown fields are rejected with
+a filename and line. The runner never evaluates recordings. Web and mobile share target matching,
 outcome checks, confirmation and agent fallback. Runtime-derived values remain
 explicit agent handoffs.
 
-JSON replay caches are no longer supported. Delete old `.json` cache files and
+Delete old `.json` and `.replay.ts` cache files and
 run with `cache: 'read-write'` to regenerate. Old files are ignored, including
 in strict mode. There is no `cache.format` option or cache migration command.
 Use Git to review changes. A successful attempt removes obsolete steps for

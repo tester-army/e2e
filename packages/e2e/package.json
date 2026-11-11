@@ -21,7 +21,7 @@
   ],
   "license": "Apache-2.0",
   "contributors": [
-    "Oskar Kwaśniewski <oskar@tester.army>",
+    "Oskar Kwa\u015bniewski <oskar@tester.army>",
     "Szymon Rybczak <szymon@tester.army>"
   ],
   "repository": {
@@ -43,10 +43,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./replay": {
-      "types": "./dist/replay.d.ts",
-      "default": "./dist/replay.js"
     },
     "./agent": {
       "types": "./dist/agent/public.d.ts",
@@ -110,6 +106,7 @@
     "picocolors": "1.1.1",
     "pixelmatch": "8.0.0",
     "toml-eslint-parser": "1.0.3",
+    "yaml": "2.9.0",
     "zod": "4.6.7"
   },
   "peerDependencies": {

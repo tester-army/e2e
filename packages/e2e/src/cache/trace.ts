@@ -18,7 +18,7 @@
 
 import type { KeyModifier } from '../engine/contract.ts';
 import { timestamp } from '../internal/ids.ts';
-import type { ScrollDirection } from '../types.ts';
+import type { JsonValue, ScrollDirection } from '../types.ts';
 import { bound } from '../internal/text.ts';
 import type { RecordedModel } from './trace-fields.ts';
 
@@ -387,6 +387,9 @@ export type RecordedAction =
   | ToolGapAction;
 
 export interface ActionTrace {
+  /** Redacted call text and projected params for human review, never lookup authority. */
+  readonly instruction?: string;
+  readonly params?: Readonly<Record<string, JsonValue>>;
   readonly actions: readonly RecordedAction[];
   /** Executor that produced the trace: provenance, never part of the key, which names the agent instead. */
   readonly executor: { readonly name: string; readonly version?: string };

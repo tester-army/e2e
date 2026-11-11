@@ -1,0 +1,49 @@
+test: act completes stale-dom
+file: tests-agent/scenarios.e2e.ts
+recordedWith: {}
+
+acts:
+  - instruction: "Complete this scenario as the page instructs: click the Tap me button three times; the list rebuilds itself every second"
+    steps:
+      - tap: { role: button, name: Tap me, testId: target-button }
+      - tap: { role: button, name: Tap me, testId: target-button }
+      - tap: { role: button, name: Tap me, testId: target-button }
+      - wait: { text: "Progress: 3 / 3", testId: progress }
+      - wait: { text: Target clicked 3 times, testId: success-message }
+      - waitGone: { text: "Progress: 0 / 3", testId: progress }
+      - waitGone: { text: Slot 1 }
+      - waitGone: { role: button, name: Decoy, testId: decoy-button }
+      - waitGone: { text: Slot 2 }
+      - waitGone: { text: Slot 3 }
+      - waitGone: { role: button, name: Tap me, testId: target-button }
+      - waitGone: { text: Slot 4 }
+      - waitGone: { text: Slot 5 }
+    replay:
+      key: f599e53124d76b9bbd58ae24ccd7408f2240133c0949652f6dc9b7393ecf005a
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c"
+        target: "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      checks:
+        endPath: /e/stale-dom
+        endWaitMs: 11441
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: c7958b2326b3f2b42541d8b8261d04bb3d18d3fbbf439d754e64d72856a74ba4
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: web
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20stale-dom
+        startPath: /e/stale-dom
+        summary: "Clicked Tap me three times. The page shows Progress: 3 / 3 and “Target clicked 3 times.”"
+      summaries:
+        - tap button "Tap me"
+        - tap button "Tap me"
+        - tap button "Tap me"
+identity:
+  id: "71917ede728afceb259bd407e892c6622c9f32e3bd66c2fb55f3f512f5dbdc8f"
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20stale-dom

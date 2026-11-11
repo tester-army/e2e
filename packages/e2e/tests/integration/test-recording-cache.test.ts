@@ -2,7 +2,8 @@
 import { readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cacheFileName, emitTestReplayCode, readTestReplayCode } from '../../src/cache/code.ts';
+import { emitReplayYaml, readReplayYaml } from '../../src/cache/yaml.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import type { StepExecutor } from '../../src/agent/executor.ts';
 import { startFixtureApp, type FixtureApp } from '../helpers/fixture-app.ts';
 import { nodeIdFor } from '../helpers/fake-loop-model.ts';
@@ -42,18 +43,20 @@ function fixture() {
     appUrl: app.url,
     config: { tests: 'tests/**/*.e2e.ts', agents: { default: { executor } }, cache: { mode: 'read-write', strict }, retries: 0 },
   });
-  return { project, calls, file, run, read: () => readTestReplayCode(readFileSync(file, 'utf8')) };
+  return { project, calls, file, run, read: () => readReplayYaml(readFileSync(file, 'utf8')) };
 }
 
 describe('per-test file discovery and act matching', () => {
-  it('finds the expected test hash in the cache folder and replays three keyed calls in order', async () => {
+  it('finds the expected readable slug in the cache folder and replays three keyed calls in order', async () => {
     const f = fixture();
     const first = await f.run();
     expect(first.exitCode).toBe(0);
     expect(f.calls).toEqual(['first increment', 'second increment', 'first increment']);
     expect(readdirSync(path.dirname(f.file))).toEqual([cacheFileName(TEST_ID)]);
     const recording = f.read();
+    expect(path.basename(f.file)).toBe('flow-two-acts.yml');
     expect(recording.testId).toBe(TEST_ID);
+    expect(recording.steps.map((step) => step.trace.instruction)).toEqual(['first increment', 'second increment', 'first increment']);
     expect(recording.steps.map((step) => step.order)).toEqual([0, 1, 2]);
     expect(new Set(recording.steps.map((step) => step.key)).size).toBe(3);
     const before = readFileSync(f.file, 'utf8');
@@ -79,7 +82,7 @@ describe('per-test file discovery and act matching', () => {
     const f = fixture();
     expect((await f.run()).exitCode).toBe(0);
     const recording = f.read();
-    writeFileSync(f.file, emitTestReplayCode({ ...recording, steps: recording.steps.filter((step) => step.order !== 1) }));
+    writeFileSync(f.file, emitReplayYaml({ ...recording, steps: recording.steps.filter((step) => step.order !== 1) }));
     const before = readFileSync(f.file, 'utf8');
     f.calls.length = 0;
     expect((await f.run(strict)).exitCode).toBe(0);
@@ -92,7 +95,7 @@ describe('per-test file discovery and act matching', () => {
     const f = fixture();
     expect((await f.run()).exitCode).toBe(0);
     const recording = f.read();
-    writeFileSync(f.file, emitTestReplayCode({ ...recording, steps: recording.steps.map((step) => step.order !== 1 ? step : {
+    writeFileSync(f.file, emitReplayYaml({ ...recording, steps: recording.steps.map((step) => step.order !== 1 ? step : {
       ...step, trace: { ...step.trace, actions: [{ name: 'tap', summary: 'stale target', target: { role: 'button', name: 'Removed button' } }] },
     }) }));
     const before = readFileSync(f.file, 'utf8');
@@ -104,6 +107,21 @@ describe('per-test file discovery and act matching', () => {
       expect(resultByTitle(outcome, 'two acts').attempts[0]!.error?.code).toBe('REPLAY_STALE');
       expect(readFileSync(f.file, 'utf8')).toBe(before);
     } else expect(f.read().steps[1]!.trace.actions[0]).toMatchObject({ target: { name: 'Increment' } });
+  });
+
+
+  it.each([false, true])('invalid YAML repairs normally and fails closed in strict mode, strict=%s', async (strict) => {
+    const f = fixture();
+    expect((await f.run()).exitCode).toBe(0);
+    writeFileSync(f.file, 'test: *forbidden');
+    f.calls.length = 0;
+    const result = await f.run(strict);
+    expect(result.exitCode).toBe(strict ? 2 : 0);
+    expect(f.calls).toHaveLength(strict ? 0 : 3);
+    if (strict) {
+      expect(resultByTitle(result, 'two acts').attempts[0]!.error?.code).toBe('REPLAY_STALE');
+      expect(readFileSync(f.file, 'utf8')).toBe('test: *forbidden');
+    } else expect(f.read().steps).toHaveLength(3);
   });
 
   it('replaces changed steps and prunes removed steps after a successful body', async () => {
@@ -121,7 +139,7 @@ describe('per-test file discovery and act matching', () => {
     expect(keys).not.toContain(oldKeys[2]);
   });
 
-  it('renaming a test creates its new hash file and removes the old recording', async () => {
+  it('renaming a test creates its new slug file and removes the old recording', async () => {
     const f = fixture();
     expect((await f.run()).exitCode).toBe(0);
     writeFileSync(path.join(f.project.dir, 'tests/flow.e2e.ts'), suite(undefined, 'renamed'));

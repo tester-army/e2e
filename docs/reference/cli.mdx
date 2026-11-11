@@ -1026,11 +1026,12 @@ With `--json`, it prints the `doctor-1` report to stdout: `{ "schemaVersion": "d
 
 #### `e2e cache`
 
-Inspects, diffs or clears the replay cache. Each subcommand loads the discovered
+Inspects or clears the replay cache. Each subcommand loads the discovered
 config or `--config <path>`, reads the directory a run would, and exits 0 on
 an empty store.
 
-Only `.replay.ts` recordings are read. Legacy `.json` files are left alone by
+Only test-named `.yml` recordings are read. Unreadable YAML is reported with
+its filename and line and left alone by `clear`; delete it manually to regenerate. Legacy `.json` and `.replay.ts` files are left alone by
 all cache commands. Delete them and regenerate with `cache: 'read-write'`.
 There is no cache migration command.
 

@@ -1,0 +1,99 @@
+test: act completes Permission Prompt
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: android
+  app: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+
+acts:
+  - instruction: "Complete this scenario as the screen instructs: request microphone access and allow it in the system dialog"
+    steps:
+      - tap: { role: group, name: Enable microphone, testId: request-permission, selector: id=request-permission, within: Voice notes }
+      - tap: { role: button, name: While using the app, testId: com.android.permissioncontroller:id/permission_allow_foreground_only_button, selector: id=com.android.permissioncontroller:id/permission_allow_foreground_only_button }
+      - wait: { role: text, name: Microphone enabled, testId: success-message }
+      - waitGone: { role: text, name: Voice notes }
+      - waitGone: { role: text, name: Recording voice notes requires microphone access. Allow the permission when the system asks. }
+      - waitGone: { role: text, name: Enable microphone }
+      - waitGone: { role: group, name: Enable microphone, testId: request-permission }
+    replay:
+      key: f50a29e19e742730567db09904ee11673498a119cb2ef0da68c08ab6834873ec
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: a34152a60079722a259a417c0251ad71bf53cd3ef002e7f6c1e465dad98bee2b
+      checks:
+        endPath: dev.e2e.benchmark
+        endWaitMs: 11500
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: android
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: b0942b32f51f5f05d38db2a1978624dad1187acfb8aca674dbbb09cc9c29ac87
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: android-emulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Permission%20Prompt
+        startPath: dev.e2e.benchmark
+        summary: Requested microphone access and allowed it using “While using the app” in the system dialog. The app now displays “Microphone enabled.”
+      summaries:
+        - tap group "Enable microphone" in "Voice notes"
+        - tap button "While using the app"
+
+  - instruction: "Complete this scenario as the screen instructs: request microphone access and allow it in the system dialog"
+    steps:
+      - tap: { role: other, name: Enable microphone, testId: request-permission, selector: id=request-permission }
+      - tap: { role: button, name: Allow }
+      - wait: { role: other, name: Microphone enabled }
+      - wait: { role: text, name: Microphone enabled, testId: success-message }
+      - waitGone: { role: text, name: Voice notes }
+      - waitGone: { role: text, name: Recording voice notes requires microphone access. Allow the permission when the system asks. }
+      - waitGone: { role: other, name: Enable microphone, testId: request-permission }
+      - waitGone: { role: other, name: Voice notes }
+    replay:
+      key: c88b3e2074686fa95172580baee395a9efd45c3ce815d8fdfc695293c1f94228
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: d34e594487171911acb852c9c20a9b1e42d960b2c08aeb43fe1145049c6f1eed
+      checks:
+        endPath: dev.e2e.benchmark / Permission Prompt
+        endWaitMs: 12356
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae"
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: ios
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: b0942b32f51f5f05d38db2a1978624dad1187acfb8aca674dbbb09cc9c29ac87
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: ios-simulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Permission%20Prompt
+        startPath: dev.e2e.benchmark / Permission Prompt
+        summary: Requested microphone access and selected Allow in the system dialog. The app now shows “Microphone enabled.”
+      summaries:
+        - tap other "Enable microphone"
+        - tap button "Allow"
+identity:
+  id: f9df4d085f4088459d23ad5b24df5fe223beb84c178f73288fb15cc24ca9a8b4
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20Permission%20Prompt

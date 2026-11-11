@@ -1,0 +1,121 @@
+test: act completes Product Catalog
+file: tests-agent/scenarios.e2e.ts
+recordedWith:
+  engine: 1
+  platform: android
+  app: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+
+acts:
+  - instruction: "Complete this scenario as the screen instructs: open Trail Mix 500 g (not a look-alike), set the quantity to 2, add it to the cart, then open the cart"
+    steps:
+      - tap: { role: group, name: "Trail Mix, 500 g · $6.99", testId: product-trail-mix-500, selector: id=product-trail-mix-500, within: "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart" }
+      - tap: { role: group, name: +, testId: quantity-increase, selector: id=quantity-increase }
+      - tap: { role: group, name: Add to cart, testId: add-to-cart, selector: id=add-to-cart }
+      - tap: { role: group, name: Cart (2), testId: open-cart, selector: id=open-cart, within: "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart" }
+      - wait: { role: text, name: ‹ Back to catalog }
+      - wait: { role: text, name: Cart }
+      - wait: { role: text, name: "2 × Trail Mix 500 g" }
+      - wait: { role: text, name: "Order ready: 2 × Trail Mix 500 g", testId: success-message }
+      - wait: { role: group, name: ‹ Back to catalog, testId: back-to-list }
+      - waitGone: { role: text, name: "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart" }
+      - waitGone: { role: text, name: Cart (0) }
+      - waitGone: { role: text, name: Trail Mix }
+      - waitGone: { role: text, name: "250 g · $3.99" }
+      - waitGone: { role: text, name: ♡ }
+      - waitGone: { role: text, name: "500 g · $6.99" }
+      - waitGone: { role: text, name: "1 kg · $11.99" }
+      - waitGone: { role: text, name: Granola }
+    replay:
+      key: daf3ae5af4da333cba6ca81767518806f7fb143a4d1d14bb7133008cfdeed82c
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: a34152a60079722a259a417c0251ad71bf53cd3ef002e7f6c1e465dad98bee2b
+      checks:
+        endPath: dev.e2e.benchmark
+        endWaitMs: 11915
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: e18e9835187bab993e11f2dd7ff5624429bc26890c846accacf0057b525e92a0
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: android
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: df6d87ed0275359863ecaf58d94669a7d2b9881afd75c25cb6af7327bb4e052d
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: android-emulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Product%20Catalog
+        startPath: dev.e2e.benchmark
+        summary: "Opened the specific Trail Mix 500 g product, increased quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g”."
+      summaries:
+        - tap group "Trail Mix, 500 g · $6.99" in "Add exactly 2 × Trail Mix 500 g to the …"
+        - tap group "+"
+        - tap group "Add to cart"
+        - tap group "Cart (2)" in "Add exactly 2 × Trail Mix 500 g to the …"
+
+  - instruction: "Complete this scenario as the screen instructs: open Trail Mix 500 g (not a look-alike), set the quantity to 2, add it to the cart, then open the cart"
+    steps:
+      - tap: { role: other, name: "Trail Mix, 500 g · $6.99", testId: product-trail-mix-500, selector: id=product-trail-mix-500 }
+      - tap: { role: other, name: +, testId: quantity-increase, selector: id=quantity-increase }
+      - tap: { role: other, name: Add to cart, testId: add-to-cart, selector: id=add-to-cart }
+      - tap: { role: other, name: Cart (2), testId: open-cart, selector: id=open-cart }
+      - wait: { role: text, name: Cart }
+      - wait: { role: text, name: "2 × Trail Mix 500 g" }
+      - wait: { role: other, name: ‹ Back to catalog }
+      - wait: { role: text, name: "Order ready: 2 × Trail Mix 500 g", testId: success-message }
+      - waitGone: { role: text, name: "Add exactly 2 × Trail Mix 500 g to the cart, then review the cart" }
+      - waitGone: { role: other, name: Cart (0), testId: open-cart }
+      - waitGone: { role: other, name: "Trail Mix, 250 g · $3.99", testId: product-trail-mix-250 }
+      - waitGone: { role: other, name: Favorite Trail Mix 250 g, testId: favorite-trail-mix-250 }
+      - waitGone: { role: other, name: "Trail Mix, 500 g · $6.99", testId: product-trail-mix-500 }
+      - waitGone: { role: other, name: Favorite Trail Mix 500 g, testId: favorite-trail-mix-500 }
+      - waitGone: { role: other, name: "Trail Mix, 1 kg · $11.99", testId: product-trail-mix-1000 }
+      - waitGone: { role: other, name: Favorite Trail Mix 1 kg, testId: favorite-trail-mix-1000 }
+    replay:
+      key: d8c30c8431ed7a42fcfdbcc80bc83aa3c2137125b25974b9015774f92c9c1343
+      order: 0
+      variant:
+        agent: "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f"
+        project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        target: d34e594487171911acb852c9c20a9b1e42d960b2c08aeb43fe1145049c6f1eed
+      checks:
+        endPath: dev.e2e.benchmark / Product Catalog
+        endWaitMs: 12917
+        executor:
+          name: e2e-default-agent
+          version: "2"
+        keyedBy:
+          agentContextDigest: "9851c2b004c95e29037ba508c9a81e7efff8fcaa01e5491077154e702520281a"
+          appIdentity: "873e96a3c0364ffd8e603a0fb9ccef7bb32dd2c64eb8bddaa76d36fdfbf446ae"
+          cacheSchema: trace-1
+          engineName: mobile
+          engineSpiVersion: 1
+          platform: ios
+          policyVersion: conservative/6
+          project: "5db668e539f1f8a455eaa798ab239f0cfdc68c99776863db1ddd6f27a9fba643"
+        recordedFor:
+          agent: default
+          callIndex: 0
+          instructionDigest: df6d87ed0275359863ecaf58d94669a7d2b9881afd75c25cb6af7327bb4e052d
+          paramsDigest: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          targetId: ios-simulator
+          testId: tests-agent/scenarios.e2e.ts::act%20completes%20Product%20Catalog
+        startPath: dev.e2e.benchmark / Product Catalog
+        summary: "Opened the exact Trail Mix 500 g product, increased its quantity to 2, added it to the cart, and opened the cart. The cart shows “2 × Trail Mix 500 g” and “Order ready: 2 × Trail Mix 500 g”."
+      summaries:
+        - tap other "Trail Mix, 500 g · $6.99"
+        - tap other "+"
+        - tap other "Add to cart"
+        - tap other "Cart (2)"
+identity:
+  id: "854924d2198e5c52e713b38ee3a5d5133d6e0355df5514d1d41f6f6ce40979a9"
+  testId: tests-agent/scenarios.e2e.ts::act%20completes%20Product%20Catalog

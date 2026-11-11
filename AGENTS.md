@@ -8,7 +8,7 @@ TypeScript 7.
 There is no separate spec. The code is the contract, pinned in three places:
 
 - The emitted `packages/e2e/dist/index.d.ts` (and `dist/engine/index.d.ts`,
-  `dist/runner.d.ts`, `dist/replay.d.ts`, `dist/oauth/*.d.ts`)
+  `dist/runner.d.ts`, `dist/oauth/*.d.ts`)
   is the public API. `packages/e2e/tests/types/sdk-types.ts` holds compile-time
   assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
   by accident; it runs under the package `typecheck`, never under vitest.
@@ -74,7 +74,7 @@ suites that consume the built packages the way a user would.
     are the whole public surface: the flows, stores, and fetch behind them
     are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
-- `e2e/replay` declares typed cache operations. The code cache parses these declarations as data with oxc; it never imports recorded files. The file cache supports only `.replay.ts` recordings, one per collected test under `cache.dir`, named by the SHA-256 digest of its test ID. Ordered act calls and target/agent variants share that file. Old JSON files are ignored.
+- The file cache parses YAML core-schema data, never executable code. It supports only `.yml` recordings, one per collected test under `cache.dir`, named from the test file stem and titles with a 12-character digest suffix only on collision. Ordered act calls and target/agent variants share that file. Old JSON and TypeScript recordings are ignored.
 - `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `browser` fixture and `expect(browser)`. It depends on `e2e` (peer), never the

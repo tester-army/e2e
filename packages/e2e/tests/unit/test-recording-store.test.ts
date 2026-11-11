@@ -2,7 +2,8 @@ import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cacheFileName, readTestReplayCode } from '../../src/cache/code.ts';
+import { readReplayYaml } from '../../src/cache/yaml.ts';
+import { cacheFileName } from '../../src/cache/file-name.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import { pruneTestRecordings } from '../../src/cache/cleanup.ts';
 import { sha256Hex } from '../../src/internal/ids.ts';
@@ -24,7 +25,7 @@ async function fixture() {
     directory, testId, variant: { project: projectIdentity('fixture'), target, agent: 'default' },
     deferred: true, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true, ...options,
   });
-  return { directory, file, store, read: async () => readTestReplayCode(await readFile(file, 'utf8')) };
+  return { directory, file, store, read: async () => readReplayYaml(await readFile(file, 'utf8')) };
 }
 
 describe('test recording transactions', () => {
@@ -120,5 +121,33 @@ it('round-trips source-like recorded text without truncating the declaration', a
   const payload: ActionTrace = { ...trace, summary: 'export default 42;', actions: [{ name: 'type', target: { name: 'export default input' }, summary: 'export default type', value: 'export default 42;\u2028\u2029' }] };
   expect(await store.write(first, payload)).toBeDefined();
   await store.flush(false);
+  expect(await store.read(first)).toMatchObject({ status: 'hit', entry: { payload } });
+});
+
+it('finds provider-redacted filenames before the next run resolves the provider and keeps one file across variants', async () => {
+  const f = await fixture();
+  const original = 'tests/login.e2e.ts::signs-in-with-private-value';
+  const redacted = original.replace('private-value', '[secret:password]');
+  const payload: ActionTrace = { ...trace, recordedFor: { testId: redacted, targetId: 'web', instructionDigest: first } };
+  const options = { directory: f.directory, testId: original, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true };
+  const writer = new FileCacheStore({ ...options, variant: { project: 'p', target: 'web', agent: 'default' } });
+  expect(await writer.write(first, payload)).toBeDefined();
+  expect(await readdir(f.directory)).toEqual([cacheFileName(redacted)]);
+  const next = new FileCacheStore({ ...options, variant: { project: 'p', target: 'mobile', agent: 'default' } });
+  expect((await next.recording())?.recording.id).toBe(sha256Hex(original));
+  expect(await next.write(second, { ...payload, recordedFor: { ...payload.recordedFor!, testId: original } })).toBeDefined();
+  expect(await readdir(f.directory)).toEqual([cacheFileName(redacted)]);
+  const recording = (await next.recording())!.recording;
+  expect(recording.steps).toHaveLength(2);
+  expect(JSON.stringify(recording)).not.toContain('private-value');
+});
+
+it('preserves Unicode provenance capped in the middle of a percent escape', async () => {
+  const f = await fixture();
+  const original = 'tests/save.e2e.ts::' + encodeURIComponent('save ' + '😀'.repeat(40));
+  const capped = original.slice(0, 299) + '…';
+  const payload: ActionTrace = { ...trace, recordedFor: { testId: capped, targetId: 'web', instructionDigest: first } };
+  const store = new FileCacheStore({ directory: f.directory, testId: original, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+  expect(await store.write(first, payload)).toBeDefined();
   expect(await store.read(first)).toMatchObject({ status: 'hit', entry: { payload } });
 });

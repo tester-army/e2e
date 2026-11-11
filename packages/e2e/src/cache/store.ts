@@ -7,7 +7,8 @@ import { errorMessage } from '../internal/errors.ts';
 import { buildTraceEntry, type ActionTrace } from './trace.ts';
 import type { TraceEntry } from './trace.ts';
 import type { ReplayStep, ReplayTest, ReplayVariant } from './test-file.ts';
-import { encodeTestReplayCode, readTestReplayCode, cacheFileName } from './code.ts';
+import { encodeReplayYaml, readReplayYaml } from './yaml.ts';
+import { cacheFileName, resolveCacheFile } from './file-name.ts';
 import { withCacheLock } from './file-lock.ts';
 
 /** Hard wire ceiling for one complete test recording. */
@@ -49,7 +50,9 @@ export interface FileCacheStoreOptions {
 /** One test's step lookup facade, retaining the custom store's per-step contract. */
 export class FileCacheStore implements CacheStore {
   readonly writable: boolean;
-  private readonly path: string;
+  private path: string;
+  private displayTestId: string;
+  private redactIdentity: (text: string) => string = (text) => text;
   private readonly variant: ReplayVariant | undefined;
   private readonly pending = new Map<string, ActionTrace | null>();
   private readonly order = new Map<string, number>();
@@ -57,23 +60,34 @@ export class FileCacheStore implements CacheStore {
   constructor(private readonly options: FileCacheStoreOptions) {
     this.writable = options.writable;
     this.variant = options.variant === undefined ? undefined : variantIdentity(options.variant);
+    this.displayTestId = options.testId;
     this.path = join(options.directory, cacheFileName(options.testId));
   }
+
+  /** Uses redacted titles for filenames while retaining the original digest for identity. */
+  displayIdentity(testId: string, redact?: (text: string) => string): void { this.displayTestId = testId; if (redact !== undefined) this.redactIdentity = redact; }
 
   /** Records encounter order independently of the step's signature-based lookup key. */
   claim(key: string): void { if (!this.order.has(key)) this.order.set(key, this.order.size); }
 
   /** Loads and validates the whole container before exposing any of its steps. */
-  async recording(): Promise<{ readonly recording: ReplayTest; readonly bytes: number } | undefined> {
-    let size: number;
-    try { size = (await stat(this.path)).size; }
-    catch (cause) { if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw cause; }
-    if (size > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
-    const source = await readFile(this.path, 'utf8');
-    if (Buffer.byteLength(source) > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
-    const recording = readTestReplayCode(source);
-    if (recording.id !== sha256Hex(this.options.testId)) throw new Error('test recording identity does not match its filename');
-    return { recording, bytes: Buffer.byteLength(source) };
+  async recording(): Promise<{ readonly recording: ReplayTest; readonly bytes: number; readonly file: string } | undefined> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      this.path = await resolveCacheFile(this.options.directory, this.options.testId, false, this.displayTestId);
+      try {
+        const size = (await stat(this.path)).size;
+        if (size > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
+        const source = await readFile(this.path, 'utf8');
+        if (Buffer.byteLength(source) > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
+        const recording = readReplayYaml(source, this.path);
+        if (recording.id !== sha256Hex(this.options.testId)) throw new Error('test recording identity does not match its filename');
+        return { recording, bytes: Buffer.byteLength(source), file: this.path };
+      } catch (cause) {
+        if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
+        // A colliding writer may have just moved the base file to its stable suffix.
+      }
+    }
+    return undefined;
   }
 
   /** Reads a matching act call without treating a different call as a hit. */
@@ -90,7 +104,8 @@ export class FileCacheStore implements CacheStore {
   async write(keyHash: string, payload: ActionTrace): Promise<{ bytes: number } | undefined> {
     if (!this.writable || !KEY_HASH.test(keyHash)) return undefined;
     try {
-      const bytes = Buffer.byteLength(encodeTestReplayCode({ id: sha256Hex(this.options.testId), testId: payload.recordedFor?.testId ?? this.options.testId, steps: [this.step(keyHash, payload, this.order.get(keyHash) ?? 0)] }));
+      if (payload.recordedFor !== undefined) this.displayTestId = payload.recordedFor.testId;
+      const bytes = Buffer.byteLength(encodeReplayYaml({ id: sha256Hex(this.options.testId), testId: payload.recordedFor?.testId ?? this.options.testId, steps: [this.step(keyHash, payload, this.order.get(keyHash) ?? 0)] }));
       if (bytes > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) return undefined;
       this.pending.set(keyHash, payload);
       if (!this.options.deferred) await this.flush(false);
@@ -114,11 +129,13 @@ export class FileCacheStore implements CacheStore {
   /** Atomically merges this attempt; a completed body replaces its variant's encountered step set. */
   async flush(completed: boolean): Promise<void> {
     if (!this.writable || (this.pending.size === 0 && !completed)) return;
+    this.path = await resolveCacheFile(this.options.directory, this.options.testId, false, this.displayTestId);
     if (this.pending.size === 0 && !(await stat(this.path).then(() => true, (cause: NodeJS.ErrnoException) => { if (cause.code === 'ENOENT') return false; throw cause; }))) return;
     await mkdir(this.options.directory, { recursive: true });
-    await withCacheLock(this.path, async () => {
+    await withCacheLock(join(this.options.directory, '.recordings'), async () => {
       // Invalid data is disposable, but never salvage a subset of an invalid file for replay.
       const existing = await this.recording().catch(() => undefined);
+      this.displayTestId = this.redactIdentity(existing?.recording.testId ?? this.displayTestId);
       let steps = [...(existing?.recording.steps ?? [])];
       if (completed) steps = steps.filter((step) => !this.owns(step) || this.order.has(step.key));
       for (const [key, trace] of this.pending) {
@@ -128,9 +145,11 @@ export class FileCacheStore implements CacheStore {
       }
       steps = steps.map((step) => this.owns(step) && this.order.has(step.key) ? { ...step, order: this.order.get(step.key)! } : step);
       if (steps.length === 0) { await unlink(this.path).catch((cause: NodeJS.ErrnoException) => { if (cause.code !== 'ENOENT') throw cause; }); return; }
-      const source = encodeTestReplayCode({ id: sha256Hex(this.options.testId), testId: steps[0]!.trace.recordedFor?.testId ?? existing?.recording.testId ?? this.options.testId, steps });
+      steps = steps.map((step) => step.trace.recordedFor === undefined ? step : { ...step, trace: { ...step.trace, recordedFor: { ...step.trace.recordedFor, testId: this.displayTestId } } });
+      const source = encodeReplayYaml({ id: sha256Hex(this.options.testId), testId: this.displayTestId, steps });
       if (Buffer.byteLength(source) > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
-      if (existing !== undefined && canonicalJson(readTestReplayCode(source)) === canonicalJson(existing.recording)) return;
+      if (existing !== undefined && canonicalJson(readReplayYaml(source, this.path)) === canonicalJson(existing.recording)) return;
+      this.path = await resolveCacheFile(this.options.directory, this.options.testId, true, this.displayTestId);
       await writeFileAtomic(this.path, source, { mode: 0o600 });
     });
     this.pending.clear();

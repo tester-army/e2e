@@ -14,6 +14,8 @@
  * container, so unrelated tests never become stale-key candidates.
  */
 
+import { basename } from 'node:path';
+
 import type { ResolvedCacheConfig } from '../config/resolve.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from './store.ts';
 import type { TraceKeyContext, TraceProvenance } from './trace.ts';
@@ -22,15 +24,16 @@ export class StoredRecordings {
   constructor(private readonly directory: string) {}
 
   /** Finds stale keys only inside the requested test's file, never in unrelated tests. */
-  async underAnotherKey(keyHash: string, step: TraceProvenance, fileTestId = step.testId): Promise<{ readonly keyHash: string; readonly keyedBy?: TraceKeyContext } | undefined> {
+  async underAnotherKey(keyHash: string, step: TraceProvenance, fileTestId = step.testId): Promise<{ readonly keyHash: string; readonly fileName: string; readonly keyedBy?: TraceKeyContext } | undefined> {
     const key = stepKey(step);
     if (key === undefined) return undefined;
     const store = new FileCacheStore({ directory: this.directory, testId: fileTestId, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
+    store.displayIdentity(step.testId);
     const recording = await store.recording().catch(() => undefined);
     for (const candidate of recording?.recording.steps ?? []) {
       const trace = candidate.trace;
       if (candidate.key === keyHash || trace.truncated || trace.recordedFor === undefined || stepKey(trace.recordedFor) !== key) continue;
-      return { keyHash: candidate.key, ...(trace.keyedBy === undefined ? {} : { keyedBy: trace.keyedBy }) };
+      return { keyHash: candidate.key, fileName: basename(recording!.file), ...(trace.keyedBy === undefined ? {} : { keyedBy: trace.keyedBy }) };
     }
     return undefined;
   }

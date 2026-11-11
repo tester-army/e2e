@@ -1,6 +1,6 @@
 /** `e2e cache ls`, `clear`, and `stats` over a real store directory. */
 
-import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
@@ -128,7 +128,7 @@ describe('e2e cache ls', () => {
 
   it('counts a file the store cannot read as unreadable, not as an entry', async () => {
     mkdirSync(path.join(root, CACHE_DIR), { recursive: true });
-    writeFileSync(path.join(root, CACHE_DIR, `${'c'.repeat(64)}.replay.ts`), '{ not json', 'utf8');
+    writeFileSync(path.join(root, CACHE_DIR, `${'c'.repeat(64)}.yml`), '{ not json', 'utf8');
     await invoke('cache', 'ls');
     expect(written(stdoutSpy)).toContain('no replay cache entries in');
     expect(written(stderrSpy)).toContain('are not readable trace-1 entries');
@@ -174,13 +174,14 @@ describe('e2e cache clear', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  it('removes an unreadable entry and a crashed writer\u2019s temporary file', async () => {
+  it('preserves unrecognized YAML while removing a crashed writer’s temporary file', async () => {
     const directory = path.join(root, CACHE_DIR);
     mkdirSync(directory, { recursive: true });
-    writeFileSync(path.join(directory, `${'c'.repeat(64)}.replay.ts`), 'torn', 'utf8');
-    writeFileSync(path.join(directory, `${'d'.repeat(64)}.replay.ts.0123456789abcdef.tmp`), '{}', 'utf8');
+    writeFileSync(path.join(directory, 'settings.yml'), 'my: configuration', 'utf8');
+    writeFileSync(path.join(directory, `${'d'.repeat(64)}.yml.0123456789abcdef.tmp`), '{}', 'utf8');
     await invoke('cache', 'clear');
-    expect(written(stdoutSpy)).toContain('cleared 2 file(s)');
+    expect(readFileSync(path.join(directory, 'settings.yml'), 'utf8')).toBe('my: configuration');
+    expect(written(stdoutSpy)).toContain('cleared 1 file(s)');
   });
 
   it('leaves files the runner never wrote, and says so', async () => {
