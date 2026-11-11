@@ -358,6 +358,11 @@ export default {
   'NO']` loads that dev server on every fresh launch, dev menu off;
   `app.command` (`npx expo start --port 8081`) with `readyUrl:
   'http://localhost:8081/status'` starts it.
+- Another language on iOS: `app.launchArguments: ['-AppleLanguages', '(fr)',
+  '-AppleLocale', 'fr_FR']`, one target per language; the app must ship
+  it. Android has no such argument: on a hosted device set `language` and
+  `locale` on `browserstack()` or `testmu()`, on a local one set the device's
+  language.
 - One worker per device. No `device`: every booted simulator or emulator of
   the platform, and every connected phone, is the pool, up to `workers`,
   minus devices another agent-device session holds (none booted: agent-device boots
