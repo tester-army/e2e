@@ -359,8 +359,10 @@ so a cold boot on CI is never charged against `launchTimeout`.
   first attempt, and that device's app is not opened there.
 
 <Note>
-agent-device commands take no abort signal, so a timed-out command keeps
-running on the device. The next attempt waits for it to settle.
+A pending tap, double tap, focus or check is cancelled when its timeout expires
+or the run is interrupted. Input already sent to the device may still finish.
+Other commands can outlive their caller's timeout; the next attempt waits for
+their SDK requests to settle.
 </Note>
 
 #### Capabilities
