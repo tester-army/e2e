@@ -64,9 +64,9 @@ it('sends authorization during CDP discovery without adding it to page requests'
 });
 
 it.each([
-  ['Unauthorized', '401 Unauthorized'],
-  ['Authorization Bearer synthetic-token, token synthetic-token', '401 Authorization [redacted], token [redacted]'],
-])('sanitizes rejected WebSocket upgrades with reason %s', async (reason, expected) => {
+  'Unauthorized',
+  'Authorization Bearer synthetic-token, token synthetic-token',
+])('sanitizes rejected WebSocket upgrades with reason %s', async (reason) => {
   const server = createServer();
   server.on('upgrade', (_request, socket) => {
     socket.end(`HTTP/1.1 401 ${reason}\r\nContent-Length: 0\r\n\r\n`);
@@ -80,7 +80,7 @@ it.each([
       expect.unreachable('the server rejected the WebSocket upgrade');
     } catch (cause) {
       if (!(cause instanceof Error)) throw cause;
-      expect(cause.message).toContain(expected);
+      expect(cause.message).toBe('CDP connection failed; check the endpoint, handshake headers, and connection timeout');
       expect(cause.stack).not.toContain('synthetic-token');
       expect(cause.cause).toBeUndefined();
     }

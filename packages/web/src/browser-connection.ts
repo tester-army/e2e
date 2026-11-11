@@ -122,16 +122,11 @@ export async function connectCdp({ endpoint, headers }: CdpTarget, timeoutMs: nu
     return await chromium.connectOverCDP(endpoint, options);
   } catch (cause) {
     if (headers === undefined) throw cause;
-    let detail = cause instanceof Error ? cause.message : String(cause);
-
-    for (const value of Object.values(headers)) {
-      for (const secret of [value, value.replace(/^(?:Bearer|Basic) /i, '')]) {
-        if (secret !== '') detail = detail.split(secret).join('[redacted]');
-      }
-    }
-
-    // oxlint-disable-next-line preserve-caught-error -- the original error can contain CDP credentials in its message, stack, or cause
-    throw new Error(detail);
+    // Connection errors can echo credentials in altered forms, so retain only their type.
+    // oxlint-disable-next-line preserve-caught-error -- the original message, stack, and cause may contain CDP credentials
+    const error = new Error('CDP connection failed; check the endpoint, handshake headers, and connection timeout');
+    if (cause instanceof Error) error.name = cause.name;
+    throw error;
   }
 }
 
