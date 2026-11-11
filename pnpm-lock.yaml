@@ -261,9 +261,6 @@ importers:
       '@ai-sdk/devtools':
         specifier: 1.0.73
         version: 1.0.73(zod@4.6.7)
-      '@e2e-dev/browser-run':
-        specifier: workspace:*
-        version: link:../../packages/browser-run
       '@napi-rs/image':
         specifier: 1.16.0
         version: 1.16.0
@@ -412,7 +409,7 @@ importers:
         version: 7.0.2
       vitest:
         specifier: 5.1.0
-        version: 5.1.0(@types/node@26.6.6)(vite@8.1.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+        version: 5.1.0(@types/node@26.6.6)(vite@8.1.7(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
 
   packages/browserstack:
     devDependencies:
