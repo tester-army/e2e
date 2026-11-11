@@ -275,7 +275,7 @@ app: {
   This includes exit code 0 and termination by a signal.
   The runner interrupts active tests and skips queued tests only for those targets.
   Targets that have finished their work ignore the exit.
-  The error identifies the target and reports the command's exit code or signal.
+  The error labels the command with the first target that declared it, which may have finished already, and reports the command's exit code or signal.
   See the [command reference](https://e2e.tester.army/reference/config#command) for log excerpts and redaction limits.
 - The child gets only `PATH`, `HOME`, the temp-directory variables,
   `SystemRoot` and `COMSPEC` on Windows, and `command.env`. Pass the rest

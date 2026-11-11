@@ -548,7 +548,7 @@ command: {
 | `INVALID_CONFIG` | `reuseExisting` on an app whose `url` asks for port 0: a process already running cannot serve the port the run assigns. |
 | `APP_URL_REQUIRED` | An `app.command` with neither `app.url` nor `app.readyUrl`, at config load. |
 | `APP_ALREADY_RUNNING` | Without `reuseExisting`, a `readyUrl` that already answers. |
-| `APP_UNREACHABLE` | `startupTimeout` expires, the command exits before readiness, or it exits unexpectedly during `e2e run`. |
+| `APP_UNREACHABLE` | The command fails to spawn, its `log` cannot be opened, `startupTimeout` expires, the command exits before readiness, or it exits unexpectedly during `e2e run`. |
 
 <Warning>
 `log` holds the raw, unredacted output. Keep it in an ignored directory.

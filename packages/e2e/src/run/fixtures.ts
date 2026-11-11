@@ -31,7 +31,7 @@ import {
 } from '../locator/screen.ts';
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Agent, App, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
+import type { Agent, App, CommandConfig, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -449,13 +449,21 @@ function requireAppUrl(target: ResolvedTarget): asserts target is ResolvedTarget
 const NOTHING_LISTENING =
   /ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ERR_ADDRESS_UNREACHABLE|EHOSTUNREACH|ERR_CONNECTION_TIMED_OUT|ETIMEDOUT/;
 
-/** Adds a recovery hint to navigation connection errors using the target's command configuration. */
-function unreachableApp(cause: unknown, url: string, hasCommand: boolean): InfrastructureError | undefined {
+/**
+ * Adds a recovery hint to navigation connection errors using the target's
+ * command configuration. A `reuseExisting` command may have attached to a
+ * process the runner did not start, whose output `app.command.log` never
+ * holds, so its hint does not promise that output.
+ */
+function unreachableApp(cause: unknown, url: string, command: CommandConfig | undefined): InfrastructureError | undefined {
   const match = NOTHING_LISTENING.exec(errorMessage(cause));
   if (match === null) return undefined;
-  const hint = hasCommand
-    ? "check the target's app.command output and app.url. Set app.command.log if output is not captured"
-    : "start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it";
+  const hint =
+    command === undefined
+      ? "start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it"
+      : command.reuseExisting === true
+        ? "check that the process serving the target's app.url still runs. With reuseExisting the runner may use a process it did not start, and app.command.log captures only a command the runner started"
+        : "check the target's app.command output and app.url. Set app.command.log if output is not captured";
   return new InfrastructureError(
     'APP_UNREACHABLE',
     `nothing answered at ${url} (${match[0]}); ${hint}`,
@@ -473,7 +481,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
     try {
       await engine.session.app.open(resolved, engine.operation(timeoutMs));
     } catch (cause) {
-      throw unreachableApp(cause, resolved, target.app.command !== undefined) ?? cause;
+      throw unreachableApp(cause, resolved, target.app.command) ?? cause;
     }
   };
 

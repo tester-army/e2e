@@ -465,7 +465,18 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
     60_000,
   );
 
-  it('points at the configured command when a managed app navigation is refused', async () => {
+  it.each([
+    {
+      name: 'the configured command',
+      reuseExisting: false,
+      says: ["check the target's app.command output and app.url", 'Set app.command.log if output is not captured'],
+    },
+    {
+      name: 'a process it may not have started under reuseExisting',
+      reuseExisting: true,
+      says: ['With reuseExisting the runner may use a process it did not start', 'app.command.log captures only a command the runner started'],
+    },
+  ])('points at $name when a managed app navigation is refused', async ({ reuseExisting, says }) => {
     const port = await freePort();
     const url = `http://127.0.0.1:${port}`;
     const refused = createFakeEngine({
@@ -481,6 +492,7 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
             executable: process.execPath,
             args: ['-e', `require('node:http').createServer((_request, response) => response.end('ready')).listen(${port}, '127.0.0.1');`],
             shutdownTimeout: 1000,
+            ...(reuseExisting ? { reuseExisting } : {}),
           } },
         }],
       }),
@@ -488,13 +500,12 @@ test.describe('wizard', { serial: true, retries: 1 }, () => {
     try {
       const error = resultByTitle(outcome, 'taps a node').attempts[0]?.error;
       expect(error?.code).toBe('APP_UNREACHABLE');
-      expect(error?.message).toContain("check the target's app.command output and app.url");
-      expect(error?.message).toContain('Set app.command.log if output is not captured');
+      for (const text of says) expect(error?.message).toContain(text);
       expect(error?.message).not.toContain('give the target an app.command');
     } finally {
       project.cleanup();
     }
-  });
+  }, 60_000);
 
   it(
     'maps a hung startAttempt to an infrastructure LAUNCH_TIMEOUT',
