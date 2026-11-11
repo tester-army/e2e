@@ -179,6 +179,14 @@ function parseRecordingMode(flag: '--trace' | '--video'): (value: string) => Rec
   };
 }
 
+/** `--pin`'s mode: `new` or `all`; the bare flag is `new`. */
+function parsePinMode(value: string): 'new' | 'all' {
+  if (value !== 'new' && value !== 'all') {
+    throw new InvalidArgumentError(`expected new or all, got "${value}"; write --pin=<mode>, or put test files before --pin`);
+  }
+  return value;
+}
+
 /**
  * The removed `--artifacts <dir>`, kept hidden so a script that still passes
  * it fails with the new spelling: the directory's parent held the report
@@ -665,6 +673,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
     .option('--no-cache', 'run with the replay cache off, whatever the config says')
     .option('--strict-cache', 'fail a step whose recording no longer replays (REPLAY_STALE) instead of handing it to the agent; never writes the cache')
     .option('-u, --update-snapshots', 'write the stored screenshots toHaveScreenshot finds missing or different, and pass')
+    .option('--pin [mode]', 'pin the selected agent.act() steps to their recordings, written to <test>.steps.json when the run ends: new (bare) pins the steps not pinned yet, all records every one again; not in CI', parsePinMode)
     .option('-w, --watch', 'run, then run again whenever a test or source file or the config changes or a key asks: a (all), r (current), f (failed), u, p, t, q; not in CI')
     .option('--step', 'run the first step, then hold each later one until a key: enter runs it, n runs to the next test, a runs all, h lists the keys, q stops; one worker, a terminal, not in CI')
     .optionsGroup('Output:')
@@ -701,6 +710,8 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           'E2E_CACHE_DIR=~/.cache/my-app/e2e e2e run',
           'CI=1 e2e run --strict-cache',
           'e2e run --update-snapshots tests/home.e2e.ts',
+          'e2e run tests/checkout.e2e.ts:12 --pin',
+          'e2e run tests/checkout.e2e.ts --pin all --no-cache',
           'e2e run --agent ux tests/onboarding.e2e.ts',
           'e2e run --agent buyer,admin tests/checkout.e2e.ts',
           'AI_GATEWAY_API_KEY=... e2e run --no-cache',
@@ -735,6 +746,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           cache?: boolean;
           strictCache?: boolean;
           updateSnapshots?: boolean;
+          pin?: 'new' | 'all' | true;
           watch?: boolean;
           step?: boolean;
           debug?: boolean;
@@ -767,6 +779,7 @@ function createProgram(version: string, telemetry: Telemetry, updateCheck: Updat
           noCache: options.cache === false,
           strictCache: options.strictCache,
           updateSnapshots: options.updateSnapshots,
+          pin: options.pin === true ? 'new' : options.pin,
           debug: options.debug,
           aiTrace: options.aiTrace,
           trace: recordingOption(options.trace),

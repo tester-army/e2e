@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://e2e.dev/schema/steps-v1.schema.json",
+  "title": "e2e steps-1",
+  "description": "A test's pinned agent.act() steps, kept beside it as `<test>.steps.json` (`tests/checkout.e2e.ts` keeps `tests/checkout.e2e.steps.json`). `e2e run --pin` writes it; people review and may edit it. A pinned step replays its recording or fails with REPLAY_STALE; it never calls the model. The runner reads it fail-closed: a document it cannot read fails every agent.act() step of the test.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "steps"],
+  "properties": { "schemaVersion": { "const": "steps-1" }, "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } } },
+  "$defs": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["test", "target", "agent", "instruction", "callIndex", "recordedAt", "recordedWith", "trace"],
+      "description": "One pinned step. `test`, `target`, `agent`, `instruction`, `params`, and `callIndex` find it; at most one entry may name one step. `recordedWith` is checked once it is found: another value of any field fails the step as stale.",
+      "properties": {
+        "test": { "description": "The test's title path, outermost describe first.", "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "target": { "$ref": "#/$defs/label" },
+        "agent": { "$ref": "#/$defs/label" },
+        "instruction": {
+          "description": "The instruction as the step received it: trimmed, with registered secret values masked.",
+          "type": "string",
+          "pattern": "\\S"
+        },
+        "params": {
+          "description": "The params as the replay cache key spells them: a `{{param:<pointer>}}` placeholder for each unique() value, a Secret as { kind, name, purpose }. Absent reads as {}.",
+          "type": "object"
+        },
+        "callIndex": {
+          "description": "Zero-based occurrence of the same instruction and params by the same agent within the test.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "recordedAt": { "type": "string", "format": "date-time" },
+        "recordedWith": { "$ref": "#/$defs/recordedWith" },
+        "inline": { "description": "The actions are in the call's `steps` option; `trace` holds the rest of the recording and no `actions`.", "const": true },
+        "trace": { "$ref": "#/$defs/trace" }
+      },
+      "if": { "required": ["inline"] },
+      "then": { "properties": { "trace": { "not": { "required": ["actions"] } } } },
+      "else": { "properties": { "trace": { "required": ["actions"] } } }
+    },
+    "label": { "type": "string", "maxLength": 300, "pattern": "\\S" },
+    "recordedWith": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cacheSchema", "policyVersion", "project", "platform", "engineName", "engineSpiVersion", "appIdentity", "agentContextDigest"],
+      "properties": {
+        "cacheSchema": { "$ref": "#/$defs/label" },
+        "policyVersion": { "$ref": "#/$defs/label" },
+        "project": { "$ref": "#/$defs/label" },
+        "platform": { "$ref": "#/$defs/label" },
+        "engineName": { "$ref": "#/$defs/label" },
+        "engineSpiVersion": { "type": "integer" },
+        "appIdentity": { "$ref": "#/$defs/label" },
+        "agentContextDigest": { "$ref": "#/$defs/label" }
+      }
+    },
+    "trace": {
+      "description": "A trace-1 payload without `recordedFor` and `keyedBy`, which the step's identity and `recordedWith` replace.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executor", "summary"],
+      "properties": {
+        "actions": { "type": "array", "minItems": 1, "maxItems": 50, "items": { "$ref": "#/$defs/action" } },
+        "executor": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name"],
+          "properties": { "name": { "type": "string", "minLength": 1 }, "version": { "type": "string" } }
+        },
+        "recordedBy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "model"],
+          "properties": { "provider": { "$ref": "#/$defs/label" }, "model": { "$ref": "#/$defs/label" } }
+        },
+        "summary": { "type": "string", "maxLength": 300, "pattern": "\\S" },
+        "startPath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "endPath": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "endAnchors": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/target" } },
+        "goneAnchors": { "type": "array", "maxItems": 8, "items": { "$ref": "#/$defs/target" } },
+        "endWaitMs": { "type": "integer", "minimum": 0, "maximum": 120000 }
+      }
+    },
+    "target": {
+      "description": "How a recorded action addressed its node; replay re-finds it by these fields on a fresh screen.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string", "maxLength": 300 },
+        "name": { "type": "string", "maxLength": 300 },
+        "text": { "type": "string", "maxLength": 300 },
+        "testId": { "type": "string", "maxLength": 300 },
+        "placeholder": { "type": "string", "maxLength": 300 },
+        "selector": { "type": "string", "maxLength": 300 },
+        "inputPurpose": { "type": "string", "maxLength": 300 },
+        "within": { "type": "string", "maxLength": 300 },
+        "position": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["index", "of"],
+          "properties": {
+            "index": { "type": "integer", "minimum": 0 },
+            "of": { "type": "integer", "minimum": 1, "maximum": 1000 }
+          }
+        },
+        "states": { "type": "array", "items": { "enum": ["checked", "expanded", "pressed", "selected"] } },
+        "value": { "type": "string", "maxLength": 300 }
+      }
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["point"],
+      "properties": {
+        "point": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["x", "y"],
+          "properties": { "x": { "type": "number" }, "y": { "type": "number" } }
+        },
+        "within": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["target", "fx", "fy"],
+          "properties": {
+            "target": { "$ref": "#/$defs/target" },
+            "fx": { "type": "number", "minimum": 0, "maximum": 1 },
+            "fy": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        }
+      }
+    },
+    "viewport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["width", "height"],
+      "properties": { "width": { "type": "integer", "minimum": 1 }, "height": { "type": "integer", "minimum": 1 } }
+    },
+    "action": {
+      "description": "One trace-1 action. Each name takes the fields its grammar action needs; the runner refuses any other combination. `typeSecret` holds the secret's name, never its value. A pinned trace has no `tool` gap: such a step never pins.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "summary"],
+      "properties": {
+        "name": {
+          "enum": [
+            "tap", "doubleTap", "longPress", "secondaryTap", "hover", "scrollTo", "type", "typeSecret",
+            "press", "select", "check", "upload", "drag", "scroll", "scrollUntil", "navigate", "back",
+            "resize", "tapAt", "hoverAt", "dragAt", "typeText", "pressKey", "dismissKeyboard"
+          ]
+        },
+        "summary": { "type": "string", "maxLength": 300, "pattern": "\\S" },
+        "target": { "$ref": "#/$defs/target" },
+        "destination": { "$ref": "#/$defs/target" },
+        "modifiers": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "enum": ["Shift", "Control", "Alt", "Meta", "ControlOrMeta"] }
+        },
+        "value": { "type": "string", "maxLength": 4096 },
+        "secret": { "$ref": "#/$defs/label" },
+        "key": { "type": "string", "maxLength": 64, "pattern": "\\S" },
+        "checked": { "type": "boolean" },
+        "paths": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "items": { "type": "string", "minLength": 1, "maxLength": 4096 }
+        },
+        "direction": { "enum": ["up", "down", "left", "right"] },
+        "times": { "type": "integer", "minimum": 2 },
+        "spans": { "type": "number", "minimum": 0, "maximum": 1 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "url": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "replace": { "type": "boolean" },
+        "size": { "$ref": "#/$defs/viewport" },
+        "viewport": { "$ref": "#/$defs/viewport" },
+        "point": { "$ref": "#/$defs/point/properties/point" },
+        "within": { "$ref": "#/$defs/point/properties/within" },
+        "from": { "$ref": "#/$defs/point" },
+        "to": { "$ref": "#/$defs/point" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "name": { "enum": ["tap", "doubleTap", "secondaryTap"] } } },
+          "then": { "required": ["target"], "propertyNames": { "enum": ["name", "summary", "target", "modifiers"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["longPress", "hover", "scrollTo"] } } },
+          "then": { "required": ["target"], "propertyNames": { "enum": ["name", "summary", "target"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["type"] } } },
+          "then": { "required": ["target", "value"], "propertyNames": { "enum": ["name", "summary", "target", "value"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["typeSecret"] } } },
+          "then": { "required": ["target", "secret"], "propertyNames": { "enum": ["name", "summary", "target", "secret"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["press"] } } },
+          "then": { "required": ["target", "key"], "propertyNames": { "enum": ["name", "summary", "target", "key"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["select"] } } },
+          "then": {
+            "required": ["target", "value"],
+            "propertyNames": { "enum": ["name", "summary", "target", "value"] },
+            "properties": { "value": { "minLength": 1 } }
+          }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["check"] } } },
+          "then": { "required": ["target", "checked"], "propertyNames": { "enum": ["name", "summary", "target", "checked"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["upload"] } } },
+          "then": { "required": ["target", "paths"], "propertyNames": { "enum": ["name", "summary", "target", "paths"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["drag"] } } },
+          "then": { "required": ["target", "destination"], "propertyNames": { "enum": ["name", "summary", "target", "destination"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["scroll"] } } },
+          "then": { "required": ["direction"], "propertyNames": { "enum": ["name", "summary", "direction", "target", "times", "spans"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["scrollUntil"] } } },
+          "then": { "required": ["text", "direction"], "propertyNames": { "enum": ["name", "summary", "text", "direction", "target", "spans"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["navigate"] } } },
+          "then": { "required": ["url"], "propertyNames": { "enum": ["name", "summary", "url"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["tapAt", "hoverAt"] } } },
+          "then": { "required": ["point", "viewport"], "propertyNames": { "enum": ["name", "summary", "point", "viewport", "within"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["dragAt"] } } },
+          "then": { "required": ["from", "to", "viewport"], "propertyNames": { "enum": ["name", "summary", "from", "to", "viewport"] } }
+        },
+        { "if": { "properties": { "name": { "enum": ["back", "dismissKeyboard"] } } }, "then": { "propertyNames": { "enum": ["name", "summary"] } } },
+        {
+          "if": { "properties": { "name": { "enum": ["resize"] } } },
+          "then": { "required": ["size"], "propertyNames": { "enum": ["name", "summary", "size"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["typeText"] } } },
+          "then": { "required": ["value", "replace"], "propertyNames": { "enum": ["name", "summary", "value", "replace"] } }
+        },
+        {
+          "if": { "properties": { "name": { "enum": ["pressKey"] } } },
+          "then": { "required": ["key"], "propertyNames": { "enum": ["name", "summary", "key"] } }
+        }
+      ]
+    }
+  }
+}

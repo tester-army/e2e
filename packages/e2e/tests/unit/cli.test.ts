@@ -899,6 +899,7 @@ describe('e2e --version and --help', () => {
       '--no-cache',
       '--strict-cache',
       '-u',
+      '--pin',
       '-w',
       '--step',
       '--reporter',

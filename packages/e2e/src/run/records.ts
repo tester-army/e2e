@@ -7,6 +7,7 @@ import type { TestIdentity } from '../collect/collect.ts';
 import type { SkipInfo } from '../collect/select.ts';
 import { keeps, type Keep } from '../internal/recording-modes.ts';
 import type { ResolvedTarget } from '../config/resolve.ts';
+import type { AttemptPinWrites } from '../cache/pins.ts';
 import type { AppLogRecord, StepRecord } from './steps.ts';
 
 export type ArtifactProducer = { kind: 'step'; stepId: string } | { kind: 'attempt' };
@@ -90,6 +91,8 @@ export interface AttemptRecord {
   environment?: Record<string, string>;
   /** Which of the attempt's outcomes keep a trace (`keeps`), when it keeps one at all; the runner's, never in the report. */
   trace?: Keep | undefined;
+  /** What the attempt asks the runner to pin when the run ends; the runner's, never in the report. */
+  pins?: AttemptPinWrites;
   cleanup: 'complete' | 'failed' | 'forced';
 }
 
@@ -106,6 +109,8 @@ export interface SerialMemberRecord {
   error?: SerializedError;
   /** What the runner saw when this member's failure landed; see `FailureEvidence`. */
   failure?: FailureEvidence;
+  /** What the member's attempt asks the runner to pin; the runner's, never in the report. */
+  pins?: AttemptPinWrites;
   /**
    * Why the member was skipped: its own `test.skip`, or the runner (a failed
    * predecessor or hook, an interrupt). Also on a failed member that skipped

@@ -406,6 +406,7 @@ function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string
         : `no replay: ${CACHE_REASON_TEXT[cache.reason ?? 'no-entry']}`;
   const parts = [
     `cache: ${how}`,
+    ...(cache.pinned === undefined ? [] : [cache.pinned === 'sidecar' ? "pinned in the test's steps file" : 'pinned by its steps option']),
     ...(cache.recordedBy === undefined ? [] : [`recorded with ${code(modelLabel({ provider: cache.recordedBy.provider, id: cache.recordedBy.model }), MAX_DETAIL_CHARS)}`]),
     ...(cache.detail === undefined ? [] : [cell(cache.detail, MAX_DETAIL_CHARS)]),
     ...(cache.write === undefined ? [] : [CACHE_WRITE_TEXT[cache.write]]),

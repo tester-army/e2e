@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "steps-1",
+  "steps": [
+    {
+      "test": [],
+      "target": "web",
+      "agent": "default",
+      "instruction": "open the cart",
+      "callIndex": -1,
+      "recordedAt": "2026-11-11T09:00:00.000Z",
+      "recordedWith": { "cacheSchema": "trace-1" },
+      "inline": true,
+      "trace": {
+        "actions": [{ "name": "tool", "summary": "tool type (run-time value)", "derived": "pixels" }],
+        "executor": { "name": "default" },
+        "summary": "opened the cart",
+        "keyedBy": {}
+      }
+    }
+  ]
+}

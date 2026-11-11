@@ -261,7 +261,8 @@
         "totalActions": { "type": "integer", "minimum": 0 },
         "entry": { "$ref": "#/$defs/sha256" },
         "detail": { "type": "string", "maxLength": 600 },
-        "write": { "enum": ["saved", "kept", "unconfirmed", "evicted", "no-change", "not-written"] }
+        "write": { "enum": ["saved", "kept", "unconfirmed", "evicted", "no-change", "not-written"] },
+        "pinned": { "enum": ["sidecar", "inline"], "description": "The step is pinned: it replays its recording from the test's steps file or its steps option, or fails." }
       },
       "allOf": [
         {

@@ -75,6 +75,8 @@ export interface DispatchSpec {
   readonly onAction?: ActionHook | undefined;
   /** Act only: the test's hook before each action. */
   readonly onBeforeAction?: BeforeActionHook | undefined;
+  /** Act only: the call's `steps` option, the pinned actions it holds or `[]` to record them. */
+  readonly inlineSteps?: readonly unknown[] | undefined;
 }
 
 /** Runs one `agent.act()` call as a harness-dispatched executor step. */
@@ -101,6 +103,7 @@ export async function runActStep(
     agent: options?.agent,
     onAction: options?.onAction,
     onBeforeAction: options?.onBeforeAction,
+    inlineSteps: options?.steps,
   });
 }
 
@@ -264,13 +267,32 @@ class ActDispatch {
     if (stepIndex === undefined) throw new Error('agent step dispatched outside a recorded step');
     this.stepIndex = stepIndex;
     // Only act steps are cacheable: assertions explore live on every run. An
-    // executor that declared `cache: 'off'` sees every step itself.
-    const cache = spec.kind === 'act' && agent.executor.cache !== 'off' ? runtime.cache : undefined;
+    // executor that declared `cache: 'off'` sees every step itself, and
+    // takes part in no pin either: what it does is not a recording.
+    const recordable = spec.kind === 'act' && agent.executor.cache !== 'off';
+    if (!recordable && spec.inlineSteps !== undefined) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        `agent.act steps (options.steps) needs an executor that takes part in the replay cache; ${JSON.stringify(agent.executor.name)} declares cache: 'off'`,
+      );
+    }
+    const cache = recordable ? runtime.cache : undefined;
+    const pins = recordable ? runtime.pins : undefined;
+    // Without pins nothing would replay the actions or record an empty
+    // list, and the executor would run the step live in their place.
+    if (spec.inlineSteps !== undefined && pins === undefined) {
+      throw new ConfigurationError(
+        'UNSUPPORTED_CAPABILITY',
+        'agent.act steps (options.steps) needs a test file the runner runs; this session (openHost, a session with no test, or a test registered in memory) has none to pin steps beside',
+      );
+    }
     this.stepCache =
-      cache === undefined
+      cache === undefined && pins === undefined
         ? undefined
         : new StepTraceSession(this.cacheHost(), {
             cache,
+            pins,
+            inlineSteps: spec.inlineSteps,
             instruction: spec.instruction,
             params: spec.params,
             templates: spec.templates,

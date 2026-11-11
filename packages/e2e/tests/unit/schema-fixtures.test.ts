@@ -42,6 +42,26 @@ describe.each(schemas)('%s schema', (name) => {
     });
   }
 
+  if (name === 'steps-v1') {
+    it('holds each action to the fields its name takes, as the runner reads it', () => {
+      const document = readJson('fixtures', 'steps-v1.valid.json') as { steps: { trace: { actions?: Record<string, unknown>[] } }[] };
+      const actions = document.steps[0]!.trace.actions!;
+      const target = { role: 'button', name: 'Pay' };
+      for (const action of [
+        { name: 'tap', summary: 'tap' },
+        { name: 'hover', summary: 'hover', target, modifiers: ['Shift'] },
+        { name: 'select', summary: 'select', target, value: '' },
+        { name: 'scroll', summary: 'scroll', direction: 'down', key: 'Enter' },
+        { name: 'typeText', summary: 'type', value: 'x' },
+      ]) {
+        actions[0] = action;
+        expect(validate(document), JSON.stringify(action)).toBe(false);
+      }
+      actions[0] = { name: 'scroll', summary: 'scroll', direction: 'down', target, times: 3 };
+      expect(validate(document)).toBe(true);
+    });
+  }
+
   if (name === 'report-v1') {
     it('accepts optional runner cut-retry decisions and rejects other types', () => {
       const report = readJson('fixtures', 'report-v1.valid.json') as {
@@ -79,6 +99,7 @@ describe.each(schemas)('%s schema', (name) => {
         [() => (cache['detail'] = 'x'.repeat(601)), () => (cache['detail'] = 'x'.repeat(600))],
         [() => (cache['entry'] = 'not-a-digest'), () => (cache['entry'] = 'a'.repeat(64))],
         [() => (cache['write'] = 'written'), () => (cache['write'] = 'kept')],
+        [() => (cache['pinned'] = 'cache'), () => (cache['pinned'] = 'sidecar')],
       ];
       for (const [breakIt, fixIt] of cases) {
         breakIt();

@@ -55,6 +55,7 @@
                 "startedAt": "2026-07-24T12:00:00.000Z",
                 "durationMs": 1000,
                 "observationTruncated": "yes",
+                "cache": { "mode": "self-finalized", "replayedActions": 1, "totalActions": 1, "pinned": "cache" },
                 "events": [],
                 "metrics": {
                   "modelCalls": 1,

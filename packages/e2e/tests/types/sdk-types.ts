@@ -615,6 +615,15 @@ await agent.act('tap and drag the pin', { onAction: event => {
 await agent.act('open billing', { onBeforeAction: true });
 // @ts-expect-error assertions have no before-action observer
 await agent.assert('ready', { onBeforeAction: () => undefined });
+await agent.act('greet', { steps: [] });
+await agent.act('greet', { steps: [{ name: 'tap', target: { role: 'button', name: 'greet' } }] });
+// @ts-expect-error a pinned action is data, named by its action
+await agent.act('greet', { steps: [{ target: { role: 'button' } }] });
+// @ts-expect-error a pinned action holds JSON values, never code
+await agent.act('greet', { steps: [{ name: 'tap', run: () => undefined }] });
+// @ts-expect-error assertions are never pinned
+await agent.assert('ready', { steps: [] });
+'inline' satisfies NonNullable<typeof actResult.cache>['pinned'];
 actResult.summary satisfies string;
 actResult.modelCalls satisfies number;
 // @ts-expect-error act returns no data; extract does

@@ -27,6 +27,7 @@ import { resultId, timestamp, uuidv7 } from '../internal/ids.ts';
 import { engineAppInfo } from '../config/app.ts';
 import { Deadline, NEVER_ABORTS, withAbort, withScopedBudget, withTimeout } from '../internal/time.ts';
 import { createAgentCacheContext, settleStagedTraces } from '../cache/context.ts';
+import { createAttemptPins, settleStagedPins } from '../cache/pin-context.ts';
 import { storedRecordingsFor, type StoredRecordings } from '../cache/rekeyed.ts';
 import type { ModuleRegistration, RegisteredTest } from '../collect/registry.ts';
 import { pairRecordings, type TestTargetPair } from '../collect/select.ts';
@@ -1011,6 +1012,21 @@ export class TargetExecutor implements SerialHost {
             recordings: this.storedRecordings,
           })
         : undefined;
+    // A test registered in memory has no file to keep pins beside.
+    const pins =
+      inMemory === undefined
+        ? createAttemptPins({
+            projectRoot: this.config.projectRoot,
+            projectId: this.config.projectId,
+            testFile: pair.test.file,
+            testId: pair.test.id,
+            titlePath: pair.test.titlePath,
+            target: this.sessionIdentity,
+            update: this.config.pin,
+            inlineWrites: !this.config.ci,
+            redact: staticSecretLedger(this.config.allSecrets).redact,
+          })
+        : undefined;
 
     // A rejection nobody caught, handed in by the process while this attempt
     // is in flight. Set while the body's race is pending, so the rejection
@@ -1096,6 +1112,7 @@ export class TargetExecutor implements SerialHost {
         agent: pair.agent,
         saveSession,
         ...(cache === undefined ? {} : { cache }),
+        ...(pins === undefined ? {} : { pins }),
         debug: this.debug,
         models: this.models,
         test: { file: pair.test.file, titlePath: pair.test.titlePath, writtenScreenshots: this.writtenScreenshots },
@@ -1360,6 +1377,17 @@ export class TargetExecutor implements SerialHost {
         const write = writes.get(step.index);
         if (step.cache !== undefined && write !== undefined) step.cache.write = write;
       }
+    }
+    // The runner writes what the attempt pins once the run ends: several
+    // workers may run the tests of one file, and one file holds their pins.
+    if (pins !== undefined && record.status !== 'interrupted') {
+      const pinned = settleStagedPins(pins, {
+        passed: record.status === 'passed',
+        lastVerifiedStepIndex: steps.lastVerifiedStepIndex,
+        sources: new Map(record.steps.flatMap((step) => (step.source === undefined ? [] : [[step.index, step.source] as const]))),
+        testFile: pair.test.file,
+      });
+      if (pinned !== undefined) record.pins = pinned;
     }
     return record;
   }

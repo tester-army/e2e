@@ -22,9 +22,10 @@ import { writeHostTrace } from './host-trace.ts';
 import type { AttemptRecord } from './records.ts';
 import { holdSecretRegistry } from '../secrets.ts';
 import { createAgentCacheContext } from '../cache/context.ts';
+import { createAttemptPins } from '../cache/pin-context.ts';
 import { storedRecordingsFor } from '../cache/rekeyed.ts';
 import { WrittenScreenshots } from './screenshots.ts';
-import { processSecrets, redactForSession, sessionLedger } from './secrecy.ts';
+import { processSecrets, redactForSession, sessionLedger, staticSecretLedger } from './secrecy.ts';
 import { targetIdentity } from './sessions.ts';
 import { createStandaloneTestRun, type StandaloneTest, type StandaloneTestRun } from './standalone-test.ts';
 import { StepRecorder, type StepProgress } from './steps.ts';
@@ -203,9 +204,16 @@ export async function launchAttempt(
         cache: config.cache, projectRoot: config.projectRoot, projectId: config.projectId, testId: test.pair.test.id,
         target: targetIdentity(target), attemptIndex: 0, recordings: storedRecordingsFor(config.cache),
       });
+      // Pinned steps replay as in a run; nothing here records a pin.
+      const pins = createAttemptPins({
+        projectRoot: config.projectRoot, projectId: config.projectId, testFile: test.pair.test.file, testId: test.pair.test.id,
+        titlePath: test.pair.test.titlePath, target: targetIdentity(target), update: 'none', inlineWrites: false,
+        redact: staticSecretLedger(config.allSecrets).redact,
+      });
       const { fixtures } = createFixtures({
         ...base, attempt: { ...attempt, titlePath: test.pair.test.titlePath }, budget: testBudget, agentContext: test.pair.options.agentContext,
         ...(cache === undefined ? {} : { cache }),
+        pins,
         test: { file: test.pair.test.file, titlePath: test.pair.test.titlePath, writtenScreenshots: new WrittenScreenshots(artifacts.dir) },
       });
       testRun = createStandaloneTestRun({

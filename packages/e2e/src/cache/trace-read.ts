@@ -93,7 +93,13 @@ export function readTraceEntry(document: unknown): TraceEntry | undefined {
   return { schemaVersion: TRACE_SCHEMA_VERSION, createdAt, payload };
 }
 
-function readActionTrace(document: unknown): ActionTrace | undefined {
+/**
+ * Reads one trace payload, or undefined when this runner cannot trust it.
+ * `actions`, when given, stands in for the document's own: a pinned step
+ * whose actions live in the test's call (`steps`) keeps the rest of its
+ * trace in the steps file, and the two are read as one.
+ */
+export function readActionTrace(document: unknown, actions?: readonly RecordedAction[]): ActionTrace | undefined {
   if (typeof document !== 'object' || document === null || Array.isArray(document)) {
     return undefined;
   }
@@ -135,16 +141,12 @@ function readActionTrace(document: unknown): ActionTrace | undefined {
   const goneAnchors = readAnchors(raw['goneAnchors']);
   if (goneAnchors === undefined) return undefined;
 
-  const actionsRaw = raw['actions'];
-  if (!Array.isArray(actionsRaw) || actionsRaw.length === 0 || actionsRaw.length > MAX_TRACE_ACTIONS) {
-    return undefined;
-  }
-  const actions = each(actionsRaw, readRecordedAction);
-  if (actions === undefined) return undefined;
+  const read = actions ?? readRecordedActions(raw['actions']);
+  if (read === undefined || read.length === 0) return undefined;
   const keyedBy = readKeyContext(raw['keyedBy']);
 
   return {
-    actions,
+    actions: read,
     executor: {
       name: executorName,
       ...(executorVersion === undefined ? {} : { version: executorVersion }),
@@ -178,6 +180,12 @@ function readModifiers(document: unknown): readonly KeyModifier[] | undefined {
     modifiers.push(value);
   }
   return modifiers;
+}
+
+/** A non-empty list of recorded actions within the trace cap, every one readable, or undefined. */
+export function readRecordedActions(document: unknown): RecordedAction[] | undefined {
+  if (!Array.isArray(document) || document.length === 0 || document.length > MAX_TRACE_ACTIONS) return undefined;
+  return each(document, readRecordedAction);
 }
 
 function readRecordedAction(document: unknown): RecordedAction | undefined {

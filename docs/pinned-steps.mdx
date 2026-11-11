@@ -1,0 +1,115 @@
+---
+title: Pinned steps
+description: Keep an agent step's recording beside the test, review it in the pull request, and replay it with no model call.
+---
+
+A pinned `agent.act()` step replays its recording or fails with
+`REPLAY_STALE`. It never calls the model. The recording sits beside the
+test in `<test>.steps.json`, so a pull request shows what the step does.
+The agent still finds the path the first time.
+
+Use the [replay cache](/cache) when you want a step to heal itself. Pin a
+step when you want a reviewer to see what it does and every run to do the
+same thing.
+
+## Pin a step
+
+Run the test with `--pin`. A step pins when its test passes and a check
+after the step passes, the same rule the cache
+[saves a recording by](/cache#when-a-recording-is-written).
+
+<CodeGroup>
+```bash npm
+npx e2e run tests/checkout.e2e.ts --pin
+```
+
+```bash pnpm
+pnpm exec e2e run tests/checkout.e2e.ts --pin
+```
+
+```bash bun
+bunx e2e run tests/checkout.e2e.ts --pin
+```
+</CodeGroup>
+
+The runner writes `tests/checkout.e2e.steps.json` when the run ends and
+prints each file it changed. Commit it with the test. Narrow the run to one
+test with `tests/checkout.e2e.ts:12`.
+
+| Flag | Pins |
+| --- | --- |
+| `--pin`, `--pin new` | Each selected step that is not pinned yet. |
+| `--pin all` | Every selected step, recorded again. Add `--no-cache` so the agent runs each step live instead of from the replay cache. |
+
+`--pin` is refused in CI. A pinned step replays with the cache off.
+
+A step does not pin when it calls a [project tool](/tools), types a value it
+read off the screen (a [`gap`](/cache#limits-and-gaps)), or changes
+nothing a replay could check. The run prints each such step and the reason.
+
+## Keep the actions in the test
+
+Give the call `steps: []`. The next local run records the step and writes
+its actions into the call, as `toMatchInlineSnapshot` writes a snapshot.
+No `--pin` is needed.
+
+```ts title="tests/greeting.e2e.ts"
+await agent.act('get the app to greet {name}', {
+  params: { name: 'Grace' },
+  steps: [
+    { name: 'type', target: { role: 'textbox', name: 'name' }, value: 'Grace' },
+    { name: 'tap', target: { role: 'button', name: 'greet' } },
+  ],
+});
+```
+
+The rest of the recording, the screen the step starts on and the end state
+it checks, goes into the steps file under `"inline": true`. In CI, an
+empty `steps: []` fails. `--pin all` records the call again and rewrites
+its actions.
+
+To move the actions back to the steps file, delete the `steps` option and
+run `--pin`. Actions you write by hand with no steps-file entry replay with
+no start-screen or end-state check, like hand-written locator lines.
+
+A call that runs more than once with different actions, in a loop or in a
+helper several tests share, cannot hold one list. The run leaves it alone
+and says so. Keep such a step in the steps file.
+
+## When a pinned step fails
+
+The `REPLAY_STALE` message says why:
+
+- The recording was made with another engine, engine contract, replay
+  policy, app identity, or agent context. The message names the field.
+- A recorded control is gone or ambiguous, an action was rejected, or the
+  [end check](/cache#how-a-replay-works) failed.
+- The steps file is not a `steps-1` document, or an entry or a `steps`
+  option holds an action the runner cannot read.
+
+Record it again with `--pin all`, review the diff, and commit it.
+
+## What a steps file holds
+
+One entry per step, found by the test's title path, the target, the agent,
+the instruction, the params, and the occurrence of that call in the test.
+Renaming the test or changing the instruction or a param unpins the step.
+
+Each entry holds what a [cache entry](/cache#what-a-recording-holds) holds:
+actions, target descriptions, typed text, and the end checks. Secrets are
+stored by name, and a [`unique()`](/cache#what-must-match) value as a
+`{{param:/name}}` slot that the current call fills. The format is the
+`steps-1` schema in the package (`schema/steps-v1.schema.json`). You can
+edit a file by hand: an entry the runner cannot read fails its step, and
+the runner never overwrites a file it cannot read.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Caching" icon="database" href="/cache">
+    Replay without pinning, with the agent taking over when the app changes.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-run">
+    `--pin`, `--no-cache`, `--strict-cache`.
+  </Card>
+</CardGroup>

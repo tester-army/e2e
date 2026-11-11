@@ -38,7 +38,7 @@ export function validateInstruction(instruction: string, api: string): string {
   return normalized;
 }
 
-const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'onBeforeAction']);
+const ACT_OPTION_KEYS: ReadonlySet<string> = new Set(['params', 'timeout', 'maxSteps', 'maxModelCalls', 'agent', 'onAction', 'onBeforeAction', 'steps']);
 
 /**
  * The `act` type has no `schema` and no `vision`, and no key outside
@@ -78,6 +78,10 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
   const onAction: unknown = options.onAction;
   if (onAction !== undefined && typeof onAction !== 'function') {
     throw new TestError('INVALID_ARGUMENT', 'agent.act options.onAction must be a function');
+  }
+  const steps: unknown = options.steps;
+  if (steps !== undefined && (!Array.isArray(steps) || !steps.every((step) => typeof step === 'object' && step !== null && !Array.isArray(step)))) {
+    throw new TestError('INVALID_ARGUMENT', 'agent.act options.steps must be an array of recorded actions, or [] to record them');
   }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
   if (unknown.length > 0) {

@@ -8,6 +8,7 @@
 import type { StepExecutorContext } from './executor.ts';
 import type { JSONSchema7 } from 'ai';
 import type { AgentCacheContext } from '../cache/context.ts';
+import type { AttemptPins } from '../cache/pin-context.ts';
 import type { ResolvedAgentConfig } from '../config/agent.ts';
 import type { ResolvedApp, ResolvedConfig } from '../config/resolve.ts';
 import type { EngineCapability } from '../engine/index.ts';
@@ -116,6 +117,8 @@ export interface AgentContext {
   readonly artifacts: ArtifactSink;
   /** The attempt's trace cache, or undefined when caching is off. */
   readonly cache?: AgentCacheContext;
+  /** The attempt's pinned steps; undefined where no test file backs the attempt. */
+  readonly pins?: AttemptPins;
   /** `--debug` phase timings; absent when the caller collects none. */
   readonly debug?: DebugTrace;
 }

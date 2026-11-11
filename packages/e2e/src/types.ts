@@ -222,6 +222,27 @@ export interface ActOptions extends AgentOption {
    * the action runs.
    */
   onBeforeAction?: BeforeActionHook;
+  /**
+   * Pins the step to these actions: it replays them, or fails with
+   * `REPLAY_STALE`, and never calls the model. `[]` asks the next local run
+   * to record the step and write its actions here, as `toMatchInlineSnapshot`
+   * writes a snapshot; in CI an empty list fails. The rest of the recording
+   * (the screen it starts on, the end state it checks) goes in the test's
+   * steps file, `<test>.steps.json`. `e2e run --pin all` records the step
+   * again.
+   */
+  steps?: readonly PinnedAction[];
+}
+
+/**
+ * One recorded action of a pinned step, as `agent.act`'s `steps` option
+ * holds it: a `trace-1` action (`name`, its `target` and input), without
+ * its prose `summary`. The runner writes these; the closed schema the
+ * replay cache reads them with checks them, hand edits included.
+ */
+export interface PinnedAction {
+  readonly name: string;
+  readonly [field: string]: JsonValue;
 }
 
 /** The `onBeforeAction` hook of an `act` call. */

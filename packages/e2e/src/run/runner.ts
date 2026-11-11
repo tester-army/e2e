@@ -63,6 +63,7 @@ import { registerStaticSecrets, staticSecretLedger } from './secrecy.ts';
 import { nextRerunDir, pruneArtifacts } from './artifacts.ts';
 import { carryForward, fileDurationKey, lastFailedIds, readLastRun, reportArtifactPaths, type RerunCollection } from './last-run.ts';
 import { loadTimings, writeTimings } from './timings.ts';
+import { writePins } from './pin-writes.ts';
 import { childProcessSpawner } from './worker/handle.ts';
 import { setSecretRegistry } from '../secrets.ts';
 import { budgetText, withAbort } from '../internal/time.ts';
@@ -167,6 +168,14 @@ export interface RunOptions {
   strictCache?: boolean | undefined;
   /** Rewrites the stored screenshots `toHaveScreenshot` finds different (`--update-snapshots`). */
   updateSnapshots?: boolean | undefined;
+  /**
+   * Pins the selected tests' `agent.act()` steps (`--pin [mode]`): `new`
+   * pins each step not pinned yet, `all` records every one again. The
+   * runner writes `<test>.steps.json` beside each test, and the actions of
+   * a call with a `steps` option into the call, when the run ends. Refused
+   * in CI.
+   */
+  pin?: 'new' | 'all' | undefined;
   /**
    * The configured agents unpinned tests run as (`--agent`), instead of
    * `agents.default`. Several names run every such test once per agent.
@@ -474,6 +483,7 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
   if (options.noCache === true) cli.cache = 'off';
   if (options.strictCache === true) cli.cacheStrict = true;
   if (options.updateSnapshots === true) cli.updateSnapshots = true;
+  if (options.pin !== undefined) cli.pin = options.pin;
   if (options.output !== undefined) cli.output = options.output;
   if (options.cacheDir !== undefined) cli.cacheDir = options.cacheDir;
   if (options.trace !== undefined) cli.trace = options.trace;
@@ -747,8 +757,28 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
    */
   let testsStarted = false;
 
+  /**
+   * Writes what the run's attempts pinned, beside the tests and into them,
+   * and says so on stderr. A pin that could not be written is told, never
+   * a run error: like a snapshot, the next `--pin` run writes it.
+   */
+  const writeRunPins = async (config: ResolvedConfig): Promise<void> => {
+    const staged = [
+      ...results.flatMap((result) => result.attempts.flatMap((attempt) => (attempt.pins === undefined ? [] : [attempt.pins]))),
+      ...serialGroups.flatMap((group) => group.attempts.flatMap((attempt) => attempt.members.flatMap((member) => (member.pins === undefined ? [] : [member.pins])))),
+    ];
+    if (staged.length === 0) return;
+    try {
+      const { lines } = await writePins(config.projectRoot, staged);
+      for (const line of lines) process.stderr.write(`e2e: ${line}\n`);
+    } catch (cause) {
+      process.stderr.write(`e2e: the pinned steps could not be written: ${errorMessage(cause)}\n`);
+    }
+  };
+
   const finish = async (): Promise<RunOutcome> => {
     const written = testsStarted ? loaded.config : undefined;
+    if (written !== undefined) await writeRunPins(written);
     const aiTracePath = written === undefined ? undefined : await writeAiTrace(written);
     // One document: what is written is what the reporters and the outcome
     // see, so a reporter uploading `report` ships the file byte for byte.

@@ -7,6 +7,7 @@ import { prepareObservation, type NodeRedaction } from '../agent/observation.ts'
 import type { AgentContext, AgentSelection } from '../agent/invocation.ts';
 import type { ExecutorAttempt, StepExecutor } from '../agent/executor.ts';
 import type { AgentCacheContext } from '../cache/context.ts';
+import type { AttemptPins } from '../cache/pin-context.ts';
 import type { WorkerModels } from './worker-models.ts';
 import type { EngineCapability, EngineFixtureContext } from '../engine/index.ts';
 import type { OperationContext, TargetSession } from '../engine/surface.ts';
@@ -75,6 +76,8 @@ export interface AttemptEnvironment {
   readonly saveSession: ((name: string) => Promise<void>) | undefined;
   /** The attempt's trace cache context, or undefined when caching is off. */
   readonly cache?: AgentCacheContext;
+  /** The attempt's pinned steps; undefined where no test file backs the attempt. */
+  readonly pins?: AttemptPins;
   /** `--debug` phase timings; absent when the caller collects none. */
   readonly debug?: DebugTrace;
   /** The worker's model adapters, checked once on the first `agent` acquisition. */
@@ -247,6 +250,7 @@ export function createFixtures(environment: AttemptEnvironment): AttemptFixtures
     redactCut: ledger.redactCut,
     artifacts: environment.artifacts,
     ...(environment.cache !== undefined ? { cache: environment.cache } : {}),
+    ...(environment.pins !== undefined ? { pins: environment.pins } : {}),
     ...(environment.debug !== undefined ? { debug: environment.debug } : {}),
   };
 

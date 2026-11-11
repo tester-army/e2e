@@ -81,6 +81,7 @@
             "group": "Features",
             "pages": [
               "cache",
+              "pinned-steps",
               "explore",
               "visual-testing",
               "authentication",

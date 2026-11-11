@@ -409,6 +409,15 @@ matches. Misses and hand-offs use the model; `agent.assert`,
   `unique()` value equals, is spelled inside, or is the encoded form of
   another param's value is not recorded either (`step.cache.notRecorded`:
   `param-collision`).
+- Pin a step to keep its recording beside the test and fail instead of
+  healing: `e2e run <file> --pin` writes `<test>.steps.json`, found by
+  title path, target, agent, instruction, params, and occurrence. A pinned
+  step replays with the cache off or fails `REPLAY_STALE`; a recording made
+  under another engine, contract, replay policy, app identity, or agent
+  context fails too, naming the field. `agent.act(goal, { steps: [] })`
+  makes the next local run write the actions into the call (CI fails an
+  empty list). `--pin all` re-records. A step that calls a project tool or
+  types a value read off the screen does not pin.
 - `e2e init` gitignores `.e2e/cache/`; remove that line to commit entries
   and share replays with CI and teammates (CI stays `read-only` unless
   `cache: 'read-write'` is set).

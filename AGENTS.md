@@ -14,7 +14,7 @@ There is no separate spec. The code is the contract, pinned in three places:
   by accident; it runs under the package `typecheck`, never under vitest.
 - Wire formats live in `packages/e2e/schema/*.schema.json` (report-1,
   session-1, agent-judgment-2, the engine protocol's engine-manifest-1,
-  `e2e doctor`'s doctor-1, the scheduler's advisory timings-1, and the deprecated agent-judgment-1) with a valid and an invalid fixture
+  `e2e doctor`'s doctor-1, the scheduler's advisory timings-1, the pinned steps file's steps-1, and the deprecated agent-judgment-1) with a valid and an invalid fixture
   each. Integration tests validate every generated report and session envelope
   against them; `tests/unit/schema-fixtures.test.ts` checks the fixtures. A
   wire change edits the schema, both fixtures, and the producer in one review.

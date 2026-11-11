@@ -482,6 +482,7 @@ async function runSerialAttempt(
       ...(memberAttempt.error !== undefined ? { error: memberAttempt.error } : {}),
       ...(memberAttempt.failure !== undefined ? { failure: memberAttempt.failure } : {}),
       ...(memberAttempt.skip !== undefined ? { skip: memberAttempt.skip } : {}),
+      ...(memberAttempt.pins !== undefined ? { pins: memberAttempt.pins } : {}),
       secondaryErrors: memberAttempt.secondaryErrors,
     });
     record.artifacts.push(...memberAttempt.artifacts);

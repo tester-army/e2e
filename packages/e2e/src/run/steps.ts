@@ -142,6 +142,12 @@ export interface StepCacheInfo {
   detail?: string;
   /** Configured model when the consulted entry was recorded; absent on older entries. */
   recordedBy?: RecordedModel;
+  /**
+   * The step is pinned: its recording is in the test's steps file
+   * (`sidecar`) or its actions in the call's `steps` option (`inline`). A
+   * pinned step replays or fails; it never hands off.
+   */
+  pinned?: 'sidecar' | 'inline';
 }
 
 /** The cache detail as the report keeps it: what `agent.act()` returns, and what became of the recording once the attempt settled. */

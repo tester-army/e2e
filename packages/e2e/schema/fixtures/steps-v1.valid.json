@@ -1,0 +1,68 @@
+{
+  "schemaVersion": "steps-1",
+  "steps": [
+    {
+      "test": ["checkout", "pays with a saved card"],
+      "target": "web",
+      "agent": "default",
+      "instruction": "sign in as {user} and open the cart",
+      "params": { "user": "{{param:/user}}", "password": { "kind": "secret", "name": "admin.password", "purpose": "password" } },
+      "callIndex": 0,
+      "recordedAt": "2026-11-11T09:00:00.000Z",
+      "recordedWith": {
+        "cacheSchema": "trace-1",
+        "policyVersion": "replay-7",
+        "project": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "platform": "web",
+        "engineName": "web",
+        "engineSpiVersion": 3,
+        "appIdentity": "http://127.0.0.1:4173",
+        "agentContextDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "trace": {
+        "actions": [
+          { "name": "type", "summary": "type into textbox \"Email\"", "target": { "role": "textbox", "name": "Email" }, "value": "{{param:/user}}" },
+          { "name": "typeSecret", "summary": "type admin.password into textbox \"Password\"", "target": { "role": "textbox", "name": "Password", "inputPurpose": "password" }, "secret": "admin.password" },
+          { "name": "tap", "summary": "tap button \"Sign in\"", "target": { "role": "button", "name": "Sign in" } },
+          { "name": "tap", "summary": "tap link \"Cart\"", "target": { "role": "link", "name": "Cart", "testId": "cart-link" } }
+        ],
+        "executor": { "name": "default", "version": "0.30.0" },
+        "recordedBy": { "provider": "anthropic", "model": "claude-sonnet-5-5" },
+        "summary": "Signed in and opened the cart",
+        "startPath": "/login",
+        "endPath": "/cart",
+        "endAnchors": [{ "role": "heading", "name": "Your cart" }],
+        "goneAnchors": [{ "role": "button", "name": "Sign in" }],
+        "endWaitMs": 11200
+      }
+    },
+    {
+      "test": ["checkout", "pays with a saved card"],
+      "target": "web",
+      "agent": "default",
+      "instruction": "pay with the saved card",
+      "params": {},
+      "callIndex": 0,
+      "recordedAt": "2026-11-11T09:00:00.000Z",
+      "recordedWith": {
+        "cacheSchema": "trace-1",
+        "policyVersion": "replay-7",
+        "project": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "platform": "web",
+        "engineName": "web",
+        "engineSpiVersion": 3,
+        "appIdentity": "http://127.0.0.1:4173",
+        "agentContextDigest": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "inline": true,
+      "trace": {
+        "executor": { "name": "default" },
+        "summary": "Paid; the order confirmation shows",
+        "startPath": "/cart",
+        "endPath": "/orders/{{param:/order}}",
+        "endAnchors": [{ "role": "status", "text": "Order placed" }],
+        "endWaitMs": 10400
+      }
+    }
+  ]
+}

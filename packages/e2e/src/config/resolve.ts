@@ -94,6 +94,8 @@ export interface ResolvedConfig {
   readonly cache: ResolvedCacheConfig;
   /** `--update-snapshots`: `toHaveScreenshot` rewrites a stored screenshot that differs. */
   readonly updateSnapshots: boolean;
+  /** `--pin [mode]`: which steps the run pins; `none` without the flag. */
+  readonly pin: 'none' | 'new' | 'all';
   readonly limits: ResolvedLimits;
   readonly credentials: ReadonlyMap<string, ResolvedCredential>;
   /** The `config.secrets` entries by name: what `secrets.get()` and an engine option take. */
@@ -150,6 +152,8 @@ export interface CliOverrides {
   cacheStrict?: boolean;
   /** `--update-snapshots`: `toHaveScreenshot` rewrites a stored screenshot that differs. */
   updateSnapshots?: boolean;
+  /** `--pin [mode]`: pin the steps not pinned yet (`new`), or record every selected step again (`all`). */
+  pin?: 'new' | 'all';
   /** `--output <dir>`: the results directory for this run, over the config's `output`. */
   output?: string;
   /** `--cache-dir <dir>`: the replay cache directory for this run, over `E2E_CACHE_DIR` and `cache.dir`. */
@@ -221,6 +225,17 @@ const FOREIGN_TOP_LEVEL_KEYS: Readonly<Record<string, string>> = {
 function unknownTopLevelKeyHint(key: string): string {
   const foreign = FOREIGN_TOP_LEVEL_KEYS[key];
   return foreign === undefined ? didYouMean(key, [...TOP_LEVEL_KEYS]) : `; ${foreign}`;
+}
+
+/**
+ * The run's pin mode. CI writes nothing to the project, so a run there that
+ * asks to pin is refused rather than quietly pinning nothing.
+ */
+function resolvePin(pin: CliOverrides['pin'], ci: boolean): ResolvedConfig['pin'] {
+  if (pin === undefined) return 'none';
+  if (pin !== 'new' && pin !== 'all') throw new ConfigurationError('INVALID_CONFIG', `--pin takes new or all, not ${JSON.stringify(pin)}`);
+  if (ci) throw new ConfigurationError('INVALID_CONFIG', '--pin writes steps files and test files, and a run in CI writes neither (CI is set); pin in a local run and commit the change');
+  return pin;
 }
 
 /** True when CI mode is active. */
@@ -337,6 +352,7 @@ export function resolveConfig(
     agents,
     cache,
     updateSnapshots: cli.updateSnapshots === true,
+    pin: resolvePin(cli.pin, ci),
     limits,
     credentials,
     secrets,

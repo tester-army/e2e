@@ -80,6 +80,21 @@ describe('host.openSession', { timeout: 60_000 }, () => {
     expect(cleanup).toEqual(['final']);
   });
 
+  it('refuses an agent step pinned by its steps option, with no test file to pin it beside', async () => {
+    const fake = createFakeEngine({ fixtures: true });
+    const ran: string[] = [];
+    (globalThis as Record<string, unknown>)[ENGINES] = { kiosk: fake.engine, ran };
+    writeFileSync(path.join(dir, 'e2e.config.ts'), `export default {
+  targets: [{ name: 'kiosk', platform: 'kiosk', engine: globalThis.${ENGINES}.kiosk, app: ${JSON.stringify(FAKE_APP)} }],
+  agents: { default: { executor: { name: 'counts', async runStep() { globalThis.${ENGINES}.ran.push('step'); return { status: 'passed', summary: 'ran' }; } } } },
+};\n`);
+    const session = await (await open()).openSession({ name: 'pinned' });
+    for (const steps of [[], [{ name: 'back' }]]) {
+      await expect(session.fixtures.agent.act('go back', { steps })).rejects.toMatchObject({ code: 'UNSUPPORTED_CAPABILITY' });
+    }
+    expect(ran).toEqual([]);
+  });
+
   it('cancels a fixture call still running when the session closes', async () => {
     let performing!: () => void;
     const started = new Promise<void>((resolve) => (performing = resolve));
