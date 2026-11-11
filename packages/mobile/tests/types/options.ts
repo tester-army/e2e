@@ -1,5 +1,5 @@
 /** Compile-time assertions for the device engine's options and the hosted device provider seam. */
-import type { DeviceLease, DeviceProvider, DeviceRequest, MobileOptions } from '../../src/index.ts';
+import type { DeviceLease, DeviceProvider, DeviceRequest, DeviceSession, MobileOptions } from '../../src/index.ts';
 
 ({ platform: 'ios', device: 'iPhone 16' }) satisfies MobileOptions;
 ({ platform: 'android', device: ['Pixel_8', 'Pixel_9'] }) satisfies MobileOptions;
@@ -35,3 +35,10 @@ const farm = {
 ({ daemon: { baseUrl: 'http://10.0.0.7:4700' } }) satisfies DeviceLease;
 // @ts-expect-error a lease names its daemon by URL.
 ({ id: 'lease-1', daemon: { baseUrl: 4700 } }) satisfies DeviceLease;
+
+const raw = {} as DeviceSession;
+raw.client.settings.update({ ...raw.selection, setting: 'mobile-data', state: 'on' });
+// @ts-expect-error a setting state must be supported by the client.
+raw.client.settings.update({ setting: 'mobile-data', state: 'invalid' });
+// @ts-expect-error the client has no such operation.
+raw.client.missingOperation();

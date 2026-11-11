@@ -374,8 +374,8 @@ export default {
   absent, is the account's cap (40 on a standard plan). `videoTouches: false`
   on the engine for video there.
 - `limrun()` from `@e2e-dev/limrun` leases one device per worker and installs
-  `app.appPath` before tests. Set `LIMRUN_API_KEY`; install `@limrun/api` and
-  matching `agent-device` peers. Android needs `adb` on `PATH` for its tunnel.
+  `app.appPath` before tests. Set `LIMRUN_API_KEY` and install `@limrun/api`.
+  Android needs `adb` on `PATH` for its tunnel.
   iOS keyboard actions such as `locator.press('Enter')` return
   `UNSUPPORTED_CAPABILITY`; tap an app button when available.
   Limrun's `limrun-inc/testerarmy-e2e-limrun` repository runs the same form
@@ -415,10 +415,19 @@ export default {
   for a foldable's hinge (iPhone Duo, Android foldable emulators), `locator`, more). Portable suites declare
   `requires: ['device']`.
 - `device.unstable_raw` gives the session name, device id and name, a
-  `selection` to spread into a call, and an
-  agent-device `client` bound to the test's session, for what `device`
+  `selection` to spread into a call, and a
+  raw driver `client` bound to the test's session, for what `device`
   lacks. Client calls are not steps: no report, trace, replay, or secret
   redaction. Unstable: may change or go away in any release.
+- A custom tool that needs capabilities e2e does not wrap yet gets the raw
+  driver session from `unstable_deviceSession(...engines)`
+  (`@e2e-dev/mobile/tools`). Its `client` is typed as
+  `DeviceSessionClient` from `@e2e-dev/mobile`. Do not build a client yourself: it would miss
+  the engine's daemon, lease, and session.
+  Its calls skip e2e's guards like `unstable_raw`: a snapshot or screenshot
+  a tool returns is not redacted or masked, even after a secret fill,
+  nothing waits for the screen to settle, and a tool that changes the
+  device needs `mutates: true`. Unstable like `unstable_raw`.
 - `setNetwork('offline')` and `setAirplaneMode(true)` are Android only: on
   iOS both are `UNSUPPORTED_CAPABILITY`, since a simulator shares the Mac's
   network, and `setNetwork('online')` / `setAirplaneMode(false)` do nothing.

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { defineEngine } from 'e2e/engine';
 import { buildEngine } from '../../src/engine.ts';
 import { AgentDeviceSurface } from '../../src/surface.ts';
-import { mobileTools } from '../../src/tools.ts';
+import { unstable_deviceSession, mobileTools } from '../../src/tools.ts';
 import { createFakeClient, type FakeClient } from '../helpers/fake-client.ts';
 import { ignoreTrace, noSecrets } from '../helpers/secrets.ts';
 
@@ -71,6 +71,46 @@ describe('agent tool pack', () => {
     await ios.startAttempt!(attempt('a2'));
     expect(await run('open_app', { app: 'Reminders' })).toBe('Opened Reminders.');
     expect(iosFake.lastArgs('apps.open')).toEqual({ app: 'Reminders', platform: 'ios' });
+  });
+
+  it('hands a custom tool the running attempt\'s session and client', async () => {
+    const iosFake = createFakeClient();
+    const androidFake = createFakeClient();
+    const ios = buildEngine(new AgentDeviceSurface({ platform: 'ios' }, () => iosFake.client));
+    const android = buildEngine(new AgentDeviceSurface({ platform: 'android', device: 'emulator-5554' }, () => androidFake.client));
+    for (const [engine, targetName] of [[ios, 'ios'], [android, 'android']] as const) {
+      await engine.init!({
+        runId: 'r',
+        targetName,
+        projectRoot: '/project',
+        app: {},
+        headed: false,
+        workerSlot: 0,
+        log: () => undefined,
+        env: {},
+        signal: new AbortController().signal,
+      });
+    }
+
+    expect(() => unstable_deviceSession(ios, android)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    const foreign = defineEngine({ name: 'other', version: '1', spiVersion: 1 });
+    expect(() => unstable_deviceSession(foreign)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+
+    await android.startAttempt!({ attemptId: 'a1', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    const session = unstable_deviceSession(ios, android);
+    expect(session).toMatchObject({ platform: 'android', session: 'e2e-android-0' });
+    expect(session.client).toBe(androidFake.client);
+
+    await ios.startAttempt!({ attemptId: 'a2', artifactsDir: '/tmp', signal: new AbortController().signal, resolveSecret: noSecrets, ...ignoreTrace });
+    expect(() => unstable_deviceSession(ios, android)).toThrowError(
+      expect.objectContaining({ code: 'INVALID_STATE', message: expect.stringContaining('several mobile attempts') }),
+    );
+    await ios.endAttempt!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    await android.endAttempt!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    expect(() => unstable_deviceSession(ios, android)).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
+    await ios.dispose!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    await android.dispose!({ signal: new AbortController().signal, timeoutMs: 1000 });
+    expect(() => session.client).toThrowError(expect.objectContaining({ code: 'INVALID_STATE' }));
   });
 
   it('refuses a link the model hands to open_app before the device sees it', async () => {

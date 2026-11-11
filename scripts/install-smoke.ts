@@ -2,7 +2,8 @@
  * A first install, the way a new user meets it: packs the built `e2e`,
  * `@e2e-dev/web`, and `@e2e-dev/mobile`, installs them with a given pnpm
  * into a fresh project outside this repository, installs again from the
- * lockfile, and runs a TypeScript test through the installed CLI.
+ * lockfile, typechecks a custom mobile tool, and runs a TypeScript test
+ * through the installed CLI.
  *
  * pnpm 11 and later fail an install on any dependency build script the
  * project has not decided on (`ERR_PNPM_IGNORED_BUILDS`), and write a
@@ -16,7 +17,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REPO_ROOT } from './public-packages.ts';
@@ -46,6 +47,10 @@ function run(cwd: string, command: string, args: readonly string[]): { status: n
 
 const pnpm = (args: readonly string[]) => run(project, 'npx', ['--yes', `pnpm@${pnpmVersion}`, ...args]);
 
+const mobileManifest = JSON.parse(readFileSync(join(REPO_ROOT, 'packages/mobile/package.json'), 'utf8')) as {
+  dependencies: Record<string, string>;
+  devDependencies: Record<string, string>;
+};
 const problems: string[] = [];
 try {
   for (const name of PACKAGES) {
@@ -60,7 +65,16 @@ try {
       name: 'install-smoke',
       private: true,
       type: 'module',
-      devDependencies: { e2e: tarball('e2e-0'), '@e2e-dev/web': tarball('e2e-dev-web-'), '@e2e-dev/mobile': tarball('e2e-dev-mobile-') },
+      devDependencies: {
+        e2e: tarball('e2e-0'),
+        '@e2e-dev/web': tarball('e2e-dev-web-'),
+        '@e2e-dev/mobile': tarball('e2e-dev-mobile-'),
+        typescript: mobileManifest.devDependencies['typescript'],
+        '@types/node': mobileManifest.devDependencies['@types/node'],
+        '@types/json-schema': '7.0.15',
+        ai: mobileManifest.devDependencies['ai'],
+        zod: mobileManifest.dependencies['zod'],
+      },
     }),
   );
   writeFileSync(join(project, 'e2e.config.ts'), "import type { E2EConfig } from 'e2e';\n\nexport default { targets: [{ name: 'local', platform: 'test' }] } satisfies E2EConfig;\n");
@@ -69,9 +83,44 @@ try {
     "import { expect, test } from 'e2e';\n\nenum Answer { Yes = 'yes' }\n\ntest('TypeScript runs', () => {\n  expect(Answer.Yes).toBe('yes');\n});\n",
   );
 
+  writeFileSync(join(project, 'mobile-types.ts'), `
+import { tool } from 'ai';
+import { z } from 'zod';
+import { defineTool } from 'e2e/agent';
+import { mobile, type Device, type DeviceSessionClient } from '@e2e-dev/mobile';
+import { unstable_deviceSession } from '@e2e-dev/mobile/tools';
+
+const iphone = mobile({ platform: 'ios' });
+const pixel = mobile({ platform: 'android' });
+export const mobileData = defineTool(tool({
+  description: 'Turn cellular mobile data on or off. Wi-Fi is not affected.',
+  inputSchema: z.object({ on: z.boolean() }),
+  execute: async ({ on }) => {
+    const { client, selection } = unstable_deviceSession(iphone, pixel);
+    await client.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
+    return on ? 'mobile data is on' : 'mobile data is off';
+  },
+}), { mutates: true, platforms: ['android'] });
+
+export async function checkFixture(device: Device) {
+  const { client, selection } = device.unstable_raw;
+  const typed: DeviceSessionClient = client;
+  await typed.apps.list(selection);
+  const { nodes } = await typed.capture.snapshot(selection);
+  nodes.map((node) => node.identifier);
+  // @ts-expect-error unknown settings are rejected.
+  await typed.settings.update({ ...selection, setting: 'not-a-setting', state: 'on' });
+  // @ts-expect-error unsupported states are rejected.
+  await typed.settings.update({ ...selection, setting: 'mobile-data', state: 'invalid' });
+  // @ts-expect-error snapshot nodes have known fields.
+  nodes.map((node) => node.nonexistentField);
+}
+`);
+
   for (const [step, args] of [
     ['pnpm install', ['install']],
     ['pnpm install --frozen-lockfile', ['install', '--frozen-lockfile']],
+    ['mobile tool types', ['exec', 'tsc', '--noEmit', '--strict', '--types', 'node,json-schema', '--module', 'NodeNext', '--target', 'ES2024', 'mobile-types.ts']],
     ['e2e run', ['exec', 'e2e', 'run', '--workers', '1']],
   ] as const) {
     const { status, output } = pnpm(args);
@@ -89,5 +138,5 @@ if (problems.length > 0) {
   process.stderr.write(`${problems.join('\n\n')}\n`);
   process.exitCode = 1;
 } else {
-  process.stdout.write(`install smoke: pnpm ${pnpmVersion} installs ${PACKAGES.join(', ')} with no build scripts and runs a TypeScript test\n`);
+  process.stdout.write(`install smoke: pnpm ${pnpmVersion} installs ${PACKAGES.join(', ')} with no build scripts, typechecks a mobile tool, and runs a TypeScript test\n`);
 }

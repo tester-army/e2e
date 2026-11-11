@@ -116,7 +116,9 @@ const captureEvidence = defineTool(
 tools: { ...mobileTools(iphone, pixel), seedCart },
 ```
 
-See [Agent tools](/mobile#agent-tools) for the setup.
+See [Agent tools](/mobile#agent-tools) for the setup. A tool of your own
+that needs a raw driver session gets the running device's client from
+[`unstable_deviceSession`](/reference/mobile#unstable_devicesession).
 
 ## Next
 
