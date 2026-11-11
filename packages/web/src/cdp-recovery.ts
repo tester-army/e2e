@@ -52,12 +52,12 @@ export async function attachPersistent(
   const check = () => { if (signal.aborted) throw connectionAbort(signal, 'CDP connection'); };
   check();
   const resolved = await resolve(signal);
-  const target = typeof resolved === 'string' ? { endpoint: resolved } : resolved;
+  const connection = typeof resolved === 'string' ? { endpoint: resolved } : resolved;
   check();
-  if (typeof target?.endpoint !== 'string' || target.endpoint.trim() === '') throw recoveryFailed('the endpoint is empty');
+  if (typeof connection?.endpoint !== 'string' || connection.endpoint.trim() === '') throw recoveryFailed('the endpoint is empty');
   const remaining = deadline - Date.now();
   if (remaining <= 0) throw new EngineError('OPERATION_TIMEOUT', 'CDP connection timed out', { retryable: false });
-  const browser = await connectCdp(target, remaining);
+  const browser = await connectCdp(connection, remaining);
   const detach = () => { void browser.close().catch(() => undefined); };
   signal.addEventListener('abort', detach, { once: true });
   try {

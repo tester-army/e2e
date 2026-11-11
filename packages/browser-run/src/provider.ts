@@ -85,7 +85,7 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
         try {
           await release(lease, { ...context, signal: AbortSignal.timeout(10_000) });
         } catch (cleanupCause) {
-          throw new AggregateError([cause, cleanupCause], `Cloudflare Browser Run could not journal or release session ${lease.id}`);
+          throw new AggregateError([cause, cleanupCause], `Cloudflare Browser Run could not journal or release session ${lease.id}`, { cause: cleanupCause });
         }
         throw new Error('Cloudflare Browser Run could not journal the session; session released', { cause });
       }
