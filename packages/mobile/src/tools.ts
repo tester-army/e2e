@@ -11,6 +11,7 @@ import type { Tool } from 'ai';
 import { z } from 'zod';
 import { defineTool, type DefinedTool, type ToolAnnotations } from 'e2e/agent';
 import { EngineError, TestError, type EngineHandle } from 'e2e/engine';
+import { rawSession, type DeviceSession } from './device.ts';
 import { surfaceOf } from './engine.ts';
 import { isAppNotInstalled } from './errors.ts';
 import type { AgentDeviceSurface } from './surface.ts';
@@ -27,11 +28,42 @@ function deviceTool<INPUT>(definition: Tool<INPUT, string>): Tool<INPUT, string>
 function requireSurface(engine: EngineHandle): AgentDeviceSurface {
   const surface = surfaceOf(engine);
   if (surface === undefined) {
-    throw new EngineError('INVALID_STATE', 'mobileTools needs handles returned by mobile()', {
+    throw new EngineError('INVALID_STATE', 'device tools need handles returned by mobile()', {
       retryable: false,
     });
   }
   return surface;
+}
+
+/**
+ * The one surface whose attempt is running. A worker runs one attempt at a
+ * time, so a tool call made inside a step belongs to that attempt.
+ */
+function runningSurface(surfaces: readonly AgentDeviceSurface[]): AgentDeviceSurface {
+  const running = surfaces.filter((surface) => surface.attemptRunning);
+  const [surface] = running;
+  if (surface === undefined || running.length > 1) {
+    throw new EngineError(
+      'INVALID_STATE',
+      running.length === 0
+        ? 'no mobile attempt is running; device tools act inside a test attempt only'
+        : 'several mobile attempts are running in one worker; tools cannot pick a device',
+      { retryable: false },
+    );
+  }
+  return surface;
+}
+
+/**
+ * The running attempt's raw driver session, for a custom tool that needs
+ * capabilities e2e does not wrap yet: the object a test reads from `device.unstable_raw`,
+ * with a client bound to the engine's daemon, lease, and session. Pass every
+ * device engine the config declares. Outside an attempt it throws
+ * `INVALID_STATE`. Client calls are not steps, and like `unstable_raw` this
+ * can change in any release.
+ */
+export function unstable_deviceSession(...engines: readonly [EngineHandle, ...EngineHandle[]]): DeviceSession {
+  return rawSession(runningSurface(engines.map(requireSurface)));
 }
 
 /** The app the target pins for `app.open()`, which `open_app` returns to when the model names none. */
@@ -64,20 +96,7 @@ export function mobileTools(
 ): Readonly<Record<string, DefinedTool>> {
   const surfaces = engines.map(requireSurface);
   const platforms = [...new Set(surfaces.map((surface) => surface.options.platform))];
-  const active = (): AgentDeviceSurface => {
-    const running = surfaces.filter((surface) => surface.attemptRunning);
-    const [surface] = running;
-    if (surface === undefined || running.length > 1) {
-      throw new EngineError(
-        'INVALID_STATE',
-        running.length === 0
-          ? 'no agent-device attempt is running; device tools act inside a test attempt only'
-          : 'several agent-device attempts are running in one worker; tools cannot pick a device',
-        { retryable: false },
-      );
-    }
-    return surface;
-  };
+  const active = (): AgentDeviceSurface => runningSurface(surfaces);
   const annotate = (mutates: boolean): ToolAnnotations => ({
     mutates,
     platforms,

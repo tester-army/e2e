@@ -462,10 +462,10 @@ declaration; the types they use are under [Types](#device-fixture).
 
 ```ts
 /**
- * The agent-device session this test drives, for what the methods here do
+ * The raw driver session this test drives, for what the methods here do
  * not cover. Calls through `client` bypass e2e: they are not steps, so the
  * report and trace leave them out, the agent's cache does not replay them,
- * their arguments reach agent-device unredacted, and nothing waits for the
+ * their arguments reach the driver unredacted, and nothing waits for the
  * screen to settle after one. Unstable: it may change or go away in any
  * release.
  */
@@ -473,12 +473,12 @@ readonly unstable_raw: DeviceSession;
 ```
 
 ```ts
-const { client, session, deviceId } = device.unstable_raw;
-const sessions = await client.sessions.list();
-await client.apps.list(device.unstable_raw.selection);
+const { client, selection } = device.unstable_raw;
+await client.apps.list(selection);
 ```
 
-`client` is agent-device's own client at the version `@e2e-dev/mobile` pins.
+`client` is typed as `DeviceSessionClient`, exported from `@e2e-dev/mobile`.
+Its operations are unstable and can change in any release.
 After the worker disposes the session, reading `unstable_raw` or `client`
 throws `INVALID_STATE`.
 
@@ -981,6 +981,49 @@ on secure-field bounds from that capture, so without them the engine cannot
 prove a fallback screenshot safe.
 </Note>
 
+#### `unstable_deviceSession`
+
+`unstable_deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a custom tool
+the running attempt's `DeviceSession`, the same object a test reads from
+[`device.unstable_raw`](#unstable_raw). Its `client` is bound to the engine's
+daemon, lease, and per-worker session, for capabilities e2e does not wrap
+yet. Its `client` is typed as `DeviceSessionClient`.
+The following example assumes the current driver supports `settings.update`.
+
+```ts
+import { tool } from 'ai';
+import { z } from 'zod';
+import { defineTool } from 'e2e/agent';
+import { unstable_deviceSession } from '@e2e-dev/mobile/tools';
+
+const mobileData = defineTool(
+  tool({
+    description: 'Turn cellular mobile data on or off. Wi-Fi is not affected.',
+    inputSchema: z.object({ on: z.boolean() }),
+    execute: async ({ on }) => {
+      const { client, selection } = unstable_deviceSession(iphone, pixel);
+      await client.settings.update({ ...selection, setting: 'mobile-data', state: on ? 'on' : 'off' });
+      return on ? 'mobile data is on' : 'mobile data is off';
+    },
+  }),
+  { mutates: true, platforms: ['android'] },
+);
+
+tools: { ...mobileTools(iphone, pixel), mobileData },
+```
+
+- Pass every device engine the config declares, as with `mobileTools`.
+  Outside an attempt it throws `INVALID_STATE`.
+- Spread `selection` into a call so it reaches the worker's device even
+  before the session has an app open, as the engine's own calls do.
+- Client calls are not steps: the report shows the tool call, not what the
+  client did, and a cache replay runs a `mutates: true` tool live.
+- Client calls skip e2e's guards, as with `unstable_raw`. A snapshot or
+  screenshot a tool returns is not redacted or masked, even after a secret
+  fill, nothing waits for the screen to settle after a call, and a tool
+  whose calls change the device must declare `mutates: true`.
+- Like `unstable_raw`, it can change in any release.
+
 ## Roles
 
 `getByRole` on a device matches the role each element type maps to. A type
@@ -1170,18 +1213,18 @@ export interface ForegroundApp {
 /** Sensors `setBiometrics` simulates. */
 export type BiometricSensor = 'faceid' | 'touchid' | 'fingerprint';
 
-/** The agent-device session behind `device`; see `Device.unstable_raw`. */
+/** The raw driver session behind `device`; see `Device.unstable_raw`. */
 export interface DeviceSession {
   readonly platform: MobilePlatform;
-  /** The agent-device session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
+  /** The raw driver session name: `e2e-<target>-<worker slot>`, or `<session>-<worker slot>` with the `session` option. */
   readonly session: string;
-  /** The device's agent-device id: a simulator UDID or an Android serial. */
+  /** The device id: a simulator UDID or an Android serial. */
   readonly deviceId: string;
   readonly deviceName: string;
   /** The device selection the engine passes commands; spread it into a call that can run before `app.open()`. */
   readonly selection: DeviceSelection;
-  /** agent-device's client, bound to this session. */
-  readonly client: AgentDeviceClient;
+  /** The raw driver client, bound to this session. */
+  readonly client: DeviceSessionClient;
 }
 
 /** The fields agent-device commands select a device by: the platform, then one of a name, a simulator UDID, or an Android serial. */
@@ -1198,7 +1241,7 @@ export interface DeviceSelection {
 `MobileOptions`, `MobilePlatform`, `DevicePermission`, `LaunchPermissions`,
 `PermissionState`, `DeviceClientConfig`, `DeviceConnection`, `DeviceDaemon`,
 `DeviceProvider`, `DeviceLease`, `DeviceReleaseContext`, `DeviceRequest`,
-`Device`, `DeviceSession`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
+`Device`, `DeviceSession`, `DeviceSessionClient`, `DeviceSelection`, `DeviceOrientation`, `BiometricSensor`, `ForegroundApp`,
 `FoldPose`, `InstallAppOptions`, `InstalledApp`, and `OpenAppOptions` are exported from
 `@e2e-dev/mobile`. The runtime exports are `mobile`, and `test`, `describe`,
 `beforeEach`, `afterEach`, `beforeAll`, and `afterAll`, typed with the `device`

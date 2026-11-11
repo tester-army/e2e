@@ -91,25 +91,47 @@ export function buildWorkPlans(
   });
 }
 
+/** What `orderWorkPlans` ranks the work by. */
+interface WorkOrder {
+  /** How likely the test filters rated a test to fail on this change, from 0 to 1; 0 for a test none scored. */
+  readonly relevanceOf: (testId: string) => number;
+  /** How long the previous run spent in a target's file; `undefined` when it has no timing, as every file does when the run reads none. */
+  readonly durationOf: (targetName: string, file: string) => number | undefined;
+}
+
+/** The scores at which a test enters the next higher relevance band, so a score of at least 0.75 is band 3, and under 0.25 band 0. */
+const RELEVANCE_EDGES: readonly number[] = [0.25, 0.5, 0.75];
+
+/** The relevance band of a score: how many of `RELEVANCE_EDGES` it reaches. */
+export function relevanceBand(score: number): number {
+  return RELEVANCE_EDGES.filter((edge) => score >= edge).length;
+}
+
 /**
- * Orders each plan's file units longest first by the time the previous run
- * spent in them, so a long file starts while short ones fill the other
- * workers instead of starting last and running alone. Files without a
- * timing go first, being of unknown length; ties keep collection order.
- * Report order does not depend on dispatch order.
+ * Orders each plan's file units, and the plans, so the work likeliest to fail
+ * starts first and long files start early. A file ranks by the highest
+ * relevance band of the tests it runs, and within a band longest first by
+ * the time the previous run spent in it, so a long file starts while short
+ * ones fill the other workers instead of starting last and running alone.
+ * Files without a timing go first, being of unknown length; ties keep
+ * collection order. A target ranks by its best file, ties keeping config
+ * order. Report order does not depend on dispatch order.
  */
-export function longestFirst(
-  plans: readonly TargetWorkPlan[],
-  durationOf: (targetName: string, file: string) => number | undefined,
-): TargetWorkPlan[] {
-  return plans.map((plan) => ({
-    ...plan,
-    fileUnits: plan.fileUnits.toSorted(
-      (a, b) =>
-        (durationOf(b.targetName, b.file) ?? Number.POSITIVE_INFINITY) -
-        (durationOf(a.targetName, a.file) ?? Number.POSITIVE_INFINITY) || 0,
-    ),
-  }));
+export function orderWorkPlans(plans: readonly TargetWorkPlan[], { relevanceOf, durationOf }: WorkOrder): TargetWorkPlan[] {
+  const ranked = plans.map((plan) => {
+    const units = plan.fileUnits
+      .map((unit) => ({
+        unit,
+        band: unit.pairs.reduce((best, pair) => Math.max(best, relevanceBand(relevanceOf(pair.test.id))), 0),
+        duration: durationOf(unit.targetName, unit.file) ?? Number.POSITIVE_INFINITY,
+      }))
+      .toSorted((a, b) => {
+        const longer = b.duration - a.duration;
+        return b.band - a.band || (Number.isNaN(longer) ? 0 : longer);
+      });
+    return { plan: { ...plan, fileUnits: units.map(({ unit }) => unit) }, band: units[0]?.band ?? 0 };
+  });
+  return ranked.toSorted((a, b) => b.band - a.band).map(({ plan }) => plan);
 }
 
 /**
