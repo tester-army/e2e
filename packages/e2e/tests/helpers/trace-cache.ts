@@ -13,7 +13,7 @@ import type { TraceEntry } from '../../src/cache/trace.ts';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
 import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
 import { installFakeLoopModel, nodeIdFor, type LoopCall, type LoopToolCall } from './fake-loop-model.ts';
-import { resultByTitle, type FixtureProject, type RunOutcome } from './run-project.ts';
+import { runExisting, resultByTitle, type FixtureProject, type RunOutcome } from './run-project.ts';
 
 export type Variant = 'record' | 'replay';
 
@@ -293,7 +293,7 @@ export function readEntries(project: FixtureProject): { readonly file: string; r
     .toSorted()
     .map((name) => {
       const file = path.join(dir, name);
-      return { file, entry: name.endsWith('.replay.ts') ? readReplayCode(readFileSync(file, 'utf8'))! : JSON.parse(readFileSync(file, 'utf8')) as TraceEntry };
+      return { file, entry: name.endsWith('.replay.ts') ? readReplayCode(readFileSync(file, 'utf8')) : JSON.parse(readFileSync(file, 'utf8')) as TraceEntry };
     });
 }
 
@@ -344,4 +344,17 @@ export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo
 /** Rewrites a fixture recording in its original storage format. */
 export function writeEntry(file: string, entry: TraceEntry): void {
   writeFileSync(file, file.endsWith('.replay.ts') ? emitReplayCode(entry.payload) : JSON.stringify(entry), 'utf8');
+}
+
+/** Runs one parity suite against the selected format and proves it actually wrote that format. */
+export function cacheRunner(format: 'json' | 'code') {
+  return async (project: FixtureProject, options: Parameters<typeof runExisting>[1]) => {
+    const cache = options.config?.cache;
+    const configured = typeof cache === 'object' ? cache : cache === undefined ? {} : { mode: cache };
+    const outcome = await runExisting(project, { ...options, config: { ...options.config, cache: configured.store === undefined ? { ...configured, format } : configured } });
+    if (configured.store === undefined) {
+      for (const { file } of readEntries(project)) expect(file.endsWith(format === 'code' ? '.replay.ts' : '.json'), file).toBe(true);
+    }
+    return outcome;
+  };
 }

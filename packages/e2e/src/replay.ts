@@ -5,7 +5,7 @@ type MatchingAction<N extends ActionName> = RecordedAction extends infer A
   ? A extends { name: infer Names } ? N extends Names ? A : never : never
   : never;
 
-/** Builds one typed replay instruction. It describes an operation; the runner executes it. */
+/** Builds a typed action declaration. The cache loader reads these calls as data, never imports them. */
 function action<N extends ActionName>(name: N) {
   return (input: Omit<MatchingAction<N>, 'name'>): RecordedAction => ({ ...input, name }) as RecordedAction;
 }

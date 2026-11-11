@@ -280,6 +280,12 @@ the [session errors](/reference/errors).
 
 ### Cache trust
 
+Code recordings (`.replay.ts`) are parsed as literal declarations with oxc, never
+imported or evaluated. Extra statements, expressions, callbacks, spreads and
+duplicate object keys are rejected. Both formats use the same bounded trace
+validation and runtime replay safeguards.
+
+
 Cache entries replay actions without a model and aren't signed.
 
 | Rule | Detail |

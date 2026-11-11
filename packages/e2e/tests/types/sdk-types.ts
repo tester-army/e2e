@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod';
+import { replay } from 'e2e/replay';
 import {
   credentials,
   expect,
@@ -1029,7 +1030,6 @@ void connectEngine({ manifest: protocolManifest, transport: socketTransport({ ho
 await agent.assert('all settings are reachable', { explore: true, maxSteps: 10, maxModelCalls: 6, vision: 'only' });
 
 // Replay code keeps action inputs typed even though the loader parses them as data.
-import { replay } from 'e2e/replay';
 replay.tap({ target: { role: 'button', name: 'Save' }, summary: 'save' });
 replay.typeSecret({ target: { role: 'textbox', name: 'Password' }, secret: 'account.password', summary: 'fill password' });
 // @ts-expect-error A tap needs a durable target.

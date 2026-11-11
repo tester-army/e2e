@@ -281,7 +281,7 @@ composed itself, replay.
 
 ## What a recording holds
 
-Each entry is a JSON file under `.e2e/cache/`, named by a hash of its key.
+Each entry is a JSON or code file under `.e2e/cache/`, named by a hash of its key.
 It holds actions, target descriptions, typed text, a step summary, and the
 end checks: the route and up to eight controls that appeared and eight that
 went away. Entries hold no prompts, conversations, screenshots, observed
@@ -429,78 +429,70 @@ The `cached` percentage in AI usage is the provider's prompt cache. It
 lowers the cost of a model call. The replay cache skips the call.
 </Note>
 
-## Next
-
-<CardGroup cols={2}>
-  <Card title="Config reference" icon="sliders" href="/reference/config#cache">
-    `mode`, `store`, `dir`.
-  </Card>
-  <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-cache">
-    `e2e cache ls`, `stats`, `clear`.
-  </Card>
-</CardGroup>
 
 ## Code recordings
 
-Set `cache: { format: 'code' }` to store recordings as `<key>.replay.ts` files.
-JSON remains the default. Both formats use the same cache key and replay engine,
-including conservative target relocation, simultaneous outcome checks, unexpected
-alert detection, partial-action recovery, secret handles and parameter expansion.
-Code recordings work with web and mobile engines.
+Set `cache: { format: 'code' }` to save reviewable `.replay.ts` files instead
+of JSON. Both formats replay on web and mobile with the same verification
+and agent fallback. Commit the generated files with your tests.
 
-```ts
-export default {
-  cache: { format: 'code', mode: 'read-write' },
-};
+```ts title="e2e.config.ts fragment"
+cache: { format: 'code', mode: 'read-write' },
 ```
 
-A recording contains constrained `e2e/replay` calls:
-
+<Accordion title="Example recording, with provenance omitted">
 ```ts
-// e2e replay code-1
 import { replay } from 'e2e/replay';
 
 export default replay.define(
   {
-    "endAnchors": [{"name":"Saved","role":"status"}],
-    "endPath": "/profile",
-    "executor": {"name":"default"},
-    "startPath": "/profile",
-    "summary": "Profile saved",
+    endAnchors: [{ name: 'Saved', role: 'status' }],
+    endPath: '/profile',
+    executor: { name: 'e2e-default-agent' },
+    startPath: '/profile',
+    summary: 'Profile saved',
   },
   [
-    replay.tap({"summary":"Save profile","target":{"name":"Save","role":"button"}}),
+    replay.tap({
+      summary: 'Save profile',
+      target: { name: 'Save', role: 'button' },
+    }),
   ],
 );
 ```
+</Accordion>
 
-The runner parses this grammar without importing or evaluating the file. Keep the
-generated layout when editing values. Arbitrary expressions, extra imports and
-callbacks are invalid entries. This restriction keeps committed recordings under
-the same trust rules as JSON. Each action retains its full target constraints.
-The context retains the recorded outcome and provenance. The file contains no
-creation timestamp or observation IDs. Keys and formatting are deterministic;
-array order and recorded wait budgets are preserved because they affect replay.
+The loader accepts formatting changes, comments and literal values. It never
+imports or evaluates the file. Expressions, callbacks, spreads and extra
+statements are rejected with a source location. Generated files have stable
+formatting and no creation timestamp or observation IDs. App values needed
+for matching stay intact; use `unique()` for run-specific test data.
 
-Writes still require a later independent assertion. Generated outcome checks do
-not confirm their own recording. A failed replay resumes the agent on the current
-screen with the completed prefix and any uncertain action, then saves a confirmed
-repair. `cache.strict` and `--strict-cache` prevent stale recordings from healing,
-just as they do for JSON. A step with no recording can still run live.
+Stop active runs before migration. Run `e2e cache migrate`, inspect its output,
+then select `format: 'code'`. Migration preserves JSON by default and never
+replaces existing code. Add `--delete-json` to remove each original after a
+successful conversion. A skipped or failed entry produces exit code 1.
+Retained copies count as separate files in `ls` and `stats`; switching back to
+JSON would replay those older copies.
 
-Every changed code recording gets a sibling `.replay.ts.diff` with its latest
-replacement diff. Run `e2e cache diff` to print those diffs. Commit the `.replay.ts`
-files; the `.diff` files are local review aids. Successful unchanged replays leave
-both files untouched. `e2e cache ls`, `stats` and `clear` recognize both formats.
-Code entries display no age because they store no creation timestamp.
+Strict mode reports recordings in the other format as stale rather than
+silently calling the model. Runtime-derived values remain agent handoffs;
+migration cannot reconstruct the read expression that produced them.
 
-Run `e2e cache migrate` to convert the configured directory's JSON recordings.
-The command validates each entry, reports unreadable entries, preserves originals,
-and skips existing code files. Select `format: 'code'` after conversion. The run
-reads only the selected format, so invalid code never silently falls back to JSON.
-Migration preserves truncated recordings as misses and runtime-derived or custom
-tool gaps as agent handoffs. It cannot reconstruct the expression that produced a
-runtime value. Freezing the observed value would weaken replay safety.
+A confirmed repair updates the source atomically. Run `e2e cache diff` for
+changes against Git's index, or use your usual Git tools. Stage new files
+with `git add -N` to include them in that diff. No diff sidecars are written.
+An unchanged replay leaves the file untouched. Custom stores continue to use
+the trace contract and cannot set `format`.
 
-`format` applies only to the file store. Custom `cache.store` implementations keep
-the existing `CacheStore` trace contract and cannot also set `format`.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Config reference" icon="sliders" href="/reference/config#cache">
+    `mode`, `format`, `store`, `dir`, `strict`.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-cache">
+    `e2e cache ls`, `stats`, `clear`, `migrate`, `diff`.
+  </Card>
+</CardGroup>

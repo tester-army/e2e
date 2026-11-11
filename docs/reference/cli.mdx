@@ -1026,7 +1026,7 @@ With `--json`, it prints the `doctor-1` report to stdout: `{ "schemaVersion": "d
 
 #### `e2e cache`
 
-Inspects or clears the replay cache. Each subcommand loads the discovered
+Inspects, migrates, diffs or clears the replay cache. Each subcommand loads the discovered
 config or `--config <path>`, reads the directory a run would, and exits 0 on
 an empty store.
 
@@ -1055,8 +1055,10 @@ bunx e2e cache ls --config packages/web/e2e.config.ts
 
 | Command | Prints |
 | --- | --- |
-| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target, oldest first. |
+| `e2e cache ls` | One row per entry: the test and target it was recorded for, the first 12 characters of its instruction digest, its age, and how many actions a replay would run (`(truncated)` when recording hit the action cap). Rows are grouped by test, then target. JSON entries sort by age; code entries have no creation timestamp and show `-`. |
 | `e2e cache stats` | The store directory, the number of readable entries, their total size, and the number of unreadable files when there are any. |
+| `e2e cache migrate [--delete-json]` | Converts JSON to code without overwriting existing code. Preserves originals unless `--delete-json` is passed. Stop active runs first. Exit 1 when any entry is skipped or fails. |
+| `e2e cache diff` | Shows changes against Git's index. Stage new files with `git add -N` to include them. Requires a Git checkout. |
 | `e2e cache clear` | Deletes every cache file, then the directory when nothing else is left in it, and reports how many files went. |
 
 | Option | Description |
@@ -1357,14 +1359,3 @@ that differs from Node.js:
   or `bunx` started the CLI. They put a `node` on `PATH` that runs Bun.
 - A test that a helper declares after an `await` reports the line in the
   helper.
-
-### Convert and review code recordings
-
-`e2e cache migrate` converts valid JSON recordings in the configured cache directory
-to `.replay.ts` files without replacing existing code or deleting originals. It
-reports invalid entries and preserved agent handoff gaps. Set `cache.format` to
-`'code'` to use the converted files.
-
-`e2e cache diff` prints the latest saved replacement diffs for code recordings.
-Both commands accept `--config` and `--cache-dir`, like the other cache commands.
-See [Code recordings](/cache#code-recordings).

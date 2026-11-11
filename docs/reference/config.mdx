@@ -1272,6 +1272,7 @@ cache: { mode: 'read-write', dir: '.e2e/cache', strict: true },
 | [`store`](#store) | `CacheStore` | the file store at `dir` |
 | [`dir`](#dir) | `string` | `'.e2e/cache'` |
 | [`strict`](#strict) | `boolean` | `false` |
+| [`format`](#format) | `'json' \| 'code'` | `'json'` |
 
 A bare string is shorthand for `{ mode }`: `cache: 'read-only'`. See
 [Caching](/cache). The declarations are under [`CacheConfig`](#cacheconfig).
@@ -1293,6 +1294,17 @@ cache: 'read-write', // default: 'read-write' locally, 'read-only' in CI
 - An explicit mode overrides the default. Set `'read-write'` explicitly when
   CI restores the cache from its own cache service.
 - `--no-cache` wins over both and disables caching for the run.
+
+#### `format`
+
+The file store representation: `'json'` by default or `'code'` for typed
+`e2e/replay` declarations in `.replay.ts` files. Both use the same replay
+policy and confirmation boundary. Cannot be combined with `cache.store`.
+See [Code recordings](/cache#code-recordings) for migration and diffs.
+
+```ts
+cache: { format: 'code' },
+```
 
 #### `store`
 
@@ -1846,6 +1858,8 @@ export interface Secret {
 ```ts
 /** Replay cache options. */
 export interface CacheConfig {
+  /** File store representation. Default json. */
+  format?: 'json' | 'code';
   /** Default `read-write`; `read-only` in CI when unset. */
   mode?: CacheMode;
   /** Custom entry store; omit it to use the file store at `dir`. */
@@ -1876,11 +1890,3 @@ export type CacheReadResult =
   | { readonly status: 'miss' }
   | { readonly status: 'invalid'; readonly reason: string; readonly bytes?: number };
 ```
-
-### Code cache format
-
-`cache.format` accepts `'json'` or `'code'`. The default is `'json'`. Code entries
-use constrained calls from `e2e/replay` in `.replay.ts` files, with the same key,
-confirmation boundary and strict-mode behavior as JSON. This option cannot be
-combined with `cache.store`. See [Code recordings](/cache#code-recordings) for
-migration, generated syntax and regeneration diffs.

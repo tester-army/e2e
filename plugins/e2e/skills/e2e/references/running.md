@@ -304,11 +304,15 @@ jobs:
 
 ## Code recordings
 
-Use `cache: { format: 'code' }` for readable `.replay.ts` recordings. The runner
-parses constrained `e2e/replay` calls and uses the same matching, outcome checks,
-confirmation and agent fallback as JSON on web and mobile. Keep the generated
-layout when editing. Do not insert arbitrary JavaScript or freeze runtime-derived
-values. Run `e2e cache migrate` before switching an existing JSON directory, then
-`e2e cache diff` to review regenerated recordings. Commit `.replay.ts` files;
-`.replay.ts.diff` files are local review aids. Strict mode rejects stale recordings
-and never rewrites them. Custom stores do not accept the `format` option.
+Use `cache: { format: 'code' }` for reviewable `.replay.ts` declarations.
+Formatting changes and comments are accepted; executable expressions are not.
+The runner never imports these files. Web and mobile share JSON's matching,
+outcome checks, confirmation and agent fallback. Runtime-derived values remain
+explicit agent handoffs.
+
+Stop runs, then use `e2e cache migrate`. It preserves JSON unless you pass
+`--delete-json`, never replaces code, and exits 1 on skipped or failed entries.
+Inspect retained copies before switching formats. Strict mode rejects an entry
+found only in the other format. Use `e2e cache diff` for changes against Git's
+index; `git add -N` includes new files. No diff sidecars are stored. Custom stores
+do not accept `format`.

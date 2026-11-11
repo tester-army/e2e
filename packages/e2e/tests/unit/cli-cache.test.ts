@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 /** `e2e cache ls`, `clear`, and `stats` over a real store directory. */
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -229,10 +230,22 @@ it('migrates code, lists both formats, displays diffs and clears both', async ()
   await invoke('cache', 'migrate');
   expect(written(stdoutSpy)).toContain('converted');
   expect(readdirSync(path.join(root, CACHE_DIR))).toContain(`${keyHash}.replay.ts`);
+  execFileSync('git', ['init', root]);
+  execFileSync('git', ['-C', root, 'add', '-N', '.']);
   await invoke('cache', 'diff');
+  expect(process.exitCode).toBe(0);
   expect(written(stdoutSpy)).toContain('+    replay.tap(');
   await invoke('cache', 'ls');
   expect(written(stdoutSpy)).toContain('ACTIONS');
   await invoke('cache', 'clear');
-  expect(written(stdoutSpy)).toContain('cleared 3 file(s)');
+  expect(written(stdoutSpy)).toContain('cleared 2 file(s)');
+});
+
+it('reports incomplete migration with exit 1 and leaves invalid originals intact', async () => {
+  await seed([{ keyHash: 'a'.repeat(64), trace: trace(undefined, 1) }]);
+  writeFileSync(path.join(root, CACHE_DIR, `${'b'.repeat(64)}.json`), '{}');
+  await invoke('cache', 'migrate', '--delete-json');
+  expect(process.exitCode).toBe(1);
+  expect(written(stdoutSpy)).toContain('failed');
+  expect(readdirSync(path.join(root, CACHE_DIR)).toSorted()).toEqual([`${'a'.repeat(64)}.replay.ts`, `${'b'.repeat(64)}.json`]);
 });

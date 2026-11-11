@@ -36,8 +36,7 @@
     "test:mobile-benchmark": "pnpm run build && pnpm --filter @e2e-dev/mobile-benchmark test",
     "test:agent": "pnpm run build && pnpm --filter @e2e-dev/testbed test:agent",
     "test:scripts": "node --test \"scripts/**/*.test.ts\"",
-    "bench:ab": "node scripts/bench-ab.ts",
-    "cache:export-prototype": "node scripts/code-cache/export.ts"
+    "bench:ab": "node scripts/bench-ab.ts"
   },
   "contributors": [
     "Oskar Kwaśniewski <oskar@tester.army>",

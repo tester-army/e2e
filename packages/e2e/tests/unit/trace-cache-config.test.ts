@@ -207,7 +207,7 @@ describe('REPLAY_STALE advice', () => {
 describe('settleStagedTraces', () => {
   function contextWith(store: CacheStore) {
     const context = createAgentCacheContext({
-      cache: { mode: 'read-write', store, dir: '/unused', strict: false },
+      cache: { format: 'json', mode: 'read-write', store, dir: '/unused', strict: false },
       projectRoot: ROOT,
       projectId: 'p',
       testId: 't',

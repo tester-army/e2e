@@ -62,7 +62,6 @@ export interface ClaimedKey {
 }
 
 export interface AgentCacheContext {
-  readonly format?: 'json' | 'code';
   /** The configured mode, except that `cache.strict` is always `read-only`. */
   readonly mode: 'read-only' | 'read-write';
   readonly store: CacheStore;
@@ -264,7 +263,6 @@ export function createAgentCacheContext(options: {
     return indexer(signature);
   };
   return {
-    ...(options.cache.format === undefined ? {} : { format: options.cache.format }),
     mode,
     store,
     replayEligible: strict || options.attemptIndex === 0,

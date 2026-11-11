@@ -1,3 +1,4 @@
+import { cacheFileName, type CacheFormat } from '../cache/codec.ts';
 /**
  * A failed test as text: the facts the run page's failure block states (what
  * the error said in structured form, whether the attempts failed alike, the
@@ -48,6 +49,7 @@ export interface TracePageOptions {
   readonly readArtifact?: ((reportPath: string) => string | undefined) | undefined;
   /** The replay cache directory as the reader should see it; a step's entry is named as a file there. */
   readonly cacheDir?: string | undefined;
+  readonly cacheFormat?: CacheFormat | undefined;
 }
 
 // --- facts shared with the run page ---
@@ -362,9 +364,9 @@ function appLogLine(entry: AppLogRecord): string {
  * poll that waited or failed (the values it read in order), where the app
  * went, and every line the app logged while it ran (`appLog`, the attempt's).
  */
-function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir'> = {}): string[] {
+function stepDetailLines(step: ReportStep, appLog: readonly AppLogRecord[], options: Pick<TracePageOptions, 'cacheDir' | 'cacheFormat'> = {}): string[] {
   const lines: string[] = [];
-  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir));
+  if (step.cache !== undefined) lines.push(cacheLine(step.cache, options.cacheDir, options.cacheFormat));
   const items: PageItem[] = [
     ...step.events
       .filter((event) => event.kind === 'engine' || event.kind === 'navigation' || (event.kind === 'poll' && ((event.count ?? 0) > 1 || event.status !== 'passed')))
@@ -397,7 +399,7 @@ function appLogLines(steps: readonly ReportStep[], appLog: readonly AppLogRecord
   return [...(left === 0 ? [] : [`${left} ${left === 1 ? 'line' : 'lines'} left out`]), ...shown.map((item) => item.line)];
 }
 
-function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string {
+function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined, format: CacheFormat = 'json'): string {
   const how =
     cache.mode === 'self-finalized'
       ? `replayed all ${plural(cache.totalActions, 'recorded action')}, no model call`
@@ -411,7 +413,7 @@ function cacheLine(cache: StepCacheRecord, cacheDir: string | undefined): string
     ...(cache.write === undefined ? [] : [CACHE_WRITE_TEXT[cache.write]]),
     ...(cache.notRecorded === 'param-collision' ? ['nothing recorded: a unique() value collides with another param'] : []),
   ];
-  const entry = cache.entry === undefined || cacheDir === undefined ? '' : ` (${code(`${cacheDir}/${cache.entry}.json`, MAX_PATH_CHARS)})`;
+  const entry = cache.entry === undefined || cacheDir === undefined ? '' : ` (${code(`${cacheDir}/${cacheFileName(cache.entry, format)}`, MAX_PATH_CHARS)})`;
   return `${parts.join('; ')}${entry}`;
 }
 

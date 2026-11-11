@@ -11,10 +11,12 @@
  * enumerate it, so it says so instead of listing an empty directory.
  */
 
-import { readdir, readFile, rm, rmdir } from 'node:fs/promises';
+import { readdir, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
 import picocolors from 'picocolors';
+import { cacheDiff } from './cache-diff.ts';
+import { cacheFileIdentity } from '../cache/codec.ts';
 import { migrateReplayCache } from '../cache/migrate.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
@@ -35,6 +37,7 @@ interface CacheOptions {
   /** `--cache-dir`: the store directory, over `E2E_CACHE_DIR` and `cache.dir`. */
   readonly cacheDir?: string;
   readonly cwd?: string;
+  readonly deleteJson?: boolean;
 }
 
 /** One entry as `ls` prints it, or a file that is not a readable entry. */
@@ -59,10 +62,8 @@ interface CacheContents {
   readonly foreign: readonly string[];
 }
 
-/** Store file names: the key digest, as `FileCacheStore` writes them. */
-const ENTRY_FILE = /^([a-f0-9]{64})\.(?:json|replay\.ts)$/u;
-/** A crashed writer's leftover; a store file for cleanup purposes. */
-const TEMPORARY_FILE = /^[a-f0-9]{64}\.(?:json|replay\.ts(?:\.diff)?)(?:\.[a-f0-9]{16}\.tmp|\.diff)$/u;
+/** Only files the atomic writer creates qualify for cleanup. */
+const TEMPORARY_FILE = /^[a-f0-9]{64}\.(?:json|replay\.ts)\.[a-f0-9]{16}\.tmp$/u;
 
 /** Digest prefix printed instead of the full 64 hex characters. */
 const DIGEST_PREFIX_CHARS = 12;
@@ -83,17 +84,12 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
 
   try {
     if (command === 'migrate') {
-      for (const result of await migrateReplayCache(directory)) process.stdout.write(`${result}\n`);
-      return 0;
+      const outcomes = await migrateReplayCache(directory, options.deleteJson);
+      for (const result of outcomes) process.stdout.write(`${result.key} ${JSON.stringify(result.test ?? '')}: ${result.status}: ${result.detail}\n`);
+      return outcomes.some((result) => result.status !== 'converted') ? 1 : 0;
     }
     if (command === 'diff') {
-      const names = await readdir(directory).catch((cause: unknown) => {
-        if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return [];
-        throw cause;
-      });
-      for (const name of names.toSorted()) {
-        if (/^[a-f0-9]{64}\.replay\.ts\.diff$/u.test(name)) process.stdout.write(await readFile(path.join(directory, name), 'utf8'));
-      }
+      process.stdout.write(await cacheDiff(directory));
       return 0;
     }
     const contents = await readContents(directory);
@@ -111,7 +107,7 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 }
 
-/** Registers `e2e cache` and its `ls`, `clear`, and `stats` subcommands on `program`. */
+/** Registers cache inspection, migration and Git diff commands. */
 export function registerCacheCommand(program: Command): void {
   const cacheCommand = program
     .command('cache')
@@ -125,15 +121,16 @@ export function registerCacheCommand(program: Command): void {
     );
 
   const cacheSubcommand = (name: CacheCommand, summary: string, description: string): void => {
-    cacheCommand
+    const subcommand = cacheCommand
       .command(name)
       .summary(summary)
       .description(description)
       .option('--config <path>', 'config file (default: the nearest e2e.config.ts, .mts, .js, or .mjs)')
       .option('--cache-dir <dir>', CACHE_DIR_DESCRIPTION)
-      .action(async (options: { config?: string; cacheDir?: string }) => {
+      .action(async (options: { config?: string; cacheDir?: string; deleteJson?: boolean }) => {
         process.exitCode = await cache(name, options);
       });
+    if (name === 'migrate') subcommand.option('--delete-json', 'remove each JSON entry after successful conversion; stop runs before migrating');
   };
 
   cacheSubcommand(
@@ -142,8 +139,8 @@ export function registerCacheCommand(program: Command): void {
     'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, its age, and how many actions a replay would run.',
   );
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
-  cacheSubcommand('migrate', 'convert JSON recordings to code', 'Validate and convert JSON recordings, preserving recovery gaps and leaving originals and existing code untouched.');
-  cacheSubcommand('diff', 'show regenerated recording diffs', 'Print the latest replacement diff for each code recording.');
+  cacheSubcommand('migrate', 'convert JSON recordings to code', 'Convert JSON recordings without replacing existing code. Exit 1 when any entry is skipped or fails. Stop runs before using --delete-json.');
+  cacheSubcommand('diff', 'show regenerated recording diffs', 'Show current tracked cache changes against the Git index. Stage new files with git add -N to include them.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
 }
 
@@ -194,12 +191,13 @@ async function readContents(directory: string): Promise<CacheContents> {
   }
 
   for (const name of names.toSorted()) {
-    const keyHash = ENTRY_FILE.exec(name)?.[1];
-    if (keyHash === undefined) {
+    const identity = cacheFileIdentity(name);
+    if (identity === undefined) {
       if (!TEMPORARY_FILE.test(name)) foreign.push(name);
       continue;
     }
-    const read = await (name.endsWith('.replay.ts') ? codeStore : store).read(keyHash);
+    const { keyHash, format } = identity;
+    const read = await (format === 'code' ? codeStore : store).read(keyHash);
     if (read.status !== 'hit') {
       unreadable.push({ name, bytes: read.status === 'invalid' ? (read.bytes ?? 0) : 0 });
       continue;

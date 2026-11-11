@@ -17,12 +17,11 @@ import { createFakeEngine, FAKE_APP_URL } from '../helpers/fake-engine.ts';
 import {
   createProject,
   resultByTitle,
-  runExisting as runBase,
   webTarget,
   type FixtureProject,
   type RunOutcome,
 } from '../helpers/run-project.ts';
-import { writeEntry, readEntries } from '../helpers/trace-cache.ts';
+import { cacheRunner, writeEntry, readEntries } from '../helpers/trace-cache.ts';
 import { findNode } from '../helpers/executor-tree.ts';
 import type {
   ExecutorNode,
@@ -33,13 +32,8 @@ import type {
 } from '../../src/agent/executor.ts';
 import type { ActionTrace, TraceEntry } from '../../src/cache/trace.ts';
 
-describe.each(['json', 'code'] as const)('%s cache parity', (format) => {
-/** Runs the existing behavioral suite with only the file representation changed. */
-function runExisting(project: Parameters<typeof runBase>[0], options: Parameters<typeof runBase>[1]) {
-  const cache = options.config?.cache;
-  const configured = typeof cache === 'object' ? cache : cache === undefined ? {} : { mode: cache };
-  return runBase(project, { ...options, config: { ...options.config, cache: configured.store === undefined ? { ...configured, format } : configured } });
-}
+const format = process.env.E2E_TEST_CACHE_FORMAT === 'code' ? 'code' : 'json';
+const runExisting = cacheRunner(format);
 
 const SUITE = `import { test, expect } from 'e2e';
 
@@ -111,7 +105,8 @@ function entryFileState(project: FixtureProject): { bytes: string; mtimeMs: numb
   return { bytes: readFileSync(file, 'utf8'), mtimeMs: statSync(file).mtimeMs };
 }
 
-describe('trace cache: divergence hands the step over mid-step', () => {
+describe.each(format === 'json' ? ['json', 'code'] as const : ['code'] as const)('trace cache: divergence hands the step over mid-step (%s)', (selectedFormat) => {
+  const runExisting = cacheRunner(selectedFormat);
   let app: FixtureApp;
   let project: FixtureProject;
   let secondRun: RunOutcome;
@@ -232,14 +227,14 @@ describe('trace cache: unconfirmed traces are withheld and poisoned entries evic
   it('evicts a previously good entry once its flow is implicated in a failure', async () => {
     project = createProject({ 'tests/act.e2e.ts': SUITE });
     await runExisting(project, options());
-    expect(readdirSync(cacheDir(project)).filter((name) => !name.endsWith('.diff'))).toHaveLength(1);
+    expect(readdirSync(cacheDir(project))).toHaveLength(1);
     // Same instruction, stricter assertion: the replay self-finalizes, the
     // assertion fails, and the entry must be evicted rather than kept.
     writeFileSync(path.join(project.dir, 'tests', 'act.e2e.ts'), WRONG_EXPECT_SUITE, 'utf8');
     const outcome = await runExisting(project, options());
     expect(outcome.exitCode).not.toBe(0);
     expect(records.at(-1)!.calls).toBe(0);
-    expect(readdirSync(cacheDir(project)).filter((name) => !name.endsWith('.diff'))).toHaveLength(0);
+    expect(readdirSync(cacheDir(project))).toHaveLength(0);
   }, 240_000);
 });
 
@@ -546,7 +541,7 @@ describe('trace cache: modes', () => {
     try {
       const first = await runExisting(project, options({ calls: 0, prefixes: [] }));
       expect(first.exitCode).toBe(0);
-      expect(readdirSync(cacheDir(project)).filter((name) => !name.endsWith('.diff'))).toHaveLength(1);
+      expect(readdirSync(cacheDir(project))).toHaveLength(1);
 
       // An entry from before the occurrence fields: a read-write replay would complete and rewrite it.
       const { file, entry } = readOnlyEntry(project);
@@ -1059,6 +1054,4 @@ describe('trace cache: a navigate on the app replays where the app runs now', ()
     const step = resultByTitle(second, 'opens the about page').attempts.at(-1)!.steps.find((s) => s.api === 'agent.act')!;
     expect(step.cache).toMatchObject({ mode: 'self-finalized', replayedActions: 1, totalActions: 1 });
   }, 240_000);
-});
-
 });

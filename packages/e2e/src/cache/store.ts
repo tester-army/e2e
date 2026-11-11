@@ -18,9 +18,8 @@ import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
 import { errorMessage } from '../internal/errors.ts';
-import { buildTraceEntry, type ActionTrace, type TraceEntry } from './trace.ts';
-import { emitReplayCode, readReplayCode, replayCodeDiff } from './code.ts';
-import { readTraceEntry } from './trace-read.ts';
+import type { ActionTrace, TraceEntry } from './trace.ts';
+import { CACHE_CODECS, cacheFileName, cacheFileIdentity, type CacheFormat } from './codec.ts';
 
 /** Hard wire ceiling on one entry, on both the read and the write path. */
 export const MAX_CACHE_WIRE_BYTES = 1_048_576;
@@ -60,13 +59,15 @@ export interface FileCacheStoreOptions {
 export class FileCacheStore implements CacheStore {
   readonly writable: boolean;
 
-  private readonly format: 'json' | 'code';
+  readonly format: CacheFormat;
+  private readonly codec: (typeof CACHE_CODECS)[CacheFormat];
   private readonly directory: string;
   private readonly maxBytes: number;
 
   constructor(options: FileCacheStoreOptions) {
     this.directory = options.directory;
     this.format = options.format ?? 'json';
+    this.codec = CACHE_CODECS[this.format];
     this.maxBytes = Math.min(options.maxBytes, MAX_CACHE_WIRE_BYTES);
     this.writable = options.writable;
   }
@@ -93,7 +94,7 @@ export class FileCacheStore implements CacheStore {
     let entry: TraceEntry | undefined;
     try {
       const source = await readFile(path, 'utf8');
-      entry = this.format === 'code' ? readReplayCode(source) : readTraceEntry(JSON.parse(source));
+      entry = this.codec.decode(source);
     } catch (cause) {
       return { status: 'invalid', reason: `cache entry is unreadable: ${errorMessage(cause)}`, bytes };
     }
@@ -108,17 +109,14 @@ export class FileCacheStore implements CacheStore {
     const path = this.entryPath(keyHash);
     if (path === undefined) return undefined;
 
-    const serialized = this.format === 'code' ? emitReplayCode(payload) : `${JSON.stringify(buildTraceEntry(payload), null, 2)}\n`;
+    let serialized: string;
+    try { serialized = this.codec.encode(payload); } catch { return undefined; }
     const bytes = Buffer.byteLength(serialized, 'utf8');
     if (bytes > this.maxBytes) return undefined;
 
+    const previous = await this.read(keyHash);
+    if (previous.status === 'hit' && this.codec.encode(previous.entry.payload) === serialized) return { bytes };
     await mkdir(this.directory, { recursive: true });
-    if (this.format === 'code') {
-      const previous = await readFile(path, 'utf8').catch(() => '');
-      if (previous === serialized) return { bytes };
-      const diff = replayCodeDiff(`${keyHash}.replay.ts`, previous, serialized);
-      await writeFileAtomic(`${path}.diff`, diff, { mode: 0o600 });
-    }
     await writeFileAtomic(path, serialized, { mode: 0o600 });
     return { bytes };
   }
@@ -129,7 +127,6 @@ export class FileCacheStore implements CacheStore {
     if (path === undefined) return;
     try {
       await unlink(path);
-      if (this.format === 'code') await unlink(`${path}.diff`).catch(() => undefined);
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
     }
@@ -149,9 +146,8 @@ export class FileCacheStore implements CacheStore {
       throw cause;
     }
     return names.flatMap((name) => {
-      const extension = this.format === 'code' ? '.replay.ts' : '.json';
-      const keyHash = name.endsWith(extension) ? name.slice(0, -extension.length) : undefined;
-      return keyHash !== undefined && KEY_HASH.test(keyHash) ? [keyHash] : [];
+      const entry = cacheFileIdentity(name);
+      return entry?.format === this.format ? [entry.keyHash] : [];
     });
   }
 
@@ -161,6 +157,6 @@ export class FileCacheStore implements CacheStore {
    * construction rather than by canonicalization after the fact.
    */
   private entryPath(keyHash: string): string | undefined {
-    return KEY_HASH.test(keyHash) ? join(this.directory, `${keyHash}${this.format === 'code' ? '.replay.ts' : '.json'}`) : undefined;
+    return KEY_HASH.test(keyHash) ? join(this.directory, cacheFileName(keyHash, this.format)) : undefined;
   }
 }

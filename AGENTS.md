@@ -8,7 +8,7 @@ TypeScript 7.
 There is no separate spec. The code is the contract, pinned in three places:
 
 - The emitted `packages/e2e/dist/index.d.ts` (and `dist/engine/index.d.ts`,
-  `dist/runner.d.ts`, `dist/oauth/*.d.ts`)
+  `dist/runner.d.ts`, `dist/replay.d.ts`, `dist/oauth/*.d.ts`)
   is the public API. `packages/e2e/tests/types/sdk-types.ts` holds compile-time
   assertions (`@ts-expect-error` lines) for the parts that are easy to loosen
   by accident; it runs under the package `typecheck`, never under vitest.
@@ -74,6 +74,7 @@ suites that consume the built packages the way a user would.
     are the whole public surface: the flows, stores, and fetch behind them
     are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
+- `e2e/replay` declares typed cache operations. The code cache parses these declarations as data with oxc; it never imports recorded files. JSON and code share the replay engine and verification boundary.
 - `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `browser` fixture and `expect(browser)`. It depends on `e2e` (peer), never the

@@ -64,19 +64,19 @@ const passing = reportResult({ id: 'f'.repeat(12), titlePath: ['opens'], status:
 const interrupted = reportResult({ id: '9'.repeat(12), titlePath: ['cut short'], status: 'interrupted', attempts: [reportAttempt({ status: 'interrupted' })] });
 
 describe('writeTracePages', () => {
-  it("writes one page per traced result into its test's readable directory, beside what is there, and returns paths from the project root", async () => {
+  it.each(['json', 'code'] as const)("writes one page per traced result into its test's readable directory, beside what is there, and returns paths from the project root", async (format) => {
     const root = project();
     const dir = path.join(root, '.e2e', 'results');
     const evidence = path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'attempt-1', 'screen-at-failure.txt');
     mkdirSync(path.dirname(evidence), { recursive: true });
     writeFileSync(evidence, 'screen');
     const document = reportDocument({ status: 'failed', results: [passing, failing, interrupted] });
-    const pages = await writeTracePages(document, new Set([failing.id]), { projectRoot: root, resultsRoot: dir, cacheDir: path.join(root, '.e2e', 'cache') });
+    const pages = await writeTracePages(document, new Set([failing.id]), { projectRoot: root, resultsRoot: dir, cacheDir: path.join(root, '.e2e', 'cache'), cacheFormat: format });
     expect(readdirSync(dir)).toEqual(['checkout-applies-the-coupon-1a2b3c4d5e6f7a8b']);
     expect(readdirSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b')).toSorted()).toEqual(['attempt-1', 'trace.md']);
     expect([...pages]).toEqual([[failing.id, '.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md']]);
     const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'trace.md'), 'utf8');
-    expect(text).toContain(`(\`.e2e/cache/${ENTRY}.json\`)`);
+    expect(text).toContain(`(\`.e2e/cache/${ENTRY}${format === 'code' ? '.replay.ts' : '.json'}\`)`);
     expect(text).toContain('## Also failed');
     expect(text).toContain('**ENGINE_FAILURE** in cleanup: the browser closed early');
   });
