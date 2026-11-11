@@ -79,7 +79,7 @@ CDP authorization headers authenticate the browser connection and do not become 
 
 Remote file downloads are not supported by this prototype. Browser Run exposes no browser filesystem API for the provider to read.
 Cloudflare-native session recordings are not attached to reports.
-The engine records per-attempt video instead.
+When [video](/reference/config#video) is enabled, the web engine records a per-attempt WebM screencast.
 
 Keep `workers` within your account's [concurrency and acquisition limits](https://developers.cloudflare.com/browser-run/limits/).
 An HTTP `401` or `403` names the token permission to check.
