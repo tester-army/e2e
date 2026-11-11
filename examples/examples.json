@@ -883,6 +883,34 @@
       }
     },
     {
+      "slug": "react-native",
+      "title": "Testing a React Native podcast app with e2e",
+      "shortTitle": "React Native",
+      "description": "A mock podcast app built with Expo: its player, search, library, playlists, and settings tested by one suite on iOS, Android, and web, with agent steps replayed from a committed cache.",
+      "source": "official",
+      "repository": "https://github.com/e2e-inc/e2e-react-native",
+      "author": {
+        "name": "TesterArmy",
+        "github": "e2e-inc"
+      },
+      "license": "MIT",
+      "licenseUrl": "https://github.com/e2e-inc/e2e-react-native/blob/main/LICENSE",
+      "tags": {
+        "framework": [
+          "expo",
+          "react-native"
+        ],
+        "useCase": [
+          "replay-cache"
+        ],
+        "platform": [
+          "web",
+          "ios",
+          "android"
+        ]
+      }
+    },
+    {
       "slug": "github-actions",
       "title": "Running e2e in GitHub Actions",
       "shortTitle": "GitHub Actions",
