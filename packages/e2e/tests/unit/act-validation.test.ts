@@ -32,7 +32,7 @@ describe('validateActOptions', () => {
     expect(() => validateActOptions({ steps: [] }, 0)).not.toThrow();
     expect(() => validateActOptions({ steps: [{ name: 'back' }] }, 0)).not.toThrow();
     // oxlint-disable-next-line no-sparse-arrays
-    for (const steps of [[,], 'tap', [null], [['tap']]]) {
+    for (const steps of [[,], 'tap', [null], [['tap']], Array.from({ length: 51 }, () => ({ name: 'back' })), Object.assign([], { length: 2 ** 31 })]) {
       expect(() => validateActOptions({ steps } as never, 0)).toThrow(expect.objectContaining({ code: 'INVALID_ARGUMENT' }));
     }
   });

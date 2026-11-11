@@ -279,10 +279,32 @@ describe('writing a run\'s pins', () => {
     writeFileSync(path.join(root, 'a.e2e.steps.json'), '[]');
     const { lines } = await writePins(root, [{ writes: [{ file: 'a.e2e.ts', step: pinnedStep(id, context, trace, true), inline: { file: 'a.e2e.ts', line: 2, column: 15 } }], skipped: [] }]);
     expect(lines).toEqual([
-      'a.e2e.ts: not written: the steps file that keeps the rest of its recording was not written',
+      'a.e2e.ts:2: not written: the steps file that keeps the rest of its recording was not written',
       expect.stringMatching(/^a\.e2e\.steps\.json: not written: it is not a steps-1 document/),
     ]);
     expect(readFileSync(path.join(root, 'a.e2e.ts'), 'utf8')).toBe(test);
+  });
+
+  it('writes the calls of a file whose steps were written, past one whose were not', async () => {
+    const root = scratch();
+    const test = "test('greets', async ({ agent }) => {\n  await agent.act('greet {name}', { steps: [] });\n  await agent.act('wave', { steps: [] });\n});\n";
+    writeFileSync(path.join(root, 'a.e2e.ts'), test);
+    const wave = { ...id, instruction: 'wave', params: {} };
+    const at = (line: number) => ({ file: 'a.e2e.ts', line, column: 15 });
+    const { lines } = await writePins(root, [
+      { writes: [{ file: 'a.e2e.ts', step: pinnedStep(id, context, trace, true), inline: at(2) }], skipped: [] },
+      { writes: [{ file: 'a.e2e.ts', step: pinnedStep(wave, context, trace, true), inline: at(3) }], skipped: [] },
+      { writes: [{ file: 'a.e2e.ts', step: pinnedStep(wave, context, { ...trace, endPath: '/elsewhere' }, true), inline: at(3) }], skipped: [] },
+    ]);
+    expect(lines).toEqual([
+      'a.e2e.ts:3: not written: the steps file that keeps the rest of its recording was not written',
+      'a.e2e.ts: 1 call pinned inline',
+      'a.e2e.steps.json: not written for "wave" in greets: its 2 runs recorded different flows; pin it in a run that runs it once',
+      'a.e2e.steps.json: 1 step pinned',
+    ]);
+    const written = readFileSync(path.join(root, 'a.e2e.ts'), 'utf8');
+    expect(written).toContain("await agent.act('greet {name}', { steps: [\n");
+    expect(written).toContain("await agent.act('wave', { steps: [] });");
   });
 
   it('writes a step its repeats recorded alike once, and none whose repeats disagree', async () => {

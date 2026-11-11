@@ -56,22 +56,24 @@ export async function writePins(projectRoot: string, attempts: readonly AttemptP
     edits.push({ edit: { line: at.line, column: at.column, steps: inlineStepsOf(group[0]!.step.trace) }, writes: group });
     byFile.set(at.file, edits);
   }
-  const rewrites: { file: string; absolute: string; source: string; code: string; calls: number; writes: PinWrite[] }[] = [];
+  // A first pass finds the calls each file holds; the edits are applied
+  // once the steps files are written, each call only if its steps were.
+  const rewrites: { file: string; absolute: string; source: string; edits: { edit: InlineEdit; writes: PinWrite[] }[] }[] = [];
   for (const [file, edits] of byFile) {
     const absolute = path.resolve(projectRoot, file);
     try {
       const source = await readFile(absolute, 'utf8');
-      const { code, missed } = rewriteInlineSteps(file, source, edits.map(({ edit }) => edit));
+      const { missed } = rewriteInlineSteps(file, source, edits.map(({ edit }) => edit));
       for (const edit of missed) inlineLines.push(`${file}:${String(edit.line)}: not written: no agent.act() call with a steps: [...] option starts there`);
-      const written = edits.filter(({ edit }) => !missed.includes(edit));
-      if (written.length > 0) rewrites.push({ file, absolute, source, code, calls: written.length, writes: written.flatMap((edit) => edit.writes) });
+      const found = edits.filter(({ edit }) => !missed.includes(edit));
+      if (found.length > 0) rewrites.push({ file, absolute, source, edits: found });
     } catch (cause) {
       inlineLines.push(`${file}: not written: ${errorMessage(cause)}`);
     }
   }
 
   const byTestFile = new Map<string, PinWrite[]>();
-  for (const write of [...sidecar, ...rewrites.flatMap((rewrite) => rewrite.writes)]) byTestFile.set(write.file, [...(byTestFile.get(write.file) ?? []), write]);
+  for (const write of [...sidecar, ...rewrites.flatMap((rewrite) => rewrite.edits.flatMap((edit) => edit.writes))]) byTestFile.set(write.file, [...(byTestFile.get(write.file) ?? []), write]);
   const unwritten = new Set<string>();
   const refused = new Set<PinWrite>();
   for (const [testFile, group] of byTestFile) {
@@ -92,13 +94,16 @@ export async function writePins(projectRoot: string, attempts: readonly AttemptP
   }
 
   for (const rewrite of rewrites) {
-    if (rewrite.writes.some((write) => unwritten.has(write.file) || refused.has(write))) {
-      inlineLines.push(`${rewrite.file}: not written: the steps file that keeps the rest of its recording was not written`);
-      continue;
-    }
+    const kept = rewrite.edits.filter(({ edit, writes: group }) => {
+      if (!group.some((write) => unwritten.has(write.file) || refused.has(write))) return true;
+      inlineLines.push(`${rewrite.file}:${String(edit.line)}: not written: the steps file that keeps the rest of its recording was not written`);
+      return false;
+    });
+    if (kept.length === 0) continue;
     try {
-      if (rewrite.code !== rewrite.source) await writeFileAtomic(rewrite.absolute, rewrite.code);
-      inlineLines.push(`${rewrite.file}: ${plural(rewrite.calls, 'call')} pinned inline`);
+      const { code } = rewriteInlineSteps(rewrite.file, rewrite.source, kept.map(({ edit }) => edit));
+      if (code !== rewrite.source) await writeFileAtomic(rewrite.absolute, code);
+      inlineLines.push(`${rewrite.file}: ${plural(kept.length, 'call')} pinned inline`);
     } catch (cause) {
       inlineLines.push(`${rewrite.file}: not written: ${errorMessage(cause)}`);
     }

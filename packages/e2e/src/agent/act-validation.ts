@@ -7,6 +7,7 @@
 import { ConfigurationError, TestError } from '../internal/errors.ts';
 import { validateJsonValue } from '../internal/json-value.ts';
 import { paramPointer, type ParamTemplate } from '../cache/template.ts';
+import { MAX_TRACE_ACTIONS } from '../cache/trace.ts';
 import { isSecret } from '../secrets.ts';
 import { isUnique } from '../params.ts';
 import type { ActOptions, AgentErrorCode, AgentParams, JsonValue, Secret } from '../types.ts';
@@ -80,9 +81,11 @@ export function validateActOptions(options: ActOptions | undefined, extraArgumen
     throw new TestError('INVALID_ARGUMENT', 'agent.act options.onAction must be a function');
   }
   const steps: unknown = options.steps;
-  // Spread first: `every` skips the holes of a sparse array such as `[,]`.
-  if (steps !== undefined && (!Array.isArray(steps) || ![...steps].every((step) => typeof step === 'object' && step !== null && !Array.isArray(step)))) {
-    throw new TestError('INVALID_ARGUMENT', 'agent.act options.steps must be an array of recorded actions, or [] to record them');
+  if (steps !== undefined) {
+    // Bounded before the spread, which fills the holes `every` would skip in a sparse array such as `[,]`.
+    if (!Array.isArray(steps) || steps.length > MAX_TRACE_ACTIONS || ![...steps].every((step) => typeof step === 'object' && step !== null && !Array.isArray(step))) {
+      throw new TestError('INVALID_ARGUMENT', `agent.act options.steps must be an array of at most ${MAX_TRACE_ACTIONS} recorded actions, or [] to record them`);
+    }
   }
   const unknown = Object.keys(options).filter((key) => !ACT_OPTION_KEYS.has(key));
   if (unknown.length > 0) {
