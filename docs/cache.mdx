@@ -25,16 +25,19 @@ run summary counts the outcomes:
 
 ## When a recording is written
 
-Follow each `act` with a check of its outcome. In `read-write` mode, the
-runner saves the recording at the end of the attempt when a later
-verification step passed.
+End the test with a check of its outcome. In `read-write` mode, the runner
+saves the recording of each `act` at the end of the attempt when a later
+verification step passed. One check at the end confirms every `act` before
+it.
 
 ```ts title="tests/cart.e2e.ts"
 import { expect, test } from 'e2e';
 
 test('adds an item', async ({ app, agent, screen }) => {
   await app.open('/cart');
+
   await agent.act('add one item to the cart');
+
   await expect(screen.getByRole('status')).toHaveText('1 item');
 });
 ```
@@ -53,7 +56,7 @@ when the attempt ended:
 | --- | --- |
 | `saved` | Recorded for the next run. |
 | `kept` | The entry stays as it is. |
-| `unconfirmed` | Not saved: no check passed after the step. Follow it with a locator assertion or `agent.assert`. |
+| `unconfirmed` | Not saved: no check passed after the step. End the test with a locator assertion or `agent.assert`. |
 | `evicted` | The entry was deleted: its replay ended in a failure or a repair, or no check confirmed it before the attempt failed. |
 | `no-change` | Nothing recorded: no control appeared, went away, or changed state, and the route stayed the same. That includes a step whose only change is inside a [frame from another site](/browser#reach-into-an-iframe). Such a step runs live on every run. |
 | `not-written` | Not saved: the store rejected the write, or refused the recording, for example one over the file store's size limit. |
@@ -61,7 +64,9 @@ when the attempt ended:
 A step that took no action records nothing and reports no `write`.
 
 A failing attempt still saves the steps verified before the failure. It
-deletes unverified entries and the replays involved in the failure. A custom store needs a `delete` method for this. Cancelling
+deletes unverified entries and the replays involved in the failure. To keep
+setup goals recorded while you fix a failing assertion, end the setup with
+a wait for its state, such as `locator.waitFor()`. A custom store needs a `delete` method for this. Cancelling
 a run leaves the cache unchanged.
 
 <Accordion title="Failures where no model answered">

@@ -55,26 +55,30 @@ await agent.act('open the Pro plan, set the seats to {seats}, and check out', {
 });
 ```
 
-```ts title="Good: one atomic goal per call, each checked before the next"
-await agent.act('open the Pro plan');
-await expect(screen.getByRole('heading', 'Pro plan')).toBeVisible();
+```ts title="Good: one atomic goal per call, arrange, act, assert"
+test('checks out the Pro plan', async ({ app, agent, screen }) => {
+  await app.open('/plans');
+  await agent.act('open the Pro plan');
+  await agent.act('set the seats to {seats}', { params: { seats: 3 } });
+  await agent.waitFor('the cart shows the Pro plan with 3 seats');
 
-await agent.act('set the seats to {seats}', { params: { seats: 3 } });
-await expect(screen.getByRole('status', 'Seats')).toHaveText('3 seats');
+  await agent.act('check out');
 
-await agent.act('check out');
-await expect(screen.getByText('Order confirmed')).toBeVisible();
+  await expect(screen.getByText('Order confirmed')).toBeVisible();
+});
 ```
 
-A failure then names the goal that broke. Each goal replays from its own
+Each test checks one behavior. The setup goals come first and end with a
+wait for the state they reach. The goal under test comes next, and every
+assertion comes last. A failure then names the goal that broke. Each goal replays from its own
 recording and gets its own model-call and action
 [budgets](/reference/agent#budgets). The actions toward one outcome are not
 goals: opening the screen or menu that holds a control, scrolling to it,
 closing a banner, or filling the fields of one form.
 
 - You control the order of the goals. The agent picks the actions.
-- Check each goal's result with an `expect`. The [replay cache](/cache)
-  records a goal only after a later check passes.
+- End the test with an `expect` on the result. The [replay cache](/cache)
+  records a goal only after a later check or wait passes.
 - Use the words that the screen shows.
 - Give test data in `params`. For a password, give a `Secret`. The model
   never gets its value as text. See [Authentication](/authentication).
