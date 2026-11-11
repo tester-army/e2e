@@ -1,7 +1,8 @@
 /** Shared helpers for the agent-device engine: error constructors, filenames, PNG headers, gestures, the screen location and size. */
 
-import type { CaptureScreenshotResult } from 'agent-device';
+import type { CaptureScreenshotResult, PressOptions } from 'agent-device';
 import { EngineError, withTimeout, type Momentum, type ScrollDirection, type ViewportSize } from 'e2e/engine';
+import type { AgentDeviceClient } from './options.ts';
 
 export interface Point {
   readonly x: number;
@@ -49,14 +50,20 @@ export class InputBudget {
   }
 
   /**
+   * Press requests receive caller cancellation and are cancelled when this
+   * wait expires, including its existing acknowledgement allowance.
+   */
+  press(client: AgentDeviceClient, options: PressOptions): Promise<unknown> {
+    return this.send((signal) => client.interactions.press({ ...options, signal }));
+  }
+
+  /**
    * Sends one input with what is left of the budget. With none left it sends
    * nothing: `OPERATION_TIMEOUT`, or `ACTION_MAY_HAVE_COMMITTED` once an
    * earlier input of this operation went out. A gesture that holds (`holdMs`)
    * at least as long as the budget left could only be cut off mid-gesture, so
    * it is refused unsent. An input that does not answer in time may have
    * landed, so it is `ACTION_MAY_HAVE_COMMITTED` and the runner never repeats it.
-   * Press requests receive caller cancellation and are cancelled when this
-   * wait expires, including its existing acknowledgement allowance.
    */
   send<T>(dispatch: (signal: AbortSignal) => Promise<T>, holdMs = 0): Promise<T> {
     const remaining = this.remainingMs();

@@ -3353,7 +3353,7 @@ describe('deterministic actions', () => {
     const search = await observed(h, 'Search');
     if (action === 'Enter') await h.engine.perform!(search.ref, { kind: 'press', key: 'Enter' }, test());
     else if (action === 'focused Enter') await h.engine.keyboard!.press('Enter', test());
-    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test().timeoutMs, test().signal));
+    else await h.surface.dismissKeyboard(test().signal, h.surface.inputBudget('keyboard dismiss', test()));
     h.fake.respond('capture.snapshot', () => ({ ...SETTINGS_SNAPSHOT, keyboard: { kind: 'absent' } }));
     const stale = await observed(h, 'About');
     h.fake.respond('capture.snapshot', () => ({

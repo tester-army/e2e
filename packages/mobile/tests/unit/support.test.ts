@@ -122,7 +122,7 @@ it.each(['press', 'type'] as const)('preserves the acknowledgement allowance for
   const budget = new InputBudget(command, 100, (pending) => pending, new AbortController().signal);
   try {
     if (command === 'press') {
-      await expect(budget.send((signal) => client.interactions.press({ x: 20, y: 20, signal }))).resolves.toBeDefined();
+      await expect(budget.press(client, { x: 20, y: 20 })).resolves.toBeDefined();
     } else {
       await expect(budget.send((signal) => client.interactions.type({ text: 'hello', signal }))).rejects.toMatchObject({ code: 'UNSUPPORTED_OPERATION', message: 'Typing is unavailable' });
     }
@@ -157,8 +157,8 @@ it('keeps caller cancellation on later inputs from the same operation', async ()
   });
   const budget = new InputBudget('tap', 30000, (pending) => pending, controller.signal);
   try {
-    await budget.send((signal) => client.interactions.press({ x: 20, y: 20, signal }));
-    const second = budget.send((signal) => client.interactions.press({ x: 30, y: 30, signal }));
+    await budget.press(client, { x: 20, y: 20 });
+    const second = budget.press(client, { x: 30, y: 30 });
     const canceled = expect(second).rejects.toMatchObject({ details: { reason: 'request_canceled' } });
     await started;
     controller.abort();

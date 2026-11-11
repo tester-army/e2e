@@ -573,8 +573,8 @@ export class AgentDeviceSurface {
   }
 
   /** The budget and cancellation signal shared by one operation's inputs. */
-  inputBudget(label: string, timeoutMs: number, signal: AbortSignal): InputBudget {
-    return new InputBudget(label, timeoutMs, (pending) => this.track(pending), signal);
+  inputBudget(label: string, operation: Pick<OperationContext, 'timeoutMs' | 'signal'>): InputBudget {
+    return new InputBudget(label, operation.timeoutMs, (pending) => this.track(pending), operation.signal);
   }
 
   /** Registers one device command as in flight until it settles. */
@@ -1455,16 +1455,16 @@ export class AgentDeviceSurface {
       }
       switch (action.kind) {
         case 'tap':
-          return input.send((signal) => client.interactions.press({ ...this.actionTarget(target, true), ...settle, signal }));
+          return input.press(client, { ...this.actionTarget(target, true), ...settle });
         case 'focus':
           // A touch surface focuses by tapping, and a tap on anything but an
           // editable field activates it; focus is offered for fields only.
           if (target.node.role !== 'textbox') {
             throw unsupported(`agent-device can only focus editable fields; node ${target.id} is ${target.node.role ?? 'unknown'}`);
           }
-          return input.send((signal) => client.interactions.press({ ...this.actionTarget(target), ...settle, signal }));
+          return input.press(client, { ...this.actionTarget(target), ...settle });
         case 'doubleTap':
-          return input.send((signal) => client.interactions.press({ ...this.actionTarget(target), count: 2, ...settle, signal }));
+          return input.press(client, { ...this.actionTarget(target), count: 2, ...settle });
         case 'longPress':
           return input.send(
             () => client.interactions.longPress({ ...this.actionTarget(target), ...settle, durationMs: action.durationMs ?? DEFAULT_LONG_PRESS_MS }),
@@ -1489,7 +1489,7 @@ export class AgentDeviceSurface {
             throw unsupported(`agent-device cannot read whether node ${target.id} is checked; tap it instead`);
           }
           if (checked === wanted) return undefined;
-          return input.send((signal) => client.interactions.press({ ...this.actionTarget(target, true), ...settle, signal }));
+          return input.press(client, { ...this.actionTarget(target, true), ...settle });
         }
         case 'press':
           return this.pressKey(client, target, action.key, settle, input);
@@ -1552,7 +1552,7 @@ export class AgentDeviceSurface {
     // A key reaches the field through the soft keyboard, which is up only
     // while the field holds focus.
     if (entry.node.role === 'textbox' && entry.node.states?.focused !== true) {
-      await input.send((requestSignal) => client.interactions.press({ ...this.actionTarget(entry), ...settle, signal: requestSignal }));
+      await input.press(client, { ...this.actionTarget(entry), ...settle });
     }
     if (enter) return input.send(() => client.command.keyboard({ action: 'enter' }));
     return input.send(() => client.interactions.type({ text: parsed.key.kind === 'char' ? parsed.key.char : ' ' }));
@@ -1566,8 +1566,7 @@ export class AgentDeviceSurface {
   async performAt(point: ViewportPoint, action: PointerAction, operation: OperationContext, input: InputBudget): Promise<void> {
     const settle = operation.origin === 'test' ? {} : this.settleOptions;
     const before = this.latestScreen;
-    const holdMs = action.kind === 'longPress' ? (action.durationMs ?? DEFAULT_LONG_PRESS_MS) : action.kind === 'swipeTo' ? action.durationMs : undefined;
-    await this.command(`${action.kind} at point`, (client) => input.send((signal) => pointerInteraction(client, point, action, settle, gestureStabilization(operation), signal), holdMs), operation.signal);
+    await this.command(`${action.kind} at point`, (client) => pointerInteraction(client, point, action, settle, gestureStabilization(operation), input), operation.signal);
     if (action.kind === 'swipeTo') this.noteGesture(operation);
     this.markAction(before);
   }
@@ -1696,7 +1695,7 @@ export class AgentDeviceSurface {
     const tipTop = tip.rect.y;
     const button = nodes.find((node) => node.label === 'Continue' && node.rect !== undefined && node.rect.y > tipTop);
     if (button?.rect === undefined) return raw;
-    await this.command('keyboard.dismiss', (client) => input.send((requestSignal) => client.interactions.press({ ...centreOf(button.rect!), signal: requestSignal })), signal);
+    await this.command('keyboard.dismiss', (client) => input.press(client, centreOf(button.rect!)), signal);
     return await this.snapshot(signal, false, input);
   }
 
