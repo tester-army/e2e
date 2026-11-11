@@ -74,6 +74,7 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
 | `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. Screen swipes in tests wait out the remaining budget before scrolling. |
+| `videoTouches` | Whether a video recording draws agent-device's touch indicator where a test tapped, default `true`. `false` records the plain screen and skips drawing the indicator after the recording stops, which on a hosted daemon can outlast `cleanupTimeout`. |
 
 Every optional `mobile()` value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` straight through, with no conditional
@@ -136,9 +137,16 @@ test('shows the version in dark mode', async ({ agent, device, screen }) => {
 
 Methods: `setNetwork`, `setAirplaneMode`, `setPermission`, `setLocation`,
 `clearLocation`, `setAppearance`, `setOrientation`, `fold`, `setBiometrics`,
-`enrollBiometrics`, `installApp`, `openApp`, `closeApp`, `clearKeychain`,
-`foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`, `clipboard`,
-`setClipboard`, and the `locator` accessor.
+`enrollBiometrics`, `installApp`, `openApp`, `openLink`, `closeApp`,
+`clearKeychain`, `foregroundApp`, `home`, `back`, `alert`, `dismissKeyboard`,
+`clipboard`, `setClipboard`, and the `locator` accessor.
+
+`device.unstable_raw` is the raw driver session, for what the methods do not
+cover. Its `client` calls are not steps: the report and trace leave them out,
+the cache does not replay them, their arguments reach the driver unredacted,
+and nothing waits for the screen to settle. Reading it after the worker
+disposes the session throws `INVALID_STATE`. It can change in any release
+([reference](https://e2e.com/docs/reference/mobile#unstable_raw)).
 
 `setNetwork('offline')` and `setAirplaneMode(true)` are Android only. An iOS
 simulator shares the Mac's network, and simctl can only change its status
