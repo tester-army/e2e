@@ -1,6 +1,5 @@
-import { emitReplayCode } from '../../src/cache/code.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect, it } from 'vitest';
 import type { ModelInstance } from '../../src/types.ts';
@@ -9,7 +8,7 @@ import { installFakeLoopModel, loopCalls, nodeIdFor } from '../helpers/fake-loop
 import { startFixtureApp } from '../helpers/fixture-app.ts';
 import { assertValidReport } from '../helpers/report-schema.ts';
 import { contentsUnder, createProject, runExisting } from '../helpers/run-project.ts';
-import { onlyActStep, readEntries } from '../helpers/trace-cache.ts';
+import { onlyActStep, readEntries, writeEntry } from '../helpers/trace-cache.ts';
 import { ListReporter } from '../../src/report/list.ts';
 
 const TITLE = 'model provenance';
@@ -52,7 +51,7 @@ it.each(['same', 'different', 'legacy', 'null', 'invalid-model', 'missing-provid
         null: null, 'invalid-model': { provider: 'test', model: 1 }, 'missing-provider': { model: 'test' },
         'blank-model': { provider: 'test', model: ' ' }, 'oversized-provider': { provider: 'x'.repeat(301), model: 'A' }, 'oversized-model': { provider: 'test', model: 'x'.repeat(301) },
       };
-      writeFileSync(entry!.file, emitReplayCode({ ...payload, ...(mode === 'legacy' ? {} : { recordedBy: invalid[mode] }) } as ActionTrace));
+      writeEntry(entry!.file, { ...entry!.entry, payload: { ...payload, ...(mode === 'legacy' ? {} : { recordedBy: invalid[mode] }) } as ActionTrace });
     }
     const before = readFileSync(entry!.file, 'utf8');
     const lines: string[] = [];

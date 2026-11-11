@@ -6,6 +6,7 @@ import { chmod, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { createAgentCacheContext, settleStagedTraces } from '../../src/cache/context.ts';
+import { cacheFileName } from '../../src/cache/code.ts';
 import { FileCacheStore } from '../../src/cache/store.ts';
 import { buildTraceEntry } from '../../src/cache/trace.ts';
 import { readTraceEntry } from '../../src/cache/trace-read.ts';
@@ -276,9 +277,9 @@ describe('settleStagedTraces', () => {
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)('does not report default-store eviction when the entry directory denies deletion', async () => {
     const directory = await mkdtemp(path.join(tmpdir(), 'e2e-cache-delete-'));
     try {
-      const store = new FileCacheStore({ directory, maxBytes: 1_048_576, writable: true });
+      const store = new FileCacheStore({ testId: STEP.testId, directory, maxBytes: 1_048_576, writable: true });
       await store.write(KEY_B, trace('stale trailing flow'));
-      const entryPath = path.join(directory, `${KEY_B}.replay.ts`);
+      const entryPath = path.join(directory, cacheFileName(STEP.testId));
       const before = await readFile(entryPath, 'utf8');
       await chmod(directory, 0o500);
       const context = contextWith(store);

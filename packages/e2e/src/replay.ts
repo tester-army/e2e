@@ -1,3 +1,4 @@
+import type { ReplayStep, ReplayTest } from './cache/test-file.ts';
 import type { ActionTrace, RecordedAction } from './cache/trace.ts';
 
 type ActionName = RecordedAction['name'];
@@ -15,9 +16,19 @@ function define(context: Omit<ActionTrace, 'actions'>, actions: readonly Recorde
   return { ...context, actions };
 }
 
+/** Groups all recorded act calls for one test in the cache directory. */
+function test(context: Pick<ReplayTest, 'id' | 'testId'>, steps: readonly ReplayStep[]): ReplayTest {
+  return { ...context, steps };
+}
+
+/** Records one act call's identity and position without executing it. */
+function step(context: Omit<ReplayStep, 'trace'>, trace: ActionTrace): ReplayStep {
+  return { ...context, trace };
+}
+
 /** Replay-only operations retain the engine-independent recovery and verification contract. */
 export const replay = {
-  define,
+  define, test, step,
   tap: action('tap'), doubleTap: action('doubleTap'), longPress: action('longPress'),
   secondaryTap: action('secondaryTap'), hover: action('hover'), scrollTo: action('scrollTo'),
   type: action('type'), typeSecret: action('typeSecret'), press: action('press'),
@@ -26,4 +37,4 @@ export const replay = {
   back: action('back'), resize: action('resize'), tapAt: action('tapAt'), hoverAt: action('hoverAt'),
   dragAt: action('dragAt'), typeText: action('typeText'), pressKey: action('pressKey'),
   dismissKeyboard: action('dismissKeyboard'), tool: action('tool'),
-} satisfies { define: typeof define } & Record<ActionName, unknown>;
+} satisfies { define: typeof define; test: typeof test; step: typeof step } & Record<ActionName, unknown>;

@@ -1,29 +1,17 @@
-/**
- * Trace entry storage.
- *
- * One file per key under `.e2e/cache/`, named for the key digest. Reads fail
- * closed: an oversized or unreadable entry is a miss, never a repair. Writes go
- * through a temporary file and an atomic rename, so a crashed or concurrent
- * writer cannot leave a torn entry behind.
- *
- * There is no locking. Two writers only ever collide on a key when the same
- * step runs concurrently on the same path, and then they are writing the same
- * flow, so last-write-wins is the correct outcome rather than a hazard.
- *
- * The interface exists so a remote store — the cloud's shared cache — can
- * replace the filesystem without the harness noticing.
- */
-
-import { mkdir, readdir, readFile, stat, unlink } from 'node:fs/promises';
+/** Test recording storage. Confirmed updates merge under a file lock and publish atomically. */
+import { mkdir, readFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeFileAtomic } from '../internal/atomic-write.ts';
+import { canonicalJson, sha256Hex } from '../internal/ids.ts';
 import { errorMessage } from '../internal/errors.ts';
-import type { ActionTrace, TraceEntry } from './trace.ts';
-import { encodeReplayCode, readReplayCode, cacheFileName, cacheFileKey } from './code.ts';
+import { buildTraceEntry, type ActionTrace } from './trace.ts';
+import type { TraceEntry } from './trace.ts';
+import type { ReplayStep, ReplayTest, ReplayVariant } from './test-file.ts';
+import { encodeTestReplayCode, readTestReplayCode, cacheFileName } from './code.ts';
+import { withCacheLock } from './file-lock.ts';
 
-/** Hard wire ceiling on one entry, on both the read and the write path. */
+/** Hard wire ceiling for one complete test recording. */
 export const MAX_CACHE_WIRE_BYTES = 1_048_576;
-
 const KEY_HASH = /^[a-f0-9]{64}$/u;
 
 export type CacheReadResult =
@@ -50,108 +38,117 @@ export interface CacheStore {
 
 export interface FileCacheStoreOptions {
   readonly directory: string;
-  /** Entry size cap for tests; production passes the wire ceiling, which clamps it. */
+  readonly testId: string;
+  readonly variant?: ReplayVariant;
   readonly maxBytes: number;
   readonly writable: boolean;
+  /** Attempts stage changes until their verification boundary settles. */
+  readonly deferred?: boolean;
 }
 
+/** One test's step lookup facade, retaining the custom store's per-step contract. */
 export class FileCacheStore implements CacheStore {
   readonly writable: boolean;
+  private readonly path: string;
+  private readonly variant: ReplayVariant | undefined;
+  private readonly pending = new Map<string, ActionTrace | null>();
+  private readonly order = new Map<string, number>();
 
-  private readonly directory: string;
-  private readonly maxBytes: number;
-
-  constructor(options: FileCacheStoreOptions) {
-    this.directory = options.directory;
-    this.maxBytes = Math.min(options.maxBytes, MAX_CACHE_WIRE_BYTES);
+  constructor(private readonly options: FileCacheStoreOptions) {
     this.writable = options.writable;
+    this.variant = options.variant === undefined ? undefined : variantIdentity(options.variant);
+    this.path = join(options.directory, cacheFileName(options.testId));
   }
 
+  /** Records encounter order independently of the step's signature-based lookup key. */
+  claim(key: string): void { if (!this.order.has(key)) this.order.set(key, this.order.size); }
+
+  /** Loads and validates the whole container before exposing any of its steps. */
+  async recording(): Promise<{ readonly recording: ReplayTest; readonly bytes: number } | undefined> {
+    let size: number;
+    try { size = (await stat(this.path)).size; }
+    catch (cause) { if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return undefined; throw cause; }
+    if (size > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
+    const source = await readFile(this.path, 'utf8');
+    if (Buffer.byteLength(source) > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
+    const recording = readTestReplayCode(source);
+    if (recording.id !== sha256Hex(this.options.testId)) throw new Error('test recording identity does not match its filename');
+    return { recording, bytes: Buffer.byteLength(source) };
+  }
+
+  /** Reads a matching act call without treating a different call as a hit. */
   async read(keyHash: string): Promise<CacheReadResult> {
-    const path = this.entryPath(keyHash);
-    if (path === undefined) return { status: 'invalid', reason: 'key hash is not a SHA-256 digest' };
-
-    let bytes: number;
+    if (!KEY_HASH.test(keyHash)) return { status: 'invalid', reason: 'key hash is not a SHA-256 digest' };
     try {
-      bytes = (await stat(path)).size;
-    } catch {
-      return { status: 'miss' };
-    }
-    // Checked before the read so an oversized file is never pulled into memory.
-    if (bytes > this.maxBytes) {
-      return {
-        status: 'invalid',
-        reason: `cache entry is ${bytes} bytes, over the ${this.maxBytes}-byte limit`,
-        bytes,
-      };
-    }
-
-    let entry: TraceEntry | undefined;
-    try {
-      const source = await readFile(path, 'utf8');
-      entry = readReplayCode(source);
-    } catch (cause) {
-      return { status: 'invalid', reason: `cache entry is unreadable: ${errorMessage(cause)}`, bytes };
-    }
-    if (entry === undefined) {
-      return { status: 'invalid', reason: 'cache entry is not a replayable trace-1 entry', bytes };
-    }
-    return { status: 'hit', entry, bytes };
+      const loaded = await this.recording();
+      const step = loaded?.recording.steps.find((candidate) => candidate.key === keyHash && this.owns(candidate));
+      return step === undefined ? { status: 'miss' } : { status: 'hit', entry: { ...buildTraceEntry(step.trace), createdAt: '1970-01-01T00:00:00.000Z' }, bytes: loaded!.bytes };
+    } catch (cause) { return { status: 'invalid', reason: `cache entry is unreadable: ${errorMessage(cause)}` }; }
   }
 
+  /** Stages a verified trace, or publishes it immediately for a direct store caller. */
   async write(keyHash: string, payload: ActionTrace): Promise<{ bytes: number } | undefined> {
-    if (!this.writable) return undefined;
-    const path = this.entryPath(keyHash);
-    if (path === undefined) return undefined;
-
-    let serialized: string;
-    try { serialized = encodeReplayCode(payload); } catch { return undefined; }
-    const bytes = Buffer.byteLength(serialized, 'utf8');
-    if (bytes > this.maxBytes) return undefined;
-
-    const previous = await this.read(keyHash);
-    if (previous.status === 'hit' && encodeReplayCode(previous.entry.payload) === serialized) return { bytes };
-    await mkdir(this.directory, { recursive: true });
-    await writeFileAtomic(path, serialized, { mode: 0o600 });
-    return { bytes };
+    if (!this.writable || !KEY_HASH.test(keyHash)) return undefined;
+    try {
+      const bytes = Buffer.byteLength(encodeTestReplayCode({ id: sha256Hex(this.options.testId), testId: payload.recordedFor?.testId ?? this.options.testId, steps: [this.step(keyHash, payload, this.order.get(keyHash) ?? 0)] }));
+      if (bytes > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) return undefined;
+      this.pending.set(keyHash, payload);
+      if (!this.options.deferred) await this.flush(false);
+      return { bytes };
+    } catch { return undefined; }
   }
 
+  /** Evicts only the implicated act call, preserving other steps and variants. */
   async delete(keyHash: string): Promise<void> {
-    if (!this.writable) return;
-    const path = this.entryPath(keyHash);
-    if (path === undefined) return;
-    try {
-      await unlink(path);
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause;
-    }
+    if (!this.writable || !KEY_HASH.test(keyHash)) return;
+    if (!this.pending.has(keyHash) && (await this.read(keyHash)).status === 'miss') return;
+    this.pending.set(keyHash, null);
+    if (!this.options.deferred) await this.flush(false);
   }
 
-  /**
-   * The key hashes of the digest-named files in the directory, readable or
-   * not; none when the directory does not exist. Not part of `CacheStore`:
-   * only `cache.strict` lists a store, and only this one.
-   */
+  /** Returns the keys in this test, used by strict stale-key detection. */
   async keyHashes(): Promise<string[]> {
-    let names: string[];
-    try {
-      names = await readdir(this.directory);
-    } catch (cause) {
-      if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return [];
-      throw cause;
-    }
-    return names.flatMap((name) => {
-      const key = cacheFileKey(name);
-      return key === undefined ? [] : [key];
-    });
+    return (await this.recording())?.recording.steps.filter((step) => this.owns(step)).map((step) => step.key) ?? [];
   }
 
-  /**
-   * Resolves one entry path. The key hash is the only caller-supplied path
-   * component and must be a bare digest, so traversal is impossible by
-   * construction rather than by canonicalization after the fact.
-   */
-  private entryPath(keyHash: string): string | undefined {
-    return KEY_HASH.test(keyHash) ? join(this.directory, cacheFileName(keyHash)) : undefined;
+  /** Atomically merges this attempt; a completed body replaces its variant's encountered step set. */
+  async flush(completed: boolean): Promise<void> {
+    if (!this.writable || (this.pending.size === 0 && !completed)) return;
+    if (this.pending.size === 0 && !(await stat(this.path).then(() => true, (cause: NodeJS.ErrnoException) => { if (cause.code === 'ENOENT') return false; throw cause; }))) return;
+    await mkdir(this.options.directory, { recursive: true });
+    await withCacheLock(this.path, async () => {
+      // Invalid data is disposable, but never salvage a subset of an invalid file for replay.
+      const existing = await this.recording().catch(() => undefined);
+      let steps = [...(existing?.recording.steps ?? [])];
+      if (completed) steps = steps.filter((step) => !this.owns(step) || this.order.has(step.key));
+      for (const [key, trace] of this.pending) {
+        const old = steps.find((step) => step.key === key && this.owns(step));
+        steps = steps.filter((step) => step.key !== key || !this.owns(step));
+        if (trace !== null) steps.push(this.step(key, trace, this.order.get(key) ?? old?.order ?? steps.length));
+      }
+      steps = steps.map((step) => this.owns(step) && this.order.has(step.key) ? { ...step, order: this.order.get(step.key)! } : step);
+      if (steps.length === 0) { await unlink(this.path).catch((cause: NodeJS.ErrnoException) => { if (cause.code !== 'ENOENT') throw cause; }); return; }
+      const source = encodeTestReplayCode({ id: sha256Hex(this.options.testId), testId: steps[0]!.trace.recordedFor?.testId ?? existing?.recording.testId ?? this.options.testId, steps });
+      if (Buffer.byteLength(source) > Math.min(this.options.maxBytes, MAX_CACHE_WIRE_BYTES)) throw new Error('test recording exceeds its byte limit');
+      if (existing !== undefined && canonicalJson(readTestReplayCode(source)) === canonicalJson(existing.recording)) return;
+      await writeFileAtomic(this.path, source, { mode: 0o600 });
+    });
+    this.pending.clear();
   }
+
+  /** Identifies the execution variant this writer may replace. */
+  private owns(step: ReplayStep): boolean {
+    return this.variant === undefined || canonicalJson(step.variant) === canonicalJson(this.variant);
+  }
+
+  /** Builds one test step while retaining its recorded target and agent provenance. */
+  private step(key: string, trace: ActionTrace, order: number): ReplayStep {
+    const variant = this.variant ?? variantIdentity({ project: trace.keyedBy?.project ?? '', target: trace.recordedFor?.targetId ?? '', agent: trace.recordedFor?.agent ?? '' });
+    return { key, order, variant, trace };
+  }
+}
+
+/** Ownership must remain stable without publishing secret-bearing target or agent names. */
+function variantIdentity(variant: ReplayVariant): ReplayVariant {
+  return { project: variant.project, target: sha256Hex(variant.target), agent: sha256Hex(variant.agent) };
 }

@@ -201,7 +201,7 @@ export async function launchAttempt(
       const testBudget = new AttemptBudget(attemptSignal, new Deadline(test.pair.options.timeout));
       const cache = createAgentCacheContext({
         cache: config.cache, projectRoot: config.projectRoot, projectId: config.projectId, testId: test.pair.test.id,
-        target: targetIdentity(target), attemptIndex: 0, recordings: storedRecordingsFor(config.cache),
+        target: targetIdentity(target), agent: test.pair.agent, attemptIndex: 0, recordings: storedRecordingsFor(config.cache),
       });
       const { fixtures } = createFixtures({
         ...base, attempt: { ...attempt, titlePath: test.pair.test.titlePath }, budget: testBudget, agentContext: test.pair.options.agentContext,

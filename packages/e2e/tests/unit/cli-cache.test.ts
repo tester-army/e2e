@@ -1,4 +1,3 @@
-import { execFileSync } from 'node:child_process';
 /** `e2e cache ls`, `clear`, and `stats` over a real store directory. */
 
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -45,12 +44,10 @@ function trace(recordedFor: TraceProvenance | undefined, actions: number): Actio
 }
 
 async function seed(entries: readonly { keyHash: string; trace: ActionTrace }[]): Promise<void> {
-  const store = new FileCacheStore({
-    directory: path.join(root, CACHE_DIR),
-    maxBytes: MAX_CACHE_WIRE_BYTES,
-    writable: true,
-  });
-  for (const entry of entries) await store.write(entry.keyHash, entry.trace);
+  for (const entry of entries) {
+    const store = new FileCacheStore({ directory: path.join(root, CACHE_DIR), testId: entry.trace.recordedFor?.testId ?? entry.keyHash, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    await store.write(entry.keyHash, entry.trace);
+  }
 }
 
 async function invoke(...args: string[]): Promise<void> {
@@ -75,7 +72,7 @@ afterEach(() => {
 });
 
 describe('e2e cache ls', () => {
-  it('prints the provenance, age, and action count of every entry', async () => {
+  it('prints the test identity, step count, and action count of every entry', async () => {
     await seed([
       {
         keyHash: 'a'.repeat(64),
@@ -89,10 +86,10 @@ describe('e2e cache ls', () => {
     await invoke('cache', 'ls');
     const lines = written(stdoutSpy).trimEnd().split('\n');
     expect(process.exitCode).toBe(0);
-    expect(lines[0]).toMatch(/^TEST +TARGET +INSTRUCTION +ACTIONS$/);
+    expect(lines[0]).toMatch(/^TEST +TARGET +STEPS +ACTIONS$/);
     // Sorted by test, so billing precedes signup whatever the file order was.
-    expect(lines[1]).toMatch(/^tests\/billing\.e2e\.ts::upgrades +safari +eeeeeeeeeeee +1$/);
-    expect(lines[2]).toMatch(/^tests\/signup\.e2e\.ts::signs up +web +dddddddddddd +3$/);
+    expect(lines[1]).toMatch(/^tests\/billing\.e2e\.ts::upgrades +safari +1 +1$/);
+    expect(lines[2]).toMatch(/^tests\/signup\.e2e\.ts::signs up +web +1 +3$/);
   });
 
   it('marks a recording the action cap cut short', async () => {
@@ -116,10 +113,10 @@ describe('e2e cache ls', () => {
     expect(process.exitCode).toBe(0);
     expect(lines).toHaveLength(3);
     expect(lines.find((line) => line.startsWith(asciiId))).toBe(
-      `${asciiId}${' '.repeat(asciiPadding)}web     dddddddddddd  1`,
+      `${asciiId}${' '.repeat(asciiPadding)}web     1      1`,
     );
     expect(lines.find((line) => line.startsWith(testId))).toBe(
-      `${testId}${' '.repeat(padding)}web     eeeeeeeeeeee  1`,
+      `${testId}${' '.repeat(padding)}web     1      1`,
     );
   });
 
@@ -224,21 +221,6 @@ describe('e2e cache configuration', () => {
   });
 });
 
-it('lists code recordings, displays diffs and clears them', async () => {
-  const keyHash = 'a'.repeat(64);
-  await seed([{ keyHash, trace: trace(undefined, 1) }]);
-  expect(readdirSync(path.join(root, CACHE_DIR))).toContain(`${keyHash}.replay.ts`);
-  execFileSync('git', ['init', root]);
-  execFileSync('git', ['-C', root, 'add', '-N', '.']);
-  await invoke('cache', 'diff');
-  expect(process.exitCode).toBe(0);
-  expect(written(stdoutSpy)).toContain('+    replay.tap(');
-  await invoke('cache', 'ls');
-  expect(written(stdoutSpy)).toContain('ACTIONS');
-  await invoke('cache', 'clear');
-  expect(written(stdoutSpy)).toContain('cleared 1 file(s)');
-});
-
 it('ignores legacy JSON without reading or clearing it', async () => {
   const directory = path.join(root, CACHE_DIR);
   mkdirSync(directory, { recursive: true });
@@ -251,4 +233,10 @@ it('ignores legacy JSON without reading or clearing it', async () => {
   await invoke('cache', 'clear');
   expect(process.exitCode).toBe(0);
   expect(readdirSync(directory)).toEqual([legacy]);
+});
+
+it.each(['diff', 'migrate'])('does not register the removed cache %s command', async (command) => {
+  await invoke('cache', command);
+  expect(process.exitCode).toBe(2);
+  expect(written(stderrSpy)).toContain(`unknown command '${command}'`);
 });

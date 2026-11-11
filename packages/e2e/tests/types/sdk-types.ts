@@ -1040,3 +1040,9 @@ replay.tap({ summary: 'save' });
 replay.tool({ summary: 'read code', derived: 'invented-reason' });
 // @ts-expect-error A secret fill accepts a name, not a plaintext value field.
 replay.typeSecret({ target: { name: 'Password' }, value: 'plaintext', summary: 'fill' });
+const recordedStep = replay.step({ key: 'digest', order: 0, variant: { project: 'project', target: 'web', agent: 'default' } }, replay.define({ executor: { name: 'test' }, summary: 'saved' }, []));
+replay.test({ id: 'test-digest', testId: 'tests/save.e2e.ts::saves' }, [recordedStep]);
+// @ts-expect-error Every act declaration identifies its execution variant.
+replay.step({ key: 'digest', order: 0 }, replay.define({ executor: { name: 'test' }, summary: 'saved' }, []));
+// @ts-expect-error A test file contains step declarations, not loose actions.
+replay.test({ id: 'test-digest', testId: 'test' }, [replay.tap({ target: { name: 'Save' }, summary: 'save' })]);

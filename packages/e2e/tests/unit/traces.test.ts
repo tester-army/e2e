@@ -9,6 +9,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { cacheFileName } from '../../src/cache/code.ts';
 import type { ReportResult } from '../../src/report/build.ts';
 import { writeTracePages } from '../../src/report/traces.ts';
 import { reportAttempt, reportDocument, reportError, reportResult, reportStep } from '../helpers/report.ts';
@@ -76,7 +77,7 @@ describe('writeTracePages', () => {
     expect(readdirSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b')).toSorted()).toEqual(['attempt-1', 'trace.md']);
     expect([...pages]).toEqual([[failing.id, '.e2e/results/checkout-applies-the-coupon-1a2b3c4d5e6f7a8b/trace.md']]);
     const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'trace.md'), 'utf8');
-    expect(text).toContain(`(\`.e2e/cache/${ENTRY}.replay.ts\`)`);
+    expect(text).toContain(`(\`.e2e/cache/${cacheFileName(failing.testId)}\`)`);
     expect(text).toContain('## Also failed');
     expect(text).toContain('**ENGINE_FAILURE** in cleanup: the browser closed early');
   });
@@ -87,7 +88,7 @@ describe('writeTracePages', () => {
     const shared = path.join(project(), 'shared');
     await writeTracePages(reportDocument({ status: 'failed', results: [failing] }), new Set([failing.id]), { projectRoot: root, resultsRoot: dir, cacheDir: shared });
     const text = readFileSync(path.join(dir, 'checkout-applies-the-coupon-1a2b3c4d5e6f7a8b', 'trace.md'), 'utf8');
-    expect(text).toContain(`(\`${shared.split(path.sep).join('/')}/${ENTRY}.replay.ts\`)`);
+    expect(text).toContain(`(\`${shared.split(path.sep).join('/')}/${cacheFileName(failing.testId)}\`)`);
   });
 
   it('tells a traced passing result as its steps, with no failure to look at', async () => {
@@ -136,7 +137,7 @@ describe('the steps on a trace page', () => {
   it("tell the cache's decision first, then the actions, polls, and app log in the order they happened", async () => {
     const [page] = await pagesOf(failing);
     expect(stepLines(page!.text, 1)).toEqual([
-      `cache: replayed 1 of 3 recorded actions, then the agent took over: a recorded target is not on the screen; at action 2 of 3, tap button "Apply"; recording saved (\`.e2e/cache/${ENTRY}.replay.ts\`)`,
+      `cache: replayed 1 of 3 recorded actions, then the agent took over: a recorded target is not on the screen; at action 2 of 3, tap button "Apply"; recording saved (\`.e2e/cache/${cacheFileName(failing.testId)}\`)`,
       'tap button "Coupon" (12ms)',
       '✗ network error: `POST /api/coupon 500 Internal Server Error`',
     ]);

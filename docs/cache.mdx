@@ -228,8 +228,8 @@ replay stopped and why (`at action 2 of 3, tap button "Apply": ...`). After
 an `end-mismatch` it names the recorded nodes that did not show, the ones
 that did not go away, and any alert the recording never saw, or says the
 outcome already showed before the replay acted.
-`step.cache.entry` is the entry's key and its file name (`<entry>.replay.ts`) in
-the file store.
+`step.cache.entry` identifies the act call inside its test's recording.
+The trace page links to the test's `.replay.ts` file.
 
 | Reason | What happened | What to do |
 | --- | --- | --- |
@@ -281,8 +281,9 @@ composed itself, replay.
 
 ## What a recording holds
 
-Each entry is a `.replay.ts` file under `.e2e/cache/`, named by a hash of its key.
-It holds actions, target descriptions, typed text, a step summary, and the
+Each test has one `.replay.ts` file under `.e2e/cache/`, containing its act
+calls in execution order, grouped by project, target and agent. Each call
+holds actions, target descriptions, typed text, a summary, and the
 end checks: the route and up to eight controls that appeared and eight that
 went away. Entries hold no prompts, conversations, screenshots, observed
 trees, or secret values. A secret fill stores only the secret's name.
@@ -406,19 +407,19 @@ CI over `cache.strict` in the config. To fix a stale entry:
 
 <CodeGroup>
 ```bash npm
-npx e2e cache ls      # one row per entry: test, target, instruction digest, actions
+npx e2e cache ls      # one row per test file: test, targets, steps, actions
 npx e2e cache stats   # entry count and size
 npx e2e cache clear   # delete every entry
 ```
 
 ```bash pnpm
-pnpm exec e2e cache ls      # one row per entry: test, target, instruction digest, actions
+pnpm exec e2e cache ls      # one row per test file: test, targets, steps, actions
 pnpm exec e2e cache stats   # entry count and size
 pnpm exec e2e cache clear   # delete every entry
 ```
 
 ```bash bun
-bunx e2e cache ls      # one row per entry: test, target, instruction digest, actions
+bunx e2e cache ls      # one row per test file: test, targets, steps, actions
 bunx e2e cache stats   # entry count and size
 bunx e2e cache clear   # delete every entry
 ```
@@ -443,27 +444,59 @@ Old files are ignored, including in strict mode. There is no migration command
 or `cache.format` option.
 </Warning>
 
-<Accordion title="Example recording, with provenance omitted">
+The filename keeps the old flat SHA-256 naming style. Previously the digest
+identified one act call; now it hashes the collected test ID, the relative
+source path plus its encoded describe and test titles. For example,
+`tests/checkout.e2e.ts::buys` maps to
+`<cache.dir>/f809206a0475119f8e8b9958b88da124127e6750ab513ba73c3dce843a12968c.replay.ts`.
+The digest stays 64 characters. Different source files and describe paths
+remain distinct; duplicate full titles in one file are rejected at collection.
+
+<Accordion title="Example structure, with digest values abbreviated">
 ```ts
 import { replay } from 'e2e/replay';
 
-export default replay.define(
-  {
-    endAnchors: [{ name: 'Saved', role: 'status' }],
-    endPath: '/profile',
-    executor: { name: 'e2e-default-agent' },
-    startPath: '/profile',
-    summary: 'Profile saved',
-  },
+export default replay.test(
+  { id: '<test digest>', testId: 'tests/checkout.e2e.ts::buys' },
   [
-    replay.tap({
-      summary: 'Save profile',
-      target: { name: 'Save', role: 'button' },
-    }),
+    replay.step(
+      {
+        key: '<act digest>',
+        order: 0,
+        variant: { project: '<project digest>', target: '<target digest>', agent: '<agent digest>' },
+      },
+      replay.define(
+        { executor: { name: 'e2e-default-agent' }, summary: 'Saved' },
+        [replay.tap({ summary: 'Save', target: { name: 'Save', role: 'button' } })],
+      ),
+    ),
   ],
 );
 ```
+
+Generated files contain full digests, redacted provenance and outcome checks.
+Variant names are hashed so secret-bearing target or agent names cannot leak.
 </Accordion>
+
+Act calls keep their existing keys: instruction, params, occurrence of that
+same call, test, target, agent and replay policy. `order` records execution
+order; it does not replace key matching. A new call is a miss and runs the
+agent. A stale recording follows the normal repair path, or fails with
+`REPLAY_STALE` in strict mode. Strict mode still lets a call with no recording
+run live and writes nothing.
+
+After a successful attempt, the file keeps only the calls that attempt
+encountered for its project, target and agent. Other variants remain. Failed
+attempts preserve unvisited calls and apply the usual confirmation and eviction
+rules. Interrupted attempts write nothing.
+
+Renaming a test changes its filename. A successful read-write run removes the
+old variant when collection proves the test is gone: its source was collected,
+or a full collection finds the source deleted. Filtered runs preserve files
+outside their collection. Read-only and strict runs never prune. If no tests
+run, cleanup waits for the next run that executes tests. Configurations no
+longer run cannot clean up their own variants; remove those files with Git.
+
 
 The loader accepts formatting changes, comments and literal values. It never
 imports or evaluates the file. Expressions, callbacks, spreads and extra
@@ -474,11 +507,12 @@ for matching stay intact; use `unique()` for run-specific test data.
 Runtime-derived values remain explicit agent handoffs. A recording cannot
 reconstruct a computation the agent read from the app.
 
-A confirmed repair updates the source atomically. Run `e2e cache diff` for
-changes against Git's index, or use your usual Git tools. Stage new files
-with `git add -N` to include them in that diff. No diff sidecars are written.
-An unchanged replay leaves the file untouched. Custom stores continue to use
-the typed trace contract.
+A confirmed repair updates the test file atomically. Review it with Git.
+Concurrent target writers merge under a per-file lock. A busy lock skips the
+write; after a crashed writer, remove its `.replay.ts.lock` file before
+regenerating. The 1 MiB limit applies to the complete test file. An unchanged
+replay leaves the file untouched. Custom stores retain their per-act typed
+trace contract.
 
 
 ## Next
@@ -488,6 +522,6 @@ the typed trace contract.
     `mode`, `store`, `dir`, `strict`.
   </Card>
   <Card title="CLI reference" icon="terminal" href="/reference/cli#e2e-cache">
-    `e2e cache ls`, `stats`, `clear`, `diff`.
+    `e2e cache ls`, `stats`, `clear`.
   </Card>
 </CardGroup>

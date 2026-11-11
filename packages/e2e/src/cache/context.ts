@@ -162,6 +162,8 @@ export interface AttemptSettlement {
    * exactly as they are, neither written nor evicted.
    */
   readonly implicatesUnconfirmed: boolean;
+  /** Only a completed test body can remove steps it no longer calls. */
+  readonly completed?: boolean;
 }
 
 /**
@@ -220,6 +222,15 @@ export async function settleStagedTraces(context: AgentCacheContext, settlement:
       if (entry.kind === 'write' && confirmed) outcomes.set(entry.stepIndex, 'not-written');
     }
   }
+  if (context.store instanceof FileCacheStore && settlement !== undefined && context.mode === 'read-write') {
+    try { await context.store.flush(settlement.completed === true); }
+    catch {
+      for (const [index, outcome] of outcomes) {
+        if (outcome === 'saved') outcomes.set(index, 'not-written');
+        if (outcome === 'evicted') outcomes.set(index, 'unconfirmed');
+      }
+    }
+  }
   return outcomes;
 }
 
@@ -237,6 +248,7 @@ export function createAgentCacheContext(options: {
   readonly testId: string;
   readonly target: CacheTargetIdentity;
   readonly attemptIndex: number;
+  readonly agent?: string;
   /** The file store's listing under `cache.strict`, shared by the attempts of one worker and target (`storedRecordingsFor`). */
   readonly recordings?: StoredRecordings | undefined;
 }): AgentCacheContext | undefined {
@@ -247,6 +259,9 @@ export function createAgentCacheContext(options: {
     options.cache.store ??
     new FileCacheStore({
       directory: options.cache.dir,
+      testId: options.testId,
+      variant: { project: projectIdentity(options.projectId), target: options.target.targetId, agent: options.agent ?? 'default' },
+      deferred: true,
       maxBytes: MAX_CACHE_WIRE_BYTES,
       writable: mode === 'read-write',
     });
@@ -284,8 +299,10 @@ export function createAgentCacheContext(options: {
         agent,
         policyVersion: REPLAY_POLICY_VERSION,
       });
+      const keyHash = traceCacheKeyHash(key);
+      if (store instanceof FileCacheStore) store.claim(keyHash);
       return {
-        keyHash: traceCacheKeyHash(key),
+        keyHash,
         context: keyContext(key),
         step: {
           testId: options.testId,

@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile, stat } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { emitReplayCode, readReplayCode } from '../../src/cache/code.ts';
+import { emitReplayCode, readReplayCode, readTestReplayCode, emitTestReplayCode, cacheFileName } from '../../src/cache/code.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import { storedRecordingsFor } from '../../src/cache/rekeyed.ts';
 import { replay } from '../../src/replay.ts';
@@ -33,9 +33,9 @@ describe.each(['web', 'mobile'])('%s committed recordings', (platform) => {
     const files = (await readdir(directory)).filter((name) => name.endsWith('.replay.ts'));
     expect(files.length).toBeGreaterThan(0);
     for (const file of files) {
-      const entry = readReplayCode(await readFile(path.join(directory, file), 'utf8'));
+      const entry = readTestReplayCode(await readFile(path.join(directory, file), 'utf8'));
       expect(entry, file).toBeDefined();
-      expect(readReplayCode(emitReplayCode(entry!.payload))?.payload, file).toEqual(entry!.payload);
+      expect(readTestReplayCode(emitTestReplayCode(entry)), file).toEqual(entry);
     }
   });
 });
@@ -43,8 +43,8 @@ describe.each(['web', 'mobile'])('%s committed recordings', (platform) => {
 it('preserves gaps, rejects invalid input, keeps code stable and writes a confirmed repair', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'code-cache-'));
   const key = 'a'.repeat(64);
-  const file = path.join(directory, `${key}.replay.ts`);
-  const options = { directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true };
+  const file = path.join(directory, cacheFileName('fixture'));
+  const options = { testId: 'fixture', directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true };
   try {
     const store = new FileCacheStore(options);
     await store.write(key, flow);
@@ -98,7 +98,7 @@ it('ignores old JSON files in lookup, strict indexing and deletion', async () =>
   const file = path.join(directory, `${key}.json`);
   try {
     await writeFile(file, 'not even valid JSON');
-    const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
+    const store = new FileCacheStore({ testId: 'fixture', directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: true });
     expect(await store.read(key)).toEqual({ status: 'miss' });
     expect(await store.keyHashes()).toEqual([]);
     const recordings = storedRecordingsFor({ dir: directory, mode: 'read-only', store: undefined, strict: { config: true, flag: false } })!;
@@ -108,4 +108,22 @@ it('ignores old JSON files in lookup, strict indexing and deletion', async () =>
     await store.delete(key);
     expect(await readFile(file, 'utf8')).toBe('not even valid JSON');
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+it('validates nested test syntax without evaluating metadata or nested calls', () => {
+  const source = emitTestReplayCode(replay.test({ id: 'a'.repeat(64), testId: 'test\u2028name' }, [
+    replay.step({ key: 'b'.repeat(64), order: 0, variant: { project: 'p', target: 'web', agent: 'default' } }, flow),
+  ]));
+  expect(readTestReplayCode(source.replaceAll('\n', '\r\n')).testId).toBe('test\u2028name');
+  for (const bad of [
+    source.replace('replay.step(', 'replay.tool('),
+    source.replace('replay.define(', 'process.exit('),
+    source.replace('"order": 0', '"order": -1'),
+    source.replace('"order": 0', '"order": 0, "trace": {}'),
+    source.replace('"order": 0', '"order": 0, "__proto__": { "polluted": true }'),
+    source + '\nprocess.exit(1);',
+  ]) expect(() => readTestReplayCode(bad)).toThrow();
+  const recording = readTestReplayCode(source);
+  expect(() => readTestReplayCode(emitTestReplayCode({ ...recording, steps: [...recording.steps, ...recording.steps] }))).toThrow('duplicate');
+  expect(Object.prototype).not.toHaveProperty('polluted');
 });

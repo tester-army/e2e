@@ -404,6 +404,7 @@ export function createStandaloneTestRun(env: StandaloneTestEnvironment, test: St
           : {
               lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
               implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
+              completed: status === 'passed',
             },
       );
     }

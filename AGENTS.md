@@ -74,7 +74,7 @@ suites that consume the built packages the way a user would.
     are the whole public surface: the flows, stores, and fetch behind them
     are module-private, not a library for other products. `tests/live/` holds hand-run
     checks that need a stored login and are never part of `pnpm test`.
-- `e2e/replay` declares typed cache operations. The code cache parses these declarations as data with oxc; it never imports recorded files. The file cache supports only `.replay.ts` recordings; old JSON files are ignored.
+- `e2e/replay` declares typed cache operations. The code cache parses these declarations as data with oxc; it never imports recorded files. The file cache supports only `.replay.ts` recordings, one per collected test under `cache.dir`, named by the SHA-256 digest of its test ID. Ordered act calls and target/agent variants share that file. Old JSON files are ignored.
 - `packages/web` — the published `@e2e-dev/web` package: the
   browser engine, built with the public `defineEngine`, contributing the
   `browser` fixture and `expect(browser)`. It depends on `e2e` (peer), never the

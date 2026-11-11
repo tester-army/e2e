@@ -10,10 +10,8 @@
  * (`TraceProvenance`), and a step whose own key misses while the store holds
  * a recording made for exactly that step is stale, not new.
  *
- * Only the file store can be listed. The listing is read once per worker
- * and target, on the first strict miss that asks, and kept: every entry
- * written since has a key the run derives, so it is a hit rather than a
- * candidate here.
+ * Only the file store can be listed. Each lookup reads the requested test's
+ * container, so unrelated tests never become stale-key candidates.
  */
 
 import type { ResolvedCacheConfig } from '../config/resolve.ts';
@@ -21,68 +19,27 @@ import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from './store.ts';
 import type { TraceKeyContext, TraceProvenance } from './trace.ts';
 
 export class StoredRecordings {
-  private readonly store: FileCacheStore;
-  /** Key hashes by `stepKey` of the step each entry was recorded for. */
-  private listing: Promise<ReadonlyMap<string, readonly string[]>> | undefined;
+  constructor(private readonly directory: string) {}
 
-  constructor(store: FileCacheStore) {
-    this.store = store;
-  }
-
-  /**
-   * The key hash of an entry recorded for `step` under a key other than
-   * `keyHash`, with the key context it recorded, or undefined when there is none or the store cannot be
-   * listed. `step` is in the form an entry stores it (`recordedProvenance`).
-   * Only an entry that records the whole step counts: one written before the
-   * params, occurrence, and agent were recorded could belong to another call
-   * of the same instruction, and a read-write run that replays it completes
-   * it (`settleStagedTraces`). A truncated entry never replays under any key,
-   * so it is never the reason a step is stale.
-   */
-  async underAnotherKey(keyHash: string, step: TraceProvenance): Promise<{ readonly keyHash: string; readonly keyedBy?: TraceKeyContext } | undefined> {
+  /** Finds stale keys only inside the requested test's file, never in unrelated tests. */
+  async underAnotherKey(keyHash: string, step: TraceProvenance, fileTestId = step.testId): Promise<{ readonly keyHash: string; readonly keyedBy?: TraceKeyContext } | undefined> {
     const key = stepKey(step);
     if (key === undefined) return undefined;
-    let listing: ReadonlyMap<string, readonly string[]>;
-    try {
-      this.listing ??= this.list();
-      listing = await this.listing;
-    } catch {
-      return undefined;
-    }
-    for (const candidate of listing.get(key) ?? []) {
-      if (candidate === keyHash) continue;
-      // Listed once: an entry evicted since is no evidence.
-      const read = await this.store.read(candidate).catch(() => undefined);
-      if (read?.status === 'hit') {
-        const keyedBy = read.entry.payload.keyedBy;
-        return { keyHash: candidate, ...(keyedBy === undefined ? {} : { keyedBy }) };
-      }
+    const store = new FileCacheStore({ directory: this.directory, testId: fileTestId, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
+    const recording = await store.recording().catch(() => undefined);
+    for (const candidate of recording?.recording.steps ?? []) {
+      const trace = candidate.trace;
+      if (candidate.key === keyHash || trace.truncated || trace.recordedFor === undefined || stepKey(trace.recordedFor) !== key) continue;
+      return { keyHash: candidate.key, ...(trace.keyedBy === undefined ? {} : { keyedBy: trace.keyedBy }) };
     }
     return undefined;
   }
-
-  /** Every replayable entry that records its whole step, by `stepKey`. */
-  private async list(): Promise<ReadonlyMap<string, readonly string[]>> {
-    const steps = new Map<string, string[]>();
-    for (const keyHash of await this.store.keyHashes()) {
-      const read = await this.store.read(keyHash);
-      if (read.status !== 'hit' || read.entry.payload.truncated === true) continue;
-      const key = read.entry.payload.recordedFor === undefined ? undefined : stepKey(read.entry.payload.recordedFor);
-      if (key !== undefined) steps.set(key, [...(steps.get(key) ?? []), keyHash]);
-    }
-    return steps;
-  }
 }
 
-/**
- * The listing `cache.strict` checks a run's misses against, for the file
- * store only. Undefined when strict is off, the cache is off, or a custom
- * `cache.store` replaced the file store, which `CacheStore` gives no way to
- * list.
- */
+/** Custom stores own their own listing contract; file lookups are scoped to one test. */
 export function storedRecordingsFor(cache: ResolvedCacheConfig): StoredRecordings | undefined {
   if (cache.strict === false || cache.mode === 'off' || cache.store !== undefined) return undefined;
-  return new StoredRecordings(new FileCacheStore({ directory: cache.dir, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false }));
+  return new StoredRecordings(cache.dir);
 }
 
 /** The whole step as one map key, or undefined when the provenance does not record all of it. */

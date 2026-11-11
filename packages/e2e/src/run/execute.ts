@@ -1006,6 +1006,7 @@ export class TargetExecutor implements SerialHost {
             projectRoot: this.config.projectRoot,
             projectId: this.config.projectId,
             testId: pair.test.id,
+            agent: pair.agent,
             target: this.sessionIdentity,
             attemptIndex,
             recordings: this.storedRecordings,
@@ -1354,6 +1355,7 @@ export class TargetExecutor implements SerialHost {
           : {
               lastVerifiedStepIndex: failure === undefined ? steps.lastVerifiedStepIndex : lastVerifiedAtFailure,
               implicatesUnconfirmed: failure === undefined || implicatesUnconfirmed,
+              completed: failure === undefined && record.status === 'passed',
             },
       );
       for (const step of record.steps) {

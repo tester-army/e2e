@@ -20,7 +20,7 @@ npx e2e doctor [--check-model]     # can a run start: config, engine setup, mode
 npx e2e init [directory] [--yes]   # scaffold a project, refresh the agent skill
 npx e2e guide [topic]              # print this skill; topics: setup, writing-tests, agent,
                                    # running, explore, debugging, mcp, bug-bash
-npx e2e cache ls|clear|stats|migrate|diff       # inspect or empty the replay cache
+npx e2e cache ls|clear|stats       # inspect or empty the replay cache
 npx e2e login|logout|models [provider]  # e2e/oauth subscription logins: openai,
                                    # github-copilot, opencode-console, spacexai
 npx e2e mcp [--target <name>]      # MCP server for a coding agent (topic mcp)
@@ -119,7 +119,9 @@ With npm, use `npm exec -- e2e run --headed` to pass flags to e2e.
 
 ## The replay cache
 
-Entries live under `.e2e/cache/`, one file per key, named by key digest.
+Recordings live under `.e2e/cache/`, one `.replay.ts` file per test, named by
+the SHA-256 digest of the collected test ID. Each file groups ordered act
+steps by project, target and agent; each act retains its signature-based key.
 `E2E_CACHE_DIR` or `--cache-dir <dir>` (on `run` and `cache`) replaces
 `cache.dir` (file store only), so worktrees can share one directory; the mode
 stays as configured.
@@ -129,7 +131,7 @@ its own tools.
 
 | Command | Prints |
 | --- | --- |
-| `e2e cache ls` | One row per entry: test, target, instruction digest, age, action count. |
+| `e2e cache ls` | One row per test file: test, targets, step count, action count. |
 | `e2e cache stats` | Directory, entry count, total size. |
 | `e2e cache clear` | Deletes the entries and the directory; files the runner never wrote stay. |
 
@@ -313,5 +315,7 @@ explicit agent handoffs.
 JSON replay caches are no longer supported. Delete old `.json` cache files and
 run with `cache: 'read-write'` to regenerate. Old files are ignored, including
 in strict mode. There is no `cache.format` option or cache migration command.
-Use `e2e cache diff` for changes against Git's index; `git add -N` includes new
-files. No diff sidecars are stored. Custom stores use the typed trace contract.
+Use Git to review changes. A successful attempt removes obsolete steps for
+its variant. Read-write runs prune renamed or removed tests only when their
+collection proves absence; filtered, strict and read-only runs preserve other
+recordings. Custom stores retain the per-act typed trace contract.

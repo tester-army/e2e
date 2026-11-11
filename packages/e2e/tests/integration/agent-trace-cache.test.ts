@@ -602,7 +602,7 @@ describe('trace cache: --strict-cache never writes the cache', () => {
       const recording = await runExisting(project, options({ calls: 0, prefixes: [] }, false));
       expect(recording.exitCode).toBe(0);
       const recorded = entryFileState(project);
-      const entry = path.basename(readOnlyEntry(project).file, '.replay.ts');
+      const entry = actStep(recording).cache!.entry;
 
       writeFileSync(path.join(project.dir, 'fail-once'), '', 'utf8');
       const strict: ExecutorRecord = { calls: 0, prefixes: [] };

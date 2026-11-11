@@ -8,8 +8,8 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from 'vitest';
-import { emitReplayCode, readReplayCode } from '../../src/cache/code.ts';
-import type { TraceEntry } from '../../src/cache/trace.ts';
+import { emitTestReplayCode, readTestReplayCode } from '../../src/cache/code.ts';
+import { buildTraceEntry, type TraceEntry } from '../../src/cache/trace.ts';
 import type { E2EConfig, ModelInstance } from '../../src/index.ts';
 import type { StepCacheInfo, StepRecord } from '../../src/run/steps.ts';
 import { installFakeLoopModel, nodeIdFor, type LoopCall, type LoopToolCall } from './fake-loop-model.ts';
@@ -291,9 +291,9 @@ export function readEntries(project: FixtureProject): { readonly file: string; r
   return readdirSync(dir)
     .filter((name) => name.endsWith('.replay.ts'))
     .toSorted()
-    .map((name) => {
+    .flatMap((name) => {
       const file = path.join(dir, name);
-      return { file, entry: readReplayCode(readFileSync(file, 'utf8')) };
+      return readTestReplayCode(readFileSync(file, 'utf8')).steps.map((step) => ({ file, entry: buildTraceEntry(step.trace) }));
     });
 }
 
@@ -343,5 +343,7 @@ export function expectMissed(step: StepRecord, reason: NonNullable<StepCacheInfo
 
 /** Rewrites a fixture recording as replay declarations. */
 export function writeEntry(file: string, entry: TraceEntry): void {
-  writeFileSync(file, emitReplayCode(entry.payload), 'utf8');
+  const recording = readTestReplayCode(readFileSync(file, 'utf8'));
+  const steps = recording.steps.map((step) => JSON.stringify(step.trace.recordedFor) === JSON.stringify(entry.payload.recordedFor) || recording.steps.length === 1 ? { ...step, trace: entry.payload } : step);
+  writeFileSync(file, emitTestReplayCode({ ...recording, steps }), 'utf8');
 }

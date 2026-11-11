@@ -297,13 +297,13 @@ export class StepTraceSession {
   private async failIfRekeyed(): Promise<void> {
     const { strict } = this.cache;
     if (strict === false || strict.recordings === undefined) return;
-    const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact));
+    const previous = await strict.recordings.underAnotherKey(this.keyHash, recordedProvenance(this.claim.step, this.options.redact), this.claim.step.testId);
     if (previous === undefined) return;
     const changes = keyContextChanges(previous.keyedBy, this.claim.context);
     const why = changes.length === 0 ? "the runner, the engine, the app, or the agent's context changed after it was recorded" : `${changes.join(', ')} changed after it was recorded`;
     throw new AgentError(
       'REPLAY_STALE',
-      `the recording of this step no longer replays: the store holds it under another cache key (${cacheFileName(previous.keyHash)}), since ${why}, and cache.strict hands no step to the agent; ${strict.advice}`,
+      `the recording of this step no longer replays: the store holds it under another cache key (${cacheFileName(this.claim.step.testId)}), since ${why}, and cache.strict hands no step to the agent; ${strict.advice}`,
     );
   }
 

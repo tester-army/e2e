@@ -1,0 +1,63 @@
+// e2e replay test-1
+import { replay } from 'e2e/replay';
+
+export default replay.test(
+  {"id":"6a824df8bbf4c6266ae6e42437471acac666e8b5f2de4354252792b9459677d8","testId":"tests-agent/scenarios.e2e.ts::act%20completes%20sticky-chrome"},
+  [
+  replay.step(
+    {
+      "key": "f2ab7c5f57dbb07bf0abece6fd5d4671e48b75b67a8ef4e05dc589b9f83df6dd",
+      "order": 0,
+      "variant": {
+        "agent": "37a8eec1ce19687d132fe29051dca629d164e2c4958ba141d5f4133a33f0688f",
+        "project": "6c340b4558007fd12144b6a4e0daf3abb724b92faa2d08705fa564444b68533c",
+        "target": "4b5e57f6eb2f42b9039b3d1e13929295f231749c510cbe341cd68036d9af97e2"
+      }
+    },
+    replay.define(
+      {
+        "endAnchors": [
+          {
+            "testId": "success-message",
+            "text": "Terms accepted"
+          }
+        ],
+        "endPath": "/e/sticky-chrome",
+        "endWaitMs": 11764,
+        "executor": {
+          "name": "e2e-default-agent",
+          "version": "2"
+        },
+        "recordedFor": {
+          "agent": "default",
+          "callIndex": 0,
+          "instructionDigest": "507883318a8655d47afe9f680ee91cde1ae64055fbef530129cc289101a30c23",
+          "paramsDigest": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+          "targetId": "web",
+          "testId": "tests-agent/scenarios.e2e.ts::act%20completes%20sticky-chrome"
+        },
+        "startPath": "/e/sticky-chrome",
+        "summary": "Scrolled until the Accept terms button was clear above the sticky footer, clicked it once, and verified the “Terms accepted” confirmation."
+      },
+      [
+        replay.scrollTo({
+          "summary": "scroll button \"Accept terms\" into view",
+          "target": {
+            "name": "Accept terms",
+            "role": "button",
+            "testId": "accept-button"
+          }
+        }),
+        replay.tap({
+          "summary": "tap button \"Accept terms\"",
+          "target": {
+            "name": "Accept terms",
+            "role": "button",
+            "testId": "accept-button"
+          }
+        }),
+      ],
+    )
+  ),
+  ],
+);

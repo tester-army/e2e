@@ -77,21 +77,42 @@ export function parseReplaySource(source: string): unknown {
     }
     return fail(node, 'expected a JSON literal');
   }
-  const definition = call(exported.declaration);
-  const [context, actions] = definition.args;
-  if (definition.name !== 'define' || definition.args.length !== 2 || context?.type !== 'ObjectExpression' || actions?.type !== 'ArrayExpression') return fail(exported, 'expected replay.define(context, actions)');
+  /** Parses one step's replay declaration, never an arbitrary nested expression. */
+  function definition(node: Node): unknown {
+    const operation = call(node);
+    const [context, actions] = operation.args;
+    if (operation.name !== 'define' || operation.args.length !== 2 || context?.type !== 'ObjectExpression' || actions?.type !== 'ArrayExpression') return fail(node, 'expected replay.define(context, actions)');
+    const metadata = value(context) as Record<string, unknown>;
+    if (Object.hasOwn(metadata, 'actions')) return fail(context, 'context cannot override actions');
+    return {
+      ...metadata,
+      actions: actions.elements.map((action) => {
+        if (action === null) return fail(actions, 'action holes are forbidden');
+        const verb = call(action);
+        const [input] = verb.args;
+        if (['define', 'test', 'step'].includes(verb.name) || verb.args.length !== 1 || input?.type !== 'ObjectExpression') return fail(action, 'expected one action input object');
+        const fields = value(input) as Record<string, unknown>;
+        if (Object.hasOwn(fields, 'name')) return fail(input, 'input cannot override the operation');
+        return { ...fields, name: verb.name };
+      }),
+    };
+  }
+  const root = call(exported.declaration);
+  if (root.name === 'define') return definition(exported.declaration);
+  const [context, steps] = root.args;
+  if (root.name !== 'test' || root.args.length !== 2 || context?.type !== 'ObjectExpression' || steps?.type !== 'ArrayExpression') return fail(exported, 'expected replay.test(context, steps)');
   const metadata = value(context) as Record<string, unknown>;
-  if (Object.hasOwn(metadata, 'actions')) return fail(context, 'context cannot override actions');
+  if (Object.hasOwn(metadata, 'steps')) return fail(context, 'context cannot override steps');
   return {
     ...metadata,
-    actions: actions.elements.map((node) => {
-      if (node === null) return fail(actions, 'action holes are forbidden');
+    steps: steps.elements.map((node) => {
+      if (node === null) return fail(steps, 'step holes are forbidden');
       const operation = call(node);
-      const [input] = operation.args;
-      if (operation.name === 'define' || operation.args.length !== 1 || input?.type !== 'ObjectExpression') return fail(node, 'expected one action input object');
+      const [input, trace] = operation.args;
+      if (operation.name !== 'step' || operation.args.length !== 2 || input?.type !== 'ObjectExpression' || trace === undefined) return fail(node, 'expected replay.step(context, replay.define(...))');
       const fields = value(input) as Record<string, unknown>;
-      if (Object.hasOwn(fields, 'name')) return fail(input, 'input cannot override the operation');
-      return { ...fields, name: operation.name };
+      if (Object.hasOwn(fields, 'trace')) return fail(input, 'step cannot override trace');
+      return { ...fields, trace: definition(trace) };
     }),
   };
 }

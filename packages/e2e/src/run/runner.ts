@@ -1,5 +1,6 @@
 /** Run orchestration: config, collection, selection, execution, reporting. */
 
+import { pruneTestRecordings } from '../cache/cleanup.ts';
 import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
@@ -1160,6 +1161,9 @@ export async function run(options: RunOptions = {}): Promise<RunOutcome> {
         },
       }),
     );
+    if (!interrupted.aborted && runErrors.length === 0 && options.tests === undefined && config.cache.mode === 'read-write' && config.cache.strict === false && config.cache.store === undefined) {
+      await pruneTestRecordings({ directory: config.cache.dir, projectRoot: config.projectRoot, projectId: config.projectId, testIds: new Set(collection.tests.map((test) => test.id)), collectedFiles: new Set(collection.files.map((file) => file.file)), fullCollection: options.files === undefined || options.files.length === 0 });
+    }
   };
 
   // The interrupt bridge is armed for the whole body — app startup, collection,

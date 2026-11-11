@@ -2,29 +2,27 @@
  * `e2e cache`: what is in the replay cache, and how to get rid of it.
  *
  * The store is a directory of digest-named files, so a committed cache is
- * unreadable without a reader: `ls` prints each entry's provenance: the test,
- * the target, the instruction digest, how many actions it would
- * replay; `stats` sizes the store, and `clear` empties it.
+ * indexed by `ls`: test, targets, act steps and actions. `stats` sizes the
+ * store, and `clear` empties it.
  *
  * Every command works on files only. A project that configures `cache.store`
  * replaced the filesystem with its own store, and this CLI has no way to
  * enumerate it, so it says so instead of listing an empty directory.
  */
 
-import { readdir, rm, rmdir } from 'node:fs/promises';
+import { readdir, readFile, stat, rm, rmdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { Command } from 'commander';
 import picocolors from 'picocolors';
-import { cacheDiff } from './cache-diff.ts';
-import { cacheFileKey } from '../cache/code.ts';
-import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
+import { cacheFileKey, readTestReplayCode } from '../cache/code.ts';
+import { MAX_CACHE_WIRE_BYTES } from '../cache/store.ts';
 import { discoverConfig, loadConfigModule, missingConfigError } from '../config/load.ts';
 import { resolveConfig } from '../config/resolve.ts';
 import { errorMessage } from '../internal/errors.ts';
 import { visibleWidth } from '../report/format.ts';
 import { docsLine, examples } from './help.ts';
 
-type CacheCommand = 'ls' | 'clear' | 'stats' | 'diff';
+type CacheCommand = 'ls' | 'clear' | 'stats';
 
 /** The `--cache-dir` help line `e2e run` and every `e2e cache` command share. */
 export const CACHE_DIR_DESCRIPTION =
@@ -47,7 +45,7 @@ interface CacheEntrySummary {
   readonly truncated: boolean;
   readonly testId: string | undefined;
   readonly targetId: string | undefined;
-  readonly instructionDigest: string | undefined;
+  readonly steps: number;
 }
 
 interface CacheContents {
@@ -61,9 +59,6 @@ interface CacheContents {
 
 /** Only files the atomic writer creates qualify for cleanup. */
 const TEMPORARY_FILE = /^[a-f0-9]{64}\.replay\.ts\.[a-f0-9]{16}\.tmp$/u;
-
-/** Digest prefix printed instead of the full 64 hex characters. */
-const DIGEST_PREFIX_CHARS = 12;
 
 /**
  * Runs one `e2e cache` command against the configured store directory.
@@ -80,10 +75,6 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 
   try {
-    if (command === 'diff') {
-      process.stdout.write(await cacheDiff(directory));
-      return 0;
-    }
     const contents = await readContents(directory);
     switch (command) {
       case 'ls':
@@ -99,7 +90,7 @@ async function cache(command: CacheCommand, options: CacheOptions = {}): Promise
   }
 }
 
-/** Registers cache inspection and Git diff commands. */
+/** Registers cache inspection commands. */
 export function registerCacheCommand(program: Command): void {
   const cacheCommand = program
     .command('cache')
@@ -130,7 +121,6 @@ export function registerCacheCommand(program: Command): void {
     'Print one row per cached trace: the test and target it was recorded for, the digest of its instruction, how many actions a replay would run.',
   );
   cacheSubcommand('clear', 'delete every cached trace', 'Delete the cache files and the directory itself; files the runner never wrote are left alone.');
-  cacheSubcommand('diff', 'show regenerated recording diffs', 'Show current tracked cache changes against the Git index. Stage new files with git add -N to include them.');
   cacheSubcommand('stats', 'print the entry count and size', 'Print the store directory, how many readable entries it holds, and how many bytes they take.');
 }
 
@@ -164,7 +154,6 @@ async function resolveCacheDirectory(options: CacheOptions): Promise<string> {
  * there. A directory that does not exist is an empty store.
  */
 async function readContents(directory: string): Promise<CacheContents> {
-  const store = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
   const entries: CacheEntrySummary[] = [];
   const unreadable: { name: string; bytes: number }[] = [];
   const foreign: string[] = [];
@@ -185,22 +174,21 @@ async function readContents(directory: string): Promise<CacheContents> {
       if (!TEMPORARY_FILE.test(name)) foreign.push(name);
       continue;
     }
-    const read = await store.read(keyHash);
-    if (read.status !== 'hit') {
-      unreadable.push({ name, bytes: read.status === 'invalid' ? (read.bytes ?? 0) : 0 });
-      continue;
-    }
-    const trace = read.entry.payload;
-    entries.push({
-      name,
-      keyHash,
-      bytes: read.bytes,
-      actions: trace.actions.length,
-      truncated: trace.truncated === true,
-      testId: trace.recordedFor?.testId,
-      targetId: trace.recordedFor?.targetId,
-      instructionDigest: trace.recordedFor?.instructionDigest,
-    });
+    const file = path.join(directory, name);
+    let bytes = 0;
+    try {
+      bytes = (await stat(file)).size;
+      if (bytes > MAX_CACHE_WIRE_BYTES) throw new Error('oversized test recording');
+      const source = await readFile(file, 'utf8');
+      if (Buffer.byteLength(source) > MAX_CACHE_WIRE_BYTES) throw new Error('oversized test recording');
+      const recording = readTestReplayCode(source);
+      if (recording.id !== keyHash) throw new Error('wrong test filename');
+      entries.push({ name, keyHash, bytes, testId: recording.testId,
+        targetId: [...new Set(recording.steps.map((step) => step.trace.recordedFor?.targetId ?? '-'))].toSorted().join(', '),
+        actions: recording.steps.reduce((sum, step) => sum + step.trace.actions.length, 0),
+        steps: recording.steps.length, truncated: recording.steps.some((step) => step.trace.truncated === true),
+      });
+    } catch { unreadable.push({ name, bytes }); }
   }
   return { directory, entries, unreadable, foreign };
 }
@@ -226,10 +214,10 @@ function list(contents: CacheContents): number {
     .map((entry) => [
       entry.testId ?? '-',
       entry.targetId ?? '-',
-      entry.instructionDigest?.slice(0, DIGEST_PREFIX_CHARS) ?? '-',
+      String(entry.steps),
       `${entry.actions}${entry.truncated ? ' (truncated)' : ''}`,
     ]);
-  const header = ['TEST', 'TARGET', 'INSTRUCTION', 'ACTIONS'];
+  const header = ['TEST', 'TARGET', 'STEPS', 'ACTIONS'];
   const widths = header.map((title, column) =>
     Math.max(visibleWidth(title), ...rows.map((row) => visibleWidth(row[column]!))),
   );

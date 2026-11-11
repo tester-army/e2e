@@ -4,6 +4,7 @@ import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { cacheFileName } from '../../src/cache/code.ts';
 import { FileCacheStore, MAX_CACHE_WIRE_BYTES } from '../../src/cache/store.ts';
 import type { ActionTrace } from '../../src/cache/trace.ts';
 
@@ -29,6 +30,7 @@ async function makeStore(options: { maxBytes?: number; writable?: boolean } = {}
   return {
     directory,
     store: new FileCacheStore({
+      testId: 'fixture',
       directory,
       maxBytes: options.maxBytes ?? MAX_CACHE_WIRE_BYTES,
       writable: options.writable ?? true,
@@ -41,7 +43,7 @@ describe('FileCacheStore', () => {
     const { directory, store } = await makeStore();
     const written = await store.write(KEY, payload);
     expect(written?.bytes).toBeGreaterThan(0);
-    expect(await readdir(directory)).toEqual([`${KEY}.replay.ts`]);
+    expect(await readdir(directory)).toEqual([cacheFileName('fixture')]);
     const read = await store.read(KEY);
     expect(read.status).toBe('hit');
     expect(read.status === 'hit' && read.entry.payload).toEqual(payload);
@@ -56,9 +58,9 @@ describe('FileCacheStore', () => {
 
   it('fails closed on unreadable and oversized entries', async () => {
     const { directory, store } = await makeStore({ maxBytes: 4_096 });
-    await writeFile(path.join(directory, `${KEY}.replay.ts`), '{ torn', 'utf8');
+    await writeFile(path.join(directory, cacheFileName('fixture')), '{ torn', 'utf8');
     expect((await store.read(KEY)).status).toBe('invalid');
-    await writeFile(path.join(directory, `${KEY}.replay.ts`), `{"pad":"${'x'.repeat(8_192)}"}`, 'utf8');
+    await writeFile(path.join(directory, cacheFileName('fixture')), `{"pad":"${'x'.repeat(8_192)}"}`, 'utf8');
     expect((await store.read(KEY)).status).toBe('invalid');
   });
 
@@ -80,9 +82,9 @@ describe('FileCacheStore', () => {
     await store.delete(KEY);
     expect(await readdir(directory)).toEqual([]);
     await store.delete(KEY);
-    const readOnly = new FileCacheStore({ directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
+    const readOnly = new FileCacheStore({ testId: 'fixture', directory, maxBytes: MAX_CACHE_WIRE_BYTES, writable: false });
     await store.write(KEY, payload);
     await readOnly.delete(KEY);
-    expect(await readdir(directory)).toEqual([`${KEY}.replay.ts`]);
+    expect(await readdir(directory)).toEqual([cacheFileName('fixture')]);
   });
 });
