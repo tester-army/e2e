@@ -62,9 +62,9 @@ export function emitTestReplayCode(recording: ReplayTest): string {
   const steps = sorted.map(({ trace, ...metadata }) => {
     const source = emitReplayCode(trace);
     const declaration = source.slice(source.indexOf('export default ') + 'export default '.length).trim().replace(/;$/u, '');
-    return `  replay.step(\n    ${JSON.stringify(JSON.parse(canonicalJson(metadata)), null, 2).replace(/\n/gu, '\n    ')},\n    ${declaration.replace(/\n/gu, '\n    ')}\n  ),`;
+    return `    replay.step(\n      ${JSON.stringify(JSON.parse(canonicalJson(metadata)), null, 2).replace(/\n/gu, '\n      ')},\n      ${declaration.replace(/\n/gu, '\n      ')},\n    ),`;
   }).join('\n');
-  const source = `// e2e replay test-1\nimport { replay } from 'e2e/replay';\n\nexport default replay.test(\n  ${JSON.stringify({ id: recording.id, testId: recording.testId })},\n  [\n${steps}\n  ],\n);\n`.replace(/\u2028/gu, '\\u2028').replace(/\u2029/gu, '\\u2029');
+  const source = `// e2e replay test-1\nimport { replay } from 'e2e/replay';\n\nexport default replay.test(\n  ${JSON.stringify({ id: recording.id, testId: recording.testId }, null, 2).replace(/\n/gu, '\n  ')},\n  [\n${steps}\n  ],\n);\n`.replace(/\u2028/gu, '\\u2028').replace(/\u2029/gu, '\\u2029');
   return source;
 }
 
