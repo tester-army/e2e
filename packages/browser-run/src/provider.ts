@@ -16,15 +16,15 @@ export interface BrowserRunOptions {
 /** Required credentials are read on use, so importing a config needs no login. */
 function credentials(env: BrowserRequest['env']) {
   const account = env.CLOUDFLARE_ACCOUNT_ID?.trim();
-  const token = env.CLOUDFLARE_API_TOKEN?.trim();
+  const rawToken = env.CLOUDFLARE_API_TOKEN;
+  if (rawToken !== undefined && /[\r\n]/.test(rawToken)) throw new Error('CLOUDFLARE_API_TOKEN must not contain line breaks');
+  const token = rawToken?.trim();
 
   if (!account) throw new Error('CLOUDFLARE_ACCOUNT_ID is not set');
 
   if (!/^[a-f0-9]{32}$/i.test(account)) throw new Error('CLOUDFLARE_ACCOUNT_ID must be a 32-character account ID');
 
   if (!token) throw new Error('CLOUDFLARE_API_TOKEN is not set');
-
-  if (/[\r\n]/.test(token)) throw new Error('CLOUDFLARE_API_TOKEN must not contain line breaks');
 
   return { account, base: `${API}/accounts/${account}/browser-rendering/devtools/browser`, headers: { Authorization: `Bearer ${token}` } };
 }

@@ -201,3 +201,10 @@ it('sweeps every session concurrently and identifies failures while retaining th
   await sweeping;
   expect(await journal.outstanding()).toEqual([id]);
 });
+
+it.each(['synthetic\nsecret', 'synthetic\r\nsecret', 'synthetic-secret\n'])('rejects tokens containing line breaks before network access %#', async (token) => {
+  const fetch = vi.fn();
+  vi.stubGlobal('fetch', fetch);
+  await expect(browserRun().acquire(context({ env: { ...env, CLOUDFLARE_API_TOKEN: token } }))).rejects.toMatchObject({ message: 'CLOUDFLARE_API_TOKEN must not contain line breaks' });
+  expect(fetch).not.toHaveBeenCalled();
+});
