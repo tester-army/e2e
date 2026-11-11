@@ -74,7 +74,7 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
 | `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. Screen swipes in tests wait out the remaining budget before scrolling. |
-| `videoTouches` | Whether a video recording draws agent-device's touch indicator where a test tapped, default `true`. `false` records the plain screen and skips drawing the indicator after the recording stops, which on a hosted daemon can outlast `cleanupTimeout`. |
+| `videoTouches` | For recordings the mobile engine makes (not a device provider's own recording), whether the video draws agent-device's touch indicator where a test tapped, default `true`. `false` records the plain screen and skips drawing the indicator after the recording stops, which on a hosted daemon can outlast `cleanupTimeout`. |
 
 Every optional `mobile()` value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` straight through, with no conditional
