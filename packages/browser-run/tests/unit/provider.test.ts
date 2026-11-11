@@ -186,3 +186,18 @@ it.each([204, 503])('releases a browser after journal failure and preserves both
     expect(failure).toMatchObject({ message: expect.stringContaining(id), errors: [journalError, expect.objectContaining({ message: expect.stringContaining('HTTP 503') })] });
   }
 });
+
+it('sweeps every session concurrently and identifies failures while retaining their receipts', async () => {
+  const second = '22222222-2222-4222-8222-222222222222';
+  const journal = new LeaseJournal(env.CLOUDFLARE_ACCOUNT_ID, runId, 'cloudflare');
+  await journal.remember(id);
+  await journal.remember(second);
+  const pending: Array<(response: Response) => void> = [];
+  const fetch = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { pending.push(resolve); }));
+  vi.stubGlobal('fetch', fetch);
+  const sweeping = expect(browserRun().sweep!(context())).rejects.toThrow(new RegExp(`${id}.*HTTP 503`));
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+  fetch.mock.calls.forEach(([url], index) => pending[index]!(new Response(null, { status: url.endsWith(id) ? 503 : 204 })));
+  await sweeping;
+  expect(await journal.outstanding()).toEqual([id]);
+});

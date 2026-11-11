@@ -107,21 +107,18 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       const { account } = credentials(context.env);
       const receipts = journal(account, context);
       const ids = await receipts.outstanding();
-      const deleted: string[] = [];
-      const failed: string[] = [];
-
-      for (const id of ids) {
-        try {
-          await release({ id, cdpEndpoint: '' }, context);
-          deleted.push(id);
-        } catch {
-          failed.push(id);
-        }
-      }
-
+      const settled = await Promise.allSettled(ids.map(async (id) => {
+        await release({ id, cdpEndpoint: '' }, context);
+        return id;
+      }));
       await receipts.prune();
-
-      if (failed.length > 0) throw new Error(`Cloudflare Browser Run could not release ${failed.length} journaled session(s); receipts kept for retry`);
+      const failures = settled.flatMap((result, index) => result.status === 'rejected'
+        ? [new Error(`session ${ids[index]}: ${result.reason instanceof Error ? result.reason.message : String(result.reason)}`, { cause: result.reason })]
+        : []);
+      if (failures.length > 0) {
+        throw new AggregateError(failures, `Cloudflare Browser Run could not release journaled sessions: ${failures.map((failure) => failure.message).join('; ')}; receipts kept for retry`);
+      }
+      const deleted = settled.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
 
       return deleted;
     },
