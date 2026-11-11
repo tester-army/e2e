@@ -1776,7 +1776,7 @@
     },
     {
       "slug": "omadeck",
-      "title": "e2e with OmaDeck, a phone remote for a Linux desktop",
+      "title": "Testing OmaDeck's phone deck with e2e",
       "shortTitle": "OmaDeck",
       "description": "A Python-served phone deck tested in a phone-sized browser, with fake hyprctl and wtype recording what each tap sends to the desktop.",
       "source": "community",
