@@ -3,7 +3,7 @@
   "url": "https://context7.com/e2e-inc/e2e",
   "public_key": "pk_200ABkj87UaaQXDXUtAxf",
   "projectTitle": "e2e",
-  "description": "End-to-end testing framework for web and mobile apps. Tests mix natural-language agent steps (agent.act, agent.assert) with locators and assertions. Mobile tests run on iOS simulators, Android emulators, and real phones. Verified agent steps are replayed without model calls until the app changes.",
+  "description": "Agentic end-to-end testing framework for web and mobile apps. Tests mix natural-language agent steps (agent.act, agent.assert) with locators and assertions. Mobile tests run on iOS simulators, Android emulators, and real phones. Verified agent steps are replayed without model calls until the app changes.",
   "folders": ["docs", "skills/e2e"],
   "excludeFolders": ["docs/images", "plugins"],
   "excludeFiles": ["AGENTS.md", "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md"],
