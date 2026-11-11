@@ -758,6 +758,28 @@ importers:
         specifier: 5.1.0
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
+  packages/revyl:
+    dependencies:
+      '@agent-device/revyl':
+        specifier: 0.21.36
+        version: 0.21.36
+    devDependencies:
+      '@e2e-dev/mobile':
+        specifier: workspace:*
+        version: link:../mobile
+      '@types/node':
+        specifier: 26.6.6
+        version: 26.6.6
+      e2e:
+        specifier: workspace:*
+        version: link:../e2e
+      typescript:
+        specifier: 7.0.2
+        version: 7.0.2
+      vitest:
+        specifier: 5.1.0
+        version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.14)(yaml@2.9.0))
+
   packages/smol:
     devDependencies:
       '@e2e-dev/web':
@@ -827,6 +849,9 @@ importers:
         version: 5.1.0(@types/node@26.6.6)(vite@8.3.8(@types/node@26.6.6)(esbuild@0.28.2)(jiti@1.21.7)(terser@5.51.2)(tsx@4.23.13)(yaml@2.9.0))
 
 packages:
+
+  '@agent-device/revyl@0.21.36':
+    resolution: {integrity: sha512-jv9A0vufbFF3BbKw431+pj8T/VJdVR6+p3/AsR+zKfENasSpxQiTRjlfr9u9ggxa0KrhgOd2hURTxBOcn1MenQ==}
 
   '@agent-device/testmu@0.21.37':
     resolution: {integrity: sha512-kEtEC16tbtle/E7vB/MLZVcIPVwwYzi/VaoHTaMLPUKpvWUZ1IJzIFWZlLswrcxwDfKs/lvNdztVmi59ErpXOA==}
@@ -5542,6 +5567,8 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@agent-device/revyl@0.21.36': {}
 
   '@agent-device/testmu@0.21.37': {}
 

@@ -1,0 +1,123 @@
+---
+title: Test mobile apps on Revyl
+sidebarTitle: Revyl
+description: Run mobile app tests on Revyl's hosted iOS simulators and Android emulators with @e2e-dev/revyl.
+---
+
+`@e2e-dev/revyl` is a hosted device provider for the mobile engine.
+It starts a Revyl device for each worker, installs your app on it, and releases the device when the run ends.
+Use the standard `app`, `screen`, and `expect` APIs to test your app's user flows.
+
+## Install and authenticate
+
+Install the integration alongside the mobile engine:
+
+<CodeGroup>
+```bash npm
+npm install --save-dev e2e @e2e-dev/mobile @e2e-dev/revyl
+```
+
+```bash pnpm
+pnpm add -D e2e @e2e-dev/mobile @e2e-dev/revyl
+```
+
+```bash bun
+bun add -d e2e @e2e-dev/mobile @e2e-dev/revyl
+```
+</CodeGroup>
+
+Set `REVYL_API_KEY` in the environment that starts e2e. In CI, store it as
+a secret. Without it, the lease fails before any test starts.
+
+The test runner needs only Node.js and the package dependencies: no Mac,
+Xcode, or Android SDK. Build your app separately, as a zipped iOS simulator
+`.app` or an Android `.apk`, and host it at an `https` URL Revyl can download.
+
+## Configure a target
+
+Set `device: revyl({ app, device })` on the mobile engine. `app` is the build's
+`https` URL, and `device` is a model from Revyl's catalog.
+
+```ts title="e2e.config.ts"
+import type { E2EConfig } from 'e2e';
+import { mobile } from '@e2e-dev/mobile';
+import { revyl } from '@e2e-dev/revyl';
+
+export default {
+  targets: [
+    {
+      name: 'ios',
+      engine: mobile({
+        platform: 'ios',
+        device: revyl({ app: 'https://builds.example.com/MyApp-simulator.zip', device: 'iPhone 17 Pro Max', osVersion: 'iOS 27.0' }),
+      }),
+      app: { bundleId: 'com.example.app' },
+    },
+    {
+      name: 'android',
+      engine: mobile({
+        platform: 'android',
+        device: revyl({ app: 'https://builds.example.com/app.apk', device: 'Pixel 7' }),
+      }),
+      app: { bundleId: 'com.example.app' },
+    },
+  ],
+  workers: 2,
+} satisfies E2EConfig;
+```
+
+Revyl installs `app` when it starts each device, so leave `app.appPath` off
+the target. For Android, `bundleId` is the app's package name.
+
+## Test an app flow
+
+Tests use the same mobile APIs as on any other device:
+
+```ts title="tests/checkout.e2e.ts"
+import { expect } from 'e2e';
+import { test } from '@e2e-dev/mobile';
+
+test('opens the cart', async ({ app, screen }) => {
+  await app.open();
+  await screen.getByText('Cart').click();
+  await expect(screen.getByText('Your cart is empty')).toBeVisible();
+  await app.screenshot('cart');
+});
+```
+
+## Choose device options
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `app` | required | `https` URL of the build. A local path is refused, since Revyl cannot read it. |
+| `device` | required | Device model as Revyl lists it, such as `iPhone 17 Pro Max` or `Pixel 7`. |
+| `osVersion` | Revyl's default for the model | OS version as Revyl lists it, such as `iOS 27.0` or `Android 14`. |
+
+Unknown or invalid options fail config load with `INVALID_CONFIG`.
+
+Each worker gets an isolated agent-device daemon on the test runner, running
+agent-device's `@agent-device/revyl` plugin, and one Revyl device. The
+integration pins the same agent-device version as the mobile engine and
+checks that before allocation. Device IDs appear in progress output.
+
+## Limits
+
+- Keep `workers` within the number of concurrent devices your Revyl plan allows.
+- A device runs from lease until release. The engine releases every acquired
+  device when the run finishes or is interrupted.
+- `app` must be reachable over `https` without credentials in the URL. A
+  presigned storage URL works.
+- Revyl devices do not record video: an attempt that records one, such as
+  with `--video`, fails with `UNSUPPORTED_CAPABILITY`. Use `app.screenshot()`
+  for evidence instead.
+
+## Next
+
+<CardGroup cols={2}>
+  <Card title="Mobile testing" icon="mobile-screen" href="/mobile">
+    Configure app launches, permissions, and mobile locators.
+  </Card>
+  <Card title="Mobile API" icon="code" href="/reference/mobile">
+    Look up the device fixture and provider contract.
+  </Card>
+</CardGroup>

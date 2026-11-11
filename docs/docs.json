@@ -120,7 +120,8 @@
               "integrations/limrun",
               "integrations/testmu",
               "integrations/browserstack",
-              "integrations/e2b"
+              "integrations/e2b",
+              "integrations/revyl"
             ]
           },
           {

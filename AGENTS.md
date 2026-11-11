@@ -184,6 +184,11 @@ suites that consume the built packages the way a user would.
   devices for the mobile engine (`DeviceProvider`), through agent-device's
   `@agent-device/testmu` plugin, and hosted Chrome and Edge for the web
   engine (`BrowserProvider`) from `@e2e-dev/testmu/web`.
+- `packages/revyl` — the published `@e2e-dev/revyl` package: Revyl hosted
+  iOS simulators and Android emulators for the mobile engine
+  (`DeviceProvider`), through agent-device's `@agent-device/revyl` plugin.
+  Revyl installs the build from an `https` `app` URL when it starts each
+  device.
 - `packages/browserstack` — the published `@e2e-dev/browserstack` package:
   BrowserStack App Automate real Android and iOS devices for the mobile
   engine (`DeviceProvider`), through agent-device's built-in `browserstack`

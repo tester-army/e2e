@@ -393,6 +393,12 @@ export default {
   exactly, TestMu AI installs `app` (omit `app.appPath`), and it reads
   `LT_USERNAME` and `LT_ACCESS_KEY`. An attempt's video links TestMu AI's
   recording of the whole session.
+- `revyl({ app, device, osVersion })` from `@e2e-dev/revyl` leases Revyl
+  hosted iOS simulators and Android emulators; `device` and `osVersion` are
+  names from Revyl's catalog, Revyl installs `app` from an `https` URL (omit
+  `app.appPath`; a local path is refused), and it reads `REVYL_API_KEY`.
+  Revyl devices record no video, so `--video` fails with
+  `UNSUPPORTED_CAPABILITY`.
 - `browserstack({ device, osVersion, app })` from `@e2e-dev/browserstack`
   leases BrowserStack App Automate real devices; `device` and `osVersion`
   match its catalog exactly, BrowserStack installs `app` (a `bs://` id, an

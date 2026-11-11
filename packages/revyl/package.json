@@ -1,0 +1,71 @@
+{
+  "name": "@e2e-dev/revyl",
+  "version": "0.0.0",
+  "description": "Revyl for e2e: hosted iOS simulators and Android emulators for mobile tests",
+  "keywords": [
+    "e2e",
+    "end-to-end",
+    "testing",
+    "mobile-testing",
+    "revyl",
+    "device-cloud",
+    "ios-simulator",
+    "android-emulator",
+    "agent-device",
+    "ci"
+  ],
+  "license": "Apache-2.0",
+  "contributors": [
+    "Revyl (https://revyl.com)"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/e2e-inc/e2e.git",
+    "directory": "packages/revyl"
+  },
+  "bugs": {
+    "url": "https://github.com/e2e-inc/e2e/issues"
+  },
+  "homepage": "https://github.com/e2e-inc/e2e/tree/main/packages/revyl#readme",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public",
+    "tag": "latest"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "NOTICE"
+  ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc --project tsconfig.build.json && node ../../scripts/stamp-dist.ts",
+    "prepublishOnly": "node ../../scripts/check-dist.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run tests/unit"
+  },
+  "peerDependencies": {
+    "@e2e-dev/mobile": ">=0.12.5 <1",
+    "e2e": ">=0.15.0 <1"
+  },
+  "devDependencies": {
+    "@e2e-dev/mobile": "workspace:*",
+    "@types/node": "26.6.6",
+    "e2e": "workspace:*",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": "^22.22.3 || >=24.8.0"
+  },
+  "dependencies": {
+    "@agent-device/revyl": "0.21.36"
+  }
+}
