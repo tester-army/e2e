@@ -316,6 +316,7 @@ import { resolve } from 'node:path';
 import { test, type Device } from '@e2e-dev/mobile';
 import { expect } from 'e2e';
 
+// Put a JPEG named receipt.jpg beside this test.
 const receipt = resolve(import.meta.dirname, 'receipt.jpg');
 
 function addPhotoOnce(device: Device, file: string): void {
