@@ -38,6 +38,8 @@ export interface InProcessRunnerOptions {
   readonly sessionStore: SessionStore;
   readonly headed: boolean;
   readonly debug: DebugTrace;
+  /** See `TargetWorkerDeps.step`. */
+  readonly step: boolean;
   /** The environment each target's workers run with; see `EngineInitInfo.env`. */
   readonly envFor: (targetName: string) => Readonly<Record<string, string | undefined>>;
 }
@@ -182,6 +184,7 @@ class InProcessRunner implements UnitRunner {
       env: this.options.envFor(this.targetName),
       isolated: false,
       debug: this.options.debug,
+      step: this.options.step,
       inMemory: this.options.inMemory,
       resolvePairs: (unit) =>
         resolveFromSelection(

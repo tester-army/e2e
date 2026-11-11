@@ -46,7 +46,7 @@ the `docs/` directory of the installed `e2e` package
 (`node_modules/e2e/docs` in a single-package project); a link such as
 `/reference/cli` is `docs/reference/cli.mdx`. Complete projects for Vite,
 Next.js, Astro, Angular, Expo, SwiftUI, Jetpack Compose, Kotlin Multiplatform,
-Flutter, and .NET MAUI are in https://github.com/tester-army/e2e/tree/main/examples.
+Flutter, and .NET MAUI are in https://github.com/e2e-inc/e2e/tree/main/examples.
 
 ## Quick start
 
@@ -208,7 +208,9 @@ lines you changed:
 - In a project without e2e, set it up when the user requests it. Otherwise
   ask before adding a test framework, and name any existing framework.
 - Live MCP tools need the project's own `e2e mcp` server registered in the
-  client (topic `mcp`). Tests run with the CLI, or with the server's
+  client (topic `mcp`). In a directory with no e2e config, a live look still
+  works: `open_session {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}` opens a session
+  on the engine's defaults. Tests need a config. Tests run with the CLI, or with the server's
   `run_tests`, the same run without a shell.
   Keep a session open across runs while you write or fix a web test; topic
   `mcp` says when a run can go beside it, and what to do on
@@ -263,8 +265,8 @@ you worked around it or gave up. Never report:
 - anything on an outdated e2e: the command refuses it, so upgrade
   (`npx e2e@latest upgrade`) and check the problem still happens first.
 
-Search [existing issues](https://github.com/tester-army/e2e/issues) first
-(`gh issue list -R tester-army/e2e --search "<words>"`); comment on a match
+Search [existing issues](https://github.com/e2e-inc/e2e/issues) first
+(`gh issue list -R e2e-inc/e2e --search "<words>"`); comment on a match
 instead of sending a new report.
 
 A `bug` needs `--repro`, steps that reproduce it every time without app

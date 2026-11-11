@@ -7,7 +7,7 @@ UI, nested iframes, native dialogs, a second tab, drag and drop, a DOM that
 remounts every second, an accessibility tree that lies) so a test either
 handles that surface or fails for exactly that reason.
 
-The app under `app/` is copied from `apps/web-benchmark` in the tester-army
+The app under `app/` is copied from `apps/web-benchmark` in the e2e-inc
 monorepo, where the same scenarios gate the autonomous QA agent. Keep diffs
 against that source minimal so scenarios port both ways, and never fix a
 planted bug.

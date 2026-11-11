@@ -1,6 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { FinishedRun } from '../../src/types.ts';
 import type { Report1Document, ReportSerialGroup } from '../../src/report/build.ts';
-import { renderJunitReport } from '../../src/report/junit.ts';
+import { junitReporter, renderJunitReport, type JunitReportOptions } from '../../src/report/junit.ts';
 import { REPORT_AT as AT, reportAttempt, reportDocument, reportError, reportResult } from '../helpers/report.ts';
 
 /** XML 1.0 `Char`, over code points: a lone surrogate is a code point of its own and falls outside every range. */
@@ -42,8 +46,8 @@ function assertWellFormed(xml: string): void {
 }
 
 /** Renders and asserts well-formedness, so every case below also parses. */
-function render(document: Report1Document): string {
-  const xml = renderJunitReport(document);
+function render(document: Report1Document, options?: JunitReportOptions): string {
+  const xml = renderJunitReport(document, options);
   assertWellFormed(xml);
   return xml;
 }
@@ -493,5 +497,270 @@ describe('renderJunitReport', () => {
       '<testcase name="checkout &gt; pays [web]" classname="tests/checkout.e2e.ts" time="2.000">',
     );
     expect(xml).toContain('<failure message="cart is empty" type="ASSERTION_FAILED">');
+  });
+
+  it.each([
+    { artifactsDir: '.e2e/results', expected: '.e2e/results/checkout/001-failure.png' },
+    { artifactsDir: '.', expected: 'checkout/001-failure.png' },
+  ])('links the failure screenshot in system-out below $artifactsDir', ({ artifactsDir, expected }) => {
+    const xml = render(failedWithShot(), { artifactsDir });
+    expect(xml).toContain(`<system-out>[[ATTACHMENT|${expected}]]</system-out>`);
+  });
+
+  it.each([
+    { name: 'no artifactsDir is given', document: failedWithShot(), options: {} },
+    { name: 'the failure has no screenshot', document: failedWithShot({ failure: {} }), options: { artifactsDir: '.' } },
+    {
+      name: 'the screenshot has no path',
+      document: failedWithShot({ artifacts: [shotArtifact('shot-1', undefined, 'https://example.com/shot.png')] }),
+      options: { artifactsDir: '.' },
+    },
+  ])('writes no system-out when $name', ({ document, options }) => {
+    expect(render(document, options)).not.toContain('<system-out>');
+  });
+
+  it('escapes XML characters in the attachment path', () => {
+    const xml = render(failedWithShot({ artifacts: [shotArtifact('shot-1', 'shots/foo&<bar>.png')] }), { artifactsDir: '.e2e' });
+    expect(xml).toContain('<system-out>[[ATTACHMENT|.e2e/shots/foo&amp;&lt;bar&gt;.png]]</system-out>');
+  });
+
+  it('picks the failure screenshot by id, not the first artifact', () => {
+    const artifacts = [shotArtifact('other', 'shots/first.png'), shotArtifact('shot-1', 'shots/target.png')];
+    const xml = render(failedWithShot({ artifacts }), { artifactsDir: '.' });
+    expect(xml).toContain('<system-out>[[ATTACHMENT|shots/target.png]]</system-out>');
+  });
+
+  it('takes the screenshot of the told attempt when the last retry was interrupted', () => {
+    const interrupted = reportAttempt({
+      id: 'attempt-2',
+      index: 1,
+      status: 'interrupted',
+      error: reportError({ category: 'interrupted', code: 'INTERRUPTED', message: 'cut' }),
+    });
+    const xml = render(failedWithShot({}, { extraAttempts: [interrupted] }), { artifactsDir: '.' });
+    expect(xml).toContain('<system-out>[[ATTACHMENT|checkout/001-failure.png]]</system-out>');
+  });
+
+  it('links the failure screenshot of a flaky test after the flaky note', () => {
+    const passed = reportAttempt({ id: 'attempt-2', index: 1, status: 'passed' });
+    const xml = render(failedWithShot({}, { status: 'flaky', extraAttempts: [passed] }), { artifactsDir: '.e2e' });
+    expect(xml).toContain('<system-out>flaky: 1 failed attempt before passing\n[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>');
+  });
+
+  it('keeps the expected note between the flaky note and the screenshot', () => {
+    const error = reportError({ code: 'ASSERTION_FAILED', message: 'cart is empty' });
+    const covered = reportAttempt({ id: 'attempt-2', index: 1, status: 'passed', expectedFailure: { reason: 'bug 12', error } });
+    const xml = render(failedWithShot({}, { status: 'flaky', extraAttempts: [covered] }), { artifactsDir: '.e2e' });
+    expect(xml).toContain(
+      '<system-out>flaky: 1 failed attempt before passing\nfailed as expected: bug 12\nASSERTION_FAILED: cart is empty\n[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>',
+    );
+  });
+
+  it('links the failure screenshot of an errored test after its <error>', () => {
+    const crashed = reportError({ category: 'infrastructure', code: 'DRIVER_CRASHED', message: 'gone' });
+    const xml = render(failedWithShot({ error: crashed }), { artifactsDir: '.e2e' });
+    expect(xml).toContain(
+      '<error message="gone" type="DRIVER_CRASHED">DRIVER_CRASHED: gone</error>\n      <system-out>[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>',
+    );
+  });
+
+  it('links the failure screenshot of a timed-out test', () => {
+    const xml = render(failedWithShot({ status: 'timed-out' }, { status: 'timed-out' }), { artifactsDir: '.e2e' });
+    expect(xml).toContain('<system-out>[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>');
+  });
+
+  it('links the failure screenshot of a test.fail pass after the expected note', () => {
+    const error = reportError({ code: 'ASSERTION_FAILED', message: 'cart is empty' });
+    const document = reportDocument({
+      results: [
+        reportResult({
+          titlePath: ['checkout'],
+          status: 'passed',
+          attempts: [
+            reportAttempt({
+              status: 'passed',
+              expectedFailure: { reason: 'bug 12', error },
+              failure: { screenshot: 'shot-1' },
+              artifacts: [shotArtifact('shot-1', 'checkout/001-failure.png')],
+            }),
+          ],
+        }),
+      ],
+    });
+    expect(render(document, { artifactsDir: '.e2e' })).toContain(
+      '<system-out>failed as expected: bug 12\nASSERTION_FAILED: cart is empty\n[[ATTACHMENT|.e2e/checkout/001-failure.png]]</system-out>',
+    );
+    expect(render(document)).toContain('<system-out>failed as expected: bug 12\nASSERTION_FAILED: cart is empty</system-out>');
+  });
+
+  it('links the failure screenshot of a failed serial member', () => {
+    const group: ReportSerialGroup = {
+      id: 'group-1',
+      serialId: 'checkout',
+      declarationIndex: 0,
+      file: 'tests/checkout.e2e.ts',
+      source: { file: 'tests/checkout.e2e.ts', line: 1, column: 1 },
+      titlePath: ['checkout'],
+      targetId: 'web',
+      platform: 'web',
+      agent: 'default',
+      repeat: 0,
+      memberTestIds: ['test-1'],
+      status: 'failed',
+      attempts: [
+        {
+          ...reportAttempt({ status: 'failed', durationMs: 1000 }),
+          status: 'failed',
+          artifacts: [shotArtifact('member-shot', 'checkout/member-failure.png')],
+          members: [
+            {
+              id: 'member-1',
+              index: 0,
+              testId: 'test-1',
+              status: 'failed',
+              startedAt: AT,
+              durationMs: 1000,
+              steps: [],
+              failure: { screenshot: 'member-shot' },
+              error: reportError({ message: 'member failed' }),
+              secondaryErrors: [],
+            },
+          ],
+        },
+      ],
+    };
+    const document = reportDocument({
+      serialGroups: [group],
+      results: [reportResult({ titlePath: ['checkout', 'member'], serialGroupId: 'group-1', status: 'failed', attempts: [] })],
+    });
+    expect(render(document, { artifactsDir: '.e2e' })).toContain('<system-out>[[ATTACHMENT|.e2e/checkout/member-failure.png]]</system-out>');
+  });
+});
+
+/** A screenshot artifact; `filePath` and `url` are set only when given. */
+function shotArtifact(id: string, filePath?: string, url?: string) {
+  return {
+    id,
+    kind: 'screenshot' as const,
+    mediaType: 'image/png',
+    redaction: 'complete' as const,
+    producer: { kind: 'step' as const, stepId: 'step-0' },
+    ...(filePath === undefined ? {} : { path: filePath }),
+    ...(url === undefined ? {} : { url }),
+  };
+}
+
+/**
+ * A report with one failed test whose attempt recorded `checkout/001-failure.png`
+ * as its failure screenshot. `attempt` overrides that attempt; `extraAttempts`
+ * follow it, and `status` sets the result's.
+ */
+function failedWithShot(
+  attempt: Parameters<typeof reportAttempt>[0] = {},
+  result: { status?: 'failed' | 'flaky' | 'timed-out'; extraAttempts?: ReturnType<typeof reportAttempt>[] } = {},
+): Report1Document {
+  return reportDocument({
+    results: [
+      reportResult({
+        titlePath: ['checkout'],
+        status: result.status ?? 'failed',
+        attempts: [
+          reportAttempt({
+            index: 0,
+            status: 'failed',
+            error: reportError({ message: 'heading not visible' }),
+            failure: { screenshot: 'shot-1' },
+            artifacts: [shotArtifact('shot-1', 'checkout/001-failure.png')],
+            ...attempt,
+          }),
+          ...(result.extraAttempts ?? []),
+        ],
+      }),
+    ],
+  });
+}
+
+describe('junitReporter', () => {
+  const tmpDirs: string[] = [];
+
+  /** A fresh directory removed after each test. */
+  function makeTmpDir(): string {
+    const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'junit-')));
+    tmpDirs.push(dir);
+    return dir;
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    for (const dir of tmpDirs.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Runs the reporter on a failed run and returns the attachment line it wrote, if any. */
+  async function attachmentFor(projectRoot: string, artifactsRoot: string): Promise<string | undefined> {
+    const run: FinishedRun = {
+      status: 'failed',
+      exitCode: 1,
+      projectRoot,
+      artifactsRoot,
+      reportPath: path.join(artifactsRoot, 'report.json'),
+      aiTracePath: undefined,
+      report: failedWithShot(),
+      traces: new Map(),
+      redact: (text) => text,
+    };
+    await junitReporter.onRunFinished!(run, new AbortController().signal);
+    const xml = fs.readFileSync(path.join(artifactsRoot, 'junit.xml'), 'utf8');
+    assertWellFormed(xml);
+    return /\[\[ATTACHMENT\|([^\]]*)\]\]/.exec(xml)?.[1];
+  }
+
+  it.each([
+    { name: 'unset', ci: undefined, expected: '.e2e/results/checkout/001-failure.png' },
+    { name: 'blank', ci: () => '  ', expected: '.e2e/results/checkout/001-failure.png' },
+    { name: 'a parent of the project', ci: (root: string) => path.dirname(path.dirname(root)), expected: 'apps/testbed/.e2e/results/checkout/001-failure.png' },
+    { name: 'the artifacts root itself', ci: (root: string) => path.join(root, '.e2e', 'results'), expected: 'checkout/001-failure.png' },
+  ])('resolves the attachment when CI_PROJECT_DIR is $name', async ({ ci, expected }) => {
+    const project = path.join(makeTmpDir(), 'apps', 'testbed');
+    if (ci !== undefined) vi.stubEnv('CI_PROJECT_DIR', ci(project));
+    else vi.stubEnv('CI_PROJECT_DIR', undefined);
+    expect(await attachmentFor(project, path.join(project, '.e2e', 'results'))).toBe(expected);
+  });
+
+  it.each([
+    { name: 'the repository root', link: (root: string) => root, expected: 'apps/testbed/.e2e/results/checkout/001-failure.png' },
+    { name: 'the artifacts root', link: (root: string) => path.join(root, 'apps', 'testbed', '.e2e', 'results'), expected: 'checkout/001-failure.png' },
+  ])('resolves through a CI_PROJECT_DIR symlinked to $name', async ({ link, expected }) => {
+    const root = makeTmpDir();
+    const project = path.join(root, 'apps', 'testbed');
+    const artifacts = path.join(project, '.e2e', 'results');
+    fs.mkdirSync(artifacts, { recursive: true });
+    const symlink = path.join(makeTmpDir(), 'ci');
+    fs.symlinkSync(link(root), symlink, 'dir');
+    vi.stubEnv('CI_PROJECT_DIR', symlink);
+    expect(await attachmentFor(project, artifacts)).toBe(expected);
+  });
+
+  it('resolves an artifacts root that is a symlink to CI_PROJECT_DIR', async () => {
+    const ci = makeTmpDir();
+    const artifacts = path.join(makeTmpDir(), 'results');
+    fs.symlinkSync(ci, artifacts, 'dir');
+    vi.stubEnv('CI_PROJECT_DIR', ci);
+    expect(await attachmentFor(makeTmpDir(), artifacts)).toBe('checkout/001-failure.png');
+  });
+
+  it('writes the artifacts root equal to the project root as a bare path', async () => {
+    vi.stubEnv('CI_PROJECT_DIR', undefined);
+    const project = makeTmpDir();
+    expect(await attachmentFor(project, project)).toBe('checkout/001-failure.png');
+  });
+
+  it.each([
+    { name: 'CI_PROJECT_DIR', ci: true },
+    { name: 'the project root', ci: false },
+  ])('writes no attachment when the artifacts are outside $name', async ({ ci }) => {
+    const project = makeTmpDir();
+    if (ci) vi.stubEnv('CI_PROJECT_DIR', makeTmpDir());
+    else vi.stubEnv('CI_PROJECT_DIR', undefined);
+    expect(await attachmentFor(project, path.join(makeTmpDir(), 'results'))).toBeUndefined();
   });
 });

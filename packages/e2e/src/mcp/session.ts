@@ -2,7 +2,8 @@
  * The live sessions behind `e2e mcp`: each one standalone attempt on one
  * target with one interactive agent step open on it, driven by a coding agent
  * through a fixed, four-tool surface. `open_session` loads the project's
- * config and opens the attempt and the step; `tools` renders the session's
+ * config, or builds one around the engine package it names where the project
+ * has none, and opens the attempt and the step; `tools` renders the session's
  * catalog; `call` runs one catalog tool by name inside the step;
  * `close_session` ends the step, saves a recording still running, and tears
  * the attempt down. Several sessions may be open at once, up to the server's
@@ -32,7 +33,8 @@ import type { AgentParams } from '../types.ts';
 import { createSessionCatalog, isGrammarVerb, type SessionCatalog } from './catalog.ts';
 import { appLines } from './app-lines.ts';
 import { SESSION_BOUNDS } from './bounds.ts';
-import type { LoadedConfig } from './config.ts';
+import type { EngineSession, LoadedConfig } from './config.ts';
+import type { FactoryRef } from './default-engine.ts';
 import { describeRecording, SessionRecorder } from './recording.ts';
 import { SessionRegistry } from './sessions.ts';
 import { describeTestOutcome } from './test-outcome.ts';
@@ -46,11 +48,14 @@ const SESSION_IDLE_MS = 30 * 60 * 1000;
 /** How long the attempt outlives its step, so a step that hit the TTL is still closed in order. */
 const CLOSE_GRACE_MS = 60 * 1000;
 const SESSION_INSTRUCTION = 'Interactive session: a coding agent drives the app over MCP.';
+/** Where an agent reads how to write a test, said in the server's instructions and every session's opening. */
+export const READ_WRITING_GUIDE = 'Before you write or edit a test, read the writing-tests guide: the resource e2e://guide/writing-tests, or npx e2e guide writing-tests in a shell.';
 
 interface LiveSession {
   readonly id: string;
   readonly target: ResolvedTarget;
-  readonly configPath: string;
+  /** Where the session's config came from, as the opening summary says it. */
+  readonly origin: string;
   readonly headed: boolean;
   readonly attempt: StandaloneAttempt;
   readonly step: InteractiveStep;
@@ -74,7 +79,21 @@ export interface OpenSessionOptions {
   readonly headed?: boolean | undefined;
   /** One test to run in the session before it is handed over, named as `e2e run` takes a positional (`tests/a.e2e.ts:12`). */
   readonly test?: string | undefined;
+  /**
+   * The engine to open on where the project has no config file: a package
+   * whose default export is its factory (`@e2e-dev/web`), or that factory
+   * call as data (`FactoryRef`). Excludes `target`, `config`, and `test`.
+   */
+  readonly engine?: string | FactoryRef | undefined;
+  /** The app of an `engine` session. */
+  readonly app?: EngineSession['app'];
 }
+
+/** Where a session's config comes from: the project's file, or the engine package the call names. */
+type ConfigSource = { readonly file: string } | { readonly engine: EngineSession };
+
+/** What sessions opened with `engine` claim as their config: they hold no secrets, so they share it whatever the engine. */
+const ENGINE_DEFAULTS = 'engine defaults, with no config file';
 
 export interface SessionHostOptions {
   /** The absolute path of the config a session loads, without evaluating it; `configPath` overrides the server's default. */
@@ -85,6 +104,8 @@ export interface SessionHostOptions {
    * loaded in `graph`, where the session's test files load too.
    */
   readonly loadConfig: (configPath: string, graph: string) => Promise<LoadedConfig>;
+  /** Builds the config of a session opened with `engine`; throws where the project has a config file. */
+  readonly loadEngineConfig: (session: EngineSession) => Promise<ResolvedConfig>;
   /** Holds what the process prints while `load` evaluates a config and registers its secrets; by default nothing is held. */
   readonly withholdOutput?: (<T>(load: () => Promise<T>) => Promise<T>) | undefined;
   readonly env: NodeJS.ProcessEnv;
@@ -250,13 +271,13 @@ export class SessionHost {
     // The config is claimed before it evaluates: its top-level code resolves
     // secrets against the registry an open session installed, which only
     // knows that session's config.
-    const configPath = this.options.locateConfig(options.config);
-    this.sessions.claimConfig(id, configPath);
+    const source = this.configSource(options);
+    this.sessions.claimConfig(id, 'file' in source ? `config ${source.file}` : ENGINE_DEFAULTS);
     const withhold = this.options.withholdOutput ?? ((load) => load());
     // The session's own module graph: a test it runs sees every project file as it is now.
     const graph = `mcp-${id}`;
     const loaded = await withhold(async () => {
-      const fresh = await this.options.loadConfig(configPath, graph);
+      const fresh = 'file' in source ? await this.options.loadConfig(source.file, graph) : await this.options.loadEngineConfig(source.engine);
       // Known to the process before anything can fail with one, so an open
       // failure and what the config printed while it loaded are redacted
       // like any other text; a session registers them only once its engine
@@ -266,7 +287,9 @@ export class SessionHost {
     });
     // A session is its own run: a URL declared with port 0 gets a port here,
     // for the opened target alone, so another target's URL cannot fail the open.
-    const { config, target } = await allocateTargetPorts(loaded, selectTarget(loaded, options.target ?? this.options.defaultTarget, 'pass target to open_session, or start e2e mcp --target <name>'));
+    // An engine session has one target, whatever `--target` names in a config.
+    const named = 'file' in source ? (options.target ?? this.options.defaultTarget) : undefined;
+    const { config, target } = await allocateTargetPorts(loaded, selectTarget(loaded, named, 'pass target to open_session, or start e2e mcp --target <name>'));
     usage.resolved(target.platform, target.engine);
     this.sessions.claimEngine(id, target.name, target.engine);
     // Selected before anything boots: a name that selects no test, or several, costs no engine.
@@ -342,7 +365,10 @@ export class SessionHost {
       const live: LiveSession = {
         id,
         target,
-        configPath: loaded.configPath,
+        origin:
+          'file' in source
+            ? `config ${source.file}, read with the e2e mcp server's environment, not your shell's.`
+            : `no config file: one target on ${source.engine.package}, every other setting at its default. run_tests and open_session {test} need an e2e.config.ts (npx e2e init writes one).`,
         headed,
         attempt,
         step,
@@ -373,6 +399,24 @@ export class SessionHost {
       }).catch(() => undefined);
       throw cause;
     }
+  }
+
+  /**
+   * The project's config file, or the engine the call names for a project
+   * without one. Naming an engine excludes what only a config file gives: a
+   * path to one, a target of it, a test it discovers.
+   */
+  private configSource(options: OpenSessionOptions): ConfigSource {
+    const { engine, app } = options;
+    if (engine === undefined) {
+      if (app !== undefined) throw new ConfigurationError('INVALID_ARGUMENT', 'open_session: app describes the session engine opens; pass engine with it, or leave it out');
+      return { file: this.options.locateConfig(options.config) };
+    }
+    const needsConfig = Object.entries({ config: options.config, target: options.target, test: options.test }).find(([, value]) => value !== undefined)?.[0];
+    if (needsConfig !== undefined) {
+      throw new ConfigurationError('INVALID_ARGUMENT', `open_session: ${needsConfig} names part of a config file, and engine opens a session without one; pass one or the other`);
+    }
+    return { engine: { ...(typeof engine === 'string' ? { package: engine } : engine), ...(app === undefined ? {} : { app }) } };
   }
 
   /** Closes a live session that ended without a close_session: its step concluded, or it sat idle. */
@@ -456,7 +500,7 @@ export class SessionHost {
     const engine = live.target.engine;
     const lines = [
       ...(outcome === undefined ? [] : [outcome, '']),
-      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; config ${live.configPath}, read with the e2e mcp server's environment, not your shell's.`,
+      `Session ${live.id} open on target "${live.target.name}" (platform ${live.target.platform}, engine ${engine === undefined ? 'none' : `${engine.name} ${engine.version}`}), ${live.headed ? 'headed' : 'headless'}; ${live.origin}`,
     ];
     lines.push(...appLines(live.target, outcome !== undefined));
     if (config.credentials.size > 0) {
@@ -474,6 +518,7 @@ export class SessionHost {
     lines.push(`Tools (run one with call {tool, args}; tools {tool} shows a tool's arguments):`, ...this.catalogLines(live));
     lines.push(
       'Node ids ("n42") are valid only for the newest observation; every action reports what changed on screen and the test line that repeats it (test_lines returns them all), and observe shows the whole screen. Call close_session when you are done.',
+      READ_WRITING_GUIDE,
     );
     return `${lines.join('\n')}\n\n${screen}`;
   }
@@ -518,7 +563,7 @@ export class SessionHost {
     return defineMcpTool({
       name: 'open_session',
       description:
-        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. With test, it runs that one test first and stops on the screen where the test passed or failed, with the failure and its line ahead of the catalog. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
+        'Open a live session on one target of an e2e project: loads the config, starts the app command the target declares (if any), boots the engine (a browser, a simulator), opens the app (its URL, or the pinned app on a device), and returns the session id, the catalog of tools it can run, and the first observation. Where the project has no e2e config file, pass engine to open a session on that engine: {engine: "@e2e-dev/web", app: {url: "http://localhost:3000"}}. With test, it runs that one test first and stops on the screen where the test passed or failed, with the failure and its line ahead of the catalog. Several sessions can be open at once, one per agent, each with its own engine: pass the returned session id to every later call. Then act with call and look with call {tool: "observe"}.',
       inputSchema: z.object({
         target: z.string().min(1).optional().describe('Target name from the config; required when the config declares several'),
         config: z.string().min(1).optional().describe("Path to an e2e config file, absolute or relative to the server's working directory; default: the nearest e2e.config.ts, .mts, .js, or .mjs"),
@@ -531,6 +576,33 @@ export class SessionHost {
           .min(1)
           .optional()
           .describe('One test to run in the session first, named the way npx e2e run takes it: tests/checkout.e2e.ts:12, where 12 is the line its test( call is on (not a failing line inside it), or a file or name that selects one test. The session then stays on the screen where the test stopped; afterEach hooks and fixture teardown run at close_session. To rerun after editing the test, close_session and open_session with test again'),
+        engine: z
+          .union([
+            z.string().min(1),
+            z
+              .object({
+                package: z.string().min(1).describe('The package, with a subpath when the factory lives on one: @e2e-dev/mobile, @e2e-dev/testmu/web'),
+                export: z.string().min(1).optional().describe('The export to call; default: the default export'),
+                options: z
+                  .record(z.string(), z.unknown())
+                  .optional()
+                  .describe('What the factory is called with, as in an e2e.config.ts. A value of this same {package, export?, options?} shape is called first and replaced by its result'),
+              })
+              .strict(),
+          ])
+          .optional()
+          .describe(
+            'Only where the project has no config file: the engine to open a session on, as a config would build it. A package name calls its default export with no options: "@e2e-dev/web". An object passes options, and an option can be another factory call, which is how an engine gets a device or browser provider: {package: "@e2e-dev/mobile", options: {platform: "ios"}}, or {package: "@e2e-dev/mobile", options: {platform: "ios", device: {package: "@e2e-dev/limrun", export: "limrun", options: {region: "eu"}}}} for mobile({platform: "ios", device: limrun({region: "eu"})}). A package not installed fails with the command that installs it. Excludes target, config, and test',
+          ),
+        app: z
+          .object({
+            url: z.string().min(1).optional().describe('The URL the session opens, and the base of relative navigation'),
+            bundleId: z.string().min(1).optional().describe('An installed app a device launches: its bundle id, package, or display name'),
+            appPath: z.string().min(1).optional().describe("A build a device installs and launches: an .app, .ipa, or .apk, relative to the server's working directory"),
+          })
+          .strict()
+          .optional()
+          .describe('With engine: the app under test, as a target declares it in an e2e.config.ts. @e2e-dev/web needs url; @e2e-dev/mobile needs bundleId or appPath'),
       }).strict(),
       readOnly: false,
       call: async (args, extra) => textResult(await this.open(args, extra.signal)),

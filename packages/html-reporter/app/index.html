@@ -1,0 +1,26 @@
+<!doctype html>
+<!--
+  Icons: Lucide (https://lucide.dev), ISC License, Copyright (c) 2026 Lucide Icons and Contributors;
+  some derived from Feather, MIT License, Copyright (c) 2013-present Cole Bemis.
+  Full license texts: https://github.com/lucide-icons/lucide/blob/main/LICENSE
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- The theme the switch saved, set before first paint so a light or dark choice never flashes the other. -->
+    <script>
+      try {
+        const theme = localStorage.getItem('e2e-report-theme');
+        if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+      } catch {}
+    </script>
+    <title>e2e report</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script id="e2e-report" type="application/json">"__E2E_REPORT_PAYLOAD__"</script>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

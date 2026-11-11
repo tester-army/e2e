@@ -31,7 +31,7 @@ import {
 } from '../locator/screen.ts';
 import { engineAppInfo } from '../config/app.ts';
 import type { ResolvedAgentConfig, ResolvedConfig, ResolvedTarget } from '../config/resolve.ts';
-import type { Agent, App, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
+import type { Agent, App, CommandConfig, Expectable, RecordingOptions, SetupSession, TestFixtures } from '../types.ts';
 import type { StepRecord, StepRecorder } from './steps.ts';
 
 export interface ArtifactSink {
@@ -409,6 +409,7 @@ function lazyBuiltInAgent(config: ResolvedAgentConfig): StepExecutor {
     // Cache provenance and model policyVersion record this wrapper, not the
     // delegate it constructs, so both carry the one identity.
     ...BUILT_IN_AGENT,
+    vision: true,
     async runStep(context) {
       if (executor === undefined) {
         const { createBuiltInAgent } = await import('../agent/default-agent.ts');
@@ -450,17 +451,23 @@ const NOTHING_LISTENING =
   /ERR_CONNECTION_REFUSED|ECONNREFUSED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ERR_ADDRESS_UNREACHABLE|EHOSTUNREACH|ERR_CONNECTION_TIMED_OUT|ETIMEDOUT/;
 
 /**
- * A navigation the network refused means the app is down, which is the
- * first thing a new project runs into and the last thing an engine failure
- * message suggests. Named by its own code, with the URL and the three ways
- * to fix it.
+ * Adds a recovery hint to navigation connection errors using the target's
+ * command configuration. A `reuseExisting` command may have attached to a
+ * process the runner did not start, whose output `app.command.log` never
+ * holds, so its hint does not promise that output.
  */
-function unreachableApp(cause: unknown, url: string): InfrastructureError | undefined {
+function unreachableApp(cause: unknown, url: string, command: CommandConfig | undefined): InfrastructureError | undefined {
   const match = NOTHING_LISTENING.exec(errorMessage(cause));
   if (match === null) return undefined;
+  const hint =
+    command === undefined
+      ? "start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it"
+      : command.reuseExisting === true
+        ? "check that the process serving the target's app.url still runs. With reuseExisting the runner may use a process it did not start, and app.command.log captures only a command the runner started"
+        : "check the target's app.command output and app.url. Set app.command.log if output is not captured";
   return new InfrastructureError(
     'APP_UNREACHABLE',
-    `nothing answered at ${url} (${match[0]}); start the app there, point the target's app.url at where it runs, or give the target an app.command so the runner starts it`,
+    `nothing answered at ${url} (${match[0]}); ${hint}`,
     { cause },
   );
 }
@@ -475,7 +482,7 @@ function createApp(environment: AttemptEnvironment, engine: LocatorEngine): App 
     try {
       await engine.session.app.open(resolved, engine.operation(timeoutMs));
     } catch (cause) {
-      throw unreachableApp(cause, resolved) ?? cause;
+      throw unreachableApp(cause, resolved, target.app.command) ?? cause;
     }
   };
 

@@ -98,6 +98,28 @@ it doesn't pass keep the target's values:
 await device.openApp('com.example.app', { relaunch: true, permissions: { camera: 'deny' } });
 ```
 
+### Run the app in another language
+
+On iOS, launch arguments set the app's language and region for that launch.
+The device keeps its own language. Add one target per language:
+
+```ts
+{
+  name: 'ios-fr',
+  engine: mobile({ platform: 'ios' }),
+  app: {
+    bundleId: 'com.example.app',
+    launchArguments: ['-AppleLanguages', '(fr)', '-AppleLocale', 'fr_FR'],
+  },
+}
+```
+
+- The app must ship the language. If it doesn't, iOS shows its development
+  language.
+- Android has no launch argument for the language. On a hosted device, set
+  `language` and `locale` on `browserstack()` or `testmu()`. On a local
+  device, set the device's language before the run.
+
 ### Expo development builds
 
 A development build (`expo-dev-client`) opens on the dev launcher and loads
@@ -167,12 +189,13 @@ on Android. Each UI framework sets them its own way:
 
 | Framework | Set the id with | Example |
 | --- | --- | --- |
-| React Native | `testID` | [with-expo](https://github.com/tester-army/e2e/tree/main/examples/with-expo) |
-| SwiftUI | `.accessibilityIdentifier()` | [with-swiftui](https://github.com/tester-army/e2e/tree/main/examples/with-swiftui) |
-| Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/tester-army/e2e/tree/main/examples/with-compose) |
-| Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/tester-army/e2e/tree/main/examples/with-kotlin-multiplatform) |
-| Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/tester-army/e2e/tree/main/examples/with-flutter) |
-| .NET MAUI | `AutomationId` | [with-maui](https://github.com/tester-army/e2e/tree/main/examples/with-maui) |
+| React Native | `testID` | [with-expo](https://github.com/e2e-inc/e2e/tree/main/examples/with-expo) |
+| SwiftUI | `.accessibilityIdentifier()` | [with-swiftui](https://github.com/e2e-inc/e2e/tree/main/examples/with-swiftui) |
+| UIKit | `view.accessibilityIdentifier`, or Identifier in Interface Builder's Identity inspector | - |
+| Jetpack Compose | `Modifier.testTag()` | [with-compose](https://github.com/e2e-inc/e2e/tree/main/examples/with-compose) |
+| Compose Multiplatform | `Modifier.testTag()` | [with-kotlin-multiplatform](https://github.com/e2e-inc/e2e/tree/main/examples/with-kotlin-multiplatform) |
+| Flutter | `Semantics(identifier:)` | [with-flutter](https://github.com/e2e-inc/e2e/tree/main/examples/with-flutter) |
+| .NET MAUI | `AutomationId` | [with-maui](https://github.com/e2e-inc/e2e/tree/main/examples/with-maui) |
 | NativeScript | `testID` | [Norrix guide](https://docs.norrix.net/guides/e2e-testing/#3-write-a-first-test) |
 
 - On Android, a native `android:id` and a .NET MAUI `AutomationId` read as
@@ -183,6 +206,11 @@ on Android. Each UI framework sets them its own way:
   `Modifier.semantics { testTagsAsResourceId = true }`. Without it,
   `getByTestId` finds nothing. iOS reads a Compose Multiplatform tag as is,
   so a shared screen sets the flag in its Android activity.
+- In SwiftUI, an `.accessibilityIdentifier()` on a container such as a
+  `VStack` replaces the ids of every element inside it. `getByTestId` then
+  fails with `LOCATOR_AMBIGUOUS` on the container's id and finds nothing for
+  the children's ids. Put `.accessibilityElement(children: .contain)` before
+  the identifier to keep both.
 - In Flutter, wrap a button's `Semantics` in `MergeSemantics` so the id and
   the button role land on one node.
 - In NativeScript, `testID` and `accessibilityIdentifier` set the same id:
@@ -252,8 +280,9 @@ next launch. It is iOS only.
 
 For anything `device` doesn't cover, `device.unstable_raw` has an
 [agent-device](https://github.com/callstack/agent-device) client
-bound to the test's session, plus the session name and the device's id and
-name. It is unstable and may change or go away in any release:
+bound to the test's session, plus the session name, the device's id and
+name, and a `selection` to spread into a client call. It is unstable and
+may change or go away in any release:
 
 ```ts
 const { client, deviceId } = device.unstable_raw;
@@ -263,6 +292,36 @@ const { nodes } = await client.capture.snapshot({});
 Client calls aren't steps: the report and trace leave them out, the agent
 cache doesn't replay them, secrets passed to them aren't redacted, and
 nothing waits for the screen to settle after one.
+
+<Accordion title="Text size and animations">
+`device` has no method for the system text size or animations, so set them
+through `unstable_raw`. Change the text size before `app.open()`. A running
+app can keep the old size until it launches again, so call `app.restart()`
+after a change mid-test:
+
+```ts
+import { afterEach, test } from '@e2e-dev/mobile';
+import { expect } from 'e2e';
+
+afterEach(async ({ app, device }) => {
+  const { client, selection } = device.unstable_raw;
+  await client.settings.update({ ...selection, setting: 'text-size', state: 'large' });
+});
+
+test('the checkout button shows at the largest text size', async ({ app, device, screen }) => {
+  const { client, selection } = device.unstable_raw;
+  await client.settings.update({ ...selection, setting: 'text-size', state: 'accessibility-extra-extra-extra-large' });
+  await app.open();
+  await expect(screen.getByRole('button', 'Checkout')).toBeVisible();
+});
+```
+
+`text-size` works on iOS simulators and Android; `large` is the default on
+both. `setting: 'animations'` with `state: 'off'` or `'on'` is Android only
+and fails on iOS. On Android it sets the window, transition, and animator
+scales to 0 or 1. Both settings outlast the test, so put them back in `afterEach`. The next
+test's `app.open()` relaunches the app, so restoring the setting is enough.
+</Accordion>
 
 <Accordion title="Foldable simulators and emulators">
 `device.fold(pose)` puts the iPhone Duo simulator or a foldable Android
@@ -346,7 +405,8 @@ mobile({ platform: 'ios', device: ['iPhone 17', 'iPhone 17 Pro'] })
 ```
 
 Without `device`, the engine uses booted devices, up to the worker limit.
-If none are booted, it boots one. Two workers never drive the same device.
+If none are booted, it boots a shut-down one: newest OS first, then name
+order. Two workers never drive the same device.
 
 ## Agent tools
 
@@ -474,7 +534,8 @@ run starts, and releases it when the run ends.
 For [Expo Simulators](/integrations/eas), use `expoSimulators()` from
 `@e2e-dev/eas`. For [TestMu AI](/integrations/testmu), use `testmu()` from
 `@e2e-dev/testmu`. For [BrowserStack](/integrations/browserstack), use
-`browserstack()` from `@e2e-dev/browserstack`. For another service, write a provider of a few dozen lines,
+`browserstack()` from `@e2e-dev/browserstack`. For Android on [E2B](/integrations/e2b), use `e2b()` from
+`@e2e-dev/e2b`. For another service, write a provider of a few dozen lines,
 such as `hostedDevices` in the example below:
 
 ```ts
@@ -682,6 +743,10 @@ export function cloudDevices(options: { provider: string; device: string; osVers
   detector a window of 350 ms or more.
 - On iOS, `device.foregroundApp()` still names the session's app after
   `device.home()`. Check the screen instead.
+- On an Android build with no shell command for the clipboard service (the
+  Android 16 emulator is one), `device.clipboard()` and
+  `device.setClipboard()` throw `UNSUPPORTED_CAPABILITY`. To check a copy,
+  paste into a field and read the field back.
 - On an iPhone Duo, `--video` records the display that was lit when the
   recording started. After `device.fold` moves the app to the other display,
   the rest of the video is black.

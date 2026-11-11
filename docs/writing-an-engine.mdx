@@ -284,11 +284,31 @@ For platform operations the action set lacks, ship
 [project tools](/tools) built with `defineTool`, with `platforms` set so each
 shows only on compatible targets, as `@e2e-dev/mobile/tools` does.
 
+## Open it by name
+
+Export the engine's factory as the package's default export. Then a coding
+agent can open an [MCP session](/reference/mcp#without-a-config) on the
+engine in a directory with no config:
+
+```ts title="src/index.ts"
+export default function kiosk(options?: KioskOptions) {
+  return defineEngine({ /* ... */ });
+}
+```
+
+```txt
+open_session {engine: {package: "kiosk-engine", options: {lane: 2}}}
+```
+
+The factory receives `options`, or `undefined` when the agent passes only
+the package name. Return a new engine on every call, so each session gets
+its own.
+
 ## Verify it
 
 Run a test file against your engine. Check the lifecycle order,
 observations, actions, errors, and unsupported capabilities.
-[`engine-contract.test.ts`](https://github.com/tester-army/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
+[`engine-contract.test.ts`](https://github.com/e2e-inc/e2e/blob/main/packages/e2e/tests/integration/engine-contract.test.ts)
 has examples of these checks.
 
 ## Next

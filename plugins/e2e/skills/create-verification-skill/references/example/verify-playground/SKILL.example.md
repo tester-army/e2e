@@ -70,8 +70,8 @@ fan-out in topic `bug-bash` step 3 reads. `.e2e/bugbash/` is in
 `.gitignore`, with `.e2e/proof/`. One explorer at a time needs no isolation change; several
 need `pnpm app` started first and `reuseExisting: true` on the command,
 since the port is fixed. A finding is a bug once
-`tests/bugbash/<slug>.e2e.ts` fails with `ASSERTION_FAILED` on the
-assertion that encodes it; anything else is the explorer's claim.
+`tests/bugbash/<slug>.e2e.ts` fails on the reported defect, as topic
+`bug-bash` step 6 reads it; anything else is the explorer's claim.
 
 ## Cleanup
 

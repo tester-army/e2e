@@ -1,6 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SignalLadder } from '../../src/cli/signals.ts';
 
+/** Runs `body` with `process.send` and `process.connected` as `channel` describes, then restores both. */
+function withProcessChannel<T>(channel: { readonly send: (() => boolean) | undefined; readonly connected: boolean }, body: () => T): T {
+  const saved = (['send', 'connected'] as const).map((key) => [key, Object.getOwnPropertyDescriptor(process, key)] as const);
+  Object.defineProperty(process, 'send', { value: channel.send, configurable: true, writable: true });
+  Object.defineProperty(process, 'connected', { value: channel.connected, configurable: true, writable: true });
+  try {
+    return body();
+  } finally {
+    for (const [key, descriptor] of saved) {
+      if (descriptor === undefined) Reflect.deleteProperty(process, key);
+      else Object.defineProperty(process, key, descriptor);
+    }
+  }
+}
+
 describe('SignalLadder', () => {
   it('interrupts on the first signal, forces on the second, exits on the third', () => {
     const exits: number[] = [];
@@ -57,17 +72,18 @@ describe('SignalLadder', () => {
     }
   });
 
-  it('climbs at once when the parent was gone before it armed', () => {
-    const connected = Object.getOwnPropertyDescriptor(process, 'connected');
-    Object.defineProperty(process, 'connected', { value: false, configurable: true });
+  it.each([
+    ['climbs at once when the parent was gone before it armed', { send: () => true, connected: false }, true],
+    ['stays put while the parent is connected', { send: () => true, connected: true }, false],
+    // Bun reports `connected: false` for a process spawned without a channel; Node.js leaves it undefined.
+    ['stays put without an IPC channel, whatever connected says', { send: undefined, connected: false }, false],
+  ])('%s', (_case, channel, climbs) => {
     const ladder = new SignalLadder();
-    const release = ladder.arm(() => undefined, 1_000);
+    const release = withProcessChannel(channel, () => ladder.arm(() => undefined, 1_000));
     try {
-      expect(ladder.interruptSignal.aborted).toBe(true);
+      expect(ladder.interruptSignal.aborted).toBe(climbs);
     } finally {
       release();
-      if (connected === undefined) Reflect.deleteProperty(process, 'connected');
-      else Object.defineProperty(process, 'connected', connected);
     }
   });
 

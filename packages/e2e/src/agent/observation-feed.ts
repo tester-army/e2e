@@ -66,6 +66,8 @@ export interface Lookup {
 }
 
 export interface ObservationFeedOptions {
+  /** False when the step asked for semantic evidence only. */
+  readonly pixelsAllowed: boolean;
   /** The agent's observation byte ceiling, clamped per capture by the token limit. */
   readonly maxObservationBytes: number;
   /** The agent's per-request input token ceiling. */
@@ -168,7 +170,7 @@ export class ObservationFeed {
     }
     return this.queue.run(async () => {
       this.accounting.checkpoint();
-      const pixels = options.pixels === true;
+      const pixels = options.pixels === true && this.options.pixelsAllowed;
       const opening = this.opening;
       this.opening = undefined;
       const reusable = opening !== undefined && opening === this.newest && this.accounting.metrics.actionSteps === 0 &&
@@ -184,7 +186,7 @@ export class ObservationFeed {
       viewport: observation.viewport,
       ...(observation.path === undefined ? {} : { path: observation.path }),
     };
-    const pixels = options.pixels === true || observation.kind === 'pixels' ? this.pixelsFor(observation) : {};
+    const pixels = this.options.pixelsAllowed && (options.pixels === true || observation.kind === 'pixels') ? this.pixelsFor(observation) : {};
     if (observation.kind === 'pixels') {
       return { ...metadata, text: observation.text, treeUnavailable: true, truncated: true, ...pixels };
     }
@@ -392,7 +394,7 @@ export class ObservationFeed {
   private async capture(pixels: boolean): Promise<AgentObservation> {
     this.opening = undefined;
     const raw = await retryingObserve({
-      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: true }),
+      capture: () => this.runtime.engine.session.observe(this.accounting.operation(), { pixels, pixelFallback: this.options.pixelsAllowed }),
       guard: (cause) => this.accounting.checkpoint(cause),
       signal: this.runtime.engine.signal,
     });
@@ -405,7 +407,7 @@ export class ObservationFeed {
       redact: this.runtime.redact,
       redactCut: this.runtime.redactCut,
       maxBytes: this.byteBudget(pixels || raw.kind === 'pixels'),
-      pixelsAllowed: true,
+      pixelsAllowed: this.options.pixelsAllowed,
       appOrigin: this.runtime.app.base?.origin,
     });
     return prepared;

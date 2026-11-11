@@ -81,6 +81,7 @@ const GITIGNORE_ENTRIES = [
   '.e2e/sessions/',
   '.e2e/report.json',
   '.e2e/ai-trace.json',
+  '.e2e/timings.json',
   '.e2e/junit.xml',
   '.e2e/summary.md',
   '.e2e/logs/',
@@ -174,7 +175,7 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
       }
       spinner.error(`Could not download the ${example.id} example`);
       const reason = cause instanceof ExampleDownloadError ? cause.message : String(cause);
-      clack.log.error(`${reason}; check the connection and retry, or copy it from https://github.com/tester-army/e2e/tree/main/examples/${example.id}`);
+      clack.log.error(`${reason}; check the connection and retry, or copy it from https://github.com/e2e-inc/e2e/tree/main/examples/${example.id}`);
       return done('example-failed', 2);
     }
     spinner.stop(`Copied the ${example.id} example (${exampleCopy.ref})`);
@@ -302,9 +303,10 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
   );
   if (isCancelled(mcpFiles)) return cancel();
   facts.mcp = mcpFiles.length > 0;
+  const manager = detectPackageManager(cwd, pkg.manifest.packageManager);
   let mcpRegistrations: ReturnType<typeof planMcpRegistration>['registrations'];
   try {
-    const plan = planMcpRegistration(cwd, mcpFiles);
+    const plan = planMcpRegistration(cwd, mcpFiles, manager);
     mcpRegistrations = plan.registrations;
     for (const link of plan.links) {
       clack.log.warn(`Symlink, not touching: ${link.relative} -> ${link.target} (e2e mcp server)`);
@@ -366,7 +368,6 @@ export async function init(root: string, options: InitOptions = {}): Promise<Ini
     if (isCancelled(proceed) || !proceed) return cancel();
   }
 
-  const manager = detectPackageManager(cwd, manifest.packageManager);
   const install = given.install ?? await clack.confirm({ message: `Install dependencies with ${manager}?`, initialValue: true });
   if (isCancelled(install)) return cancel();
   facts.install = install;

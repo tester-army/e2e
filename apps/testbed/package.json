@@ -26,10 +26,10 @@
     "e2e": "workspace:*"
   },
   "devDependencies": {
-    "@ai-sdk/devtools": "1.0.66",
+    "@ai-sdk/devtools": "1.0.69",
     "@napi-rs/image": "1.16.0",
     "@types/node": "26.6.6",
-    "ai": "7.0.163",
+    "ai": "7.0.166",
     "typescript": "7.0.2",
     "zod": "4.6.7"
   }

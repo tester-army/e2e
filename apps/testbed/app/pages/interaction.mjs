@@ -111,8 +111,22 @@ const pages = {
        <div id="pad" role="img" aria-label="Pointer pad" style="width: 320px; height: 200px; background: #e5e7eb; touch-action: none;"></div>
        <output aria-label="Pad state">untouched</output>
        <div aria-label="Hidden pad" hidden>never shown</div>
+       <div id="diagram-node" style="position: relative; width: 200px; height: 80px; margin-top: 24px;">
+         <svg width="200" height="80" style="position: absolute; inset: 0;">
+           <path d="M1 1H199V79H1Z" fill="white" stroke="black" />
+         </svg>
+         <textarea aria-label="Edit label" readonly
+           style="position: absolute; inset: 0; pointer-events: none; background: transparent;">Node</textarea>
+       </div>
        <script>
          const pad = document.getElementById('pad');
+         const node = document.getElementById('diagram-node');
+         const label = node.querySelector('textarea');
+         node.addEventListener('dblclick', () => {
+           label.readOnly = false;
+           label.style.pointerEvents = 'auto';
+           label.focus();
+         });
          const padState = document.querySelector('output[aria-label="Pad state"]');
          const local = (event) => {
            const box = pad.getBoundingClientRect();

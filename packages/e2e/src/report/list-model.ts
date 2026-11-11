@@ -7,6 +7,7 @@
 import type { ResultStatus } from '../run/records.ts';
 import type { RecordedModel } from '../cache/trace.ts';
 import type { SerializedError } from '../internal/errors.ts';
+import type { StepPrompt } from '../run/step-hold.ts';
 import type { StepActivity, StepEvent, StepKind, StepProgress } from '../run/steps.ts';
 import type { AiUsage } from './format.ts';
 
@@ -68,6 +69,18 @@ export interface RunningTest {
    * block once it is done.
    */
   readonly steps: FinishedStep[];
+  /**
+   * In an `e2e run --step` run, every finished step, agent or not, oldest
+   * first: the live window lists them above the prompt instead of `steps`.
+   * Undefined in any other run.
+   */
+  readonly ran: FinishedStep[] | undefined;
+}
+
+/** A running test whose next step waits at the `e2e run --step` prompt. */
+export interface PausedTest {
+  readonly test: RunningTest;
+  readonly prompt: StepPrompt;
 }
 
 /** The model and agent named in the run header. */

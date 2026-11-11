@@ -1,6 +1,6 @@
 ---
 name: migrate-to-e2e
-description: Moves an existing Playwright, Cypress, Selenium, Detox, Maestro, or TesterArmy suite to e2e one slice at a time, with the old suite running beside the new one until each ported test is proven. Keeps a MIGRATION.md progress file so any later session resumes where the last stopped. Optionally plants a defect to show both suites catch it. Use for /migrate-to-e2e, "migrate our tests to e2e", "port these Maestro flows", "move our TesterArmy tests", or when a project has an e2e config and an older suite still running.
+description: Moves an existing Playwright, Cypress, Selenium, Appium, Detox, Maestro, or TesterArmy suite to e2e one slice at a time, with the old suite running beside the new one until each ported test is proven. Keeps a MIGRATION.md progress file so any later session resumes where the last stopped. Optionally plants a defect to show both suites catch it. Use for /migrate-to-e2e, "migrate our tests to e2e", "port these Maestro flows", "move our TesterArmy tests", or when a project has an e2e config and an older suite still running.
 metadata:
   openclaw:
     homepage: https://e2e.com/docs/migrate
@@ -21,14 +21,14 @@ agent's, starts from it instead of from scratch. The user decides when an old te
 Two references do most of the work. Read them; do not restate them.
 
 - The e2e skill for everything the runner does: `.agents/skills/e2e/SKILL.md`
-  once `npx e2e init` or `npx skills add tester-army/e2e` ran, or
+  once `npx e2e init` or `npx skills add e2e-inc/e2e` ran, or
   `npx e2e guide <topic>` from the installed package. Topics named below
   (`setup`, `writing-tests`, `agent`, `mcp`, `running`, `debugging`) are its
   reference files.
 - The migration guide for the source runner, and the engine page it ports
   to. The guide maps the runner's config, commands, and API to e2e, and
-  says what e2e does not have yet (marked `missing` or "No equivalent")
-  with today's workaround. Both ship in the installed package under
+  says what e2e does not have yet (marked "Not yet", "No equivalent", or
+  `missing`) with today's workaround. Both ship in the installed package under
   `node_modules/e2e/docs/` with the same paths as `.mdx` files.
 
 Detect the source runner, then read both docs in its row in full, before
@@ -39,13 +39,14 @@ the inventory and before writing any code. Each later step leans on them.
 | Playwright | `playwright.config.*`, `@playwright/test` | [migrate/playwright](https://e2e.com/docs/migrate/playwright.md) | [web](https://e2e.com/docs/web.md) |
 | Cypress | `cypress.config.*`, a `cypress/` folder | [migrate/cypress](https://e2e.com/docs/migrate/cypress.md) | [web](https://e2e.com/docs/web.md) |
 | Selenium | `selenium-webdriver`, Selenium in a `pom.xml`, `build.gradle`, or `requirements.txt` | [migrate/selenium](https://e2e.com/docs/migrate/selenium.md) | [web](https://e2e.com/docs/web.md) |
+| Appium | `appium:` capabilities in a `wdio.conf.*` or test setup, `appium` in `package.json`, `io.appium` in a `pom.xml` or `build.gradle`, `Appium-Python-Client` in `requirements.txt` | [migrate/appium](https://e2e.com/docs/migrate/appium.md) | [mobile](https://e2e.com/docs/mobile.md) |
 | Detox | `.detoxrc*`, `detox` in `package.json` | [migrate/detox](https://e2e.com/docs/migrate/detox.md) | [mobile](https://e2e.com/docs/mobile.md) |
 | Maestro | YAML flows opening with `appId:` and `---`, `.maestro/`, `maestro test` in a script or workflow | [migrate/maestro](https://e2e.com/docs/migrate/maestro.md) | [mobile](https://e2e.com/docs/mobile.md) |
 | TesterArmy | `testerarmy` MCP tools, a `testerarmy` entry in an MCP config, `testerarmy` or `tester.army` in a script or workflow, or the user says so | [migrate/testerarmy](https://e2e.com/docs/migrate/testerarmy.md) | [web](https://e2e.com/docs/web.md) or [mobile](https://e2e.com/docs/mobile.md), by the project's type |
 
-WebdriverIO and Appium have no guide. Map their WebDriver calls with the
-Selenium guide; map Appium's device commands with the Detox and Maestro
-guides, on the mobile engine. Tell the user the mapping is partial. A
+WebdriverIO for the web has no guide. Map its WebDriver calls with the
+Selenium guide, and tell the user the mapping is partial. WebdriverIO with
+Appium capabilities is an Appium project. A
 project with two source runners migrates one at a time, one section of the
 progress file each.
 
@@ -152,13 +153,20 @@ once and the progress file says so; later sessions skip this step.
      an env file (`dotenv.config()`), load it the same way in the e2e
      config, so tests and helpers see the same values. `app.command` does
      not see them; pass the ones the server needs in `command.env`.
-4. Port the simplest source test, often the sign-in or the launch, as the
+4. Install the packages (with the repo's package manager), then run
+   `npx e2e doctor` (e2e 0.23.0 or newer) and fix every check it fails. It
+   loads the config and checks each target's engine without starting the
+   app: the browser on a web target; agent-device, the toolchain, the
+   devices, and the build at `appPath` on a local-device mobile target (a
+   device-provider target skips these). When step 3.2 configured a model,
+   add `--check-model` to call each model once.
+5. Port the simplest source test, often the sign-in or the launch, as the
    smoke test. It must pass on every target before any other port. When it
    cannot, the harness is wrong, not the test: fix the harness.
-5. `init` adds a `test:e2e` script (`e2e run`) unless a script already has
+6. `init` adds a `test:e2e` script (`e2e run`) unless a script already has
    that name. When the name was taken, or `init` did not run, add one under
    a free name. Keep the old suite's scripts as they were.
-6. Mark the harness done in the progress file, with the commands that start the
+7. Mark the harness done in the progress file, with the commands that start the
    dependencies, run the old suite, and run the new one.
 
 ## 4. Pick the slice
@@ -170,8 +178,8 @@ When they leave it to you, suggest in this order:
 1. Tests whose shared helpers are already ported.
 2. Tests that break often in the old runner: retries, flaky history in CI,
    comments explaining a workaround for the runner. They gain the most.
-3. Tests that need a capability the guide marks `missing` or "No
-   equivalent", last.
+3. Tests that need a capability the guide marks "Not yet", "No
+   equivalent", or `missing`, last.
 
 Write the slice into the progress file's `Next` section before starting, so an
 interrupted session leaves a trail.
@@ -216,9 +224,9 @@ Then each test, one at a time:
   coordinate tap, a retry loop around a picker) is a workaround for the old
   runner. Try the plain step first; keep a workaround only when e2e needs it
   too, with its own comment saying why.
-- Where the guide marks a step `missing` or "No equivalent", use its
-  workaround. When there is none, the test stays in the old runner: mark it
-  `stays` with the reason and offer to send
+- Where the guide marks a step "Not yet", "No equivalent", or `missing`,
+  use its workaround. When there is none, the test stays in the old
+  runner: mark it `stays` with the reason and offer to send
   `npx e2e feedback --type feature -m "<the gap>"` once: preview it with
   `--dry-run` and send it only when the user agrees (the e2e skill,
   Feedback).
@@ -317,7 +325,7 @@ Defect check: on
 
 ## Gaps
 
-- `addMedia` has no e2e equivalent (guide: missing); feedback sent.
+- `addMedia` has no e2e equivalent (guide: Not yet); feedback sent.
 
 ## Next
 

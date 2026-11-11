@@ -147,8 +147,8 @@ export interface DeviceProvider {
 export type RecordingDeviceProvider = DeviceProvider & Required<Pick<DeviceProvider, 'record'>>;
 
 /** Narrows an intended provider, or names what it is missing. */
-export function asDeviceProvider(device: object): DeviceProvider {
-  const candidate = device as Partial<Record<keyof DeviceProvider, unknown>>;
+export function asDeviceProvider(device: unknown): DeviceProvider {
+  const candidate = (device ?? {}) as Partial<Record<keyof DeviceProvider, unknown>>;
   if (typeof candidate.name !== 'string' || candidate.name.trim() === '') {
     throw new ConfigurationError('INVALID_CONFIG', 'mobile: a `device` provider needs a non-empty `name`');
   }

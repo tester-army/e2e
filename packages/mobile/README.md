@@ -73,7 +73,7 @@ the other old app options are `INVALID_CONFIG` naming their key under `app`.
 | `session` | agent-device session name, before the worker slot: slot `n` drives its device under `<session>-<n>`, `e2e-<target name>-<n>` by default. One run per session at a time. |
 | `snapshot` | `'full'` (default, includes static text) or `'interactive'` (actionable nodes only). |
 | `settle` | For agent actions: milliseconds the UI must hold still after an action before the agent observes again, default `150`; `false` skips the wait. A test's own steps never settle; `expect` verifies their outcome. |
-| `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. |
+| `transition` | For a test's steps: milliseconds a control that appeared or moved with the last action gets to finish arriving before it is acted on, default `500`. Unmoved controls are acted on immediately only when keyboard visibility is unchanged. Opening or closing the keyboard also uses the remaining budget. Screen swipes in tests wait out the remaining budget before scrolling. |
 
 Every optional `mobile()` value also accepts `undefined`, so a config passes
 `device: process.env.E2E_DEVICE` straight through, with no conditional
@@ -166,6 +166,15 @@ config declares: tool names are fixed, so two packs cannot be merged, and the
 pack dispatches each call to the engine whose attempt is running. Tools are
 scoped to the platforms of those engines, so a suite that mixes web and device
 targets can hand the pack to one agents entry's `tools`.
+
+## Custom tools with a raw driver session
+
+`unstable_deviceSession(...engines)` from `@e2e-dev/mobile/tools` gives a
+custom tool the running attempt's raw driver session, for capabilities e2e
+does not wrap yet. Its client is bound to the engine's daemon, lease, and
+session. The client is typed as `DeviceSessionClient`, exported from `@e2e-dev/mobile`.
+This API can change in any release, like `device.unstable_raw`
+([reference](https://e2e.com/docs/reference/mobile#unstable_devicesession)).
 
 ## Secrets
 

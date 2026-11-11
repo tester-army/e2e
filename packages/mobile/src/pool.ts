@@ -11,6 +11,7 @@
  * `init`, and `finish` releases what the source acquired.
  */
 
+import type { DeviceBootOptions } from 'agent-device';
 import {
   ConfigurationError,
   EngineError,
@@ -52,6 +53,17 @@ export function deviceSelection(
   const id = deviceId ?? (device !== undefined && (UDID.test(device) || EMULATOR_SERIAL.test(device)) ? device : undefined);
   if (id === undefined) return obj({ platform, device });
   return platform === 'android' ? { platform, serial: id } : { platform, udid: id };
+}
+
+/**
+ * The request `boot` takes for a selection. One that names no device asks
+ * agent-device to pick among several shut-down matches (mobile over TV, newest
+ * OS, then name order) instead of failing with `AMBIGUOUS_MATCH`; several
+ * booted matches still fail.
+ */
+export function bootRequest(selection: DeviceSelection): DeviceSelection & Pick<DeviceBootOptions, 'pick'> {
+  const named = selection.device ?? selection.udid ?? selection.serial;
+  return named === undefined ? { ...selection, pick: 'newest' } : selection;
 }
 
 /** The agent-device session slot `slot` of a target drives: the `session` option or `e2e-<target>`, then `-<slot>`. */
@@ -111,8 +123,9 @@ interface BootedDevice {
 
 /**
  * Every booted device of the platform no other agent-device session holds, as
- * many as the run has slots; with none booted, one slot the daemon fills. A
- * device held by one of this target's own slot sessions stays in the pool.
+ * many as the run has slots; with none booted, one slot that boots a shut-down
+ * simulator or emulator agent-device picks. A device held by one of this
+ * target's own slot sessions stays in the pool.
  */
 class BootedDevices implements DeviceSource {
   constructor(
@@ -135,7 +148,7 @@ class BootedDevices implements DeviceSource {
       );
     }
     if (chosen.length === 0) {
-      info.log(`no booted ${this.platform} device; agent-device boots one`);
+      info.log(`no booted ${this.platform} device; agent-device boots a shut-down one (newest OS, then name)`);
       return [{}];
     }
     const skipped = held.length === 0 ? '' : `, skipping ${held.length} held by another agent-device session (${heldBy})`;
@@ -279,7 +292,8 @@ export class DevicePool {
    * hide. A runner that did not start leaves the slot unopened: the open
    * would start it again under a shorter budget. A build `appPath` installs in `init` is
    * not on the device yet, so that slot boots and starts the runner only,
-   * unless a lease says the build is already there.
+   * unless a lease says the build is already there. Each slot logs one line
+   * of how long its boot, runner start, and open took, a failed step included.
    */
   private async warm(bindings: readonly SlotBinding[], info: EnginePrepareInfo): Promise<void> {
     for (const [slot, binding] of bindings.entries()) {
@@ -290,21 +304,26 @@ export class DevicePool {
       const client = this.createClient(session, binding);
       this.retain(info.targetName, client);
       info.log(`booting ${label} (${slot + 1} of ${bindings.length})`);
-      await runCommand('boot', () => client.devices.boot(where), info.signal, at);
-      const runnerUp = this.options.platform !== 'ios' || (await prepareRunner(client, where, info, at));
-      const app = pinnedApp(info.app, binding.installedApp);
-      if (app === undefined || !runnerUp) continue;
-      // A build the suite installs itself is not on the device yet, so there
-      // is nothing to open: the first attempt installs it.
-      if (info.app.appPath !== undefined && binding.installedApp === undefined) {
-        info.log(`${label}: ${app} awaits the suite's device.installApp()`);
-        continue;
-      }
+      const took: string[] = [];
       try {
-        await runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at);
-      } catch (cause) {
-        if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
-        info.log(`${label}: ${app} did not open (${message(cause)}); the first attempt opens it`);
+        await timed(took, 'boot', () => runCommand('boot', () => client.devices.boot(bootRequest(where)), info.signal, at));
+        const runnerUp = this.options.platform !== 'ios' || (await timed(took, 'iOS runner', () => prepareRunner(client, where, info, at)));
+        const app = pinnedApp(info.app, binding.installedApp);
+        if (app === undefined || !runnerUp) continue;
+        // A build the suite installs itself is not on the device yet, so there
+        // is nothing to open: the first attempt installs it.
+        if (info.app.appPath !== undefined && binding.installedApp === undefined) {
+          info.log(`${label}: ${app} awaits the suite's device.installApp()`);
+          continue;
+        }
+        try {
+          await timed(took, `open ${app}`, () => runCommand(`open ${app}`, () => client.apps.open({ app, ...where }), info.signal, at));
+        } catch (cause) {
+          if (info.signal.aborted || isRunnerFailure(cause)) throw cause;
+          info.log(`${label}: ${app} did not open (${message(cause)}); the first attempt opens it`);
+        }
+      } finally {
+        info.log(`${label}: ${took.join(', ')}`);
       }
     }
   }
@@ -314,6 +333,20 @@ export class DevicePool {
     const clients = this.warmed.get(targetName) ?? [];
     clients.push(client);
     this.warmed.set(targetName, clients);
+  }
+}
+
+/**
+ * Runs one warm-up step and appends `<name> <seconds>s` to `took`, also when
+ * the step throws, so the line `warm` logs for the slot says where a slow or
+ * failed prepare spent its time.
+ */
+async function timed<T>(took: string[], name: string, step: () => Promise<T>): Promise<T> {
+  const start = performance.now();
+  try {
+    return await step();
+  } finally {
+    took.push(`${name} ${((performance.now() - start) / 1000).toFixed(1)}s`);
   }
 }
 

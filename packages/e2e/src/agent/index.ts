@@ -21,7 +21,7 @@ import { AgentError, isAgentError, toAgentError } from './error.ts';
 import { isUnservedModelError, unservedModelError } from './model/sdk.ts';
 import { resolveBoundedBudget, resolveTimeout } from './call-options.ts';
 import { runActStep, runAssertStep } from './act.ts';
-import { observationShape, type AgentObservation } from './observation.ts';
+import { judgmentShape, type AgentObservation } from './observation.ts';
 import {
   Invocation,
   type AgentContext,
@@ -68,7 +68,7 @@ const VISION_HINT_UNPROVEN =
 
 const WAIT_FOR_KEYS = ['params', 'timeout', 'interval', 'maxModelCalls', 'vision', 'agent'] as const;
 const EXTRACT_KEYS = ['schema', 'timeout', 'vision', 'agent'] as const;
-const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent'] as const;
+const ASSERT_KEYS = ['params', 'timeout', 'screenshot', 'vision', 'agent', 'explore', 'maxSteps', 'maxModelCalls'] as const;
 
 /** Builds the agent fixture for one attempt. */
 export function createAgentFixture(runtime: AgentContext): Agent {
@@ -126,7 +126,7 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
   /**
    * One judgment call against a fresh observation. The judge is shown the
-   * instruction, its params, the agent's context, and the screen, never the
+   * instruction, its params, the agent's context, and the screen with its location, never the
    * prior steps or the acting agent's summaries: a verdict rests on evidence,
    * not on what the actor said it did.
    */
@@ -258,12 +258,18 @@ export function createAgentFixture(runtime: AgentContext): Agent {
 
     assert(assertion, options) {
       rejectUnknownOptions('agent.assert', options, ASSERT_KEYS);
+      if (options?.explore !== undefined && typeof options.explore !== 'boolean') {
+        throw new TestError('INVALID_ARGUMENT', 'explore must be a boolean');
+      }
+      if (options?.explore !== true && (options?.maxSteps !== undefined || options?.maxModelCalls !== undefined)) {
+        throw new TestError('INVALID_ARGUMENT', 'assert budgets require explore: true');
+      }
       // A custom executor judges assertions through the socket: swapping
       // brains swaps all the thinking. The built-in path keeps the optimized
       // judgment tier below: one call, plus one repair round for a response
       // that missed the grammar, vision-capable.
       const { config, customExecutor } = runtime.select(options?.agent);
-      if (customExecutor) {
+      if (customExecutor || options?.explore === true) {
         return runAssertStep(runtime, assertion, options);
       }
       const params = judgmentParams(options?.params, 'agent.assert');
@@ -324,10 +330,16 @@ export function createAgentFixture(runtime: AgentContext): Agent {
  * to spend it on.
  *
  * A judgment reads the observation and nothing else, so while the screen looks the
- * same the answer is the same and re-asking is a model call that can only repeat
- * itself. So a false judgment is followed by engine-only observations until the
- * screen actually changes, which is also what makes a condition that came true two
- * seconds ago cost two seconds rather than a full interval.
+ * same at the same location the answer is the same and re-asking is a model call
+ * that can only repeat itself. So a false judgment is followed by engine-only
+ * observations until one of them changes, which is also what makes a condition that
+ * came true two seconds ago cost two seconds rather than a full interval.
+ *
+ * The screen and the location the judge is shown are compared with
+ * `judgmentShape`. The location is not part of `observationShape`, because the
+ * settles after an action wait on that and must not treat an address change as
+ * the screen moving. Under `vision: 'only'` the judge is not shown the location,
+ * so it is not compared there either.
  *
  * `interval` stays the rate limit it always was: at most one judgment per
  * interval, so a screen that changes continuously — a spinner, a countdown —
@@ -352,7 +364,7 @@ async function waitForNextJudgment(
 ): Promise<AgentObservation> {
   const tickMs = Math.min(options.intervalMs, CHANGE_POLL_MS);
   const judgedAt = Date.now();
-  const judgedShape = observationShape(options.since);
+  const judgedShape = judgmentShape(options.since, { treeWithheld: invocation.treeWithheld });
   const timedOut = (cause?: unknown): AgentError =>
     new AgentError(
       'STEP_TIMEOUT',
@@ -383,7 +395,7 @@ async function waitForNextJudgment(
       throw cause;
     });
     if (Date.now() - judgedAt < options.intervalMs) continue;
-    if (observationShape(observation) !== judgedShape) return observation;
+    if (judgmentShape(observation, { treeWithheld: invocation.treeWithheld }) !== judgedShape) return observation;
   }
 }
 

@@ -2,13 +2,15 @@
 
 [e2e.com/examples](https://e2e.com/examples) lists every
 example in [`examples.json`](examples.json): the official ones, which the e2e
-team maintains in this folder and in other tester-army repositories, and
-partner and community examples in their own GitHub repositories. Built something with
+team maintains in this folder, in other e2e-inc repositories, and in the
+e2e_inc group on GitLab, partner examples in the partner's own GitHub
+repositories, and community examples in their own GitHub or GitLab
+repositories. Built something with
 e2e? Add it with a pull request.
 
 ## Add your example
 
-1. Put your example in a public GitHub repository, or a folder in one, with
+1. Put your example in a public GitHub or GitLab repository, or a folder in one, with
    a `README.md` that says what it tests and how to install and run it. The
    README becomes the example's page on the site. If your docs live in
    another Markdown file, or you have none, see `readme` below.
@@ -39,20 +41,24 @@ Your editor can autocomplete the fields from
 
 - `slug` is the page's address, `e2e.com/examples/<slug>`.
 - `repository` is `https://github.com/<owner>/<repo>/tree/<ref>`, or
-  `https://github.com/<owner>/<repo>/tree/<ref>/<path>` for a folder. The
+  `https://github.com/<owner>/<repo>/tree/<ref>/<path>` for a folder. On
+  GitLab, it is `https://gitlab.com/<group>/<project>/-/tree/<ref>`, with
+  `/<path>` for a folder. The
   `<ref>` of a community example is the full SHA of the commit the pull
   request was reviewed at, so the page cannot change under it; open another
   pull request to move it forward.
 - `readme` is only for a folder without a `README.md`, and left out
   otherwise. Set it to a Markdown file in the same repository at the same
-  commit, `https://github.com/<owner>/<repo>/blob/<commit sha>/<path>.md`,
-  to render that file instead, or to `false` for no README: the page then shows the entry's
+  commit, `https://github.com/<owner>/<repo>/blob/<commit sha>/<path>.md`
+  (`https://gitlab.com/<group>/<project>/-/blob/<commit sha>/<path>.md` on
+  GitLab), to render that file instead, or to `false` for no README: the page then shows the entry's
   details and links to the code in `repository`.
 - `source` is always `community`. `official` is reserved for examples the
-  e2e team maintains under the tester-army organization, and `partner` for
-  examples a partner company verifies and maintains in its own repository,
-  which the e2e team sets once a partnership is agreed; the repository must
-  belong to the entry's `author.github`. The site shows a
+  e2e team maintains under the e2e-inc organization on GitHub or the
+  e2e_inc group on GitLab, and `partner` for examples a partner company
+  verifies and maintains in its own repository, which the e2e team sets once
+  a partnership is agreed; the repository must be on GitHub and belong to the
+  entry's `author.github`. The site shows a
   partner example with a blue seal: "Verified and maintained by" its
   `author.name`, which links to the partner's landing page in
   `author.website` (required on a partner example, and only there).
@@ -95,3 +101,6 @@ The folders here are official examples, maintained by the e2e team:
   entry there. Pull requests never run them. Oxlint and fallow exclude them.
 - Do not commit lockfiles. Keep the demo and tests consistent across
   examples.
+
+GitHub URLs using the former `tester-army` owner still parse as official
+examples. Use `e2e-inc` for new entries.

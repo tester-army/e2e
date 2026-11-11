@@ -58,7 +58,7 @@ A Playwright key such as `testDir`, `baseURL`, `use`, `webServer`, or
 | `maxFailures` | `--max-failures <n>`; no config key | renamed |
 | `globalTimeout` | `maxDuration`, or `--max-duration <ms>`; the clock starts with the tests, not app startup | renamed |
 | `reporter` | `reporters: ['list', 'junit']`; also `json` and `markdown` | renamed |
-| `reporter: 'html'` | the `markdown` reporter writes `.e2e/summary.md` | missing |
+| `reporter: 'html'` | `htmlReporter()` from `@e2e-dev/html-reporter` writes `.e2e/report.html` | renamed |
 | `outputDir` | `output`, default `.e2e`, holding `results/` (cleared when a run starts, like `outputDir`) beside the report | renamed |
 | `metadata` | not yet | missing |
 
@@ -190,6 +190,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.mouse.click(x, y)` | `screen.tapAt({ x, y })`, viewport coordinates | renamed |
 | `mouse.move`, `down`, `up` as a drag | `screen.swipe({ from, to })` | renamed |
 | `page.dragAndDrop(source, target, { sourcePosition, targetPosition })` | `source.dragTo(target)`, which takes no positions; for `sourcePosition` or `targetPosition`, `screen.swipe({ from, to })` with each `boundingBox()` origin plus its offset | renamed |
+| `page.mouse.dblclick(x, y)` | `screen.doubleTapAt({ x, y })`, viewport coordinates | renamed |
 | `page.mouse.move`, `wheel`, `down`, `up` | `browser.mouse.*` | web only |
 
 </Accordion>
@@ -247,7 +248,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `page.viewportSize()` | `browser.evaluate(() => ({ width: innerWidth, height: innerHeight }))` | missing |
 | `page.screenshot()` | `app.screenshot(label)`: the viewport, redacted, attached to the report; no `fullPage` | renamed |
 | a fresh `context` per test | every attempt starts in a fresh context; `app.restart()` recreates it, `app.clearState()` also clears storage. No page opens before the first `app.open` or `browser.goto`, where Playwright starts on `about:blank` | same |
-| `page.pause()` | `--headed` to watch, [`e2e mcp`](/mcp-server) to drive the app from a coding agent | missing |
+| `page.pause()` | `--step --headed` runs the first step, then holds each later one until a key; [`e2e mcp`](/mcp-server) to drive the app from a coding agent | missing |
 
 </Accordion>
 <Accordion title="Network and browser">
@@ -316,7 +317,7 @@ uses it declares `requires: ['browser']` and other targets skip it. Calls on
 | `--project web` | `--target web` | renamed |
 | `-g`, `--grep`, `--grep-invert` | `--grep` and `--grep-invert`, no `-g`; matched against the describe titles and the test title joined by spaces; tags are `--tag` and `--exclude-tag` | renamed |
 | `tests/login.spec.ts:12` | `tests/login.e2e.ts:12`, the test whose `test(` call opens on that line. A `describe` line or `file:line:column` selects nothing | renamed |
-| `--debug` | `--headed` to watch. `e2e run --debug` prints phase timings and the agent step table, not an inspector | missing |
+| `--debug` | `--step --headed` runs the first step, then holds each later one until a key; there is no inspector. `e2e run --debug` prints phase timings and the agent step table | renamed |
 | `--ui` | `--watch` reruns on save with vitest's keys, `--headed` to watch, `e2e mcp` to drive the app from a coding agent | missing |
 | `--headed`, `--retries`, `--workers`, `--config`, `--pass-with-no-tests` | the same long flags, no `-j` or `-c`. `--workers` takes a number, not `50%`; `--config` takes a file, not a directory | renamed |
 | `--reporter` | the same flag; the ids are `list`, `json`, `junit`, `markdown`. No `dot`, `line`, `html`, `blob`, `github`, or `null`; a custom reporter goes in the config's `reporters` | renamed |

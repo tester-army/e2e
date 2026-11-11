@@ -24,6 +24,6 @@ for (const page of globSync(['**/*.mdx', 'snippets/*.jsx'], { cwd: '../../docs',
 }
 
 const readme = readFileSync('../../README.md', 'utf8')
-  .replaceAll('src="./', 'src="https://raw.githubusercontent.com/tester-army/e2e/main/')
-  .replaceAll(/(href="|\]\()\.\//g, '$1https://github.com/tester-army/e2e/blob/main/');
+  .replaceAll('src="./', 'src="https://raw.githubusercontent.com/e2e-inc/e2e/main/')
+  .replaceAll(/(href="|\]\()\.\//g, '$1https://github.com/e2e-inc/e2e/blob/main/');
 writeFileSync('README.md', readme);

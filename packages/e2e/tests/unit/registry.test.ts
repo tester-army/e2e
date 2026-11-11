@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { collectFromRegistration } from '../../src/collect/collect.ts';
 import * as registry from '../../src/collect/registry.ts';
@@ -197,6 +199,29 @@ describe('registration', () => {
         });
       }),
     ).rejects.toThrow(`describe options: ${kind} must be one of ${modes}, got "yes"`);
+  });
+});
+
+describe('declaration sites from a JavaScriptCore stack', () => {
+  const file = path.join(os.tmpdir(), 'declared.e2e.ts');
+
+  /** Collects one test declared in `file` while every stack reads as `frames`, as Bun writes them. */
+  async function sourceUnder(frames: readonly string[]): Promise<unknown> {
+    const original = Error.prepareStackTrace;
+    Error.prepareStackTrace = () => ['Error', ...frames.map((frame) => `    at ${frame}`)].join('\n');
+    try {
+      return (await collectModule(async () => void test('declared', noop), file)).tests[0]!.source;
+    } finally {
+      Error.prepareStackTrace = original;
+    }
+  }
+
+  it('reads a top-level frame without a column', async () => {
+    expect(await sourceUnder([`${file}:5`, 'unknown', 'processTicksAndRejections (native:7:39)'])).toEqual({ file, line: 5, column: 1 });
+  });
+
+  it("never takes Bun's builtin code for a file", async () => {
+    expect(await sourceUnder(['processTicksAndRejections (native:7:39)'])).toBeUndefined();
   });
 });
 

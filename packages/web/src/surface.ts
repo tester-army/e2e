@@ -70,6 +70,7 @@ import {
   ErrorLatch,
   invalidState,
   isClassified,
+  isNavigationRace,
   isPwTimeout,
   message,
   navigationStaleOr,
@@ -1145,6 +1146,13 @@ export class PlaywrightSurface {
           }));
           return relative;
         } catch (cause) {
+          // The capture can reject before `framenavigated` is delivered. The
+          // event is already in flight when the context was destroyed, so a
+          // short wait tells a real navigation from an error that only looks
+          // like one.
+          if (!documents.replaced() && isNavigationRace(cause) && !isPwTimeout(cause) && !currentOperation.signal.aborted) {
+            await documents.whenReplaced(Math.min(NAVIGATION_EVENT_GRACE_MS, deadline.remaining()));
+          }
           if (!documents.replaced() || isPwTimeout(cause) || currentOperation.signal.aborted) throw cause;
           if (deadline.expired()) {
             throw new EngineError('OPERATION_TIMEOUT', `screenshot timed out: the page replaced its document during every capture for ${currentOperation.timeoutMs}ms`, {
@@ -1262,16 +1270,42 @@ export class PlaywrightSurface {
   }
 }
 
+/**
+ * How long a screenshot waits for the navigation event after Playwright has
+ * already reported the document's context destroyed. The event is the commit
+ * that destroyed the context, queued behind the capture's rejection.
+ */
+const NAVIGATION_EVENT_GRACE_MS = 250;
+
 /** Watches `page` until `stop` for a frame that commits a new document or detaches, either of which replaces a document a capture is reading. */
-function watchDocuments(page: Page): { readonly replaced: () => boolean; readonly stop: () => void } {
+function watchDocuments(page: Page): {
+  readonly replaced: () => boolean;
+  readonly stop: () => void;
+  /** Resolves when a document has been replaced, or after `timeoutMs` if none was. */
+  readonly whenReplaced: (timeoutMs: number) => Promise<void>;
+} {
   let replaced = false;
+  let notify: (() => void) | undefined;
   const mark = (): void => {
     replaced = true;
+    notify?.();
   };
   page.on('framenavigated', mark);
   page.on('framedetached', mark);
   return {
     replaced: () => replaced,
+    whenReplaced: (timeoutMs) => {
+      if (replaced || timeoutMs <= 0) return Promise.resolve();
+      return new Promise((resolve) => {
+        const timer = setTimeout(done, timeoutMs);
+        notify = done;
+        function done(): void {
+          clearTimeout(timer);
+          notify = undefined;
+          resolve();
+        }
+      });
+    },
     stop: () => {
       page.off('framenavigated', mark);
       page.off('framedetached', mark);

@@ -30,12 +30,13 @@ type Phase<S> =
 interface Entry<S> {
   phase: Phase<S>;
   /**
-   * The config the session loads. Credentials and secrets resolve through one
-   * process-wide registry, so every session shares one config; claimed
-   * before the file evaluates, since its top-level code resolves secrets
-   * against the registry an open session installed.
+   * The config the session loads, as a message names it: `config <path>`, or
+   * the engine defaults of a session opened without one. Credentials and
+   * secrets resolve through one process-wide registry, so every session
+   * shares one config; claimed before the file evaluates, since its top-level
+   * code resolves secrets against the registry an open session installed.
    */
-  configPath: string | undefined;
+  config: string | undefined;
   /** The target's engine instance, which runs one attempt at a time. */
   engine: EngineHandle | undefined;
   /** Settles when the open does, whatever its outcome. */
@@ -70,7 +71,7 @@ export class SessionRegistry<S extends NamedSession> {
     if (this.draining) return Promise.reject(new ConfigurationError('SESSION_OPEN', 'the server is shutting down; no session can open'));
     if (this.entries.size >= this.limit) return Promise.reject(this.limitReached());
     const id = uuidv7();
-    const entry: Entry<S> = { phase: { phase: 'opening' }, configPath: undefined, engine: undefined, opened: Promise.resolve() };
+    const entry: Entry<S> = { phase: { phase: 'opening' }, config: undefined, engine: undefined, opened: Promise.resolve() };
     this.entries.set(id, entry);
     const opened = open(id).catch((cause: unknown) => {
       this.entries.delete(id);
@@ -81,16 +82,16 @@ export class SessionRegistry<S extends NamedSession> {
   }
 
   /** Claims the config for an opening session before it loads, or refuses a config other than the one open sessions share. */
-  claimConfig(id: string, configPath: string): void {
-    const holder = this.others(id).find(([, entry]) => entry.configPath !== undefined && entry.configPath !== configPath);
+  claimConfig(id: string, config: string): void {
+    const holder = this.others(id).find(([, entry]) => entry.config !== undefined && entry.config !== config);
     if (holder !== undefined) {
       const [holderId, entry] = holder;
       throw new ConfigurationError(
         'CONFIG_IN_USE',
-        `session ${holderId} is open on config ${entry.configPath}; sessions open at once share one config, because credentials and secrets resolve process-wide; open this one on that config, or close every session on it first`,
+        `session ${holderId} is open on ${entry.config}; sessions open at once share one config, because credentials and secrets resolve process-wide; open this one the same way, or close every session on it first`,
       );
     }
-    this.require(id).configPath = configPath;
+    this.require(id).config = config;
   }
 
   /** Claims the target's engine instance for an opening session, or refuses one another session is driving. */

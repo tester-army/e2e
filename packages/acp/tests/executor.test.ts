@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -159,7 +159,7 @@ describe('acp', () => {
     expect(log().filter((entry) => 'session' in entry)).toHaveLength(2);
   });
 
-  it('refuses actions that change the screen on an assertion, and lets it hover', async () => {
+  it('refuses actions that change the screen on an assertion, including hover', async () => {
     const { executor, log } = scripted([
       [{ call: 'tap', args: { target: 'n2' } }, { call: 'hover', args: { target: 'n2' } }, { call: 'complete_step', args: { status: 'failed', summary: 'no todo' } }],
     ]);
@@ -169,8 +169,36 @@ describe('acp', () => {
     // The runner gives a failed assertion its ASSERTION_FAILED code.
     expect(verdict).toEqual({ status: 'failed', summary: 'no todo' });
     expect(step.tap).not.toHaveBeenCalled();
-    expect(step.hover).toHaveBeenCalledWith({ id: 'n2' });
+    expect(step.hover).not.toHaveBeenCalled();
     expect(JSON.stringify(log().find((entry) => entry['call'] === 'tap'))).toContain('this step is an assertion');
+    expect(JSON.stringify(log().find((entry) => entry['call'] === 'hover'))).toContain('this step is an assertion');
+  });
+
+  it('refuses screen changes on an assertion that follows an act in the same session, and hints read-only tools', async () => {
+    const { executor, log } = scripted([[pass], [{ call: 'tap', args: { target: 'n2' } }, { call: 'hover', args: { target: 'n2' } }, pass]]);
+    const first = context({ verbs: ['tap', 'hover'] });
+    cleanups.push(first.end);
+    await expect(executor.runStep(first.ctx)).resolves.toMatchObject({ status: 'passed' });
+    const second = context({ kind: 'assert', verbs: ['tap', 'hover'], attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
+    expect(second.tap).not.toHaveBeenCalled();
+    expect(second.hover).not.toHaveBeenCalled();
+    expect(JSON.stringify(log().find((entry) => entry['call'] === 'tap'))).toContain('this step is an assertion');
+    expect(JSON.stringify(log().find((entry) => entry['call'] === 'hover'))).toContain('this step is an assertion');
+    const session = log().find((entry) => 'session' in entry)?.['session'] as { readOnly?: string[] };
+    expect(session.readOnly?.toSorted()).toEqual(['complete_step', 'observe', 'screenshot']);
+  });
+
+  it('advertises action tools when the attempt begins with an assertion', async () => {
+    const { executor, log } = scripted([[pass], [{ call: 'tap', args: { target: 'n2' } }, pass]]);
+    const first = context({ kind: 'assert' });
+    cleanups.push(first.end);
+    await expect(executor.runStep(first.ctx)).resolves.toMatchObject({ status: 'passed' });
+    const second = context({ attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    await expect(executor.runStep(second.ctx)).resolves.toMatchObject({ status: 'passed' });
+    expect(second.tap).toHaveBeenCalledWith({ id: 'n2' });
+    const session = log().find(entry => 'session' in entry)?.['session'] as { tools: string[] };
+    expect(session.tools).toContain('tap');
   });
 
   it("concludes through the built-in agent's complete_step: blocked needs a code", async () => {
@@ -191,6 +219,18 @@ describe('acp', () => {
     // Nothing runs after the verdict.
     expect(step.tap).not.toHaveBeenCalled();
     expect(String(log().find((entry) => 'prompt' in entry)?.['prompt'])).toContain('Verdict rules:');
+  });
+
+  it('drops an inconclusive code from an act verdict and keeps it on an assertion, in one attempt', async () => {
+    const inconclusive = { call: 'complete_step', args: { status: 'failed', summary: 'not enough evidence', errorCode: 'ASSERTION_INCONCLUSIVE' } };
+    const { executor, log } = scripted([[inconclusive], [inconclusive]]);
+    const first = context();
+    cleanups.push(first.end);
+    await expect(executor.runStep(first.ctx)).resolves.toEqual({ status: 'failed', summary: 'not enough evidence' });
+    const second = context({ kind: 'assert', attempt: { attempt: first.ctx.attempt as never, end: first.end } });
+    await expect(executor.runStep(second.ctx)).resolves.toEqual(inconclusive.args);
+    expect(JSON.stringify(log())).toContain('the errorCode ASSERTION_INCONCLUSIVE you sent applies only to assertions and was ignored.');
+    expect(log().filter((entry) => 'session' in entry)).toHaveLength(1);
   });
 
   it('skips actions batched behind the verdict', async () => {
@@ -487,6 +527,66 @@ describe('acp', () => {
     const run = executor.runStep(step.ctx);
     step.abortStep(new AgentError('STEP_TIMEOUT', 'the step timed out'));
     await expect(run).rejects.toMatchObject({ code: 'STEP_TIMEOUT' });
+  });
+
+  // The delay handler cannot run on Windows: Node terminates the child
+  // immediately for SIGTERM, so the test would see an exited child instead
+  // of the live process it expects. This checks the ordering on POSIX only.
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'retries the session directory removal after the agent exits when the first try fails',
+    async () => {
+      const { executor, log } = scripted([[pass]], { env: { ACP_EXIT_DELAY_MS: '1500' } });
+      const step = context();
+      cleanups.push(step.end);
+      await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
+      const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
+      const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
+      const cwd = session.cwd;
+      // The immediate removal has to fail for this test to reach the fallback:
+      // a live agent does not hold the directory on POSIX, so a file in a
+      // read-only directory makes the removal fail instead. Restore the
+      // permissions on the way out, so a failing test leaves no undeletable dir.
+      writeFileSync(join(cwd, 'held'), '');
+      chmodSync(cwd, 0o555);
+      cleanups.push(() => {
+        try {
+          chmodSync(cwd, 0o755);
+        } catch {
+          // Already removed.
+        }
+      });
+      step.end();
+      // The agent is still stopping and the removal waits for it, so the
+      // directory must still be there.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      // The agent's own log says why when it is gone before its delay is up.
+      expect(() => process.kill(pid, 0), JSON.stringify(log().slice(-5))).not.toThrow();
+      expect(existsSync(cwd)).toBe(true);
+      // Let the fallback removal succeed once the agent is gone.
+      chmodSync(cwd, 0o755);
+      await eventually(() => {
+        expect(() => process.kill(pid, 0)).toThrow();
+        expect(existsSync(cwd)).toBe(false);
+      });
+    },
+  );
+
+  // Same POSIX-only delay handler as the test above: on Windows the child
+  // exits at once for SIGTERM, so there is no live agent to watch.
+  it.skipIf(process.platform === 'win32')('removes the session directory at once while the agent is still alive', async () => {
+    const { executor, log } = scripted([[pass]], { env: { ACP_EXIT_DELAY_MS: '1500' } });
+    const step = context();
+    cleanups.push(step.end);
+    await expect(executor.runStep(step.ctx)).resolves.toEqual({ status: 'passed', summary: 'added' });
+    const pid = log().find((entry) => 'pid' in entry)?.['pid'] as number;
+    const session = log().find((entry) => 'session' in entry)?.['session'] as { cwd: string };
+    const cwd = session.cwd;
+    step.end();
+    // The immediate removal runs at once on POSIX, so the directory is gone
+    // while the agent is still stopping (it exits 1500ms after SIGTERM).
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(existsSync(cwd)).toBe(false);
+    expect(() => process.kill(pid, 0), JSON.stringify(log().slice(-5))).not.toThrow();
   });
 
   it('reports an agent that does not start', async () => {

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { RunEvent } from '../../src/run/events.ts';
 import type { Target, TargetApp } from '../../src/types.ts';
 import { createFakeEngine } from '../helpers/fake-engine.ts';
 import { freePort } from '../helpers/free-port.ts';
@@ -30,20 +31,51 @@ function targets(port: number): Target[] {
   ];
 }
 
+/** The target names `run-started` carried, which the list reporter prints in its header. */
+function startedTargets(events: readonly RunEvent[]): readonly string[] | undefined {
+  const started = events.find((event) => event.type === 'run-started');
+  return started?.type === 'run-started' ? started.targets : undefined;
+}
+
 describe('target process selection', () => {
   it('starts the shared app command of the selected targets once, and nothing for the others', async () => {
     const project = createProject(FILES);
     const port = await freePort();
+    const events: RunEvent[] = [];
     try {
       const outcome = await runExisting(project, {
         appUrl: `http://127.0.0.1:${port}`,
         config: { targets: targets(port) },
-        runOptions: { targetIds: ['selected-b', 'selected-a', 'selected-b'] },
+        runOptions: { targetIds: ['selected-b', 'selected-a', 'selected-b'], onEvent: (event) => {
+          events.push(event);
+        } },
       });
       expect(outcome.report.run.errors).toEqual([]);
       expect(outcome.exitCode).toBe(0);
       expect(outcome.results.map((result) => result.target.name)).toEqual(['selected-a', 'selected-b']);
       expect(readFileSync(path.join(project.dir, 'startup.log'), 'utf8')).toBe('app\n');
+      expect(startedTargets(events)).toEqual(['selected-a', 'selected-b']);
+      expect(outcome.report.run.targets.map((target) => target.id)).toEqual(['unused', 'selected-a', 'selected-b']);
+      assertValidReport(outcome.report);
+    } finally {
+      project.cleanup();
+    }
+  });
+
+  it('names every configured target at the start of a run with no --target', async () => {
+    const project = createProject(FILES);
+    const port = await freePort();
+    const events: RunEvent[] = [];
+    try {
+      const outcome = await runExisting(project, {
+        appUrl: `http://127.0.0.1:${port}`,
+        config: { targets: targets(port).slice(1) },
+        runOptions: { onEvent: (event) => {
+          events.push(event);
+        } },
+      });
+      expect(outcome.exitCode).toBe(0);
+      expect(startedTargets(events)).toEqual(['selected-a', 'selected-b']);
       assertValidReport(outcome.report);
     } finally {
       project.cleanup();
@@ -73,13 +105,17 @@ require('node:http').createServer((_request, response) => response.end('ready'))
   it('rejects an unknown target with its suggestion before starting any process', async () => {
     const project = createProject(FILES);
     const port = await freePort();
+    const events: RunEvent[] = [];
     try {
       const outcome = await runExisting(project, {
         appUrl: `http://127.0.0.1:${port}`,
         config: { targets: targets(port) },
-        runOptions: { targetIds: ['selected-a', 'unusd'] },
+        runOptions: { targetIds: ['selected-a', 'unusd'], onEvent: (event) => {
+          events.push(event);
+        } },
       });
       expect(outcome.exitCode).toBe(2);
+      expect(startedTargets(events)).toEqual(['unused', 'selected-a', 'selected-b']);
       expect(outcome.results).toEqual([]);
       expect(outcome.report.run.errors).toEqual([
         expect.objectContaining({

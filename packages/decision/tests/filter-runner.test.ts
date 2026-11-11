@@ -5,7 +5,7 @@ import { web } from '@e2e-dev/web';
 import { list } from 'e2e/runner';
 import { describe, expect, it } from 'vitest';
 import { decisionFilter } from '../src/index.ts';
-import { changedRepo, scriptedJudge } from './filter-helpers.ts';
+import { changedRepo, scriptedJudge, type ChangedRepo } from './filter-helpers.ts';
 
 /** The lines between a private key's armor. Each starts with a letter, so git names the one before a hunk in its header. */
 const KEY_BODY = [
@@ -27,7 +27,38 @@ const PRIVATE_KEY = ['-----BEGIN PRIVATE KEY-----', ...KEY_BODY, '-----END PRIVA
 /** The line a commit writes in place of the key's seventh body line. It shares no 8 characters with the key, so the model reads it. */
 const ROTATED_LINE = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7VJTUt9Us8cKQ';
 
+/** Makes `repo`'s test files able to import `e2e`, and keeps that link out of the change. */
+function linkE2E(repo: ChangedRepo): void {
+  mkdirSync(path.join(repo.root, 'node_modules'));
+  symlinkSync(fileURLToPath(new URL('../node_modules/e2e', import.meta.url)), path.join(repo.root, 'node_modules', 'e2e'));
+  writeFileSync(path.join(repo.root, '.git', 'info', 'exclude'), 'node_modules\n');
+}
+
 describe('decisionFilter through e2e/runner', () => {
+  it('leaves out the tests it rates unlikely, so the runner accepts its scores along with its exclusions', async () => {
+    const repo = changedRepo(
+      {
+        'tests/cart.e2e.ts': "import { test } from 'e2e';\ntest('adds an item', async () => {});\n",
+        'tests/login.e2e.ts': "import { test } from 'e2e';\ntest('signs in', async () => {});\n",
+        'src/cart.ts': 'export const total = 1;\n',
+      },
+      { 'src/cart.ts': 'export const total = 2;\n' },
+    );
+    linkE2E(repo);
+    const { model } = scriptedJudge((text) => (text.includes('signs in') ? 0.05 : 0.9));
+    const { pairs } = await list({
+      cwd: repo.root,
+      changedSince: repo.base,
+      env: { ...process.env, CI: '', GITHUB_ACTIONS: '' },
+      config: { targets: [{ engine: web(), app: { url: 'http://127.0.0.1:9' } }], filters: [decisionFilter({ model })] },
+    });
+    // A runner that refused the result would leave nothing out.
+    expect(pairs.map((pair) => [pair.title, pair.disposition, pair.filter])).toEqual([
+      ['adds an item', 'run', undefined],
+      ['signs in', 'filtered', 'decision'],
+    ]);
+  });
+
   it("sends no line of a configured private key when commits edit the line after it or one in its middle, the diff's context lines and hunk headers included", async () => {
     const repo = changedRepo(
       {
@@ -40,9 +71,7 @@ describe('decisionFilter through e2e/runner', () => {
         'src/middle.ts': `export const key = \`${PRIVATE_KEY.replace(KEY_BODY[6] ?? '', ROTATED_LINE)}\`;\n`,
       },
     );
-    mkdirSync(path.join(repo.root, 'node_modules'));
-    symlinkSync(fileURLToPath(new URL('../node_modules/e2e', import.meta.url)), path.join(repo.root, 'node_modules', 'e2e'));
-    writeFileSync(path.join(repo.root, '.git', 'info', 'exclude'), 'node_modules\n');
+    linkE2E(repo);
     const { model, requests } = scriptedJudge(() => 0.9);
     await list({
       cwd: repo.root,

@@ -72,7 +72,11 @@ between turns to shorten the history, or returns `{ messages, stop }` when the
 step makes no progress. A message it rewrites, in place or by replacement,
 edits the request prefix, and on Anthropic models, whose thinking is bound
 to it, the loop then stops sending the reasoning from that message on.
-`guard()` stops new tool calls when the step is
+When the provider refuses a request as too large, the loop shortens the
+history and retries once if that makes the request smaller, else fails with
+`CONTEXT_OVERFLOW`; `inconclusiveOnOverflow: true` fails the step with
+`ASSERTION_INCONCLUSIVE` instead, for an assertion loop whose earlier screens
+are evidence. `guard()` stops new tool calls when the step is
 concluding and returns a failure to the model as text. `ctx.actions`
 authorizes, counts, and records each action, so these steps replay from the
 [cache](/cache) and run on any engine that supports `tap`.
@@ -166,9 +170,11 @@ pointer kind. Without it, an engine with the `dragTo` action drags by id when
 the points land on two different listed controls. Any other `dragAt` fails
 with `UNSUPPORTED_CAPABILITY`. `hitTest(point)` finds the control at a point
 without acting. Engines with a keyboard add `typeText`, `pressKey`, and
-`dismissKeyboard` for the focused control. `upload(target, paths)` refuses a
-path outside the project root or a hidden one with `POLICY_DENIED`, and a
-missing file with `INVALID_ARGUMENT`.
+`dismissKeyboard` for the focused control. `upload(target, paths)` takes
+project-relative paths and the `sample:` files listed under
+[the upload policy](/reference/agent#action-tools), refuses a path outside the project
+root or a hidden one with `POLICY_DENIED`, and a missing file with
+`INVALID_ARGUMENT`.
 
 The observation's `keyboardVisible` says whether an on-screen keyboard is
 showing, and is absent when the engine can't tell.
@@ -198,9 +204,10 @@ budget is spent, the deadline passed, or the test was cancelled. The runner
 refuses any other use, and a passed verdict with a code, with
 `MODEL_OUTPUT_INVALID`.
 
-For a model your executor drives itself, `createVerdictTool()` from
-`e2e/agent` is the built-in agent's `complete_step`. Give the model its
-`tool` and `VERDICT_RULES`, then return `verdict()`.
+For a model your executor drives itself, `createVerdictTool(ctx.step.kind)`
+from `e2e/agent` is the built-in agent's `complete_step`. Give the model its
+`tool` and `VERDICT_RULES`, then return `verdict()`. On an `act` step it drops
+`ASSERTION_INCONCLUSIVE` from a failed verdict.
 
 ## Replay cache
 

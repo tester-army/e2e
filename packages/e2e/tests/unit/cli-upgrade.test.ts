@@ -143,7 +143,7 @@ describe('e2e upgrade', () => {
     expect(out).toContain('e2e              0.20.0 → 0.21.2');
     expect(out).toContain('package.json: "e2e": "^0.21.2", "@e2e-dev/kernel": "^0.2.1", "@e2e-dev/web": "~0.15.2"\n$ npm install\n');
     expect(out).toContain('Upgraded: e2e 0.21.2, @e2e-dev/kernel 0.2.1, @e2e-dev/web 0.15.2');
-    expect(out).toContain('Release notes: https://github.com/tester-army/e2e/releases/tag/e2e%400.21.2');
+    expect(out).toContain('Release notes: https://github.com/e2e-inc/e2e/releases/tag/e2e%400.21.2');
   });
 
   it('keeps an exact pin exact beside a caret spec, and leaves the rest of package.json as written', async () => {

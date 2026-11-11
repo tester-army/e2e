@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/tester-army/e2e/blob/main/examples/examples.schema.json",
+  "$id": "https://github.com/e2e-inc/e2e/blob/main/examples/examples.schema.json",
   "title": "e2e examples registry",
-  "description": "Every example listed on https://e2e.com/examples: the official ones (folders under examples/ and repositories in the tester-army organization), partners' and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
+  "description": "Every example listed on https://e2e.com/examples: the official ones (folders under examples/, repositories in the e2e-inc organization on GitHub and the e2e_inc group on GitLab), partners' and the community's own repositories. `node scripts/check-examples.ts` validates the file against this schema and checks what a schema cannot: unique slugs, known tags, and existing icons and folders.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -133,7 +133,7 @@
           "type": "boolean"
         },
         "source": {
-          "description": "`official` for the examples the e2e team maintains, in the tester-army organization; `partner` for the ones a partner company verifies and maintains in its own repository, outside it, shown with a partner seal on the site; `community` for everyone else's, outside it.",
+          "description": "`official` for the examples the e2e team maintains, in the e2e-inc organization on GitHub or the e2e_inc group on GitLab; `partner` for the ones a partner company verifies and maintains in its own repository, outside it, shown with a partner seal on the site; `community` for everyone else's, outside it.",
           "enum": [
             "official",
             "partner",
@@ -141,16 +141,16 @@
           ]
         },
         "repository": {
-          "description": "The example's folder on GitHub, whose README the page renders (see `readme`): https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder. A community example pins `<ref>` to a commit.",
+          "description": "The example's folder on GitHub or GitLab, whose README the page renders (see `readme`): https://github.com/<owner>/<repo>, or https://github.com/<owner>/<repo>/tree/<ref>/<path> for a folder; on GitLab, https://gitlab.com/<group>/<project>, or https://gitlab.com/<group>/<project>/-/tree/<ref>/<path>. A community example pins `<ref>` to a commit.",
           "type": "string",
-          "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:/tree/[^/\\s]+(?:/[^\\s]+)?)?$"
+          "pattern": "^https://(?:github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+(?:/tree/[^/\\s]+(?:/[^\\s]+)?)?|gitlab\\.com/[A-Za-z0-9_.-]+(?:/(?!-(?:/|$))[A-Za-z0-9_.-]+)+(?:/-/tree/[^/\\s]+(?:/[^\\s]+)?)?)$"
         },
         "readme": {
-          "description": "Only for an example whose folder has no README.md of its own. A Markdown file in the same repository (for a community example, at the same commit), https://github.com/<owner>/<repo>/blob/<ref>/<path>.md, to render instead; or `false` for no README, and the page links to the code in `repository`. Leave it out when `repository` has a README.md.",
+          "description": "Only for an example whose folder has no README.md of its own. A Markdown file in the same repository (for a community example, at the same commit), https://github.com/<owner>/<repo>/blob/<ref>/<path>.md or https://gitlab.com/<group>/<project>/-/blob/<ref>/<path>.md, to render instead; or `false` for no README, and the page links to the code in `repository`. Leave it out when `repository` has a README.md.",
           "oneOf": [
             {
               "type": "string",
-              "pattern": "^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/blob/[^/\\s]+/[^\\s]+\\.md$"
+              "pattern": "^https://(?:github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9._-]+/blob|gitlab\\.com/[A-Za-z0-9_.-]+(?:/(?!-(?:/|$))[A-Za-z0-9_.-]+)+/-/blob)/[^/\\s]+/[^\\s]+\\.md$"
             },
             {
               "const": false
@@ -171,7 +171,7 @@
               "maxLength": 60
             },
             "github": {
-              "description": "The GitHub user or organization: the avatar and the profile link.",
+              "description": "The GitHub user or organization: the avatar and the profile link, also for an example on GitLab.",
               "type": "string",
               "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$"
             },
