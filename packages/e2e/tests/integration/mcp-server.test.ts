@@ -186,7 +186,7 @@ describe('e2e mcp', { timeout: 120_000 }, () => {
     expect(tools.find((tool) => tool.name === 'open_session')?.inputSchema).toMatchObject({ properties: { target: {}, config: {}, headed: { type: 'boolean' } } });
     expect(client.getInstructions()).toContain('call {tool, args} runs any catalog tool');
     expect(client.getInstructions()).toContain('Several sessions can be open at once');
-    expect(client.getInstructions()).toContain('Before you write or edit a test, read the writing-tests guide: the resource e2e://guide/writing-tests');
+    expect(client.getInstructions()).toContain('Before you write or edit a test, read the writing-tests guide: the resource e2e://guide/writing-tests, or npx e2e guide writing-tests in a shell.');
 
     const { resources } = await client.listResources();
     expect(resources.map((resource) => resource.uri)).toEqual(
