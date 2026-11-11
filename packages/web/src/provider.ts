@@ -115,15 +115,6 @@ export interface BrowserProviderDownloads {
   read(lease: BrowserLease, file: string, context: BrowserDownloadContext): Promise<Uint8Array>;
 }
 
-/** Identifies the test's actual page, including pages in worker-scoped incognito contexts. */
-export interface BrowserPageContext extends BrowserReleaseContext {
-  /** Aborts when the attempt's page session closes. */
-  readonly signal: AbortSignal;
-  readonly attemptId: string;
-  /** CDP target ID of the page the attempt drives. */
-  readonly targetId: string;
-}
-
 /** The downloads of the browser an attempt rides, read through its provider. */
 export interface LeaseDownloads {
   /** The provider as error messages name it: `browser provider "kernel"`. */
@@ -158,8 +149,6 @@ export interface BrowserProvider {
   readonly scope?: BrowserProviderScope | undefined;
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
-  /** Called when an attempt opens its active page, for provider features such as live-view links. */
-  onPage?(lease: BrowserLease, context: BrowserPageContext): Promise<void>;
   /**
    * Records the leased browser for an attempt that records video, in place
    * of the engine's screencast of the page: the service's own recording of
@@ -202,7 +191,7 @@ export function asBrowserProvider(browser: object): BrowserProvider {
     }
   }
 
-  for (const member of ['record', 'sweep', 'onPage'] as const) {
+  for (const member of ['record', 'sweep'] as const) {
     if (candidate[member] !== undefined && typeof candidate[member] !== 'function') {
       throw new ConfigurationError('INVALID_CONFIG', `web: browser provider "${candidate.name}" has a ${member} that is not a function`);
     }
@@ -509,21 +498,6 @@ export class LeasedBrowsers {
   /** The current lease's CDP handshake headers, read after resolving its endpoint. */
   cdpHeaders(): Readonly<Record<string, string>> | undefined {
     return this.current?.lease.cdpHeaders;
-  }
-
-  /** Notifies an interested provider once the attempt's actual CDP page target exists. */
-  pageObserver(attemptId: string): ((targetId: string, signal: AbortSignal) => Promise<void>) | undefined {
-    const onPage = this.provider.onPage?.bind(this.provider);
-
-    if (onPage === undefined) return undefined;
-
-    return async (targetId, signal) => {
-      const run = this.requireRun();
-      const lease = this.scope === 'attempt' ? this.attempt : this.current?.lease;
-
-      if (lease === undefined) throw invalidState(`browser provider "${this.name}" has no lease for the page`);
-      await raceAbort(() => onPage(lease, { ...this.releaseContext(run, signal), attemptId, targetId }), signal, 'notifying browser provider of a page');
-    };
   }
 
   /**

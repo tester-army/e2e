@@ -53,7 +53,6 @@ Use a public HTTPS app URL. A hosted browser cannot reach the runner's `localhos
 | --- | --- | --- |
 | `scope` | `'worker'` | One browser per worker slot. `'attempt'` leases a fresh browser for every attempt and retry. |
 | `keepAlive` | `60000` | Inactivity timeout in milliseconds, from `10000` to `1200000`. |
-| `liveView` | `false` | Log a read-only viewing link for the test's actual tab. |
 
 Worker scope creates an isolated context for every attempt.
 Attempt scope uses the fresh browser's default context and supports reconnecting to that browser after a transport drop.
@@ -63,13 +62,6 @@ Normal teardown explicitly deletes every acquired session.
 The provider journals session IDs in the host's temporary directory, so the parent can release browsers left by a crashed worker, including per-attempt and replacement browsers.
 The journal contains no API tokens or browser connection headers and is scoped to the account, run, and target.
 If the entire runner dies, or a session is created before its receipt can be written, the inactivity timeout is the fallback.
-
-## Watch a test
-
-Set `browserRun({ liveView: true })` to print a viewing link when each test tab opens.
-The link allows read-only viewing and must be opened within five minutes; an established connection lasts while the browser stays alive.
-It grants access to visible page data, so share it only with trusted viewers.
-Failure to create a viewing link prints a warning and does not fail the test.
 
 ## Check compatibility
 

@@ -16,8 +16,6 @@ URL reachable from Cloudflare. No Worker or vendor SDK is needed to connect.
 `scope` defaults to `worker`, with a fresh context per attempt. `attempt`
 leases a fresh browser per attempt and retry. `keepAlive` sets the inactivity
 timeout in milliseconds, 10000 to 1200000, default 60000.
-`liveView: true` logs a read-only link for each test's actual tab, valid for
-starting a viewing connection for five minutes. Share links only with trusted viewers.
 
 The provider explicitly deletes sessions during teardown. Session IDs are
 journaled in the host's temporary directory, so the parent sweeps browsers

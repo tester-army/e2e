@@ -164,23 +164,4 @@ describe('browserRun', () => {
     }
   });
 
-  it('mints a read-only link for the exact page target only when opted in', async () => {
-    expect(browserRun().onPage).toBeUndefined();
-    const fetch = vi.fn().mockResolvedValue(Response.json({ devtoolsFrontendUrl: 'https://live.browser.run/ui/view?jwt=viewer-token' }));
-    vi.stubGlobal('fetch', fetch);
-    const page = { ...context(), attemptId: 'attempt', targetId: 'actual-incognito-tab' };
-    await browserRun({ liveView: true }).onPage!({ id, cdpEndpoint: 'wss://example' }, page);
-    expect(JSON.parse(fetch.mock.calls[0]![1].body)).toEqual({
-      mode: 'tab', targetId: 'actual-incognito-tab', expiresInMs: 300_000, guardrails: { mode: 'readonly' },
-    });
-    expect(page.log).toHaveBeenCalledWith(expect.stringContaining('watch at https://live.browser.run/'));
-  });
-
-  it('makes live-view failures nonfatal and never logs unexpected URL credentials', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(Response.json({ devtoolsFrontendUrl: 'https://evil.example/?token=synthetic-secret' })));
-    const page = { ...context(), attemptId: 'attempt', targetId: 'target' };
-    await browserRun({ liveView: true }).onPage!({ id, cdpEndpoint: 'wss://example' }, page);
-    expect(page.log).toHaveBeenCalledWith(`could not create live view for browser ${id}`);
-    expect(JSON.stringify(vi.mocked(page.log).mock.calls)).not.toContain('synthetic-secret');
-  });
 });

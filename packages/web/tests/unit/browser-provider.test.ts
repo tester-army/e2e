@@ -155,27 +155,6 @@ beforeEach(() => {
   vi.mocked(connectCdp).mockImplementation(async (endpoint) => fakeBrowser(`context-${endpoint}`).browser);
 });
 
-it.each(['worker', 'attempt'] as const)('passes the %s lease and exact page target to the provider page hook', async (scope) => {
-  const cloud = provider({ scope });
-  const onPage = vi.fn(async () => undefined);
-  const impl = { ...cloud.impl, onPage };
-  const runner = new LeasedBrowsers(impl);
-  const handoff = await runner.prepare(prepareInfo(1));
-  const worker = new LeasedBrowsers(impl);
-  worker.init(initInfo(0, handoff.env));
-
-  if (scope === 'attempt') await worker.startAttempt(attempt('a1'));
-  else await worker.endpoint(new AbortController().signal);
-  const signal = new AbortController().signal;
-  await worker.pageObserver('a1')!('test-page-target', signal);
-  expect(onPage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: 'lease-0' }), expect.objectContaining({
-    attemptId: 'a1', targetId: 'test-page-target', runId: 'run-1', targetName: 'web', signal,
-  }));
-  await worker.endAttempt(cleanup());
-  await worker.dispose(cleanup());
-  await runner.finish(finishInfo());
-});
-
 describe('web({ browser: provider })', () => {
   it('rejects a provider without a name, the two methods, or a known scope', () => {
     expect(() => web({ browser: { name: '' } as unknown as BrowserProvider })).toThrow(/non-empty `name`/);

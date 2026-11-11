@@ -11,8 +11,6 @@ export interface BrowserRunOptions {
   readonly scope?: BrowserProviderScope | undefined;
   /** Inactivity timeout in milliseconds, from 10,000 to 1,200,000. Default: 60,000. */
   readonly keepAlive?: number | undefined;
-  /** Logs a read-only Live View link for each test page. Default: false. */
-  readonly liveView?: boolean | undefined;
 }
 
 /** Required credentials are read on use, so importing a config needs no login. */
@@ -41,16 +39,6 @@ function isSessionResult(value: unknown): value is SessionResult {
     typeof value.sessionId === 'string' && SESSION_ID.test(value.sessionId);
 }
 
-interface LiveViewResult {
-  readonly devtoolsFrontendUrl: string;
-}
-
-/** Parses the live-view response before the caller checks its URL origin. */
-function isLiveViewResult(value: unknown): value is LiveViewResult {
-  return value !== null && typeof value === 'object' && 'devtoolsFrontendUrl' in value &&
-    typeof value.devtoolsFrontendUrl === 'string';
-}
-
 /** Resolves the same private journal independently in the parent and every worker. */
 function journal(context: BrowserReleaseContext): LeaseJournal {
   return new LeaseJournal(context.env.CLOUDFLARE_ACCOUNT_ID!.trim(), context.runId, context.targetName);
@@ -70,15 +58,13 @@ async function release(lease: BrowserLease, context: BrowserReleaseContext): Pro
  * The engine owns isolation, screenshots, and per-attempt screencast video.
  */
 export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
-  const { scope, keepAlive = 60_000, liveView = false } = options;
+  const { scope, keepAlive = 60_000 } = options;
 
   if (!Number.isInteger(keepAlive) || keepAlive < 10_000 || keepAlive > 1_200_000) {
     throw new Error('browserRun keepAlive must be an integer from 10000 to 1200000 milliseconds');
   }
 
   if (scope !== undefined && scope !== 'worker' && scope !== 'attempt') throw new Error('browserRun scope must be worker or attempt');
-
-  if (liveView !== true && liveView !== false) throw new Error('browserRun liveView must be a boolean');
 
   const provider: BrowserProvider = {
     name: 'browser-run',
@@ -133,28 +119,6 @@ export function browserRun(options: BrowserRunOptions = {}): BrowserProvider {
       return deleted;
     },
   };
-
-  if (liveView) {
-    provider.onPage = async (lease, context) => {
-      const { base, headers } = credentials(context.env);
-
-      try {
-        const signal = AbortSignal.any([context.signal, AbortSignal.timeout(5_000)]);
-
-        const result = await resultOf(await request(`${base}/${encodeURIComponent(lease.id)}/live_view`, 'POST', headers, signal, JSON.stringify({
-          mode: 'tab', targetId: context.targetId, expiresInMs: 300_000, guardrails: { mode: 'readonly' },
-        })), isLiveViewResult, 'Cloudflare Browser Run returned no live view URL');
-
-        const url = new URL(result.devtoolsFrontendUrl);
-
-        if (url.origin !== 'https://live.browser.run' || url.username !== '' || url.password !== '') throw new Error('Cloudflare Browser Run returned an invalid live view URL');
-
-        if (!signal.aborted) context.log(`browser ${lease.id}, watch at ${url.href}`);
-      } catch {
-        if (!context.signal.aborted) context.log(`could not create live view for browser ${lease.id}`);
-      }
-    };
-  }
 
   return provider;
 }

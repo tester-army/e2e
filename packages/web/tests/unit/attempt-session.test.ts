@@ -68,14 +68,12 @@ function session(options: {
   artifactsDir?: string;
   viewport?: { width: number; height: number } | null;
   media?: WebMedia;
-  pageOpened?: (targetId: string, signal: AbortSignal) => Promise<void>;
 } = {}) {
   return new AttemptSession({
     artifactsDir: options.artifactsDir ?? tmpdir(), viewport: options.viewport === undefined ? { width: 320, height: 200 } : options.viewport, contextOptions: {}, screencast: {},
     media: options.media ?? {},
     acquire: async () => { throw new Error('persistent attempts never acquire the shared browser'); },
     configure: options.configure ?? (async () => undefined),
-    pageOpened: options.pageOpened,
     persistent: { provision: options.provision ?? (() => 'provisioned'), reconnect: options.reconnect ?? (() => 'existing'), usedContexts: options.used ?? new Set() },
   });
 }
@@ -86,19 +84,6 @@ const operation = (timeoutMs = 1_000, signal = new AbortController().signal) => 
 describe('AttemptSession', () => {
   beforeEach(() => vi.mocked(connectCdp).mockReset());
   afterEach(() => vi.useRealTimers());
-
-  it('notifies a provider of the active page target once, rather than another browser tab', async () => {
-    const current = remote('current');
-    current.pages.push(target('actual-test-target').page, target('unrelated-tab').page);
-    vi.mocked(connectCdp).mockResolvedValue(current.browser);
-    const pageOpened = vi.fn(async () => undefined);
-    const owner = session({ pageOpened });
-    await owner.start(new AbortController().signal);
-    await owner.ensurePage();
-    await owner.ensurePage();
-    expect(pageOpened).toHaveBeenCalledExactlyOnceWith('actual-test-target', expect.any(AbortSignal));
-    await owner.close(cleanup());
-  });
 
   it('detaches an unresolved identity before its response arrives and cannot overwrite the next attempt', async () => {
     const response = deferred<Contexts>();

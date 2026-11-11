@@ -248,8 +248,6 @@ export interface BrowserProvider {
   readonly scope?: 'worker' | 'attempt';
   acquire(request: BrowserRequest): Promise<BrowserLease>;
   release(lease: BrowserLease, context: BrowserReleaseContext): Promise<void>;
-  /** Optional notification after the attempt's actual page opens. */
-  onPage?(lease: BrowserLease, context: BrowserPageContext): Promise<void>;
   /** Optional: the service's own recording of the browser, in the worker, for an attempt that records video. */
   record?(lease: BrowserLease, context: ProviderRecordContext): Promise<ProviderRecording>;
   /** Optional: serves `browser.waitForDownload` for a browser on another machine. */
@@ -276,10 +274,6 @@ export interface BrowserLease {
   readonly reconnectEndpoint?: string;
 }
 
-export interface BrowserPageContext extends BrowserReleaseContext {
-  readonly attemptId: string;
-  readonly targetId: string; // CDP target ID of the test's active page.
-}
 ```
 
 `acquire` gets the run id, the target, the worker slot and slot count, the
@@ -292,10 +286,6 @@ a provider can keep its own fields on it. Only `id`, `cdpEndpoint`, `cdpHeaders`
 `reconnectEndpoint` travel to the worker, so key anything a worker uses,
 such as a recording, on `lease.id`.
 
-`onPage` receives the active page's CDP target ID, the attempt ID, and the
-run's release context after the tab is configured. It can generate a viewing
-link for that exact page, including an isolated worker-scoped context.
-Providers that omit it incur no additional page identity lookup.
 
 Against a typical session API, a provider sends three requests: create a
 session, poll it until it has a DevTools endpoint, and stop it.

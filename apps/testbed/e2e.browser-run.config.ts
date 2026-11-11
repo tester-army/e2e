@@ -10,7 +10,7 @@ const scope = process.env.BROWSER_RUN_SCOPE === 'attempt' ? 'attempt' : 'worker'
 
 export default {
   projectId: 'e2e.browser-run.live',
-  targets: [{ name: 'cloudflare', engine: web({ browser: browserRun({ scope, liveView: process.env.BROWSER_RUN_LIVE_VIEW === '1' }) }), app: { url } }],
+  targets: [{ name: 'cloudflare', engine: web({ browser: browserRun({ scope }) }), app: { url } }],
   tests: [
     'tests/forms.e2e.ts',
     ...(scope === 'worker' ? ['tests/todos.e2e.ts'] : []),

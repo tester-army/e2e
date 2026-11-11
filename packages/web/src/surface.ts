@@ -563,7 +563,6 @@ export class PlaywrightSurface {
       },
       ...(persistent === undefined ? {} : { persistent }),
       record: this.leases?.recorder(context.attemptId),
-      pageOpened: this.leases?.pageObserver(context.attemptId),
     });
     this.session = session;
     await session.start(context.signal);

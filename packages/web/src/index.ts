@@ -18,7 +18,6 @@ export type { WebMedia } from './media.ts';
 export type {
   BrowserDownloadContext,
   BrowserLease,
-  BrowserPageContext,
   BrowserProvider,
   BrowserProviderDownloads,
   BrowserProviderScope,
