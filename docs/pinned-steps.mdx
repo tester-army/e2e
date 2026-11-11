@@ -80,8 +80,8 @@ and says so. Keep such a step in the steps file.
 
 Set `pins: 'required'` so CI runs only reviewed steps. A step with no pin
 then fails with `REPLAY_STALE` instead of running the agent. Without it, a
-step with no pin runs live, in CI too. That includes a step whose test you
-renamed.
+step with no pin can fall back to the agent, in CI too. That includes a
+step whose test you renamed.
 
 ```ts title="e2e.config.ts"
 pins: process.env.CI ? 'required' : 'optional',

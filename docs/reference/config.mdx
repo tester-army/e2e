@@ -1354,8 +1354,9 @@ pins: process.env.CI ? 'required' : 'optional', // default: 'optional'
 
 - `--pins` replaces it for one run.
 - A call opts out with `pin: false`.
-- A run with `--pin` records the steps instead of failing them. An empty
-  `steps: []` records only under `--pin`.
+- A run with `--pin` records the steps instead of failing them. Under
+  `'required'`, an empty `steps: []` records only under `--pin`; under
+  `'optional'`, any local run records it.
 - It applies to the steps `e2e run` runs from a test file. Judgments
   (`assert`, `waitFor`, `extract`) are never pinned.
 - It doesn't change the [cache key](/cache#what-must-match).
